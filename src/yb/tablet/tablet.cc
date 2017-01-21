@@ -132,6 +132,7 @@ using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
 using yb::util::ScopedPendingOperation;
 using yb::tserver::WriteRequestPB;
+using yb::tserver::WriteResponsePB;
 using yb::docdb::KeyValueWriteBatchPB;
 using yb::tserver::ReadRequestPB;
 using yb::docdb::ValueType;
@@ -888,8 +889,8 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   }
   WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
   redis_write_batch_pb->reset(write_request_copy);
-  docdb::StartDocWriteTransaction(rocksdb_.get(), &doc_ops, &shared_lock_manager_,
-                                  keys_locked, write_request_copy->mutable_write_batch());
+  RETURN_NOT_OK(StartDocWriteTransaction(
+      doc_ops, keys_locked, write_request_copy->mutable_write_batch()));
   for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
     responses->emplace_back(
         (down_cast<RedisWriteOperation*>(doc_ops[i].get()))->response());
@@ -911,25 +912,32 @@ Status Tablet::HandleRedisReadRequest(const MvccSnapshot &snap,
 }
 
 Status Tablet::KeyValueBatchFromYSQLWriteBatch(
-    const WriteRequestPB& ysql_write_request,
-    unique_ptr<const WriteRequestPB>* ysql_write_batch_pb,
+    const WriteRequestPB& write_request,
+    unique_ptr<const WriteRequestPB>* write_batch_pb,
     vector<string> *keys_locked,
-    vector<YSQLResponsePB>* responses) {
+    WriteResponsePB* write_response,
+    WriteTransactionState* tx_state) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   vector<unique_ptr<DocOperation>> doc_ops;
 
-  for (size_t i = 0; i < ysql_write_request.ysql_write_batch_size(); i++) {
-    const YSQLWriteRequestPB& req = ysql_write_request.ysql_write_batch(i);
-    // TODO(Robert): verify that all key column values are provided
-    doc_ops.emplace_back(new YSQLWriteOperation(req, metadata_->schema()));
+  for (size_t i = 0; i < write_request.ysql_write_batch_size(); i++) {
+    const YSQLWriteRequestPB& req = write_request.ysql_write_batch(i);
+    doc_ops.emplace_back(new YSQLWriteOperation(
+        req, metadata_->schema(), write_response->add_ysql_response_batch()));
   }
-  WriteRequestPB* const write_request_copy = new WriteRequestPB(ysql_write_request);
-  ysql_write_batch_pb->reset(write_request_copy);
-  docdb::StartDocWriteTransaction(rocksdb_.get(), &doc_ops, &shared_lock_manager_,
-                                  keys_locked, write_request_copy->mutable_write_batch());
-  for (size_t i = 0; i < ysql_write_request.ysql_write_batch_size(); i++) {
-    responses->emplace_back((down_cast<YSQLWriteOperation*>(doc_ops[i].get()))->response());
+  WriteRequestPB* const write_request_copy = new WriteRequestPB(write_request);
+  write_batch_pb->reset(write_request_copy);
+  RETURN_NOT_OK(StartDocWriteTransaction(
+      doc_ops, keys_locked, write_request_copy->mutable_write_batch()));
+  for (size_t i = 0; i < write_request.ysql_write_batch_size(); i++) {
+    YSQLWriteOperation* ysql_write_op = down_cast<YSQLWriteOperation*>(doc_ops[i].get());
+    // If the YSQL write op returns a rowblock, move the op to the transaction state to return the
+    // rows data as a sidecar after the transaction completes.
+    if (ysql_write_op->rowblock() != nullptr) {
+      doc_ops[i].release();
+      tx_state->ysql_write_ops()->emplace_back(unique_ptr<YSQLWriteOperation>(ysql_write_op));
+    }
   }
   write_request_copy->clear_row_operations();
 
@@ -987,11 +995,8 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
             << "YSQL write and Kudu row operations not supported in the same request";
         if (req.ysql_write_batch_size() > 0) {
           vector<YSQLResponsePB> responses;
-          RETURN_NOT_OK(KeyValueBatchFromYSQLWriteBatch(req, &key_value_write_request, &locks_held,
-              &responses));
-          for (auto& ysql_resp : responses) {
-            *(state->response()->add_ysql_response_batch()) = std::move(ysql_resp);
-          }
+          RETURN_NOT_OK(KeyValueBatchFromYSQLWriteBatch(
+              req, &key_value_write_request, &locks_held, state->response(), state));
         } else {
           // Kudu-compatible codepath - we'll construct a new WriteRequestPB for raft replication.
           RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(req, &key_value_write_request, &locks_held));
@@ -1132,9 +1137,7 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
       }
     }
   }
-  docdb::StartDocWriteTransaction(
-      rocksdb_.get(), &doc_ops, &shared_lock_manager_, keys_locked, write_batch_pb);
-  return Status::OK();
+  return StartDocWriteTransaction(doc_ops, keys_locked, write_batch_pb);
 }
 
 void Tablet::ApplyKuduRowOperation(WriteTransactionState *tx_state,
@@ -2168,6 +2171,19 @@ Status Tablet::KuduColumnarCaptureConsistentIterators(
   // Swap results into the parameters.
   ret.swap(*iters);
   return Status::OK();
+}
+
+Status Tablet::StartDocWriteTransaction(const vector<unique_ptr<DocOperation>> &doc_ops,
+                                        vector<string> *keys_locked,
+                                        KeyValueWriteBatchPB* write_batch) {
+  bool need_read_snapshot = false;
+  Timestamp timestamp;
+  docdb::PrepareDocWriteTransaction(
+      doc_ops, &shared_lock_manager_, keys_locked, &need_read_snapshot);
+  if (need_read_snapshot) {
+    timestamp = mvcc_.GetCleanTimestamp();
+  }
+  return docdb::ApplyDocWriteTransaction(doc_ops, timestamp, rocksdb_.get(), write_batch);
 }
 
 Status Tablet::CountRows(uint64_t *count) const {

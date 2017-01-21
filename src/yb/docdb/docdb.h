@@ -20,6 +20,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value.h"
+#include "yb/tablet/mvcc.h"
 #include "yb/util/shared_lock_manager.h"
 #include "yb/util/status.h"
 
@@ -109,13 +110,10 @@ class DocWriteBatch {
   int num_rocksdb_seeks_;
 };
 
-// Currently DocWriteOperation is just one upsert (or delete) of a value at some DocPath.
-// In future we will make more complicated DocWriteOperations for redis.
-
-
-// This function starts the transaction by taking locks, reading from rocksdb,
-// and constructing the write batch. The set of keys locked are returned to the caller via the
-// keys_locked argument (because they need to be saved and unlocked when the transaction commits).
+// This function prepares the transaction by taking locks. The set of keys locked are returned to
+// the caller via the keys_locked argument (because they need to be saved and unlocked when the
+// transaction commits). A flag is also returned to indicate if any of the write operations
+// requires a clean read snapshot to be taken before being applied (see DocOperation for details).
 //
 // Example: doc_write_ops might consist of the following operations:
 // a.b = {}, a.b.c = 1, a.b.d = 2, e.d = 3
@@ -129,12 +127,21 @@ class DocWriteBatch {
 // TODO(akashnil): If a.b is exclusive, we don't need to lock any sub-paths under it.
 //
 // Input: doc_write_ops
-// Context: rocksdb, lock_manager
-// Outputs: keys_locked, write_batch
-Status StartDocWriteTransaction(rocksdb::DB *rocksdb,
-                                std::vector<std::unique_ptr<DocOperation>>* doc_write_ops,
+// Context: lock_manager
+// Outputs: write_batch, need_read_snapshot
+void PrepareDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
                                 util::SharedLockManager *lock_manager,
                                 vector<string> *keys_locked,
+                                bool *need_read_snapshot);
+
+// This function reads from rocksdb and constructs the write batch.
+//
+// Input: doc_write_ops, read snapshot timestamp if requested in PrepareDocWriteTransaction().
+// Context: rocksdb
+// Outputs: keys_locked, write_batch
+Status ApplyDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+                                const Timestamp& timestamp,
+                                rocksdb::DB *rocksdb,
                                 KeyValueWriteBatchPB* write_batch);
 
 Status HandleRedisReadTransaction(rocksdb::DB *rocksdb,

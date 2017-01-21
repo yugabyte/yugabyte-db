@@ -404,6 +404,14 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
         }
         *(down_cast<YBSqlWriteOp*>(yb_op)->mutable_response()) =
             std::move(resp_.ysql_response_batch(ysql_idx));
+        const auto& ysql_response = down_cast<YBSqlWriteOp*>(yb_op)->response();
+        if (ysql_response.has_rows_data_sidecar()) {
+          Slice rows_data;
+          CHECK_OK(retrier().controller().GetSidecar(
+              ysql_response.rows_data_sidecar(), &rows_data));
+          down_cast<YBSqlWriteOp*>(yb_op)->mutable_rows_data()->assign(
+              util::to_char_ptr(rows_data.data()), rows_data.size());
+        }
         ysql_idx++;
         break;
       }

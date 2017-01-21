@@ -51,11 +51,14 @@ class DocRowwiseIterator : public RowwiseIterator {
 
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
 
-  // Init YSQL read scan
+  // Init YSQL read scan.
   CHECKED_STATUS Init(const YSQLScanSpec& spec);
 
-  // Read next row into YSQL row block
-  CHECKED_STATUS NextBlock(const YSQLScanSpec& spec, YSQLRowBlock *rowblock);
+  // Read next row into a value map.
+  CHECKED_STATUS NextRow(const YSQLScanSpec& spec, YSQLValueMap* value_map);
+
+  // Read next set of rows into YSQL row block (note: we are reading just 1 row per call for now).
+  CHECKED_STATUS NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* rowblock);
 
  private:
   DocKey KuduToDocKey(const EncodedKey &encoded_key) {

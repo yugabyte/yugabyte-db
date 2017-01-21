@@ -321,7 +321,7 @@ CHECKED_STATUS SetYSQLPrimaryKeyColumnValues(const Schema& schema,
                                              const size_t column_count,
                                              const char* column_type,
                                              const vector<PrimitiveValue>& values,
-                                             unordered_map<int32_t, YSQLValue>* value_map) {
+                                             YSQLValueMap* value_map) {
   if (values.size() != column_count) {
     return STATUS_SUBSTITUTE(Corruption, "$0 $1 primary key columns found but $2 expected",
                              values.size(), column_type, column_count);
@@ -405,7 +405,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* rowblock) {
+Status DocRowwiseIterator::NextRow(const YSQLScanSpec& spec, YSQLValueMap* value_map) {
   if (!status_.ok()) {
     // An error happened in HasNext.
     return status_;
@@ -417,13 +417,12 @@ Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* row
 
   // Populate the key column values from the doc key. The key column values in doc key were
   // written in the same order as in the table schema (see DocKeyFromYSQLKey).
-  unordered_map<int32_t, YSQLValue> value_map;
   RETURN_NOT_OK(SetYSQLPrimaryKeyColumnValues(
       schema_, 0, schema_.num_hash_key_columns(),
-      "hash", subdoc_key_.doc_key().hashed_group(), &value_map));
+      "hash", subdoc_key_.doc_key().hashed_group(), value_map));
   RETURN_NOT_OK(SetYSQLPrimaryKeyColumnValues(
       schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
-      "range", subdoc_key_.doc_key().range_group(), &value_map));
+      "range", subdoc_key_.doc_key().range_group(), value_map));
 
   // Get the non-key column values of a YSQL row.
   vector<PrimitiveValue> values;
@@ -431,9 +430,16 @@ Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* row
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& column_id = projection_.column_id(i);
     const auto data_type = projection_.column(i).type_info()->type();
-    const auto& elem = value_map.emplace(column_id, YSQLValue(data_type));
+    const auto& elem = value_map->emplace(column_id, YSQLValue(data_type));
     values[i - projection_.num_key_columns()].ToYSQLValue(&elem.first->second);
   }
+
+  return Status::OK();
+}
+
+Status DocRowwiseIterator::NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* rowblock) {
+  YSQLValueMap value_map;
+  RETURN_NOT_OK(NextRow(spec, &value_map));
 
   // Match the row with the where condition before adding to the row block.
   bool match = false;

@@ -28,6 +28,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
+#include "yb/docdb/doc_operation.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
@@ -290,10 +291,8 @@ void HandleErrorResponse(const ReqType* req, RespType* resp, RpcContext* context
 template<class Response>
 class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
  public:
-  RpcTransactionCompletionCallback(rpc::RpcContext* context,
-                                   Response* response)
-      : context_(context),
-        response_(response) {}
+  RpcTransactionCompletionCallback(rpc::RpcContext* const context, Response* const response)
+      : context_(context), response_(response) { }
 
   virtual void TransactionCompleted() OVERRIDE {
     if (!status_.ok()) {
@@ -309,9 +308,50 @@ class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
     return response_->mutable_error();
   }
 
-  rpc::RpcContext* context_;
-  Response* response_;
-  tablet::TransactionState* state_;
+  rpc::RpcContext* const context_;
+  Response* const response_;
+};
+
+class WriteTransactionCompletionCallback : public TransactionCompletionCallback {
+ public:
+  WriteTransactionCompletionCallback(
+      rpc::RpcContext* const context, WriteResponsePB* const response,
+      tablet::WriteTransactionState* const state)
+      : context_(context), response_(response), state_(state) { }
+
+  virtual void TransactionCompleted() OVERRIDE {
+    if (!status_.ok()) {
+      SetupErrorAndRespond(get_error(), status_, code_, context_);
+    } else {
+      // Retrieve the rowblocks returned from the YSQL write operations and return them as RPC
+      // sidecars. Populate the row schema also.
+      for (const auto& ysql_write_op : *state_->ysql_write_ops()) {
+        const auto& ysql_write_req = ysql_write_op->request();
+        auto* ysql_write_resp = ysql_write_op->response();
+        const YSQLRowBlock* rowblock = ysql_write_op->rowblock();
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            SchemaToColumnPBs(rowblock->schema(), ysql_write_resp->mutable_column_schemas()),
+            response_, context_);
+        gscoped_ptr<faststring> rows_data(new faststring());
+        rowblock->Serialize(ysql_write_req.client(), rows_data.get());
+        int rows_data_sidecar_idx = 0;
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(context_->AddRpcSidecar(make_gscoped_ptr(
+            new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx), response_, context_);
+        ysql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+      }
+      context_->RespondSuccess();
+    }
+  };
+
+ private:
+
+  TabletServerErrorPB* get_error() {
+    return response_->mutable_error();
+  }
+
+  rpc::RpcContext* const context_;
+  WriteResponsePB* const response_;
+  tablet::WriteTransactionState* const state_;
 };
 
 // Generic interface to handle scan results.
@@ -778,8 +818,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       new WriteTransactionState(tablet_peer.get(), req, resp));
 
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-      new RpcTransactionCompletionCallback<WriteResponsePB>(context,
-                                                            resp)).Pass());
+      new WriteTransactionCompletionCallback(context, resp, tx_state.get())).Pass());
 
   // Submit the write. The RPC will be responded to asynchronously.
   s = tablet_peer->SubmitWrite(tx_state.release());
@@ -828,14 +867,14 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       for (const YSQLReadRequestPB& ysql_read_req : req->ysql_batch()) {
         YSQLResponsePB ysql_response;
         gscoped_ptr<faststring> rows_data;
-        int rows_data_idx = 0;
+        int rows_data_sidecar_idx = 0;
         s = tablet->HandleYSQLReadRequest(snap, ysql_read_req, &ysql_response, &rows_data);
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
         if (rows_data.get() != nullptr) {
           s = context->AddRpcSidecar(make_gscoped_ptr(
-              new rpc::RpcSidecar(rows_data.Pass())), &rows_data_idx);
+              new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx);
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-          ysql_response.set_rows_data_sidecar(rows_data_idx);
+          ysql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
         }
         *(resp->add_ysql_batch()) = ysql_response;
       }

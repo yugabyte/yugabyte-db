@@ -66,6 +66,14 @@ void YSQLRow::set_column(const size_t col_idx, const YSQLValue& v) {
   }
 }
 
+void YSQLRow::set_column(const size_t col_idx, YSQLValue&& v) {
+  SetNull(col_idx, v.IsNull());
+  if (!v.IsNull()) {
+    values_[col_idx].Free(column_type(col_idx));
+    new(&values_[col_idx]) YSQLValueCore(column_type(col_idx), v.IsNull(), &v);
+  }
+}
+
 int8_t YSQLRow::int8_value(const size_t col_idx) const {
   return value(col_idx, INT8, values_[col_idx].int8_value_);
 }
@@ -184,6 +192,9 @@ YSQLRowBlock::YSQLRowBlock(const Schema& schema, const vector<ColumnId>& column_
   CHECK_OK(schema.CreateProjectionByIdsIgnoreMissing(column_ids, schema_.get()));
 }
 
+YSQLRowBlock::YSQLRowBlock(const Schema& schema) : schema_(new Schema(schema)) {
+}
+
 YSQLRowBlock::~YSQLRowBlock() {
 }
 
@@ -218,8 +229,203 @@ Status YSQLRowBlock::Deserialize(const YSQLClient client, Slice* data) {
   for (int32_t i = 0; i < count; ++i) {
     RETURN_NOT_OK(Extend().Deserialize(client, data));
   }
+  if (!data->empty()) {
+    return STATUS(Corruption, "Extra data at the end of row block");
+  }
   return Status::OK();
 }
 
+namespace {
+
+// Evaluate and return the value of an expression for the given row. Evaluate only column and
+// literal values for now.
+YSQLValue EvaluateValue(const YSQLExpressionPB& expr, const YSQLValueMap& row) {
+  switch (expr.expr_case()) {
+    case YSQLExpressionPB::ExprCase::kColumnId: {
+      const auto it = row.find(ColumnId(expr.column_id()));
+      CHECK(it != row.end()) << "Column value missing: " << expr.column_id();
+      return it->second;
+    }
+    case YSQLExpressionPB::ExprCase::kValue:
+      return YSQLValue::FromYSQLValuePB(expr.value());
+    case YSQLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
+    case YSQLExpressionPB::ExprCase::EXPR_NOT_SET:
+      break;
+    // default: fall through
+  }
+  LOG(FATAL) << "Internal error: invalid column or value expression: " << expr.expr_case();
+}
+
+// Evaluate an IN (...) condition.
+Status EvaluateInCondition(
+    const google::protobuf::RepeatedPtrField<yb::YSQLExpressionPB>& operands,
+    const YSQLValueMap& row, bool* result) {
+  CHECK_GE(operands.size(), 1);
+  *result = false;
+  YSQLValue left = EvaluateValue(operands.Get(0), row);
+  for (int i = 1; i < operands.size(); ++i) {
+    YSQLValue right = EvaluateValue(operands.Get(i), row);
+    if (!left.Comparable(right)) return STATUS(RuntimeError, "values not comparable");
+    if (left == right) {
+      *result = true;
+      break;
+    }
+  }
+  return Status::OK();
+}
+
+// Evaluate a BETWEEN(a, b) condition.
+Status EvaluateBetweenCondition(
+    const google::protobuf::RepeatedPtrField<yb::YSQLExpressionPB>& operands,
+    const YSQLValueMap& row, bool* result) {
+  CHECK_EQ(operands.size(), 3);
+  YSQLValue v = EvaluateValue(operands.Get(0), row);
+  YSQLValue lower_bound = EvaluateValue(operands.Get(1), row);
+  YSQLValue upper_bound = EvaluateValue(operands.Get(2), row);
+  if (!v.Comparable(lower_bound) || !v.Comparable(upper_bound)) {
+    return STATUS(RuntimeError, "values not comparable");
+  }
+  *result = (lower_bound <= v && v <= upper_bound);
+  return Status::OK();
+}
+
+} // namespace
+
+// Evaluate a condition for the given row.
+Status EvaluateCondition(const YSQLConditionPB& condition, const YSQLValueMap& row, bool* result) {
+  const auto& operands = condition.operands();
+  switch (condition.op()) {
+    case YSQL_OP_NOT: {
+      CHECK_EQ(operands.size(), 1);
+      CHECK_EQ(operands.Get(0).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
+      RETURN_NOT_OK(EvaluateCondition(operands.Get(0).condition(), row, result));
+      *result = !*result;
+      return Status::OK();
+    }
+    case YSQL_OP_IS_NULL: {
+      CHECK_EQ(operands.size(), 1);
+      *result = EvaluateValue(operands.Get(0), row).IsNull();
+      return Status::OK();
+    }
+    case YSQL_OP_IS_NOT_NULL: {
+      CHECK_EQ(operands.size(), 1);
+      *result = !EvaluateValue(operands.Get(0), row).IsNull();
+      return Status::OK();
+    }
+    case YSQL_OP_IS_TRUE: {
+      CHECK_EQ(operands.size(), 1);
+      YSQLValue v = EvaluateValue(operands.Get(0), row);
+      if (v.type() != BOOL) return STATUS(RuntimeError, "not a bool value");
+      *result = (!v.IsNull() && v.bool_value());
+      return Status::OK();
+    }
+    case YSQL_OP_IS_FALSE: {
+      CHECK_EQ(operands.size(), 1);
+      YSQLValue v = EvaluateValue(operands.Get(0), row);
+      if (v.type() != BOOL) return STATUS(RuntimeError, "not a bool value");
+      *result = (!v.IsNull() && !v.bool_value());
+      return Status::OK();
+    }
+
+#define YSQL_EVALUATE_RELATIONAL_OP(op, operands, row, result)                             \
+      do {                                                                                 \
+        CHECK_EQ(operands.size(), 2);                                                      \
+        const YSQLValue left = EvaluateValue(operands.Get(0), row);                        \
+        const YSQLValue right = EvaluateValue(operands.Get(1), row);                       \
+        if (!left.Comparable(right)) return STATUS(RuntimeError, "values not comparable"); \
+        *result = (left op right);                                                         \
+      } while (0)
+
+    case YSQL_OP_EQUAL: {
+      YSQL_EVALUATE_RELATIONAL_OP(==, operands, row, result);
+      return Status::OK();
+    }
+    case YSQL_OP_LESS_THAN: {
+      YSQL_EVALUATE_RELATIONAL_OP(<, operands, row, result);
+      return Status::OK();
+    }
+    case YSQL_OP_LESS_THAN_EQUAL: {
+      YSQL_EVALUATE_RELATIONAL_OP(<=, operands, row, result);
+      return Status::OK();
+    }
+    case YSQL_OP_GREATER_THAN: {
+      YSQL_EVALUATE_RELATIONAL_OP(>, operands, row, result);
+      return Status::OK();
+    }
+    case YSQL_OP_GREATER_THAN_EQUAL: {
+      YSQL_EVALUATE_RELATIONAL_OP(>=, operands, row, result);
+      return Status::OK();
+    }
+    case YSQL_OP_NOT_EQUAL: {
+      YSQL_EVALUATE_RELATIONAL_OP(!=, operands, row, result);
+      return Status::OK();
+    }
+
+#undef YSQL_EVALUATE_RELATIONAL_OP
+
+#define YSQL_EVALUATE_LOGICAL_OP(op, operands, row, result)                            \
+      do {                                                                             \
+        CHECK_EQ(operands.size(), 2);                                                  \
+        CHECK_EQ(operands.Get(0).expr_case(), YSQLExpressionPB::ExprCase::kCondition); \
+        CHECK_EQ(operands.Get(1).expr_case(), YSQLExpressionPB::ExprCase::kCondition); \
+        bool left = false, right = false;                                              \
+        RETURN_NOT_OK(EvaluateCondition(operands.Get(0).condition(), row, &left));     \
+        RETURN_NOT_OK(EvaluateCondition(operands.Get(1).condition(), row, &right));    \
+        *result = (left op right);                                                     \
+      } while (0)
+
+    case YSQL_OP_AND: {
+      YSQL_EVALUATE_LOGICAL_OP(&&, operands, row, result);
+      return Status::OK();
+    }
+    case YSQL_OP_OR: {
+      YSQL_EVALUATE_LOGICAL_OP(||, operands, row, result);
+      return Status::OK();
+    }
+
+#undef YSQL_EVALUATE_LOGICAL_OP
+
+    case YSQL_OP_LIKE:     FALLTHROUGH_INTENDED;
+    case YSQL_OP_NOT_LIKE:
+      return STATUS(RuntimeError, "LIKE operator not supported yet");
+
+    case YSQL_OP_IN: {
+      return EvaluateInCondition(operands, row, result);
+    }
+    case YSQL_OP_NOT_IN: {
+      RETURN_NOT_OK(EvaluateInCondition(operands, row, result));
+      *result = !*result;
+      return Status::OK();
+    }
+
+    case YSQL_OP_BETWEEN: {
+      return EvaluateBetweenCondition(operands, row, result);
+    }
+    case YSQL_OP_NOT_BETWEEN: {
+      RETURN_NOT_OK(EvaluateBetweenCondition(operands, row, result));
+      *result = !*result;
+      return Status::OK();
+    }
+
+    // When a row exists, the primary key columns are always populated in the row (value-map) by
+    // DocRowwiseIterator and only when it exists. Therefore, the row exists if and only if
+    // the row (value-map) is not empty.
+    case YSQL_OP_EXISTS: {
+      *result = !row.empty();
+      return Status::OK();
+    }
+    case YSQL_OP_NOT_EXISTS: {
+      *result = row.empty();
+      return Status::OK();
+    }
+
+    case YSQL_OP_NOOP:
+      break;
+
+    // default: fall through
+  }
+
+  LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
+}
 
 } // namespace yb

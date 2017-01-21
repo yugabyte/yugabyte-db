@@ -406,7 +406,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
   }
 
   // Setup the rest of the where clause.
-  YSQLConditionPB *current_cond = req->mutable_condition();
+  YSQLConditionPB *current_cond = req->mutable_where_condition();
   for (const auto& col_op : where_ops) {
     if (&col_op == &where_ops.back()) {
       // This is the last operator. Use the current ConditionPB.

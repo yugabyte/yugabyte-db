@@ -470,14 +470,49 @@ class Schema {
     return has_nullables_;
   }
 
+  // Returns true if the specified column (by index) is a key
+  bool is_key_column(size_t idx) const {
+    return idx < num_key_columns_;
+  }
+
+  // Returns true if the specified column (by column id) is a key
+  bool is_key_column(ColumnId column_id) const {
+    return is_key_column(find_column_by_id(column_id));
+  }
+
   // Returns true if the specified column (by name) is a key
   bool is_key_column(const StringPiece col_name) const {
     return is_key_column(find_column(col_name));
   }
 
-  // Returns true if the specified column (by index) is a key
-  bool is_key_column(size_t idx) const {
-    return idx < num_key_columns_;
+  // Returns true if the specified column (by index) is a hash key
+  bool is_hash_key_column(size_t idx) const {
+    return idx < num_hash_key_columns_;
+  }
+
+  // Returns true if the specified column (by column id) is a hash key
+  bool is_hash_key_column(ColumnId column_id) const {
+    return is_hash_key_column(find_column_by_id(column_id));
+  }
+
+  // Returns true if the specified column (by name) is a hash key
+  bool is_hash_key_column(const StringPiece col_name) const {
+    return is_hash_key_column(find_column(col_name));
+  }
+
+  // Returns true if the specified column (by index) is a range column
+  bool is_range_column(size_t idx) const {
+    return is_key_column(idx) && !is_hash_key_column(idx);
+  }
+
+  // Returns true if the specified column (by column id) is a range column
+  bool is_range_column(ColumnId column_id) const {
+    return is_range_column(find_column_by_id(column_id));
+  }
+
+  // Returns true if the specified column (by name) is a range column
+  bool is_range_column(const StringPiece col_name) const {
+    return is_range_column(find_column(col_name));
   }
 
   // Return true if this Schema is initialized and valid.

@@ -38,6 +38,7 @@
 #include "yb/common/row_operations.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/doc_operation.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
@@ -221,10 +222,11 @@ class Tablet {
                                 RedisResponsePB* response);
 
   CHECKED_STATUS KeyValueBatchFromYSQLWriteBatch(
-      const tserver::WriteRequestPB& ysql_write_request,
-      std::unique_ptr<const tserver::WriteRequestPB>* ysql_write_batch_pb,
+      const tserver::WriteRequestPB& write_request,
+      std::unique_ptr<const tserver::WriteRequestPB>* write_batch_pb,
       vector<string> *keys_locked,
-      vector<YSQLResponsePB>* responses);
+      tserver::WriteResponsePB* write_response,
+      WriteTransactionState* tx_state);
 
   CHECKED_STATUS HandleYSQLReadRequest(const MvccSnapshot &snap,
                                const YSQLReadRequestPB& ysql_read_request,
@@ -347,7 +349,8 @@ class Tablet {
                                 int64_t* mem_size, int64_t* retention_size) const;
 
   // Flushes the DMS with the highest retention.
-  CHECKED_STATUS FlushDMSWithHighestRetention(const MaxIdxToSegmentMap& max_idx_to_segment_size) const;
+  CHECKED_STATUS FlushDMSWithHighestRetention(
+      const MaxIdxToSegmentMap& max_idx_to_segment_size) const;
 
   // Flush only the biggest DMS
   CHECKED_STATUS FlushBiggestDMS();
@@ -507,6 +510,11 @@ class Tablet {
       const MvccSnapshot &snap,
       const ScanSpec *spec,
       vector<std::shared_ptr<RowwiseIterator> > *iters) const;
+
+  CHECKED_STATUS StartDocWriteTransaction(
+      const std::vector<std::unique_ptr<docdb::DocOperation>> &doc_ops,
+      std::vector<std::string> *keys_locked,
+      docdb::KeyValueWriteBatchPB* write_batch);
 
   CHECKED_STATUS PickRowSetsToCompact(RowSetsInCompaction *picked,
                               CompactFlags flags) const;

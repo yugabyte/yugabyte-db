@@ -149,37 +149,58 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
     column_value->set_column_id(ColumnId(column_name));
   }
 
-  void SetColumnCondition(
-      YSQLExpressionPB *const expr, const string &column_name, const YSQLOperator op) {
-    auto *const condition = expr->mutable_condition();
-    condition->set_op(op);
-    auto *opr = condition->add_operands();
-    opr->set_column_id(ColumnId(column_name));
-  }
-
+  // Set a int32 column value comparison.
+  // E.g. <column-id> = <int32-value>
   void SetInt32Condition(
-      YSQLExpressionPB *const expr, const string &column_name, const YSQLOperator op,
+      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
       const int32_t value) {
-    SetColumnCondition(expr, column_name, op);
-    auto *const opr = expr->mutable_condition()->add_operands();
-    opr->mutable_value()->set_datatype(INT32);
-    opr->mutable_value()->set_int32_value(value);
+    condition->add_operands()->set_column_id(ColumnId(column_name));
+    condition->set_op(op);
+    auto *const val = condition->add_operands()->mutable_value();
+    val->set_datatype(INT32);
+    val->set_int32_value(value);
   }
 
+  // Set a string column value comparison.
+  // E.g. <column-id> = <string-value>
   void SetStringCondition(
-      YSQLExpressionPB *const expr, const string &column_name, const YSQLOperator op,
+      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
       const string &value) {
-    SetColumnCondition(expr, column_name, op);
-    auto *const opr = expr->mutable_condition()->add_operands();
-    opr->mutable_value()->set_datatype(STRING);
-    opr->mutable_value()->set_string_value(value);
+    condition->add_operands()->set_column_id(ColumnId(column_name));
+    condition->set_op(op);
+    auto *const val = condition->add_operands()->mutable_value();
+    val->set_datatype(STRING);
+    val->set_string_value(value);
+  }
+
+  // Add a int32 column value comparison under a logical comparison condition.
+  // E.g. Add <column-id> = <int32-value> under "... AND <column-id> = <int32-value>".
+  void AddInt32Condition(
+      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
+      const int32_t value) {
+    SetInt32Condition(condition->add_operands()->mutable_condition(), column_name, op, value);
+  }
+
+  // Add a string column value comparison under a logical comparison condition.
+  // E.g. Add <column-id> = <string-value> under "... AND <column-id> = <string-value>".
+  void AddStringCondition(
+      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
+      const string &value) {
+    SetStringCondition(condition->add_operands()->mutable_condition(), column_name, op, value);
+  }
+
+  // Add a simple comparison operation under a logical comparison condition.
+  // E.g. Add <EXISTS> under "... AND <EXISTS>".
+  void AddCondition(YSQLConditionPB *const condition, const YSQLOperator op) {
+    condition->add_operands()->mutable_condition()->set_op(op);
   }
 
  protected:
   shared_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
-  unordered_map<string, int32_t> column_ids_;
+  unordered_map<string, yb::ColumnId> column_ids_;
 };
+
 }  // namespace client
 }  // namespace yb
 

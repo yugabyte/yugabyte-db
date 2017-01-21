@@ -32,7 +32,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   set_request_pb->mutable_key_value()->add_value("xyz");
   RedisWriteOperation redis_write_operation(redis_write_operation_pb);
   DocWriteBatch doc_write_batch(db);
-  CHECK_OK(redis_write_operation.Apply(&doc_write_batch));
+  CHECK_OK(redis_write_operation.Apply(&doc_write_batch, db, Timestamp()));
 
   WriteToRocksDB(doc_write_batch, db);
 
@@ -55,6 +55,7 @@ TEST_F(DocOperationTest, TestYSQLWriteWithTTL) {
   // Write key with ttl to docdb.
   auto db = rocksdb();
   yb::YSQLWriteRequestPB  ysql_writereq_pb;
+  yb::YSQLResponsePB  ysql_writeresp_pb;
 
   // Define the schema.
   ColumnSchema hash_column_schema("k", INT32, false, true);
@@ -78,9 +79,9 @@ TEST_F(DocOperationTest, TestYSQLWriteWithTTL) {
   ysql_writereq_pb.set_ttl(2000);
 
   // Write to docdb.
-  YSQLWriteOperation ysql_write_op(ysql_writereq_pb, schema);
+  YSQLWriteOperation ysql_write_op(ysql_writereq_pb, schema, &ysql_writeresp_pb);
   DocWriteBatch doc_write_batch(db);
-  CHECK_OK(ysql_write_op.Apply(&doc_write_batch));
+  CHECK_OK(ysql_write_op.Apply(&doc_write_batch, db, Timestamp()));
 
   WriteToRocksDB(doc_write_batch, db);
 

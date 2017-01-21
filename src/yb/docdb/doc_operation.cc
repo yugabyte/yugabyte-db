@@ -10,11 +10,14 @@
 namespace yb {
 namespace docdb {
 
+using strings::Substitute;
+
 DocPath KuduWriteOperation::DocPathToLock() const {
   return doc_path_;
 }
 
-Status KuduWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
+Status KuduWriteOperation::Apply(
+    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) {
   return doc_write_batch->SetPrimitive(doc_path_, value_, Timestamp::kMax);
 }
 
@@ -24,7 +27,8 @@ DocPath RedisWriteOperation::DocPathToLock() const {
   return DocPath::DocPathFromRedisKey(request_.set_request().key_value().key());
 }
 
-Status RedisWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
+Status RedisWriteOperation::Apply(
+    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) {
   CHECK_EQ(request_.redis_op_type(), RedisWriteRequestPB_Type_SET)
       << "Currently only SET is supported";
   const auto kv = request_.set_request().key_value();
@@ -129,75 +133,175 @@ DocKey DocKeyFromYSQLKey(
   return DocKey(hash_code, hashed_components, range_components);
 }
 
+CHECKED_STATUS GetNonKeyColumns(
+    const Schema& schema, const google::protobuf::RepeatedPtrField<yb::YSQLExpressionPB>& operands,
+    unordered_set<ColumnId>* non_key_columns);
+
+// Get all non-key columns referenced in a condition.
+CHECKED_STATUS GetNonKeyColumns(
+    const Schema& schema, const YSQLConditionPB& condition,
+    unordered_set<ColumnId>* non_key_columns) {
+  return GetNonKeyColumns(schema, condition.operands(), non_key_columns);
+}
+
+// Get all non-key columns referenced in a list of operands.
+CHECKED_STATUS GetNonKeyColumns(
+    const Schema& schema, const google::protobuf::RepeatedPtrField<yb::YSQLExpressionPB>& operands,
+    unordered_set<ColumnId>* non_key_columns) {
+  for (const auto& operand : operands) {
+    switch (operand.expr_case()) {
+      case YSQLExpressionPB::ExprCase::kValue:
+        continue;
+      case YSQLExpressionPB::ExprCase::kColumnId: {
+        const auto id = ColumnId(operand.column_id());
+        const size_t idx = schema.find_column_by_id(id);
+        if (!schema.is_key_column(idx)) {
+          non_key_columns->insert(id);
+        }
+        continue;
+      }
+      case YSQLExpressionPB::ExprCase::kCondition:
+        RETURN_NOT_OK(GetNonKeyColumns(schema, operand.condition(), non_key_columns));
+        continue;
+      case YSQLExpressionPB::ExprCase::EXPR_NOT_SET:
+        return STATUS(Corruption, "expression not set");
+    }
+    return STATUS(
+        RuntimeError, Substitute("Expression type $0 not supported", operand.expr_case()));
+  }
+  return Status::OK();
+}
+
 } // namespace
 
-YSQLWriteOperation::YSQLWriteOperation(const YSQLWriteRequestPB& request, const Schema& schema)
-    : doc_key_(
+YSQLWriteOperation::YSQLWriteOperation(
+    const YSQLWriteRequestPB& request, const Schema& schema, YSQLResponsePB* response)
+    : schema_(schema),
+      doc_key_(
           DocKeyFromYSQLKey(
               schema,
               request.hash_code(),
               request.hashed_column_values(),
               request.range_column_values())),
       doc_path_(DocPath(doc_key_.Encode())),
-      request_(request) {
+      request_(request),
+      response_(response) {
+}
+
+bool YSQLWriteOperation::RequireReadSnapshot() const {
+  return request_.has_if_condition();
 }
 
 DocPath YSQLWriteOperation::DocPathToLock() const {
   return doc_path_;
 }
 
-Status YSQLWriteOperation::Apply(DocWriteBatch* doc_write_batch) {
+Status YSQLWriteOperation::IsConditionSatisfied(
+    const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const Timestamp& timestamp,
+    bool* should_apply, std::unique_ptr<YSQLRowBlock>* rowblock) {
+  // Prepare the projection schema to scan the docdb for the row.
+  YSQLScanSpec spec(doc_key_);
+  unordered_set<ColumnId> non_key_columns;
+  RETURN_NOT_OK(GetNonKeyColumns(schema_, condition, &non_key_columns));
+  Schema projection;
+  RETURN_NOT_OK(
+      schema_.CreateProjectionByIdsIgnoreMissing(
+          vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
-  if (request_.has_if_()) {
-    return STATUS(NotSupported, "IF condition not supported yet");
+  // Scan docdb for the row.
+  YSQLValueMap value_map;
+  DocRowwiseIterator iterator(projection, schema_, rocksdb, timestamp);
+  RETURN_NOT_OK(iterator.Init(spec));
+  if (iterator.HasNext()) {
+    RETURN_NOT_OK(iterator.NextRow(spec, &value_map));
   }
 
-  const MonoDelta ttl = request_.has_ttl() ?
-      MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+  // See if the if-condition is satisfied.
+  RETURN_NOT_OK(EvaluateCondition(condition, value_map, should_apply));
 
-  switch (request_.type()) {
-    // YSQL insert == update (upsert) to be consistent with Cassandra's semantics. In either INSERT
-    // or UPDATE, if non-key columns are specified, they will be inserted which will cause the
-    // primary key to be inserted also when necessary. Otherwise, we should insert the primary key
-    // at least.
-    case YSQLWriteRequestPB::YSQL_STMT_INSERT:
-    case YSQLWriteRequestPB::YSQL_STMT_UPDATE: {
-      if (request_.column_values_size() > 0) {
-        for (const auto& column_value : request_.column_values()) {
-          const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
-          const auto value = Value(PrimitiveValue::FromYSQLValuePB(column_value.value()), ttl);
-          RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value));
-        }
-      } else {
-        const auto value = Value(PrimitiveValue(ValueType::kObject), ttl);
-        RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path_, value));
-      }
-      break;
-    }
-    case YSQLWriteRequestPB::YSQL_STMT_DELETE: {
-      // If non-key columns are specified, just the individual columns will be deleted. Otherwise,
-      // the whole row is deleted.
-      if (request_.column_values_size() > 0) {
-        for (const auto& column_value : request_.column_values()) {
-          const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
-          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path));
-        }
-      } else {
-        RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_));
-      }
-      break;
+  // Populate the result set to return the "applied" status, and optionally the present column
+  // values if the condition is not satisfied and the row does exist (value_map is not empty).
+  vector<ColumnSchema> columns;
+  columns.emplace_back(ColumnSchema("[applied]", BOOL));
+  if (!*should_apply && !value_map.empty()) {
+    columns.insert(columns.end(), projection.columns().begin(), projection.columns().end());
+  }
+  rowblock->reset(new YSQLRowBlock(Schema(columns, 0)));
+  YSQLRow& row = rowblock->get()->Extend();
+  row.set_bool_value(0, *should_apply);
+  if (!*should_apply && !value_map.empty()) {
+    for (size_t i = 0; i < projection.num_columns(); i++) {
+      const auto column_id = projection.column_id(i);
+      const auto it = value_map.find(column_id);
+      CHECK(it != value_map.end()) << "Projected column missing: " << column_id;
+      row.set_column(i + 1, std::move(it->second));
     }
   }
-
-  // In all cases, something should be written so the write batch shouldn't be empty.
-  CHECK(!doc_write_batch->IsEmpty()) << "Empty write batch " << request_.type();
-
-  response_.set_status(YSQLResponsePB::YSQL_STATUS_OK);
 
   return Status::OK();
 }
 
-const YSQLResponsePB& YSQLWriteOperation::response() { return response_; }
+Status YSQLWriteOperation::Apply(
+    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) {
+
+  bool should_apply = true;
+  if (request_.has_if_condition()) {
+    RETURN_NOT_OK(IsConditionSatisfied(
+        request_.if_condition(), rocksdb, timestamp, &should_apply, &rowblock_));
+  }
+
+  if (should_apply) {
+    const MonoDelta ttl =
+        request_.has_ttl() ? MonoDelta::FromMilliseconds(request_.ttl()) : Value::kMaxTtl;
+
+    switch (request_.type()) {
+      // YSQL insert == update (upsert) to be consistent with Cassandra's semantics. In either
+      // INSERT or UPDATE, if non-key columns are specified, they will be inserted which will cause
+      // the primary key to be inserted also when necessary. Otherwise, we should insert the
+      // primary key at least.
+      case YSQLWriteRequestPB::YSQL_STMT_INSERT:
+      case YSQLWriteRequestPB::YSQL_STMT_UPDATE: {
+        if (request_.column_values_size() > 0) {
+          for (const auto& column_value : request_.column_values()) {
+            CHECK(column_value.has_column_id())
+                << "column id missing: " << column_value.DebugString();
+            CHECK(column_value.has_value())
+                << "column value missing: " << column_value.DebugString();;
+            const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
+            const auto value = Value(PrimitiveValue::FromYSQLValuePB(column_value.value()), ttl);
+            RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value));
+          }
+        } else {
+          const auto value = Value(PrimitiveValue(ValueType::kObject), ttl);
+          RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path_, value));
+        }
+        break;
+      }
+      case YSQLWriteRequestPB::YSQL_STMT_DELETE: {
+        // If non-key columns are specified, just the individual columns will be deleted. Otherwise,
+        // the whole row is deleted.
+        if (request_.column_values_size() > 0) {
+          for (const auto& column_value : request_.column_values()) {
+            CHECK(column_value.has_column_id())
+                << "column id missing: " << column_value.DebugString();
+            const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
+            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path));
+          }
+        } else {
+          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_));
+        }
+        break;
+      }
+    }
+
+    // In all cases, something should be written so the write batch shouldn't be empty.
+    CHECK(!doc_write_batch->IsEmpty()) << "Empty write batch " << request_.type();
+  }
+
+  response_->set_status(YSQLResponsePB::YSQL_STATUS_OK);
+
+  return Status::OK();
+}
 
 YSQLReadOperation::YSQLReadOperation(const YSQLReadRequestPB& request) : request_(request) {
 }
@@ -205,10 +309,6 @@ YSQLReadOperation::YSQLReadOperation(const YSQLReadRequestPB& request) : request
 Status YSQLReadOperation::Execute(
     rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
     YSQLRowBlock* rowblock) {
-
-  if (request_.has_order_by_column_id()) {
-    return STATUS(RuntimeError, "order by query not supported yet");
-  }
 
   if (request_.has_limit() && request_.limit() == 0) {
     return Status::OK();
@@ -224,22 +324,22 @@ Status YSQLReadOperation::Execute(
   // Construct the scan spec basing on the WHERE condition.
   YSQLScanSpec spec(
       schema, hash_code, hashed_components,
-      request_.has_condition() ? &request_.condition() : nullptr,
+      request_.has_where_condition() ? &request_.where_condition() : nullptr,
       request_.has_limit() ? request_.limit() : std::numeric_limits<std::size_t>::max());
 
   // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
   // When DocRowwiseIterator::NextBlock() populates a YSQLRowBlock, it uses this projection only to
   // scan sub-documents. YSQLRowBlock's own projection schema is used to pupulate the row block,
   // including key columns if any.
-  std::unordered_set<ColumnId> non_key_columns;
+  unordered_set<ColumnId> non_key_columns;
   for (size_t idx = 0; idx < rowblock->schema().num_columns(); idx++) {
     const auto column_id = rowblock->schema().column_id(idx);
     if (!schema.is_key_column(schema.find_column_by_id(column_id))) {
       non_key_columns.insert(column_id);
     }
   }
-  if (spec.non_key_columns() != nullptr) {
-    non_key_columns.insert(spec.non_key_columns()->begin(), spec.non_key_columns()->end());
+  if (request_.has_where_condition()) {
+    RETURN_NOT_OK(GetNonKeyColumns(schema, request_.where_condition(), &non_key_columns));
   }
 
   Schema projection;
@@ -247,7 +347,7 @@ Status YSQLReadOperation::Execute(
       schema.CreateProjectionByIdsIgnoreMissing(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
-  // Scan docdb for the row.
+  // Scan docdb for the rows.
   DocRowwiseIterator iterator(projection, schema, rocksdb, timestamp);
   RETURN_NOT_OK(iterator.Init(spec));
   while (iterator.HasNext()) {
@@ -257,7 +357,7 @@ Status YSQLReadOperation::Execute(
   return Status::OK();
 }
 
-const YSQLResponsePB& YSQLReadOperation::response() { return response_; }
+const YSQLResponsePB& YSQLReadOperation::response() const { return response_; }
 
 }  // namespace docdb
 }  // namespace yb

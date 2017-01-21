@@ -21,8 +21,14 @@ class DocOperation {
  public:
   virtual ~DocOperation() {}
 
+  // Does the operation require a read snapshot to be taken before being applied? If so, a
+  // clean snapshot timestamp will be supplied when Apply() is called. For example,
+  // YSQLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
+  // evaluate the condition before the write and needs a read snapshot for a consistent read.
+  virtual bool RequireReadSnapshot() const = 0;
   virtual DocPath DocPathToLock() const = 0;
-  virtual CHECKED_STATUS Apply(DocWriteBatch* doc_write_batch) = 0;
+  virtual CHECKED_STATUS Apply(
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) = 0;
 };
 
 class KuduWriteOperation: public DocOperation {
@@ -30,9 +36,12 @@ class KuduWriteOperation: public DocOperation {
   KuduWriteOperation(DocPath doc_path, PrimitiveValue value) : doc_path_(doc_path), value_(value) {
   }
 
+  bool RequireReadSnapshot() const override { return false; }
+
   DocPath DocPathToLock() const override;
 
-  CHECKED_STATUS Apply(DocWriteBatch *doc_write_batch) override;
+  CHECKED_STATUS Apply(
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) override;
 
  private:
   DocPath doc_path_;
@@ -43,7 +52,10 @@ class RedisWriteOperation: public DocOperation {
  public:
   explicit RedisWriteOperation(yb::RedisWriteRequestPB request) : request_(request), response_() {}
 
-  CHECKED_STATUS Apply(DocWriteBatch *doc_write_batch) override;
+  bool RequireReadSnapshot() const override { return false; }
+
+  CHECKED_STATUS Apply(
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) override;
 
   DocPath DocPathToLock() const override;
 
@@ -69,19 +81,37 @@ class RedisReadOperation {
 
 class YSQLWriteOperation : public DocOperation {
  public:
-  YSQLWriteOperation(const YSQLWriteRequestPB& request, const Schema& schema);
+  YSQLWriteOperation(
+      const YSQLWriteRequestPB& request, const Schema& schema, YSQLResponsePB* response);
+
+  bool RequireReadSnapshot() const override;
 
   DocPath DocPathToLock() const override;
 
-  CHECKED_STATUS Apply(DocWriteBatch* doc_write_batch) override;
+  CHECKED_STATUS Apply(
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) override;
 
-  const YSQLResponsePB& response();
+  const YSQLWriteRequestPB& request() const { return request_; }
+  YSQLResponsePB* response() const { return response_; }
+
+  // Rowblock to return the "[applied]" status for conditional DML.
+  const YSQLRowBlock* rowblock() const { return rowblock_.get(); }
 
  private:
+  CHECKED_STATUS IsConditionSatisfied(
+      const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const Timestamp& timestamp,
+      bool* should_apply, std::unique_ptr<YSQLRowBlock>* rowblock);
+
+  const Schema& schema_;
   const DocKey doc_key_;
   const DocPath doc_path_;
   const YSQLWriteRequestPB request_;
-  YSQLResponsePB response_;
+  YSQLResponsePB* response_;
+  // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE
+  // that has a "... IF <condition> ..." clause. The row contains the "[applied]" status column
+  // plus the values of all columns referenced in the if-clause if the condition is not satisfied.
+  std::unique_ptr<Schema> projection_;
+  std::unique_ptr<YSQLRowBlock> rowblock_;
 };
 
 class YSQLReadOperation {
@@ -92,7 +122,7 @@ class YSQLReadOperation {
       rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
       YSQLRowBlock* rowblock);
 
-  const YSQLResponsePB& response();
+  const YSQLResponsePB& response() const;
 
  private:
   const YSQLReadRequestPB request_;

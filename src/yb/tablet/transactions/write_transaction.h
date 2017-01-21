@@ -26,6 +26,7 @@
 #include "rocksdb/write_batch.h"
 
 #include "yb/common/schema.h"
+#include "yb/docdb/doc_operation.h"
 #include "yb/gutil/macros.h"
 #include "yb/tablet/lock_manager.h"
 #include "yb/tablet/mvcc.h"
@@ -177,6 +178,12 @@ class WriteTransactionState : public TransactionState {
     row_ops_.swap(*new_ops);
   }
 
+  // The YSQL write operations that return rowblocks that need to be returned as RPC sidecars
+  // after the transaction completes.
+  std::vector<std::unique_ptr<docdb::YSQLWriteOperation>>* ysql_write_ops() {
+    return &ysql_write_ops_;
+  }
+
   void swap_docdb_locks(std::vector<std::string>* docdb_locks) {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
     docdb_locks_ = std::move(*docdb_locks);
@@ -213,6 +220,10 @@ class WriteTransactionState : public TransactionState {
   // The row operations which are decoded from the request during PREPARE
   // Protected by superclass's txn_state_lock_.
   std::vector<RowOp*> row_ops_;
+
+  // The YSQL write operations that return rowblocks that need to be returned as RPC sidecars
+  // after the transaction completes.
+  std::vector<std::unique_ptr<docdb::YSQLWriteOperation>> ysql_write_ops_;
 
   // Store the ids that have been locked for docdb transaction. They need to be released on commit.
   std::vector<std::string> docdb_locks_;

@@ -74,6 +74,10 @@ enum YSQLOperator {
   // Operators that take three operands.
   YSQL_OP_BETWEEN = 18;
   YSQL_OP_NOT_BETWEEN = 19;
+
+  // Operators that take no operand. For use in "if" clause only currently.
+  YSQL_OP_EXISTS = 20;     // IF EXISTS
+  YSQL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
 }
 
 // A logical condition that evaluates to true/false. Used in the WHERE clause.
@@ -96,12 +100,6 @@ message YSQLWriteRequestPB {
     YSQL_STMT_INSERT = 1;
     YSQL_STMT_UPDATE = 2;
     YSQL_STMT_DELETE = 3;
-  }
-
-  // If conditions
-  enum YSQLIf {
-    YSQL_IF_EXISTS = 1;
-    YSQL_IF_NOT_EXISTS = 2;
   }
 
   // Statement type
@@ -128,11 +126,8 @@ message YSQLWriteRequestPB {
   // Note: DELETE statement has no column value.
   repeated YSQLColumnValuePB column_values = 8;
 
-  // IF conditions:
-  // - insert: NOT_EXISTS
-  // - update: EXISTS or NOT_EXISTS
-  // - delete: EXISTS
-  optional YSQLIf if = 9;
+  // If clause condition
+  optional YSQLConditionPB if_condition = 9;
 
   // Time to live in millisecondss.
   optional uint64 ttl = 10;
@@ -155,16 +150,13 @@ message YSQLReadRequestPB {
   repeated YSQLColumnValuePB hashed_column_values = 5;
 
   // Where clause condition
-  optional YSQLConditionPB condition = 6;
+  optional YSQLConditionPB where_condition = 6;
 
   // Column ids to read (select)
   repeated int32 column_ids = 7; // required
 
-  // Order-by column id
-  optional int32 order_by_column_id = 8;
-
   // Limit number of rows to return
-  optional uint32 limit = 9;
+  optional uint32 limit = 8;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------
@@ -182,9 +174,10 @@ message YSQLResponsePB {
   optional YSQLStatus status = 1 [ default = YSQL_STATUS_OK ]; // required
   optional string error_message = 2;
 
-  // For write requests with an if-clause, whether the write has been applied successfully.
-  optional bool applied = 3;
+  // Schema of the rows returned if present (used by conditional DML (write) request only
+  // as of Jan 2017).
+  repeated ColumnSchemaPB column_schemas = 3;
 
   // Sidecar of rows data returned
-  optional int32 rows_data_sidecar = 5;
+  optional int32 rows_data_sidecar = 4;
 }

@@ -52,13 +52,13 @@ const char kObjectValueType[] = { static_cast<char>(ValueType::kObject), 0 };
 }  // namespace
 
 
-Status StartDocWriteTransaction(rocksdb::DB *rocksdb,
-                                vector<unique_ptr<DocOperation>>* doc_write_ops,
+void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                                 util::SharedLockManager *lock_manager,
                                 vector<string> *keys_locked,
-                                KeyValueWriteBatchPB* dest) {
+                                bool *need_read_snapshot) {
+  *need_read_snapshot = false;
   unordered_map<string, LockType> lock_type_map;
-  for (const unique_ptr<DocOperation>& doc_op : *doc_write_ops) {
+  for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     // TODO(akashnil): avoid materializing the vector, do the work of the called function in place.
     const vector<string> doc_op_locks = doc_op->DocPathToLock().GetLockPrefixKeys();
     assert(doc_op_locks.size() > 0);
@@ -70,17 +70,26 @@ Status StartDocWriteTransaction(rocksdb::DB *rocksdb,
       }
     }
     lock_type_map[doc_op_locks[doc_op_locks.size() - 1]] = LockType::EXCLUSIVE;
+    if (doc_op->RequireReadSnapshot()) {
+      *need_read_snapshot = true;
+    }
   }
   // Sort the set of locks to be taken for this transaction, to make sure deadlocks don't occur.
   std::sort(keys_locked->begin(), keys_locked->end());
   for (string key : *keys_locked) {
     lock_manager->Lock(key, lock_type_map[key]);
   }
+}
+
+Status ApplyDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,
+                                const Timestamp& timestamp,
+                                rocksdb::DB *rocksdb,
+                                KeyValueWriteBatchPB* write_batch) {
   DocWriteBatch doc_write_batch(rocksdb);
-  for (const unique_ptr<DocOperation>& doc_op : *doc_write_ops) {
-    RETURN_NOT_OK(doc_op->Apply(&doc_write_batch));
+  for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+    RETURN_NOT_OK(doc_op->Apply(&doc_write_batch, rocksdb, timestamp));
   }
-  doc_write_batch.MoveToWriteBatchPB(dest);
+  doc_write_batch.MoveToWriteBatchPB(write_batch);
   return Status::OK();
 }
 

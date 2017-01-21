@@ -23,6 +23,7 @@
 #include "yb/common/encoded_key.h"
 #include "yb/common/row.h"
 #include "yb/common/wire_protocol.pb.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ysql_protocol.pb.h"
 #include "yb/common/ysql_rowblock.h"
@@ -269,13 +270,24 @@ void YBSqlWriteOp::SetHashCode(const uint16_t hash_code) {
   ysql_write_request_->set_hash_code(hash_code);
 }
 
+YSQLRowBlock* YBSqlWriteOp::GetRowBlock() const {
+  Schema schema;
+  CHECK_OK(ColumnPBsToSchema(ysql_response_->column_schemas(), &schema));
+  unique_ptr<YSQLRowBlock> rowblock(new YSQLRowBlock(schema));
+  Slice data(rows_data_);
+  if (!data.empty()) {
+    // TODO: a better way to handle errors here?
+    CHECK_OK(rowblock->Deserialize(ysql_write_request_->client(), &data));
+  }
+  return rowblock.release();
+}
+
 // YBSqlReadOp -----------------------------------------------------------------
 
 YBSqlReadOp::YBSqlReadOp(const shared_ptr<YBTable>& table)
     : YBSqlOp(table),
       ysql_read_request_(new YSQLReadRequestPB()),
-      ysql_response_(new YSQLResponsePB()),
-      rows_data_(new string()) {
+      ysql_response_(new YSQLResponsePB()) {
 }
 
 YBSqlReadOp::~YBSqlReadOp() {}
@@ -311,9 +323,11 @@ YSQLRowBlock* YBSqlReadOp::GetRowBlock() const {
     column_ids.emplace_back(column_id);
   }
   unique_ptr<YSQLRowBlock> rowblock(new YSQLRowBlock(*table_->schema().schema_, column_ids));
-  Slice data(*rows_data_);
-  // TODO: a better way to handle errors here?
-  CHECK_OK(rowblock->Deserialize(ysql_read_request_->client(), &data));
+  Slice data(rows_data_);
+  if (!data.empty()) {
+    // TODO: a better way to handle errors here?
+    CHECK_OK(rowblock->Deserialize(ysql_read_request_->client(), &data));
+  }
   return rowblock.release();
 }
 

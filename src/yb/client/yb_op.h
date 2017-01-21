@@ -249,6 +249,14 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
 
   YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
 
+  const std::string& rows_data() const { return rows_data_; }
+
+  std::string* mutable_rows_data() { return &rows_data_; }
+
+  // Parse the rows data and return it as a row block. It is the caller's responsibility to free
+  // the row block after use.
+  YSQLRowBlock* GetRowBlock() const;
+
   virtual std::string ToString() const OVERRIDE;
 
   virtual bool read_only() OVERRIDE { return false; };
@@ -271,6 +279,7 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
   static YBSqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<YSQLWriteRequestPB> ysql_write_request_;
   std::unique_ptr<YSQLResponsePB> ysql_response_;
+  std::string rows_data_;
 };
 
 class YB_EXPORT YBSqlReadOp : public YBSqlOp {
@@ -287,12 +296,12 @@ class YB_EXPORT YBSqlReadOp : public YBSqlOp {
 
   YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
 
-  const std::string& rows_data() const { return *rows_data_; }
+  const std::string& rows_data() const { return rows_data_; }
 
-  std::string* mutable_rows_data() { return rows_data_.get(); }
+  std::string* mutable_rows_data() { return &rows_data_; }
 
-  // Return the rows data as a row block. It is the caller's responsibility to free the row block
-  // after use.
+  // Parse the rows data and return it as a row block. It is the caller's responsibility to free
+  // the row block after use.
   YSQLRowBlock* GetRowBlock() const;
 
   virtual std::string ToString() const OVERRIDE;
@@ -313,7 +322,7 @@ class YB_EXPORT YBSqlReadOp : public YBSqlOp {
   explicit YBSqlReadOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<YSQLReadRequestPB> ysql_read_request_;
   std::unique_ptr<YSQLResponsePB> ysql_response_;
-  std::unique_ptr<std::string> rows_data_;
+  std::string rows_data_;
 };
 
 

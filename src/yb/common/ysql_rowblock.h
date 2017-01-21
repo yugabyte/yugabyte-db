@@ -38,6 +38,7 @@ class YSQLRow {
   // Note: for more efficient access, consider using the accessors below.
   YSQLValue column(size_t col_idx) const;
   void set_column(size_t col_idx, const YSQLValue& v);
+  void set_column(size_t col_idx, YSQLValue&& v);
 
   // Is the column null?
   inline bool IsNull(size_t col_idx) const {
@@ -115,6 +116,10 @@ class YSQLRowBlock {
  public:
   // Create a row block for a table with the given schema and the selected column ids.
   YSQLRowBlock(const Schema& schema, const std::vector<ColumnId>& column_ids);
+
+  // Create a row block for the given schema.
+  explicit YSQLRowBlock(const Schema& schema);
+
   virtual ~YSQLRowBlock();
 
   // Row columns' schema
@@ -147,6 +152,13 @@ class YSQLRowBlock {
   // Rows in this block.
   std::vector<YSQLRow> rows_;
 };
+
+// Map for easy lookup of column values of a row by the column id.
+using YSQLValueMap = std::unordered_map<ColumnId, YSQLValue>;
+
+// Evaluate a boolean condition for the given row.
+CHECKED_STATUS EvaluateCondition(
+    const YSQLConditionPB& condition, const YSQLValueMap& row, bool* result);
 
 } // namespace yb
 
