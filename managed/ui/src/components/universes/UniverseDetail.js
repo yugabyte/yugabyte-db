@@ -141,7 +141,7 @@ export default class UniverseDetail extends Component {
                     Show GFlags
                   </YBLabelWithIcon>
                 </MenuItem>
-                <MenuItem eventKey="2" onClick={this.props.showGFlagsModal} >
+                <MenuItem eventKey="2" onClick={this.props.showDeleteUniverseModal} >
                   <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
                     Delete Universe
                   </YBLabelWithIcon>
