@@ -46,6 +46,18 @@ class SqlEnv {
     return rows_result_.get();
   }
 
+  // Keyspace related methods.
+
+  // Create a new keyspace with the given name.
+  virtual CHECKED_STATUS CreateKeyspace(const std::string& keyspace_name) {
+    return client_->CreateNamespace(keyspace_name);
+  }
+
+  // Delete keyspace with the given name.
+  virtual CHECKED_STATUS DeleteKeyspace(const std::string& keyspace_name) {
+    return client_->DeleteNamespace(keyspace_name);
+  }
+
   // Construct a row_block and send it back.
   std::shared_ptr<YQLRowBlock> row_block() const {
     if (rows_result_ == nullptr) {

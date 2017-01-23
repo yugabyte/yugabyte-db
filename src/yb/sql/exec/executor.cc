@@ -67,6 +67,8 @@ CHECKED_STATUS Executor::ExecPTree(const ParseTree *ptree) {
 }
 
 CHECKED_STATUS Executor::ExecTreeNode(const TreeNode *tnode) {
+  DCHECK_NOTNULL(tnode);
+
   switch (tnode->opcode()) {
     case TreeNodeOpcode::kPTListNode:
       return ExecPTNode(static_cast<const PTListNode*>(tnode));
@@ -88,6 +90,9 @@ CHECKED_STATUS Executor::ExecTreeNode(const TreeNode *tnode) {
 
     case TreeNodeOpcode::kPTUpdateStmt:
       return ExecPTNode(static_cast<const PTUpdateStmt*>(tnode));
+
+    case TreeNodeOpcode::kPTCreateKeyspace:
+      return ExecPTNode(static_cast<const PTCreateKeyspace*>(tnode));
 
     default:
       return ExecPTNode(tnode);
@@ -774,6 +779,32 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
 
   // Apply the operator.
   RETURN_NOT_OK(exec_context_->ApplyWrite(update_op, tnode));
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
+  DCHECK_NOTNULL(exec_context_.get());
+  Status exec_status = exec_context_->CreateKeyspace(tnode->name());
+
+  if (!exec_status.ok()) {
+    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+
+    if(exec_status.IsAlreadyPresent()) {
+      if (tnode->create_if_not_exists()) {
+        // Case: CREATE KEYSPACE IF NOT EXISTS name;
+        return Status::OK();
+      }
+
+      error_code = ErrorCode::KEYSPACE_ALREADY_EXISTS;
+    }
+
+    return exec_context_->Error(tnode->loc(),
+                                exec_status.ToString().c_str(),
+                                error_code);
+  }
+
   return Status::OK();
 }
 

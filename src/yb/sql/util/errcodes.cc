@@ -67,6 +67,7 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::INVALID_ARGUMENTS), "Invalid Arguments" },
   { static_cast<int64_t>(ErrorCode::TOO_FEW_ARGUMENTS), "Too Few Arguments" },
   { static_cast<int64_t>(ErrorCode::TOO_MANY_ARGUMENTS), "Too Many Arguments" },
+  { static_cast<int64_t>(ErrorCode::KEYSPACE_ALREADY_EXISTS), "Keyspace Already Exists" },
 
   //------------------------------------------------------------------------------------------------
   { static_cast<int64_t>(ErrorCode::SUCCESS), "Success" },

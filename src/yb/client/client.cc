@@ -80,6 +80,12 @@ using yb::master::ListTablesResponsePB;
 using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
+using yb::master::CreateNamespaceRequestPB;
+using yb::master::CreateNamespaceResponsePB;
+using yb::master::DeleteNamespaceRequestPB;
+using yb::master::DeleteNamespaceResponsePB;
+using yb::master::ListNamespacesRequestPB;
+using yb::master::ListNamespacesResponsePB;
 using yb::master::MasterServiceProxy;
 using yb::master::ReplicationInfoPB;
 using yb::master::TabletLocationsPB;
@@ -325,6 +331,80 @@ Status YBClient::GetTableSchema(const string& table_name,
                                schema,
                                &partition_schema,
                                &table_id_ignored);
+}
+
+Status YBClient::CreateNamespace(const std::string& namespace_name) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+
+  CreateNamespaceRequestPB req;
+  CreateNamespaceResponsePB resp;
+  req.set_name(namespace_name);
+  Status s =
+      data_->SyncLeaderMasterRpc<CreateNamespaceRequestPB, CreateNamespaceResponsePB>(
+          deadline, this, req, &resp, nullptr,
+          "CreateNamespace", &MasterServiceProxy::CreateNamespace);
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status YBClient::DeleteNamespace(const std::string& namespace_name) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+
+  DeleteNamespaceRequestPB req;
+  DeleteNamespaceResponsePB resp;
+  req.mutable_namespace_()->set_name(namespace_name);
+  Status s =
+      data_->SyncLeaderMasterRpc<DeleteNamespaceRequestPB, DeleteNamespaceResponsePB>(
+          deadline, this, req, &resp, nullptr,
+          "DeleteNamespace", &MasterServiceProxy::DeleteNamespace);
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status YBClient::ListNamespaces(std::vector<std::string>* namespaces) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(default_admin_operation_timeout());
+
+  ListNamespacesRequestPB req;
+  ListNamespacesResponsePB resp;
+  Status s =
+      data_->SyncLeaderMasterRpc<ListNamespacesRequestPB, ListNamespacesResponsePB>(
+          deadline, this, req, &resp, nullptr,
+          "ListNamespaces", &MasterServiceProxy::ListNamespaces);
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  CHECK_NOTNULL(namespaces);
+  for (auto ns : resp.namespaces()) {
+    namespaces->push_back(ns.name());
+  }
+  return Status::OK();
+}
+
+Status YBClient::NamespaceExists(const std::string& namespace_name, bool* exists) {
+  CHECK_NOTNULL(exists);
+
+  std::vector<std::string> namespaces;
+  RETURN_NOT_OK(ListNamespaces(&namespaces));
+
+  for (const string& name : namespaces) {
+    if (name == namespace_name) {
+      *exists = true;
+      return Status::OK();
+    }
+  }
+  *exists = false;
+  return Status::OK();
 }
 
 Status YBClient::TabletServerCount(int *tserver_count) {

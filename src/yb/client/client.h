@@ -231,6 +231,22 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS GetTableSchema(const std::string& table_name,
                         YBSchema* schema);
 
+  // Namespace related methods.
+
+  // Create a new namespace with the given name.
+  CHECKED_STATUS CreateNamespace(const std::string& namespace_name);
+
+  // Delete namespace with the given name.
+  CHECKED_STATUS DeleteNamespace(const std::string& namespace_name);
+
+  // List all namespace names.
+  // 'namespaces' is appended to only on success.
+  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces);
+
+  // Check if the namespace given by 'namespace_name' exists.
+  // 'exists' is set only on success.
+  CHECKED_STATUS NamespaceExists(const std::string& namespace_name, bool* exists);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   CHECKED_STATUS TabletServerCount(int *tserver_count);
@@ -1005,7 +1021,8 @@ class YB_EXPORT YBScanner {
   // Set the projection used for this scanner by passing the column names to read.
   //
   // This overrides any previous call to SetProjectedColumns.
-  CHECKED_STATUS SetProjectedColumnNames(const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetProjectedColumnNames(
+      const std::vector<std::string>& col_names) WARN_UNUSED_RESULT;
 
   // Set the projection used for this scanner by passing the column indexes to read.
   //

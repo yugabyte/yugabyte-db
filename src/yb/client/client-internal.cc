@@ -83,6 +83,12 @@ using master::ListTablesRequestPB;
 using master::ListTablesResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
+using yb::master::CreateNamespaceRequestPB;
+using yb::master::CreateNamespaceResponsePB;
+using yb::master::DeleteNamespaceRequestPB;
+using yb::master::DeleteNamespaceResponsePB;
+using yb::master::ListNamespacesRequestPB;
+using yb::master::ListNamespacesResponsePB;
 using master::MasterServiceProxy;
 using master::MasterErrorPB;
 using rpc::Rpc;
@@ -241,6 +247,24 @@ template Status YBClient::Data::SyncLeaderMasterRpc(
     const std::function<Status(
         MasterServiceProxy*, const ListMastersRequestPB&, ListMastersResponsePB*, RpcController*)>&
         func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const CreateNamespaceRequestPB& req,
+    CreateNamespaceResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const CreateNamespaceRequestPB&, CreateNamespaceResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const DeleteNamespaceRequestPB& req,
+    DeleteNamespaceResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const DeleteNamespaceRequestPB&, DeleteNamespaceResponsePB*,
+        RpcController*)>& func);
+template Status YBClient::Data::SyncLeaderMasterRpc(
+    const MonoTime& deadline, YBClient* client, const ListNamespacesRequestPB& req,
+    ListNamespacesResponsePB* resp, int* num_attempts, const char* func_name,
+    const std::function<Status(
+        MasterServiceProxy*, const ListNamespacesRequestPB&, ListNamespacesResponsePB*,
+        RpcController*)>& func);
 
 YBClient::Data::Data()
     : master_server_endpoint_(),

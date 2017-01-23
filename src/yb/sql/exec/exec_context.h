@@ -38,6 +38,18 @@ class ExecContext : public ProcessContext {
     return sql_env_->DeleteTable(name);
   }
 
+  // Keyspace related methods.
+
+  // Create a new keyspace with the given name.
+  CHECKED_STATUS CreateKeyspace(const std::string& keyspace_name) {
+    return sql_env_->CreateKeyspace(keyspace_name);
+  }
+
+  // Delete keyspace with the given name.
+  CHECKED_STATUS DeleteKeyspace(const std::string& keyspace_name) {
+    return sql_env_->DeleteKeyspace(keyspace_name);
+  }
+
   // Apply YBClient write operator.
   CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op,
                             const TreeNode *tnode);

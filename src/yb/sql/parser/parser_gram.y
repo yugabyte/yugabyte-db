@@ -65,6 +65,7 @@
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/parser/parser_inactive_nodes.h"
+#include "yb/sql/ptree/pt_create_keyspace.h"
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_type.h"
@@ -186,6 +187,9 @@ using namespace yb::sql;
                           // Update.
                           UpdateStmt
                           set_target_list
+
+                          // Create keyspace.
+                          CreateSchemaStmt
 
 %type <PCollection>       // Select can be either statement or expression of collection types.
                           SelectStmt select_no_parens select_with_parens select_clause
@@ -316,7 +320,7 @@ using namespace yb::sql;
                           ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
                           CreateDomainStmt CreateExtensionStmt CreateOpClassStmt
                           CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
-                          CreateSchemaStmt CreateSeqStmt CreateTableSpaceStmt
+                          CreateSeqStmt CreateTableSpaceStmt
                           CreateFdwStmt CreateForeignServerStmt CreateForeignTableStmt
                           CreateAssertStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
                           CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
@@ -487,7 +491,7 @@ using namespace yb::sql;
 
                           JOIN
 
-                          KEY
+                          KEY KEYSPACE
 
                           LABEL LANGUAGE LARGE_P LAST_P LATERAL_P LEADING LEAKPROOF LEAST LEFT
                           LEVEL LIKE LIMIT LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
@@ -670,6 +674,9 @@ stmt:
   /*EMPTY*/ {
     $$ = nullptr;
   }
+  | CreateSchemaStmt {
+    $$ = $1;
+  }
   | CreateStmt {
     $$ = $1;
   }
@@ -701,6 +708,56 @@ schema_stmt:
   | inactive_schema_stmt {
     // Report error that the syntax is not yet supported.
     PARSER_UNSUPPORTED(@1);
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// CREATE KEYSPACE statement.
+// Syntax:
+//   CREATE KEYSPACE | SCHEMA [ IF NOT EXISTS ] keyspace_name
+//--------------------------------------------------------------------------------------------------
+
+CreateSchemaStmt:
+  CREATE KEYSPACE ColId OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false);
+  }
+  | CREATE SCHEMA ColId OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false);
+  }
+  | CREATE KEYSPACE IF_P NOT_LA EXISTS ColId OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true);
+  }
+  | CREATE SCHEMA IF_P NOT_LA EXISTS ColId OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true);
+  }
+  | CREATE KEYSPACE OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+    PARSER_UNSUPPORTED(@4);
+    $$ = nullptr;
+  }
+  | CREATE SCHEMA OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+    PARSER_UNSUPPORTED(@4);
+    $$ = nullptr;
+  }
+  | CREATE KEYSPACE IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+    PARSER_UNSUPPORTED(@7);
+    $$ = nullptr;
+  }
+  | CREATE SCHEMA IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+    PARSER_UNSUPPORTED(@7);
+    $$ = nullptr;
+  }
+;
+
+OptSchemaName:
+  ColId                     { $$ = $1; }
+  | /* EMPTY */             { }
+;
+
+OptSchemaEltList:
+  OptSchemaEltList schema_stmt {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | /* EMPTY */ {
   }
 ;
 
@@ -4137,7 +4194,6 @@ unreserved_keyword:
   | ROWS { $$ = $1; }
   | RULE { $$ = $1; }
   | SAVEPOINT { $$ = $1; }
-  | SCHEMA { $$ = $1; }
   | SCROLL { $$ = $1; }
   | SEARCH { $$ = $1; }
   | SECOND_P { $$ = $1; }
@@ -4356,6 +4412,7 @@ reserved_keyword:
   | INITIALLY { $$ = $1; }
   | INTERSECT { $$ = $1; }
   | INTO { $$ = $1; }
+  | KEYSPACE { $$ = $1; }
   | LATERAL_P { $$ = $1; }
   | LEADING { $$ = $1; }
   | LIMIT { $$ = $1; }
@@ -4372,6 +4429,7 @@ reserved_keyword:
   | PRIMARY { $$ = $1; }
   | REFERENCES { $$ = $1; }
   | RETURNING { $$ = $1; }
+  | SCHEMA { $$ = $1; }
   | SELECT { $$ = $1; }
   | SESSION_USER { $$ = $1; }
   | SOME { $$ = $1; }
@@ -4455,7 +4513,6 @@ inactive_stmt:
   | AlterOpFamilyStmt
   | CreatePolicyStmt
   | CreatePLangStmt
-  | CreateSchemaStmt
   | CreateSeqStmt
   | CreateTableSpaceStmt
   | CreateTransformStmt
@@ -4691,29 +4748,6 @@ DropUserStmt:
  * Manipulate a schema
  *
  *****************************************************************************/
-
-CreateSchemaStmt:
-  CREATE SCHEMA OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
-  }
-  | CREATE SCHEMA ColId OptSchemaEltList {
-  }
-  | CREATE SCHEMA IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
-  }
-  | CREATE SCHEMA IF_P NOT_LA EXISTS ColId OptSchemaEltList {
-  }
-;
-
-OptSchemaName:
-  ColId                     { $$ = $1; }
-  | /* EMPTY */             { }
-;
-
-OptSchemaEltList:
-  OptSchemaEltList schema_stmt {
-  }
-  | /* EMPTY */ {
-  }
-;
 
 /*
  *  schema_stmt are the ones that can show up inside a CREATE SCHEMA
