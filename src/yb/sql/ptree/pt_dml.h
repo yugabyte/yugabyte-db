@@ -47,7 +47,8 @@ class PTCollection : public TreeNode {
 
 class PTDmlStmt : public PTCollection {
  public:
-  static const int64_t kNoTTL = -1;
+  // Cassandra considers a TTL of zero as resetting the TTL.
+  static const int64_t kNoTTL = 0;
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   explicit PTDmlStmt(MemoryContext *memctx,

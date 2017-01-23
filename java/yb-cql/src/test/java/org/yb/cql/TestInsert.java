@@ -100,8 +100,7 @@ public class TestInsert extends TestBase {
     runInvalidInsertWithTTL(tableName, "false");
   }
 
-  // This test currently fails, will enable it once we support TTL resets.
-  //@Test
+  @Test
   public void testResetTTL() throws Exception {
     // Setting TTL to 0 should reset the TTL.
     String tableName = "test_reset_ttl";
