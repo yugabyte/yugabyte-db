@@ -17,10 +17,11 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
-#include <mutex>
 
 #include <gtest/gtest.h>
 #include <rapidjson/document.h>
@@ -31,6 +32,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/gutil/singleton.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_rpc.h"
@@ -52,9 +54,15 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
-using rapidjson::Value;
-using std::string;
+using std::atomic;
+using std::lock_guard;
+using std::mutex;
 using std::shared_ptr;
+using std::string;
+using std::thread;
+using std::unique_ptr;
+
+using rapidjson::Value;
 using strings::Substitute;
 
 using yb::master::GetLeaderMasterRpc;
@@ -1080,6 +1088,104 @@ Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
 // ExternalDaemon
 //------------------------------------------------------------
 
+namespace {
+
+// Global state to manage all log tailer threads. This state is managed using Singleton from gutil
+// and is never deallocated.
+struct GlobalLogTailerState {
+  mutex logging_mutex;
+  atomic<int> next_log_tailer_id;
+
+  // We need some references to these heap-allocated atomic booleans so that ASAN would not consider
+  // them memory leaks.
+  mutex id_to_stopped_flag_mutex;
+  map<int, atomic<bool>*> id_to_stopped_flag;
+
+  GlobalLogTailerState() {
+    next_log_tailer_id.store(0);
+  }
+};
+
+}  // anonymous namespace
+
+class ExternalDaemon::LogTailerThread {
+ public:
+  LogTailerThread(const string line_prefix,
+                  const int child_fd,
+                  ostream* const out)
+      : id_(global_state()->next_log_tailer_id.fetch_add(1)),
+        stopped_(CreateStoppedFlagForId(id_)),
+        thread_desc_(Substitute("log tailer thread for prefix $0", line_prefix)),
+        thread_([=] {
+          VLOG(1) << "Starting " << thread_desc_;
+          FILE* const fp = fdopen(child_fd, "rb");
+          char buf[65536];
+          const atomic<bool>* stopped;
+
+          {
+            lock_guard<mutex> l(state_lock_);
+            stopped = stopped_;
+          }
+
+          // Instead of doing a nonblocking read, we detach this thread and allow it to block
+          // indefinitely trying to read from a child process's stream where nothing is happening.
+          // This is probably OK as long as we are careful to avoid accessing any state that might
+          // have been already destructed (e.g. logging, cout/cerr, member fields of this class,
+          // etc.) in case we do get unblocked. Instead, we keep a local pointer to the atomic
+          // "stopped" flag, and that allows us to safely check if it is OK to print log messages.
+          // The "stopped" flag itself is never deallocated.
+          while (!feof(fp) && fgets(buf, sizeof(buf), fp) != nullptr && !stopped->load()) {
+            size_t l = strlen(buf);
+            const char* maybe_end_of_line = l > 0 && buf[l - 1] == '\n' ? "" : "\n";
+            // Synchronize tailing output from all external daemons for simplicity.
+            lock_guard<mutex> lock(global_state()->logging_mutex);
+            if (!stopped->load()) break;
+            // Make sure we always output an end-of-line character.
+            *out << line_prefix << " " << buf << maybe_end_of_line;
+          }
+          fclose(fp);
+          if (!stopped->load()) {
+            // It might not be safe to log anything if we have already stopped.
+            VLOG(1) << "Exiting " << thread_desc_;
+          }
+        }) {
+    thread_.detach();
+  }
+
+  ~LogTailerThread() {
+    VLOG(1) << "Stopping " << thread_desc_;
+    lock_guard<mutex> l(state_lock_);
+    stopped_->store(true);
+  }
+
+ private:
+  static GlobalLogTailerState* global_state() {
+    return Singleton<GlobalLogTailerState>::get();
+  }
+
+  static atomic<bool>* CreateStoppedFlagForId(int id) {
+    lock_guard<mutex> lock(global_state()->id_to_stopped_flag_mutex);
+    // This is never deallocated, but we add this pointer to the id_to_stopped_flag map referenced
+    // from the global state singleton, and that apparently makes ASAN no longer consider this to be
+    // a memory leak. We don't need to check if the id already exists in the map, because this
+    // function is never invoked with a particular id more than once.
+    auto* const stopped = new atomic<bool>();
+    stopped->store(false);
+    global_state()->id_to_stopped_flag[id] = stopped;
+    return stopped;
+  }
+
+  const int id_;
+
+  // This lock protects the stopped_ pointer in case of a race between tailer thread's
+  // initialization (i.e. before it gets into its loop) and the destructor.
+  mutex state_lock_;
+
+  atomic<bool>* const stopped_;
+  const string thread_desc_;  // A human-readable description of this thread.
+  thread thread_;
+};
+
 ExternalDaemon::ExternalDaemon(
     std::string short_description,
     std::shared_ptr<rpc::Messenger> messenger,
@@ -1150,11 +1256,13 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   RETURN_NOT_OK_PREPEND(p->Start(),
                         Substitute("Failed to start subprocess $0", exe_));
 
-  StartTailerThread(Substitute("[$0 stdout]", short_description_), p->ReleaseChildStdoutFd(),
-    &std::cout);
+  stdout_tailer_thread_ = unique_ptr<LogTailerThread>(new LogTailerThread(
+      Substitute("[$0 stdout]", short_description_), p->ReleaseChildStdoutFd(), &std::cout));
+
   // We will mostly see stderr output from the child process (because of --logtostderr), so we'll
   // assume that by default in the output prefix.
-  StartTailerThread(default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr);
+  stderr_tailer_thread_ = unique_ptr<LogTailerThread>(new LogTailerThread(
+      default_output_prefix, p->ReleaseChildStderrFd(), &std::cerr));
 
   // The process is now starting -- wait for the bound port info to show up.
   Stopwatch sw;
@@ -1293,25 +1401,6 @@ HostPort ExternalDaemon::bound_http_hostport() const {
   HostPort ret;
   CHECK_OK(HostPortFromPB(status_->bound_http_addresses(0), &ret));
   return ret;
-}
-
-void ExternalDaemon::StartTailerThread(std::string line_prefix, int child_fd, ostream* out) {
-  // Synchronize tailing output from all external daemons for simplicity.
-  static std::mutex tailer_output_mutex;
-
-  std::thread tailer_thread([line_prefix, child_fd, out] {
-    FILE* fp = fdopen(child_fd, "rb");
-    char buf[65536];
-    while (!feof(fp) && fgets(buf, sizeof(buf), fp) != nullptr) {
-      size_t l = strlen(buf);
-      const char* maybe_end_of_line = l > 0 && buf[l - 1] == '\n' ? "" : "\n";
-      std::lock_guard<std::mutex> lock(tailer_output_mutex);
-      // Make sure we always output an end-of-line character.
-      *out << line_prefix << " " << buf << maybe_end_of_line;
-    }
-    fclose(fp);
-  });
-  tailer_thread.detach();
 }
 
 const NodeInstancePB& ExternalDaemon::instance_id() const {

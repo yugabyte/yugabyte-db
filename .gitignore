@@ -19,6 +19,7 @@ oprofile_data
 *~
 # These files could be used to auto-save vim sessions.
 .session.vim
+.session.vim.lock
 
 # IDE cruft
 .settings/

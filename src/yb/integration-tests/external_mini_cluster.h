@@ -22,6 +22,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <thread>
 
 #include "yb/client/client.h"
 #include "yb/consensus/consensus.pb.h"
@@ -475,7 +476,9 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   HostPort bound_http_;
 
  private:
-  void StartTailerThread(std::string line_prefix, int child_fd, ostream* out);
+  class LogTailerThread;
+
+  std::unique_ptr<LogTailerThread> stdout_tailer_thread_, stderr_tailer_thread_;
 
   DISALLOW_COPY_AND_ASSIGN(ExternalDaemon);
 };
