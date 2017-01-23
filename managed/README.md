@@ -9,8 +9,16 @@
 #### General Pre-requisites
 
 * Install JDK8
-* Need to have vault_password, yugabyte dev pem file (AWS) inside of ~/.yugabyte
-* And also ansible.env file with AWS credentials inside of ~/.yugabyte
+* Need to have `vault_password`, yugabyte dev pem file `no-such-key.pem` (AWS) inside of `~/.yugabyte`
+* And also `ansible.env` file with AWS credentials inside of `~/.yugabyte`:
+  ```
+  export AWS_ACCESS_KEY=<your AWS access key>
+  export AWS_SECRET_KEY=<your AWS secret key>
+  export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY"
+  export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_KEY"
+  export AWS_DEFAULT_REGION=us-west-2
+  export YB_EC2_KEY_PAIR_NAME=no-such-key
+  ```
 
 #### On a mac, run the following:
 * Install SBT and Node
@@ -76,7 +84,8 @@ yugaware=> \q
 * To compile and run the code:
 ```
   $ sbt run -Dyb.devops.home=<path to your devops repo>
-  # Test that everything is running by going to http://localhost:9000 in a browser (or curl).
+  # Test that everything is running by going to http://localhost:9000 in a browser (or curl). This page will show 
+  expected error 'Action not found' and list of possible API routes.
 ```
 
 * To compile and not run:
