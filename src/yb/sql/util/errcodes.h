@@ -47,7 +47,7 @@ enum class ErrorCode : int64_t {
   DATATYPE_MISMATCH = -201,
   DUPLICATE_TABLE = -202,
   UNDEFINED_COLUMN = -203,
-  DUPLICATE_COLUMN = -203,
+  DUPLICATE_COLUMN = -204,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
