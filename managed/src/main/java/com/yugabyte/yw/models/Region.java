@@ -99,6 +99,10 @@ public class Region extends Model {
     return find.byId(regionUUID);
   }
 
+  public static Region getByCode(String code) {
+    return find.where().eq("code", code).findUnique();
+  }
+
   /**
    * Fetch Regions with the minimum zone count and having a valid yb server image.
    * @param providerUUID
