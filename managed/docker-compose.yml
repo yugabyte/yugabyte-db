@@ -1,0 +1,41 @@
+version: '2'
+
+services:
+  yugaware:
+    image: registry.replicated.com/yugaware_apple/yugaware:1.0-SNAPSHOT
+    volumes:
+      - ./docker/yugaware/:/opt/docker/conf/
+      - $HOME/.yugabyte:/usr/sbin/.yugabyte
+      - ./src/main/resources/metrics.yml:/opt/docker/conf/metrics.yml
+      - /opt/docker/public/
+    expose:
+      - 9000
+    ports:
+      - 9000:9000
+    environment:
+      - CATALINA_OPTS=-Xmx12g -Xms12g -XX:MaxPermSize=1024m
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:latest
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=yugaware
+      - POSTGRES_PASSWORD=yugaware
+      - POSTGRES_DB=yugaware
+    volumes:
+      - /var/lib/postgresql/data
+      - ./src/main/resources/db/migration/default/:/docker-entrypoint-initdb.d/
+
+  nginx:
+      image: nginx:latest
+      volumes:
+        - ./docker/nginx/:/etc/nginx/conf.d/
+      links:
+        - yugaware
+      ports:
+        - "80:80"
+      volumes_from:
+        - yugaware

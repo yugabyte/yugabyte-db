@@ -1,7 +1,7 @@
 // Copyright YugaByte Inc.
 
 import { connect } from 'react-redux';
-import { hashHistory } from 'react-router';
+import { browserHistory } from 'react-router';
 
 import { DeleteUniverse } from '../../components/universes';
 import { deleteUniverse, deleteUniverseSuccess, deleteUniverseFailure,
@@ -21,7 +21,7 @@ const mapDispatchToProps = (dispatch) => {
                   dispatch(fetchUniverseListFailure(response.payload));
                 } else {
                   dispatch(fetchUniverseListSuccess(response.payload));
-                  hashHistory.push('/universes');
+                  browserHistory.push('/universes');
                 }
               });
           } else {
