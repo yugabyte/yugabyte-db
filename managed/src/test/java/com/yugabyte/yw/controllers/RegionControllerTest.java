@@ -40,7 +40,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListRegionsWithInvalidProviderUUID() {
     String uri = "/api/providers/" + UUID.randomUUID() + "/regions";
-    Result result = FakeApiHelper.requestWithAuthToken("GET", uri);
+    Result result = FakeApiHelper.doRequest("GET", uri);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -51,7 +51,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListEmptyRegionsWithValidProviderUUID() {
     String uri = "/api/providers/" + provider.uuid + "/regions";
-    Result result = FakeApiHelper.requestWithAuthToken("GET", uri);
+    Result result = FakeApiHelper.doRequest("GET", uri);
 
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -64,7 +64,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListAllRegionsWithValidRegion() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
-    Result result = FakeApiHelper.requestWithAuthToken("GET", "/api/regions");
+    Result result = FakeApiHelper.doRequest("GET", "/api/regions");
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(json.get(0).path("uuid").asText(), r.uuid.toString());
     assertEquals(json.get(0).path("provider").get("uuid").asText(), provider.uuid.toString());
@@ -74,7 +74,7 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Test
   public void testListAllRegionsWithNoRegion() {
-    Result result = FakeApiHelper.requestWithAuthToken("GET", "/api/regions");
+    Result result = FakeApiHelper.doRequest("GET", "/api/regions");
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals("[]", json.toString());
@@ -85,7 +85,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testListRegionWithoutZonesAndValidProviderUUID() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     String uri = "/api/providers/" + provider.uuid + "/regions";
-    Result result = FakeApiHelper.requestWithAuthToken("GET", uri);
+    Result result = FakeApiHelper.doRequest("GET", uri);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -98,7 +98,7 @@ public class RegionControllerTest extends FakeDBApplication {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     String uri =  "/api/providers/" + provider.uuid + "/regions";
-    Result result = FakeApiHelper.requestWithAuthToken("GET", uri);
+    Result result = FakeApiHelper.doRequest("GET", uri);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -120,7 +120,7 @@ public class RegionControllerTest extends FakeDBApplication {
     AvailabilityZone.create(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
 
     String uri =  "/api/providers/" + provider.uuid + "/regions?isMultiAZ=true";
-    Result result = FakeApiHelper.requestWithAuthToken("GET", uri);
+    Result result = FakeApiHelper.doRequest("GET", uri);
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
@@ -133,7 +133,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testCreateRegionsWithInvalidProviderUUID() {
     String uri =  "/api/providers/" + UUID.randomUUID() + "/regions";
-    Result result = FakeApiHelper.requestWithAuthToken("POST", uri);
+    Result result = FakeApiHelper.doRequest("POST", uri);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), CoreMatchers.containsString("Invalid Provider UUID"));
   }
@@ -141,7 +141,7 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testCreateRegionsWithoutRequiredParams() {
     String uri =  "/api/providers/" + provider.uuid + "/regions";
-    Result result = FakeApiHelper.requestWithAuthToken("POST", uri);
+    Result result = FakeApiHelper.doRequest("POST", uri);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result),
             CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
@@ -156,7 +156,7 @@ public class RegionControllerTest extends FakeDBApplication {
     regionJson.put("name", "Foo PlacementRegion");
 
     String uri =  "/api/providers/" + provider.uuid + "/regions";
-    Result result = FakeApiHelper.requestWithAuthToken("POST", uri, regionJson);
+    Result result = FakeApiHelper.doRequestWithBody("POST", uri, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
 
@@ -171,7 +171,7 @@ public class RegionControllerTest extends FakeDBApplication {
   public void testDeleteRegionWithInValidParams() {
     UUID randomUUID = UUID.randomUUID();
     String uri =  "/api/providers/" + provider.uuid + "/regions/" + randomUUID;
-    Result result = FakeApiHelper.requestWithAuthToken("DELETE", uri);
+    Result result = FakeApiHelper.doRequest("DELETE", uri);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result),
             CoreMatchers.containsString("Invalid Provider/Region UUID:" + randomUUID));
@@ -184,7 +184,7 @@ public class RegionControllerTest extends FakeDBApplication {
     AvailabilityZone.create(r, "az-2", "AZ 2", "subnet-2");
 
     String uri =  "/api/providers/" + provider.uuid + "/regions/" + r.uuid;
-    Result result = FakeApiHelper.requestWithAuthToken("DELETE", uri);
+    Result result = FakeApiHelper.doRequest("DELETE", uri);
     assertEquals(OK, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));

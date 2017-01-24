@@ -15,18 +15,24 @@ public class FakeApiHelper {
     return customer.createAuthToken();
   }
 
-  public static Result requestWithAuthToken(String method, String url) {
+  public static Result doRequest(String method, String url) {
+    return doRequestWithAuthToken(method, url, getAuthToken());
+  }
+
+  public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url)
-      .header("X-AUTH-TOKEN", getAuthToken());
+            .header("X-AUTH-TOKEN", authToken);
     return Helpers.route(request);
   }
 
-  public static Result requestWithAuthToken(String method, String url, JsonNode body) {
-    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
-      .header("X-AUTH-TOKEN", getAuthToken())
-      .bodyJson(body);
-    return Helpers.route(request);
+  public static Result doRequestWithBody(String method, String url, JsonNode body) {
+    return doRequestWithAuthTokenAndBody(method, url, getAuthToken(), body);
   }
 
-
+  public static Result doRequestWithAuthTokenAndBody(String method, String url, String authToken, JsonNode body) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyJson(body);
+    return Helpers.route(request);
+  }
 }
