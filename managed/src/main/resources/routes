@@ -36,6 +36,13 @@ PUT     /api/customers/:cUUID                         com.yugabyte.yw.controller
 DELETE  /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.delete(cUUID: java.util.UUID)
 POST    /api/customers/:cUUID/metrics                 com.yugabyte.yw.controllers.CustomerController.metrics(cUUID: java.util.UUID)
 
+# Access Key API
+GET     /api/customers/:cUUID/providers/:pUUID/access_keys/:keyCode    com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)
+GET     /api/customers/:cUUID/providers/:pUUID/access_keys             com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers/:pUUID/access_keys             com.yugabyte.yw.controllers.AccessKeyController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/providers/:pUUID/access_keys/:keyCode    com.yugabyte.yw.controllers.AccessKeyController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)
+PUT     /api/customers/:cUUID/providers/:pUUID/access_keys/:keyCode    com.yugabyte.yw.controllers.AccessKeyController.update(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)
+
 # Universe, table, etc management API
 POST    /api/customers/:cUUID/universes                   com.yugabyte.yw.controllers.UniverseController.create(cUUID: java.util.UUID)
 POST    /api/customers/:cUUID/universe_configure          com.yugabyte.yw.controllers.UniverseController.configure(cUUID: java.util.UUID)
