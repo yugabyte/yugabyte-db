@@ -14,7 +14,6 @@ from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
   - Builds the React API and generates production files (js, css, etc)
-  - Copy the UI build files to Yugaware Public folder
   - Run sbt packaging command to package yugaware along with the react files
   If we want to publish a docker image, then we just generate and publish
   or else, we would do the following to generate a release file.
@@ -40,11 +39,6 @@ try:
     check_output(["rm", "-rf", "node_modules"], cwd=os.path.join(script_dir, 'ui'))
     check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
     check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
-
-    log_message(logging.INFO, "Copy React Build files to Yugaware Public folder")
-    ui_build = os.path.join(script_dir, "ui", "build")
-    yugaware_public = os.path.join(script_dir, "src", "main", "public")
-    shutil.copytree(ui_build, yugaware_public)
 
     check_output(["sbt", "clean"])
 
@@ -94,6 +88,3 @@ try:
 
 except (CalledProcessError, OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
-finally:
-    log_message(logging.INFO, "Cleanup the Yugaware public folder")
-    shutil.rmtree(yugaware_public)

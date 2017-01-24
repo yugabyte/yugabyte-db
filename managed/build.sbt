@@ -33,7 +33,13 @@ publishTo := Some("yugabyteS3" at "s3://no-such-url/")
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 
 // Skip packaging javadoc for now
-mappings in (Compile, packageDoc) := Seq()
+sources in (Compile, doc) := Seq()
+publishArtifact in (Compile, packageDoc) := false
+
+// Add react ui files to public folder of universal package
+mappings in Universal ++= contentOf(baseDirectory.value / "ui/build").map {
+  case (file, dest) => file -> s"public/$dest"
+}
 
 topLevelDirectory := None
 
