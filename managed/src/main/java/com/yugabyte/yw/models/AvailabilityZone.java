@@ -59,4 +59,8 @@ public class AvailabilityZone extends Model {
   public static List<AvailabilityZone> getAZsForRegion(UUID regionUUID) {
     return find.where().eq("region_uuid", regionUUID).findList();
   }
+
+  public static AvailabilityZone getByCode(String code) {
+    return find.where().eq("code", code).findUnique();
+  }
 }
