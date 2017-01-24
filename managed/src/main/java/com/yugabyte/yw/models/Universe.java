@@ -84,7 +84,8 @@ public class Universe extends Model {
     json.set("universeDetails", Json.parse(universeDetailsJson));
     json.put("version", version);
     if (getUniverseDetails().userIntent != null &&
-        getUniverseDetails().userIntent.regionList != null) {
+        getUniverseDetails().userIntent.regionList != null &&
+        !getUniverseDetails().userIntent.regionList.isEmpty()) {
       List<Region> regions =
         Region.find.where().idIn(getUniverseDetails().userIntent.regionList).findList();
 

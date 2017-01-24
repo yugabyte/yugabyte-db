@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -224,7 +225,7 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
-  public void testToJSON() {
+  public void testToJSONSuccess() {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
 
     Region r1 = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
@@ -234,47 +235,20 @@ public class UniverseTest extends FakeDBApplication {
     regionList.add(r1.uuid);
     regionList.add(r2.uuid);
     regionList.add(r3.uuid);
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.userIntent = new UserIntent();
 
-        universeDetails.userIntent.isMultiAZ = true;
-        universeDetails.userIntent.replicationFactor = 3;
-        universeDetails.userIntent.regionList = regionList;
+    UserIntent userIntent = new UserIntent();
+    userIntent.isMultiAZ = true;
+    userIntent.replicationFactor = 3;
+    userIntent.regionList = regionList;
 
-        // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 3;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node = new NodeDetails();
-          node.nodeName = "host-n" + idx;
-          node.cloudInfo = new CloudSpecificInfo();
-          node.cloudInfo.cloud = "aws";
-          node.cloudInfo.az = "az-" + idx;
-          node.cloudInfo.region = "test-region";
-          node.cloudInfo.subnet_id = "subnet-" + idx;
-          node.cloudInfo.private_ip = "host-n" + idx;
-          node.isTserver = true;
-          if (idx <= 3) {
-            node.isMaster = true;
-          }
-          node.nodeIdx = idx;
-          universeDetails.nodeDetailsSet.add(node);
-        }
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
-    u = Universe.saveDetails(u.universeUUID, updater);
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
 
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
-    JsonNode userIntent =
+    JsonNode userIntentJson =
       universeJson.get("universeDetails").get("userIntent");
-    assertTrue(userIntent.get("regionList").isArray());
-    assertEquals(3, userIntent.get("regionList").size());
+    assertTrue(userIntentJson.get("regionList").isArray());
+    assertEquals(3, userIntentJson.get("regionList").size());
 
     JsonNode regionsNode = universeJson.get("regions");
     assertThat(regionsNode, is(notNullValue()));
@@ -284,5 +258,44 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode providerNode = universeJson.get("provider");
     assertThat(providerNode, is(notNullValue()));
     assertThat(providerNode.get("uuid").asText(), allOf(notNullValue(), equalTo(defaultProvider.uuid.toString())));
+  }
+
+  @Test
+  public void testToJSONWithNullRegionList() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+
+    JsonNode universeJson = u.toJson();
+    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    JsonNode userIntentJson =
+            universeJson.get("universeDetails").get("userIntent");
+    assertTrue(userIntentJson.get("regionList").isNull());
+    JsonNode regionsNode = universeJson.get("regions");
+    assertNull(regionsNode);
+    JsonNode providerNode = universeJson.get("provider");
+    assertNull(providerNode);
+  }
+
+  @Test
+  public void testToJSONWithEmptyRegionList() {
+    Universe u = Universe.create("Test Universe", UUID.randomUUID(), defaultCustomer.getCustomerId());
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.isMultiAZ = true;
+    userIntent.replicationFactor = 3;
+    userIntent.regionList = new ArrayList<>();
+
+    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+
+    JsonNode universeJson = u.toJson();
+    assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    JsonNode userIntentJson =
+            universeJson.get("universeDetails").get("userIntent");
+    assertTrue(userIntentJson.get("regionList").isArray());
+    JsonNode regionsNode = universeJson.get("regions");
+    assertNull(regionsNode);
+    JsonNode providerNode = universeJson.get("provider");
+    assertNull(providerNode);
   }
 }
