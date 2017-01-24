@@ -42,7 +42,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testListInstanceTypeWithInvalidProviderUUID() {
     Result result =
-      FakeApiHelper.requestWithAuthToken("GET", "/api/providers/" + UUID.randomUUID() + "/instance_types");
+      FakeApiHelper.doRequest("GET", "/api/providers/" + UUID.randomUUID() + "/instance_types");
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("error").toString(), CoreMatchers.containsString("Invalid Provider UUID"));
@@ -51,7 +51,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testListEmptyInstanceTypeWithValidProviderUUID() {
     Result result =
-      FakeApiHelper.requestWithAuthToken("GET", "/api/providers/" + provider.uuid + "/instance_types");
+      FakeApiHelper.doRequest("GET", "/api/providers/" + provider.uuid + "/instance_types");
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(0, json.size());
@@ -64,7 +64,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     InstanceType.upsert(provider.code, "test-i2", 3, 9.0, 1, 80, InstanceType.VolumeType.EBS, null);
 
     Result result =
-      FakeApiHelper.requestWithAuthToken("GET", "/api/providers/" + provider.uuid + "/instance_types");
+      FakeApiHelper.doRequest("GET", "/api/providers/" + provider.uuid + "/instance_types");
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -81,7 +81,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testCreateInstanceTypeWithInvalidProviderUUID() {
     ObjectNode instanceTypeJson = Json.newObject();
 
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequestWithBody(
       "POST",
       "/api/providers/" + UUID.randomUUID() + "/instance_types",
       instanceTypeJson);
@@ -95,7 +95,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testCreateInstanceTypeWithInvalidParams() {
     ObjectNode instanceTypeJson = Json.newObject();
 
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequestWithBody(
       "POST",
       "/api/providers/" + provider.uuid + "/instance_types",
       instanceTypeJson);
@@ -121,7 +121,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.put("volumeType", "EBS");
     instanceTypeJson.put("numCores", 3);
 
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequestWithBody(
       "POST",
       "/api/providers/" + provider.uuid + "/instance_types",
       instanceTypeJson);
@@ -142,7 +142,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     InstanceType it = InstanceType.upsert(provider.code, "test-i1", 3, 5.0, 1, 20,
             InstanceType.VolumeType.EBS, new InstanceType.InstanceTypeDetails());
 
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequest(
             "GET",
             "/api/providers/" + provider.uuid + "/instance_types/" + it.getInstanceTypeCode());
 
@@ -160,7 +160,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testGetInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequest(
             "GET",
             "/api/providers/" + provider.uuid + "/instance_types/" + fakeInstanceCode);
     assertEquals(BAD_REQUEST, result.status());
@@ -173,7 +173,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testGetInstanceTypeWithInvalidProvider() {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequest(
             "GET",
             "/api/providers/" + randomUUID + "/instance_types/" + fakeInstanceCode);
     assertEquals(BAD_REQUEST, result.status());
@@ -187,7 +187,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     InstanceType it = InstanceType.upsert(provider.code, "test-i1", 3, 5.0, 1, 20,
             InstanceType.VolumeType.EBS, new InstanceType.InstanceTypeDetails());
 
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequest(
             "DELETE",
             "/api/providers/" + provider.uuid + "/instance_types/" + it.getInstanceTypeCode());
 
@@ -201,7 +201,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequest(
             "DELETE",
             "/api/providers/" + provider.uuid + "/instance_types/" + fakeInstanceCode);
 
@@ -215,7 +215,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testDeleteInstanceTypeWithInvalidProvider() {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
-    Result result = FakeApiHelper.requestWithAuthToken(
+    Result result = FakeApiHelper.doRequest(
             "DELETE",
             "/api/providers/" + randomUUID + "/instance_types/" + fakeInstanceCode);
 

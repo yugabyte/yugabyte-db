@@ -102,7 +102,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
     String uri =
         "/api/providers/" + defaultProvider.uuid + "/regions/" + defaultRegion.uuid + "/zones";
-    Result result = FakeApiHelper.requestWithAuthToken("POST", uri, azRequestJson);
+    Result result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result),
                 CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
@@ -116,7 +116,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   public void testDeleteAvailabilityZoneWithInValidParams() {
     UUID randomUUID = UUID.randomUUID();
     Result result =
-            FakeApiHelper.requestWithAuthToken("DELETE", "/api/providers/" + defaultProvider.uuid +
+            FakeApiHelper.doRequest("DELETE", "/api/providers/" + defaultProvider.uuid +
                     "/regions/" + defaultRegion.uuid + "/zones/" + randomUUID);
 
     assertEquals(BAD_REQUEST, result.status());
@@ -130,7 +130,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
 
     Result result =
-            FakeApiHelper.requestWithAuthToken("DELETE", "/api/providers/" + defaultProvider.uuid +
+            FakeApiHelper.doRequest("DELETE", "/api/providers/" + defaultProvider.uuid +
                     "/regions/" + defaultRegion.uuid + "/zones/" + az.uuid);
 
     assertEquals(OK, result.status());
@@ -143,7 +143,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
   private JsonNode doListAZAndVerifyResult(UUID cloudProvider, UUID region, int expectedStatus) {
     String uri = "/api/providers/" + cloudProvider + "/regions/" + region + "/zones";
-    Result result = FakeApiHelper.requestWithAuthToken("GET", uri);
+    Result result = FakeApiHelper.doRequest("GET", uri);
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
   }
@@ -157,9 +157,9 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
 
     Result result;
     if (azRequestJson != null) {
-      result = FakeApiHelper.requestWithAuthToken("POST", uri, azRequestJson);
+      result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
     } else {
-      result = FakeApiHelper.requestWithAuthToken("POST", uri);
+      result = FakeApiHelper.doRequest("POST", uri);
     }
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
