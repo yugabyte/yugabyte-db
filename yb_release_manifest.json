@@ -10,8 +10,6 @@
           "thirdparty/installed/common/lib/libz*.so.*",
           "thirdparty/installed/uninstrumented/lib/libgmock*.so",
           "thirdparty/installed/uninstrumented/lib/*.so.*",
-          "java/yb-cli/target/yb-cli-0.8.0-SNAPSHOT.jar",
-          "java/yb-loadtester/target/yb-loadtester-0.8.0-SNAPSHOT-jar-with-dependencies.jar",
           "/lib64/libboost_atomic-mt.so.1.53.0",
           "/lib64/libboost_chrono-mt.so.1.53.0",
           "/lib64/libboost_date_time-mt.so.1.53.0",
@@ -51,5 +49,9 @@
           "build/latest/bin/yb-cqlserver",
           "build/latest/bin/log-dump",
           "build/latest/bin/yb_load_test_tool",
-          "thirdparty/installed/uninstrumented/bin/*"]
+          "thirdparty/installed/uninstrumented/bin/*"],
+  "java"     : ["java/yb-cli/target/yb-cli-0.8.0-SNAPSHOT.jar",
+                "java/yb-loadtester/target/yb-loadtester-0.8.0-SNAPSHOT-jar-with-dependencies.jar"],
+  "java/lib" : ["java/yb-cli/target/lib/*.jar",
+                "java/yb-loadtester/target/lib/*.jar"]
 }
