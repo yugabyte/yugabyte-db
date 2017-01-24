@@ -45,7 +45,7 @@ public class DevOpsHelper {
   private String getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     String subcommand = "";
 
-    String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses();
+    String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses(false);
     subcommand += " --master_addresses_for_tserver " + masterAddresses;
 
     if (!taskParam.isMasterInShellMode) {

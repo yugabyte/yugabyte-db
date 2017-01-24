@@ -60,7 +60,8 @@ public class TablesController extends AuthenticatedController {
     try {
       final String masterAddresses = Universe.get(universeUUID).getMasterAddresses();
       if (masterAddresses.isEmpty()) {
-        throw new Exception("Masters are not currently queryable.");
+        LOG.warn("Expected error. Masters are not currently queryable.");
+        return ok("Expected error. Masters are not currently queryable.");
       }
       YBClient client = ybService.getClient(masterAddresses);
       ListTablesResponse response = client.getTablesList();

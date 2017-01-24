@@ -309,16 +309,21 @@ public class Universe extends Model {
     return true;
   }
 
+  public String getMasterAddresses() {
+    return getMasterAddresses(true);
+  }
+
   /**
    * Returns a comma separated list of <privateIp:masterRpcPort> for all nodes that have the
    * isMaster flag set to true in this cluster.
    *
+   * @param mastersQueryable Set to true if caller wants masters to be queryable, else false.
    * @return a comma separated string of master 'host:port' or, if masters are not queryable, an
    * empty string.
    */
-  public String getMasterAddresses() {
+  public String getMasterAddresses(boolean mastersQueryable) {
     List<NodeDetails> masters = getMasters();
-    if (!verifyMastersAreQueryable(masters)) {
+    if (mastersQueryable && !verifyMastersAreQueryable(masters)) {
       return "";
     }
     StringBuilder masterAddresses = new StringBuilder();
