@@ -67,6 +67,60 @@ network_bytes:
       alias:
         "net_bytes_sent": "TX"
         "net_bytes_recv": "RX"
+
+network_packets:
+  metric: '{__name__=~"node_network_(.*)_packets"}'
+  function: "avg"
+  group_by: "__name__"
+  layout:
+    title: "Network Packets / sec / host"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_network_receive_packets": "RX"
+        "node_network_transmit_packets": "TX"
+
+network_errors:
+  metric: '{__name__=~"node_network_(.*)_errs"}'
+  function: "avg"
+  group_by: "__name__"
+  layout:
+    title: "Network Errors / sec / host"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_network_receive_errs": "RX"
+        "node_network_transmit_errs": "TX"
+
+system_load_over_time:
+  metric: '{__name__=~"collectd_load_.+"}'
+  function: "avg"
+  group_by: "__name__"
+  layout:
+    title: "System Load Over Time"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "collectd_load_0": "Small"
+        "collectd_load_1": "Medium"
+        "collectd_load_2": "Large"
+
+disk_bytes_per_second_per_node:
+  metric: '{__name__=~"node_disk_bytes_.+"}'
+  function: "avg"
+  group_by: "__name__"
+  layout:
+    title: "Disk Bytes / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_disk_bytes_read": "RX"
+        "node_disk_bytes_written": "TX"
+
 redis_ops_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"

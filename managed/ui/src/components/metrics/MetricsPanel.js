@@ -18,8 +18,9 @@ export default class MetricsPanel extends Component {
 
       // TODO: send this data from backend.
       metric.layout["autosize"] = false;
-      metric.layout["width"] = 650;
-      metric.layout["height"] = 500;
+      metric.layout["width"] = 490;
+      metric.layout["height"] = 400;
+      metric.layout["showlegend"] = false;
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
