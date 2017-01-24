@@ -8,7 +8,7 @@ class Metrics extends Component {
   render() {
     return (
       <div>
-        <CustomerMetricsPanel />
+        <CustomerMetricsPanel origin={"customer"}/>
       </div>
     );
   }
