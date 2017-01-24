@@ -10,6 +10,7 @@
 #include "yb/sql/exec/exec_context.h"
 #include "yb/sql/exec/eval_expr.h"
 #include "yb/sql/ptree/pt_create_table.h"
+#include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_select.h"
 #include "yb/sql/ptree/pt_insert.h"
 #include "yb/sql/ptree/pt_delete.h"
@@ -62,6 +63,8 @@ class Executor {
 
   // Creates table.
   CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
+
+  CHECKED_STATUS ExecPTNode(const PTDropStmt *tnode);
 
   // Select statement.
   CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);

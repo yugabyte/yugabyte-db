@@ -160,7 +160,7 @@ class PTCreateTable : public TreeNode {
                 const PTQualifiedName::SharedPtr& name,
                 const PTListNode::SharedPtr& elements,
                 bool create_if_not_exists);
-  ~PTCreateTable();
+  virtual ~PTCreateTable();
 
   // Node type.
   virtual TreeNodeOpcode opcode() const OVERRIDE {

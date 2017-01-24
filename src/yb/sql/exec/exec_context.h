@@ -34,6 +34,10 @@ class ExecContext : public ProcessContext {
     return sql_env_->NewTableCreator();
   }
 
+  CHECKED_STATUS DeleteTable(const string& name) {
+    return sql_env_->DeleteTable(name);
+  }
+
   // Apply YBClient write operator.
   CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op,
                             const TreeNode *tnode);

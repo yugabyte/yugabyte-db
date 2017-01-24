@@ -31,7 +31,12 @@ YBTableCreator *SqlEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
+CHECKED_STATUS SqlEnv::DeleteTable(const string& name) {
+  return client_->DeleteTable(name);
+}
+
+
+  CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
   // Clear the previous result.
   read_op_ = nullptr;
 

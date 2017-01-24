@@ -33,7 +33,7 @@ PTCreateTable::~PTCreateTable() {
 }
 
 CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
-  // DDL statement is not allowed to be retry.
+  // DDL statement is not allowed to be retried.
   if (sem_context->retry_count() > 0) {
     return sem_context->Error(loc(), ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED);
   }

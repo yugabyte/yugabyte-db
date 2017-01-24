@@ -258,7 +258,7 @@ cdef class Client:
         """
         check_status(self.cp.DeleteTable(tobytes(table_name)))
 
-    def table_exists(self, table_name):
+    def drop_if_exists(self, table_name):
         """Return True if the indicated table exists in the Kudu cluster.
 
         Parameters

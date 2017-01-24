@@ -55,7 +55,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   // Create the table 1.
   EXEC_VALID_STMT(CreateStmt(table1));
 
-    // Create the table 2. Use "id" as primary key.
+  // Create the table 2. Use "id" as primary key.
   EXEC_VALID_STMT(CreateStmt(table2));
 
   // Create the table 3. Use "name" as primary key.
@@ -117,6 +117,8 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table10));
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table11));
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table12));
+
+  EXEC_VALID_STMT("DROP TABLE human_resource1");
 
 }
 

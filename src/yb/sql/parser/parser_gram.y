@@ -66,6 +66,7 @@
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/parser/parser_inactive_nodes.h"
 #include "yb/sql/ptree/pt_create_table.h"
+#include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
 #include "yb/sql/ptree/pt_expr.h"
@@ -164,6 +165,9 @@ using namespace yb::sql;
                           columnDef ColConstraint ColConstraintElem
                           ConstraintElem ConstraintAttr
 
+                          // Drop.
+                          DropStmt
+
                           // Select.
                           distinct_clause opt_all_clause sortby
                           group_by_item for_locking_clause opt_for_locking_clause
@@ -225,14 +229,17 @@ using namespace yb::sql;
 %type <PAssign>           set_clause single_set_clause
 %type <PAssignListNode>   set_clause_list
 
+%type <objtype>           drop_type cql_drop_type sql_drop_type
+
 // Name nodes.
 %type <PName>             indirection_el columnElem
 
-%type <PQualifiedNameListNode> insert_column_list
+%type <PQualifiedNameListNode> insert_column_list any_name_list
 
 %type <PQualifiedName>    qualified_name indirection relation_expr
                           insert_target insert_column_item opt_indirection
-                          set_target
+                          set_target any_name opt_opfamily opclass_purpose
+                          opt_collate opt_class
 
 %type <PString>           // Identifier name.
                           ColId
@@ -287,7 +294,7 @@ using namespace yb::sql;
 
 %type <jtype>             join_type
 %type <dbehavior>         opt_drop_behavior
-%type <objtype>           drop_type comment_type security_label_type
+%type <objtype>           comment_type security_label_type
 %type <fun_param_mode>    arg_class
 // This should be of type <oncommit>.
 %type <PInt64>            OnCommitOption
@@ -309,7 +316,7 @@ using namespace yb::sql;
                           CreateAssertStmt CreateTransformStmt CreateTrigStmt CreateEventTrigStmt
                           CreateUserStmt CreateUserMappingStmt CreateRoleStmt CreatePolicyStmt
                           CreatedbStmt DeclareCursorStmt DefineStmt DiscardStmt DoStmt
-                          DropOpClassStmt DropOpFamilyStmt DropPLangStmt DropStmt
+                          DropOpClassStmt DropOpFamilyStmt DropPLangStmt
                           DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
@@ -396,8 +403,8 @@ using namespace yb::sql;
                           alter_extension_opt_list OptRoleList AlterOptRoleList OptSchemaEltList
                           TriggerEvents TriggerOneEvent event_trigger_when_list
                           event_trigger_value_list func_name handler_name qual_Op qual_all_Op
-                          subquery_Op opt_class opt_inline_handler opt_validator validator_clause
-                          opt_collate RowSecurityDefaultToRole RowSecurityOptionalToRole
+                          subquery_Op opt_inline_handler opt_validator validator_clause
+                          RowSecurityDefaultToRole RowSecurityOptionalToRole
                           grantee_list privileges privilege_list function_with_argtypes_list
                           OptInherit definition
                           OptTypedTableElementList TypedTableElementList reloptions opt_reloptions
@@ -407,12 +414,12 @@ using namespace yb::sql;
                           old_aggr_definition old_aggr_list oper_argtypes RuleActionList
                           RuleActionMulti opt_column_list opt_name_list
                           index_params name_list role_list
-                          opt_array_bounds qualified_name_list any_name any_name_list
+                          opt_array_bounds qualified_name_list
                           type_name_list any_operator expr_list attrs
                           multiple_set_clause def_list
                           reloption_list TriggerFuncArgs
-                          opclass_item_list opclass_drop_list opclass_purpose
-                          opt_opfamily transaction_mode_list_or_empty OptTableFuncElementList
+                          opclass_item_list opclass_drop_list
+                          transaction_mode_list_or_empty OptTableFuncElementList
                           TableFuncElementList opt_type_modifiers prep_type_clause
                           execute_param_clause opt_enum_val_list
                           enum_val_list table_func_column_list create_generic_options
@@ -659,6 +666,9 @@ stmt:
     $$ = nullptr;
   }
   | CreateStmt {
+    $$ = $1;
+  }
+  | DropStmt {
     $$ = $1;
   }
   | SelectStmt {
@@ -1174,6 +1184,103 @@ TypedTableElement:
 
 columnOptions:
   ColId WITH OPTIONS ColQualList {
+  }
+;
+
+/*****************************************************************************
+ *
+ *    QUERY:
+ *
+ *    DROP itemtype [ IF EXISTS ] itemname [, itemname ...]
+ *           [ RESTRICT | CASCADE ]
+ *
+ *****************************************************************************/
+
+DropStmt:
+  DROP drop_type IF_P EXISTS any_name_list opt_drop_behavior {
+    $$ = MAKE_NODE(@1, PTDropStmt, $5, true);
+  }
+  | DROP drop_type any_name_list opt_drop_behavior {
+    $$ = MAKE_NODE(@1, PTDropStmt, $3, false);
+  }
+  | DROP TYPE_P type_name_list opt_drop_behavior {
+    PARSER_CQL_INVALID_MSG(@2, "DROP TYPE statement not supported");
+  }
+  | DROP TYPE_P IF_P EXISTS type_name_list opt_drop_behavior {
+    PARSER_CQL_INVALID_MSG(@2, "DROP TYPE IF EXISTS statement not supported");
+  }
+  | DROP DOMAIN_P type_name_list opt_drop_behavior {
+    PARSER_CQL_INVALID_MSG(@2, "DROP DOMAIN statement not supported");
+  }
+  | DROP DOMAIN_P IF_P EXISTS type_name_list opt_drop_behavior {
+    PARSER_CQL_INVALID_MSG(@2, "DROP DOMAIN IF EXISTS statement not supported");
+  }
+  | DROP INDEX CONCURRENTLY any_name_list opt_drop_behavior {
+    PARSER_CQL_INVALID_MSG(@2, "DROP INDEX CONCURRENTLY statement not supported");
+  }
+  | DROP INDEX CONCURRENTLY IF_P EXISTS any_name_list opt_drop_behavior {
+    PARSER_CQL_INVALID_MSG(@2, "DROP INDEX CONCURRENTLY IF EXISTS statement not supported");
+  }
+;
+
+drop_type:
+  cql_drop_type {
+  }
+  | sql_drop_type {
+    PARSER_CQL_INVALID(@1);
+  }
+;
+
+cql_drop_type:
+  TABLE                           { $$ = OBJECT_TABLE; }
+;
+
+sql_drop_type:
+  SEQUENCE                        { $$ = OBJECT_SEQUENCE; }
+  | VIEW                          { $$ = OBJECT_VIEW; }
+  | MATERIALIZED VIEW             { $$ = OBJECT_MATVIEW; }
+  | INDEX                         { $$ = OBJECT_INDEX; }
+  | FOREIGN TABLE                 { $$ = OBJECT_FOREIGN_TABLE; }
+  | EVENT TRIGGER                 { $$ = OBJECT_EVENT_TRIGGER; }
+  | COLLATION                     { $$ = OBJECT_COLLATION; }
+  | CONVERSION_P                  { $$ = OBJECT_CONVERSION; }
+  | SCHEMA                        { $$ = OBJECT_SCHEMA; }
+  | EXTENSION                     { $$ = OBJECT_EXTENSION; }
+  | TEXT_P SEARCH PARSER          { $$ = OBJECT_TSPARSER; }
+  | TEXT_P SEARCH DICTIONARY      { $$ = OBJECT_TSDICTIONARY; }
+  | TEXT_P SEARCH TEMPLATE        { $$ = OBJECT_TSTEMPLATE; }
+  | TEXT_P SEARCH CONFIGURATION   { $$ = OBJECT_TSCONFIGURATION; }
+;
+
+any_name_list:
+  any_name {
+    $$ = MAKE_NODE(@1, PTQualifiedNameListNode, $1);
+  }
+  | any_name_list ',' any_name {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+any_name:
+  ColId {
+    $$ = MAKE_NODE(@1, PTQualifiedName, $1);
+  }
+  | ColId attrs {
+  }
+;
+
+attrs:
+  '.' attr_name {
+  }
+  | attrs '.' attr_name {
+  }
+;
+
+type_name_list:
+  Typename {
+  }
+  | type_name_list ',' Typename {
   }
 ;
 
@@ -4314,7 +4421,6 @@ inactive_stmt:
   | DropPolicyStmt
   | DropPLangStmt
   | DropRuleStmt
-  | DropStmt
   | DropTableSpaceStmt
   | DropTransformStmt
   | DropTrigStmt
@@ -4996,10 +5102,10 @@ alter_column_default:
 ;
 
 opt_drop_behavior:
-  CASCADE             { $$ = DROP_CASCADE; }
-  | RESTRICT          { $$ = DROP_RESTRICT; }
+  CASCADE             { $$ = DROP_CASCADE; PARSER_CQL_INVALID(@1); }
+  | RESTRICT          { $$ = DROP_RESTRICT; PARSER_CQL_INVALID(@1); }
   | /* EMPTY */       { $$ = DROP_RESTRICT; /* default */ }
-    ;
+;
 
 opt_collate_clause:
   COLLATE any_name {
@@ -6360,80 +6466,6 @@ DropOwnedStmt:
 
 ReassignOwnedStmt:
   REASSIGN OWNED BY role_list TO RoleSpec {
-  }
-;
-
-/*****************************************************************************
- *
- *    QUERY:
- *
- *    DROP itemtype [ IF EXISTS ] itemname [, itemname ...]
- *           [ RESTRICT | CASCADE ]
- *
- *****************************************************************************/
-
-DropStmt:
-  DROP drop_type IF_P EXISTS any_name_list opt_drop_behavior {
-  }
-  | DROP drop_type any_name_list opt_drop_behavior {
-  }
-  | DROP TYPE_P type_name_list opt_drop_behavior {
-  }
-  | DROP TYPE_P IF_P EXISTS type_name_list opt_drop_behavior {
-  }
-  | DROP DOMAIN_P type_name_list opt_drop_behavior {
-  }
-  | DROP DOMAIN_P IF_P EXISTS type_name_list opt_drop_behavior {
-  }
-  | DROP INDEX CONCURRENTLY any_name_list opt_drop_behavior {
-  }
-  | DROP INDEX CONCURRENTLY IF_P EXISTS any_name_list opt_drop_behavior {
-  }
-;
-
-drop_type:
-  TABLE                           { $$ = OBJECT_TABLE; }
-  | SEQUENCE                      { $$ = OBJECT_SEQUENCE; }
-  | VIEW                          { $$ = OBJECT_VIEW; }
-  | MATERIALIZED VIEW             { $$ = OBJECT_MATVIEW; }
-  | INDEX                         { $$ = OBJECT_INDEX; }
-  | FOREIGN TABLE                 { $$ = OBJECT_FOREIGN_TABLE; }
-  | EVENT TRIGGER                 { $$ = OBJECT_EVENT_TRIGGER; }
-  | COLLATION                     { $$ = OBJECT_COLLATION; }
-  | CONVERSION_P                  { $$ = OBJECT_CONVERSION; }
-  | SCHEMA                        { $$ = OBJECT_SCHEMA; }
-  | EXTENSION                     { $$ = OBJECT_EXTENSION; }
-  | TEXT_P SEARCH PARSER          { $$ = OBJECT_TSPARSER; }
-  | TEXT_P SEARCH DICTIONARY      { $$ = OBJECT_TSDICTIONARY; }
-  | TEXT_P SEARCH TEMPLATE        { $$ = OBJECT_TSTEMPLATE; }
-  | TEXT_P SEARCH CONFIGURATION   { $$ = OBJECT_TSCONFIGURATION; }
-;
-
-any_name_list:
-  any_name {
-  }
-  | any_name_list ',' any_name {
-  }
-;
-
-any_name:
-  ColId {
-  }
-  | ColId attrs {
-  }
-;
-
-attrs:
-  '.' attr_name {
-  }
-  | attrs '.' attr_name {
-  }
-;
-
-type_name_list:
-  Typename {
-  }
-  | type_name_list ',' Typename {
   }
 ;
 

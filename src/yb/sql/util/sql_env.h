@@ -31,6 +31,8 @@ class SqlEnv {
 
   virtual client::YBTableCreator *NewTableCreator();
 
+  virtual CHECKED_STATUS DeleteTable(const string& name);
+
   virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op);
 
   virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op);

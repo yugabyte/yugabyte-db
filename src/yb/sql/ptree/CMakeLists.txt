@@ -6,6 +6,7 @@ add_library(ybsql_ptree
             pt_type.cc
             pt_name.cc
             pt_create_table.cc
+            pt_drop.cc
             pt_dml.cc
             pt_select.cc
             pt_insert.cc

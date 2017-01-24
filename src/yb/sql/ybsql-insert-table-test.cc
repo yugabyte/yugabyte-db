@@ -22,7 +22,7 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
 
   // Create the table 1.
   EXEC_VALID_STMT(
-    "CREATE TABLE human_resource(id int, name varchar, salary int, primary key(id, name));");
+      "CREATE TABLE human_resource(id int, name varchar, salary int, primary key(id, name));");
 
   // INSERT: Valid statement with column list.
   EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100);");
