@@ -4,7 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { Accordion, Panel, Col } from 'react-bootstrap';
 
 import { MetricsPanel } from '.'
-import './stylesheets/GraphPanel.css'
+import './stylesheets/GraphPanel.scss'
 
 const panelTypes = {
   redis:   { title: "Redis Stats",
@@ -12,7 +12,8 @@ const panelTypes = {
   tserver: { title: "TServer Stats",
              metrics: ["tserver_ops_latency", "tserver_rpcs_per_sec"]},
   server:  { title: "YB Server Stats",
-             metrics: ["cpu_usage", "memory_usage", "disk_iops", "network_bytes"]}
+             metrics: ["cpu_usage", "memory_usage", "disk_iops", "network_bytes", "system_load_over_time",
+                       "network_packets", "network_errors", "disk_bytes_per_second_per_node"]}
 }
 
 export default class GraphPanel extends Component {
@@ -58,17 +59,15 @@ export default class GraphPanel extends Component {
         var metricsPanels = Object.keys(panelMetrics).map(function(key) {
           if (panelTypes[type].metrics.includes(key)) {
             return (
-              <Col lg={5} key={key}>
-                <MetricsPanel metricKey={key} metric={panelMetrics[key]} />
+              <Col lg={4} key={key} >
+                <MetricsPanel metricKey={key} metric={panelMetrics[key]} className={"metrics-panel-container"}/>
               </Col>
             )
           }
           return null
         }).filter(Boolean);
-
         if (metricsPanels.length > 0) {
           const panelHeader = <h3>{panelTypes[panelType].title}</h3>
-
           return (
             <Panel header={panelHeader} key={panelType} className="metrics-container">
               {metricsPanels}
