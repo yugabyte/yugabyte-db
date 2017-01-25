@@ -10,6 +10,7 @@ services:
       - ./src/main/resources/db_seed.yml:/opt/docker/conf/db_seed.yml
       - /opt/docker/public/
       - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /usr/bin/docker:/usr/local/bin/docker
     expose:
       - 9000
     ports:
@@ -18,6 +19,8 @@ services:
       - JVM_OPTS=-XX:PermSize=1024m -XX:MaxPermSize=1024m
     depends_on:
       - postgres
+    volumes_from:
+      - prometheus
 
   postgres:
     image: postgres:latest
@@ -41,6 +44,37 @@ services:
         - "80:80"
       volumes_from:
         - yugaware
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./docker/prometheus/:/etc/prometheus
+      - /etc/prometheus/tgroups
+    command:
+      - '-config.file=/etc/prometheus/prometheus.yml'
+      - '-storage.local.path=./docker/prometheus'
+      - '-alertmanager.url=http://alertmanager:9093'
+    expose:
+      - 9090
+    ports:
+      - 9090:9090
+
+  node-exporter:
+    image: prom/node-exporter
+    expose:
+      - 9100
+    ports:
+      - 9100:9100
+
+  alertmanager:
+    image: prom/alertmanager
+    ports:
+      - 9093:9093
+    volumes:
+      - ./docker/alertmanager/:/etc/alertmanager/
+    command:
+      - '-config.file=/etc/alertmanager/alertmanager.yml'
+      - '-storage.path=./docker/alertmanager'
 networks:
   default:
     external:
