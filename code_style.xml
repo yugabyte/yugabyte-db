@@ -20,12 +20,12 @@
     <option name="INDENT_INSIDE_CODE_BLOCK" value="2" />
     <option name="KEEP_STRUCTURES_IN_ONE_LINE" value="true" />
     <option name="FUNCTION_PARAMETERS_WRAP" value="5" />
-    <option name="FUNCTION_PARAMETERS_ALIGN_MULTILINE" value="false" />
+    <option name="FUNCTION_PARAMETERS_ALIGN_MULTILINE" value="true" />
     <option name="FUNCTION_CALL_ARGUMENTS_WRAP" value="5" />
-    <option name="FUNCTION_CALL_ARGUMENTS_ALIGN_MULTILINE" value="false" />
+    <option name="FUNCTION_CALL_ARGUMENTS_ALIGN_MULTILINE" value="true" />
     <option name="TEMPLATE_CALL_ARGUMENTS_WRAP" value="5" />
-    <option name="CLASS_CONSTRUCTOR_INIT_LIST_ALIGN_MULTILINE" value="false" />
-    <option name="SUPERCLASS_LIST_ALIGN_MULTILINE" value="false" />
+    <option name="CLASS_CONSTRUCTOR_INIT_LIST_ALIGN_MULTILINE" value="true" />
+    <option name="SUPERCLASS_LIST_ALIGN_MULTILINE" value="true" />
     <option name="ALIGN_INIT_LIST_IN_COLUMNS" value="false" />
     <option name="SPACE_BEFORE_SUPERCLASS_COLON" value="false" />
   </Objective-C>
