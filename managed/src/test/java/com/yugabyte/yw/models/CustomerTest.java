@@ -86,6 +86,18 @@ public class CustomerTest extends FakeDBApplication {
     Customer authCust = Customer.authWithToken(authToken);
     assertEquals(authCust.uuid, c.uuid);
   }
+  @Test
+  public void testAuthTokenExpiry() {
+    Customer c1 = Customer.create("C1", "foo@foo.com", "password");
+    c1.save();
+    assertNotNull(c1.uuid);
+    String authTokenOld = c1.createAuthToken();
+    assertNotNull(authTokenOld);
+    assertNotNull(c1.getAuthTokenIssueDate());
+    Customer c2 = Customer.get(c1.uuid);
+    String authTokenNew = c2.createAuthToken();
+    assertEquals(authTokenNew, authTokenOld);
+  }
 
   @Test
   public void testDeleteAuthToken() {

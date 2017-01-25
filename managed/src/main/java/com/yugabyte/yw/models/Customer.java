@@ -14,6 +14,7 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.Id;
 
+import org.joda.time.DateTime;
 import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -166,9 +167,12 @@ public class Customer extends Model {
    * @return authToken
    */
   public String createAuthToken() {
-    authToken = UUID.randomUUID().toString();
-    authTokenIssueDate = new Date();
-    save();
+    Date tokenExpiryDate = new DateTime().minusDays(1).toDate();
+    if (authTokenIssueDate == null || authTokenIssueDate.before(tokenExpiryDate)) {
+      authToken = UUID.randomUUID().toString();
+      authTokenIssueDate = new Date();
+      save();
+    }
     return authToken;
   }
 

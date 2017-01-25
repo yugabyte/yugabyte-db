@@ -121,4 +121,21 @@ public class SessionControllerTest extends FakeDBApplication {
     result = route(fakeRequest("GET", "/api/logout").header("X-AUTH-TOKEN", authToken));
     assertEquals(OK, result.status());
   }
+
+  @Test
+  public void testAuthTokenExpiry() {
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("password", "password");
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    JsonNode json = Json.parse(contentAsString(result));
+    String authToken1 = json.get("authToken").asText();
+    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("password", "password");
+    result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    json = Json.parse(contentAsString(result));
+    String authToken2 = json.get("authToken").asText();
+    assertEquals(authToken1, authToken2);
+  }
+
 }
