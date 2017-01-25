@@ -69,6 +69,8 @@ class YB_EXPORT YBOperation {
   };
   virtual ~YBOperation();
 
+  Status SetKey(const std::string& string_key);
+
   const YBTable* table() const { return table_.get(); }
 
   // See YBPartialRow API for field setters, etc.

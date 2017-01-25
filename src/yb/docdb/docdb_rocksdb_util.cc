@@ -13,6 +13,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
+#include "yb/server/hybrid_clock.h"
 
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
@@ -42,6 +43,35 @@ using strings::Substitute;
 
 namespace yb {
 namespace docdb {
+
+Status SeekToValidKvAtTs(
+    rocksdb::Iterator *iter,
+    const rocksdb::Slice &search_key,
+    Timestamp timestamp,
+    SubDocKey *found_key,
+    Value *found_value,
+    bool *is_found) {
+  *is_found = true;
+  ROCKSDB_SEEK(iter, search_key);
+  if (!iter->Valid()) {
+    *is_found = false;
+    return Status::OK();
+  }
+  rocksdb::Slice value = iter->value();
+  RETURN_NOT_OK(found_key->FullyDecodeFrom(iter->key()));
+  MonoDelta ttl;
+  RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
+  if (!ttl.Equals(Value::kMaxTtl)) {
+    const Timestamp expiry =
+        server::HybridClock::AddPhysicalTimeToTimestamp(found_key->timestamp(), ttl);
+    if (timestamp.CompareTo(expiry) > 0) {
+      *is_found = false;
+      return Status::OK();
+    }
+  }
+  RETURN_NOT_OK(found_value->Decode(value));
+  return Status::OK();
+}
 
 void PerformRocksDBSeek(
     rocksdb::Iterator *iter,

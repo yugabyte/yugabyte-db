@@ -28,9 +28,9 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   yb::RedisWriteRequestPB redis_write_operation_pb;
   auto set_request_pb = redis_write_operation_pb.mutable_set_request();
   set_request_pb->set_ttl(2000);
-  set_request_pb->mutable_key_value()->set_key("abc");
-  set_request_pb->mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(redis_write_operation_pb);
+  redis_write_operation_pb.mutable_key_value()->set_key("abc");
+  redis_write_operation_pb.mutable_key_value()->add_value("xyz");
+  RedisWriteOperation redis_write_operation(redis_write_operation_pb, Timestamp::kMax);
   DocWriteBatch doc_write_batch(db);
   CHECK_OK(redis_write_operation.Apply(&doc_write_batch, db, Timestamp()));
 

@@ -27,6 +27,7 @@
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ysql_protocol.pb.h"
 #include "yb/common/ysql_rowblock.h"
+#include "yb/redisserver/redis_constants.h"
 
 namespace yb {
 namespace client {
@@ -51,6 +52,10 @@ YBOperation::YBOperation(const shared_ptr<YBTable>& table)
 }
 
 YBOperation::~YBOperation() {}
+
+Status YBOperation::SetKey(const string& string_key) {
+  return mutable_row()->SetBinaryCopy(kRedisKeyColumnName, string_key);
+}
 
 int64_t YBOperation::SizeInBuffer() const {
   const Schema* schema = row_.schema();
@@ -108,7 +113,7 @@ YBRedisWriteOp::YBRedisWriteOp(const shared_ptr<YBTable>& table)
 YBRedisWriteOp::~YBRedisWriteOp() {}
 
 std::string YBRedisWriteOp::ToString() const {
-  return "REDIS_WRITE " + redis_write_request_->set_request().key_value().key();
+  return "REDIS_WRITE " + redis_write_request_->key_value().key();
 }
 
 RedisResponsePB* YBRedisWriteOp::mutable_response() {
@@ -127,7 +132,7 @@ YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
 YBRedisReadOp::~YBRedisReadOp() {}
 
 std::string YBRedisReadOp::ToString() const {
-  return "REDIS_READ " + redis_read_request_->get_request().key_value().key();
+  return "REDIS_READ " + redis_read_request_->key_value().key();
 }
 
 const RedisResponsePB& YBRedisReadOp::response() const {

@@ -34,7 +34,7 @@ set(REDISSERVER_SRCS
   redis_server.cc
   redis_service.cc
   redis_server_options.cc
-)
+  redis_parser.cc)
 
 add_library(yb-redis ${REDISSERVER_SRCS})
 target_link_libraries(yb-redis

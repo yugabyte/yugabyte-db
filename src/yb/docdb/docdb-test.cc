@@ -69,7 +69,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) 
       )#";
 
   static constexpr const char* const kPredefinedDocumentDebugDumpStr =
-      "StartDocument(DocKey([], [\"mydockey\", 123456]))\n"
+      "StartSubDocument(SubDocKey(DocKey([], [\"mydockey\", 123456]), [TS(2000)]))\n"
       "StartObject\n"
       "VisitKey(\"subkey_a\")\n"
       "VisitValue(\"value_a\")\n"
@@ -79,7 +79,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; TS(3500)]) 
       "VisitValue(\"value_bc_prime\")\n"
       "EndObject\n"
       "EndObject\n"
-      "EndDocument\n";
+      "EndSubDocument\n";
 
   static KeyBytes kEncodedDocKey1;
   static KeyBytes kEncodedDocKey2;
@@ -165,7 +165,7 @@ void DocDBTest::CheckExpectedLatestDBState() {
 
   SubDocument subdoc;
   bool doc_found = false;
-  ASSERT_OK(GetDocument(rocksdb(), encoded_doc_key, &subdoc, &doc_found));
+  ASSERT_OK(GetSubDocument(rocksdb(), encoded_doc_key, &subdoc, &doc_found));
   ASSERT_TRUE(doc_found);
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
@@ -463,10 +463,10 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; TS(7000)]) 
         )#");
 
     ASSERT_STR_EQ_VERBOSE_TRIMMED(
-        "StartDocument(DocKey([], [\"mydockey\", 123456]))\n"
+        "StartSubDocument(SubDocKey(DocKey([], [\"mydockey\", 123456]), [TS(8000)]))\n"
         "StartObject\n"
         "EndObject\n"
-        "EndDocument\n", DebugWalkDocument(encoded_doc_key));
+        "EndSubDocument\n", DebugWalkDocument(encoded_doc_key));
   }
 
   // Reset our collection of snapshots now that we've performed one more operation.
@@ -595,9 +595,8 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   // should still be in the write batch's cache, so we should not perform a seek to overwrite it.
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40), PrimitiveValue(30000), Timestamp(3000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
-
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50),
-      PrimitiveValue("row2_e"), Timestamp(2000)));
+  ASSERT_OK(
+      dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e"), Timestamp(2000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50),
@@ -706,6 +705,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [50; TS(2000)]) -> "row2_e"
 TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
   DocWriteBatch dwb(rocksdb());
 
+
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30),
                              PrimitiveValue("row1_c"),
                              Timestamp(1000)));
@@ -806,7 +806,7 @@ TEST_F(DocDBTest, BloomFilterTest) {
 
   auto get_doc = [this, &doc_from_rocksdb, &subdoc_found_in_rocksdb](const DocKey& key) {
     ASSERT_OK(
-        GetDocument(this->rocksdb(), key.Encode(), &doc_from_rocksdb, &subdoc_found_in_rocksdb));
+        GetSubDocument(this->rocksdb(), key.Encode(), &doc_from_rocksdb, &subdoc_found_in_rocksdb));
   };
 
   // Bloom usage starts at the default 0.

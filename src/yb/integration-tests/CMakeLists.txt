@@ -40,7 +40,8 @@ target_link_libraries(integration-tests
   yb_client
   yb_client_test_util
   yb_fs
-  yb_test_util)
+  yb_test_util
+  yb-redis)
 add_dependencies(integration-tests
   yb-tserver
   yb-master)

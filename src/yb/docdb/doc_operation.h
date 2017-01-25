@@ -50,7 +50,8 @@ class KuduWriteOperation: public DocOperation {
 
 class RedisWriteOperation: public DocOperation {
  public:
-  explicit RedisWriteOperation(yb::RedisWriteRequestPB request) : request_(request), response_() {}
+  RedisWriteOperation(yb::RedisWriteRequestPB request, Timestamp read_timestamp)
+      : request_(request), response_(), read_timestamp_(read_timestamp) {}
 
   bool RequireReadSnapshot() const override { return false; }
 
@@ -62,8 +63,21 @@ class RedisWriteOperation: public DocOperation {
   const RedisResponsePB &response();
 
  private:
+  Status ApplySet(DocWriteBatch *doc_write_batch);
+  Status ApplyGetSet(DocWriteBatch *doc_write_batch);
+  Status ApplyAppend(DocWriteBatch *doc_write_batch);
+  Status ApplyDel(DocWriteBatch *doc_write_batch);
+  Status ApplySetRange(DocWriteBatch *doc_write_batch);
+  Status ApplyIncr(DocWriteBatch *doc_write_batch, int64_t incr = 1);
+  Status ApplyPush(DocWriteBatch *doc_write_batch);
+  Status ApplyInsert(DocWriteBatch *doc_write_batch);
+  Status ApplyPop(DocWriteBatch *doc_write_batch);
+  Status ApplyAdd(DocWriteBatch *doc_write_batch);
+  Status ApplyRemove(DocWriteBatch *doc_write_batch);
+
   RedisWriteRequestPB request_;
   RedisResponsePB response_;
+  Timestamp read_timestamp_;
 };
 
 class RedisReadOperation {
@@ -75,6 +89,12 @@ class RedisReadOperation {
   const RedisResponsePB &response();
 
  private:
+  int ApplyIndex(int32_t index, const int32_t len);
+  Status ExecuteGet(rocksdb::DB *rocksdb, Timestamp timestamp);
+  Status ExecuteStrLen(rocksdb::DB *rocksdb, Timestamp timestamp);
+  Status ExecuteExists(rocksdb::DB *rocksdb, Timestamp timestamp);
+  Status ExecuteGetRange(rocksdb::DB *rocksdb, Timestamp timestamp);
+
   RedisReadRequestPB request_;
   RedisResponsePB response_;
 };
@@ -132,4 +152,4 @@ class YSQLReadOperation {
 }  // namespace docdb
 }  // namespace yb
 
-#endif  // YB_DOCDB_DOC_OPERATION_H_
+#endif // YB_DOCDB_DOC_OPERATION_H_

@@ -209,7 +209,7 @@ DebugDocVisitor::~DebugDocVisitor() {
     return Status::OK(); \
   }
 
-Status DebugDocVisitor::StartDocument(const DocKey& key) {
+Status DebugDocVisitor::StartSubDocument(const SubDocKey &key) {
   out_ << __FUNCTION__ << "(" << key << ")" << std::endl;
   return Status::OK();
 }
@@ -224,7 +224,7 @@ Status DebugDocVisitor::VisitValue(const PrimitiveValue& value) {
   return Status::OK();
 }
 
-SIMPLE_DEBUG_DOC_VISITOR_METHOD(EndDocument)
+SIMPLE_DEBUG_DOC_VISITOR_METHOD(EndSubDocument)
 SIMPLE_DEBUG_DOC_VISITOR_METHOD(StartObject)
 SIMPLE_DEBUG_DOC_VISITOR_METHOD(EndObject)
 SIMPLE_DEBUG_DOC_VISITOR_METHOD(StartArray)
@@ -341,7 +341,7 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEqVerboseTrimmed(const string &
 
 string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
   DebugDocVisitor doc_visitor;
-  CHECK_OK(ScanDocument(rocksdb(), encoded_doc_key, &doc_visitor));
+  CHECK_OK(ScanSubDocument(rocksdb(), encoded_doc_key, &doc_visitor));
   return doc_visitor.ToString();
 }
 
@@ -475,7 +475,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     }
     SubDocument doc_from_rocksdb;
     bool doc_found_in_rocksdb = false;
-    ASSERT_OK(GetDocument(rocksdb(), encoded_doc_key, &doc_from_rocksdb, &doc_found_in_rocksdb));
+    ASSERT_OK(GetSubDocument(rocksdb(), encoded_doc_key, &doc_from_rocksdb, &doc_found_in_rocksdb));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.

@@ -10,6 +10,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/value.h"
 #include "yb/util/status.h"
 
 namespace yb {

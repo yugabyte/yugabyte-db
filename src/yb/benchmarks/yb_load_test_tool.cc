@@ -11,7 +11,7 @@
 #include "yb/benchmarks/tpch/line_item_tsv_importer.h"
 #include "yb/benchmarks/tpch/rpc_line_item_dao.h"
 #include "yb/client/client.h"
-#include "yb/client/redis_helpers.h"
+#include "yb/redisserver/redis_parser.h"
 #include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"

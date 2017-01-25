@@ -289,7 +289,7 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 // @param higher_level_key
 //     The SubDocKey corresponding to the root of the subdocument tree to scan. This is the expected
 //     to be the parsed version of the key/value pair the RocksDB iterator is currently positioned
-//     at.
+//     at. This could be a primitive value or an object.
 //
 // @param rocksdb_iter
 //     A RocksDB iterator that is expected to be positioned at the "root" key/value pair of the
@@ -318,7 +318,7 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
   Value top_level_value;
   RETURN_NOT_OK(top_level_value.Decode(rocksdb_iter->value()));
 
-  if (top_level_value.primitive_value().value_type() == ValueType::kTombstone) {
+  if (top_level_value.value_type() == ValueType::kTombstone) {
     // TODO(mbautin): If we allow optional init markers here, we still need to scan deeper levels
     // and interpret values with timestamps >= lowest_ts as values in a map that exists. As of
     // 11/11/2016 initialization markers (i.e. ValueType::kObject) are still required at the top of
@@ -331,7 +331,7 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
     return Status::OK();
   }
 
-  if (top_level_value.primitive_value().value_type() == ValueType::kObject) {
+  if (top_level_value.value_type() == ValueType::kObject) {
     rocksdb_iter->Next();
     RETURN_NOT_OK(visitor->StartObject());
 
@@ -351,6 +351,7 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
 
 // @param higher_level_key
 //     The top-level key of the document we are scanning.
+//     Precondition: This key points to an object, not a PrimitiveValue: has subkeys under it.
 //
 // @param rocksdb_iter
 //     A RocksDB iterator positioned at the first key/value to scan one level below the top of the
@@ -406,13 +407,6 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
     }
     DOCDB_DEBUG_LOG("subdoc_key=$0", subdoc_key.ToString());
 
-    if (subdoc_key.num_subkeys() == higher_level_key.num_subkeys() + 2) {
-      // We must have exhausted all the top-level subkeys of the document, and reached the section
-      // containing sub-sub-keys.
-      // TODO: what happens if we enable optional object init markers?
-      break;
-    }
-
     if (subdoc_key.num_subkeys() != higher_level_key.num_subkeys() + 1) {
       static const char* kErrorMsgPrefix =
           "A subdocument key must be nested exactly one level under the parent subdocument";
@@ -438,33 +432,29 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 
 }  // anonymous namespace
 
-yb::Status ScanDocument(rocksdb::DB* rocksdb,
-                        const KeyBytes& document_key,
-                        DocVisitor* visitor,
-                        Timestamp scan_ts) {
+yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
+    const KeyBytes &subdocument_key,
+    DocVisitor *visitor,
+    Timestamp scan_ts) {
   auto rocksdb_iter = CreateRocksDBIterator(rocksdb);
 
   // TODO: Use a SubDocKey API to build the proper seek key without assuming anything about the
   //       internal structure of SubDocKey here.
-  KeyBytes seek_key(document_key);
+  KeyBytes seek_key(subdocument_key);
   seek_key.AppendValueType(ValueType::kTimestamp);
   seek_key.AppendTimestamp(scan_ts);
 
-  ROCKSDB_SEEK(rocksdb_iter.get(), seek_key.AsSlice());
-  if (!rocksdb_iter->Valid() || !document_key.IsPrefixOf(rocksdb_iter->key())) {
-    // Suppose we seek to (<document_key>, <scan_timestamp>). We will most likely see something
-    // like (<document_key>, <timestamp_lower_than_scan_timestamp>), so we only only expect the
-    // original document_key to be the prefix of the actual RocksDB key we see, but we don't expect
-    // the actual key to exactly match seek_key.
-    return Status::OK();
-  }
+  SubDocKey found_subdoc_key;
+  Value doc_value;
+  bool is_found = false;
 
-  SubDocKey doc_key;
-  RETURN_NOT_OK(doc_key.FullyDecodeFrom(rocksdb_iter->key()));
-  if (doc_key.num_subkeys() > 0) {
-    // This could happen when we are trying to scan at an old timestamp at which the document does
-    // not exist yet. In that case we'll jump directly into the section of the RocksDB key space
-    // that contains deeper levels of the document.
+  Status s = SeekToValidKvAtTs(
+      rocksdb_iter.get(), seek_key.AsSlice(), scan_ts, &found_subdoc_key, &doc_value, &is_found);
+
+  if (!is_found || !subdocument_key.OnlyLacksTimeStampFrom(rocksdb_iter->key())) {
+    // This could happen when we are trying to scan at an old timestamp at which the subdocument
+    // does not exist yet. In that case we'll jump directly into the section of the RocksDB key
+    // space that contains deeper levels of the document.
 
     // Example (from a real test failure)
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -489,17 +479,17 @@ yb::Status ScanDocument(rocksdb::DB* rocksdb,
     return Status::OK();
   }
 
-  RETURN_NOT_OK(visitor->StartDocument(doc_key.doc_key()));
+  RETURN_NOT_OK(visitor->StartSubDocument(found_subdoc_key));
   RETURN_NOT_OK(ScanPrimitiveValueOrObject(
-      doc_key, rocksdb_iter.get(), visitor, scan_ts, doc_key.timestamp()));
-  RETURN_NOT_OK(visitor->EndDocument());
+      found_subdoc_key, rocksdb_iter.get(), visitor, scan_ts, found_subdoc_key.timestamp()));
+  RETURN_NOT_OK(visitor->EndSubDocument());
 
   return Status::OK();
 }
 
 namespace {
 
-// This is used in the implementation of GetDocument. Builds a SubDocument from a stream of
+// This is used in the implementation of GetSubDocument. Builds a SubDocument from a stream of
 // DocVisitor API calls made by the ScanDocument function.
 class SubDocumentBuildingVisitor : public DocVisitor {
  public:
@@ -507,11 +497,11 @@ class SubDocumentBuildingVisitor : public DocVisitor {
 
   virtual ~SubDocumentBuildingVisitor() {}
 
-  Status StartDocument(const DocKey& key) override {
+  Status StartSubDocument(const SubDocKey &key) override {
     return Status::OK();
   }
 
-  Status EndDocument() override {
+  Status EndSubDocument() override {
     return Status::OK();
   }
 
@@ -613,16 +603,16 @@ class SubDocumentBuildingVisitor : public DocVisitor {
 
 }  // namespace
 
-yb::Status GetDocument(rocksdb::DB* rocksdb,
-                       const KeyBytes& document_key,
-                       SubDocument* result,
-                       bool* doc_found,
-                       const Timestamp scan_ts) {
-  DOCDB_DEBUG_LOG("GetDocument for key $0", document_key.ToString());
+yb::Status GetSubDocument(rocksdb::DB *rocksdb,
+    const KeyBytes &subdocument_key,
+    SubDocument *result,
+    bool *doc_found,
+    Timestamp scan_ts) {
+  DOCDB_DEBUG_LOG("GetSubDocument for key $0", subdocument_key.ToString());
   *doc_found = false;
 
   SubDocumentBuildingVisitor subdoc_builder;
-  RETURN_NOT_OK(ScanDocument(rocksdb, document_key, &subdoc_builder, scan_ts));
+  RETURN_NOT_OK(ScanSubDocument(rocksdb, subdocument_key, &subdoc_builder, scan_ts));
   *result = subdoc_builder.ReleaseResult();
   *doc_found = subdoc_builder.doc_found();
   return Status::OK();

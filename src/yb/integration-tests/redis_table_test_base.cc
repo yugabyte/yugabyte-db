@@ -7,7 +7,8 @@
 #include "yb/client/client.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-#include "yb/client/redis_helpers.h"
+#include "yb/redisserver/redis_constants.h"
+#include "yb/redisserver/redis_parser.h"
 
 using std::string;
 using std::vector;
@@ -16,10 +17,8 @@ using std::unique_ptr;
 namespace yb {
 namespace integration_tests {
 
-using client::RedisConstants;
 using client::YBRedisWriteOp;
 using client::YBRedisReadOp;
-using client::RedisWriteOpForSetKV;
 using client::YBColumnSchema;
 using client::YBTableCreator;
 using client::YBSchemaBuilder;
@@ -27,7 +26,10 @@ using client::YBColumnSchema;
 using client::YBTableType;
 using client::YBSession;
 
-std::string RedisTableTestBase::table_name() { return RedisConstants::kRedisTableName; }
+using redisserver::ParseSet;
+using redisserver::ParseGet;
+
+std::string RedisTableTestBase::table_name() { return kRedisTableName; }
 
 void RedisTableTestBase::CreateTable() {
   if (!table_exists_) {
@@ -36,25 +38,39 @@ void RedisTableTestBase::CreateTable() {
   }
 }
 
+vector<Slice> SlicesFromString(const vector<string>& args) {
+  vector<Slice> vector_slice;
+  for (const string& s : args) {
+    vector_slice.emplace_back(s);
+  }
+  return vector_slice;
+}
+
 void RedisTableTestBase::PutKeyValue(string key, string value) {
-  ASSERT_OK(session_->Apply(RedisWriteOpForSetKV(table_.get(), key, value)));
+  shared_ptr<YBRedisWriteOp> set_op(table_->NewRedisWrite());
+  ASSERT_OK(ParseSet(set_op.get(), SlicesFromString({"set", key, value})));
+  ASSERT_OK(session_->Apply(set_op));
   ASSERT_OK(session_->Flush());
 }
 
-void RedisTableTestBase::PutKeyValue(string key, string value, int64_t ttl) {
-  ASSERT_OK(session_->Apply(RedisWriteOpForSetKV(table_.get(), key, value, ttl)));
+void RedisTableTestBase::PutKeyValue(string key, string value, int64_t ttl_msec) {
+  shared_ptr<YBRedisWriteOp> set_op(table_->NewRedisWrite());
+  ASSERT_OK(ParseSet(set_op.get(),
+      SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
+  ASSERT_OK(session_->Apply(set_op));
   ASSERT_OK(session_->Flush());
 }
 
-void RedisTableTestBase::GetKeyValue(const string& key, const string& value,
-    bool expect_not_found) {
-  shared_ptr<YBRedisReadOp> read_op = RedisReadOpForGetKey(table_.get(), key);
-  ASSERT_OK(session_->ReadSync(read_op));
+void RedisTableTestBase::GetKeyValue(
+    const string& key, const string& value, bool expect_not_found) {
+  shared_ptr<YBRedisReadOp> get_op(table_->NewRedisRead());
+  ASSERT_OK(ParseGet(get_op.get(), SlicesFromString({"get", key})));
+  ASSERT_OK(session_->ReadSync(get_op));
   if (expect_not_found) {
-    ASSERT_EQ(RedisResponsePB_RedisStatusCode_NOT_FOUND, read_op->response().code());
+    ASSERT_EQ(RedisResponsePB_RedisStatusCode_NOT_FOUND, get_op->response().code());
   } else {
-    ASSERT_EQ(RedisResponsePB_RedisStatusCode_OK, read_op->response().code());
-    ASSERT_EQ(read_op->response().string_response(), value);
+    ASSERT_EQ(RedisResponsePB_RedisStatusCode_OK, get_op->response().code());
+    ASSERT_EQ(value, get_op->response().string_response());
   }
 }
 

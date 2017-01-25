@@ -73,8 +73,12 @@ class DocPath {
     return prefix_list;
   }
 
-  static DocPath DocPathFromRedisKey(const string& key) {
-    return DocPath(DocKey::FromRedisStringKey(key).Encode());
+  static DocPath DocPathFromRedisKey(const string& key, const string& subkey = "") {
+    DocPath doc_path = DocPath(DocKey::FromRedisStringKey(key).Encode());
+    if (!subkey.empty()) {
+      doc_path.AddSubKey(PrimitiveValue(subkey));
+    }
+    return doc_path;
   }
 
  private:

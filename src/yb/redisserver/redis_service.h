@@ -22,6 +22,8 @@ namespace client {
 class YBClient;
 class YBTable;
 class YBSession;
+class YBRedisWriteOp;
+class YBRedisReadOp;
 }  // namespace client
 
 namespace redisserver {
@@ -36,13 +38,45 @@ class RedisServiceImpl : public RedisServerServiceIf {
 
   void GetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
 
+  void HGetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void StrLenCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void ExistsCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void GetRangeCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
   void SetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void HSetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void GetSetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void AppendCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void DelCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void SetRangeCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+
+  void IncrCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
 
   void EchoCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
 
   void DummyCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
 
  private:
+  void ReadCommand(
+      yb::rpc::InboundCall* call,
+      yb::rpc::RedisClientCommand* c,
+      const std::string& command_name,
+      Status(*parse)(client::YBRedisReadOp*, const std::vector<Slice>&));
+
+  void WriteCommand(
+      yb::rpc::InboundCall* call,
+      yb::rpc::RedisClientCommand* c,
+      const std::string& command_name,
+      Status(*parse)(client::YBRedisWriteOp*, const std::vector<Slice>&));
+
   typedef void (RedisServiceImpl::*RedisCommandFunctionPtr)(yb::rpc::InboundCall* call,
                                                             rpc::RedisClientCommand* c);
 
@@ -68,7 +102,7 @@ class RedisServiceImpl : public RedisServerServiceIf {
   };
 
   constexpr static int kRpcTimeoutSec = 5;
-  constexpr static int kMethodCount = 3;
+  constexpr static int kMethodCount = 13;
 
   void PopulateHandlers();
   // Fetches the appropriate handler for the command, nullptr if none exists.
@@ -93,7 +127,17 @@ class RedisServiceImpl : public RedisServerServiceIf {
   //   arity: number of arguments expected, it is possible to use -N to say >= N.
   const struct RedisCommandInfo kRedisCommandTable[kMethodCount] = {
       {"get", &RedisServiceImpl::GetCommand, 2},
+      {"hget", &RedisServiceImpl::HGetCommand, 3},
+      {"strlen", &RedisServiceImpl::StrLenCommand, 2},
+      {"exists", &RedisServiceImpl::ExistsCommand, 2},
+      {"getrange", &RedisServiceImpl::GetRangeCommand, 4},
       {"set", &RedisServiceImpl::SetCommand, -3},
+      {"hset", &RedisServiceImpl::HSetCommand, 4},
+      {"getset", &RedisServiceImpl::GetSetCommand, 3},
+      {"append", &RedisServiceImpl::AppendCommand, 3},
+      {"del", &RedisServiceImpl::DelCommand, 2},
+      {"setrange", &RedisServiceImpl::SetRangeCommand, 4},
+      {"incr", &RedisServiceImpl::IncrCommand, 2},
       {"echo", &RedisServiceImpl::EchoCommand, 2}};
 
   std::map<string, yb::rpc::RpcMethodMetrics> metrics_;

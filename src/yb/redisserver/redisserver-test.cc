@@ -44,12 +44,23 @@ class TestRedisService : public RedisTableTestBase {
 
   void SendCommandAndExpectResponse(const string& cmd, const string& resp);
 
+  void DoRedisTest(vector<string> command,
+                   cpp_redis::reply::type reply_type,
+                   void(*callback)(const RedisReply& reply));
+
+  void SyncClient() { test_client_.sync_commit(); }
+
+  void VerifyCallbacks();
+
   int server_port() { return redis_server_port_; }
 
   Status SendCommandAndGetResponse(
       const string& cmd, int expected_resp_length, int timeout_in_millis = 1000);
 
  private:
+  RedisClient test_client_;
+  std::atomic_int num_callbacks_called_;
+  int expected_callbacks_called_;
   Socket client_sock_;
   unique_ptr<RedisServer> server_;
   int redis_server_port_ = 0;
@@ -64,6 +75,11 @@ void TestRedisService::SetUp() {
 
   StartServer();
   StartClient();
+  num_callbacks_called_ = 0;
+  expected_callbacks_called_ = 0;
+  test_client_.connect("127.0.0.1", server_port(), [] (RedisClient&) {
+    LOG(ERROR) << "client disconnected (disconnection handler)";
+  });
 }
 
 void TestRedisService::StartServer() {
@@ -103,6 +119,7 @@ void TestRedisService::RestartClient() {
 }
 
 void TestRedisService::TearDown() {
+  test_client_.disconnect();
   StopClient();
   RedisTableTestBase::TearDown();
 }
@@ -132,11 +149,30 @@ void TestRedisService::SendCommandAndExpectTimeout(const string& cmd) {
   ASSERT_TRUE(SendCommandAndGetResponse(cmd, 1).IsTimedOut());
 }
 
+
+
 void TestRedisService::SendCommandAndExpectResponse(const string& cmd, const string& resp) {
-  CHECK_OK(SendCommandAndGetResponse(cmd, resp.length()));
+  ASSERT_OK(SendCommandAndGetResponse(cmd, resp.length()));
 
   // Verify that the response is as expected.
-  CHECK_EQ(resp, string(reinterpret_cast<char*>(resp_), resp.length()));
+
+  ASSERT_EQ(resp, string(util::to_char_ptr(resp_), resp.length()));
+}
+
+void TestRedisService::DoRedisTest(vector<string> command,
+                                   cpp_redis::reply::type reply_type,
+                                   void(*callback)(const RedisReply& reply)) {
+  expected_callbacks_called_++;
+  test_client_.send(command, [this, reply_type, callback] (RedisReply& reply) {
+    LOG(INFO) << "Received response : " << reply.as_string();
+    num_callbacks_called_++;
+    ASSERT_EQ(reply_type, reply.get_type());
+    callback(reply);
+  });
+}
+
+void TestRedisService::VerifyCallbacks() {
+  ASSERT_EQ(expected_callbacks_called_, num_callbacks_called_);
 }
 
 TEST_F(TestRedisService, SimpleCommandInline) {
@@ -224,94 +260,246 @@ TEST_F(TestRedisService, TestSetThenGet) {
 }
 
 TEST_F(TestRedisService, TestUsingOpenSourceClient) {
-  RedisClient client;
-  std::atomic_int callbacks_called(0);
 
-  client.connect("127.0.0.1", server_port(), [] (RedisClient&) {
-    LOG(ERROR) << "client disconnected (disconnection handler)" << std::endl;
-  });
+  DoRedisTest({"SET", "hello", "42"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply& reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
 
-  // Same as client.send({ "SET", "hello", "42" }, ...)
-  client.set("hello", "42", [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
-    callbacks_called++;
-    ASSERT_EQ("OK", reply.as_string());
-  });
-  // Same as client.send({ "DECRBY", "hello", 12 }, ...)
-  client.decrby("hello", 12, [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
-    callbacks_called++;
-    // TBD: ASSERT_EQ(30, reply.as_integer());
-  });
-  // Same as client.send({ "GET", "hello" }, ...)
-  client.get("hello", [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
-    callbacks_called++;
-    // TBD: ASSERT_EQ(30, reply.as_integer());
-  });
-  // Same as client.send({ "SET", "world", "72" }, ...)
-  client.set("world", "72", [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
-    callbacks_called++;
-    ASSERT_EQ("OK", reply.as_string());
-  });
-  // Commands are pipelined and only sent when client.commit() is called.
-  // sync_commit() waits until all responses are received.
-  client.sync_commit();
-  ASSERT_EQ(4, callbacks_called);
+  DoRedisTest({"DECRBY", "hello", "12"},
+      cpp_redis::reply::type::error,
+      [](const RedisReply &reply) {
+        // TBD: ASSERT_EQ(30, reply.as_integer());
+      });
+
+  DoRedisTest({"GET", "hello"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("42", reply.as_string());
+      });
+
+  DoRedisTest({"SET", "world", "72"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  SyncClient();
+  VerifyCallbacks();
 }
 
 // This test also uses the open source client
 TEST_F(TestRedisService, TestTtl) {
-  RedisClient client;
-  std::atomic_int callbacks_called(0);
 
-  client.connect("127.0.0.1", server_port(), [] (RedisClient&) {
-    LOG(ERROR) << "client disconnected (disconnection handler)" << std::endl;
-  });
+  DoRedisTest({"SET", "k1", "v1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
 
-  client.send({"SET", "k1", "v1"}, [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
-    callbacks_called++;
-    ASSERT_EQ("OK", reply.as_string());
-  });
+  DoRedisTest({"SET", "k2", "v2", "EX", "1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
 
-  client.send({"SET", "k2", "v2", "EX", "1"}, [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
-    callbacks_called++;
-    ASSERT_EQ("OK", reply.as_string());
-  });
-  client.send({"SET", "k3", "v3", "EX", "1000"}, [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_string() << std::endl;
-    callbacks_called++;
-    ASSERT_EQ("OK", reply.as_string());
-  });
+  DoRedisTest({"SET", "k3", "v3", "EX", "10"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
-  client.sync_commit();
+  SyncClient();
   std::this_thread::sleep_for(std::chrono::seconds(2));
 
-  client.send({"GET", "k1"}, [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
-    callbacks_called++;
-    ASSERT_EQ("v1", reply.as_string());
-  });
-  client.send({"GET", "k2"}, [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
-    callbacks_called++;
-    ASSERT_TRUE(reply.is_null());
-  });
-  client.send({"GET", "k3"}, [&callbacks_called] (RedisReply& reply) {
-    LOG(INFO) << "Received response : " << reply.as_integer() << std::endl;
-    callbacks_called++;
-    ASSERT_EQ("v3", reply.as_string());
-  });
+  DoRedisTest({"GET", "k1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("v1", reply.as_string());
+      });
+  DoRedisTest({"GET", "k2"},
+      cpp_redis::reply::type::null,
+      [](const RedisReply &reply) {
+        ASSERT_TRUE(reply.is_null());
+      });
+  DoRedisTest({"GET", "k3"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("v3", reply.as_string());
+      });
+  SyncClient();
+  VerifyCallbacks();
+
+}
+
+TEST_F(TestRedisService, TestAdditionalCommands) {
+
+  DoRedisTest({"HSET", "map_key", "subkey", "42"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"HGET", "map_key", "subkey"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("42", reply.as_string());
+      });
+
+  DoRedisTest({"SET", "key1", "30"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"GETSET", "key1", "val1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("30", reply.as_string());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"GET", "key1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("val1", reply.as_string());
+      });
+
+  DoRedisTest({"APPEND", "key1", "extra1"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(10, reply.as_integer());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"GET", "key1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("val1extra1", reply.as_string());
+      });
+
+  DoRedisTest({"GET", "key2"},
+      cpp_redis::reply::type::null,
+      [](const RedisReply &reply) {
+        ASSERT_TRUE(reply.is_null());
+      });
+
+  DoRedisTest({"SET", "key2", "val2"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"GET", "key2"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("val2", reply.as_string());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"DEL", "key2"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(1, reply.as_integer());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"GET", "key2"},
+      cpp_redis::reply::type::null,
+      [](const RedisReply &reply) {
+        ASSERT_TRUE(reply.is_null());
+      });
+
+  DoRedisTest({"SETRANGE", "key1", "2", "xyz3"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"GET", "key1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("vaxyz3tra1", reply.as_string());
+      });
+
+  DoRedisTest({"SET", "key3", "23"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("OK", reply.as_string());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"INCR", "key3"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(24, reply.as_integer());
+      });
+
+  SyncClient();
+
+  DoRedisTest({"GET", "key3"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("24", reply.as_string());
+      });
+
+  DoRedisTest({"STRLEN", "key3"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(2, reply.as_integer());
+      });
+
+  DoRedisTest({"STRLEN", "key1"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(10, reply.as_integer());
+      });
+
+  DoRedisTest({"EXISTS", "key1"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(1, reply.as_integer());
+      });
+
+  DoRedisTest({"EXISTS", "key2"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(0, reply.as_integer());
+      });
+
+  DoRedisTest({"EXISTS", "key3"},
+      cpp_redis::reply::type::integer,
+      [](const RedisReply &reply) {
+        ASSERT_EQ(1, reply.as_integer());
+      });
+
+  DoRedisTest(
+      {"GETRANGE", "key1", "1", "-1"},
+      cpp_redis::reply::type::simple_string,
+      [](const RedisReply &reply) {
+        ASSERT_EQ("axyz3tra", reply.as_string());
+      });
 
   // Commands are pipelined and only sent when client.commit() is called.
   // sync_commit() waits until all responses are received.
-  client.sync_commit();
-  ASSERT_EQ(6, callbacks_called);
+  SyncClient();
+  VerifyCallbacks();
 }
 
 }  // namespace redisserver

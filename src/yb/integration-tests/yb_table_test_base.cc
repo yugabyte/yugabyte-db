@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/integration-tests/yb_table_test_base.h"
-#include "yb/client/redis_helpers.h"
+#include "yb/redisserver/redis_parser.h"
+#include "yb/redisserver/redis_constants.h"
 #include "yb/util/curl_util.h"
 
 using std::unique_ptr;
@@ -9,7 +10,6 @@ using std::shared_ptr;
 
 namespace yb {
 
-using client::RedisConstants;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;
@@ -127,8 +127,8 @@ void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client, 
 
 void YBTableTestBase::CreateDefaultTables() {
   // Redis Proxy requires ".redis" to be present
-  CreateRedisTable(client_, RedisConstants::kRedisTableName);
-  default_tables_created_.push_back(string(RedisConstants::kRedisTableName));
+  CreateRedisTable(client_, kRedisTableName);
+  default_tables_created_.push_back(string(kRedisTableName));
   // If the desired table for the test -- table_name() has already been created, ensure that
   // CreateTable() does not try to create it again.
   if (std::find(default_tables_created_.begin(), default_tables_created_.end(), table_name()) !=

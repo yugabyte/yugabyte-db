@@ -329,11 +329,18 @@ Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
   // TODO(Amit): As and when we implement get/set and its h* equivalents, we would have to
   // handle arrays, hashes etc. For now, we only support the string response.
 
-  if (redis_response.code() == RedisResponsePB_RedisStatusCode_NOT_FOUND) {
+  if (redis_response.code() != RedisResponsePB_RedisStatusCode_OK) {
+    // We send a nil response for all non-ok statuses as of now.
+    // TODO: Follow redis error messages.
     response_msg_buf_.append(kNilResponse);
   } else {
-    CHECK(redis_response.has_string_response()) << "We only support string_response as of now.";
-    response_msg_buf_.append(EncodeAsSimpleString(redis_response.string_response()));
+    if (redis_response.has_string_response()) {
+      response_msg_buf_.append(EncodeAsSimpleString(redis_response.string_response()));
+    } else if (redis_response.has_int_response()) {
+      response_msg_buf_.append(EncodeAsInteger(redis_response.int_response()));
+    } else {
+      response_msg_buf_.append(EncodeAsSimpleString("OK"));
+    }
   }
   return Status::OK();
 }

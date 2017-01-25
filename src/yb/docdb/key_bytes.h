@@ -80,6 +80,17 @@ class KeyBytes {
     return slice.starts_with(data_);
   }
 
+  // Checks whether the other slice can be obtained by adding a timestamp.
+  bool OnlyLacksTimeStampFrom(const rocksdb::Slice& other_slice) const {
+    if (size() + 1 + kBytesPerTimestamp != other_slice.size()) {
+      return false;
+    }
+    if (other_slice[size()] != static_cast<char>(ValueType::kTimestamp)) {
+      return false;
+    }
+    return other_slice.starts_with(AsSlice());
+  }
+
   // Checks whether the given slice starts with this sequence of key bytes.
   bool OnlyDiffersByLastTimestampFrom(const rocksdb::Slice& other_slice) const {
     if (size() != other_slice.size() || size() < kBytesPerTimestamp) {

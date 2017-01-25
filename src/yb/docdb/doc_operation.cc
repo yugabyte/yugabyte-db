@@ -5,7 +5,11 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/ysql_scanspec.h"
+#include "yb/docdb/subdocument.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/gutil/strings/substitute.h"
+
+using strings::Substitute;
 
 namespace yb {
 namespace docdb {
@@ -22,73 +26,358 @@ Status KuduWriteOperation::Apply(
 }
 
 DocPath RedisWriteOperation::DocPathToLock() const {
-  CHECK_EQ(request_.redis_op_type(), RedisWriteRequestPB_Type_SET)
-      << "Currently only SET is supported";
-  return DocPath::DocPathFromRedisKey(request_.set_request().key_value().key());
+  return DocPath::DocPathFromRedisKey(request_.key_value().key());
+}
+
+Status GetRedisValue(
+    rocksdb::DB *rocksdb,
+    Timestamp timestamp,
+    const RedisKeyValuePB &key_value_pb,
+    RedisDataType *type,
+    string *value) {
+  if (!key_value_pb.has_key()) {
+    return STATUS(Corruption, "Expected KeyValuePB");
+  }
+  KeyBytes doc_key = DocKey::FromRedisStringKey(key_value_pb.key()).Encode();
+
+  if (!key_value_pb.subkey().empty()) {
+    if (key_value_pb.subkey().size() != 1) {
+      return STATUS_SUBSTITUTE(Corruption,
+          "Expected at most one subkey, got $0", key_value_pb.subkey().size());
+    }
+    doc_key.AppendValueType(ValueType::kString);
+    doc_key.AppendString(key_value_pb.subkey(0));
+  }
+
+  SubDocument doc;
+  bool doc_found = false;
+
+  RETURN_NOT_OK(GetSubDocument(rocksdb, doc_key, &doc, &doc_found, timestamp));
+
+  if (!doc_found) {
+    *type = REDIS_TYPE_NONE;
+    return Status::OK();
+  }
+
+  if (!doc.IsPrimitive()) {
+    *type = REDIS_TYPE_HASH;
+    return Status::OK();
+  }
+
+  *type = REDIS_TYPE_STRING;
+  *value = doc.GetString();
+  return Status::OK();
+}
+
+// Set response based on the type match. Return whether type is unexpected.
+bool IsWrongType(
+    const RedisDataType expected_type,
+    const RedisDataType actual_type,
+    RedisResponsePB *const response) {
+  if (actual_type == RedisDataType::REDIS_TYPE_NONE) {
+    response->set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+    return true;
+  }
+  if (actual_type != expected_type) {
+    response->set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+    return true;
+  }
+  response->set_code(RedisResponsePB_RedisStatusCode_OK);
+  return false;
 }
 
 Status RedisWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) {
-  CHECK_EQ(request_.redis_op_type(), RedisWriteRequestPB_Type_SET)
-      << "Currently only SET is supported";
-  const auto kv = request_.set_request().key_value();
+  switch (request_.request_case()) {
+    case RedisWriteRequestPB::RequestCase::kSetRequest:
+      return ApplySet(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kGetsetRequest:
+      return ApplyGetSet(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kAppendRequest:
+      return ApplyAppend(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kDelRequest:
+      return ApplyDel(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kSetRangeRequest:
+      return ApplySetRange(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kIncrRequest:
+      return ApplyIncr(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kPushRequest:
+      return ApplyPush(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kInsertRequest:
+      return ApplyInsert(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kPopRequest:
+      return ApplyPop(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kAddRequest:
+      return ApplyAdd(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::kRemoveRequest:
+      return ApplyRemove(doc_write_batch);
+    case RedisWriteRequestPB::RequestCase::REQUEST_NOT_SET: break;
+  }
+  return STATUS(Corruption,
+      Substitute("Unsupported redis read operation: $0", request_.request_case()));
+}
+
+Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
+  const RedisKeyValuePB& kv = request_.key_value();
   CHECK_EQ(kv.value().size(), 1)
       << "Set operations are expected have exactly one value, found " << kv.value().size();
   const MonoDelta ttl = request_.set_request().has_ttl() ?
       MonoDelta::FromMilliseconds(request_.set_request().ttl()) : Value::kMaxTtl;
   RETURN_NOT_OK(
       doc_write_batch->SetPrimitive(
-          DocPath::DocPathFromRedisKey(kv.key()),
+          DocPath::DocPathFromRedisKey(kv.key(), kv.subkey_size() > 0 ? kv.subkey(0) : ""),
           Value(PrimitiveValue(kv.value(0)), ttl), Timestamp::kMax));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
 }
 
+Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
+  RedisDataType type;
+  string value;
+  const RedisKeyValuePB& kv = request_.key_value();
+
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+
+  if (kv.value_size() != 1) {
+    return STATUS_SUBSTITUTE(Corruption,
+        "Getset kv should have 1 value, found $0", kv.value_size());
+  }
+
+  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    // We've already set the error code in the response.
+    return Status::OK();
+  }
+  response_.set_string_response(value);
+
+  return doc_write_batch->SetPrimitive(
+      DocPath::DocPathFromRedisKey(kv.key()),
+      Value(PrimitiveValue(kv.value(0))), Timestamp::kMax);
+}
+
+Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
+  RedisDataType type;
+  string value;
+  const RedisKeyValuePB& kv = request_.key_value();
+
+  if (kv.value_size() != 1) {
+    return STATUS_SUBSTITUTE(Corruption,
+        "Append kv should have 1 value, found $0", kv.value_size());
+  }
+
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+
+  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    // We've already set the error code in the response.
+    return Status::OK();
+  }
+
+  const string& new_value = value + kv.value(0);
+
+  response_.set_int_response(new_value.length());
+
+  return doc_write_batch->SetPrimitive(
+      DocPath::DocPathFromRedisKey(kv.key()),
+      Value(PrimitiveValue(new_value)), Timestamp::kMax);
+}
+
+// TODO (akashnil): Actually check if the value existed, return 0 if not. handle multidel in future.
+//                  See ENG-807
+Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
+  const RedisKeyValuePB& kv = request_.key_value();
+  RETURN_NOT_OK(doc_write_batch->SetPrimitive(
+      DocPath::DocPathFromRedisKey(kv.key()),
+      Value(PrimitiveValue(ValueType::kTombstone)), Timestamp::kMax));
+  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+  // Currently we only support deleting one key
+  response_.set_int_response(1);
+  return Status::OK();
+}
+
+Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
+  RedisDataType type;
+  string value;
+  const RedisKeyValuePB& kv = request_.key_value();
+  if (kv.value_size() != 1) {
+    return STATUS_SUBSTITUTE(Corruption,
+        "SetRange kv should have 1 value, found $0", kv.value_size());
+  }
+
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+
+  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    // We've already set the error code in the response.
+    return Status::OK();
+  }
+
+  // TODO (akashnil): Handle overflows.
+  value.replace(request_.set_range_request().offset(), kv.value(0).length(), kv.value(0));
+
+  return doc_write_batch->SetPrimitive(
+      DocPath::DocPathFromRedisKey(kv.key()),
+      Value(PrimitiveValue(value)), Timestamp::kMax);
+}
+
+Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t incr) {
+  RedisDataType type;
+  string value;
+  const RedisKeyValuePB& kv = request_.key_value();
+
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+
+  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    // We've already set the error code in the response.
+    return Status::OK();
+  }
+
+  int64_t old_value, new_value;
+
+  try {
+    old_value = std::stoll(value);
+    new_value = old_value + incr;
+  } catch (std::invalid_argument e) {
+    response_.set_error_message("Can not parse incr argument as a number");
+    return Status::OK();
+  } catch (std::out_of_range e) {
+    response_.set_error_message("Can not parse incr argument as a number");
+    return Status::OK();
+  }
+
+  if ((incr < 0 && old_value < 0 && incr < numeric_limits<int64_t>::min() - old_value) ||
+      (incr > 0 && old_value > 0 && incr > numeric_limits<int64_t>::max() - old_value)) {
+    response_.set_error_message("Increment would overflow");
+    return Status::OK();
+  }
+
+  response_.set_int_response(new_value);
+
+  return doc_write_batch->SetPrimitive(
+      DocPath::DocPathFromRedisKey(kv.key()),
+      Value(PrimitiveValue(std::to_string(new_value))), Timestamp::kMax);
+}
+
+Status RedisWriteOperation::ApplyPush(DocWriteBatch* doc_write_batch) {
+  return STATUS(NotSupported, "Redis operation has not been implemented");
+}
+
+Status RedisWriteOperation::ApplyInsert(DocWriteBatch* doc_write_batch) {
+  return STATUS(NotSupported, "Redis operation has not been implemented");
+}
+
+Status RedisWriteOperation::ApplyPop(DocWriteBatch* doc_write_batch) {
+  return STATUS(NotSupported, "Redis operation has not been implemented");
+}
+
+Status RedisWriteOperation::ApplyAdd(DocWriteBatch* doc_write_batch) {
+  return STATUS(NotSupported, "Redis operation has not been implemented");
+}
+
+Status RedisWriteOperation::ApplyRemove(DocWriteBatch* doc_write_batch) {
+  return STATUS(NotSupported, "Redis operation has not been implemented");
+}
+
 const RedisResponsePB& RedisWriteOperation::response() { return response_; }
 
 Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, const Timestamp& timestamp) {
-  CHECK_EQ(request_.redis_op_type(), RedisReadRequestPB_Type_GET)
-      << "Currently only GET is supported";
-  const KeyBytes doc_key = DocKey::FromRedisStringKey(
-      request_.get_request().key_value().key()).Encode();
-  KeyBytes timestamped_key = doc_key;
-  timestamped_key.AppendValueType(ValueType::kTimestamp);
-  timestamped_key.AppendTimestamp(timestamp);
-  rocksdb::ReadOptions read_opts;
-  auto iter = std::unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
-  ROCKSDB_SEEK(iter.get(), timestamped_key.AsSlice());
-  if (!iter->Valid()) {
-    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
-    return Status::OK();
+  switch (request_.request_case()) {
+    case RedisReadRequestPB::RequestCase::kGetRequest:
+      return ExecuteGet(rocksdb, timestamp);
+    case RedisReadRequestPB::RequestCase::kStrlenRequest:
+      return ExecuteStrLen(rocksdb, timestamp);
+    case RedisReadRequestPB::RequestCase::kExistsRequest:
+      return ExecuteExists(rocksdb, timestamp);
+    case RedisReadRequestPB::RequestCase::kGetRangeRequest:
+      return ExecuteGetRange(rocksdb, timestamp);
+    default:
+      return STATUS(Corruption,
+          Substitute("Unsupported redis write operation: $0", request_.request_case()));
   }
-  const rocksdb::Slice key = iter->key();
-  rocksdb::Slice value = iter->value();
-  if (!timestamped_key.OnlyDiffersByLastTimestampFrom(key)) {
-    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+}
+
+int RedisReadOperation::ApplyIndex(int32_t index, const int32_t len) {
+  if (index < 0) index += len;
+  if (index < 0 || index >= len)
+    return -1;
+  return index;
+}
+
+Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, Timestamp timestamp) {
+
+  RedisDataType type;
+  string value;
+
+  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+
+  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    // We've already set the error code in the response.
     return Status::OK();
   }
 
-  Value val;
-  RETURN_NOT_OK(val.Decode(value));
+  response_.set_string_response(value);
+  return Status::OK();
+}
 
-  // Check for TTL.
-  bool has_expired = false;
-  RETURN_NOT_OK(HasExpiredTTL(key, val.ttl(), timestamp, &has_expired));
-  if (has_expired) {
-    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
+Status RedisReadOperation::ExecuteStrLen(rocksdb::DB *rocksdb, Timestamp timestamp) {
+  RedisDataType type;
+  string value;
+
+  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+
+  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    // We've already set the error code in the response.
     return Status::OK();
   }
 
-  if (val.primitive_value().value_type() == ValueType::kTombstone) {
-    response_.set_code(RedisResponsePB_RedisStatusCode_NOT_FOUND);
-    return Status::OK();
-  }
-  if (val.primitive_value().value_type() != ValueType::kString) {
+  response_.set_int_response(value.length());
+  return Status::OK();
+}
+
+Status RedisReadOperation::ExecuteExists(rocksdb::DB *rocksdb, Timestamp timestamp) {
+  RedisDataType type;
+  string value;
+
+  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+
+  if (type == REDIS_TYPE_STRING || type == REDIS_TYPE_HASH) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+    // We only support exist command with one argument currently.
+    response_.set_int_response(1);
+  } else if (type == REDIS_TYPE_NONE) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+    response_.set_int_response(0);
+  } else {
     response_.set_code(RedisResponsePB_RedisStatusCode_WRONG_TYPE);
+  }
+  return Status::OK();
+}
+
+
+
+Status RedisReadOperation::ExecuteGetRange(rocksdb::DB *rocksdb, Timestamp timestamp) {
+  RedisDataType type;
+  string value;
+
+  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+
+  if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
+    // We've already set the error code in the response.
     return Status::OK();
   }
-  val.mutable_primitive_value()->SwapStringValue(response_.mutable_string_response());
-  response_.set_code(RedisResponsePB_RedisStatusCode_OK);
+
+  const int32_t len = value.length();
+
+  // We treat negative indices to refer backwards from the end of the string.
+  const int32_t start = ApplyIndex(request_.get_range_request().start(), len);
+  if (start == -1) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_INDEX_OUT_OF_BOUNDS);
+    return Status::OK();
+  }
+  const int32_t end = ApplyIndex(request_.get_range_request().end(), len);
+  if (end == -1 || end < start) {
+    response_.set_code(RedisResponsePB_RedisStatusCode_INDEX_OUT_OF_BOUNDS);
+    return Status::OK();
+  }
+
+  response_.set_string_response(value.substr(start, end - start));
   return Status::OK();
 }
 

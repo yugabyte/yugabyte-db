@@ -72,12 +72,11 @@ class DocWriteBatch {
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path, const Value& value, Timestamp timestamp = Timestamp::kMax);
+  CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path, const PrimitiveValue& value, Timestamp timestamp = Timestamp::kMax) {
     return SetPrimitive(doc_path, Value(value), timestamp);
   }
-
-  CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path, const Value& value, Timestamp timestamp = Timestamp::kMax);
   CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp = Timestamp::kMax);
 
   std::string ToDebugString();
@@ -100,6 +99,8 @@ class DocWriteBatch {
   // This is used in tests to verify we are not trying to apply a DocWriteBatch to a different
   // RocksDB instance than it was constructed with.
   void CheckBelongsToSameRocksDB(const rocksdb::DB* rocksdb) const;
+
+  rocksdb::DB* rocksdb() { return rocksdb_; }
 
  private:
   DocWriteBatchCache cache_;
@@ -148,18 +149,19 @@ Status HandleRedisReadTransaction(rocksdb::DB *rocksdb,
     const std::vector<std::unique_ptr<RedisReadOperation>>& doc_read_ops,
     Timestamp timestamp);
 
-// A visitor class that could be overridden to consume results of scanning of one or more document.
-// See e.g. SubDocumentBuildingVisitor (used in implementing GetDocument) as example usage.
+// A visitor class that could be overridden to consume results of scanning SubDocuments.
+// See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.
+// We can scan any SubDocument from a node in the document tree.
 class DocVisitor {
  public:
   DocVisitor() {}
   virtual ~DocVisitor() {}
 
-  // Called once in the beginning of every new document.
-  virtual CHECKED_STATUS StartDocument(const DocKey& key) = 0;
+  // Called once in the beginning of every new subdocument.
+  virtual CHECKED_STATUS StartSubDocument(const SubDocKey &key) = 0;
 
   // Called in the end of a document.
-  virtual CHECKED_STATUS EndDocument() = 0;
+  virtual CHECKED_STATUS EndSubDocument() = 0;
 
   // VisitKey and VisitValue are called as part of enumerating key-value pairs in an object, e.g.
   // VisitKey(key1), VisitValue(value1), VisitKey(key2), VisitValue(value2), etc.
@@ -180,16 +182,18 @@ class DocVisitor {
   virtual CHECKED_STATUS EndArray() = 0;
 };
 
-yb::Status ScanDocument(rocksdb::DB* rocksdb,
-                        const KeyBytes& document_key,
-                        DocVisitor* visitor,
-                        Timestamp scan_ts = Timestamp::kMax);
+// Note: subdocument_key should be an encoded SubDocument without the timestamp.
+yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
+    const KeyBytes &subdocument_key,
+    DocVisitor *visitor,
+    Timestamp scan_ts = Timestamp::kMax);
 
-yb::Status GetDocument(rocksdb::DB* rocksdb,
-                       const KeyBytes& document_key,
-                       SubDocument* result,
-                       bool* doc_found,
-                       Timestamp scan_ts = Timestamp::kMax);
+// Returns the whole SubDocument below some node identified by subdocument_key.
+yb::Status GetSubDocument(rocksdb::DB *rocksdb,
+    const KeyBytes &subdocument_key,
+    SubDocument *result,
+    bool *doc_found,
+    Timestamp scan_ts = Timestamp::kMax);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

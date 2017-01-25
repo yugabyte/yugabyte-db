@@ -66,12 +66,12 @@ class DebugDocVisitor : public DocVisitor {
   DebugDocVisitor();
   virtual ~DebugDocVisitor();
 
-  CHECKED_STATUS StartDocument(const DocKey& key) override;
+  CHECKED_STATUS StartSubDocument(const SubDocKey &key) override;
 
   CHECKED_STATUS VisitKey(const PrimitiveValue& key) override;
   CHECKED_STATUS VisitValue(const PrimitiveValue& value) override;
 
-  CHECKED_STATUS EndDocument() override;
+  CHECKED_STATUS EndSubDocument() override;
   CHECKED_STATUS StartObject() override;
   CHECKED_STATUS EndObject() override;
   CHECKED_STATUS StartArray() override;
@@ -130,9 +130,9 @@ class DocDBRocksDBFixture {
   std::string DebugWalkDocument(const KeyBytes& encoded_doc_key);
 
   void SetPrimitive(const DocPath& doc_path,
-      const Value& value,
-      Timestamp timestamp,
-      DocWriteBatch* doc_write_batch = nullptr);
+                    const Value& value,
+                    Timestamp timestamp,
+                    DocWriteBatch* doc_write_batch = nullptr);
 
   void SetPrimitive(const DocPath& doc_path,
                     const PrimitiveValue& value,

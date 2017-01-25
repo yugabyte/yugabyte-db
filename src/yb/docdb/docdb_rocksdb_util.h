@@ -6,9 +6,20 @@
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/value.h"
 
 namespace yb {
 namespace docdb {
+
+// Find a docdb value at a given key and timestamp while ignoring expired values.
+Status SeekToValidKvAtTs(
+    rocksdb::Iterator *iter,
+    const rocksdb::Slice &search_key,
+    Timestamp timestamp,
+    SubDocKey *found_key,
+    Value *found_value,
+    bool *is_found);
 
 // Debug mode: allow printing detailed information about RocksDB seeks.
 void PerformRocksDBSeek(

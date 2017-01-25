@@ -883,9 +883,11 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     vector<RedisResponsePB>* responses) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   vector<unique_ptr<DocOperation>> doc_ops;
+  // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
+  const Timestamp read_timestamp = clock_->Now();
   for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
     RedisWriteRequestPB req = redis_write_request.redis_write_batch(i);
-    doc_ops.emplace_back(new RedisWriteOperation(req));
+    doc_ops.emplace_back(new RedisWriteOperation(req, read_timestamp));
   }
   WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
   redis_write_batch_pb->reset(write_request_copy);
@@ -906,6 +908,8 @@ Status Tablet::HandleRedisReadRequest(const MvccSnapshot &snap,
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   docdb::RedisReadOperation doc_op(redis_read_request);
+  // We use the latest safe time for the read timestamp, whose state cannot be changed by future
+  // commits.
   RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), snap.LastCommittedTimestamp()));
   *response = std::move(doc_op.response());
   return Status::OK();

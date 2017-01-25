@@ -8,7 +8,8 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client_builder-internal.h"
-#include "yb/client/redis_helpers.h"
+#include "yb/redisserver/redis_constants.h"
+#include "yb/redisserver/redis_parser.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -24,11 +25,81 @@ METRIC_DEFINE_histogram(
     "RPC requests",
     60000000LU, 2);
 METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_hget,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.HGetCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_strlen,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.StrLenCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_exists,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.ExistsCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_getrange,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.GetRangeCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_redisserver_RedisServerService_set,
     "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
     "Microseconds spent handling "
     "yb.redisserver.RedisServerService.SetCommand() "
     "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_hset,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.HSetCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_getset,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.GetSetCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_append,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.AppendCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_del,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.DelCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_setrange,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.SetRangeCommand() "
+        "RPC requests",
+    60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_redisserver_RedisServerService_incr,
+    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+        "yb.redisserver.RedisServerService.IncrCommand() "
+        "RPC requests",
     60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_redisserver_RedisServerService_echo,
@@ -76,11 +147,8 @@ namespace redisserver {
             server_->metric_entity());                                                 \
   } while (0)
 
-using yb::client::RedisConstants;
 using yb::client::YBRedisReadOp;
 using yb::client::YBRedisWriteOp;
-using yb::client::RedisReadOpForGetKey;
-using yb::client::RedisWriteOpForSetKV;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSession;
@@ -101,7 +169,27 @@ void RedisServiceImpl::PopulateHandlers() {
   int idx = 0;
   SETUP_METRICS_FOR_METHOD(get, idx);
   idx++;
+  SETUP_METRICS_FOR_METHOD(hget, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(strlen, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(exists, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(getrange, idx);
+  idx++;
   SETUP_METRICS_FOR_METHOD(set, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(hset, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(getset, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(append, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(del, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(setrange, idx);
+  idx++;
+  SETUP_METRICS_FOR_METHOD(incr, idx);
   idx++;
   SETUP_METRICS_FOR_METHOD(echo, idx);
   idx++;
@@ -175,7 +263,7 @@ void RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
     client_builder.set_metric_entity(server_->metric_entity());
     CHECK_OK(client_builder.Build(&client_));
 
-    const string table_name(RedisConstants::kRedisTableName);
+    const string table_name(kRedisTableName);
     // Ensure that the table has already been created.
     {
       YBSchema existing_schema;
@@ -208,9 +296,9 @@ void RedisServiceImpl::EchoCommand(InboundCall* call, RedisClientCommand* c) {
   VLOG(4) << "Done Responding to Echo.";
 }
 
-class GetCommandCb : public YBStatusCallback {
+class ReadCommandCb : public YBStatusCallback {
  public:
-  GetCommandCb(
+  ReadCommandCb(
       shared_ptr<client::YBSession> session, InboundCall* call, shared_ptr<YBRedisReadOp> read_op,
       rpc::RpcMethodMetrics metrics, rpc::RpcMethodMetrics metrics_internal)
       : session_(session),
@@ -231,7 +319,7 @@ class GetCommandCb : public YBStatusCallback {
   MonoTime start_;
 };
 
-void GetCommandCb::Run(const Status& status) {
+void ReadCommandCb::Run(const Status& status) {
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   metrics_internal_.handler_latency->Increment(now.GetDeltaSince(start_).ToMicroseconds());
   VLOG(3) << "Received status from call " << status.ToString(true);
@@ -248,24 +336,56 @@ void GetCommandCb::Run(const Status& status) {
   delete this;
 }
 
-void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
-  VLOG(1) << "Processing Get.";
+void RedisServiceImpl::ReadCommand(
+    yb::rpc::InboundCall* call,
+    yb::rpc::RedisClientCommand* c,
+    const std::string& command_name,
+    Status(*parse)(YBRedisReadOp*, const std::vector<Slice>&)) {
+  VLOG(1) << "Processing " << command_name << ".";
   auto read_only_session = client_->NewSession(true);
   ConfigureSession(read_only_session.get());
   CHECK_OK(read_only_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
-  auto get_op = RedisReadOpForGetKey(table_.get(), c->cmd_args[1].ToString());
+
+  shared_ptr<YBRedisReadOp> read_op(table_->NewRedisRead());
+  Status s = parse(read_op.get(), c->cmd_args);
+  if (!s.ok()) {
+    RespondWithFailure(s.message().ToString(), call, c);
+    return;
+  }
   read_only_session->ReadAsync(
-      get_op,
-      new GetCommandCb(read_only_session, call, get_op, metrics_["get"], metrics_["get_internal"]));
+      read_op,
+      new ReadCommandCb(
+          read_only_session, call, read_op, metrics_[command_name], metrics_["get_internal"]));
 }
 
-class SetCommandCb : public YBStatusCallback {
+void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
+  ReadCommand(call, c, "get", &ParseGet);
+}
+
+void RedisServiceImpl::HGetCommand(InboundCall* call, RedisClientCommand* c) {
+  ReadCommand(call, c, "hget", &ParseHGet);
+}
+
+void RedisServiceImpl::StrLenCommand(InboundCall* call, RedisClientCommand* c) {
+  ReadCommand(call, c, "strlen", &ParseStrLen);
+}
+
+void RedisServiceImpl::ExistsCommand(InboundCall* call, RedisClientCommand* c) {
+  ReadCommand(call, c, "exists", &ParseExists);
+}
+
+void RedisServiceImpl::GetRangeCommand(InboundCall* call, RedisClientCommand* c) {
+  ReadCommand(call, c, "exists", &ParseGetRange);
+}
+
+class WriteCommandCb : public YBStatusCallback {
  public:
-  SetCommandCb(
-      shared_ptr<client::YBSession> session, InboundCall* call, rpc::RpcMethodMetrics metrics,
-      rpc::RpcMethodMetrics metrics_internal)
+  WriteCommandCb(
+      shared_ptr<client::YBSession> session, InboundCall* call, shared_ptr<YBRedisWriteOp> write_op,
+      rpc::RpcMethodMetrics metrics, rpc::RpcMethodMetrics metrics_internal)
       : session_(session),
         redis_call_(call),
+        write_op_(write_op),
         metrics_(metrics),
         metrics_internal_(metrics_internal),
         start_(MonoTime::Now(MonoTime::FINE)) {}
@@ -275,20 +395,20 @@ class SetCommandCb : public YBStatusCallback {
  private:
   shared_ptr<client::YBSession> session_;
   unique_ptr<InboundCall> redis_call_;
+  shared_ptr<YBRedisWriteOp> write_op_;
   rpc::RpcMethodMetrics metrics_;
   rpc::RpcMethodMetrics metrics_internal_;
   MonoTime start_;
 };
 
-void SetCommandCb::Run(const Status& status) {
+void WriteCommandCb::Run(const Status& status) {
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   metrics_internal_.handler_latency->Increment(now.GetDeltaSince(start_).ToMicroseconds());
   VLOG(3) << "Received status from call " << status.ToString(true);
 
   if (status.ok()) {
-    RedisResponsePB* ok_response = new RedisResponsePB();
+    RedisResponsePB* ok_response = new RedisResponsePB(write_op_->response());
     RpcContext* context = new RpcContext(redis_call_.release(), nullptr, ok_response, metrics_);
-    ok_response->set_string_response("OK");
     context->RespondSuccess();
   } else {
     vector<client::YBError*> errors;
@@ -308,44 +428,54 @@ void SetCommandCb::Run(const Status& status) {
   delete this;
 }
 
-constexpr int64_t kMaxTTlSec = std::numeric_limits<int64_t >::max() / 1000000;
-
-void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
-  // If args don't match, then we assume there's one EX field set.
-  // TODO: Cover more cases for various options when supported.
-  if (c->cmd_args.size() != 3 && c->cmd_args.size() != 5) {
-    LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has wrong number of arguments.";
-    RespondWithFailure("Wrong number of arguments.", call, c);
-  }
-  if (c->cmd_args.size() == 5) {
-    if (c->cmd_args[3].ToString() != "EX") {
-      LOG(ERROR) << "Requested command is expected to have 'EX' as 4th argument, found: "
-                 << c->cmd_args[3].ToString() << ".";
-      RespondWithFailure("Invalid arguments.", call, c);
-    }
-    const string ttl = c->cmd_args[4].ToString();
-    try {
-      const int64_t val = std::stoll(ttl);
-      if (val <= 0 || val > kMaxTTlSec) {
-        throw new std::out_of_range("TTL value should be positive and less than " + kMaxTTlSec);
-      }
-    } catch (std::invalid_argument e) {
-      LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has non-numeric TTL: " << ttl;
-      RespondWithFailure("Unable to parse TTL as a valid number: " + ttl, call, c);
-    } catch (std::out_of_range e) {
-      LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has out of range TTL: " << ttl;
-      RespondWithFailure("TTL is out of bounds: " + ttl, call, c);
-    }
-  }
+void RedisServiceImpl::WriteCommand(
+    InboundCall* call,
+    RedisClientCommand* c,
+    const string& command_name,
+    Status(*parse)(YBRedisWriteOp*, const std::vector<Slice>&)) {
+  VLOG(1) << "Processing " << command_name << ".";
 
   auto tmp_session = client_->NewSession();
   ConfigureSession(tmp_session.get());
   CHECK_OK(tmp_session->SetFlushMode(YBSession::FlushMode::MANUAL_FLUSH));
-  CHECK_OK(tmp_session->Apply(
-      RedisWriteOpForSetKV(table_.get(), c->cmd_args)));
+  shared_ptr<YBRedisWriteOp> write_op(table_->NewRedisWrite());
+  Status s = parse(write_op.get(), c->cmd_args);
+  if (!s.ok()) {
+    RespondWithFailure(s.message().ToString(), call, c);
+    return;
+  }
+  CHECK_OK(tmp_session->Apply(write_op));
   // Callback will delete itself, after processing the callback.
-  tmp_session->FlushAsync(
-      new SetCommandCb(tmp_session, call, metrics_["set"], metrics_["set_internal"]));
+  tmp_session->FlushAsync(new WriteCommandCb(
+      tmp_session, call, write_op, metrics_[command_name], metrics_["set_internal"]));
+}
+
+void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
+  WriteCommand(call, c, "set", &ParseSet);
+}
+
+void RedisServiceImpl::HSetCommand(InboundCall* call, RedisClientCommand* c) {
+  WriteCommand(call, c, "hset", &ParseHSet);
+}
+
+void RedisServiceImpl::GetSetCommand(InboundCall* call, RedisClientCommand* c) {
+  WriteCommand(call, c, "getset", &ParseGetSet);
+}
+
+void RedisServiceImpl::AppendCommand(InboundCall* call, RedisClientCommand* c) {
+  WriteCommand(call, c, "append", &ParseAppend);
+}
+
+void RedisServiceImpl::DelCommand(InboundCall* call, RedisClientCommand* c) {
+  WriteCommand(call, c, "del", &ParseDel);
+}
+
+void RedisServiceImpl::SetRangeCommand(InboundCall* call, RedisClientCommand* c) {
+  WriteCommand(call, c, "setrange", &ParseSetRange);
+}
+
+void RedisServiceImpl::IncrCommand(InboundCall* call, RedisClientCommand* c) {
+  WriteCommand(call, c, "incr", &ParseIncr);
 }
 
 void RedisServiceImpl::RespondWithFailure(

@@ -26,6 +26,8 @@ class Value {
 
   bool has_ttl() const { return !ttl_.Equals(kMaxTtl); }
 
+  ValueType value_type() const { return primitive_value_.value_type(); }
+
   PrimitiveValue* mutable_primitive_value() { return &primitive_value_; }
 
   const PrimitiveValue primitive_value() const { return primitive_value_; }

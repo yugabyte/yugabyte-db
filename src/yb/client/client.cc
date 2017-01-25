@@ -34,7 +34,6 @@
 #include "yb/client/error-internal.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/redis_helpers.h"
 #include "yb/client/row_result.h"
 #include "yb/client/scan_predicate-internal.h"
 #include "yb/client/scanner-internal.h"
@@ -55,6 +54,8 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_util.h"
+#include "yb/redisserver/redis_constants.h"
+#include "yb/redisserver/redis_parser.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
@@ -713,8 +714,7 @@ Status YBTableCreator::Create() {
     CHECK(!data_->schema_) << "Schema should not be set for redis table creation";
     redis_schema = new YBSchema();
     YBSchemaBuilder b;
-    b.AddColumn(RedisConstants::kRedisKeyColumnName)->
-        Type(YBColumnSchema::BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn(kRedisKeyColumnName)->Type(YBColumnSchema::BINARY)->NotNull()->HashPrimaryKey();
     RETURN_NOT_OK(b.Build(redis_schema));
     schema(redis_schema);
   }

@@ -114,9 +114,9 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, Timestamp timestamp) {
     //       to extract document key out of a subdocument key.
     auto encoded_doc_key = subdoc_key.doc_key().Encode();
     const Status get_doc_status =
-        yb::docdb::GetDocument(rocksdb, encoded_doc_key, &subdoc, &doc_found, timestamp);
+        yb::docdb::GetSubDocument(rocksdb, encoded_doc_key, &subdoc, &doc_found, timestamp);
     if (!get_doc_status.ok()) {
-      // This will help with debugging the GetDocument failure.
+      // This will help with debugging the GetSubDocument failure.
       LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, /* include_binary = */ true);
     }
     CHECK_OK(get_doc_status);

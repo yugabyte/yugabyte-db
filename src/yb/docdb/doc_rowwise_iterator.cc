@@ -163,7 +163,7 @@ bool DocRowwiseIterator::HasNext() const {
       // Defer error reporting to NextBlock.
       return true;
     }
-    auto value_type = top_level_value.primitive_value().value_type();
+    const auto value_type = top_level_value.value_type();
     if (value_type == ValueType::kObject) {
       // Success: found a valid document at the given timestamp.
       return true;

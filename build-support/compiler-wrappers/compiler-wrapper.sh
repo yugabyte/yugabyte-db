@@ -152,6 +152,7 @@ set -u
 
 output_file=""
 input_files=()
+library_files=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -161,7 +162,7 @@ while [[ $# -gt 0 ]]; do
         shift
       fi
     ;;
-    *.cc|*.h|*.o)
+    *.cc|*.h|*.o|*.a|*.so|*.dylib)
       input_files+=( "$1" )
     ;;
     *)
@@ -169,6 +170,11 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ ! $output_file = *.o && ${#library_files[@]} -gt 0 ]]; then
+  input_files+=( "${library_files[@]}" )
+  library_files=()
+fi
 
 set_default_compiler_type
 find_compiler_by_type "$YB_COMPILER_TYPE"
@@ -221,7 +227,22 @@ exit_handler() {
             echo "| COMPILATION FAILED"
             echo "|-------------------------------------------------------------------------------"
             IFS='\n'
-            tail -n +2 "$stderr_path" | while read stderr_line; do
+            (
+              tail -n +2 "$stderr_path"
+              echo
+              if [[ ${#input_files[@]} -gt 0 ]]; then
+                echo "Input files:"
+                for input_file in "${input_files[@]}"; do
+                  if [[ -f /usr/bin/realpath ]]; then
+                    input_file=$( realpath "$input_file" )
+                  fi
+                  echo "  $input_file"
+                done
+                echo
+                echo "Output file (from -o): $output_file"
+              fi
+
+            ) | while read stderr_line; do
               echo "| $stderr_line"
             done
             unset IFS
@@ -232,15 +253,6 @@ exit_handler() {
           echo "Compiler standard error is empty." >&2
         fi
       fi
-      log_empty_line
-      if [[ ${#input_files[@]} -gt 0 ]]; then
-        echo "Input files:" >&2
-        for input_file in "${input_files[@]}"; do
-          echo "  $input_file" >&2
-        done
-      fi
-      echo "Output file (from -o): $output_file" >&2
-      log_empty_line
     ) >&2
   fi
   rm -f "${stderr_path:-}"
@@ -294,9 +306,15 @@ fi
 
 if [[ $compiler_exit_code -ne 0 ]]; then
   if egrep 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
-       "$stderr_path" || \
-     egrep 'error: ld returned' "$stderr_path"; then
+       "$stderr_path" >/dev/null || \
+     egrep 'error: ld returned' "$stderr_path" >/dev/null; then
     generate_build_debug_script rerun_failed_link_step "$( determine_compiler_cmdline ) -v"
+  fi
+
+  if egrep ': undefined reference to ' "$stderr_path" >/dev/null; then
+    for library_path in "${input_files[@]}"; do
+      nm -gC "$library_path" | grep ParseGet
+    done
   fi
 
   exit "$compiler_exit_code"
