@@ -47,6 +47,11 @@ dockerExposedPorts := Seq(9000)
 dockerRepository := Some("registry.replicated.com/yugaware_apple")
 
 dockerCommands ++= Seq(
+  Cmd("USER", "root"),
+  Cmd("RUN", "apt-get update && apt-get install -y python-dev libffi-dev " +
+    "openssl libssl-dev python-pip git"),
   Cmd("ADD", "packages/devops*.tar.gz" + " /opt/yugabyte/devops"),
+  Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_python_requirements.sh"),
+  Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_ansible_requirements.sh"),
   Cmd("COPY", "packages/yb-server*.tar.gz" + " /opt/yugabyte/")
 )
