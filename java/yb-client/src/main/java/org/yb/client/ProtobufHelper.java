@@ -84,6 +84,12 @@ public class ProtobufHelper {
     List<ColumnSchema> columns = new ArrayList<>(schema.getColumnsCount());
     List<Integer> columnIds = new ArrayList<>(schema.getColumnsCount());
     for (Common.ColumnSchemaPB columnPb : schema.getColumnsList()) {
+      int id = columnPb.getId();
+      if (id < 0) {
+        throw new IllegalArgumentException("Illegal column ID " + id + " provided for column " +
+                                           columnPb.getName());
+      }
+      columnIds.add(id);
       Type type = Type.getTypeForDataType(columnPb.getType());
       Object defaultValue = columnPb.hasReadDefaultValue() ? byteStringToObject(type,
           columnPb.getReadDefaultValue()) : null;
@@ -91,6 +97,7 @@ public class ProtobufHelper {
       ColumnSchema.CompressionAlgorithm compressionAlgorithm =
           ColumnSchema.CompressionAlgorithm.valueOf(columnPb.getCompression().name());
       ColumnSchema column = new ColumnSchema.ColumnSchemaBuilder(columnPb.getName(), type)
+          .id(id)
           .key(columnPb.getIsKey())
           .hashKey(columnPb.getIsHashKey())
           .nullable(columnPb.getIsNullable())
@@ -99,11 +106,6 @@ public class ProtobufHelper {
           .compressionAlgorithm(compressionAlgorithm)
           .build();
       columns.add(column);
-      int id = columnPb.getId();
-      if (id < 0) {
-        throw new IllegalArgumentException("Illegal column ID: " + id);
-      }
-      columnIds.add(id);
     }
     return new Schema(columns, columnIds);
   }

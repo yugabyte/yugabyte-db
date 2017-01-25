@@ -1670,10 +1670,11 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     resp->mutable_schema()->CopyFrom(l.data().pb.schema());
   }
   resp->mutable_replication_info()->CopyFrom(l.data().pb.replication_info());
-  resp->set_table_id(table->id());
   resp->mutable_partition_schema()->CopyFrom(l.data().pb.partition_schema());
   resp->set_create_table_done(!table->IsCreateInProgress());
   resp->set_table_type(table->metadata().state().pb.table_type());
+  resp->mutable_identifier()->set_table_name(l.data().pb.name());
+  resp->mutable_identifier()->set_table_id(table->id());
 
   return Status::OK();
 }

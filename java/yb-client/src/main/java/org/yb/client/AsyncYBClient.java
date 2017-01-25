@@ -45,6 +45,7 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
 import org.yb.master.Master;
 import org.yb.master.Master.GetTableLocationsResponsePB;
+import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 import org.yb.util.AsyncUtil;
 import org.yb.util.NetUtil;
 import org.yb.util.Pair;
@@ -77,7 +78,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.yb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
@@ -487,8 +493,24 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(rpc);
   }
 
+  /**
+   * Get the schema for a specific table given that table's name.
+   * @param name the name of the table to get a schema of
+   * @return a deferred object that yields the schema of the specified table
+   */
   Deferred<GetTableSchemaResponse> getTableSchema(String name) {
-    GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, name);
+    GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, name, null);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Get the schema for a specific table given that table's uuid
+   * @param tableUUID the uuid of the table to get a schema of
+   * @return a deferred object that yields the schema of the specified table
+   */
+  Deferred<GetTableSchemaResponse> getTableSchemaByUUID(String tableUUID) {
+    GetTableSchemaRequest rpc = new GetTableSchemaRequest(this.masterTable, null, tableUUID);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -522,16 +544,29 @@ public class AsyncYBClient implements AutoCloseable {
     if (name == null) {
       throw new IllegalArgumentException("The table name cannot be null");
     }
-    return getTablesList().addCallbackDeferring(new Callback<Deferred<Boolean>,
-        ListTablesResponse>() {
+    return getTableSchema(name).addCallbackDeferring(new Callback<Deferred<Boolean>,
+        GetTableSchemaResponse>() {
       @Override
-      public Deferred<Boolean> call(ListTablesResponse listTablesResponse) throws Exception {
-        for (String tableName : listTablesResponse.getTablesList()) {
-          if (name.equals(tableName)) {
-            return Deferred.fromResult(true);
-          }
-        }
-        return Deferred.fromResult(false);
+      public Deferred<Boolean> call(GetTableSchemaResponse response) throws Exception {
+        return Deferred.fromResult(true);
+      }
+    });
+  }
+
+  /**
+   * Test if a table exists based on a provided UUID.
+   * @param tableUUID a non-null table UUID
+   * @return true if the table exists, else false
+   */
+  public Deferred<Boolean> tableExistsByUUID(final String tableUUID) {
+    if (tableUUID == null) {
+      throw new IllegalArgumentException("The table UUID cannot be null");
+    }
+    return getTableSchemaByUUID(tableUUID).addCallbackDeferring(new Callback<Deferred<Boolean>,
+        GetTableSchemaResponse>() {
+      @Override
+      public Deferred<Boolean> call(GetTableSchemaResponse response) throws Exception {
+        return Deferred.fromResult(true);
       }
     });
   }
@@ -545,25 +580,7 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<YBTable> openTable(final String name) {
     checkIsClosed();
 
-    // We create an RPC that we're never going to send, and will instead use it to keep track of
-    // timeouts and use its Deferred.
-    final YRpc<YBTable> fakeRpc = new YRpc<YBTable>(null) {
-      @Override
-      ChannelBuffer serialize(Message header) { return null; }
-
-      @Override
-      String serviceName() { return null; }
-
-      @Override
-      String method() {
-        return "IsCreateTableDone";
-      }
-
-      @Override
-      Pair<YBTable, Object> deserialize(CallResponse callResponse, String tsUUID)
-          throws Exception { return null; }
-    };
-    fakeRpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    final OpenTableHelperRPC helper = new OpenTableHelperRPC();
 
     return getTableSchema(name).addCallbackDeferring(new Callback<Deferred<YBTable>,
         GetTableSchemaResponse>() {
@@ -575,28 +592,107 @@ public class AsyncYBClient implements AutoCloseable {
             response.getSchema(),
             response.getPartitionSchema(),
             response.getTableType());
-        // We grab the Deferred first because calling callback on the RPC will reset it and we'd
-        // return a different, non-triggered Deferred.
-        Deferred<YBTable> d = fakeRpc.getDeferred();
-        if (response.isCreateTableDone()) {
-          LOG.debug("Opened table {}", name);
-          fakeRpc.callback(table);
-        } else {
-          LOG.debug("Delaying opening table {}, its tablets aren't fully created", name);
-          fakeRpc.attempt++;
-          delayedIsCreateTableDone(
-              table,
-              fakeRpc,
-              getOpenTableCB(fakeRpc, table),
-              getDelayedIsCreateTableDoneErrback(fakeRpc));
-        }
-        return d;
+        return helper.attemptOpen(response.isCreateTableDone(), table, name);
       }
     });
   }
 
   /**
-   * This callback will be repeatadly used when opening a table until it is done being created.
+   * Open the table with the given UUID. If the table was just created, the Deferred will only get
+   * called back when all the tablets have been successfully created.
+   * @param tableUUID uuid of table to open
+   * @return a YBTable if the table exists, else a MasterErrorException
+   */
+  public Deferred<YBTable> openTableByUUID(final String tableUUID) {
+    checkIsClosed();
+
+    final OpenTableHelperRPC helper = new OpenTableHelperRPC();
+
+    return getTableSchemaByUUID(tableUUID).addCallbackDeferring(new Callback<Deferred<YBTable>,
+        GetTableSchemaResponse>() {
+      @Override
+      public Deferred<YBTable> call(GetTableSchemaResponse response) throws Exception {
+        YBTable table = new YBTable(AsyncYBClient.this,
+            response.getTableName(),
+            tableUUID,
+            response.getSchema(),
+            response.getPartitionSchema(),
+            response.getTableType());
+        return helper.attemptOpen(response.isCreateTableDone(), table, tableUUID);
+      }
+    });
+  }
+
+  /**
+   * An RPC that we're never going to send, but can be used to keep track of timeouts and to access
+   * its Deferred. Specifically created for the openTable functions. If the table was just created,
+   * the Deferred will only get returned when all the tablets have been successfully created.
+   */
+  private class OpenTableHelperRPC extends YRpc<YBTable> {
+
+    OpenTableHelperRPC() {
+      super(null);
+      setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    }
+
+    @Override
+    ChannelBuffer serialize(Message header) {
+      return null;
+    }
+
+    @Override
+    String serviceName() {
+      return null;
+    }
+
+    @Override
+    String method() {
+      return "IsCreateTableDone";
+    }
+
+    @Override
+    Pair<YBTable, Object> deserialize(CallResponse callResponse, String tsUUID)
+        throws Exception {
+      return null;
+    }
+
+    /**
+     * Attempt to open the specified table.
+     * @param tableCreated
+     * @param table
+     * @param identifier
+     * @return
+     */
+    Deferred<YBTable> attemptOpen(boolean tableCreated, YBTable table, String identifier) {
+      // We grab the Deferred first because calling callback in succeed will reset it and we'd
+      // return a different, non-triggered Deferred.
+      Deferred<YBTable> d = getDeferred();
+      if (tableCreated) {
+        succeed(table, identifier);
+      } else {
+        retry(table, identifier);
+      }
+      return d;
+    }
+
+    private void succeed(YBTable table, String identifier) {
+      LOG.debug("Opened table {}", identifier);
+      callback(table);
+    }
+
+    private void retry(YBTable table, String identifier) {
+      LOG.debug("Delaying opening table {}, its tablets aren't fully created", identifier);
+      attempt++;
+      delayedIsCreateTableDone(
+          table,
+          this,
+          getOpenTableCB(this, table),
+          getDelayedIsCreateTableDoneErrback(this));
+    }
+  }
+
+  /**
+   * This callback will be repeatedly used when opening a table until it is done being created.
    */
   Callback<Deferred<YBTable>, Master.IsCreateTableDoneResponsePB> getOpenTableCB(
       final YRpc<YBTable> rpc, final YBTable table) {

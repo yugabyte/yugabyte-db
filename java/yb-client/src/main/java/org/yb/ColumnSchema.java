@@ -29,6 +29,7 @@ import org.yb.annotations.InterfaceStability;
 @InterfaceStability.Evolving
 public class ColumnSchema {
 
+  private final Integer id;
   private final String name;
   private final Type type;
   private final boolean key;
@@ -89,9 +90,10 @@ public class ColumnSchema {
     }
   };
 
-  private ColumnSchema(String name, Type type, boolean key, boolean hashKey, boolean nullable,
-                       Object defaultValue, int desiredBlockSize, Encoding encoding,
-                       CompressionAlgorithm compressionAlgorithm) {
+  private ColumnSchema(Integer id, String name, Type type, boolean key, boolean hashKey,
+                       boolean nullable, Object defaultValue, int desiredBlockSize,
+                       Encoding encoding, CompressionAlgorithm compressionAlgorithm) {
+    this.id = id;
     this.name = name;
     this.type = type;
     this.key = key;
@@ -101,6 +103,10 @@ public class ColumnSchema {
     this.desiredBlockSize = desiredBlockSize;
     this.encoding = encoding;
     this.compressionAlgorithm = compressionAlgorithm;
+  }
+
+  public Integer getId() {
+    return id;
   }
 
   /**
@@ -208,6 +214,7 @@ public class ColumnSchema {
    * Builder for ColumnSchema.
    */
   public static class ColumnSchemaBuilder {
+    private Integer id = null;
     private final String name;
     private final Type type;
     private boolean key = false;
@@ -226,6 +233,16 @@ public class ColumnSchema {
     public ColumnSchemaBuilder(String name, Type type) {
       this.name = name;
       this.type = type;
+    }
+
+    /**
+     * Sets if the column id is known. null by default.
+     * @param id an int that is the column's id
+     * @return this instance
+     */
+    public ColumnSchemaBuilder id(Integer id) {
+      this.id = id;
+      return this;
     }
 
     /**
@@ -316,7 +333,7 @@ public class ColumnSchema {
      * @return a new {@link ColumnSchema}
      */
     public ColumnSchema build() {
-      return new ColumnSchema(name, type,
+      return new ColumnSchema(id, name, type,
                               key, hashKey, nullable, defaultValue,
                               blockSize, encoding, compressionAlgorithm);
     }

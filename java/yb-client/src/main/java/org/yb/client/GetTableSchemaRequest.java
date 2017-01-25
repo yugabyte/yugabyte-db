@@ -16,6 +16,7 @@
 // under the License.
 package org.yb.client;
 
+import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
 import static org.yb.master.Master.*;
 
@@ -31,19 +32,28 @@ import org.jboss.netty.buffer.ChannelBuffer;
 public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
   static final String GET_TABLE_SCHEMA = "GetTableSchema";
   private final String name;
+  private final String uuid;
 
 
-  GetTableSchemaRequest(YBTable masterTable, String name) {
+  GetTableSchemaRequest(YBTable masterTable, String name, String uuid) {
     super(masterTable);
     this.name = name;
+    this.uuid = uuid;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
+    assert name != null || uuid != null;
     final GetTableSchemaRequestPB.Builder builder = GetTableSchemaRequestPB.newBuilder();
-    TableIdentifierPB tableID =
-        TableIdentifierPB.newBuilder().setTableName(name).build();
+    TableIdentifierPB tableID;
+    if (name == null) {
+      tableID = TableIdentifierPB.newBuilder()
+                                 .setTableId(ByteString.copyFrom(Bytes.fromString(uuid)))
+                                 .build();
+    } else {
+      tableID = TableIdentifierPB.newBuilder().setTableName(name).build();
+    }
     builder.setTable(tableID);
     return toChannelBuffer(header, builder.build());
   }
@@ -66,7 +76,8 @@ public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
         deadlineTracker.getElapsedMillis(),
         tsUUID,
         schema,
-        respBuilder.getTableId().toStringUtf8(),
+        respBuilder.getIdentifier().getTableName(),
+        respBuilder.getIdentifier().getTableId().toStringUtf8(),
         ProtobufHelper.pbToPartitionSchema(respBuilder.getPartitionSchema(), schema),
         respBuilder.getCreateTableDone(),
         respBuilder.getTableType());

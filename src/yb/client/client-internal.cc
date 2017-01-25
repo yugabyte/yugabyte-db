@@ -735,7 +735,7 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
                                            *out_schema_->schema_,
                                            out_partition_schema_);
 
-      *out_id_ = resp_.table_id();
+      *out_id_ = resp_.identifier().table_id();
       CHECK_GT(out_id_->size(), 0) << "Running against a too-old master";
     }
   }

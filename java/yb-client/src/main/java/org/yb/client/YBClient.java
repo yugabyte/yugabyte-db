@@ -18,7 +18,6 @@ package org.yb.client;
 
 import com.google.common.net.HostAndPort;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -26,7 +25,6 @@ import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common;
 import org.yb.Common.TableType;
 import org.yb.Schema;
 import org.yb.Type;
@@ -619,6 +617,44 @@ public class YBClient implements AutoCloseable {
    */
   public boolean tableExists(String name) throws Exception {
     Deferred<Boolean> d = asyncClient.tableExists(name);
+    try {
+      return d.join(getDefaultAdminOperationTimeoutMs());
+    } catch (MasterErrorException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Test if a table exists based on its UUID.
+   * @param tableUUID a non-null table UUID
+   * @return true if the table exists, else false
+   */
+  public boolean tableExistsByUUID(String tableUUID) throws Exception {
+    Deferred<Boolean> d = asyncClient.tableExistsByUUID(tableUUID);
+    try {
+      return d.join(getDefaultAdminOperationTimeoutMs());
+    } catch (MasterErrorException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Get the schema for a table based on the table's name.
+   * @param name a non-null table name
+   * @return a deferred that contains the schema for the specified table
+   */
+  public GetTableSchemaResponse getTableSchema(final String name) throws Exception {
+    Deferred<GetTableSchemaResponse> d = asyncClient.getTableSchema(name);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Get the schema for a table based on the table's UUID.
+   * @param tableUUID a non-null table uuid
+   * @return a deferred that contains the schema for the specified table
+   */
+  public GetTableSchemaResponse getTableSchemaByUUID(final String tableUUID) throws Exception {
+    Deferred<GetTableSchemaResponse> d = asyncClient.getTableSchemaByUUID(tableUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -630,6 +666,17 @@ public class YBClient implements AutoCloseable {
    */
   public YBTable openTable(final String name) throws Exception {
     Deferred<YBTable> d = asyncClient.openTable(name);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Open the table with the given UUID. If the table was just created, this method will block until
+   * all its tablets have also been created.
+   * @param tableUUID table to open
+   * @return a YBTable if the table exists, else a MasterErrorException
+   */
+  public YBTable openTableByUUID(final String tableUUID) throws Exception {
+    Deferred<YBTable> d = asyncClient.openTableByUUID(tableUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

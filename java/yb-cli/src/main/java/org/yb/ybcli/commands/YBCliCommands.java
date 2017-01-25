@@ -1,6 +1,5 @@
 package org.yb.ybcli.commands;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -10,16 +9,19 @@ import org.springframework.shell.core.annotation.CliAvailabilityIndicator;
 import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
+import org.yb.ColumnSchema;
 import org.yb.Common.HostPortPB;
+import org.yb.Schema;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ChangeConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
 import org.yb.util.NetUtil;
@@ -111,6 +113,28 @@ public class YBCliCommands implements CommandMarker {
     return sb.toString();
   }
 
+  @CliCommand(value = "check exists", help = "Check that a table exists")
+  public String checkTableExists(
+      @CliOption(key = { "name", "n" },
+                 help = "table identifier (name)")
+      final String tableName,
+      @CliOption(key = { "uuid", "u" },
+                 help = "table identifier (uuid)")
+      final String tableUuid) {
+    try {
+      if (tableName != null) {
+        return Boolean.toString(ybClient.tableExists(tableName));
+      } else if (tableUuid != null) {
+        return Boolean.toString(ybClient.tableExistsByUUID(tableUuid));
+      } else {
+        return "Please specify an identifier (name or uuid) for the table you wish to check.";
+      }
+    } catch (Exception e) {
+      String identifier = tableName == null ? tableUuid : tableName;
+      return "Failed to check if table " + identifier + "exists, error: " + e;
+    }
+  }
+
   @CliCommand(value = "list tablet-servers", help = "List all the tablet servers in this database")
   public String listTabletServers() {
     try {
@@ -140,29 +164,98 @@ public class YBCliCommands implements CommandMarker {
     }
   }
 
+  private void printTableInfo(Master.ListTablesResponsePB.TableInfo table, StringBuilder sb) {
+    sb.append("Table name: ");
+    sb.append(table.getName());
+    sb.append("\n");
+    sb.append("Table UUID: ");
+    sb.append(table.getId().toStringUtf8());
+    sb.append("\n");
+    sb.append("Table type: ");
+    sb.append(table.getTableType());
+    sb.append("\n");
+  }
+
+  private void printSchemaInfo(GetTableSchemaResponse response, StringBuilder sb) {
+    final Schema schema = response.getSchema();
+    sb.append("Table has " + Integer.toString(schema.getColumnCount()) + " columns.\n");
+    sb.append(String.format("%-15s", "Column Name"));
+    sb.append(String.format("%-15s", "Column ID"));
+    sb.append(String.format("%-15s", "Type"));
+    sb.append(String.format("%-15s", "Nullable?"));
+    sb.append(String.format("%-15s", "Is Key?"));
+    sb.append(String.format("%-15s\n", "Is Hash Key?"));
+    sb.append(new String(new char[15*6]).replace("\0", "-"));
+    sb.append("\n");
+    for (ColumnSchema columnSchema : schema.getColumns()) {
+      sb.append(String.format("%-15s", columnSchema.getName()));
+      sb.append(String.format("%-15s", Integer.toString(columnSchema.getId())));
+      sb.append(String.format("%-15s", columnSchema.getType().getName()));
+      sb.append(String.format("%-15s", columnSchema.isNullable() ? "YES" : "NO"));
+      sb.append(String.format("%-15s", columnSchema.isKey() ? "YES" : "NO"));
+      sb.append(String.format("%-15s\n", columnSchema.isHashKey() ? "YES" : "NO"));
+    }
+  }
+
+  @CliCommand(value = "describe table-uuid", help = "Info on a table in this database by uuid")
+  public String infoUuidTable(
+      @CliOption(key = { "uuid", "u" },
+                 mandatory = true,
+                 help = "table identifier (uuid)")
+      final String uuid) {
+    StringBuilder sb = new StringBuilder();
+    try {
+      ListTablesResponse resp = ybClient.getTablesList();
+      for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
+        if (table.getId().toStringUtf8().equals(uuid)) {
+          printTableInfo(table, sb);
+          printSchemaInfo(ybClient.getTableSchemaByUUID(uuid), sb);
+          sb.append("Time taken: ");
+          sb.append(resp.getElapsedMillis());
+          sb.append(" ms.");
+          return sb.toString();
+        }
+      }
+      sb.append("Table ");
+      sb.append(uuid);
+      sb.append(" not found.\n");
+      sb.append("Time taken: ");
+      sb.append(resp.getElapsedMillis());
+      sb.append(" ms.");
+      return sb.toString();
+    } catch (Exception e) {
+      return "Failed to fetch table from database at " + masterAddresses + ", error: " + e;
+    }
+  }
+
   @CliCommand(value = "describe table", help = "Info on a table in this database.")
   public String infoTable(
       @CliOption(key = { "table", "t" },
                  mandatory = true,
-                 help = "table name")
+                 help = "table identifier (name)")
       final String tableName) {
+    StringBuilder sb = new StringBuilder();
     try {
       ListTablesResponse resp = ybClient.getTablesList();
-      StringBuilder sb = new StringBuilder();
       for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
         if (table.getName().equals(tableName)) {
-          sb.append("Table info [name uuid type]:\n");
-          sb.append(table.getName() + " " + table.getId().toStringUtf8() + " " +
-                    table.getTableType() + "\n");
-          sb.append("Time taken: " + resp.getElapsedMillis() + " ms.");
+          printTableInfo(table, sb);
+          printSchemaInfo(ybClient.getTableSchema(tableName), sb);
+          sb.append("Time taken: ");
+          sb.append(resp.getElapsedMillis());
+          sb.append(" ms.");
           return sb.toString();
         }
       }
-      sb.append("Table " + tableName + " not found.\n" +
-                "Time taken: " + resp.getElapsedMillis() + " ms.");
+      sb.append("Table ");
+      sb.append(tableName);
+      sb.append(" not found.\n");
+      sb.append("Time taken: ");
+      sb.append(resp.getElapsedMillis());
+      sb.append(" ms.");
       return sb.toString();
     } catch (Exception e) {
-      return "Failed to fetch tables list from database at " + masterAddresses + ", error: " + e;
+      return "Failed to fetch table from database at " + masterAddresses + ", error: " + e;
     }
   }
 

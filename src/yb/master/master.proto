@@ -610,14 +610,14 @@ message GetTableSchemaResponsePB {
 
   optional ReplicationInfoPB replication_info = 3;
 
-  // The ID of the table.
-  optional bytes table_id = 4;
-
   // True if the create operation is completed, false otherwise.
   optional bool create_table_done = 6;
 
   // The table type.
   optional TableType table_type = 7;
+
+  // Table identifier
+  optional TableIdentifierPB identifier = 8;
 }
 
 // ============================================================================
