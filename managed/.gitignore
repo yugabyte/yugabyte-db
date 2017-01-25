@@ -35,3 +35,4 @@ react/npm-debug.log
 conf/*
 src/main/public/*
 *.pyc
+docker/yugaware/*.yml

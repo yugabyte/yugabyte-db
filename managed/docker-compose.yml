@@ -5,15 +5,17 @@ services:
     image: registry.replicated.com/yugaware_apple/yugaware:1.0-SNAPSHOT
     volumes:
       - ./docker/yugaware/:/opt/docker/conf/
-      - $HOME/.yugabyte:/usr/sbin/.yugabyte
+      - $HOME/.yugabyte:/root/.yugabyte
       - ./src/main/resources/metrics.yml:/opt/docker/conf/metrics.yml
+      - ./src/main/resources/db_seed.yml:/opt/docker/conf/db_seed.yml
       - /opt/docker/public/
+      - /var/run/docker.sock:/var/run/docker.sock:rw
     expose:
       - 9000
     ports:
       - 9000:9000
     environment:
-      - CATALINA_OPTS=-Xmx12g -Xms12g -XX:MaxPermSize=1024m
+      - JVM_OPTS=-XX:PermSize=1024m -XX:MaxPermSize=1024m
     depends_on:
       - postgres
 
@@ -39,3 +41,7 @@ services:
         - "80:80"
       volumes_from:
         - yugaware
+networks:
+  default:
+    external:
+      name: yugabyte-bridge
