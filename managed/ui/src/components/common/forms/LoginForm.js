@@ -6,9 +6,18 @@ import { Field } from 'redux-form';
 import { YBInputField } from './fields';
 
 class LoginForm extends Component {
+  constructor(props) {
+    super(props);
+    this.submitLogin = this.submitLogin.bind(this);
+  }
   static contextTypes = {
     router: PropTypes.object
   };
+  
+  submitLogin(formValues) {
+    const {loginCustomer} = this.props;
+    loginCustomer(formValues);
+  }
 
   componentWillReceiveProps(nextProps) {
     if (nextProps.customer.status === 'authenticated' &&
@@ -32,7 +41,7 @@ class LoginForm extends Component {
                 ${this.props.customer.error ? '': 'hide'}`}>
                   {<strong>{this.props.customer.error}</strong>}
               </div>
-              <form onSubmit={handleSubmit(this.props.loginCustomer.bind(this))}>
+              <form onSubmit={handleSubmit(this.submitLogin)}>
                 <Field name="email" type="email" component={YBInputField} label="Email"/>
                 <Field name="password" type="password" component={YBInputField} label="Password"/>
                 <div>
