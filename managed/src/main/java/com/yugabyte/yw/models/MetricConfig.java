@@ -11,10 +11,10 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Transient;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Entity
@@ -56,6 +56,10 @@ public class MetricConfig extends Model {
   public void setConfig(JsonNode config) { this.config = config; }
   public MetricConfig getConfig() { return Json.fromJson(this.config, MetricConfig.class); }
 
+  // If we have any special filter pattern, then we need to use =~ instead
+  // of = in our filter condition. Special patterns include *, |, $ or +.
+  static final Pattern specialFilterPattern = Pattern.compile("[*|+$]");
+
   public Map<String, String> getFilters() {
     if (this.getConfig().filters != null) {
       return Json.fromJson(this.getConfig().filters, Map.class);
@@ -86,8 +90,12 @@ public class MetricConfig extends Model {
     MetricConfig metricConfig = getConfig();
     if (metricConfig.metric == null) {
       throw new RuntimeException("Invalid MetricConfig: metric attribute is required");
+    } else if (!metricConfig.metric.equals("multi-metric")) {
+      // We will use a special metric key for any metric where we have to query
+      // multiple metrics in one. In those scenarios we would use the filter
+      // condition with wildcard to narrow the metrics. ex: network_packets
+      query.append(metricConfig.metric);
     }
-    query.append(metricConfig.metric);
 
     Map<String, String> filters = this.getFilters();
     // If we have additional filters, we add them
@@ -150,9 +158,7 @@ public class MetricConfig extends Model {
     String prefix = "{";
     for(Map.Entry<String, String> filter : filters.entrySet()) {
       filterStr.append(prefix);
-      // If we have the pipe delimiter in the filter, that means we want to match
-      // multiple filter conditions
-      if (filter.getValue().contains("|")) {
+      if (specialFilterPattern.matcher(filter.getValue()).find()) {
         filterStr.append(filter.getKey() + "=~\"" + filter.getValue() + "\"");
       } else {
         filterStr.append(filter.getKey() + "=\"" + filter.getValue() + "\"");
