@@ -70,7 +70,11 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       MetricQueryResponse queryResponse =
         Json.fromJson(queryResponseJson, MetricQueryResponse.class);
 
-      responseJson.set("data", queryResponse.getGraphData(config.getLayout()));
+      if (queryResponse.error != null) {
+        responseJson.put("error", queryResponse.error);
+      } else {
+        responseJson.set("data", queryResponse.getGraphData(config.getLayout()));
+      }
     }
     return responseJson;
   }

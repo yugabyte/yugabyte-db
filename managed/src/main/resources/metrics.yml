@@ -69,8 +69,10 @@ network_bytes:
         "net_bytes_recv": "RX"
 
 network_packets:
-  metric: '{__name__=~"node_network_(.*)_packets"}'
+  metric: "multi-metric"
   function: "avg"
+  filters:
+    __name__: "node_network_(.*)_packets"
   group_by: "__name__"
   layout:
     title: "Network Packets / sec / host"
@@ -82,8 +84,10 @@ network_packets:
         "node_network_transmit_packets": "TX"
 
 network_errors:
-  metric: '{__name__=~"node_network_(.*)_errs"}'
+  metric: "multi-metric"
   function: "avg"
+  filters:
+    __name__: "node_network_(.*)_errs"
   group_by: "__name__"
   layout:
     title: "Network Errors / sec / host"
@@ -95,7 +99,9 @@ network_errors:
         "node_network_transmit_errs": "TX"
 
 system_load_over_time:
-  metric: '{__name__=~"collectd_load_.+"}'
+  metric: "multi-metric"
+  filters:
+    __name__: "collectd_load_.+"
   function: "avg"
   group_by: "__name__"
   layout:
@@ -109,7 +115,9 @@ system_load_over_time:
         "collectd_load_2": "Large"
 
 disk_bytes_per_second_per_node:
-  metric: '{__name__=~"node_disk_bytes_.+"}'
+  metric: "multi-metric"
+  filters:
+    __name__: "node_disk_bytes_.+"
   function: "avg"
   group_by: "__name__"
   layout:

@@ -164,4 +164,21 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                allOf(notNullValue(), equalTo("{start=1479281737, queryKey=valid_metric, " +
                                                "query=sum(our_valid_metric{filter=\"awesome\"})}")));
   }
+
+  @Test
+  public void testInvalidQuery() throws Exception  {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("queryKey", "valid_metric");
+
+    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper,
+            params, new HashMap<>());
+
+    JsonNode responseJson = Json.parse("{\"status\":\"error\",\"errorType\":\"bad_data\"," +
+            "\"error\":\"parse error at char 44: unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
+    JsonNode response = qe.call();
+    assertThat(response.get("error").asText(), allOf(notNullValue(), equalTo("parse error at char 44: unexpected " +
+            "\"{\" in aggregation, expected \")\"")));
+  }
 }
