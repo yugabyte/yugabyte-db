@@ -13,12 +13,16 @@ import static play.test.Helpers.route;
 
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 
 import play.libs.Json;
@@ -30,8 +34,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-
 public class MetaMasterControllerTest extends FakeDBApplication {
+  public static final Logger LOG = LoggerFactory.getLogger(MetaMasterControllerTest.class);
 
   @Test
   public void testGetWithInvalidUniverse() {
@@ -43,41 +47,8 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   @Test
   public void testGetWithValidUniverse() {
     Universe u = Universe.create("Test Universe", UUID.randomUUID(), 0L);
-    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.userIntent = new UserIntent();
-
-        // Create some subnets.
-        List<String> subnets = new ArrayList<String>();
-        subnets.add("subnet-1");
-        subnets.add("subnet-2");
-        subnets.add("subnet-3");
-
-        // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 5;
-        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
-        for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node = new NodeDetails();
-          node.nodeName = "host-n" + idx;
-          node.cloudInfo = new CloudSpecificInfo();
-          node.cloudInfo.cloud = "aws";
-          node.cloudInfo.subnet_id = subnets.get(idx % subnets.size());
-          node.cloudInfo.private_ip = "host-n" + idx;
-          node.isTserver = true;
-          if (idx <= 3) {
-            node.isMaster = true;
-          }
-          node.nodeIdx = idx;
-          universeDetails.nodeDetailsSet.add(node);
-        }
-      }
-    };
     // Save the updates to the universe.
-    Universe.saveDetails(u.universeUUID, updater);
-
+    Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
 
     // Read the value back.
     Result result = route(fakeRequest("GET", "/metamaster/universe/" + u.universeUUID.toString()));
@@ -93,6 +64,29 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     for (MetaMasterController.MasterNode node : masterList.masters) {
       assertTrue(masterNodeNames.contains(node.cloudInfo.private_ip));
     }
+  }
+
+  @Test
+  public void testYqlGetWithInvalidUniverse() {
+    String universeUUID = "11111111-2222-3333-4444-555555555555";
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
+                                       universeUUID + "/yqlservers"));
+    assertRestResult(result, false, BAD_REQUEST);
+  }
+
+  @Test
+  public void testYqlGetWithValidUniverse() {
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.save();
+
+    Result r = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
+                                 u1.universeUUID + "/yqlservers"));
+    LOG.info("Fetched yql server list from universe, response: " + contentAsString(r));
+    assertRestResult(r, true, OK);
   }
 
   private void assertRestResult(Result result, boolean expectSuccess, int expectStatus) {
