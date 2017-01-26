@@ -26,6 +26,7 @@ public class Configuration {
 
   // The types of workloads currently registered.
   public static enum WorkLoadType {
+    CassandraRetail,
     CassandraSimpleReadWrite,
     CassandraTimeseries,
     RedisSimpleReadWrite,
