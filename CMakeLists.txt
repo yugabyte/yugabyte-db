@@ -418,6 +418,7 @@ if(USING_LINUXBREW AND IS_CLANG)
   # equivalent of these options automatically.
   ADD_COMMON_LINKER_FLAGS("-Wl,--dynamic-linker=${LINUXBREW_LIB_DIR}/ld.so")
   ADD_COMMON_COMPILER_LINKER_FLAGS("--gcc-toolchain=${LINUXBREW_DIR}")
+  ADD_COMMON_COMPILER_LINKER_FLAGS("-Wno-gnu-designator")
 endif()
 
 # For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
