@@ -402,6 +402,10 @@ ADD_CXX_GLOBAL_COMMON_FLAGS("-Wno-deprecated-declarations")
 
 ADD_CXX_GLOBAL_COMMON_FLAGS("-DGFLAGS=gflags")
 
+if(IS_CLANG)
+  ADD_CXX_YB_COMMON_FLAGS("-Werror=string-plus-int")
+endif()
+
 if(IS_CLANG AND NOT APPLE)
   if ("${COMPILER_VERSION}" VERSION_GREATER "3.8")
     # This is a new warning in Clang 3.9 (or at least it is not there in Clang 3.7). We need to fix
