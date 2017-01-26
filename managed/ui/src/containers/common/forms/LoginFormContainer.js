@@ -20,35 +20,20 @@ function validate(values) {
   return hasErrors && errors;
 }
 
-//For any field errors upon submission (i.e. not instant check)
-const validateAndLogInCustomer = (values, dispatch) => {
-  return new Promise((resolve, reject) => {
-    dispatch(login(values))
-    .then((response) => {
-      let data = response.payload.data;
-      //if any one of these exist, then there is a field error
-      if(response.payload.status !== 200) {
-        //let other components know of error by updating the redux` state
-        dispatch(loginFailure(response.payload));
-        if (typeof data.error === 'string') {
-          reject({_error: data.error});
-        }
-        reject(data.error);
-      } else {
-        localStorage.setItem('customer_token', response.payload.data.authToken);
-        localStorage.setItem('customer_id',response.payload.data.customerUUID);
-        dispatch(loginSuccess(response.payload));
-        resolve();
-      }
-    });
-  });
-};
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    loginCustomer: validateAndLogInCustomer,
-    resetMe: () =>{
-
+    loginCustomer: (formValues)=> {
+      dispatch(login(formValues))
+        .then((response) => {
+          if(response.payload.status !== 200) {
+            dispatch(loginFailure(response.payload));
+          } else {
+            localStorage.setItem('customer_token', response.payload.data.authToken);
+            localStorage.setItem('customer_id',response.payload.data.customerUUID);
+            dispatch(loginSuccess(response.payload));
+          }
+        });
     }
   }
 }

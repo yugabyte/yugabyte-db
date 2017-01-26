@@ -38,31 +38,18 @@ function validate(values) {
   return hasErrors && errors;
 }
 
-const validateAndRegisterCustomer = (values, dispatch) => {
-  return new Promise((resolve, reject) => {
-    dispatch(register(values)).then((response) => {
-      let data = response.payload.data;
-      if(response.payload.status !== 200) {
-        dispatch(registerFailure(response.payload));
-        if (typeof data.error === 'string') {
-          reject({_error: data.error});
-        }
-        reject(data.error);
-      } else {
-        localStorage.setItem('customer_token', response.payload.data.authToken);
-        localStorage.setItem('customer_id',response.payload.data.customerUUID);
-        dispatch(registerSuccess(response.payload));
-        resolve();
-      }
-    });
-  });
-};
-
 const mapDispatchToProps = (dispatch) => {
   return {
-    registerCustomer: validateAndRegisterCustomer,
-    resetMe: () =>{
-
+    registerCustomer: (formVals)=> {
+      dispatch(register(formVals)).then((response) => {
+        if(response.payload.status !== 200) {
+          dispatch(registerFailure(response.payload));
+        } else {
+          localStorage.setItem('customer_token', response.payload.data.authToken);
+          localStorage.setItem('customer_id',response.payload.data.customerUUID);
+          dispatch(registerSuccess(response.payload));
+        }
+      });
     }
   }
 }

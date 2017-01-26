@@ -5,18 +5,23 @@ import { Field } from 'redux-form';
 import { YBInputField } from './fields';
 
 class RegisterForm extends Component {
+  constructor(props) {
+    super(props);
+    this.submitRegister = this.submitRegister.bind(this);
+  }
   static contextTypes = {
     router: PropTypes.object
   };
-
-  componentWillMount() {
-    this.props.resetMe();
-  }
 
   componentWillReceiveProps(nextProps) {
     if(nextProps.customer.status === 'authenticated' && nextProps.customer.customer && !nextProps.customer.error) {
       this.context.router.push('/');
     }
+  }
+
+  submitRegister(formValues) {
+    const {registerCustomer} = this.props;
+    registerCustomer(formValues);
   }
 
   render() {
