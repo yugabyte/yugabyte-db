@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -37,11 +38,33 @@ public class MetaMasterController extends Controller {
   }
 
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
-    // TODO: verify customer has the universe.
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
     try {
       // Lookup the entry for the instanceUUID.
       Universe universe = Universe.get(universeUUID);
       return ApiResponse.success(universe.getMasterAddresses());
+    } catch (RuntimeException e) {
+      LOG.error("Error finding universe", e);
+      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
+    }
+  }
+
+  public Result getYQLServerAddresses(UUID customerUUID, UUID universeUUID) {
+    // Verify the customer with this universe is present.
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    try {
+      // Lookup the entry for the instanceUUID.
+      Universe universe = Universe.get(universeUUID);
+      return ApiResponse.success(universe.getYQLServerAddresses());
     } catch (RuntimeException e) {
       LOG.error("Error finding universe", e);
       return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
