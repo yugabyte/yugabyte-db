@@ -21,6 +21,7 @@ import com.stumbleupon.async.Deferred;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -77,7 +78,7 @@ public class TestScannerMultiTablet extends BaseYBTest {
   }
 
   // Test various combinations of start/end row keys.
-  @Test(timeout = 100000)
+  @Ignore
   public void testKeyStartEnd() throws Exception {
     assertEquals(0,
         countRowsInScan(getScanner("", "", "1", ""))); // There's nothing in the 1st tablet
@@ -112,7 +113,7 @@ public class TestScannerMultiTablet extends BaseYBTest {
   }
 
   // Test mixing start/end row keys with predicates.
-  @Test(timeout = 100000)
+  @Ignore
   public void testKeysAndPredicates() throws Exception {
     // First row from the 2nd tablet.
     ColumnRangePredicate predicate = new ColumnRangePredicate(schema.getColumnByIndex(2));
@@ -143,7 +144,7 @@ public class TestScannerMultiTablet extends BaseYBTest {
     assertEquals(9, countRowsInScan(getScanner(null, null, null, null, predicate)));
   }
 
-  @Test(timeout = 100000)
+  @Ignore
   public void testProjections() throws Exception {
     // Test with column names.
     AsyncYBScanner.AsyncYBScannerBuilder builder = client.newScannerBuilder(table);

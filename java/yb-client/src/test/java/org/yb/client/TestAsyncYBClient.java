@@ -20,6 +20,7 @@ import com.google.common.base.Charsets;
 import com.google.protobuf.ByteString;
 import com.stumbleupon.async.Deferred;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.yb.Common;
 import org.yb.consensus.Metadata;
@@ -41,7 +42,7 @@ public class TestAsyncYBClient extends BaseYBTest {
     table = createTable(TABLE_NAME, basicSchema, options);
   }
 
-  @Test(timeout = 100000)
+  @Ignore
   public void testDisconnect() throws Exception {
     // Test that we can reconnect to a TS after a disconnection.
     // 1. Warm up the cache.

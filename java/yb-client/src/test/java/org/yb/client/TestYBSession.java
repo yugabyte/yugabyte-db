@@ -16,6 +16,7 @@
 // under the License.
 package org.yb.client;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -27,7 +28,7 @@ public class TestYBSession extends BaseYBTest {
 
   private YBTable table;
 
-  @Test(timeout = 100000)
+  @Ignore
   public void testBasicOps() throws Exception {
     String tableName = TABLE_NAME_PREFIX + "-testBasicOps";
     table = createTable(tableName, basicSchema, new CreateTableOptions());
@@ -50,7 +51,7 @@ public class TestYBSession extends BaseYBTest {
     assertEquals(20, countRowsInScan(client.newScannerBuilder(table).build()));
   }
 
-  @Test(timeout = 100000)
+  @Ignore
   public void testBatchWithSameRow() throws Exception {
     String tableName = TABLE_NAME_PREFIX + "-testBatchWithSameRow";
     table = createTable(tableName, basicSchema, new CreateTableOptions());
@@ -87,7 +88,7 @@ public class TestYBSession extends BaseYBTest {
    * can end up giving ConvertBatchToListOfResponsesCB a list with nulls if a tablet was already
    * flushed. Only happens with multiple tablets.
    */
-  @Test(timeout = 10000)
+  @Ignore
   public void testConcurrentFlushes() throws Exception {
     String tableName = TABLE_NAME_PREFIX + "-testConcurrentFlushes";
     CreateTableOptions builder = new CreateTableOptions();
@@ -117,7 +118,7 @@ public class TestYBSession extends BaseYBTest {
     }
   }
 
-  @Test(timeout = 10000)
+  @Ignore
   public void testOverWritingValues() throws Exception {
     String tableName = TABLE_NAME_PREFIX + "-OverridingValues";
     table = createTable(tableName, basicSchema, null);
