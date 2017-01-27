@@ -24,6 +24,7 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -50,7 +51,7 @@ public class ITRowCounter extends BaseYBTest {
     }
   }
 
-  @Test
+  @Ignore
   public void test() throws Exception {
     Configuration conf = new Configuration();
     HADOOP_UTIL.setupAndGetTestDir(ITRowCounter.class.getName(), conf).getAbsolutePath();

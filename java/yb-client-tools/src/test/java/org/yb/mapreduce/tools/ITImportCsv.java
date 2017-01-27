@@ -28,6 +28,7 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -78,7 +79,7 @@ public class ITImportCsv extends BaseYBTest {
     }
   }
 
-  @Test
+  @Ignore
   public void test() throws Exception {
     Configuration conf = new Configuration();
     String testHome =

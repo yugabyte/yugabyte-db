@@ -27,9 +27,6 @@ import org.yb.master.Master;
 import org.yb.util.NetUtil;
 import org.yb.util.ServerInfo;
 
-// TODO: understand this magic?
-import org.yb.client.shaded.com.google.common.net.HostAndPort;
-
 @Component
 public class YBCliCommands implements CommandMarker {
   public static final Logger LOG = LoggerFactory.getLogger(YBCliCommands.class);
@@ -383,7 +380,7 @@ public class YBCliCommands implements CommandMarker {
                  mandatory = true,
                  help = "Port number of the server. ") final int port) {
     try {
-      boolean ret = ybClient.ping(HostAndPort.fromParts(host, port));
+      boolean ret = ybClient.ping(host, port);
 
       return ret ? "Success." : "Failed.";
     } catch (Exception e) {

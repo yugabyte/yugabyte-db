@@ -513,9 +513,9 @@ public class YBClient implements AutoCloseable {
   * @param port the port number of the server
   * @return true if the server responded to ping
   */
-  public boolean ping(final HostAndPort hp) throws Exception {
-    Deferred<PingResponse> d = asyncClient.ping(hp);
-    PingResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
+  public boolean ping(final String host, int port) throws Exception {
+    Deferred<PingResponse> d = asyncClient.ping(HostAndPort.fromParts(host, port));
+    d.join(getDefaultAdminOperationTimeoutMs());
     return true;
   }
 
@@ -530,7 +530,7 @@ public class YBClient implements AutoCloseable {
     long start = System.currentTimeMillis();
     do {
       try {
-        if (ping(hp)) {
+        if (ping(hp.getHostText(), hp.getPort())) {
           return true;
         }
       } catch (Exception e) {

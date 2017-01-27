@@ -270,11 +270,13 @@ public class BaseYBTest {
     public Object call(Object arg) throws Exception {
       if (arg == null) return null;
       if (arg instanceof Exception) {
-        LOG.warn("Got exception", (Exception) arg);
+        Exception e = (Exception) arg;
+        LOG.warn("Got exception", e);
+        return new Exception("Can't recover from error: ", e);
       } else {
         LOG.warn("Got an error response back " + arg);
+        return new Exception("Can't recover from error, see previous WARN : " + arg);
       }
-      return new Exception("Can't recover from error, see previous WARN");
     }
   };
 

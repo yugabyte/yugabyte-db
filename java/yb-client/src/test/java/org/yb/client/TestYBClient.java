@@ -234,6 +234,7 @@ public class TestYBClient extends BaseYBTest {
     try {
       operation.doCall();
     } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
     // Check the new config info.
@@ -248,6 +249,7 @@ public class TestYBClient extends BaseYBTest {
     try {
       operation.doCall();
     } catch (Exception e) {
+      LOG.warn("Failed with error:", e);
       assertTrue(false);
     }
     // Check the config one last time.
@@ -309,7 +311,6 @@ public class TestYBClient extends BaseYBTest {
     // Check that we can open a table and see that it has the new schema.
     YBTable table = syncClient.openTable(tableName);
     assertEquals(newSchema.getColumnCount(), table.getSchema().getColumnCount());
-    assertTrue(table.getPartitionSchema().isSimpleRangePartitioning());
 
     // Check that the block size parameter we specified in the schema is respected.
     assertEquals(4096, newSchema.getColumn("column3_s").getDesiredBlockSize());

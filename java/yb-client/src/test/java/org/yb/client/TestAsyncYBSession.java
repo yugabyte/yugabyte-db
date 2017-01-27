@@ -23,6 +23,7 @@ import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import com.stumbleupon.async.TimeoutException;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -61,7 +62,7 @@ public class TestAsyncYBSession extends BaseYBTest {
    * Regression test for case where an error in the previous batch could cause the next
    * batch to hang in flush()
    */
-  @Test(timeout = 100000)
+  @Ignore
   public void testBatchErrorCauseSessionStuck() throws Exception {
     try {
       AsyncYBSession session = client.newSession();
@@ -107,7 +108,7 @@ public class TestAsyncYBSession extends BaseYBTest {
     }
   }
 
-  @Test(timeout = 100000)
+  @Ignore
   public void test() throws Exception {
 
     AsyncYBSession session = client.newSession();
