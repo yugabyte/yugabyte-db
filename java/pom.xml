@@ -65,7 +65,7 @@
 
         <!-- Misc variables -->
         <testdata.dir>target/testdata</testdata.dir>
-        <testArgLine>-enableassertions -Xmx1900m -XX:MaxPermSize=100m
+        <testArgLine>-enableassertions -Xmx1900m
         -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
         -Djava.awt.headless=true</testArgLine>
     </properties>

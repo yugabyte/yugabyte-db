@@ -102,6 +102,14 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <configuration>
+                <!-- Disable tests in this unused module -->
+                <skipTests>true</skipTests>
+              </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
