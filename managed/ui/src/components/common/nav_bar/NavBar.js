@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import TopNavBarContainer from '../../../containers/common/nav_bar/TopNavBarContainer';
+import TopNavBarContainer from './TopNavBarContainer';
 import SideNavBar from './SideNavBar';
 import './stylesheets/NavBar.scss'
 

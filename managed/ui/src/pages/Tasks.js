@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import TasksListContainer from '../containers/tasks/TasksListContainer';
+import TasksListContainer from '../components/tasks/TaskList/TasksListContainer';
 
 export default class Tasks extends Component {
   render() {

@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 
-import CustomerMetricsPanel from '../components/metrics/CustomerMetricsPanel';
+import CustomerMetricsPanel from '../components/metrics/CustomerMetricsPanel/CustomerMetricsPanel';
 
 class Metrics extends Component {
   render() {

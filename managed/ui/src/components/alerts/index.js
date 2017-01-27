@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-export { default as AlertsList } from './AlertsList';
+export { default as AlertsList } from './AlertList/AlertsList';
 
 
 
