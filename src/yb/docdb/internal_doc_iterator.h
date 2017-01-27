@@ -31,7 +31,7 @@ namespace docdb {
 //   existing ones.
 //
 // - A flag indicating whether or not the current key prefix ends with a document/subdocument
-//   generation timestamp (the timestamp at which that document/subdocument was last replaced or
+//   generation hybrid_time (the hybrid_time at which that document/subdocument was last replaced or
 //   deleted). We use this for sanity checking.
 //
 // This class is not thread-safe.
@@ -44,7 +44,7 @@ class InternalDocIterator {
                       int* seek_counter = nullptr);
 
   // Positions this iterator at the root of a document identified by the given encoded document key.
-  // The key must not end with a generation timestamp.
+  // The key must not end with a generation hybrid_time.
   //
   // @param encoded_doc_key The encoded key pointing to the document.
   CHECKED_STATUS SeekToDocument(const KeyBytes& encoded_doc_key);
@@ -58,9 +58,9 @@ class InternalDocIterator {
   }
 
   // Go one level deeper in the document hierarchy. This assumes the iterator is already positioned
-  // inside an existing object-type subdocument, but the prefix does not yet end with a timestamp.
-  // Note: in our MVCC data model with no intermediate generation timestamps in the key, only the
-  // last component of a SubDocKey can be a timestamp.
+  // inside an existing object-type subdocument, but the prefix does not yet end with a hybrid_time.
+  // Note: in our MVCC data model with no intermediate generation hybrid_times in the key, only the
+  // last component of a SubDocKey can be a hybrid_time.
   //
   // @param subkey The key identifying the subdocument within the current document to navigate to.
   CHECKED_STATUS SeekToSubDocument(const PrimitiveValue& subkey);
@@ -93,11 +93,11 @@ class InternalDocIterator {
   KeyBytes* mutable_key_prefix() { return &key_prefix_; }
 
   // Encode and append the given primitive value to the current key prefix. We are assuming the
-  // current key prefix already ends with a timestamp, but we don't assume it corresponds to an
+  // current key prefix already ends with a hybrid_time, but we don't assume it corresponds to an
   // existing subdocument.
   void AppendToPrefix(const PrimitiveValue& subkey);
 
-  void AppendTimestampToPrefix(Timestamp ts);
+  void AppendHybridTimeToPrefix(HybridTime ht);
 
   std::string ToDebugString();
 
@@ -107,8 +107,8 @@ class InternalDocIterator {
 
  private:
   // An internal helper method that seeks the RocksDB iterator to the current document/subdocument
-  // key prefix (which is assumed not to end with a generation timestamp), and checks whether or not
-  // that document/subdocument actually exists.
+  // key prefix (which is assumed not to end with a generation hybrid_time), and checks whether or
+  // not that document/subdocument actually exists.
   CHECKED_STATUS SeekToKeyPrefix();
 
   DocWriteBatchCache* doc_write_batch_cache_;
@@ -121,10 +121,10 @@ class InternalDocIterator {
 
   ValueType subdoc_type_;
 
-  // The "generation timestamp" of the current subdocument, i.e. the timestamp at which the document
-  // was last fully overwritten or deleted. The notion of "last" may mean "last as of the timestamp
-  // we're scanning at". Only valid if subdoc_exists() or subdoc_deleted().
-  Timestamp subdoc_ts_;
+  // The "generation hybrid time" of the current subdocument, i.e. the hybrid time at which the
+  // document was last fully overwritten or deleted. The notion of "last" may mean "last as of the
+  // hybrid time we're scanning at". Only valid if subdoc_exists() or subdoc_deleted().
+  HybridTime subdoc_ht_;
 
   Trilean subdoc_exists_;
 

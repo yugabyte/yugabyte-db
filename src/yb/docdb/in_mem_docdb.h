@@ -25,11 +25,11 @@ class InMemDocDbState {
   void SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc);
   const SubDocument* GetDocument(const KeyBytes& encoded_doc_key) const;
 
-  // Capture all documents present in the given RocksDB database at the given timestamp and save
+  // Capture all documents present in the given RocksDB database at the given hybrid_time and save
   // them into this in-memory DocDB. All current contents of this object are overwritten.
-  void CaptureAt(rocksdb::DB* rocksdb, Timestamp timestamp);
+  void CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time);
 
-  void SetCaptureTimestamp(Timestamp timestamp);
+  void SetCaptureHybridTime(HybridTime hybrid_time);
 
   int num_docs() const { return root_.object_num_keys(); }
 
@@ -43,7 +43,7 @@ class InMemDocDbState {
 
   std::string ToDebugString() const;
 
-  Timestamp captured_at() const;
+  HybridTime captured_at() const;
 
   // Check for internal corruption. Used to catch bugs in tests.
   void SanityCheck() const;
@@ -54,8 +54,8 @@ class InMemDocDbState {
   SubDocument root_;
 
   // We use this field when capturing a DocDB state into an InMemDocDbState. This is the latest
-  // write timestamp at which the capture happened.
-  Timestamp captured_at_;
+  // write hybrid_time at which the capture happened.
+  HybridTime captured_at_;
 };
 
 }  // namespace docdb

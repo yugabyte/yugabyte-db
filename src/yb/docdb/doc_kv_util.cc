@@ -13,7 +13,7 @@
 using std::string;
 
 using strings::Substitute;
-using yb::Timestamp;
+using yb::HybridTime;
 using yb::util::FormatBytesAsStr;
 
 namespace yb {
@@ -31,24 +31,25 @@ bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_d
   }
 }
 
-Timestamp DecodeTimestampFromKey(const rocksdb::Slice& key, const int pos) {
+HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key, const int pos) {
   CHECK_GE(key.size(), pos + sizeof(int64_t));
-  // We invert all bits of the 64-bit timestamp (which is equivalent to subtracting the timestamp
-  // from the maximum unsigned 64-bit integer) so that newer timestamps are sorted first.
+  // We invert all bits of the 64-bit hybrid_time (which is equivalent to subtracting the
+  // hybrid_time from the maximum unsigned 64-bit integer) so that newer hybrid_times are sorted
+  // first.
 
-  return Timestamp(BigEndian::Load64(key.data() + pos) ^ kTimestampInversionMask);
+  return HybridTime(BigEndian::Load64(key.data() + pos) ^ kHybridTimeInversionMask);
 }
 
-Status ConsumeTimestampFromKey(rocksdb::Slice* slice, Timestamp* timestamp) {
-  if (slice->size() < kBytesPerTimestamp) {
+Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, HybridTime* hybrid_time) {
+  if (slice->size() < kBytesPerHybridTime) {
     return STATUS(Corruption,
-        Substitute("$0 bytes is not enough to decode a timestamp, need $1: $2",
+        Substitute("$0 bytes is not enough to decode a hybrid_time, need $1: $2",
             slice->size(),
-            kBytesPerTimestamp,
+            kBytesPerHybridTime,
             FormatRocksDBSliceAsStr(*slice)));
   }
-  *timestamp = Timestamp(BigEndian::Load64(slice->data()) ^ kTimestampInversionMask);
-  slice->remove_prefix(kBytesPerTimestamp);
+  *hybrid_time = HybridTime(BigEndian::Load64(slice->data()) ^ kHybridTimeInversionMask);
+  slice->remove_prefix(kBytesPerHybridTime);
   return Status::OK();
 }
 
@@ -124,14 +125,14 @@ std::string ToShortDebugStr(rocksdb::Slice slice) {
 }
 
 Status HasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
-    const Timestamp &timestamp, bool *has_expired) {
+    const HybridTime &hybrid_time, bool *has_expired) {
   *has_expired = false;
   if (!ttl.Equals(Value::kMaxTtl)) {
     SubDocKey sub_doc_key;
     RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key));
-    const Timestamp expiry =
-        server::HybridClock::AddPhysicalTimeToTimestamp(sub_doc_key.timestamp(), ttl);
-    *has_expired = (timestamp.CompareTo(expiry) > 0);
+    const HybridTime expiry =
+        server::HybridClock::AddPhysicalTimeToHybridTime(sub_doc_key.hybrid_time(), ttl);
+    *has_expired = (hybrid_time.CompareTo(expiry) > 0);
   }
   return Status::OK();
 }

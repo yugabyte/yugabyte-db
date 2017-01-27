@@ -43,7 +43,7 @@ using consensus::DriverType;
 using log::Log;
 using server::Clock;
 
-static const char* kTimestampFieldName = "timestamp";
+static const char* kHybridTimeFieldName = "hybrid_time";
 
 
 ////////////////////////////////////////////////////////////
@@ -165,8 +165,8 @@ void TransactionDriver::HandleConsensusAppend() {
   CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
   transaction_->Start();
   auto* const replicate_msg = transaction_->state()->consensus_round()->replicate_msg();
-  CHECK(!replicate_msg->has_timestamp());
-  replicate_msg->set_timestamp(transaction_->state()->timestamp().ToUint64());
+  CHECK(!replicate_msg->has_hybrid_time());
+  replicate_msg->set_hybrid_time(transaction_->state()->hybrid_time().ToUint64());
 }
 
 void TransactionDriver::PrepareAndStartTask() {
@@ -181,7 +181,7 @@ Status TransactionDriver::PrepareAndStart() {
   TRACE_EVENT1("txn", "PrepareAndStart", "txn", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the transaction.
-  prepare_physical_timestamp_ = GetMonoTimeMicros();
+  prepare_physical_hybrid_time_ = GetMonoTimeMicros();
   RETURN_NOT_OK(transaction_->Prepare());
 
   // Only take the lock long enough to take a local copy of the
@@ -198,8 +198,8 @@ Status TransactionDriver::PrepareAndStart() {
   if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE ||
       repl_state_copy != NOT_REPLICATING) {
     // For Kudu tables and for non-leader codepath in YB tables, we want to call Start() as soon
-    // as possible, because the transaction already has the timestamp assigned. This will get a bit
-    // simpler as Kudu tables go away.
+    // as possible, because the transaction already has the hybrid_time assigned. This will get a
+    // bit simpler as Kudu tables go away.
     transaction_->Start();
   }
 
@@ -226,11 +226,11 @@ Status TransactionDriver::PrepareAndStart() {
       ReplicateMsg* replicate_msg = transaction_->state()->consensus_round()->replicate_msg();
 
       if (table_type_ == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-        // Kudu tables only: set the timestamp in the message, now that it's prepared.
-        replicate_msg->set_timestamp(transaction_->state()->timestamp().ToUint64());
+        // Kudu tables only: set the hybrid_time in the message, now that it's prepared.
+        replicate_msg->set_hybrid_time(transaction_->state()->hybrid_time().ToUint64());
 
-        // For YB tables, we set the timestamp at the same time as we append the entry to the
-        // consensus queue, to guarantee that timestamps increase monotonically with Raft indexes.
+        // For YB tables, we set the hybrid_time at the same time as we append the entry to the
+        // consensus queue, to guarantee that hybrid_times increase monotonically with Raft indexes.
       }
 
       VLOG_WITH_PREFIX(4) << "Triggering consensus repl";
@@ -375,11 +375,11 @@ Status TransactionDriver::ApplyAsync() {
     if (transaction_status_.ok()) {
       DCHECK_EQ(replication_state_, REPLICATED);
       order_verifier_->CheckApply(op_id_copy_.index(),
-                                  prepare_physical_timestamp_);
+                                  prepare_physical_hybrid_time_);
       // Now that the transaction is committed in consensus advance the safe time.
       if (transaction_->state()->external_consistency_mode() != COMMIT_WAIT) {
         transaction_->state()->tablet_peer()->tablet()->mvcc_manager()->
-            OfflineAdjustSafeTime(transaction_->state()->timestamp());
+            OfflineAdjustSafeTime(transaction_->state()->hybrid_time());
       }
     } else {
       DCHECK_EQ(replication_state_, REPLICATION_FAILED);
@@ -425,10 +425,10 @@ void TransactionDriver::ApplyTask() {
     if (commit_msg) {
       commit_msg->mutable_commited_op_id()->CopyFrom(op_id_copy_);
     }
-    SetResponseTimestamp(transaction_->state(), transaction_->state()->timestamp());
+    SetResponseHybridTime(transaction_->state(), transaction_->state()->hybrid_time());
 
     // If the client requested COMMIT_WAIT as the external consistency mode
-    // calculate the latest that the prepare timestamp could be and wait
+    // calculate the latest that the prepare hybrid_time could be and wait
     // until now.earliest > prepare_latest. Only after this are the locks
     // released.
     if (mutable_state()->external_consistency_mode() == COMMIT_WAIT) {
@@ -454,13 +454,13 @@ void TransactionDriver::ApplyTask() {
   }
 }
 
-void TransactionDriver::SetResponseTimestamp(TransactionState* transaction_state,
-                                             const Timestamp& timestamp) {
+void TransactionDriver::SetResponseHybridTime(TransactionState* transaction_state,
+                                             const HybridTime& hybrid_time) {
   google::protobuf::Message* response = transaction_state->response();
   if (response) {
     const google::protobuf::FieldDescriptor* ts_field =
-        response->GetDescriptor()->FindFieldByName(kTimestampFieldName);
-    response->GetReflection()->SetUInt64(response, ts_field, timestamp.ToUint64());
+        response->GetDescriptor()->FindFieldByName(kHybridTimeFieldName);
+    response->GetReflection()->SetUInt64(response, ts_field, hybrid_time.ToUint64());
   }
 }
 
@@ -470,7 +470,7 @@ Status TransactionDriver::CommitWait() {
   // TODO: we could plumb the RPC deadline in here, and not bother commit-waiting
   // if the deadline is already expired.
   RETURN_NOT_OK(
-      mutable_state()->tablet_peer()->clock()->WaitUntilAfter(mutable_state()->timestamp(),
+      mutable_state()->tablet_peer()->clock()->WaitUntilAfter(mutable_state()->hybrid_time(),
                                                               MonoTime::Max()));
   mutable_state()->mutable_metrics()->commit_wait_duration_usec =
       MonoTime::Now(MonoTime::FINE).GetDeltaSince(before).ToMicroseconds();
@@ -531,11 +531,11 @@ std::string TransactionDriver::LogPrefix() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     repl_state_copy = replication_state_;
     prep_state_copy = prepare_state_;
-    ts_string = state()->has_timestamp() ? state()->timestamp().ToString() : "No timestamp";
+    ts_string = state()->has_hybrid_time() ? state()->hybrid_time().ToString() : "No hybrid_time";
   }
 
   string state_str = StateString(repl_state_copy, prep_state_copy);
-  // We use the tablet and the peer (T, P) to identify ts and tablet and the timestamp (Ts) to
+  // We use the tablet and the peer (T, P) to identify ts and tablet and the hybrid_time (Ts) to
   // (help) identify the transaction. The state string (S) describes the state of the transaction.
   return strings::Substitute("T $0 P $1 S $2 Ts $3: ",
                              // consensus_ is NULL in some unit tests.

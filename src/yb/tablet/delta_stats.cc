@@ -32,8 +32,8 @@ namespace tablet {
 
 DeltaStats::DeltaStats()
     : delete_count_(0),
-      max_timestamp_(Timestamp::kMin),
-      min_timestamp_(Timestamp::kMax) {
+      max_hybrid_time_(HybridTime::kMin),
+      min_hybrid_time_(HybridTime::kMax) {
 }
 
 void DeltaStats::IncrUpdateCount(ColumnId col_id, int64_t update_count) {
@@ -45,7 +45,7 @@ void DeltaStats::IncrDeleteCount(int64_t delete_count) {
   delete_count_ += delete_count;
 }
 
-Status DeltaStats::UpdateStats(const Timestamp& timestamp,
+Status DeltaStats::UpdateStats(const HybridTime& hybrid_time,
                                const RowChangeList& update) {
   // Decode the update, incrementing the update count for each of the
   // columns we find present.
@@ -61,11 +61,11 @@ Status DeltaStats::UpdateStats(const Timestamp& timestamp,
     }
   } // Don't handle re-inserts
 
-  if (min_timestamp_.CompareTo(timestamp) > 0) {
-    min_timestamp_ = timestamp;
+  if (min_hybrid_time_.CompareTo(hybrid_time) > 0) {
+    min_hybrid_time_ = hybrid_time;
   }
-  if (max_timestamp_.CompareTo(timestamp) < 0) {
-    max_timestamp_ = timestamp;
+  if (max_hybrid_time_.CompareTo(hybrid_time) < 0) {
+    max_hybrid_time_ = hybrid_time;
   }
 
   return Status::OK();
@@ -74,8 +74,8 @@ Status DeltaStats::UpdateStats(const Timestamp& timestamp,
 string DeltaStats::ToString() const {
   string ret = strings::Substitute(
       "ts range=[$0, $1]",
-      min_timestamp_.ToString(),
-      max_timestamp_.ToString());
+      min_hybrid_time_.ToString(),
+      max_hybrid_time_.ToString());
   ret.append(", update_counts_by_col_id=[");
   ret.append(JoinKeysAndValuesIterator(update_counts_by_col_id_.begin(),
                                        update_counts_by_col_id_.end(),
@@ -95,8 +95,8 @@ void DeltaStats::ToPB(DeltaStatsPB* pb) const {
     stats->set_update_count(e.second);
   }
 
-  pb->set_max_timestamp(max_timestamp_.ToUint64());
-  pb->set_min_timestamp(min_timestamp_.ToUint64());
+  pb->set_max_hybrid_time(max_hybrid_time_.ToUint64());
+  pb->set_min_hybrid_time(min_hybrid_time_.ToUint64());
 }
 
 Status DeltaStats::InitFromPB(const DeltaStatsPB& pb) {
@@ -105,8 +105,8 @@ Status DeltaStats::InitFromPB(const DeltaStatsPB& pb) {
   for (const DeltaStatsPB::ColumnStats stats : pb.column_stats()) {
     IncrUpdateCount(ColumnId(stats.col_id()), stats.update_count());
   }
-  RETURN_NOT_OK(max_timestamp_.FromUint64(pb.max_timestamp()));
-  RETURN_NOT_OK(min_timestamp_.FromUint64(pb.min_timestamp()));
+  RETURN_NOT_OK(max_hybrid_time_.FromUint64(pb.max_hybrid_time()));
+  RETURN_NOT_OK(min_hybrid_time_.FromUint64(pb.min_hybrid_time()));
   return Status::OK();
 }
 

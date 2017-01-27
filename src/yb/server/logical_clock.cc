@@ -27,26 +27,26 @@
 namespace yb {
 namespace server {
 
-METRIC_DEFINE_gauge_uint64(server, logical_clock_timestamp,
-                           "Logical Clock Timestamp",
+METRIC_DEFINE_gauge_uint64(server, logical_clock_hybrid_time,
+                           "Logical Clock Hybrid Time",
                            yb::MetricUnit::kUnits,
-                           "Logical clock timestamp.");
+                           "Logical clock hybrid time.");
 
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using base::subtle::NoBarrier_CompareAndSwap;
 
-Timestamp LogicalClock::Now() {
-  return Timestamp(Barrier_AtomicIncrement(&now_, 1));
+HybridTime LogicalClock::Now() {
+  return HybridTime(Barrier_AtomicIncrement(&now_, 1));
 }
 
-Timestamp LogicalClock::NowLatest() {
+HybridTime LogicalClock::NowLatest() {
   return Now();
 }
 
-Status LogicalClock::Update(const Timestamp& to_update) {
-  DCHECK_NE(to_update.value(), Timestamp::kInvalidTimestamp.value())
-      << "Updating the clock with an invalid timestamp";
+Status LogicalClock::Update(const HybridTime& to_update) {
+  DCHECK_NE(to_update.value(), HybridTime::kInvalidHybridTime.value())
+      << "Updating the clock with an invalid hybrid time";
   Atomic64 new_value = to_update.value();
 
   while (true) {
@@ -63,26 +63,26 @@ Status LogicalClock::Update(const Timestamp& to_update) {
   return Status::OK();
 }
 
-Status LogicalClock::WaitUntilAfter(const Timestamp& then,
+Status LogicalClock::WaitUntilAfter(const HybridTime& then,
                                     const MonoTime& deadline) {
   return STATUS(ServiceUnavailable,
       "Logical clock does not support WaitUntilAfter()");
 }
 
-Status LogicalClock::WaitUntilAfterLocally(const Timestamp& then,
+Status LogicalClock::WaitUntilAfterLocally(const HybridTime& then,
                                            const MonoTime& deadline) {
   if (IsAfter(then)) return Status::OK();
   return STATUS(ServiceUnavailable,
       "Logical clock does not support WaitUntilAfterLocally()");
 }
 
-bool LogicalClock::IsAfter(Timestamp t) {
+bool LogicalClock::IsAfter(HybridTime t) {
   return base::subtle::Acquire_Load(&now_) >= t.value();
 }
 
-LogicalClock* LogicalClock::CreateStartingAt(const Timestamp& timestamp) {
-  // initialize at 'timestamp' - 1 so that the  first output value is 'timestamp'.
-  return new LogicalClock(timestamp.value() - 1);
+LogicalClock* LogicalClock::CreateStartingAt(const HybridTime& hybrid_time) {
+  // initialize at 'hybrid_time' - 1 so that the  first output value is 'hybrid_time'.
+  return new LogicalClock(hybrid_time.value() - 1);
 }
 
 uint64_t LogicalClock::NowForMetrics() {
@@ -92,14 +92,14 @@ uint64_t LogicalClock::NowForMetrics() {
 
 
 void LogicalClock::RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
-  METRIC_logical_clock_timestamp.InstantiateFunctionGauge(
+  METRIC_logical_clock_hybrid_time.InstantiateFunctionGauge(
       metric_entity,
       Bind(&LogicalClock::NowForMetrics, Unretained(this)))
     ->AutoDetachToLastValue(&metric_detacher_);
 }
 
-string LogicalClock::Stringify(Timestamp timestamp) {
-  return strings::Substitute("L: $0", timestamp.ToUint64());
+string LogicalClock::Stringify(HybridTime hybrid_time) {
+  return strings::Substitute("L: $0", hybrid_time.ToUint64());
 }
 
 }  // namespace server

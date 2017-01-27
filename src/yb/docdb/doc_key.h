@@ -136,15 +136,15 @@ inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
 
 // A key pointing to a subdocument. Consists of a DocKey identifying the document, a list of
 // primitive values leading to the subdocument in question, from the outermost to innermost order,
-// and an optional timestamp of when the subdocument (which may itself be a primitive value) was
+// and an optional hybrid_time of when the subdocument (which may itself be a primitive value) was
 // last fully overwritten or deleted.
 //
-// Keys stored in RocksDB should always have the timestamp field set. However, it is useful to make
-// the timestamp field optional while a SubDocKey is being constructed. If the timestamp is not set,
-// it is omitted from the encoded representation of a SubDocKey.
+// Keys stored in RocksDB should always have the hybrid_time field set. However, it is useful to
+// make the hybrid_time field optional while a SubDocKey is being constructed. If the hybrid_time
+// is not set, it is omitted from the encoded representation of a SubDocKey.
 //
-// Implementation note: we use Timestamp::kInvalidTimestamp to represent an omitted timestamp.  We
-// rely on that being the default-constructed value of a Timestamp.
+// Implementation note: we use HybridTime::kInvalidHybridTime to represent an omitted hybrid_time.
+// We rely on that being the default-constructed value of a HybridTime.
 //
 // TODO: this should be renamed to something more generic, e.g. Key or LogicalKey, to reflect that
 // this is actually the logical representation of keys that we store in the RocksDB key-value store.
@@ -154,54 +154,54 @@ class SubDocKey {
   explicit SubDocKey(const DocKey& doc_key) : doc_key_(doc_key) {}
   explicit SubDocKey(DocKey&& doc_key) : doc_key_(std::move(doc_key)) {}
 
-  SubDocKey(const DocKey& doc_key, Timestamp timestamp)
+  SubDocKey(const DocKey& doc_key, HybridTime hybrid_time)
       : doc_key_(doc_key),
-        timestamp_(timestamp) {
+        hybrid_time_(hybrid_time) {
   }
 
   SubDocKey(DocKey&& doc_key,
-            Timestamp timestamp)
+            HybridTime hybrid_time)
       : doc_key_(std::move(doc_key)),
-        timestamp_(timestamp) {
+        hybrid_time_(hybrid_time) {
   }
 
   SubDocKey(const DocKey& doc_key,
-            Timestamp timestamp,
+            HybridTime hybrid_time,
             std::vector<PrimitiveValue> subkeys)
       : doc_key_(doc_key),
-        timestamp_(timestamp),
+        hybrid_time_(hybrid_time),
         subkeys_(subkeys) {
   }
 
   template <class ...T>
-  SubDocKey(const DocKey& doc_key, T... subkeys_and_maybe_timestamp)
+  SubDocKey(const DocKey& doc_key, T... subkeys_and_maybe_hybrid_time)
       : doc_key_(doc_key),
-        timestamp_(Timestamp::kInvalidTimestamp) {
-    AppendSubKeysAndMaybeTimestamp(subkeys_and_maybe_timestamp...);
+        hybrid_time_(HybridTime::kInvalidHybridTime) {
+    AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
-  // Append a sequence of sub-keys to this key. We require that the timestamp is not set, because
+  // Append a sequence of sub-keys to this key. We require that the hybrid_time is not set, because
   // we append it last.
   template<class ...T>
-  void AppendSubKeysAndMaybeTimestamp(PrimitiveValue subdoc_key,
-                                      T... subkeys_and_maybe_timestamp) {
-    EnsureHasNoTimestampYet();
+  void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key,
+                                      T... subkeys_and_maybe_hybrid_time) {
+    EnsureHasNoHybridTimeYet();
     subkeys_.emplace_back(subdoc_key);
-    AppendSubKeysAndMaybeTimestamp(subkeys_and_maybe_timestamp...);
+    AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
   template<class ...T>
-  void AppendSubKeysAndMaybeTimestamp(PrimitiveValue subdoc_key) {
-    EnsureHasNoTimestampYet();
+  void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key) {
+    EnsureHasNoHybridTimeYet();
     subkeys_.emplace_back(subdoc_key);
   }
 
   template<class ...T>
-  void AppendSubKeysAndMaybeTimestamp(PrimitiveValue subdoc_key, Timestamp timestamp) {
-    DCHECK_EQ(Timestamp::kInvalidTimestamp, timestamp_);
+  void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key, HybridTime hybrid_time) {
+    DCHECK_EQ(HybridTime::kInvalidHybridTime, hybrid_time_);
     subkeys_.emplace_back(subdoc_key);
-    DCHECK_NE(Timestamp::kInvalidTimestamp, timestamp);
-    timestamp_ = timestamp;
+    DCHECK_NE(HybridTime::kInvalidHybridTime, hybrid_time);
+    hybrid_time_ = hybrid_time;
   }
 
   void RemoveLastSubKey() {
@@ -211,26 +211,26 @@ class SubDocKey {
 
   void Clear();
 
-  KeyBytes Encode(bool include_timestamp = true) const;
+  KeyBytes Encode(bool include_hybrid_time = true) const;
 
   // Decodes a SubDocKey from the given slice, typically retrieved from a RocksDB key.
   // @param slice
   //     A pointer to the slice containing the bytes to decode the SubDocKey from. This slice is
   //     modified, with consumed bytes being removed.
-  // @param require_timestamp
-  //     Whether a timestamp is required in the end of the SubDocKey. If this is true, we require
-  //     a ValueType::kTimestamp byte followed by a timestamp to be present in the input slice.
-  //     Otherwise, we allow decoding an incomplete SubDocKey without a timestamp in the end. Note
+  // @param require_hybrid_time
+  //     Whether a hybrid_time is required in the end of the SubDocKey. If this is true, we require
+  //     a ValueType::kHybridTime byte followed by a hybrid_time to be present in the input slice.
+  //     Otherwise, we allow decoding an incomplete SubDocKey without a hybrid_time in the end. Note
   //     that we also allow input that has a few bytes in the end but not enough to represent a
-  //     timestamp.
+  //     hybrid_time.
   CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
-                    bool require_timestamp = true);
+                    bool require_hybrid_time = true);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
-  // reference to a slice. This still respects the require_timestamp parameter, but in case a
-  // timestamp is omitted, we don't allow any extra bytes to be present in the slice.
+  // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
+  // hybrid_time is omitted, we don't allow any extra bytes to be present in the slice.
   CHECKED_STATUS FullyDecodeFrom(const rocksdb::Slice& slice,
-                         bool require_timestamp = true);
+                         bool require_hybrid_time = true);
 
   std::string ToString() const;
 
@@ -257,32 +257,32 @@ class SubDocKey {
 
   int CompareTo(const SubDocKey& other) const;
 
-  Timestamp timestamp() const {
-    DCHECK(has_timestamp());
-    return timestamp_;
+  HybridTime hybrid_time() const {
+    DCHECK(has_hybrid_time());
+    return hybrid_time_;
   }
 
-  void set_timestamp(Timestamp timestamp) {
-    DCHECK_NE(timestamp, Timestamp::kInvalidTimestamp);
-    timestamp_ = timestamp;
+  void set_hybrid_time(HybridTime hybrid_time) {
+    DCHECK_NE(hybrid_time, HybridTime::kInvalidHybridTime);
+    hybrid_time_ = hybrid_time;
   }
 
-  // When we come up with a batch of DocDB updates, we don't yet know the timestamp, because the
-  // timestamp is only determined at the time the write operation is appended to the Raft log.
-  // Therefore, we initially use Timestamp::kMax, and we have to replace it with the actual
-  // timestamp later.
-  void ReplaceMaxTimestampWith(Timestamp timestamp);
+  // When we come up with a batch of DocDB updates, we don't yet know the hybrid_time, because the
+  // hybrid_time is only determined at the time the write operation is appended to the Raft log.
+  // Therefore, we initially use HybridTime::kMax, and we have to replace it with the actual
+  // hybrid_time later.
+  void ReplaceMaxHybridTimeWith(HybridTime hybrid_time);
 
-  bool has_timestamp() const {
-    return timestamp_ != Timestamp::kInvalidTimestamp;
+  bool has_hybrid_time() const {
+    return hybrid_time_ != HybridTime::kInvalidHybridTime;
   }
 
-  void RemoveTimestamp() {
-    timestamp_ = Timestamp::kInvalidTimestamp;
+  void RemoveHybridTime() {
+    hybrid_time_ = HybridTime::kInvalidHybridTime;
   }
 
   // @return The number of initial components (including document key and subkeys) that this
-  //         SubDocKey shares with another one. This does not care about the timestamp field.
+  //         SubDocKey shares with another one. This does not care about the hybrid_time field.
   int NumSharedPrefixComponents(const SubDocKey& other) const;
 
   // Generate a RocksDB key that would allow us to seek to the smallest SubDocKey that has a
@@ -294,19 +294,19 @@ class SubDocKey {
   // E.g. assuming the SubDocKey this is being called on is #2 from the following example,
   // performing a RocksDB seek on the return value of this takes us to #7.
   //
-  // 1. SubDocKey(DocKey([], ["a"]), [TS(1)]) -> {}
-  // 2. SubDocKey(DocKey([], ["a"]), ["x", TS(1)]) -> {} ---------------------------.
-  // 3. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(2)]) -> null                     |
-  // 4. SubDocKey(DocKey([], ["a"]), ["x", "x", TS(1)]) -> {}                       |
-  // 5. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", TS(1)]) -> {}                  |
-  // 6. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", "x", TS(1)]) -> true           |
-  // 7. SubDocKey(DocKey([], ["a"]), ["y", TS(3)]) -> {}                  <---------
-  // 8. SubDocKey(DocKey([], ["a"]), ["y", "y", TS(3)]) -> {}
-  // 9. SubDocKey(DocKey([], ["a"]), ["y", "y", "x", TS(3)]) ->
+  // 1. SubDocKey(DocKey([], ["a"]), [HT(1)]) -> {}
+  // 2. SubDocKey(DocKey([], ["a"]), ["x", HT(1)]) -> {} ---------------------------.
+  // 3. SubDocKey(DocKey([], ["a"]), ["x", "x", HT(2)]) -> null                     |
+  // 4. SubDocKey(DocKey([], ["a"]), ["x", "x", HT(1)]) -> {}                       |
+  // 5. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", HT(1)]) -> {}                  |
+  // 6. SubDocKey(DocKey([], ["a"]), ["x", "x", "y", "x", HT(1)]) -> true           |
+  // 7. SubDocKey(DocKey([], ["a"]), ["y", HT(3)]) -> {}                  <---------
+  // 8. SubDocKey(DocKey([], ["a"]), ["y", "y", HT(3)]) -> {}
+  // 9. SubDocKey(DocKey([], ["a"]), ["y", "y", "x", HT(3)]) ->
   //
   // This is achieved by simply appending a byte that is higher than any ValueType in an encoded
   // representation of a SubDocKey that extends the vector of subkeys present in the current one,
-  // or has the same vector of subkeys, i.e. key/value pairs #3-6 in the above example. Timestamp
+  // or has the same vector of subkeys, i.e. key/value pairs #3-6 in the above example. HybridTime
   // is omitted from the resulting encoded representation.
   KeyBytes AdvanceOutOfSubDoc();
 
@@ -315,23 +315,23 @@ class SubDocKey {
   //
   // E.g. assuming the SubDocKey this is being called on is #2 from the following example:
   //
-  //  1. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), [TS(1)]) -> {}
-  //  2. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", TS(1)]) -> {} <----------------.
-  //  3. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", TS(2)]) -> null           |
-  //  4. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", TS(1)]) -> {}             |
-  //  5. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", "y", TS(1)]) -> {}        |
-  //  6. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", "y", "x", TS(1)]) -> true |
-  //  7. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", TS(3)]) -> {}                  |
-  //  8. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", TS(3)]) -> {}             |
-  //  9. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", "x", TS(3)]) ->           |
+  //  1. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), [HT(1)]) -> {}
+  //  2. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", HT(1)]) -> {} <----------------.
+  //  3. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", HT(2)]) -> null           |
+  //  4. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", HT(1)]) -> {}             |
+  //  5. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", "y", HT(1)]) -> {}        |
+  //  6. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", "y", "x", HT(1)]) -> true |
+  //  7. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", HT(3)]) -> {}                  |
+  //  8. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", HT(3)]) -> {}             |
+  //  9. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", "x", HT(3)]) ->           |
   // ...                                                                                        |
-  // 20. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["y", TS(3)]) -> {}             |
-  // 21. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["z", TS(3)]) -> {}             |
-  // 22. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "f"]), [TS(1)]) -> {}      <--- (*** 1 ***)-|
-  // 23. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "f"]), ["x", TS(1)]) -> {}                  |
+  // 20. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["y", HT(3)]) -> {}             |
+  // 21. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["z", HT(3)]) -> {}             |
+  // 22. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "f"]), [HT(1)]) -> {}      <--- (*** 1 ***)-|
+  // 23. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "f"]), ["x", HT(1)]) -> {}                  |
   // ...                                                                                        |
-  // 30. SubDocKey(DocKey(0x2345, ["a", "c"], ["c", "f"]), [TS(1)]) -> {}      <--- (*** 2 ***)-
-  // 31. SubDocKey(DocKey(0x2345, ["a", "c"], ["c", "f"]), ["x", TS(1)]) -> {}
+  // 30. SubDocKey(DocKey(0x2345, ["a", "c"], ["c", "f"]), [HT(1)]) -> {}      <--- (*** 2 ***)-
+  // 31. SubDocKey(DocKey(0x2345, ["a", "c"], ["c", "f"]), ["x", HT(1)]) -> {}
   //
   // SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"])).AdvanceOutOfDocKeyPrefix() will seek to #22
   // (*** 1 ***), pass doc keys with additional range components when they are present.
@@ -345,13 +345,13 @@ class SubDocKey {
 
  private:
   DocKey doc_key_;
-  Timestamp timestamp_;
+  HybridTime hybrid_time_;
   std::vector<PrimitiveValue> subkeys_;
 
-  void EnsureHasNoTimestampYet() {
-    DCHECK(!has_timestamp())
+  void EnsureHasNoHybridTimeYet() {
+    DCHECK(!has_hybrid_time())
         << "Trying to append a primitive value to a SubDocKey " << ToString()
-        << " that already has a timestamp set: " << timestamp_.ToDebugString();
+        << " that already has a hybrid_time set: " << hybrid_time_.ToDebugString();
   }
 };
 

@@ -21,7 +21,7 @@
 #include <string>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -48,17 +48,17 @@ class Clock : public RefCountedThreadSafe<Clock> {
   virtual CHECKED_STATUS Init() = 0;
 
   // Obtains a new transaction timestamp corresponding to the current instant.
-  virtual Timestamp Now() = 0;
+  virtual HybridTime Now() = 0;
 
   // Obtains a new transaction timestamp corresponding to the current instant
   // plus the max_error.
-  virtual Timestamp NowLatest() = 0;
+  virtual HybridTime NowLatest() = 0;
 
   // Obtain a timestamp which is guaranteed to be later than the current time
   // on any machine in the cluster.
   //
   // NOTE: this is not a very tight bound.
-  virtual CHECKED_STATUS GetGlobalLatest(Timestamp* t) {
+  virtual CHECKED_STATUS GetGlobalLatest(HybridTime* t) {
     return STATUS(NotSupported, "clock does not support global properties");
   }
 
@@ -70,28 +70,28 @@ class Clock : public RefCountedThreadSafe<Clock> {
   // if elected leader, they are guaranteed to generate timestamps
   // higher than the timestamp of the last transaction accepted from the
   // leader.
-  virtual CHECKED_STATUS Update(const Timestamp& to_update) = 0;
+  virtual CHECKED_STATUS Update(const HybridTime& to_update) = 0;
 
   // Waits until the clock on all machines has advanced past 'then'.
   // Can also be used to implement 'external consistency' in the same sense as
   // Google's Spanner.
-  virtual CHECKED_STATUS WaitUntilAfter(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
                                 const MonoTime& deadline) = 0;
 
   // Waits until the clock on this machine advances past 'then'. Unlike
   // WaitUntilAfter(), this does not make any global guarantees.
-  virtual CHECKED_STATUS WaitUntilAfterLocally(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfterLocally(const HybridTime& then,
                                        const MonoTime& deadline) = 0;
 
   // Return true if the given time has definitely passed (i.e any future call
   // to Now() would return a higher value than t).
-  virtual bool IsAfter(Timestamp t) = 0;
+  virtual bool IsAfter(HybridTime t) = 0;
 
   // Register the clock metrics in the given entity.
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) = 0;
 
   // Strigifies the provided timestamp according to this clock's internal format.
-  virtual std::string Stringify(Timestamp timestamp) = 0;
+  virtual std::string Stringify(HybridTime hybrid_time) = 0;
 
   virtual ~Clock() {}
 };

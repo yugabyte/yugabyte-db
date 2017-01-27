@@ -48,9 +48,9 @@ DEFINE_int32(checksum_timeout_sec, 120,
 DEFINE_int32(checksum_scan_concurrency, 4,
              "Number of concurrent checksum scans to execute per tablet server.");
 DEFINE_bool(checksum_snapshot, true, "Should the checksum scanner use a snapshot scan");
-DEFINE_uint64(checksum_snapshot_timestamp, ChecksumOptions::kCurrentTimestamp,
-              "timestamp to use for snapshot checksum scans, defaults to 0, which "
-              "uses the current timestamp of a tablet server involved in the scan");
+DEFINE_uint64(checksum_snapshot_hybrid_time, ChecksumOptions::kCurrentHybridTime,
+              "hybrid_time to use for snapshot checksum scans, defaults to 0, which "
+              "uses the current hybrid_time of a tablet server involved in the scan");
 
 // Print an informational message to cerr.
 static ostream& Info() {
@@ -74,17 +74,17 @@ ChecksumOptions::ChecksumOptions()
     : timeout(MonoDelta::FromSeconds(FLAGS_checksum_timeout_sec)),
       scan_concurrency(FLAGS_checksum_scan_concurrency),
       use_snapshot(FLAGS_checksum_snapshot),
-      snapshot_timestamp(FLAGS_checksum_snapshot_timestamp) {
+      snapshot_hybrid_time(FLAGS_checksum_snapshot_hybrid_time) {
 }
 
 ChecksumOptions::ChecksumOptions(MonoDelta timeout, int scan_concurrency,
-                                 bool use_snapshot, uint64_t snapshot_timestamp)
+                                 bool use_snapshot, uint64_t snapshot_hybrid_time)
     : timeout(std::move(timeout)),
       scan_concurrency(scan_concurrency),
       use_snapshot(use_snapshot),
-      snapshot_timestamp(snapshot_timestamp) {}
+      snapshot_hybrid_time(snapshot_hybrid_time) {}
 
-const uint64_t ChecksumOptions::kCurrentTimestamp = 0;
+const uint64_t ChecksumOptions::kCurrentHybridTime = 0;
 
 YsckCluster::~YsckCluster() {
 }
@@ -336,11 +336,11 @@ Status Ysck::ChecksumData(const vector<string>& tables,
     }
   }
 
-  if (options.use_snapshot && options.snapshot_timestamp == ChecksumOptions::kCurrentTimestamp) {
-    // Set the snapshot timestamp to the current timestamp of an arbitrary tablet server.
+  if (options.use_snapshot && options.snapshot_hybrid_time == ChecksumOptions::kCurrentHybridTime) {
+    // Set the snapshot hybrid_time to the current hybrid_time of an arbitrary tablet server.
     RETURN_NOT_OK(
-        tablet_server_queues.begin()->first->CurrentTimestamp(&options.snapshot_timestamp));
-    Info() << "Using snapshot timestamp: " << options.snapshot_timestamp << endl;
+        tablet_server_queues.begin()->first->CurrentHybridTime(&options.snapshot_hybrid_time));
+    Info() << "Using snapshot hybrid_time: " << options.snapshot_hybrid_time << endl;
   }
 
   // Kick off checksum scans in parallel. For each tablet server, we start

@@ -50,39 +50,39 @@ TEST(MockHybridClockTest, TestMockedSystemClock) {
   FLAGS_use_mock_wall_clock = true;
   scoped_refptr<HybridClock> clock(new HybridClock());
   ASSERT_OK(clock->Init());
-  Timestamp timestamp;
+  HybridTime hybrid_time;
   uint64_t max_error_usec;
-  clock->NowWithError(&timestamp, &max_error_usec);
-  ASSERT_EQ(timestamp.ToUint64(), 0);
+  clock->NowWithError(&hybrid_time, &max_error_usec);
+  ASSERT_EQ(hybrid_time.ToUint64(), 0);
   ASSERT_EQ(max_error_usec, 0);
   // If we read the clock again we should see the logical component be incremented.
-  clock->NowWithError(&timestamp, &max_error_usec);
-  ASSERT_EQ(timestamp.ToUint64(), 1);
+  clock->NowWithError(&hybrid_time, &max_error_usec);
+  ASSERT_EQ(hybrid_time.ToUint64(), 1);
   // Now set an arbitrary time and check that is the time returned by the clock.
   uint64_t time = 1234;
   uint64_t error = 100 * 1000;
   clock->SetMockClockWallTimeForTests(time);
   clock->SetMockMaxClockErrorForTests(error);
-  clock->NowWithError(&timestamp, &max_error_usec);
-  ASSERT_EQ(timestamp.ToUint64(),
-            HybridClock::TimestampFromMicrosecondsAndLogicalValue(time, 0).ToUint64());
+  clock->NowWithError(&hybrid_time, &max_error_usec);
+  ASSERT_EQ(hybrid_time.ToUint64(),
+            HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(time, 0).ToUint64());
   ASSERT_EQ(max_error_usec, error);
   // Perform another read, we should observe the logical component increment, again.
-  clock->NowWithError(&timestamp, &max_error_usec);
-  ASSERT_EQ(timestamp.ToUint64(),
-            HybridClock::TimestampFromMicrosecondsAndLogicalValue(time, 1).ToUint64());
+  clock->NowWithError(&hybrid_time, &max_error_usec);
+  ASSERT_EQ(hybrid_time.ToUint64(),
+            HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(time, 1).ToUint64());
 }
 
 // Test that two subsequent time reads are monotonically increasing.
 TEST_F(HybridClockTest, TestNow_ValuesIncreaseMonotonically) {
-  const Timestamp now1 = clock_->Now();
-  const Timestamp now2 = clock_->Now();
+  const HybridTime now1 = clock_->Now();
+  const HybridTime now2 = clock_->Now();
   ASSERT_LT(now1.value(), now2.value());
 }
 
 // Tests the clock updates with the incoming value if it is higher.
 TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
-  Timestamp now = clock_->Now();
+  HybridTime now = clock_->Now();
   uint64_t now_micros = HybridClock::GetPhysicalValueMicros(now);
 
   // increase the logical value
@@ -93,12 +93,12 @@ TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   // one, 200 msecs should be more than enough.
   now_micros += 200000;
 
-  Timestamp now_increased = HybridClock::TimestampFromMicrosecondsAndLogicalValue(now_micros,
+  HybridTime now_increased = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(now_micros,
                                                                                   logical);
 
   ASSERT_OK(clock_->Update(now_increased));
 
-  Timestamp now2 = clock_->Now();
+  HybridTime now2 = clock_->Now();
   ASSERT_EQ(logical + 1, HybridClock::GetLogicalValue(now2));
   ASSERT_EQ(HybridClock::GetPhysicalValueMicros(now) + 200000,
             HybridClock::GetPhysicalValueMicros(now2));
@@ -109,16 +109,16 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase1) {
   MonoTime no_deadline;
   MonoTime before = MonoTime::Now(MonoTime::FINE);
 
-  Timestamp past_ts;
+  HybridTime past_ht;
   uint64_t max_error;
-  clock_->NowWithError(&past_ts, &max_error);
+  clock_->NowWithError(&past_ht, &max_error);
 
   // make the event 3 * the max. possible error in the past
-  Timestamp past_ts_changed = HybridClock::AddPhysicalTimeToTimestamp(
-      past_ts,
+  HybridTime past_ht_changed = HybridClock::AddPhysicalTimeToHybridTime(
+      past_ht,
       MonoDelta::FromMicroseconds(-3 * max_error));
 
-  Status s = clock_->WaitUntilAfter(past_ts_changed, no_deadline);
+  Status s = clock_->WaitUntilAfter(past_ht_changed, no_deadline);
 
   ASSERT_OK(s);
 
@@ -129,26 +129,26 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase1) {
   ASSERT_LT(delta.ToMicroseconds(), 25000);
 }
 
-// The normal case for transactions. Obtain a timestamp and then wait until
+// The normal case for transactions. Obtain a hybrid_time and then wait until
 // we're sure that tx_latest < now_earliest.
 TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase2) {
   MonoTime before = MonoTime::Now(MonoTime::FINE);
 
   // we do no time adjustment, this event should fall right within the possible
   // error interval
-  Timestamp past_ts;
+  HybridTime past_ht;
   uint64_t past_max_error;
-  clock_->NowWithError(&past_ts, &past_max_error);
+  clock_->NowWithError(&past_ht, &past_max_error);
   // Make sure the error is at least a small number of microseconds, to ensure
   // that we always have to wait.
   past_max_error = std::max(past_max_error, static_cast<uint64_t>(20));
-  Timestamp wait_until = HybridClock::AddPhysicalTimeToTimestamp(
-      past_ts,
+  HybridTime wait_until = HybridClock::AddPhysicalTimeToHybridTime(
+      past_ht,
       MonoDelta::FromMicroseconds(past_max_error));
 
-  Timestamp current_ts;
+  HybridTime current_ht;
   uint64_t current_max_error;
-  clock_->NowWithError(&current_ts, &current_max_error);
+  clock_->NowWithError(&current_ht, &current_max_error);
 
   // Check waiting with a deadline which already expired.
   {
@@ -158,9 +158,9 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase2) {
       // Debug information for https://yugabyte.atlassian.net/browse/ENG-58
       LOG(INFO) << "wait_until=" << wait_until.ToString();
       LOG(INFO) << "deadline=" << deadline.ToString();
-      LOG(INFO) << "past_ts=" << past_ts.ToString();
+      LOG(INFO) << "past_ht=" << past_ht.ToString();
       LOG(INFO) << "past_max_error=" << past_max_error;
-      LOG(INFO) << "current_ts=" << current_ts.ToString();
+      LOG(INFO) << "current_ht=" << current_ht.ToString();
       LOG(INFO) << "current_max_error=" << current_max_error;
     }
     ASSERT_TRUE(s.IsTimedOut());
@@ -187,35 +187,35 @@ TEST_F(HybridClockTest, TestWaitUntilAfter_TestCase2) {
 }
 
 TEST_F(HybridClockTest, TestIsAfter) {
-  Timestamp ts1 = clock_->Now();
-  ASSERT_TRUE(clock_->IsAfter(ts1));
+  HybridTime ht1 = clock_->Now();
+  ASSERT_TRUE(clock_->IsAfter(ht1));
 
   // Update the clock in the future, make sure it still
   // handles "IsAfter" properly even when it's running in
   // "logical" mode.
-  Timestamp now_increased = HybridClock::TimestampFromMicroseconds(
-    HybridClock::GetPhysicalValueMicros(ts1) + 1 * 1000 * 1000);
+  HybridTime now_increased = HybridClock::HybridTimeFromMicroseconds(
+    HybridClock::GetPhysicalValueMicros(ht1) + 1 * 1000 * 1000);
   ASSERT_OK(clock_->Update(now_increased));
-  Timestamp ts2 = clock_->Now();
+  HybridTime ht2 = clock_->Now();
 
-  ASSERT_TRUE(clock_->IsAfter(ts1));
-  ASSERT_TRUE(clock_->IsAfter(ts2));
+  ASSERT_TRUE(clock_->IsAfter(ht1));
+  ASSERT_TRUE(clock_->IsAfter(ht2));
 }
 
 // Thread which loops polling the clock and updating it slightly
 // into the future.
 void StresserThread(HybridClock* clock, AtomicBool* stop) {
   Random rng(GetRandomSeed32());
-  Timestamp prev(0);;
+  HybridTime prev(0);;
   while (!stop->Load()) {
-    Timestamp t = clock->Now();
+    HybridTime t = clock->Now();
     CHECK_GT(t.value(), prev.value());
     prev = t;
 
     // Add a random bit of offset to the clock, and perform an update.
-    Timestamp new_ts = HybridClock::AddPhysicalTimeToTimestamp(
+    HybridTime new_ht = HybridClock::AddPhysicalTimeToHybridTime(
         t, MonoDelta::FromMicroseconds(rng.Uniform(10000)));
-    CHECK_OK(clock->Update(new_ts));
+    CHECK_OK(clock->Update(new_ht));
   }
 }
 

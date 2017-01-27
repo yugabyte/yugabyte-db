@@ -54,8 +54,8 @@ class MockYsckTabletServer : public YsckTabletServer {
     callback.Run(Status::OK(), 0);
   }
 
-  virtual Status CurrentTimestamp(uint64_t* timestamp) const OVERRIDE {
-    *timestamp = 0;
+  virtual Status CurrentHybridTime(uint64_t* hybrid_time) const OVERRIDE {
+    *hybrid_time = 0;
     return Status::OK();
   }
 

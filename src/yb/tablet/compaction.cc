@@ -84,17 +84,17 @@ class MemRowSetCompactionInput : public CompactionInput {
       // TODO: A copy is performed to make all CompactionInputRow have the same schema
       CompactionInputRow &input_row = block->at(i);
       input_row.row.Reset(row_block_.get(), i);
-      Timestamp insertion_timestamp;
+      HybridTime insertion_hybrid_time;
       RETURN_NOT_OK(iter_->GetCurrentRow(&input_row.row,
                                          reinterpret_cast<Arena*>(NULL),
                                          &input_row.redo_head,
                                          &arena_,
-                                         &insertion_timestamp));
+                                         &insertion_hybrid_time));
 
       // Materialize MRSRow undo insert (delete)
       undo_encoder.SetToDelete();
       input_row.undo_head = Mutation::CreateInArena(&arena_,
-                                                    insertion_timestamp,
+                                                    insertion_hybrid_time,
                                                     undo_encoder.as_changelist());
       undo_encoder.Reset();
       iter_->Next();
@@ -485,16 +485,16 @@ class MergeCompactionInput : public CompactionInput {
     // row, but in debug mode do get the latest to make sure one of the rows is a ghost.
     const Mutation* left_latest = left.redo_head;
     const Mutation* right_latest = right.redo_head;
-    int ret = left_latest->timestamp().CompareTo(right_latest->timestamp());
+    int ret = left_latest->hybrid_time().CompareTo(right_latest->hybrid_time());
 #ifndef NDEBUG
     AdvanceToLastInList(&left_latest);
     AdvanceToLastInList(&right_latest);
-    int debug_ret = left_latest->timestamp().CompareTo(right_latest->timestamp());
+    int debug_ret = left_latest->hybrid_time().CompareTo(right_latest->hybrid_time());
     if (debug_ret != 0) {
       // If in fact both rows were deleted at the same time, this is OK -- we could
       // have a case like TestRandomAccess.TestFuzz3, in which a single batch
       // DELETED from the DRS, INSERTed into MRS, and DELETED from MRS. In that case,
-      // the timestamp of the last REDO will be the same and we can pick whichever
+      // the hybrid_time of the last REDO will be the same and we can pick whichever
       // we like.
       CHECK_EQ(ret, debug_ret);
     }
@@ -636,14 +636,14 @@ Status ApplyMutationsAndGenerateUndos(const MvccSnapshot& snap,
        redo_mut = redo_mut->next()) {
 
     // Skip anything not committed.
-    if (!snap.IsCommitted(redo_mut->timestamp())) {
+    if (!snap.IsCommitted(redo_mut->hybrid_time())) {
       continue;
     }
 
     undo_encoder.Reset();
 
     Mutation* current_undo;
-    DVLOG(3) << "  @" << redo_mut->timestamp() << ": "
+    DVLOG(3) << "  @" << redo_mut->hybrid_time() << ": "
              << redo_mut->changelist().ToString(*base_schema);
 
     RowChangeListDecoder redo_decoder(redo_mut->changelist());
@@ -671,7 +671,7 @@ Status ApplyMutationsAndGenerateUndos(const MvccSnapshot& snap,
       }
 
       // create the UNDO mutation in the provided arena.
-      current_undo = Mutation::CreateInArena(arena, redo_mut->timestamp(),
+      current_undo = Mutation::CreateInArena(arena, redo_mut->hybrid_time(),
                                              undo_encoder.as_changelist());
 
       // In the case where the previous undo was NULL just make this one
@@ -703,7 +703,7 @@ Status ApplyMutationsAndGenerateUndos(const MvccSnapshot& snap,
         undo_encoder.SetToDelete();
         // Reset the UNDO head, losing all previous undos.
         undo_head = Mutation::CreateInArena(arena,
-                                            redo_mut->timestamp(),
+                                            redo_mut->hybrid_time(),
                                             undo_encoder.as_changelist());
 
         // Also reset the previous redo head since it stored the delete which was nullified
@@ -725,7 +725,7 @@ Status ApplyMutationsAndGenerateUndos(const MvccSnapshot& snap,
         undo_encoder.SetToDelete();
         // Encode the DELETE as a redo
         redo_head = Mutation::CreateInArena(arena,
-                                            redo_mut->timestamp(),
+                                            redo_mut->hybrid_time(),
                                             undo_encoder.as_changelist());
       }
     } else {
@@ -892,7 +892,7 @@ Status ReupdateMissedDeltas(const string &tablet_name,
         RowChangeListDecoder decoder(mut->changelist());
         RETURN_NOT_OK(decoder.Init());
 
-        if (snap_to_exclude.IsCommitted(mut->timestamp())) {
+        if (snap_to_exclude.IsCommitted(mut->hybrid_time())) {
           // This update was already taken into account in the first phase of the
           // compaction.
           continue;
@@ -919,13 +919,13 @@ Status ReupdateMissedDeltas(const string &tablet_name,
           << " row=" << schema->DebugRow(row.row)
           << " mutations=" << Mutation::StringifyMutationList(*schema, row.redo_head);
 
-        if (!snap_to_include.IsCommitted(mut->timestamp())) {
+        if (!snap_to_include.IsCommitted(mut->hybrid_time())) {
           // The mutation was inserted after the DuplicatingRowSet was swapped in.
           // Therefore, it's already present in the output rowset, and we don't need
           // to copy it in.
 
           DVLOG(2) << "Skipping already-duplicated delta for row " << row_idx
-                   << " @" << mut->timestamp() << ": " << mut->changelist().ToString(*schema);
+                   << " @" << mut->hybrid_time() << ": " << mut->changelist().ToString(*schema);
           continue;
         }
 
@@ -933,7 +933,7 @@ Status ReupdateMissedDeltas(const string &tablet_name,
         // pass, but before the DuplicatingRowSet was swapped in. We need to transfer
         // this over to the output rowset.
         DVLOG(1) << "Flushing missed delta for row " << row_idx
-                  << " @" << mut->timestamp() << ": " << mut->changelist().ToString(*schema);
+                  << " @" << mut->hybrid_time() << ": " << mut->changelist().ToString(*schema);
 
         DeltaTracker *cur_tracker = delta_trackers.front();
 
@@ -954,13 +954,13 @@ Status ReupdateMissedDeltas(const string &tablet_name,
         }
 
         gscoped_ptr<OperationResultPB> result(new OperationResultPB);
-        Status s = cur_tracker->Update(mut->timestamp(),
+        Status s = cur_tracker->Update(mut->hybrid_time(),
                                        idx_in_delta_tracker,
                                        mut->changelist(),
                                        max_op_id,
                                        result.get());
         DCHECK(s.ok()) << "Failed update on compaction for row " << row_idx
-            << " @" << mut->timestamp() << ": " << mut->changelist().ToString(*schema);
+            << " @" << mut->hybrid_time() << ": " << mut->changelist().ToString(*schema);
         if (s.ok()) {
           // Update the set of delta trackers with the one we've just updated.
           InsertIfNotPresent(&updated_trackers, cur_tracker);

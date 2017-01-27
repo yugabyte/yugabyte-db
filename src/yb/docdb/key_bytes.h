@@ -56,8 +56,8 @@ class KeyBytes {
     AppendUInt32ToKey(x, &data_);
   }
 
-  void AppendTimestamp(Timestamp timestamp) {
-    AppendEncodedTimestampToKey(timestamp, &data_);
+  void AppendHybridTime(HybridTime hybrid_time) {
+    AppendEncodedHybridTimeToKey(hybrid_time, &data_);
   }
 
   void RemoveValueTypeSuffix(ValueType value_type) {
@@ -66,12 +66,12 @@ class KeyBytes {
     data_.pop_back();
   }
 
-  // Assuming the key bytes currently end with a timestamp, replace that timestamp with a different
-  // one.
-  void ReplaceLastTimestamp(Timestamp timestamp) {
-    CHECK_GE(data_.size(), kBytesPerTimestamp);
-    data_.resize(data_.size() - kBytesPerTimestamp);
-    AppendTimestamp(timestamp);
+  // Assuming the key bytes currently end with a hybrid time, replace that hybrid time with a
+  // different one.
+  void ReplaceLastHybridTime(HybridTime hybrid_time) {
+    CHECK_GE(data_.size(), kBytesPerHybridTime);
+    data_.resize(data_.size() - kBytesPerHybridTime);
+    AppendHybridTime(hybrid_time);
   }
 
   size_t size() const { return data_.size(); }
@@ -80,34 +80,34 @@ class KeyBytes {
     return slice.starts_with(data_);
   }
 
-  // Checks whether the other slice can be obtained by adding a timestamp.
+  // Checks whether the other slice can be obtained by adding a hybrid_time.
   bool OnlyLacksTimeStampFrom(const rocksdb::Slice& other_slice) const {
-    if (size() + 1 + kBytesPerTimestamp != other_slice.size()) {
+    if (size() + 1 + kBytesPerHybridTime != other_slice.size()) {
       return false;
     }
-    if (other_slice[size()] != static_cast<char>(ValueType::kTimestamp)) {
+    if (other_slice[size()] != static_cast<char>(ValueType::kHybridTime)) {
       return false;
     }
     return other_slice.starts_with(AsSlice());
   }
 
   // Checks whether the given slice starts with this sequence of key bytes.
-  bool OnlyDiffersByLastTimestampFrom(const rocksdb::Slice& other_slice) const {
-    if (size() != other_slice.size() || size() < kBytesPerTimestamp) {
+  bool OnlyDiffersByLastHybridTimeFrom(const rocksdb::Slice& other_slice) const {
+    if (size() != other_slice.size() || size() < kBytesPerHybridTime) {
       return false;
     }
 
     auto this_as_slice = AsSlice();
-    this_as_slice.remove_suffix(kBytesPerTimestamp);
+    this_as_slice.remove_suffix(kBytesPerHybridTime);
     return other_slice.starts_with(this_as_slice);
   }
 
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
 
-  rocksdb::Slice AsSliceWithoutTimestamp() const {
-    CHECK_GE(data_.size(), kBytesPerTimestamp);
+  rocksdb::Slice AsSliceWithoutHybridTime() const {
+    CHECK_GE(data_.size(), kBytesPerHybridTime);
     auto slice = AsSlice();
-    slice.remove_suffix(kBytesPerTimestamp);
+    slice.remove_suffix(kBytesPerHybridTime);
     return slice;
   }
 

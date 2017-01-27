@@ -224,31 +224,31 @@ DocKey DocKey::FromRedisStringKey(const string& key) {
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
 
-KeyBytes SubDocKey::Encode(bool include_timestamp) const {
+KeyBytes SubDocKey::Encode(bool include_hybrid_time) const {
   KeyBytes key_bytes = doc_key_.Encode();
   for (const auto& subkey : subkeys_) {
     subkey.AppendToKey(&key_bytes);
   }
-  if (has_timestamp() && include_timestamp) {
-    key_bytes.AppendValueType(ValueType::kTimestamp);
-    key_bytes.AppendTimestamp(timestamp_);
+  if (has_hybrid_time() && include_hybrid_time) {
+    key_bytes.AppendValueType(ValueType::kHybridTime);
+    key_bytes.AppendHybridTime(hybrid_time_);
   }
   return key_bytes;
 }
 
 Status SubDocKey::DecodeFrom(rocksdb::Slice* slice,
-                             const bool require_timestamp) {
+                             const bool require_hybrid_time) {
   const rocksdb::Slice original_bytes(*slice);
 
   Clear();
   RETURN_NOT_OK(doc_key_.DecodeFrom(slice));
   while (!slice->empty() &&
-         *slice->data() != static_cast<char>(ValueType::kTimestamp)) {
-    if (*slice->data() == '\xff' && !require_timestamp) {
+         *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
+    if (*slice->data() == '\xff' && !require_hybrid_time) {
       // A special case for easier debugging. In SubDocKey::AdvanceOutOfSubDoc we add '\xff' after
-      // the last subkey to an encoded SubDocKey without a timestamp to seek to the next vector of
+      // the last subkey to an encoded SubDocKey without a hybrid_time to seek to the next vector of
       // subkeys (or "jump out" of the current subdocument). We want such special-case keys to be
-      // successfully decoded here as a SubDocKey with no timestamp followed by some raw bytes.
+      // successfully decoded here as a SubDocKey with no hybrid_time followed by some raw bytes.
       return Status::OK();
     }
     subkeys_.emplace_back();
@@ -257,25 +257,25 @@ Status SubDocKey::DecodeFrom(rocksdb::Slice* slice,
         current_subkey.DecodeFromKey(slice),
         Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
   }
-  if (slice->size() < kBytesPerTimestamp + 1) {
-    if (!require_timestamp) {
+  if (slice->size() < kBytesPerHybridTime + 1) {
+    if (!require_hybrid_time) {
       return Status::OK();
     }
     return STATUS_SUBSTITUTE(
         Corruption,
-        "Found too few bytes in the end of a SubDocKey for a type-prefixed timestamp: $0",
+        "Found too few bytes in the end of a SubDocKey for a type-prefixed hybrid_time: $0",
         ToShortDebugStr(*slice));
   }
-  CHECK_EQ(to_underlying(ValueType::kTimestamp), slice->ConsumeByte());
-  RETURN_NOT_OK(ConsumeTimestampFromKey(slice, &timestamp_));
+  CHECK_EQ(to_underlying(ValueType::kHybridTime), slice->ConsumeByte());
+  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &hybrid_time_));
 
   return Status::OK();
 }
 
 Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
-                                  const bool require_timestamp) {
+                                  const bool require_hybrid_time) {
   rocksdb::Slice mutable_slice = slice;
-  Status status = DecodeFrom(&mutable_slice, require_timestamp);
+  Status status = DecodeFrom(&mutable_slice, require_hybrid_time);
   if (!mutable_slice.empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
         "Expected all bytes of the slice to be decoded into DocKey, found $0 extra bytes: $1",
@@ -297,11 +297,11 @@ string SubDocKey::ToString() const {
     result << subkey.ToString();
   }
 
-  if (has_timestamp()) {
+  if (has_hybrid_time()) {
     if (need_comma) {
       result << "; ";
     }
-    result << timestamp_.ToDebugString();
+    result << hybrid_time_.ToDebugString();
   }
   result << "])";
   return result.str();
@@ -310,16 +310,16 @@ string SubDocKey::ToString() const {
 void SubDocKey::Clear() {
   doc_key_.Clear();
   subkeys_.clear();
-  timestamp_ = Timestamp::kInvalidTimestamp;
+  hybrid_time_ = HybridTime::kInvalidHybridTime;
 }
 
 bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
   return doc_key_ == prefix.doc_key_ &&
-         // Subkeys precede the timestamp field in the encoded representation, so the timestamp
+         // Subkeys precede the hybrid_time field in the encoded representation, so the hybrid_time
          // either has to be undefined in the prefix, or the entire key must match, including
-         // subkeys and the timestamp (in this case the prefix is the same as this key).
-         (!prefix.has_timestamp() ||
-          (timestamp_ == prefix.timestamp_ && prefix.num_subkeys() == num_subkeys())) &&
+         // subkeys and the hybrid_time (in this case the prefix is the same as this key).
+         (!prefix.has_hybrid_time() ||
+          (hybrid_time_ == prefix.hybrid_time_ && prefix.num_subkeys() == num_subkeys())) &&
          prefix.num_subkeys() <= num_subkeys() &&
          // std::mismatch finds the first difference between two sequences. Prior to C++14, the
          // behavior is undefined if the second range is shorter than the first range, so we make
@@ -331,7 +331,7 @@ bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
 
 bool SubDocKey::operator ==(const SubDocKey& other) const {
   return doc_key_ == other.doc_key_ &&
-         timestamp_ == other.timestamp_&&
+         hybrid_time_ == other.hybrid_time_&&
          subkeys_ == other.subkeys_;
 }
 
@@ -339,21 +339,21 @@ int SubDocKey::CompareTo(const SubDocKey& other) const {
   int result = doc_key_.CompareTo(other.doc_key_);
   if (result != 0) return result;
 
-  // We specify reverse_second_component = true to implement inverse timestamp ordering.
+  // We specify reverse_second_component = true to implement inverse hybrid_time ordering.
   result = CompareVectors<PrimitiveValue>(subkeys_, other.subkeys_);
   if (result != 0) return result;
 
-  // Timestamps are sorted in reverse order.
-  return -timestamp_.CompareTo(other.timestamp_);
+  // HybridTimes are sorted in reverse order.
+  return -hybrid_time_.CompareTo(other.hybrid_time_);
 }
 
 string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
   rocksdb::Slice mutable_slice(key_bytes.AsSlice());
   SubDocKey subdoc_key;
-  Status decode_status = subdoc_key.DecodeFrom(&mutable_slice, /* require_timestamp = */ false);
+  Status decode_status = subdoc_key.DecodeFrom(&mutable_slice, /* require_hybrid_time = */ false);
   if (decode_status.ok()) {
     ostringstream ss;
-    if (!subdoc_key.has_timestamp() && subdoc_key.num_subkeys() == 0) {
+    if (!subdoc_key.has_hybrid_time() && subdoc_key.num_subkeys() == 0) {
       // This is really just a DocKey.
       ss << subdoc_key.doc_key().ToString();
     } else {
@@ -369,7 +369,7 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
   VLOG(4) << __func__ << ": could not decode " << key_bytes.ToString() << ", error: "
           << decode_status.ToString();
 
-  // We could not decode a SubDocKey at all, even without a timestamp.
+  // We could not decode a SubDocKey at all, even without a hybrid_time.
   return key_bytes.ToString();
 }
 
@@ -377,9 +377,9 @@ std::string BestEffortDocDBKeyToStr(const rocksdb::Slice& slice) {
   return BestEffortDocDBKeyToStr(KeyBytes(slice));
 }
 
-void SubDocKey::ReplaceMaxTimestampWith(Timestamp timestamp) {
-  if (timestamp_ == Timestamp::kMax) {
-    timestamp_ = timestamp;
+void SubDocKey::ReplaceMaxHybridTimeWith(HybridTime hybrid_time) {
+  if (hybrid_time_ == HybridTime::kMax) {
+    hybrid_time_ = hybrid_time;
   }
 }
 
@@ -400,7 +400,7 @@ int SubDocKey::NumSharedPrefixComponents(const SubDocKey& other) const {
 }
 
 KeyBytes SubDocKey::AdvanceOutOfSubDoc() {
-  KeyBytes subdoc_key_no_ts = Encode(/* include_timestamp = */ false);
+  KeyBytes subdoc_key_no_ts = Encode(/* include_hybrid_time = */ false);
   subdoc_key_no_ts.AppendRawBytes("\xff", 1);
   return subdoc_key_no_ts;
 }

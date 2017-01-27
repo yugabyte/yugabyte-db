@@ -68,11 +68,11 @@ Status DeltaMemStore::Init() {
   return Status::OK();
 }
 
-Status DeltaMemStore::Update(Timestamp timestamp,
+Status DeltaMemStore::Update(HybridTime hybrid_time,
                              rowid_t row_idx,
                              const RowChangeList &update,
                              const consensus::OpId& op_id) {
-  DeltaKey key(row_idx, timestamp);
+  DeltaKey key(row_idx, hybrid_time);
 
   faststring buf;
 
@@ -82,7 +82,7 @@ Status DeltaMemStore::Update(Timestamp timestamp,
   btree::PreparedMutation<DMSTreeTraits> mutation(key_slice);
   mutation.Prepare(tree_.get());
   if (PREDICT_FALSE(mutation.exists())) {
-    // We already have a delta for this row at the same timestamp.
+    // We already have a delta for this row at the same hybrid_time.
     // Try again with a disambiguating sequence number appended to the key.
     int seq = disambiguator_sequence_number_.Increment();
     PutMemcmpableVarint64(&buf, seq);
@@ -91,7 +91,7 @@ Status DeltaMemStore::Update(Timestamp timestamp,
     mutation.Prepare(tree_.get());
     CHECK(!mutation.exists())
       << "Appended a sequence number but still hit a duplicate "
-      << "for rowid " << row_idx << " at timestamp " << timestamp;
+      << "for rowid " << row_idx << " at hybrid_time " << hybrid_time;
   }
   if (PREDICT_FALSE(!mutation.Insert(update.slice()))) {
     return STATUS(IOError, "Unable to insert into tree");
@@ -115,7 +115,7 @@ Status DeltaMemStore::FlushToFile(DeltaFileWriter *dfw,
     RETURN_NOT_OK(key.DecodeFrom(&key_slice));
     RowChangeList rcl(val);
     RETURN_NOT_OK_PREPEND(dfw->AppendDelta<REDO>(key, rcl), "Failed to append delta");
-    stats->UpdateStats(key.timestamp(), rcl);
+    stats->UpdateStats(key.hybrid_time(), rcl);
     iter->Next();
   }
   RETURN_NOT_OK(dfw->WriteDeltaStats(*stats));
@@ -134,7 +134,7 @@ Status DeltaMemStore::NewDeltaIterator(const Schema *projection,
 Status DeltaMemStore::CheckRowDeleted(rowid_t row_idx, bool *deleted) const {
   *deleted = false;
 
-  DeltaKey key(row_idx, Timestamp(0));
+  DeltaKey key(row_idx, HybridTime(0));
   faststring buf;
   key.EncodeTo(&buf);
   Slice key_slice(buf);
@@ -194,7 +194,7 @@ Status DMSIterator::Init(ScanSpec *spec) {
 
 Status DMSIterator::SeekToOrdinal(rowid_t row_idx) {
   faststring buf;
-  DeltaKey key(row_idx, Timestamp(0));
+  DeltaKey key(row_idx, HybridTime(0));
   key.EncodeTo(&buf);
 
   bool exact; /* unused */
@@ -240,7 +240,7 @@ Status DMSIterator::PrepareBatch(size_t nrows, PrepareFlag flag) {
     DCHECK_GE(key.row_idx(), start_row);
     if (key.row_idx() > stop_row) break;
 
-    if (!mvcc_snapshot_.IsCommitted(key.timestamp())) {
+    if (!mvcc_snapshot_.IsCommitted(key.hybrid_time())) {
       // The transaction which applied this update is not yet committed
       // in this iterator's MVCC snapshot. Hence, skip it.
       iter_->Next();
@@ -343,7 +343,7 @@ Status DMSIterator::CollectMutations(vector<Mutation *> *dst, Arena *arena) {
     RowChangeList changelist(src.val);
     uint32_t rel_idx = key.row_idx() - prepared_idx_;
 
-    Mutation *mutation = Mutation::CreateInArena(arena, key.timestamp(), changelist);
+    Mutation *mutation = Mutation::CreateInArena(arena, key.hybrid_time(), changelist);
     mutation->AppendToList(&dst->at(rel_idx));
   }
   return Status::OK();

@@ -111,12 +111,12 @@ class DocDBRocksDBFixture {
   void DestroyRocksDB();
 
   // Writes the given DocWriteBatch to RocksDB. Unlike the production codepath, here we assume it
-  // already contains valid timestamps in its keys, and do not substitue a new timestamp for
-  // Timestamp::kMax.
+  // already contains valid hybrid_times in its keys, and do not substitue a new hybrid_time for
+  // HybridTime::kMax.
   rocksdb::Status WriteToRocksDB(const DocWriteBatch& write_batch);
 
-  void SetHistoryCutoffTimestamp(Timestamp history_cutoff);
-  void CompactHistoryBefore(Timestamp history_cutoff);
+  void SetHistoryCutoffHybridTime(HybridTime history_cutoff);
+  void CompactHistoryBefore(HybridTime history_cutoff);
 
   // Produces a string listing the contents of the entire RocksDB database, with every key and value
   // decoded as a DocDB key/value and converted to a human-readable string representation.
@@ -131,14 +131,14 @@ class DocDBRocksDBFixture {
 
   void SetPrimitive(const DocPath& doc_path,
                     const Value& value,
-                    Timestamp timestamp,
+                    HybridTime hybrid_time,
                     DocWriteBatch* doc_write_batch = nullptr);
 
   void SetPrimitive(const DocPath& doc_path,
                     const PrimitiveValue& value,
-                    Timestamp timestamp,
+                    HybridTime hybrid_time,
                     DocWriteBatch* doc_write_batch = nullptr) {
-    SetPrimitive(doc_path, Value(value), timestamp, doc_write_batch);
+    SetPrimitive(doc_path, Value(value), hybrid_time, doc_write_batch);
   }
 
   void DocDBDebugDumpToConsole();
@@ -180,13 +180,13 @@ class DocDBLoadGenerator {
   // @return The next "iteration number" to be performed when PerformOperation is called.
   int next_iteration() const { return iteration_; }
 
-  // The timestamp of the last operation performed is always based on the last iteration number.
+  // The hybrid_time of the last operation performed is always based on the last iteration number.
   // Most times it will be one less than what next_iteration() would return, if we convert the
-  // timestamp to an integer. This can only be called after PerformOperation() has been called at
+  // hybrid_time to an integer. This can only be called after PerformOperation() has been called at
   // least once.
   //
-  // @return The timestamp of the last operation performed.
-  Timestamp last_operation_ts() const;
+  // @return The hybrid_time of the last operation performed.
+  HybridTime last_operation_ht() const;
 
   void FlushRocksDB();
 
@@ -200,25 +200,25 @@ class DocDBLoadGenerator {
 
   // Capture and remember a "logical DocDB snapshot" (not to be confused with what we call
   // a "logical RocksDB snapshot"). This keeps track of all document keys and corresponding
-  // documents existing at the latest timestamp.
+  // documents existing at the latest hybrid_time.
   void CaptureDocDbSnapshot();
 
   void VerifyOldestSnapshot();
   void VerifyRandomDocDbSnapshot();
 
   // Perform a flashback query at the time of the latest snapshot before the given cleanup
-  // timestamp and compare it to the state recorded with the snapshot. Expect the two to diverge
+  // hybrid_time and compare it to the state recorded with the snapshot. Expect the two to diverge
   // using ASSERT_TRUE. This is used for testing that old history is actually being cleaned up
   // during compactions.
-  void CheckIfOldestSnapshotIsStillValid(const Timestamp cleanup_ts);
+  void CheckIfOldestSnapshotIsStillValid(const HybridTime cleanup_ht);
 
-  // Removes all snapshots taken before the given timestamp. This is done to test history cleanup.
-  void RemoveSnapshotsBefore(Timestamp ts);
+  // Removes all snapshots taken before the given hybrid_time. This is done to test history cleanup.
+  void RemoveSnapshotsBefore(HybridTime ht);
 
-  int num_divergent_old_snapshot() { return divergent_snapshot_ts_and_cleanup_ts_.size(); }
+  int num_divergent_old_snapshot() { return divergent_snapshot_ht_and_cleanup_ht_.size(); }
 
-  std::vector<std::pair<int, int>> divergent_snapshot_ts_and_cleanup_ts() {
-    return divergent_snapshot_ts_and_cleanup_ts_;
+  std::vector<std::pair<int, int>> divergent_snapshot_ht_and_cleanup_ht() {
+    return divergent_snapshot_ht_and_cleanup_ht_;
   }
 
  private:
@@ -238,32 +238,32 @@ class DocDBLoadGenerator {
   // objects (maps). If this is 3, we'll use maps of maps, etc.
   const int max_nesting_level_;
 
-  Timestamp last_operation_ts_;
+  HybridTime last_operation_ht_;
 
   std::vector<InMemDocDbState> docdb_snapshots_;
 
   int num_divergent_old_snapshots_;
 
-  // Timestamps and cleanup timestamps of examples when
-  std::vector<std::pair<int, int>> divergent_snapshot_ts_and_cleanup_ts_;
+  // HybridTimes and cleanup hybrid_times of examples when
+  std::vector<std::pair<int, int>> divergent_snapshot_ht_and_cleanup_ht_;
 
   // PerformOperation() will verify DocDB state consistency once in this number of iterations.
   const int verification_frequency_;
 
   const InMemDocDbState& GetOldestSnapshot();
 
-  // Perform a "flashback query" in the RocksDB-based DocDB at the timestamp snapshot.captured_at()
-  // and verify that the state matches what's in the provided snapshot. This is only invoked on
-  // snapshots whose capture timestamp has not been garbage-collected, and therefore we always
-  // expect this verification to succeed.
+  // Perform a "flashback query" in the RocksDB-based DocDB at the hybrid_time
+  // snapshot.captured_at() and verify that the state matches what's in the provided snapshot.
+  // This is only invoked on snapshots whose capture hybrid_time has not been garbage-collected,
+  // and therefore we always expect this verification to succeed.
   //
   // Calls to this function should be wrapped in NO_FATALS.
   void VerifySnapshot(const InMemDocDbState& snapshot);
 
   // Look at whether the given snapshot is still valid, and if not, track it in
-  // divergent_snapshot_ts_and_cleanup_ts_, so we can later verify that some snapshots have become
+  // divergent_snapshot_ht_and_cleanup_ht_, so we can later verify that some snapshots have become
   // invalid after history cleanup.
-  void RecordSnapshotDivergence(const InMemDocDbState &snapshot, Timestamp cleanup_ts);
+  void RecordSnapshotDivergence(const InMemDocDbState &snapshot, HybridTime cleanup_ht);
 };
 
 }  // namespace docdb

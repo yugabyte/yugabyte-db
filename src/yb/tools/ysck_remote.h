@@ -53,7 +53,7 @@ class RemoteYsckTabletServer : public YsckTabletServer {
 
   virtual CHECKED_STATUS Connect() const OVERRIDE;
 
-  virtual CHECKED_STATUS CurrentTimestamp(uint64_t* timestamp) const OVERRIDE;
+  virtual CHECKED_STATUS CurrentHybridTime(uint64_t* hybrid_time) const OVERRIDE;
 
   virtual void RunTabletChecksumScanAsync(
       const std::string& tablet_id,

@@ -13,7 +13,7 @@
 
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/key_bytes.h"
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/ysql_protocol.pb.h"
 #include "yb/common/ysql_rowblock.h"
@@ -77,8 +77,8 @@ class PrimitiveValue {
     int64_val_ = v;
   }
 
-  explicit PrimitiveValue(const Timestamp& timestamp) : type_(ValueType::kTimestamp) {
-    timestamp_val_ = timestamp;
+  explicit PrimitiveValue(const HybridTime& hybrid_time) : type_(ValueType::kHybridTime) {
+    hybrid_time_val_ = hybrid_time;
   }
 
   // Construct a primitive value from a Slice containing a Kudu value.
@@ -106,7 +106,7 @@ class PrimitiveValue {
     if (type_ == ValueType::kString) {
       str_val_.~basic_string();
     }
-    // Timestamp does not need its destructor to be called, because it is a simple wrapper over an
+    // HybridTime does not need its destructor to be called, because it is a simple wrapper over an
     // unsigned 64-bit integer.
   }
 
@@ -124,9 +124,9 @@ class PrimitiveValue {
 
   KeyBytes ToKeyBytes() const;
 
-  Timestamp timestamp() const {
-    DCHECK(type_ == ValueType::kTimestamp);
-    return timestamp_val_;
+  HybridTime hybrid_time() const {
+    DCHECK(type_ == ValueType::kHybridTime);
+    return hybrid_time_val_;
   }
 
   // As strange as it may sound, an instance of this class may sometimes contain a single byte that
@@ -186,7 +186,7 @@ class PrimitiveValue {
   union {
     int64_t int64_val_;
     uint32_t uint32_val_;
-    Timestamp timestamp_val_;
+    HybridTime hybrid_time_val_;
     std::string str_val_;
     double double_val_;
     // This is used in SubDocument to hold a pointer to a map or a vector.

@@ -48,7 +48,7 @@ namespace client {
 
 using internal::RemoteTabletServer;
 
-static const int64_t kNoTimestamp = -1;
+static const int64_t kNoHybridTime = -1;
 
 YBScanner::Data::Data(YBTable* table)
   : open_(false),
@@ -58,7 +58,7 @@ YBScanner::Data::Data(YBTable* table)
     selection_(YBClient::CLOSEST_REPLICA),
     read_mode_(READ_LATEST),
     is_fault_tolerant_(false),
-    snapshot_timestamp_(kNoTimestamp),
+    snapshot_hybrid_time_(kNoHybridTime),
     table_(DCHECK_NOTNULL(table)),
     arena_(1024, 1024*1024),
     spec_encoder_(table->schema().schema_, &arena_),
@@ -238,12 +238,12 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
 
   scan->set_cache_blocks(spec_.cache_blocks());
 
-  if (snapshot_timestamp_ != kNoTimestamp) {
+  if (snapshot_hybrid_time_ != kNoHybridTime) {
     if (PREDICT_FALSE(read_mode_ != READ_AT_SNAPSHOT)) {
-      LOG(WARNING) << "Scan snapshot timestamp set but read mode was READ_LATEST."
-          " Ignoring timestamp.";
+      LOG(WARNING) << "Scan snapshot hybrid_time set but read mode was READ_LATEST."
+          " Ignoring hybrid_time.";
     } else {
-      scan->set_snap_timestamp(snapshot_timestamp_);
+      scan->set_snap_hybrid_time(snapshot_hybrid_time_);
     }
   }
 
@@ -366,19 +366,19 @@ Status YBScanner::Data::OpenTablet(const string& partition_key,
     VLOG(1) << "Opened tablet " << remote_->tablet_id() << " (no rows), no scanner ID assigned";
   }
 
-  // If present in the response, set the snapshot timestamp and the encoded last
+  // If present in the response, set the snapshot hybrid_time and the encoded last
   // primary key.  This is used when retrying the scan elsewhere.  The last
   // primary key is also updated on each scan response.
   if (is_fault_tolerant_) {
-    CHECK(last_response_.has_snap_timestamp());
-    snapshot_timestamp_ = last_response_.snap_timestamp();
+    CHECK(last_response_.has_snap_hybrid_time());
+    snapshot_hybrid_time_ = last_response_.snap_hybrid_time();
     if (last_response_.has_last_primary_key()) {
       last_primary_key_ = last_response_.last_primary_key();
     }
   }
 
-  if (last_response_.has_snap_timestamp()) {
-    table_->client()->data_->UpdateLatestObservedTimestamp(last_response_.snap_timestamp());
+  if (last_response_.has_snap_hybrid_time()) {
+    table_->client()->data_->UpdateLatestObservedHybridTime(last_response_.snap_hybrid_time());
   }
 
   return Status::OK();

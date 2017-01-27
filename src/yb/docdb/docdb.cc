@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "yb/common/redis_protocol.pb.h"
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
@@ -35,7 +35,7 @@ using std::stack;
 using std::vector;
 using std::make_shared;
 
-using yb::Timestamp;
+using yb::HybridTime;
 using yb::util::FormatBytesAsStr;
 using yb::util::LockType;
 using yb::FormatRocksDBSliceAsStr;
@@ -82,12 +82,12 @@ void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
 }
 
 Status ApplyDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_write_ops,
-                                const Timestamp& timestamp,
+                                const HybridTime& hybrid_time,
                                 rocksdb::DB *rocksdb,
                                 KeyValueWriteBatchPB* write_batch) {
   DocWriteBatch doc_write_batch(rocksdb);
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
-    RETURN_NOT_OK(doc_op->Apply(&doc_write_batch, rocksdb, timestamp));
+    RETURN_NOT_OK(doc_op->Apply(&doc_write_batch, rocksdb, hybrid_time));
   }
   doc_write_batch.MoveToWriteBatchPB(write_batch);
   return Status::OK();
@@ -95,9 +95,9 @@ Status ApplyDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
 
 Status HandleRedisReadTransaction(rocksdb::DB *rocksdb,
                                   const vector<unique_ptr<RedisReadOperation>>& doc_read_ops,
-                                  Timestamp timestamp) {
+                                  HybridTime hybrid_time) {
   for (const unique_ptr<RedisReadOperation>& doc_op : doc_read_ops) {
-    RETURN_NOT_OK(doc_op->Execute(rocksdb, timestamp));
+    RETURN_NOT_OK(doc_op->Execute(rocksdb, hybrid_time));
   }
   return Status::OK();
 }
@@ -114,9 +114,9 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
 // This codepath is used to handle both primitive upserts and deletions.
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
                                    const Value& value,
-                                   Timestamp timestamp) {
-  DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, timestamp=$2",
-                  doc_path.ToString(), value.ToString(), timestamp.ToDebugString());
+                                   HybridTime hybrid_time) {
+  DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, hybrid_time=$2",
+                  doc_path.ToString(), value.ToString(), hybrid_time.ToDebugString());
   const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
   const int num_subkeys = doc_path.num_subkeys();
   const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
@@ -184,34 +184,34 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
 
       // The document/subdocument that this subkey is supposed to live in does not exist, create it.
       KeyBytes parent_key(doc_iter.key_prefix());
-      parent_key.AppendValueType(ValueType::kTimestamp);
-      parent_key.AppendTimestamp(timestamp);
+      parent_key.AppendValueType(ValueType::kHybridTime);
+      parent_key.AppendHybridTime(hybrid_time);
       // TODO: std::move from parent_key's string buffer into put_batch_.
       put_batch_.emplace_back(parent_key.AsStringRef(), kObjectValueType);
 
       // Update our local cache to record the fact that we're adding this subdocument, so that
       // future operations in this DocWriteBatch don't have to add it or look for it in RocksDB.
-      cache_.Put(KeyBytes(doc_iter.key_prefix().AsSlice()), timestamp, ValueType::kObject);
+      cache_.Put(KeyBytes(doc_iter.key_prefix().AsSlice()), hybrid_time, ValueType::kObject);
 
       doc_iter.AppendToPrefix(subkey);
     }
   }
 
-  // The key we use in the DocWriteBatchCache does not have a final timestamp, because that's the
+  // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's the
   // key we expect to look up.
-  cache_.Put(doc_iter.key_prefix(), timestamp, value.primitive_value().value_type());
+  cache_.Put(doc_iter.key_prefix(), hybrid_time, value.primitive_value().value_type());
 
-  // Close the group of subkeys of the SubDocKey, and append the timestamp as the final component.
-  doc_iter.mutable_key_prefix()->AppendValueType(ValueType::kTimestamp);
-  doc_iter.AppendTimestampToPrefix(timestamp);
+  // Close the group of subkeys of the SubDocKey, and append the hybrid_time as the final component.
+  doc_iter.mutable_key_prefix()->AppendValueType(ValueType::kHybridTime);
+  doc_iter.AppendHybridTimeToPrefix(hybrid_time);
 
   put_batch_.emplace_back(doc_iter.key_prefix().AsStringRef(), value.Encode());
 
   return Status::OK();
 }
 
-Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const Timestamp timestamp) {
-  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), timestamp);
+Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const HybridTime hybrid_time) {
+  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), hybrid_time);
 }
 
 string DocWriteBatch::ToDebugString() {
@@ -229,14 +229,14 @@ void DocWriteBatch::Clear() {
 }
 
 void DocWriteBatch::PopulateRocksDBWriteBatchInTest(rocksdb::WriteBatch *rocksdb_write_batch,
-                                                    Timestamp timestamp) const {
+                                                    HybridTime hybrid_time) const {
   for (const auto& entry : put_batch_) {
     SubDocKey subdoc_key;
     // We don't expect any invalid encoded keys in the write batch.
     CHECK_OK_PREPEND(subdoc_key.FullyDecodeFrom(entry.first),
                      Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
-    if (timestamp != Timestamp::kMax) {
-      subdoc_key.ReplaceMaxTimestampWith(timestamp);
+    if (hybrid_time != HybridTime::kMax) {
+      subdoc_key.ReplaceMaxHybridTimeWith(hybrid_time);
     }
 
     rocksdb_write_batch->Put(subdoc_key.Encode().AsSlice(), entry.second);
@@ -244,14 +244,14 @@ void DocWriteBatch::PopulateRocksDBWriteBatchInTest(rocksdb::WriteBatch *rocksdb
 }
 
 rocksdb::Status DocWriteBatch::WriteToRocksDBInTest(
-    const Timestamp timestamp,
+    const HybridTime hybrid_time,
     const rocksdb::WriteOptions &write_options) const {
   if (IsEmpty()) {
     return rocksdb::Status::OK();
   }
 
   rocksdb::WriteBatch rocksdb_write_batch;
-  PopulateRocksDBWriteBatchInTest(&rocksdb_write_batch, timestamp);
+  PopulateRocksDBWriteBatchInTest(&rocksdb_write_batch, hybrid_time);
   return rocksdb_->Write(write_options, &rocksdb_write_batch);
 }
 
@@ -283,8 +283,8 @@ namespace {
 static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
                                   rocksdb::Iterator* rocksdb_iter,
                                   DocVisitor* visitor,
-                                  Timestamp scan_ts,
-                                  Timestamp lowest_ts);
+                                  HybridTime scan_ht,
+                                  HybridTime lowest_ht);
 
 // @param higher_level_key
 //     The SubDocKey corresponding to the root of the subdocument tree to scan. This is the expected
@@ -295,24 +295,24 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 //     A RocksDB iterator that is expected to be positioned at the "root" key/value pair of the
 //     subdocument or primitive value we are trying to scan.
 //
-// @param scan_ts The timestamp we are trying to scan the state of the database at.
-// @param lowest_ts
-//     The lowest timestamp that we need to consider while walking the nested document tree. This is
-//     based on init markers or tombstones seen at higher levels. E.g. if we've already seen an init
-//     marker at timestamp t, then lowest_ts will be t, or if we've seen a tombstone at timestamp t,
-//     lowest_ts will be t + 1 (because that's the earliest timestamp we need to care about after
-//     a deletion at timestamp t). The latter case is only relevant for the case when optional
-//     init markers are enabled, which is not supported as of 12/06/2016.
+// @param scan_ht The hybrid_time we are trying to scan the state of the database at.
+// @param lowest_ht
+//     The lowest hybrid_time that we need to consider while walking the nested document tree. This
+//     is based on init markers or tombstones seen at higher levels. E.g. if we've already seen an
+//     init marker at hybrid_time t, then lowest_ht will be t, or if we've seen a tombstone at
+//     hybrid_time t, lowest_ht will be t + 1 (because that's the earliest hybrid_time we need to
+//     care about after a deletion at hybrid_time t). The latter case is only relevant for the case
+//     when optional init markers are enabled, which is not supported as of 12/06/2016.
 static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
                                              rocksdb::Iterator* rocksdb_iter,
                                              DocVisitor* visitor,
-                                             Timestamp scan_ts,
-                                             Timestamp lowest_ts) {
-  DOCDB_DEBUG_LOG("higher_level_key=$0, scan_ts=$1, lowest_ts=$2",
-                  higher_level_key.ToString(), scan_ts.ToDebugString(), lowest_ts.ToDebugString());
-  DCHECK_LE(higher_level_key.timestamp(), scan_ts)
+                                             HybridTime scan_ht,
+                                             HybridTime lowest_ht) {
+  DOCDB_DEBUG_LOG("higher_level_key=$0, scan_ht=$1, lowest_ht=$2",
+                  higher_level_key.ToString(), scan_ht.ToDebugString(), lowest_ht.ToDebugString());
+  DCHECK_LE(higher_level_key.hybrid_time(), scan_ht)
       << "; higher_level_key=" << higher_level_key.ToString();
-  DCHECK_GE(higher_level_key.timestamp(), lowest_ts)
+  DCHECK_GE(higher_level_key.hybrid_time(), lowest_ht)
       << "; higher_level_key=" << higher_level_key.ToString();
 
   Value top_level_value;
@@ -320,7 +320,7 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
 
   if (top_level_value.value_type() == ValueType::kTombstone) {
     // TODO(mbautin): If we allow optional init markers here, we still need to scan deeper levels
-    // and interpret values with timestamps >= lowest_ts as values in a map that exists. As of
+    // and interpret values with hybrid_times >= lowest_ht as values in a map that exists. As of
     // 11/11/2016 initialization markers (i.e. ValueType::kObject) are still required at the top of
     // each object's key range.
     return Status::OK();  // the document does not exist
@@ -335,12 +335,12 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
     rocksdb_iter->Next();
     RETURN_NOT_OK(visitor->StartObject());
 
-    KeyBytes deeper_level_key(higher_level_key.Encode(/* include_timestamp = */ false));
+    KeyBytes deeper_level_key(higher_level_key.Encode(/* include_hybrid_time = */ false));
     deeper_level_key.AppendValueType(kMinPrimitiveValueType);
     ROCKSDB_SEEK(rocksdb_iter, deeper_level_key.AsSlice());
 
-    RETURN_NOT_OK(ScanSubDocument(higher_level_key, rocksdb_iter, visitor, scan_ts,
-                                  higher_level_key.timestamp()));
+    RETURN_NOT_OK(ScanSubDocument(higher_level_key, rocksdb_iter, visitor, scan_ht,
+                                  higher_level_key.hybrid_time()));
     RETURN_NOT_OK(visitor->EndObject());
     return Status::OK();
   }
@@ -359,49 +359,49 @@ static yb::Status ScanPrimitiveValueOrObject(const SubDocKey& higher_level_key,
 //
 //     Example:
 //
-//     SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [TS(1000)]) -> "value1"
-//     SubDocKey(DocKey([], ["mydockey", 123456]), [TS(2000)]) -> {}
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_a", TS(2000)]) -> "value_a"
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", TS(7000)]) -> {}
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", TS(6000)]) -> DEL
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", TS(3000)]) -> {}
-//  => SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c", TS(7000)]) -> "v_bc2"
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c", TS(5000)]) -> DEL
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c", TS(3000)]) -> "v_bc"
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d", TS(3500)]) -> "v_bd"
+//     SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [HT(1000)]) -> "value1"
+//     SubDocKey(DocKey([], ["mydockey", 123456]), [HT(2000)]) -> {}
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_a", HT(2000)]) -> "value_a"
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", HT(7000)]) -> {}
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", HT(6000)]) -> DEL
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", HT(3000)]) -> {}
+//  => SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c", HT(7000)]) -> "v_bc2"
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c", HT(5000)]) -> DEL
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c", HT(3000)]) -> "v_bc"
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d", HT(3500)]) -> "v_bd"
 //
 //     The following example corresponds to higher_level_key equal to
-//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", TS(7000)])
+//     SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", HT(7000)])
 static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
                                   rocksdb::Iterator* const rocksdb_iter,
                                   DocVisitor* const visitor,
-                                  Timestamp scan_ts,
-                                  Timestamp lowest_ts) {
-  DOCDB_DEBUG_LOG("higher_level_key=$0, scan_ts=$1, lowest_ts=$2",
-                  higher_level_key.ToString(), scan_ts.ToDebugString(), lowest_ts.ToDebugString());
-  SubDocKey higher_level_key_no_ts(higher_level_key);
-  higher_level_key_no_ts.RemoveTimestamp();
+                                  HybridTime scan_ht,
+                                  HybridTime lowest_ht) {
+  DOCDB_DEBUG_LOG("higher_level_key=$0, scan_ht=$1, lowest_ht=$2",
+                  higher_level_key.ToString(), scan_ht.ToDebugString(), lowest_ht.ToDebugString());
+  SubDocKey higher_level_key_no_ht(higher_level_key);
+  higher_level_key_no_ht.RemoveHybridTime();
 
   while (rocksdb_iter->Valid()) {
     SubDocKey subdoc_key;
     RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(rocksdb_iter->key()));
-    if (!subdoc_key.StartsWith(higher_level_key_no_ts)) {
+    if (!subdoc_key.StartsWith(higher_level_key_no_ht)) {
       // We have reached the end of the subdocument we are trying to scan. This could also be the
       // end of the entire document.
       //
-      //    1. SubDocKey(<doc_key1>, [TS(2000)]) -> {}
-      //    2. SubDocKey(<doc_key1>, ["subkey_a", TS(2000)]) -> "value_a"
-      // => 3. SubDocKey(<doc_key2>, [TS(3000)]) -> {}
+      //    1. SubDocKey(<doc_key1>, [HT(2000)]) -> {}
+      //    2. SubDocKey(<doc_key1>, ["subkey_a", HT(2000)]) -> "value_a"
+      // => 3. SubDocKey(<doc_key2>, [HT(3000)]) -> {}
       //
-      // In the above example, higher_level_key = SubDocKey(<doc_key1>, [TS(2000)]), and
-      // higher_level_key_no_ts = SubDocKey(<doc_key1>), so key/value pair #2 is still part of the
+      // In the above example, higher_level_key = SubDocKey(<doc_key1>, [HT(2000)]), and
+      // higher_level_key_no_ht = SubDocKey(<doc_key1>), so key/value pair #2 is still part of the
       // document, because it has the right prefix, while key/value pair #3 is not.
       break;
     }
-    if (subdoc_key.timestamp() > scan_ts) {
-      // This entry is still in the future compared to our scan timestamp. Adjust the timestamp
+    if (subdoc_key.hybrid_time() > scan_ht) {
+      // This entry is still in the future compared to our scan hybrid_time. Adjust the hybrid_time
       // and try again.
-      subdoc_key.set_timestamp(scan_ts);
+      subdoc_key.set_hybrid_time(scan_ht);
       ROCKSDB_SEEK(rocksdb_iter, subdoc_key.Encode().AsSlice());
       continue;
     }
@@ -417,11 +417,11 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
       return STATUS(Corruption, kErrorMsgPrefix);
     }
 
-    if (subdoc_key.timestamp() >= lowest_ts &&
+    if (subdoc_key.hybrid_time() >= lowest_ht &&
         DecodeValueType(rocksdb_iter->value()) != ValueType::kTombstone) {
       RETURN_NOT_OK(visitor->VisitKey(subdoc_key.last_subkey()));
       ScanPrimitiveValueOrObject(
-          subdoc_key, rocksdb_iter, visitor, scan_ts, subdoc_key.timestamp());
+          subdoc_key, rocksdb_iter, visitor, scan_ht, subdoc_key.hybrid_time());
     }
 
     // Get out of the subdocument we've just scanned and go to the next one.
@@ -435,24 +435,24 @@ static yb::Status ScanSubDocument(const SubDocKey& higher_level_key,
 yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
     const KeyBytes &subdocument_key,
     DocVisitor *visitor,
-    Timestamp scan_ts) {
+    HybridTime scan_ht) {
   auto rocksdb_iter = CreateRocksDBIterator(rocksdb);
 
   // TODO: Use a SubDocKey API to build the proper seek key without assuming anything about the
   //       internal structure of SubDocKey here.
   KeyBytes seek_key(subdocument_key);
-  seek_key.AppendValueType(ValueType::kTimestamp);
-  seek_key.AppendTimestamp(scan_ts);
+  seek_key.AppendValueType(ValueType::kHybridTime);
+  seek_key.AppendHybridTime(scan_ht);
 
   SubDocKey found_subdoc_key;
   Value doc_value;
   bool is_found = false;
 
   Status s = SeekToValidKvAtTs(
-      rocksdb_iter.get(), seek_key.AsSlice(), scan_ts, &found_subdoc_key, &doc_value, &is_found);
+      rocksdb_iter.get(), seek_key.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found);
 
   if (!is_found || !subdocument_key.OnlyLacksTimeStampFrom(rocksdb_iter->key())) {
-    // This could happen when we are trying to scan at an old timestamp at which the subdocument
+    // This could happen when we are trying to scan at an old hybrid_time at which the subdocument
     // does not exist yet. In that case we'll jump directly into the section of the RocksDB key
     // space that contains deeper levels of the document.
 
@@ -460,20 +460,20 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Suppose the above RocksDB seek is as follows:
     //
-    //        Seek key:       SubDocKey(DocKey([], [-7805187538405744458, false]), [TS(3)])
+    //        Seek key:       SubDocKey(DocKey([], [-7805187538405744458, false]), [HT(3)])
     //        Seek key (raw): "I\x13\xaegI\x98\x05 \xb6F!#\xff\xff\xff\xff\xff\xff\xff\xfc"
-    //        Actual key:     SubDocKey(DocKey([], [-7805187538405744458, false]), [true; TS(4)])
+    //        Actual key:     SubDocKey(DocKey([], [-7805187538405744458, false]), [true; HT(4)])
     //        Actual value:   "{"
     //
     // and the relevant part of the RocksDB state is as follows (as SubDocKey and binary):
     //
-    // SubDocKey(DocKey([], [-7805187538405744458, false]), [TS(4)]) -> {}
+    // SubDocKey(DocKey([], [-7805187538405744458, false]), [HT(4)]) -> {}
     // "I\x13\xaegI\x98\x05 \xb6F!#\xff\xff\xff\xff\xff\xff\xff\xfb" -> "{"
     //
-    // SubDocKey(DocKey([], [-7805187538405744458, false]), [true; TS(4)]) -> {}  <--------------.
+    // SubDocKey(DocKey([], [-7805187538405744458, false]), [true; HT(4)]) -> {}  <--------------.
     // "I\x13\xaegI\x98\x05 \xb6F!T#\xff\xff\xff\xff\xff\xff\xff\xfb" -> "{"                     |
     //                                                                                           |
-    // Then we'll jump directly here as we try to retrieve the document state at timestamp 3: ---/
+    // Then we'll jump directly here as we try to retrieve the document state at hybrid_time 3: ---/
     //
     // The right thing to do here is just to return, assuming the document does not exist.
     return Status::OK();
@@ -481,7 +481,7 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
 
   RETURN_NOT_OK(visitor->StartSubDocument(found_subdoc_key));
   RETURN_NOT_OK(ScanPrimitiveValueOrObject(
-      found_subdoc_key, rocksdb_iter.get(), visitor, scan_ts, found_subdoc_key.timestamp()));
+      found_subdoc_key, rocksdb_iter.get(), visitor, scan_ht, found_subdoc_key.hybrid_time()));
   RETURN_NOT_OK(visitor->EndSubDocument());
 
   return Status::OK();
@@ -607,12 +607,12 @@ yb::Status GetSubDocument(rocksdb::DB *rocksdb,
     const KeyBytes &subdocument_key,
     SubDocument *result,
     bool *doc_found,
-    Timestamp scan_ts) {
+    HybridTime scan_ht) {
   DOCDB_DEBUG_LOG("GetSubDocument for key $0", subdocument_key.ToString());
   *doc_found = false;
 
   SubDocumentBuildingVisitor subdoc_builder;
-  RETURN_NOT_OK(ScanSubDocument(rocksdb, subdocument_key, &subdoc_builder, scan_ts));
+  RETURN_NOT_OK(ScanSubDocument(rocksdb, subdocument_key, &subdoc_builder, scan_ht));
   *result = subdoc_builder.ReleaseResult();
   *doc_found = subdoc_builder.doc_found();
   return Status::OK();

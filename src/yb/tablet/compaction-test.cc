@@ -69,7 +69,7 @@ class TestCompaction : public YBRowSetTest {
       op_id_(consensus::MaximumOpId()),
       row_builder_(schema_),
       mvcc_(scoped_refptr<server::Clock>(
-              server::LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp))),
+              server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime))),
       log_anchor_registry_(new log::LogAnchorRegistry()) {
   }
 
@@ -112,9 +112,9 @@ class TestCompaction : public YBRowSetTest {
       ASSERT_OK_FAST(projector.Init());
       ASSERT_OK_FAST(projector.ProjectRowForWrite(row_builder_.row(),
                             &dst_row, static_cast<Arena*>(nullptr)));
-      ASSERT_OK_FAST(mrs->Insert(tx.timestamp(), ConstContiguousRow(dst_row), op_id_));
+      ASSERT_OK_FAST(mrs->Insert(tx.hybrid_time(), ConstContiguousRow(dst_row), op_id_));
     } else {
-      ASSERT_OK_FAST(mrs->Insert(tx.timestamp(), row_builder_.row(), op_id_));
+      ASSERT_OK_FAST(mrs->Insert(tx.hybrid_time(), row_builder_.row(), op_id_));
     }
     tx.Commit();
   }
@@ -152,7 +152,7 @@ class TestCompaction : public YBRowSetTest {
       RowSetKeyProbe probe(rb.row());
       ProbeStats stats;
       OperationResultPB result;
-      ASSERT_OK(rowset->MutateRow(tx.timestamp(),
+      ASSERT_OK(rowset->MutateRow(tx.hybrid_time(),
                                          probe,
                                          RowChangeList(update_buf),
                                          op_id_,
@@ -180,7 +180,7 @@ class TestCompaction : public YBRowSetTest {
       RowSetKeyProbe probe(rb.row());
       ProbeStats stats;
       OperationResultPB result;
-      ASSERT_OK(rowset->MutateRow(tx.timestamp(),
+      ASSERT_OK(rowset->MutateRow(tx.hybrid_time(),
                                          probe,
                                          RowChangeList(update_buf),
                                          op_id_,

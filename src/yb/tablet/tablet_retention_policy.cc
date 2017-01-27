@@ -16,8 +16,8 @@ TabletRetentionPolicy::TabletRetentionPolicy(scoped_refptr<yb::server::Clock> cl
       retention_delta_(MonoDelta::FromSeconds(-FLAGS_timestamp_history_retention_interval_sec)) {
 }
 
-Timestamp TabletRetentionPolicy::GetHistoryCutoff() {
-  return server::HybridClock::AddPhysicalTimeToTimestamp(clock_->Now(), retention_delta_);
+HybridTime TabletRetentionPolicy::GetHistoryCutoff() {
+  return server::HybridClock::AddPhysicalTimeToHybridTime(clock_->Now(), retention_delta_);
 }
 
 }  // namespace tablet

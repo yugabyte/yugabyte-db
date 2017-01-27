@@ -69,9 +69,9 @@ message DeltaStatsPB {
   // repeated int64 per_column_update_count = 2;
 
   // The min Timestamp that was stored in this delta.
-  required fixed64 min_timestamp = 3;
+  required fixed64 min_hybrid_time = 3;
   // The max Timestamp that was stored in this delta.
-  required fixed64 max_timestamp = 4;
+  required fixed64 max_hybrid_time = 4;
 
   // Per-column statistics about this delta file.
   message ColumnStats {

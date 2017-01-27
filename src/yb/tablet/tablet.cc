@@ -44,7 +44,7 @@
 #include "yb/common/row_operations.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/ysql_rowblock.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -581,21 +581,21 @@ Status Tablet::AcquireLockForOp(WriteTransactionState* tx_state, RowOp* op) {
 void Tablet::StartTransaction(WriteTransactionState* tx_state) {
   gscoped_ptr<ScopedTransaction> mvcc_tx;
 
-  // If the state already has a timestamp then we're replaying a transaction that occurred
+  // If the state already has a hybrid_time then we're replaying a transaction that occurred
   // before a crash or at another node...
-  const Timestamp existing_timestamp = tx_state->timestamp_even_if_unset();
+  const HybridTime existing_hybrid_time = tx_state->hybrid_time_even_if_unset();
 
-  if (existing_timestamp != Timestamp::kInvalidTimestamp) {
-    mvcc_tx.reset(new ScopedTransaction(&mvcc_, existing_timestamp));
-  // ... otherwise this is a new transaction and we must assign a new timestamp. We either
-  // assign a timestamp in the future, if the consistency mode is COMMIT_WAIT, or we assign
+  if (existing_hybrid_time != HybridTime::kInvalidHybridTime) {
+    mvcc_tx.reset(new ScopedTransaction(&mvcc_, existing_hybrid_time));
+  // ... otherwise this is a new transaction and we must assign a new hybrid_time. We either
+  // assign a hybrid_time in the future, if the consistency mode is COMMIT_WAIT, or we assign
   // one in the present if the consistency mode is any other one.
   } else if (tx_state->external_consistency_mode() == COMMIT_WAIT) {
     mvcc_tx.reset(new ScopedTransaction(&mvcc_, ScopedTransaction::NOW_LATEST));
   } else {
     mvcc_tx.reset(new ScopedTransaction(&mvcc_, ScopedTransaction::NOW));
   }
-  tx_state->SetMvccTxAndTimestamp(mvcc_tx.Pass());
+  tx_state->SetMvccTxAndHybridTime(mvcc_tx.Pass());
 }
 
 Status Tablet::InsertUnlocked(WriteTransactionState *tx_state,
@@ -656,7 +656,7 @@ Status Tablet::KuduColumnarInsertUnlocked(
     }
   }
 
-  Timestamp ts = tx_state->timestamp();
+  HybridTime ht = tx_state->hybrid_time();
   ConstContiguousRow row(schema(), insert->decoded_op.row_data);
 
   // TODO: the Insert() call below will re-encode the key, which is a
@@ -664,7 +664,7 @@ Status Tablet::KuduColumnarInsertUnlocked(
 
   // Now try to insert into memrowset. The memrowset itself will return
   // AlreadyPresent if it has already been inserted there.
-  Status s = comps->memrowset->Insert(ts, row, tx_state->op_id());
+  Status s = comps->memrowset->Insert(ht, row, tx_state->op_id());
   if (PREDICT_TRUE(s.ok())) {
     insert->SetInsertSucceeded(comps->memrowset->mrs_id());
   } else {
@@ -699,14 +699,14 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
     return s;
   }
 
-  Timestamp ts = tx_state->timestamp();
+  HybridTime ht = tx_state->hybrid_time();
 
   ProbeStats stats;
   // Submit the stats before returning from this function
   ProbeStatsSubmitter submitter(stats, metrics_.get());
 
   // First try to update in memrowset.
-  s = comps->memrowset->MutateRow(ts,
+  s = comps->memrowset->MutateRow(ht,
                                   *mutate->key_probe,
                                   mutate->decoded_op.changelist,
                                   tx_state->op_id(),
@@ -730,7 +730,7 @@ Status Tablet::MutateRowUnlocked(WriteTransactionState *tx_state,
   comps->rowsets->FindRowSetsWithKeyInRange(mutate->key_probe->encoded_key_slice(),
                                             &to_check);
   for (RowSet *rs : to_check) {
-    s = rs->MutateRow(ts,
+    s = rs->MutateRow(ht,
                       *mutate->key_probe,
                       mutate->decoded_op.changelist,
                       tx_state->op_id(),
@@ -781,7 +781,7 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
 
       ApplyKeyValueRowOperations(put_batch,
                                  tx_state->op_id().index(),
-                                 tx_state->timestamp());
+                                 tx_state->hybrid_time());
       return;
     }
   }
@@ -839,7 +839,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir,
 
 void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
                                         uint64_t raft_index,
-                                        const Timestamp timestamp) {
+                                        const HybridTime hybrid_time) {
   DCHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
   if (put_batch.kv_pairs_size() == 0) {
     return;
@@ -859,7 +859,7 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
         << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
         << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
         << "put_batch:\n" << put_batch.DebugString();
-    subdoc_key.ReplaceMaxTimestampWith(timestamp);
+    subdoc_key.ReplaceMaxHybridTimeWith(hybrid_time);
     rocksdb_write_batch.Put(subdoc_key.Encode().AsSlice(), kv_pair.value());
   }
   rocksdb_write_batch.AddAllUserSequenceNumbers(raft_index);
@@ -884,10 +884,10 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
   vector<unique_ptr<DocOperation>> doc_ops;
   // Since we take exclusive locks, it's okay to use Now as the read TS for writes.
-  const Timestamp read_timestamp = clock_->Now();
+  const HybridTime read_hybrid_time = clock_->Now();
   for (size_t i = 0; i < redis_write_request.redis_write_batch_size(); i++) {
     RedisWriteRequestPB req = redis_write_request.redis_write_batch(i);
-    doc_ops.emplace_back(new RedisWriteOperation(req, read_timestamp));
+    doc_ops.emplace_back(new RedisWriteOperation(req, read_hybrid_time));
   }
   WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
   redis_write_batch_pb->reset(write_request_copy);
@@ -908,9 +908,9 @@ Status Tablet::HandleRedisReadRequest(const MvccSnapshot &snap,
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   docdb::RedisReadOperation doc_op(redis_read_request);
-  // We use the latest safe time for the read timestamp, whose state cannot be changed by future
+  // We use the latest safe time for the read hybrid_time, whose state cannot be changed by future
   // commits.
-  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), snap.LastCommittedTimestamp()));
+  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), snap.LastCommittedHybridTime()));
   *response = std::move(doc_op.response());
   return Status::OK();
 }
@@ -963,7 +963,7 @@ Status Tablet::HandleYSQLReadRequest(const MvccSnapshot &snap,
   }
   YSQLRowBlock rowblock(metadata_->schema(), column_ids);
   const Status s = doc_op.Execute(
-      rocksdb_.get(), snap.LastCommittedTimestamp(), metadata_->schema(), &rowblock);
+      rocksdb_.get(), snap.LastCommittedHybridTime(), metadata_->schema(), &rowblock);
   if (!s.ok()) {
     response->set_status(YSQLResponsePB::YSQL_STATUS_RUNTIME_ERROR);
     response->set_error_message(s.message().ToString());
@@ -1888,15 +1888,15 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
   // It's crucial that, during the rest of the compaction, we do not allow the
   // output rowsets to flush their deltas to disk. This is to avoid the following
   // bug:
-  // - during phase 1, timestamp 1 updates a flushed row. This is only reflected in the
+  // - during phase 1, hybrid_time 1 updates a flushed row. This is only reflected in the
   //   input rowset. (ie it is a "missed delta")
-  // - during phase 2, timestamp 2 updates the same row. This is reflected in both the
+  // - during phase 2, hybrid_time 2 updates the same row. This is reflected in both the
   //   input and output, because of the DuplicatingRowSet.
   // - now suppose the output rowset were allowed to flush deltas. This would create the
-  //   first DeltaFile for the output rowset, with only timestamp 2.
+  //   first DeltaFile for the output rowset, with only hybrid_time 2.
   // - Now we run the "ReupdateMissedDeltas", and copy over the first transaction to the output
   //   DMS, which later flushes.
-  // The end result would be that redos[0] has timestamp 2, and redos[1] has timestamp 1.
+  // The end result would be that redos[0] has hybrid_time 2, and redos[1] has hybrid_time 1.
   // This breaks an invariant that the redo files are time-ordered, and would we would probably
   // reapply the deltas in the wrong order on the read path.
   //
@@ -1911,7 +1911,7 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
   // MVCC snapshot which includes all of the transactions that saw a pre-DuplicatingRowSet
   // version of components_.
   MvccSnapshot non_duplicated_txns_snap;
-  vector<Timestamp> applying_during_swap;
+  vector<HybridTime> applying_during_swap;
   {
     TRACE_EVENT0("tablet", "Swapping DuplicatingRowSet");
     // Taking component_lock_ in write mode ensures that no new transactions
@@ -1923,7 +1923,7 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
     // We need to make sure all such transactions end up in the
     // 'applying_during_swap' list, the 'non_duplicated_txns_snap' snapshot,
     // or both. Thus it's crucial that these next two lines are in this order!
-    mvcc_.GetApplyingTransactionsTimestamps(&applying_during_swap);
+    mvcc_.GetApplyingTransactionsHybridTimes(&applying_during_swap);
     non_duplicated_txns_snap = MvccSnapshot(mvcc_);
   }
 
@@ -1935,8 +1935,8 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
   if (VLOG_IS_ON(1) && !applying_during_swap.empty()) {
     VLOG(1) << "Waiting for " << applying_during_swap.size() << " mid-APPLY txns to commit "
             << "before finishing compaction...";
-    for (const Timestamp& ts : applying_during_swap) {
-      VLOG(1) << "  " << ts.value();
+    for (const HybridTime& ht : applying_during_swap) {
+      VLOG(1) << "  " << ht.value();
     }
   }
 
@@ -1948,7 +1948,7 @@ Status Tablet::DoCompactionOrFlush(const RowSetsInCompaction &input, int64_t mrs
 
   // Then we want to consider all those transactions that were in-flight when we did the
   // swap as committed in 'non_duplicated_txns_snap'.
-  non_duplicated_txns_snap.AddCommittedTimestamps(applying_during_swap);
+  non_duplicated_txns_snap.AddCommittedHybridTimes(applying_during_swap);
 
   if (common_hooks_) {
     RETURN_NOT_OK_PREPEND(common_hooks_->PostSwapInDuplicatingRowSet(),
@@ -2118,7 +2118,7 @@ Status Tablet::YSQLCaptureConsistentIterators(
 
   iters->clear();
   iters->push_back(std::make_shared<DocRowwiseIterator>(
-      *projection, *schema(), rocksdb_.get(), snap.LastCommittedTimestamp(),
+      *projection, *schema(), rocksdb_.get(), snap.LastCommittedHybridTime(),
       // We keep the pending operation counter incremented while the iterator exists so that
       // RocksDB does not get deallocated while we're using it.
       &pending_op_counter_));
@@ -2181,13 +2181,13 @@ Status Tablet::StartDocWriteTransaction(const vector<unique_ptr<DocOperation>> &
                                         vector<string> *keys_locked,
                                         KeyValueWriteBatchPB* write_batch) {
   bool need_read_snapshot = false;
-  Timestamp timestamp;
+  HybridTime hybrid_time;
   docdb::PrepareDocWriteTransaction(
       doc_ops, &shared_lock_manager_, keys_locked, &need_read_snapshot);
   if (need_read_snapshot) {
-    timestamp = mvcc_.GetCleanTimestamp();
+    hybrid_time = mvcc_.GetCleanHybridTime();
   }
-  return docdb::ApplyDocWriteTransaction(doc_ops, timestamp, rocksdb_.get(), write_batch);
+  return docdb::ApplyDocWriteTransaction(doc_ops, hybrid_time, rocksdb_.get(), write_batch);
 }
 
 Status Tablet::CountRows(uint64_t *count) const {

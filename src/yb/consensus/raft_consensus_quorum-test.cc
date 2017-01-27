@@ -92,7 +92,7 @@ Status WaitUntilLeaderForTests(RaftConsensus* raft) {
 class RaftConsensusQuorumTest : public YBTest {
  public:
   RaftConsensusQuorumTest()
-    : clock_(server::LogicalClock::CreateStartingAt(Timestamp(0))),
+    : clock_(server::LogicalClock::CreateStartingAt(HybridTime(0))),
       metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-test")),
       schema_(GetSimpleTestSchema()) {
     options_.tablet_id = kTestTablet;
@@ -241,7 +241,7 @@ class RaftConsensusQuorumTest : public YBTest {
     gscoped_ptr<ReplicateMsg> msg(new ReplicateMsg());
     msg->set_op_type(NO_OP);
     msg->mutable_noop_request();
-    msg->set_timestamp(clock_->Now().ToUint64());
+    msg->set_hybrid_time(clock_->Now().ToUint64());
 
     scoped_refptr<RaftConsensus> peer;
     CHECK_OK(peers_->GetPeerByIdx(peer_idx, &peer));
@@ -977,7 +977,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   req.mutable_committed_index()->CopyFrom(last_op_id);
 
   ReplicateMsg* replicate = req.add_ops();
-  replicate->set_timestamp(clock_->Now().ToUint64());
+  replicate->set_hybrid_time(clock_->Now().ToUint64());
   OpId* id = replicate->mutable_id();
   id->set_term(last_op_id.term());
   id->set_index(last_op_id.index() + 1);

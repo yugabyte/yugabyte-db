@@ -99,7 +99,7 @@ class MultiThreadedLogTest : public LogTestBase {
           op_id->set_index(index);
 
           replicate->get()->set_op_type(WRITE_OP);
-          replicate->get()->set_timestamp(clock_->Now().ToUint64());
+          replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
 
           tserver::WriteRequestPB* request = replicate->get()->mutable_write_request();
           AddTestRowToPB(RowOperationsPB::INSERT, schema_, index, 0,

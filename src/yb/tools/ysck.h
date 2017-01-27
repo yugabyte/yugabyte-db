@@ -44,7 +44,7 @@ struct ChecksumOptions {
   ChecksumOptions(MonoDelta timeout,
                   int scan_concurrency,
                   bool use_snapshot,
-                  uint64_t snapshot_timestamp);
+                  uint64_t snapshot_hybrid_time);
 
   // The maximum total time to wait for results to come back from all replicas.
   MonoDelta timeout;
@@ -55,11 +55,11 @@ struct ChecksumOptions {
   // Whether to use a snapshot checksum scanner.
   bool use_snapshot;
 
-  // The snapshot timestamp to use for snapshot checksum scans.
-  uint64_t snapshot_timestamp;
+  // The snapshot hybrid_time to use for snapshot checksum scans.
+  uint64_t snapshot_hybrid_time;
 
-  // A timestamp indicicating that the current time should be used for a checksum snapshot.
-  static const uint64_t kCurrentTimestamp;
+  // A hybrid_time indicicating that the current time should be used for a checksum snapshot.
+  static const uint64_t kCurrentHybridTime;
 };
 
 // Representation of a tablet replica on a tablet server.
@@ -169,7 +169,7 @@ class YsckTabletServer {
   // Connects to the configured Tablet Server.
   virtual CHECKED_STATUS Connect() const = 0;
 
-  virtual CHECKED_STATUS CurrentTimestamp(uint64_t* timestamp) const = 0;
+  virtual CHECKED_STATUS CurrentHybridTime(uint64_t* hybrid_time) const = 0;
 
   // Executes a checksum scan on the associated tablet, and runs the callback
   // with the result. The callback must be threadsafe and non-blocking.

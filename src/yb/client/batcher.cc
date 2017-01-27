@@ -437,8 +437,8 @@ void Batcher::ProcessKuduWriteResponse(const WriteRpc &rpc,
   CHECK_EQ(state_, kFlushing);
 
   if (s.ok()) {
-    if (rpc.resp().has_timestamp()) {
-      client_->data_->UpdateLatestObservedTimestamp(rpc.resp().timestamp());
+    if (rpc.resp().has_hybrid_time()) {
+      client_->data_->UpdateLatestObservedHybridTime(rpc.resp().hybrid_time());
     }
   } else {
     // Mark each of the rows in the write op as failed, since the whole RPC failed.

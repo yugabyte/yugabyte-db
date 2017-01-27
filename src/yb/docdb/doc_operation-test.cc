@@ -16,7 +16,7 @@ class DocOperationTest : public DocDBTestBase {
 
   void WriteToRocksDB(const DocWriteBatch &doc_write_batch, rocksdb::DB *db) {
     rocksdb::WriteBatch rocksdb_write_batch;
-    doc_write_batch.PopulateRocksDBWriteBatchInTest(&rocksdb_write_batch, Timestamp::kMax);
+    doc_write_batch.PopulateRocksDBWriteBatchInTest(&rocksdb_write_batch, HybridTime::kMax);
     rocksdb::WriteOptions write_options;
     CHECK_OK(db->Write(write_options, &rocksdb_write_batch));
   }
@@ -30,9 +30,9 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   set_request_pb->set_ttl(2000);
   redis_write_operation_pb.mutable_key_value()->set_key("abc");
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
-  RedisWriteOperation redis_write_operation(redis_write_operation_pb, Timestamp::kMax);
+  RedisWriteOperation redis_write_operation(redis_write_operation_pb, HybridTime::kMax);
   DocWriteBatch doc_write_batch(db);
-  CHECK_OK(redis_write_operation.Apply(&doc_write_batch, db, Timestamp()));
+  CHECK_OK(redis_write_operation.Apply(&doc_write_batch, db, HybridTime()));
 
   WriteToRocksDB(doc_write_batch, db);
 
@@ -81,7 +81,7 @@ TEST_F(DocOperationTest, TestYSQLWriteWithTTL) {
   // Write to docdb.
   YSQLWriteOperation ysql_write_op(ysql_writereq_pb, schema, &ysql_writeresp_pb);
   DocWriteBatch doc_write_batch(db);
-  CHECK_OK(ysql_write_op.Apply(&doc_write_batch, db, Timestamp()));
+  CHECK_OK(ysql_write_op.Apply(&doc_write_batch, db, HybridTime()));
 
   WriteToRocksDB(doc_write_batch, db);
 

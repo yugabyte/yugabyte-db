@@ -50,7 +50,7 @@ class TestDeltaMemStore : public YBTest {
       schema_(CreateSchema()),
       dms_(new DeltaMemStore(0, 0, new log::LogAnchorRegistry())),
       mvcc_(scoped_refptr<server::Clock>(
-          server::LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp))) {
+          server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime))) {
   }
 
   void SetUp() OVERRIDE {
@@ -82,7 +82,7 @@ class TestDeltaMemStore : public YBTest {
       update.AddColumnUpdate(schema_.column(kIntColumn),
                              schema_.column_id(kIntColumn), &new_val);
 
-      CHECK_OK(dms_->Update(tx.timestamp(), idx_to_update, RowChangeList(buf), op_id_));
+      CHECK_OK(dms_->Update(tx.hybrid_time(), idx_to_update, RowChangeList(buf), op_id_));
       tx.Commit();
     }
   }
@@ -155,7 +155,7 @@ TEST_F(TestDeltaMemStore, TestUpdateCount) {
       uint32_t new_val = idx * 10;
       update.AddColumnUpdate(schema_.column(kIntColumn),
                              schema_.column_id(kIntColumn), &new_val);
-      ASSERT_OK_FAST(dms_->Update(tx.timestamp(), idx, RowChangeList(update_buf), op_id_));
+      ASSERT_OK_FAST(dms_->Update(tx.hybrid_time(), idx, RowChangeList(update_buf), op_id_));
       tx.Commit();
     }
   }
@@ -226,7 +226,7 @@ TEST_F(TestDeltaMemStore, BenchmarkManyUpdatesToOneRow) {
     Slice s(str);
     update.AddColumnUpdate(schema_.column(kStringColumn),
                            schema_.column_id(kStringColumn), &s);
-    CHECK_OK(dms_->Update(tx.timestamp(), kIdxToUpdate, RowChangeList(buf), op_id_));
+    CHECK_OK(dms_->Update(tx.hybrid_time(), kIdxToUpdate, RowChangeList(buf), op_id_));
     tx.Commit();
   }
 
@@ -260,7 +260,7 @@ TEST_F(TestDeltaMemStore, TestReUpdateSlice) {
     Slice s(buf);
     update.AddColumnUpdate(schema_.column(0),
                            schema_.column_id(0), &s);
-    ASSERT_OK_FAST(dms_->Update(tx.timestamp(), 123, RowChangeList(update_buf), op_id_));
+    ASSERT_OK_FAST(dms_->Update(tx.hybrid_time(), 123, RowChangeList(update_buf), op_id_));
     memset(buf, 0xff, sizeof(buf));
     tx.Commit();
   }
@@ -275,14 +275,14 @@ TEST_F(TestDeltaMemStore, TestReUpdateSlice) {
     update.Reset();
     update.AddColumnUpdate(schema_.column(0),
                            schema_.column_id(0), &s);
-    ASSERT_OK_FAST(dms_->Update(tx.timestamp(), 123, RowChangeList(update_buf), op_id_));
+    ASSERT_OK_FAST(dms_->Update(tx.hybrid_time(), 123, RowChangeList(update_buf), op_id_));
     memset(buf, 0xff, sizeof(buf));
     tx.Commit();
   }
   MvccSnapshot snapshot_after_second_update(mvcc_);
 
   // Ensure we end up with a second entry for the cell, at the
-  // new timestamp
+  // new hybrid_time
   ASSERT_EQ(2, dms_->Count());
 
   // Ensure that we ended up with the right data, and that the old MVCC snapshot
@@ -312,7 +312,7 @@ TEST_F(TestDeltaMemStore, TestOutOfOrderTxns) {
     Slice s("update 2");
     update.AddColumnUpdate(schema_.column(kStringColumn),
                            schema_.column_id(kStringColumn), &s);
-    ASSERT_OK(dms_->Update(tx2.timestamp(), 123, RowChangeList(update_buf), op_id_));
+    ASSERT_OK(dms_->Update(tx2.hybrid_time(), 123, RowChangeList(update_buf), op_id_));
     tx2.Commit();
 
 
@@ -321,7 +321,7 @@ TEST_F(TestDeltaMemStore, TestOutOfOrderTxns) {
     s = Slice("update 1");
     update.AddColumnUpdate(schema_.column(kStringColumn),
                            schema_.column_id(kStringColumn), &s);
-    ASSERT_OK(dms_->Update(tx1.timestamp(), 123, RowChangeList(update_buf), op_id_));
+    ASSERT_OK(dms_->Update(tx1.hybrid_time(), 123, RowChangeList(update_buf), op_id_));
     tx1.Commit();
   }
 
@@ -353,7 +353,7 @@ TEST_F(TestDeltaMemStore, TestDMSBasic) {
     update.AddColumnUpdate(schema_.column(kStringColumn),
                            schema_.column_id(kStringColumn), &s);
 
-    ASSERT_OK_FAST(dms_->Update(tx.timestamp(), i, RowChangeList(update_buf), op_id_));
+    ASSERT_OK_FAST(dms_->Update(tx.hybrid_time(), i, RowChangeList(update_buf), op_id_));
     tx.Commit();
   }
 
@@ -391,7 +391,7 @@ TEST_F(TestDeltaMemStore, TestDMSBasic) {
     uint32_t val = i * 20;
     update.AddColumnUpdate(schema_.column(kIntColumn),
                            schema_.column_id(kIntColumn), &val);
-    ASSERT_OK_FAST(dms_->Update(tx.timestamp(), i, RowChangeList(update_buf), op_id_));
+    ASSERT_OK_FAST(dms_->Update(tx.hybrid_time(), i, RowChangeList(update_buf), op_id_));
     tx.Commit();
   }
 

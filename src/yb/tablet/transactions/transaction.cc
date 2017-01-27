@@ -31,7 +31,7 @@ Transaction::Transaction(TransactionState* state, DriverType type, TransactionTy
 TransactionState::TransactionState(TabletPeer* tablet_peer)
     : tablet_peer_(tablet_peer),
       completion_clbk_(new TransactionCompletionCallback()),
-      timestamp_error_(0),
+      hybrid_time_error_(0),
       arena_(32 * 1024, 4 * 1024 * 1024),
       external_consistency_mode_(CLIENT_PROPAGATED) {
 }

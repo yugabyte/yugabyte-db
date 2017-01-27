@@ -30,7 +30,7 @@ namespace yb {
 class RowwiseIterator;
 class Schema;
 class Status;
-class Timestamp;
+class HybridTime;
 
 namespace tablet {
 class Tablet;
@@ -92,7 +92,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
                               const rpc::RpcContext* rpc_context,
                               ScanResultCollector* result_collector,
                               std::string* scanner_id,
-                              Timestamp* snap_timestamp,
+                              HybridTime* snap_hybrid_time,
                               bool* has_more_results,
                               TabletServerErrorPB::Code* error_code);
 
@@ -106,12 +106,12 @@ class TabletServiceImpl : public TabletServerServiceIf {
                               const Schema& projection,
                               const std::shared_ptr<tablet::Tablet>& tablet,
                               gscoped_ptr<RowwiseIterator>* iter,
-                              Timestamp* snap_timestamp);
+                              HybridTime* snap_hybrid_time);
 
-  // Take a MVCC snapshot for read at the specified timestamp
+  // Take a MVCC snapshot for read at the specified hybrid_time
   CHECKED_STATUS TakeReadSnapshot(tablet::Tablet* tablet,
                           const rpc::RpcContext* rpc_context,
-                          const Timestamp& timestamp,
+                          const HybridTime& hybrid_time,
                           tablet::MvccSnapshot* snap);
 
   TabletServer* server_;

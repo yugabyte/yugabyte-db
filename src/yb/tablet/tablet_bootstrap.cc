@@ -245,9 +245,9 @@ class TabletBootstrap {
   // data stores it refers to are already flushed.
   Status CheckOrphanedCommitAlreadyFlushed(const CommitMsg& commit);
 
-  // Decodes a Timestamp from the provided string and updates the clock
+  // Decodes a HybridTime from the provided string and updates the clock
   // with it.
-  Status UpdateClock(uint64_t timestamp);
+  Status UpdateClock(uint64_t hybrid_time);
 
   // Removes the recovery directory and all files contained therein.
   // Intended to be invoked after log replay successfully completes.
@@ -465,7 +465,7 @@ Status TabletBootstrap::Bootstrap(shared_ptr<Tablet>* rebuilt_tablet,
 
   // Before playing any segments we set the safe and clean times to 'kMin' so that
   // the MvccManager will accept all transactions that we replay as uncommitted.
-  tablet_->mvcc_manager()->OfflineAdjustSafeTime(Timestamp::kMin);
+  tablet_->mvcc_manager()->OfflineAdjustSafeTime(HybridTime::kMin);
   RETURN_NOT_OK_PREPEND(PlaySegments(consensus_info), "Failed log replay. Reason");
 
   // Flush the consensus metadata once at the end to persist our changes, if any.
@@ -807,8 +807,8 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
 
   const ReplicateMsg& replicate = replicate_entry->replicate();
   RETURN_NOT_OK(state->CheckSequentialReplicateId(replicate));
-  DCHECK(replicate.has_timestamp());
-  CHECK_OK(UpdateClock(replicate.timestamp()));
+  DCHECK(replicate.has_hybrid_time());
+  CHECK_OK(UpdateClock(replicate.hybrid_time()));
 
   int64_t index = replicate_entry->replicate().id().index();
   if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE &&
@@ -1060,7 +1060,7 @@ Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry, LogEntryPB*
 #undef RETURN_NOT_OK_REPLAY
 
   // Non-tablet operations should not advance the safe time, because they are
-  // not started serially and so may have timestamps that are out of order.
+  // not started serially and so may have hybrid_times that are out of order.
   if (op_type == NO_OP || op_type == CHANGE_CONFIG_OP) {
     return Status::OK();
   }
@@ -1068,22 +1068,22 @@ Status TabletBootstrap::HandleEntryPair(LogEntryPB* replicate_entry, LogEntryPB*
   // Handle safe time advancement:
   //
   // If this operation has an external consistency mode other than COMMIT_WAIT, we know that no
-  // future transaction will have a timestamp that is lower than it, so we can just advance the
-  // safe timestamp to this operation's timestamp.
+  // future transaction will have a hybrid_time that is lower than it, so we can just advance the
+  // safe hybrid_time to this operation's hybrid_time.
   //
   // If the hybrid clock is disabled, all transactions will fall into this category.
-  Timestamp safe_time;
+  HybridTime safe_time;
   if (replicate->write_request().external_consistency_mode() != COMMIT_WAIT) {
-    safe_time = Timestamp(replicate->timestamp());
-  // ... else we set the safe timestamp to be the transaction's timestamp minus the maximum clock
-  // error. This opens the door for problems if the flags changed across reboots, but this is
+    safe_time = HybridTime(replicate->hybrid_time());
+  // ... else we set the safe hybrid_time to be the transaction's hybrid_time minus the maximum
+  // clock error. This opens the door for problems if the flags changed across reboots, but this is
   // unlikely and the problem would manifest itself immediately and clearly (mvcc would complain
   // the operation is already committed, with a CHECK failure).
   } else {
     DCHECK(clock_->SupportsExternalConsistencyMode(COMMIT_WAIT)) << "The provided clock does not"
         "support COMMIT_WAIT external consistency mode.";
-    safe_time = server::HybridClock::AddPhysicalTimeToTimestamp(
-        Timestamp(replicate->timestamp()),
+    safe_time = server::HybridClock::AddPhysicalTimeToHybridTime(
+        HybridTime(replicate->hybrid_time()),
         MonoDelta::FromMicroseconds(-FLAGS_max_clock_sync_error_usec));
   }
   tablet_->mvcc_manager()->OfflineAdjustSafeTime(safe_time);
@@ -1301,12 +1301,12 @@ Status TabletBootstrap::AppendCommitMsg(const CommitMsg& commit_msg) {
 
 Status TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg,
                                          const CommitMsg* commit_msg) {
-  DCHECK(replicate_msg->has_timestamp());
+  DCHECK(replicate_msg->has_hybrid_time());
   WriteRequestPB* write = replicate_msg->mutable_write_request();
 
   WriteTransactionState tx_state(nullptr, write, nullptr);
   tx_state.mutable_op_id()->CopyFrom(replicate_msg->id());
-  tx_state.set_timestamp(Timestamp(replicate_msg->timestamp()));
+  tx_state.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
 
   tablet_->StartTransaction(&tx_state);
   if (tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
@@ -1581,10 +1581,10 @@ Status TabletBootstrap::FilterMutate(WriteTransactionState* tx_state,
   return Status::OK();
 }
 
-Status TabletBootstrap::UpdateClock(uint64_t timestamp) {
-  Timestamp ts;
-  RETURN_NOT_OK(ts.FromUint64(timestamp));
-  RETURN_NOT_OK(clock_->Update(ts));
+Status TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
+  HybridTime ht;
+  RETURN_NOT_OK(ht.FromUint64(hybrid_time));
+  RETURN_NOT_OK(clock_->Update(ht));
   return Status::OK();
 }
 

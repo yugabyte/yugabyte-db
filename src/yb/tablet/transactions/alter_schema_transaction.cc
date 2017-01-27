@@ -43,8 +43,8 @@ using tserver::AlterSchemaResponsePB;
 
 string AlterSchemaTransactionState::ToString() const {
   return Substitute("AlterSchemaTransactionState "
-                    "[timestamp=$0, schema=$1, request=$2]",
-                    timestamp().ToString(),
+                    "[hybrid_time=$0, schema=$1, request=$2]",
+                    hybrid_time().ToString(),
                     schema_ == nullptr ? "(none)" : schema_->ToString(),
                     request_ == nullptr ? "(none)" : request_->ShortDebugString());
 }
@@ -96,12 +96,13 @@ Status AlterSchemaTransaction::Prepare() {
 
 void AlterSchemaTransaction::Start() {
   if (state_->tablet_peer()->tablet()->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    // Only set the timestamp here for Kudu tables. For YB tables, we set the timestamp
+    // Only set the hybrid_time here for Kudu tables. For YB tables, we set the hybrid_time
     // when appending entries to the Raft log.
-    if (!state_->has_timestamp()) {
-      state_->set_timestamp(state_->tablet_peer()->clock()->Now());
+    if (!state_->has_hybrid_time()) {
+      state_->set_hybrid_time(state_->tablet_peer()->clock()->Now());
     }
-    TRACE("START. Timestamp: $0", server::HybridClock::GetPhysicalValueMicros(state_->timestamp()));
+    TRACE("START. HybridTime: $0",
+        server::HybridClock::GetPhysicalValueMicros(state_->hybrid_time()));
   }
 }
 

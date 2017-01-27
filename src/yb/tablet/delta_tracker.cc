@@ -347,7 +347,7 @@ Status DeltaTracker::WrapIterator(const shared_ptr<CFileSet::Iterator> &base,
 }
 
 
-Status DeltaTracker::Update(Timestamp timestamp,
+Status DeltaTracker::Update(HybridTime hybrid_time,
                             rowid_t row_idx,
                             const RowChangeList &update,
                             const consensus::OpId& op_id,
@@ -356,7 +356,7 @@ Status DeltaTracker::Update(Timestamp timestamp,
   shared_lock<rw_spinlock> lock(component_lock_);
   DCHECK_LT(row_idx, num_rows_);
 
-  Status s = dms_->Update(timestamp, row_idx, update, op_id);
+  Status s = dms_->Update(hybrid_time, row_idx, update, op_id);
   if (s.ok()) {
     MemStoreTargetPB* target = result->add_mutated_stores();
     target->set_rs_id(rowset_metadata_->id());

@@ -63,13 +63,13 @@ TEST(PrimitiveValueTest, TestToString) {
   ASSERT_EQ("ArrayIndex(123)", PrimitiveValue::ArrayIndex(123).ToString());
   ASSERT_EQ("ArrayIndex(-123)", PrimitiveValue::ArrayIndex(-123).ToString());
 
-  ASSERT_EQ("TS(1002003004005006007)",
-      PrimitiveValue(Timestamp(1002003004005006007L)).ToString());
+  ASSERT_EQ("HT(1002003004005006007)",
+      PrimitiveValue(HybridTime(1002003004005006007L)).ToString());
 
-  // Timestamps use an unsigned 64-bit integer as an internal representation.
-  ASSERT_EQ("TS(0)", PrimitiveValue(Timestamp(0)).ToString());
-  ASSERT_EQ("TS(Max)", PrimitiveValue(Timestamp(numeric_limits<uint64_t>::max())).ToString());
-  ASSERT_EQ("TS(Max)", PrimitiveValue(Timestamp(-1)).ToString());
+  // HybridTimes use an unsigned 64-bit integer as an internal representation.
+  ASSERT_EQ("HT(0)", PrimitiveValue(HybridTime(0)).ToString());
+  ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(numeric_limits<uint64_t>::max())).ToString());
+  ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(-1)).ToString());
 
   ASSERT_EQ("UInt32Hash(4294967295)",
       PrimitiveValue::UInt32Hash(numeric_limits<uint32_t>::max()).ToString());
@@ -82,7 +82,7 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
       PrimitiveValue("foo"),
       PrimitiveValue(string("foo\0bar\x01", 8)),
       PrimitiveValue(123L),
-      PrimitiveValue(Timestamp(1000L))
+      PrimitiveValue(HybridTime(1000L))
   }) {
     EncodeAndDecode(primitive_value);
   }

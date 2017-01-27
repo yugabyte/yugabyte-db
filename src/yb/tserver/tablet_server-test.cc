@@ -86,7 +86,7 @@ TEST_F(TabletServerTest, TestServerClock) {
   RpcController controller;
 
   ASSERT_OK(generic_proxy_->ServerClock(req, &resp, &controller));
-  ASSERT_GT(mini_server_->server()->clock()->Now().ToUint64(), resp.timestamp());
+  ASSERT_GT(mini_server_->server()->clock()->Now().ToUint64(), resp.hybrid_time());
 }
 
 TEST_F(TabletServerTest, TestSetFlags) {
@@ -195,7 +195,7 @@ TEST_F(TabletServerTest, TestWebPages) {
 
     // Check for the existence of some particular metrics for which we've had early-retirement
     // bugs in the past.
-    ASSERT_STR_CONTAINS(buf.ToString(), "hybrid_clock_timestamp");
+    ASSERT_STR_CONTAINS(buf.ToString(), "hybrid_clock_hybrid_time");
     ASSERT_STR_CONTAINS(buf.ToString(), "active_scanners");
     ASSERT_STR_CONTAINS(buf.ToString(), "threads_started");
 #ifdef TCMALLOC_ENABLED
@@ -319,15 +319,15 @@ TEST_F(TabletServerTest, TestInsert) {
     ASSERT_EQ(3, rows_inserted->value());  // This counter only counts successful inserts.
   }
 
-  // get the clock's current timestamp
-  Timestamp now_before = mini_server_->server()->clock()->Now();
+  // get the clock's current hybrid_time
+  HybridTime now_before = mini_server_->server()->clock()->Now();
 
   rows_inserted = nullptr;
   ASSERT_OK(ShutdownAndRebuildTablet());
   VerifyRows(schema_, { KeyValue(1, 1), KeyValue(2, 1), KeyValue(1234, 5678) });
 
-  // get the clock's timestamp after replay
-  Timestamp now_after = mini_server_->server()->clock()->Now();
+  // get the clock's hybrid_time after replay
+  HybridTime now_after = mini_server_->server()->clock()->Now();
 
   // make sure 'now_after' is greater than or equal to 'now_before'
   ASSERT_GE(now_after.value(), now_before.value());
@@ -348,11 +348,11 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   ASSERT_EQ(0, rows_inserted->value());
 
   // get the current time
-  Timestamp current = mini_server_->server()->clock()->Now();
+  HybridTime current = mini_server_->server()->clock()->Now();
   // advance current to some time in the future. we do 5 secs to make
-  // sure this timestamp will still be in the future when it reaches the
+  // sure this hybrid_time will still be in the future when it reaches the
   // server.
-  current = HybridClock::TimestampFromMicroseconds(
+  current = HybridClock::HybridTimeFromMicroseconds(
       HybridClock::GetPhysicalValueMicros(current) + 5000000);
 
   // Send an actual row insert.
@@ -360,10 +360,10 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   AddTestRowToPB(RowOperationsPB::INSERT, schema_, 1234, 5678, "hello world via RPC",
                  req.mutable_row_operations());
 
-  // set the external consistency mode and the timestamp
+  // set the external consistency mode and the hybrid_time
   req.set_external_consistency_mode(CLIENT_PROPAGATED);
 
-  req.set_propagated_timestamp(current.ToUint64());
+  req.set_propagated_hybrid_time(current.ToUint64());
   SCOPED_TRACE(req.DebugString());
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
   SCOPED_TRACE(resp.DebugString());
@@ -371,16 +371,16 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   req.clear_row_operations();
   ASSERT_EQ(1, rows_inserted->value());
 
-  // make sure the server returned a write timestamp where only
+  // make sure the server returned a write hybrid_time where only
   // the logical value was increased since he should have updated
   // its clock with the client's value.
-  Timestamp write_timestamp(resp.timestamp());
+  HybridTime write_hybrid_time(resp.hybrid_time());
 
   ASSERT_EQ(HybridClock::GetPhysicalValueMicros(current),
-            HybridClock::GetPhysicalValueMicros(write_timestamp));
+            HybridClock::GetPhysicalValueMicros(write_hybrid_time));
 
   ASSERT_EQ(HybridClock::GetLogicalValue(current) + 1,
-            HybridClock::GetLogicalValue(write_timestamp));
+            HybridClock::GetLogicalValue(write_hybrid_time));
 }
 
 TEST_F(TabletServerTest, TestExternalConsistencyModes_CommitWait) {
@@ -400,7 +400,7 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_CommitWait) {
   ASSERT_EQ(0, rows_inserted->value());
 
   // get current time, with and without error
-  Timestamp now_before;
+  HybridTime now_before;
   uint64_t error_before;
   hclock->NowWithError(&now_before, &error_before);
 
@@ -424,24 +424,24 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_CommitWait) {
   ASSERT_EQ(1, rows_inserted->value());
 
   // Two things must have happened.
-  // 1 - The write timestamp must be greater than 'now_before'
+  // 1 - The write hybrid_time must be greater than 'now_before'
   // 2 - The write must have taken at least 'error_before' to complete (two
   //     times more in average).
 
-  Timestamp now_after;
+  HybridTime now_after;
   uint64_t error_after;
   hclock->NowWithError(&now_after, &error_after);
 
-  Timestamp write_timestamp(resp.timestamp());
+  HybridTime write_hybrid_time(resp.hybrid_time());
 
   uint64_t write_took = HybridClock::GetPhysicalValueMicros(now_after) -
       HybridClock::GetPhysicalValueMicros(now_before);
 
-  LOG(INFO) << "Write applied at: " << HybridClock::GetPhysicalValueMicros(write_timestamp)
+  LOG(INFO) << "Write applied at: " << HybridClock::GetPhysicalValueMicros(write_hybrid_time)
       << " us, current time: " << HybridClock::GetPhysicalValueMicros(now_after)
       << " us, write took: " << write_took << " us";
 
-  ASSERT_GT(write_timestamp.value(), now_before.value());
+  ASSERT_GT(write_hybrid_time.value(), now_before.value());
 
   // see HybridClockTest.TestWaitUntilAfter_TestCase2
   if (error_after >= error_before) {
@@ -600,16 +600,16 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
     controller.Reset();
   }
 
-  // get the clock's current timestamp
-  Timestamp now_before = mini_server_->server()->clock()->Now();
+  // get the clock's current hybrid_time
+  HybridTime now_before = mini_server_->server()->clock()->Now();
 
   rows_inserted = nullptr;
   rows_updated = nullptr;
   ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
   VerifyRows(schema_, { KeyValue(2, 3), KeyValue(3, 4), KeyValue(4, 4), KeyValue(6, 6) });
 
-  // get the clock's timestamp after replay
-  Timestamp now_after = mini_server_->server()->clock()->Now();
+  // get the clock's hybrid_time after replay
+  HybridTime now_after = mini_server_->server()->clock()->Now();
 
   // make sure 'now_after' is greater that or equal to 'now_before'
   ASSERT_GE(now_after.value(), now_before.value());
@@ -817,8 +817,8 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushingAndCompacting) {
   hooks->increment_iteration();
   ASSERT_OK(tablet_peer_->tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
 
-  // get the clock's current timestamp
-  Timestamp now_before = mini_server_->server()->clock()->Now();
+  // get the clock's current hybrid_time
+  HybridTime now_before = mini_server_->server()->clock()->Now();
 
   // Shutdown the tserver and try and rebuild the tablet from the log
   // produced on recovery (recovery flushed no state, but produced a new
@@ -833,8 +833,8 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushingAndCompacting) {
                         KeyValue(7, 72),
                         KeyValue(8, 8) });
 
-  // get the clock's timestamp after replay
-  Timestamp now_after = mini_server_->server()->clock()->Now();
+  // get the clock's hybrid_time after replay
+  HybridTime now_after = mini_server_->server()->clock()->Now();
 
   // make sure 'now_after' is greater than or equal to 'now_before'
   ASSERT_GE(now_after.value(), now_before.value());
@@ -989,11 +989,11 @@ TEST_F(TabletServerTest, TestScannerOpenWhenServerShutsDown) {
 TEST_F(TabletServerTest, TestSnapshotScan) {
   int num_rows = AllowSlowTests() ? 1000 : 100;
   int num_batches = AllowSlowTests() ? 100 : 10;
-  vector<uint64_t> write_timestamps_collector;
+  vector<uint64_t> write_hybrid_times_collector;
 
-  // perform a series of writes and collect the timestamps
+  // perform a series of writes and collect the hybrid_times
   InsertTestRowsRemote(0, 0, num_rows, num_batches, nullptr,
-                       kTabletId, &write_timestamps_collector);
+                       kTabletId, &write_hybrid_times_collector);
 
   // now perform snapshot scans.
   ScanRequestPB req;
@@ -1001,7 +1001,7 @@ TEST_F(TabletServerTest, TestSnapshotScan) {
   RpcController rpc;
 
   int batch_idx = 1;
-  for (uint64_t write_timestamp : write_timestamps_collector) {
+  for (uint64_t write_hybrid_time : write_hybrid_times_collector) {
     req.Clear();
     resp.Clear();
     rpc.Reset();
@@ -1011,12 +1011,12 @@ TEST_F(TabletServerTest, TestSnapshotScan) {
     scan->set_tablet_id(kTabletId);
     scan->set_read_mode(READ_AT_SNAPSHOT);
 
-    // Decode and re-encode the timestamp. Note that a snapshot at 'write_timestamp'
-    // does not include the written rows, so we increment that timestamp by one
+    // Decode and re-encode the hybrid_time. Note that a snapshot at 'write_hybrid_time'
+    // does not include the written rows, so we increment that hybrid_time by one
     // to make sure we get those rows back
-    Timestamp read_timestamp(write_timestamp);
-    read_timestamp = Timestamp(read_timestamp.value() + 1);
-    scan->set_snap_timestamp(read_timestamp.ToUint64());
+    HybridTime read_hybrid_time(write_hybrid_time);
+    read_hybrid_time = HybridTime(read_hybrid_time.value() + 1);
+    scan->set_snap_hybrid_time(read_hybrid_time.ToUint64());
 
     ASSERT_OK(SchemaToColumnPBs(projection, scan->mutable_projected_columns()));
     req.set_call_seq_id(0);
@@ -1040,7 +1040,7 @@ TEST_F(TabletServerTest, TestSnapshotScan) {
 
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "Scanner: " << resp.scanner_id() << " performing a snapshot read at: "
-              << read_timestamp.ToString() << " got back: ";
+              << read_hybrid_time.ToString() << " got back: ";
       for (const string& result : results) {
         VLOG(2) << result;
       }
@@ -1054,10 +1054,10 @@ TEST_F(TabletServerTest, TestSnapshotScan) {
   }
 }
 
-TEST_F(TabletServerTest, TestSnapshotScan_WithoutSnapshotTimestamp) {
-  vector<uint64_t> write_timestamps_collector;
+TEST_F(TabletServerTest, TestSnapshotScan_WithoutSnapshotHybridTime) {
+  vector<uint64_t> write_hybrid_times_collector;
   // perform a write
-  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_timestamps_collector);
+  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_hybrid_times_collector);
 
   ScanRequestPB req;
   ScanResponsePB resp;
@@ -1072,7 +1072,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_WithoutSnapshotTimestamp) {
   req.set_batch_size_bytes(0); // so it won't return data right away
   scan->set_read_mode(READ_AT_SNAPSHOT);
 
-  Timestamp now = mini_server_->server()->clock()->Now();
+  HybridTime now = mini_server_->server()->clock()->Now();
 
   // Send the call
   {
@@ -1083,16 +1083,16 @@ TEST_F(TabletServerTest, TestSnapshotScan_WithoutSnapshotTimestamp) {
     ASSERT_FALSE(resp.has_error());
   }
 
-  // make sure that the snapshot timestamp that was selected is >= now
-  ASSERT_GE(resp.snap_timestamp(), now.ToUint64());
+  // make sure that the snapshot hybrid_time that was selected is >= now
+  ASSERT_GE(resp.snap_hybrid_time(), now.ToUint64());
 }
 
 // Tests that a snapshot in the future (beyond the current time plus maximum
 // synchronization error) fails as an invalid snapshot.
 TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureFails) {
-  vector<uint64_t> write_timestamps_collector;
+  vector<uint64_t> write_hybrid_times_collector;
   // perform a write
-  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_timestamps_collector);
+  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_hybrid_times_collector);
 
   ScanRequestPB req;
   ScanResponsePB resp;
@@ -1107,12 +1107,12 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureFails) {
   req.set_batch_size_bytes(0); // so it won't return data right away
   scan->set_read_mode(READ_AT_SNAPSHOT);
 
-  Timestamp read_timestamp(write_timestamps_collector[0]);
-  // Increment the write timestamp by 60 secs: the server will definitely consider
+  HybridTime read_hybrid_time(write_hybrid_times_collector[0]);
+  // Increment the write hybrid_time by 60 secs: the server will definitely consider
   // this in the future.
-  read_timestamp = HybridClock::TimestampFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(read_timestamp) + 60000000);
-  scan->set_snap_timestamp(read_timestamp.ToUint64());
+  read_hybrid_time = HybridClock::HybridTimeFromMicroseconds(
+      HybridClock::GetPhysicalValueMicros(read_hybrid_time) + 60000000);
+  scan->set_snap_hybrid_time(read_hybrid_time.ToUint64());
 
   // Send the call
   {
@@ -1127,11 +1127,11 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureFails) {
 
 // Test tserver shutdown with an active scanner open.
 TEST_F(TabletServerTest, TestSnapshotScan_OpenScanner) {
-  vector<uint64_t> write_timestamps_collector;
+  vector<uint64_t> write_hybrid_times_collector;
   // Write and flush and write, so we have some rows in MRS and DRS
-  InsertTestRowsRemote(0, 0, 100, 2, nullptr, kTabletId, &write_timestamps_collector);
+  InsertTestRowsRemote(0, 0, 100, 2, nullptr, kTabletId, &write_hybrid_times_collector);
   ASSERT_OK(tablet_peer_->tablet()->Flush());
-  InsertTestRowsRemote(0, 100, 100, 2, nullptr, kTabletId, &write_timestamps_collector);
+  InsertTestRowsRemote(0, 100, 100, 2, nullptr, kTabletId, &write_hybrid_times_collector);
 
   ScanRequestPB req;
   ScanResponsePB resp;
@@ -1193,7 +1193,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
     ScanRequestPB req;
     RpcController rpc;
 
-    // Set up a new snapshot scan without a specified timestamp.
+    // Set up a new snapshot scan without a specified hybrid_time.
     NewScanRequestPB* scan = req.mutable_new_scan_request();
     scan->set_tablet_id(kTabletId);
     ASSERT_OK(SchemaToColumnPBs(projection, scan->mutable_projected_columns()));
@@ -1225,7 +1225,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
       StringifyRowsFromResponse(projection, rpc, resp, &results);
       // Retry the scan, setting the last_row_key and snapshot based on the response.
       scan->set_last_primary_key(resp.last_primary_key());
-      scan->set_snap_timestamp(resp.snap_timestamp());
+      scan->set_snap_hybrid_time(resp.snap_hybrid_time());
     } while (resp.has_more_results());
 
     ASSERT_EQ(num_rows, results.size());
@@ -1242,13 +1242,13 @@ TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
 }
 
 
-// Tests that a read in the future succeeds if a propagated_timestamp (that is even
+// Tests that a read in the future succeeds if a propagated_hybrid_time (that is even
 // further in the future) follows along. Also tests that the clock was updated so
-// that no writes will ever have a timestamp post this snapshot.
-TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedTimestamp) {
-  vector<uint64_t> write_timestamps_collector;
+// that no writes will ever have a hybrid_time post this snapshot.
+TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedHybridTime) {
+  vector<uint64_t> write_hybrid_times_collector;
   // perform a write
-  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_timestamps_collector);
+  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_hybrid_times_collector);
 
   ScanRequestPB req;
   ScanResponsePB resp;
@@ -1263,17 +1263,17 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedTimes
   req.set_batch_size_bytes(0); // so it won't return data right away
   scan->set_read_mode(READ_AT_SNAPSHOT);
 
-  Timestamp read_timestamp(write_timestamps_collector[0]);
-  // increment the write timestamp by 5 secs, the server will definitely consider
+  HybridTime read_hybrid_time(write_hybrid_times_collector[0]);
+  // increment the write hybrid_time by 5 secs, the server will definitely consider
   // this in the future.
-  read_timestamp = HybridClock::TimestampFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(read_timestamp) + 5000000);
-  scan->set_snap_timestamp(read_timestamp.ToUint64());
+  read_hybrid_time = HybridClock::HybridTimeFromMicroseconds(
+      HybridClock::GetPhysicalValueMicros(read_hybrid_time) + 5000000);
+  scan->set_snap_hybrid_time(read_hybrid_time.ToUint64());
 
-  // send a propagated timestamp that is an additional 100 msecs into the future.
-  Timestamp propagated_timestamp = HybridClock::TimestampFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(read_timestamp) + 100000);
-  scan->set_propagated_timestamp(propagated_timestamp.ToUint64());
+  // send a propagated hybrid_time that is an additional 100 msecs into the future.
+  HybridTime propagated_hybrid_time = HybridClock::HybridTimeFromMicroseconds(
+      HybridClock::GetPhysicalValueMicros(read_hybrid_time) + 100000);
+  scan->set_propagated_hybrid_time(propagated_hybrid_time.ToUint64());
 
   // Send the call
   {
@@ -1284,15 +1284,15 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedTimes
   }
 
   // make sure the server's current clock returns a value that is larger than the
-  // propagated timestamp. It should have the same physical time, but higher
+  // propagated hybrid_time. It should have the same physical time, but higher
   // logical time (due to various calls to clock.Now() when processing the request).
-  Timestamp now = mini_server_->server()->clock()->Now();
+  HybridTime now = mini_server_->server()->clock()->Now();
 
-  ASSERT_EQ(HybridClock::GetPhysicalValueMicros(propagated_timestamp),
+  ASSERT_EQ(HybridClock::GetPhysicalValueMicros(propagated_hybrid_time),
             HybridClock::GetPhysicalValueMicros(now));
 
   ASSERT_GT(HybridClock::GetLogicalValue(now),
-            HybridClock::GetLogicalValue(propagated_timestamp));
+            HybridClock::GetLogicalValue(propagated_hybrid_time));
 
   vector<string> results;
   ASSERT_NO_FATAL_FAILURE(DrainScannerToStrings(resp.scanner_id(), schema_, &results));
@@ -1301,12 +1301,12 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedTimes
 }
 
 
-// Test that a read in the future fails, even if a propagated_timestamp is sent along,
-// if the read_timestamp is beyond the propagated_timestamp.
-TEST_F(TabletServerTest, TestSnapshotScan__SnapshotInTheFutureBeyondPropagatedTimestampFails) {
-  vector<uint64_t> write_timestamps_collector;
+// Test that a read in the future fails, even if a propagated_hybrid_time is sent along,
+// if the read_hybrid_time is beyond the propagated_hybrid_time.
+TEST_F(TabletServerTest, TestSnapshotScan__SnapshotInTheFutureBeyondPropagatedHybridTimeFails) {
+  vector<uint64_t> write_hybrid_times_collector;
   // perform a write
-  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_timestamps_collector);
+  InsertTestRowsRemote(0, 0, 1, 1, nullptr, kTabletId, &write_hybrid_times_collector);
 
   ScanRequestPB req;
   ScanResponsePB resp;
@@ -1321,18 +1321,18 @@ TEST_F(TabletServerTest, TestSnapshotScan__SnapshotInTheFutureBeyondPropagatedTi
   req.set_batch_size_bytes(0); // so it won't return data right away
   scan->set_read_mode(READ_AT_SNAPSHOT);
 
-  Timestamp read_timestamp(write_timestamps_collector[0]);
-  // increment the write timestamp by 60 secs, the server will definitely consider
+  HybridTime read_hybrid_time(write_hybrid_times_collector[0]);
+  // increment the write hybrid_time by 60 secs, the server will definitely consider
   // this in the future.
-  read_timestamp = HybridClock::TimestampFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(read_timestamp) + 60000000);
-  scan->set_snap_timestamp(read_timestamp.ToUint64());
+  read_hybrid_time = HybridClock::HybridTimeFromMicroseconds(
+      HybridClock::GetPhysicalValueMicros(read_hybrid_time) + 60000000);
+  scan->set_snap_hybrid_time(read_hybrid_time.ToUint64());
 
-  // send a propagated timestamp that is an less than the read timestamp (but still
+  // send a propagated hybrid_time that is an less than the read hybrid_time (but still
   // in the future as far the server is concerned).
-  Timestamp propagated_timestamp = HybridClock::TimestampFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(read_timestamp) - 100000);
-  scan->set_propagated_timestamp(propagated_timestamp.ToUint64());
+  HybridTime propagated_hybrid_time = HybridClock::HybridTimeFromMicroseconds(
+      HybridClock::GetPhysicalValueMicros(read_hybrid_time) - 100000);
+  scan->set_propagated_hybrid_time(propagated_hybrid_time.ToUint64());
 
   // Send the call
   {
@@ -1648,7 +1648,7 @@ void TabletServerTest::DoOrderedScanTest(const Schema& projection,
   ScanRequestPB req;
   RpcController rpc;
 
-  // Set up a new snapshot scan without a specified timestamp.
+  // Set up a new snapshot scan without a specified hybrid_time.
   NewScanRequestPB* scan = req.mutable_new_scan_request();
   scan->set_tablet_id(kTabletId);
   ASSERT_OK(SchemaToColumnPBs(projection, scan->mutable_projected_columns()));

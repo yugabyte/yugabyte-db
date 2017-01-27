@@ -407,7 +407,7 @@ TEST_F(LogTest, TestWriteAndReadToAndFromInProgressSegment) {
   ReplicateMsg* repl = log_entry->mutable_replicate();
   repl->mutable_id()->CopyFrom(op_id);
   repl->set_op_type(NO_OP);
-  repl->set_timestamp(0L);
+  repl->set_hybrid_time(0L);
 
   // Entries are prefixed with a header.
   int single_entry_size = batch.ByteSize() + kEntryHeaderSize;

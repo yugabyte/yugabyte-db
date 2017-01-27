@@ -74,7 +74,7 @@ class MRSRow {
 
   const Schema* schema() const;
 
-  Timestamp insertion_timestamp() const { return header_->insertion_timestamp; }
+  HybridTime insertion_hybrid_time() const { return header_->insertion_hybrid_time; }
 
   Mutation* redo_head() { return header_->redo_head; }
   const Mutation* redo_head() const { return header_->redo_head; }
@@ -131,9 +131,9 @@ class MRSRow {
   }
 
   struct Header {
-    // Timestamp for the transaction which inserted this row. If a scanner with an
+    // HybridTime for the transaction which inserted this row. If a scanner with an
     // older snapshot sees this row, it will be ignored.
-    Timestamp insertion_timestamp;
+    HybridTime insertion_hybrid_time;
 
     // Pointer to the first mutation which has been applied to this row. Each
     // mutation is an instance of the Mutation class, making up a singly-linked
@@ -194,7 +194,7 @@ class MemRowSet : public RowSet,
   // the provided memory buffer may safely be re-used or freed.
   //
   // Returns Status::OK unless allocation fails.
-  CHECKED_STATUS Insert(Timestamp timestamp,
+  CHECKED_STATUS Insert(HybridTime hybrid_time,
                 const ConstContiguousRow& row,
                 const consensus::OpId& op_id);
 
@@ -202,7 +202,7 @@ class MemRowSet : public RowSet,
   // Update or delete an existing row in the memrowset.
   //
   // Returns Status::NotFound if the row doesn't exist.
-  virtual CHECKED_STATUS MutateRow(Timestamp timestamp,
+  virtual CHECKED_STATUS MutateRow(HybridTime hybrid_time,
                            const RowSetKeyProbe &probe,
                            const RowChangeList &delta,
                            const consensus::OpId& op_id,
@@ -338,7 +338,7 @@ class MemRowSet : public RowSet,
 
   // Perform a "Reinsert" -- handle an insertion into a row which was previously
   // inserted and deleted, but still has an entry in the MemRowSet.
-  CHECKED_STATUS Reinsert(Timestamp timestamp,
+  CHECKED_STATUS Reinsert(HybridTime hybrid_time,
                   const ConstContiguousRow& row_data,
                   MRSRow *row);
 
@@ -427,7 +427,7 @@ class MemRowSet::Iterator : public RowwiseIterator {
                        Arena* row_arena,
                        const Mutation** redo_head,
                        Arena* mutation_arena,
-                       Timestamp* insertion_timestamp);
+                       HybridTime* insertion_hybrid_time);
 
   bool Next() {
     DCHECK_NE(state_, kUninitialized) << "not initted";

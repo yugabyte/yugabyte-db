@@ -69,7 +69,7 @@ class TestDeltaFile : public ::testing::Test {
     return builder.Build();
   }
 
-  void WriteTestFile(int min_timestamp = 0, int max_timestamp = 0) {
+  void WriteTestFile(int min_hybrid_time = 0, int max_hybrid_time = 0) {
     gscoped_ptr<WritableBlock> block;
     ASSERT_OK(fs_manager_->CreateNewBlock(&block));
     test_block_ = block->id();
@@ -81,15 +81,15 @@ class TestDeltaFile : public ::testing::Test {
 
     DeltaStats stats;
     for (int i = FLAGS_first_row_to_update; i <= FLAGS_last_row_to_update; i += 2) {
-      for (int timestamp = min_timestamp; timestamp <= max_timestamp; timestamp++) {
+      for (int hybrid_time = min_hybrid_time; hybrid_time <= max_hybrid_time; hybrid_time++) {
         buf.clear();
         RowChangeListEncoder update(&buf);
-        uint32_t new_val = timestamp + i;
+        uint32_t new_val = hybrid_time + i;
         update.AddColumnUpdate(schema_.column(0), schema_.column_id(0), &new_val);
-        DeltaKey key(i, Timestamp(timestamp));
+        DeltaKey key(i, HybridTime(hybrid_time));
         RowChangeList rcl(buf);
         ASSERT_OK_FAST(dfw.AppendDelta<REDO>(key, rcl));
-        ASSERT_OK_FAST(stats.UpdateStats(key.timestamp(), rcl));
+        ASSERT_OK_FAST(stats.UpdateStats(key.hybrid_time(), rcl));
       }
     }
     ASSERT_OK(dfw.WriteDeltaStats(stats));
@@ -311,8 +311,8 @@ TEST_F(TestDeltaFile, TestSkipsDeltasOutOfRange) {
   gscoped_ptr<DeltaIterator> iter;
 
   // should skip
-  MvccSnapshot snap1(Timestamp(9));
-  ASSERT_FALSE(snap1.MayHaveCommittedTransactionsAtOrAfter(Timestamp(10)));
+  MvccSnapshot snap1(HybridTime(9));
+  ASSERT_FALSE(snap1.MayHaveCommittedTransactionsAtOrAfter(HybridTime(10)));
   DeltaIterator* raw_iter = nullptr;
   Status s = reader->NewDeltaIterator(&schema_, snap1, &raw_iter);
   ASSERT_TRUE(s.IsNotFound());
@@ -320,14 +320,14 @@ TEST_F(TestDeltaFile, TestSkipsDeltasOutOfRange) {
 
   // should include
   raw_iter = nullptr;
-  MvccSnapshot snap2(Timestamp(15));
+  MvccSnapshot snap2(HybridTime(15));
   ASSERT_OK(reader->NewDeltaIterator(&schema_, snap2, &raw_iter));
   ASSERT_TRUE(raw_iter != nullptr);
   iter.reset(raw_iter);
 
   // should include
   raw_iter = nullptr;
-  MvccSnapshot snap3(Timestamp(21));
+  MvccSnapshot snap3(HybridTime(21));
   ASSERT_OK(reader->NewDeltaIterator(&schema_, snap3, &raw_iter));
   ASSERT_TRUE(raw_iter != nullptr);
   iter.reset(raw_iter);

@@ -26,21 +26,21 @@ namespace yb {
 namespace docdb {
 
 void DocWriteBatchCache::Put(const KeyBytes& key_bytes,
-                             Timestamp gen_ts,
+                             HybridTime gen_ht,
                              ValueType value_type) {
   DOCDB_DEBUG_LOG(
-      "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ts=$1, value_type=$2",
+      "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ht=$1, value_type=$2",
       BestEffortDocDBKeyToStr(key_bytes),
-      gen_ts.ToDebugString(),
+      gen_ht.ToDebugString(),
       ValueTypeToStr(value_type));
-  prefix_to_gen_ts_[key_bytes.AsStringRef()] = std::make_pair(gen_ts, value_type);
+  prefix_to_gen_ht_[key_bytes.AsStringRef()] = std::make_pair(gen_ht, value_type);
 }
 
 boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
     const KeyBytes& encoded_key_prefix) {
-  auto iter = prefix_to_gen_ts_.find(encoded_key_prefix.AsStringRef());
+  auto iter = prefix_to_gen_ht_.find(encoded_key_prefix.AsStringRef());
 #ifdef DOCDB_DEBUG
-  if (iter == prefix_to_gen_ts_.end()) {
+  if (iter == prefix_to_gen_ht_.end()) {
     DOCDB_DEBUG_LOG("DocWriteBatchCache contained no entry for $0",
                     BestEffortDocDBKeyToStr(encoded_key_prefix));
   } else {
@@ -48,12 +48,12 @@ boost::optional<DocWriteBatchCache::Entry> DocWriteBatchCache::Get(
                     BestEffortDocDBKeyToStr(encoded_key_prefix), EntryToStr(iter->second));
   }
 #endif
-  return iter == prefix_to_gen_ts_.end() ? boost::optional<Entry>() : iter->second;
+  return iter == prefix_to_gen_ht_.end() ? boost::optional<Entry>() : iter->second;
 }
 
 string DocWriteBatchCache::ToDebugString() {
   vector<pair<string, Entry>> sorted_contents;
-  copy(prefix_to_gen_ts_.begin(), prefix_to_gen_ts_.end(), back_inserter(sorted_contents));
+  copy(prefix_to_gen_ht_.begin(), prefix_to_gen_ht_.end(), back_inserter(sorted_contents));
   sort(sorted_contents.begin(), sorted_contents.end());
   ostringstream ss;
   ss << "DocWriteBatchCache[" << endl;
@@ -75,7 +75,7 @@ string DocWriteBatchCache::EntryToStr(const Entry& entry) {
 }
 
 void DocWriteBatchCache::Clear() {
-  prefix_to_gen_ts_.clear();
+  prefix_to_gen_ht_.clear();
 }
 
 }  // namespace docdb

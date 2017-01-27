@@ -78,7 +78,7 @@ message ChecksumResponsePB {
   // See documentation for ScanResponsePB for info about these fields.
   optional bytes scanner_id = 3;
   optional bool has_more_results = 4;
-  optional fixed64 snap_timestamp = 5;
+  optional fixed64 snap_hybrid_time = 5;
 }
 
 message ListTabletsForTabletServerRequestPB {

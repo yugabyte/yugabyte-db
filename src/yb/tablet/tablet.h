@@ -209,7 +209,7 @@ class Tablet {
   // Apply a set of RocksDB row operations.
   void ApplyKeyValueRowOperations(const docdb::KeyValueWriteBatchPB& put_batch,
                                   uint64_t raft_index,
-                                  Timestamp timestamp);
+                                  HybridTime hybrid_time);
 
   CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(
       const tserver::WriteRequestPB& redis_write_request,
@@ -609,8 +609,8 @@ class Tablet {
   // Lock protecting access to the 'components_' member (i.e the rowsets in the tablet)
   //
   // Shared mode:
-  // - Writers take this in shared mode at the same time as they obtain an MVCC timestamp
-  //   and capture a reference to components_. This ensures that we can use the MVCC timestamp
+  // - Writers take this in shared mode at the same time as they obtain an MVCC hybrid_time
+  //   and capture a reference to components_. This ensures that we can use the MVCC hybrid_time
   //   to determine which writers are writing to which components during compaction.
   // - Readers take this in shared mode while capturing their iterators. This ensures that
   //   they see a consistent view when racing against flush/compact.

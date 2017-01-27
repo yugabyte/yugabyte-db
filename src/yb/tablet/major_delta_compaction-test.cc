@@ -51,7 +51,7 @@ class TestMajorDeltaCompaction : public YBRowSetTest {
                               ColumnSchema("val3", INT32),
                               ColumnSchema("val4", STRING) }, 1)),
       mvcc_(scoped_refptr<server::Clock>(
-          server::LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp))) {
+          server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime))) {
   }
 
   struct ExpectedRow {

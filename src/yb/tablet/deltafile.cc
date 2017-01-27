@@ -246,10 +246,10 @@ bool DeltaFileReader::IsRelevantForSnapshot(const MvccSnapshot& snap) const {
     return true;
   }
   if (delta_type_ == REDO) {
-    return snap.MayHaveCommittedTransactionsAtOrAfter(delta_stats_->min_timestamp());
+    return snap.MayHaveCommittedTransactionsAtOrAfter(delta_stats_->min_hybrid_time());
   }
   if (delta_type_ == UNDO) {
-    return snap.MayHaveUncommittedTransactionsAtOrBefore(delta_stats_->max_timestamp());
+    return snap.MayHaveUncommittedTransactionsAtOrBefore(delta_stats_->max_hybrid_time());
   }
   LOG(DFATAL) << "Cannot reach here";
   return false;
@@ -266,11 +266,11 @@ Status DeltaFileReader::NewDeltaIterator(const Schema *projection,
                 << ": can't cull for " << snap.ToString();
       } else if (delta_type_ == REDO) {
         VLOG(2) << "REDO delta " << ToString()
-                << " has min ts " << delta_stats_->min_timestamp().ToString()
+                << " has min ts " << delta_stats_->min_hybrid_time().ToString()
                 << ": can't cull for " << snap.ToString();
       } else {
         VLOG(2) << "UNDO delta " << ToString()
-                << " has max ts " << delta_stats_->max_timestamp().ToString()
+                << " has max ts " << delta_stats_->max_hybrid_time().ToString()
                 << ": can't cull for " << snap.ToString();
       }
     }
@@ -366,7 +366,7 @@ Status DeltaFileIterator::SeekToOrdinal(rowid_t idx) {
   }
 
   tmp_buf_.clear();
-  DeltaKey(idx, Timestamp(0)).EncodeTo(&tmp_buf_);
+  DeltaKey(idx, HybridTime(0)).EncodeTo(&tmp_buf_);
   Slice key_slice(tmp_buf_);
 
   Status s = index_iter_->SeekAtOrBefore(key_slice);
@@ -564,15 +564,15 @@ Status DeltaFileIterator::VisitMutations(Visitor *visitor) {
   return Status::OK();
 }
 
-// Returns whether a REDO mutation with 'timestamp' is relevant under 'snap'.
-// If snap cannot include any mutations with a higher timestamp 'continue_visit' is
+// Returns whether a REDO mutation with 'hybrid_time' is relevant under 'snap'.
+// If snap cannot include any mutations with a higher hybrid_time 'continue_visit' is
 // set to false, it's set to true otherwise.
 inline bool IsRedoRelevant(const MvccSnapshot& snap,
-                            const Timestamp& timestamp,
+                            const HybridTime& hybrid_time,
                             bool* continue_visit) {
   *continue_visit = true;
-  if (!snap.IsCommitted(timestamp)) {
-    if (!snap.MayHaveCommittedTransactionsAtOrAfter(timestamp)) {
+  if (!snap.IsCommitted(hybrid_time)) {
+    if (!snap.MayHaveCommittedTransactionsAtOrAfter(hybrid_time)) {
       *continue_visit = false;
     }
     return false;
@@ -580,15 +580,15 @@ inline bool IsRedoRelevant(const MvccSnapshot& snap,
   return true;
 }
 
-// Returns whether an UNDO mutation with 'timestamp' is relevant under 'snap'.
-// If snap cannot include any mutations with a lower timestamp 'continue_visit' is
+// Returns whether an UNDO mutation with 'hybrid_time' is relevant under 'snap'.
+// If snap cannot include any mutations with a lower hybrid_time 'continue_visit' is
 // set to false, it's set to true otherwise.
 inline bool IsUndoRelevant(const MvccSnapshot& snap,
-                           const Timestamp& timestamp,
+                           const HybridTime& hybrid_time,
                            bool* continue_visit) {
   *continue_visit = true;
-  if (snap.IsCommitted(timestamp)) {
-    if (!snap.MayHaveUncommittedTransactionsAtOrBefore(timestamp)) {
+  if (snap.IsCommitted(hybrid_time)) {
+    if (!snap.MayHaveUncommittedTransactionsAtOrBefore(hybrid_time)) {
       *continue_visit = false;
     }
     return false;
@@ -631,7 +631,7 @@ template<>
 inline Status ApplyingVisitor<REDO>::Visit(const DeltaKey& key,
                                            const Slice& deltas,
                                            bool* continue_visit) {
-  if (IsRedoRelevant(dfi->mvcc_snap_, key.timestamp(), continue_visit)) {
+  if (IsRedoRelevant(dfi->mvcc_snap_, key.hybrid_time(), continue_visit)) {
     DVLOG(3) << "Applied redo delta";
     return ApplyMutation(key, deltas);
   }
@@ -643,7 +643,7 @@ template<>
 inline Status ApplyingVisitor<UNDO>::Visit(const DeltaKey& key,
                                            const Slice& deltas,
                                            bool* continue_visit) {
-  if (IsUndoRelevant(dfi->mvcc_snap_, key.timestamp(), continue_visit)) {
+  if (IsUndoRelevant(dfi->mvcc_snap_, key.hybrid_time(), continue_visit)) {
     DVLOG(3) << "Applied undo delta";
     return ApplyMutation(key, deltas);
   }
@@ -699,7 +699,7 @@ template<>
 inline Status DeletingVisitor<REDO>::Visit(const DeltaKey& key,
                                            const Slice& deltas,
                                            bool* continue_visit) {
-  if (IsRedoRelevant(dfi->mvcc_snap_, key.timestamp(), continue_visit)) {
+  if (IsRedoRelevant(dfi->mvcc_snap_, key.hybrid_time(), continue_visit)) {
     return ApplyDelete(key, deltas);
   }
   return Status::OK();
@@ -709,7 +709,7 @@ template<>
 inline Status DeletingVisitor<UNDO>::Visit(const DeltaKey& key,
                                            const Slice& deltas, bool*
                                            continue_visit) {
-  if (IsUndoRelevant(dfi->mvcc_snap_, key.timestamp(), continue_visit)) {
+  if (IsUndoRelevant(dfi->mvcc_snap_, key.hybrid_time(), continue_visit)) {
     return ApplyDelete(key, deltas);
   }
   return Status::OK();
@@ -742,7 +742,7 @@ struct CollectingVisitor {
     DCHECK_GE(rel_idx, 0);
 
     RowChangeList changelist(deltas);
-    Mutation *mutation = Mutation::CreateInArena(dst_arena, key.timestamp(), changelist);
+    Mutation *mutation = Mutation::CreateInArena(dst_arena, key.hybrid_time(), changelist);
     mutation->AppendToList(&dst->at(rel_idx));
 
     return Status::OK();
@@ -757,7 +757,7 @@ template<>
 inline Status CollectingVisitor<REDO>::Visit(const DeltaKey& key,
                                            const Slice& deltas,
                                            bool* continue_visit) {
-  if (IsRedoRelevant(dfi->mvcc_snap_, key.timestamp(), continue_visit)) {
+  if (IsRedoRelevant(dfi->mvcc_snap_, key.hybrid_time(), continue_visit)) {
     return Collect(key, deltas);
   }
   return Status::OK();
@@ -767,7 +767,7 @@ template<>
 inline Status CollectingVisitor<UNDO>::Visit(const DeltaKey& key,
                                            const Slice& deltas, bool*
                                            continue_visit) {
-  if (IsUndoRelevant(dfi->mvcc_snap_, key.timestamp(), continue_visit)) {
+  if (IsUndoRelevant(dfi->mvcc_snap_, key.hybrid_time(), continue_visit)) {
     return Collect(key, deltas);
   }
   return Status::OK();

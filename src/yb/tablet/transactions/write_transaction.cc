@@ -107,7 +107,7 @@ void WriteTransaction::Start() {
   TRACE("Start()");
   state_->tablet_peer()->tablet()->StartTransaction(state_.get());
 
-  TRACE("Timestamp: $0", state_->tablet_peer()->clock()->Stringify(state_->timestamp()));
+  TRACE("HybridTime: $0", state_->tablet_peer()->clock()->Stringify(state_->hybrid_time()));
 }
 
 // FIXME: Since this is called as a void in a thread-pool callback,
@@ -233,12 +233,12 @@ WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,
 }
 
 
-void WriteTransactionState::SetMvccTxAndTimestamp(gscoped_ptr<ScopedTransaction> mvcc_tx) {
+void WriteTransactionState::SetMvccTxAndHybridTime(gscoped_ptr<ScopedTransaction> mvcc_tx) {
   DCHECK(!mvcc_tx_) << "Mvcc transaction already started/set.";
-  if (has_timestamp()) {
-    DCHECK_EQ(timestamp(), mvcc_tx->timestamp());
+  if (has_hybrid_time()) {
+    DCHECK_EQ(hybrid_time(), mvcc_tx->hybrid_time());
   } else {
-    set_timestamp(mvcc_tx->timestamp());
+    set_hybrid_time(mvcc_tx->hybrid_time());
   }
 
   lock_guard<mutex> lock(mvcc_tx_mutex_);
@@ -268,7 +268,7 @@ void WriteTransactionState::ReleaseSchemaLock() {
 void WriteTransactionState::StartApplying() {
   lock_guard<mutex> lock(mvcc_tx_mutex_);
   if (!mvcc_tx_) {
-    LOG(INFO) << "mvcc_tx is nullptr for timestamp " << timestamp() << ":\n" << GetStackTrace();
+    LOG(INFO) << "mvcc_tx is nullptr for hybrid_time " << hybrid_time() << ":\n" << GetStackTrace();
   }
   CHECK_NOTNULL(mvcc_tx_.get())->StartApplying();
 }
@@ -346,7 +346,7 @@ void WriteTransactionState::Reset() {
   // We likely shouldn't Commit() here. See KUDU-625.
   Commit();
   tx_metrics_.Reset();
-  timestamp_ = Timestamp::kInvalidTimestamp;
+  hybrid_time_ = HybridTime::kInvalidHybridTime;
   tablet_components_ = nullptr;
   schema_at_decode_time_ = nullptr;
 }
@@ -368,8 +368,8 @@ void WriteTransactionState::ResetMvccTx(std::function<void(ScopedTransaction*)> 
 
 string WriteTransactionState::ToString() const {
   string ts_str;
-  if (has_timestamp()) {
-    ts_str = timestamp().ToString();
+  if (has_hybrid_time()) {
+    ts_str = hybrid_time().ToString();
   } else {
     ts_str = "<unassigned>";
   }

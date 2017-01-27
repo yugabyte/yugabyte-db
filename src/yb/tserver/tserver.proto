@@ -142,10 +142,10 @@ message WriteRequestPB {
   // The required consistency mode for this write.
   optional ExternalConsistencyMode external_consistency_mode = 4 [default = CLIENT_PROPAGATED];
 
-  // A timestamp obtained by the client from a previous request.
+  // A hybrid_time obtained by the client from a previous request.
   // TODO crypto sign this and propagate the signature along with
-  // the timestamp.
-  optional fixed64 propagated_timestamp = 5;
+  // the hybrid_time.
+  optional fixed64 propagated_hybrid_time = 5;
 }
 
 message WriteResponsePB {
@@ -173,9 +173,9 @@ message WriteResponsePB {
   // A batch of YSQL responses.
   repeated YSQLResponsePB ysql_response_batch = 9;
 
-  // The timestamp chosen by the server for this write.
-  // TODO KUDU-611 propagate timestamps with server signature.
-  optional fixed64 timestamp = 3;
+  // The hybrid_time chosen by the server for this write.
+  // TODO KUDU-611 propagate hybrid_times with server signature.
+  optional fixed64 hybrid_time = 3;
 }
 
 // A list tablets request
@@ -239,7 +239,7 @@ message ReadRequestPB {
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 3 [default = true];
 
-  // TODO: add timestamp in future
+  // TODO: add hybrid_time in future
 }
 
 message ReadResponsePB {
@@ -247,8 +247,8 @@ message ReadResponsePB {
 
   repeated YSQLResponsePB ysql_batch = 4;
 
-  // The timestamp chosen by the server for this read.
-  optional fixed64 timestamp = 2;
+  // The hybrid_time chosen by the server for this read.
+  optional fixed64 hybrid_time = 2;
 
   optional TabletServerErrorPB error = 3;
 }
@@ -282,14 +282,14 @@ message NewScanRequestPB {
   // See common.proto for further information about read modes.
   optional ReadMode read_mode = 5 [default = READ_LATEST];
 
-  // The requested snapshot timestamp. This is only used
+  // The requested snapshot hybrid_time. This is only used
   // when the read mode is set to READ_AT_SNAPSHOT.
-  optional fixed64 snap_timestamp = 6;
+  optional fixed64 snap_hybrid_time = 6;
 
   // Sent by clients which previously executed CLIENT_PROPAGATED writes.
   // This updates the server's time so that no transaction will be assigned
-  // a timestamp lower than or equal to 'previous_known_timestamp'
-  optional fixed64 propagated_timestamp = 7;
+  // a hybrid_time lower than or equal to 'previous_known_hybrid_time'
+  optional fixed64 propagated_hybrid_time = 7;
 
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
@@ -372,10 +372,10 @@ message ScanResponsePB {
   // the scanner.
   optional RowwiseRowBlockPB data = 4;
 
-  // The snapshot timestamp at which the scan was executed. This is only set
+  // The snapshot hybrid_time at which the scan was executed. This is only set
   // in the first response (i.e. the response to the request that had
   // 'new_scan_request' set) and only for READ_AT_SNAPSHOT scans.
-  optional fixed64 snap_timestamp = 6;
+  optional fixed64 snap_hybrid_time = 6;
 
   // If this is a fault-tolerant scanner, this is set to the encoded primary
   // key of the last row returned in the response.

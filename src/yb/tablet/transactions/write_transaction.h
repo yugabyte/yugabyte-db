@@ -111,10 +111,10 @@ class WriteTransactionState : public TransactionState {
 
   // Set the MVCC transaction associated with this Write operation.
   // This must be called exactly once, during the PREPARE phase just
-  // after the MvccManager has assigned a timestamp.
-  // This also copies the timestamp from the MVCC transaction into the
+  // after the MvccManager has assigned a hybrid_time.
+  // This also copies the hybrid_time from the MVCC transaction into the
   // WriteTransactionState object.
-  void SetMvccTxAndTimestamp(gscoped_ptr<ScopedTransaction> mvcc_tx);
+  void SetMvccTxAndHybridTime(gscoped_ptr<ScopedTransaction> mvcc_tx);
 
   // Set the Tablet components that this transaction will write into.
   // Called exactly once at the beginning of Apply, before applying its
@@ -272,7 +272,7 @@ class WriteTransaction : public Transaction {
   // into the WriteTransactionState.
   virtual CHECKED_STATUS Prepare() OVERRIDE;
 
-  // Actually starts the Mvcc transaction and assigns a timestamp to this transaction.
+  // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
   virtual void Start() OVERRIDE;
 
   // Executes an Apply for a write transaction.

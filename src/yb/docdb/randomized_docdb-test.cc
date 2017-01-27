@@ -76,9 +76,9 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
 
   constexpr int kHistoryCleanupChance = 500;
 
-  vector<pair<int, int>> cleanup_ts_and_iteration;
+  vector<pair<int, int>> cleanup_ht_and_iteration;
 
-  Timestamp max_history_cleanup_ts(0);
+  HybridTime max_history_cleanup_ht(0);
 
   while (load_gen_.next_iteration() <= FLAGS_snapshot_verification_test_num_iter) {
     const int current_iteration = load_gen_.next_iteration();
@@ -99,29 +99,29 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
     }
 
     if (enable_history_cleanup && load_gen_.NextRandomInt(kHistoryCleanupChance) == 0) {
-      // Pick a random cleanup timestamp from 0 to the last operation timestamp inclusively.
-      const Timestamp cleanup_ts = Timestamp(
-          load_gen_.NextRandom() % (load_gen_.last_operation_ts().value() + 1));
-      if (cleanup_ts.CompareTo(max_history_cleanup_ts) <= 0) {
-        // We are performing cleanup at an old timestamp, and don't expect it to have any effect.
+      // Pick a random cleanup hybrid_time from 0 to the last operation hybrid_time inclusively.
+      const HybridTime cleanup_ht = HybridTime(
+          load_gen_.NextRandom() % (load_gen_.last_operation_ht().value() + 1));
+      if (cleanup_ht.CompareTo(max_history_cleanup_ht) <= 0) {
+        // We are performing cleanup at an old hybrid_time, and don't expect it to have any effect.
         InMemDocDbState snapshot_before_cleanup;
-        snapshot_before_cleanup.CaptureAt(rocksdb(), Timestamp::kMax);
-        NO_FATALS(CompactHistoryBefore(cleanup_ts));
+        snapshot_before_cleanup.CaptureAt(rocksdb(), HybridTime::kMax);
+        NO_FATALS(CompactHistoryBefore(cleanup_ht));
 
         InMemDocDbState snapshot_after_cleanup;
-        snapshot_after_cleanup.CaptureAt(rocksdb(), Timestamp::kMax);
+        snapshot_after_cleanup.CaptureAt(rocksdb(), HybridTime::kMax);
         ASSERT_TRUE(snapshot_after_cleanup.EqualsAndLogDiff(snapshot_before_cleanup));
       } else {
-        max_history_cleanup_ts = cleanup_ts;
-        cleanup_ts_and_iteration.emplace_back(cleanup_ts.value(),
-                                              load_gen_.last_operation_ts().value());
-        NO_FATALS(CompactHistoryBefore(cleanup_ts));
+        max_history_cleanup_ht = cleanup_ht;
+        cleanup_ht_and_iteration.emplace_back(cleanup_ht.value(),
+                                              load_gen_.last_operation_ht().value());
+        NO_FATALS(CompactHistoryBefore(cleanup_ht));
 
-        // We expect some snapshots at timestamps earlier than cleanup_ts to no longer be
+        // We expect some snapshots at hybrid_times earlier than cleanup_ht to no longer be
         // recoverable.
-        NO_FATALS(load_gen_.CheckIfOldestSnapshotIsStillValid(cleanup_ts));
+        NO_FATALS(load_gen_.CheckIfOldestSnapshotIsStillValid(cleanup_ht));
 
-        load_gen_.RemoveSnapshotsBefore(cleanup_ts);
+        load_gen_.RemoveSnapshotsBefore(cleanup_ht);
 
         // Now that we're removed all snapshots that could have been affected by history cleanup,
         // we expect the oldest remaining snapshot to match the RocksDB-backed DocDB state.
@@ -132,8 +132,8 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
 
   LOG(INFO) << "Finished the primary part of the randomized DocDB test.\n"
             << "  enable_history_cleanup: " << enable_history_cleanup << "\n"
-            << "  last_operation_ts: " << load_gen_.last_operation_ts() << "\n"
-            << "  max_history_cleanup_ts: " << max_history_cleanup_ts.value();
+            << "  last_operation_ht: " << load_gen_.last_operation_ht() << "\n"
+            << "  max_history_cleanup_ht: " << max_history_cleanup_ht.value();
 
   if (!enable_history_cleanup) return;
 
@@ -145,21 +145,22 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
     return;
   }
 
-  // Verify that some old snapshots got invalidated by history cleanup at a higher timestamp.
+  // Verify that some old snapshots got invalidated by history cleanup at a higher hybrid_time.
 
   // First we verify that history cleanup is happening at expected times, so that we can validate
-  // that the maximum history cleanup timestamp (max_history_cleanup_ts) is as expected.
+  // that the maximum history cleanup hybrid_time (max_history_cleanup_ht) is as expected.
 
   // An entry (t, i) here says that after iteration i there was a history cleanup with a history
-  // cutoff timestamp of t. The iteration here corresponds one to one to the operation timestamp.
-  // We always have t < i because we perform cleanup at a past timestamp, not a future one.
-  //                                                        cleanup_ts | iteration (last op. ts.)
+  // cutoff hybrid_time of t. The iteration here corresponds one to one to the operation
+  // hybrid_time. We always have t < i because we perform cleanup at a past hybrid_time,
+  // not a future one.
+  //                                                        cleanup_ht | iteration (last op. ts.)
   //
   // These numbers depend on DocDB load generator parameters (random seed, frequencies of various
   // events) and will need to be replaced in such cases. Ideally, we should come up with a way to
   // either re-generate those quickly, or not rely on hard-coded expected results for validation.
   // However, we do handle variations in the number of iterations here, up a certain limit.
-  vector<pair<int, int>> expected_cleanup_ts_and_iteration{{1,           85},
+  vector<pair<int, int>> expected_cleanup_ht_and_iteration{{1,           85},
                                                            {40,          121},
                                                            {46,          255},
                                                            {245,         484},
@@ -174,21 +175,21 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
                                                            {10061,       10610},
                                                            {13137,       13920}};
 
-  // Remove expected (cleanup_timestamp, iteration) entries that don't apply to our test run in
+  // Remove expected (cleanup_hybrid_time, iteration) entries that don't apply to our test run in
   // case we did fewer than 15000 iterations.
   RemoveEntriesWithSecondComponentHigherThan(
-      &expected_cleanup_ts_and_iteration,
-      load_gen_.last_operation_ts().value());
+      &expected_cleanup_ht_and_iteration,
+      load_gen_.last_operation_ht().value());
 
-  ASSERT_FALSE(expected_cleanup_ts_and_iteration.empty());
-  ASSERT_EQ(expected_cleanup_ts_and_iteration, cleanup_ts_and_iteration);
+  ASSERT_FALSE(expected_cleanup_ht_and_iteration.empty());
+  ASSERT_EQ(expected_cleanup_ht_and_iteration, cleanup_ht_and_iteration);
 
   ASSERT_GT(load_gen_.num_divergent_old_snapshot(), 0);
 
-  // Expected timestamps of snapshots invalidated by history cleanup, and actual history cutoff
-  // timestamps at which that happened. This is deterministic, but highly dependent on the
+  // Expected hybrid_times of snapshots invalidated by history cleanup, and actual history cutoff
+  // hybrid_times at which that happened. This is deterministic, but highly dependent on the
   // parameters at the top of this test.
-  vector<pair<int, int>> expected_divergent_snapshot_and_cleanup_ts{
+  vector<pair<int, int>> expected_divergent_snapshot_and_cleanup_ht{
       {298,   774},
       {2000,  2341},
       {4000,  4762},
@@ -200,12 +201,12 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
   };
 
   // Remove entries that don't apply to us because we did not get to do a cleanup at that
-  // timestamp.
-  RemoveEntriesWithSecondComponentHigherThan(&expected_divergent_snapshot_and_cleanup_ts,
-                                             max_history_cleanup_ts.value());
+  // hybrid_time.
+  RemoveEntriesWithSecondComponentHigherThan(&expected_divergent_snapshot_and_cleanup_ht,
+                                             max_history_cleanup_ht.value());
 
-  ASSERT_EQ(expected_divergent_snapshot_and_cleanup_ts,
-            load_gen_.divergent_snapshot_ts_and_cleanup_ts());
+  ASSERT_EQ(expected_divergent_snapshot_and_cleanup_ht,
+            load_gen_.divergent_snapshot_ht_and_cleanup_ht());
 }
 
 TEST_F(RandomizedDocDBTest, TestNoFlush) {

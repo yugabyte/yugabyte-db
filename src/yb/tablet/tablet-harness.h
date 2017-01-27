@@ -102,7 +102,7 @@ class TabletHarness {
       metrics_registry_.reset(new MetricRegistry());
     }
 
-    clock_ = server::LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp);
+    clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime);
     tablet_.reset(new Tablet(metadata,
                              clock_,
                              std::shared_ptr<MemTracker>(),

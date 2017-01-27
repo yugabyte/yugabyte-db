@@ -37,7 +37,7 @@ class MockRowSet : public RowSet {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual CHECKED_STATUS MutateRow(Timestamp timestamp,
+  virtual CHECKED_STATUS MutateRow(HybridTime hybrid_time,
                            const RowSetKeyProbe &probe,
                            const RowChangeList &update,
                            const consensus::OpId& op_id_,

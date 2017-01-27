@@ -31,27 +31,27 @@ namespace tablet {
 enum DeltaType {
   // REDO delta files contain the mutations that were applied
   // since the base data was last flushed/compacted. REDO deltas
-  // are sorted by increasing transaction timestamp.
+  // are sorted by increasing transaction hybrid_time.
   REDO,
   // UNDO delta files contain the mutations that were applied
   // prior to the time the base data was last/flushed compacted
   // and allow to execute point-in-time snapshot scans. UNDO
-  // deltas are sorted by decreasing transaction timestamp.
+  // deltas are sorted by decreasing transaction hybrid_time.
   UNDO
 };
 
 const char* DeltaType_Name(DeltaType t);
 
 // Each entry in the delta memrowset or delta files is keyed by the rowid
-// which has been updated, as well as the timestamp which performed the update.
+// which has been updated, as well as the hybrid_time which performed the update.
 class DeltaKey {
  public:
   DeltaKey() :
     row_idx_(-1)
   {}
 
-  DeltaKey(rowid_t id, Timestamp timestamp)
-      : row_idx_(id), timestamp_(std::move(timestamp)) {}
+  DeltaKey(rowid_t id, HybridTime hybrid_time)
+      : row_idx_(id), hybrid_time_(std::move(hybrid_time)) {}
 
   // Encode this key into the given buffer.
   //
@@ -60,7 +60,7 @@ class DeltaKey {
   // be used as a string key in indexing structures, etc.
   void EncodeTo(faststring *dst) const {
     EncodeRowId(dst, row_idx_);
-    timestamp_.EncodeTo(dst);
+    hybrid_time_.EncodeTo(dst);
   }
 
 
@@ -76,33 +76,33 @@ class DeltaKey {
       return STATUS(Corruption, "Bad delta key: bad rowid", orig.ToDebugString(20));
     }
 
-    if (!PREDICT_TRUE(timestamp_.DecodeFrom(key))) {
-      return STATUS(Corruption, "Bad delta key: bad timestamp", orig.ToDebugString(20));
+    if (!PREDICT_TRUE(hybrid_time_.DecodeFrom(key))) {
+      return STATUS(Corruption, "Bad delta key: bad hybrid_time", orig.ToDebugString(20));
     }
     return Status::OK();
   }
 
   string ToString() const {
-    return strings::Substitute("(row $0@tx$1)", row_idx_, timestamp_.ToString());
+    return strings::Substitute("(row $0@tx$1)", row_idx_, hybrid_time_.ToString());
   }
 
   // Compare this key to another key. Delta keys are sorted by ascending rowid,
-  // then ascending timestamp, except if this is an undo delta key, in which case the
-  // the keys are sorted by ascending rowid and then by _descending_ timestamp so that
+  // then ascending hybrid_time, except if this is an undo delta key, in which case the
+  // the keys are sorted by ascending rowid and then by _descending_ hybrid_time so that
   // the transaction closer to the base data comes first.
   template<DeltaType Type>
   int CompareTo(const DeltaKey &other) const;
 
   rowid_t row_idx() const { return row_idx_; }
 
-  const Timestamp &timestamp() const { return timestamp_; }
+  const HybridTime &hybrid_time() const { return hybrid_time_; }
 
  private:
   // The row which has been updated.
   rowid_t row_idx_;
 
-  // The timestamp of the transaction which applied the update.
-  Timestamp timestamp_;
+  // The hybrid_time of the transaction which applied the update.
+  HybridTime hybrid_time_;
 };
 
 template<>
@@ -113,7 +113,7 @@ inline int DeltaKey::CompareTo<REDO>(const DeltaKey &other) const {
     return 1;
   }
 
-  return timestamp_.CompareTo(other.timestamp_);
+  return hybrid_time_.CompareTo(other.hybrid_time_);
 }
 
 template<>
@@ -124,7 +124,7 @@ inline int DeltaKey::CompareTo<UNDO>(const DeltaKey &other) const {
     return 1;
   }
 
-  return other.timestamp_.CompareTo(timestamp_);
+  return other.hybrid_time_.CompareTo(hybrid_time_);
 }
 
 } // namespace tablet

@@ -21,8 +21,8 @@ DocPath KuduWriteOperation::DocPathToLock() const {
 }
 
 Status KuduWriteOperation::Apply(
-    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) {
-  return doc_write_batch->SetPrimitive(doc_path_, value_, Timestamp::kMax);
+    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
+  return doc_write_batch->SetPrimitive(doc_path_, value_, HybridTime::kMax);
 }
 
 DocPath RedisWriteOperation::DocPathToLock() const {
@@ -31,7 +31,7 @@ DocPath RedisWriteOperation::DocPathToLock() const {
 
 Status GetRedisValue(
     rocksdb::DB *rocksdb,
-    Timestamp timestamp,
+    HybridTime hybrid_time,
     const RedisKeyValuePB &key_value_pb,
     RedisDataType *type,
     string *value) {
@@ -52,7 +52,7 @@ Status GetRedisValue(
   SubDocument doc;
   bool doc_found = false;
 
-  RETURN_NOT_OK(GetSubDocument(rocksdb, doc_key, &doc, &doc_found, timestamp));
+  RETURN_NOT_OK(GetSubDocument(rocksdb, doc_key, &doc, &doc_found, hybrid_time));
 
   if (!doc_found) {
     *type = REDIS_TYPE_NONE;
@@ -87,7 +87,7 @@ bool IsWrongType(
 }
 
 Status RedisWriteOperation::Apply(
-    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) {
+    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
   switch (request_.request_case()) {
     case RedisWriteRequestPB::RequestCase::kSetRequest:
       return ApplySet(doc_write_batch);
@@ -126,7 +126,7 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
   RETURN_NOT_OK(
       doc_write_batch->SetPrimitive(
           DocPath::DocPathFromRedisKey(kv.key(), kv.subkey_size() > 0 ? kv.subkey(0) : ""),
-          Value(PrimitiveValue(kv.value(0)), ttl), Timestamp::kMax));
+          Value(PrimitiveValue(kv.value(0)), ttl), HybridTime::kMax));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
 }
@@ -136,7 +136,7 @@ Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
   string value;
   const RedisKeyValuePB& kv = request_.key_value();
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
   if (kv.value_size() != 1) {
     return STATUS_SUBSTITUTE(Corruption,
@@ -151,7 +151,7 @@ Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.key()),
-      Value(PrimitiveValue(kv.value(0))), Timestamp::kMax);
+      Value(PrimitiveValue(kv.value(0))), HybridTime::kMax);
 }
 
 Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
@@ -164,7 +164,7 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
         "Append kv should have 1 value, found $0", kv.value_size());
   }
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
   if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -177,7 +177,7 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.key()),
-      Value(PrimitiveValue(new_value)), Timestamp::kMax);
+      Value(PrimitiveValue(new_value)), HybridTime::kMax);
 }
 
 // TODO (akashnil): Actually check if the value existed, return 0 if not. handle multidel in future.
@@ -186,7 +186,7 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
   RETURN_NOT_OK(doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.key()),
-      Value(PrimitiveValue(ValueType::kTombstone)), Timestamp::kMax));
+      Value(PrimitiveValue(ValueType::kTombstone)), HybridTime::kMax));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   // Currently we only support deleting one key
   response_.set_int_response(1);
@@ -202,7 +202,7 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
         "SetRange kv should have 1 value, found $0", kv.value_size());
   }
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
   if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -214,7 +214,7 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.key()),
-      Value(PrimitiveValue(value)), Timestamp::kMax);
+      Value(PrimitiveValue(value)), HybridTime::kMax);
 }
 
 Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t incr) {
@@ -222,7 +222,7 @@ Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t in
   string value;
   const RedisKeyValuePB& kv = request_.key_value();
 
-  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_timestamp_, kv, &type, &value));
+  RETURN_NOT_OK(GetRedisValue(doc_write_batch->rocksdb(), read_hybrid_time_, kv, &type, &value));
 
   if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -252,7 +252,7 @@ Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t in
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.key()),
-      Value(PrimitiveValue(std::to_string(new_value))), Timestamp::kMax);
+      Value(PrimitiveValue(std::to_string(new_value))), HybridTime::kMax);
 }
 
 Status RedisWriteOperation::ApplyPush(DocWriteBatch* doc_write_batch) {
@@ -277,16 +277,16 @@ Status RedisWriteOperation::ApplyRemove(DocWriteBatch* doc_write_batch) {
 
 const RedisResponsePB& RedisWriteOperation::response() { return response_; }
 
-Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, const Timestamp& timestamp) {
+Status RedisReadOperation::Execute(rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
   switch (request_.request_case()) {
     case RedisReadRequestPB::RequestCase::kGetRequest:
-      return ExecuteGet(rocksdb, timestamp);
+      return ExecuteGet(rocksdb, hybrid_time);
     case RedisReadRequestPB::RequestCase::kStrlenRequest:
-      return ExecuteStrLen(rocksdb, timestamp);
+      return ExecuteStrLen(rocksdb, hybrid_time);
     case RedisReadRequestPB::RequestCase::kExistsRequest:
-      return ExecuteExists(rocksdb, timestamp);
+      return ExecuteExists(rocksdb, hybrid_time);
     case RedisReadRequestPB::RequestCase::kGetRangeRequest:
-      return ExecuteGetRange(rocksdb, timestamp);
+      return ExecuteGetRange(rocksdb, hybrid_time);
     default:
       return STATUS(Corruption,
           Substitute("Unsupported redis write operation: $0", request_.request_case()));
@@ -300,12 +300,12 @@ int RedisReadOperation::ApplyIndex(int32_t index, const int32_t len) {
   return index;
 }
 
-Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, Timestamp timestamp) {
+Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
 
   RedisDataType type;
   string value;
 
-  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
   if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -316,11 +316,11 @@ Status RedisReadOperation::ExecuteGet(rocksdb::DB *rocksdb, Timestamp timestamp)
   return Status::OK();
 }
 
-Status RedisReadOperation::ExecuteStrLen(rocksdb::DB *rocksdb, Timestamp timestamp) {
+Status RedisReadOperation::ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
   RedisDataType type;
   string value;
 
-  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
   if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -331,11 +331,11 @@ Status RedisReadOperation::ExecuteStrLen(rocksdb::DB *rocksdb, Timestamp timesta
   return Status::OK();
 }
 
-Status RedisReadOperation::ExecuteExists(rocksdb::DB *rocksdb, Timestamp timestamp) {
+Status RedisReadOperation::ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
   RedisDataType type;
   string value;
 
-  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
   if (type == REDIS_TYPE_STRING || type == REDIS_TYPE_HASH) {
     response_.set_code(RedisResponsePB_RedisStatusCode_OK);
@@ -351,12 +351,11 @@ Status RedisReadOperation::ExecuteExists(rocksdb::DB *rocksdb, Timestamp timesta
 }
 
 
-
-Status RedisReadOperation::ExecuteGetRange(rocksdb::DB *rocksdb, Timestamp timestamp) {
+Status RedisReadOperation::ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
   RedisDataType type;
   string value;
 
-  RETURN_NOT_OK(GetRedisValue(rocksdb, timestamp, request_.key_value(), &type, &value));
+  RETURN_NOT_OK(GetRedisValue(rocksdb, hybrid_time, request_.key_value(), &type, &value));
 
   if (IsWrongType(RedisDataType::REDIS_TYPE_STRING, type, &response_)) {
     // We've already set the error code in the response.
@@ -486,7 +485,7 @@ DocPath YSQLWriteOperation::DocPathToLock() const {
 }
 
 Status YSQLWriteOperation::IsConditionSatisfied(
-    const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const Timestamp& timestamp,
+    const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
     bool* should_apply, std::unique_ptr<YSQLRowBlock>* rowblock) {
   // Prepare the projection schema to scan the docdb for the row.
   YSQLScanSpec spec(doc_key_);
@@ -499,7 +498,7 @@ Status YSQLWriteOperation::IsConditionSatisfied(
 
   // Scan docdb for the row.
   YSQLValueMap value_map;
-  DocRowwiseIterator iterator(projection, schema_, rocksdb, timestamp);
+  DocRowwiseIterator iterator(projection, schema_, rocksdb, hybrid_time);
   RETURN_NOT_OK(iterator.Init(spec));
   if (iterator.HasNext()) {
     RETURN_NOT_OK(iterator.NextRow(spec, &value_map));
@@ -531,12 +530,12 @@ Status YSQLWriteOperation::IsConditionSatisfied(
 }
 
 Status YSQLWriteOperation::Apply(
-    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) {
+    DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
 
   bool should_apply = true;
   if (request_.has_if_condition()) {
     RETURN_NOT_OK(IsConditionSatisfied(
-        request_.if_condition(), rocksdb, timestamp, &should_apply, &rowblock_));
+        request_.if_condition(), rocksdb, hybrid_time, &should_apply, &rowblock_));
   }
 
   if (should_apply) {
@@ -596,7 +595,7 @@ YSQLReadOperation::YSQLReadOperation(const YSQLReadRequestPB& request) : request
 }
 
 Status YSQLReadOperation::Execute(
-    rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
+    rocksdb::DB *rocksdb, const HybridTime& hybrid_time, const Schema& schema,
     YSQLRowBlock* rowblock) {
 
   if (request_.has_limit() && request_.limit() == 0) {
@@ -637,7 +636,7 @@ Status YSQLReadOperation::Execute(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
   // Scan docdb for the rows.
-  DocRowwiseIterator iterator(projection, schema, rocksdb, timestamp);
+  DocRowwiseIterator iterator(projection, schema, rocksdb, hybrid_time);
   RETURN_NOT_OK(iterator.Init(spec));
   while (iterator.HasNext()) {
     RETURN_NOT_OK(iterator.NextBlock(spec, rowblock));

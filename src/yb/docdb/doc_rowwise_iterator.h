@@ -12,7 +12,7 @@
 #include "yb/common/iterator.h"
 #include "yb/common/rowblock.h"
 #include "yb/common/scan_spec.h"
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/ysql_scanspec.h"
 #include "yb/util/status.h"
@@ -28,7 +28,7 @@ class DocRowwiseIterator : public RowwiseIterator {
   DocRowwiseIterator(const Schema &projection,
                      const Schema &schema,
                      rocksdb::DB *db,
-                     Timestamp timestamp = Timestamp::kMax,
+                     HybridTime hybrid_time = HybridTime::kMax,
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
   virtual ~DocRowwiseIterator();
 
@@ -73,7 +73,7 @@ class DocRowwiseIterator : public RowwiseIterator {
   // The schema for all columns, not just the columns we're scanning.
   const Schema& schema_;
 
-  Timestamp timestamp_;
+  HybridTime hybrid_time_;
   rocksdb::DB* const db_;
 
   // A copy of the exclusive upper bound key of the scan range (if any).
@@ -92,7 +92,7 @@ class DocRowwiseIterator : public RowwiseIterator {
   mutable bool done_;
 
   // HasNext sets this to the the subdocument key corresponding to the top of the document
-  // (document key and a generation timestamp).
+  // (document key and a generation hybrid time).
   mutable SubDocKey subdoc_key_;
 
   // Used for keeping track of errors that happen in HasNext. Returned

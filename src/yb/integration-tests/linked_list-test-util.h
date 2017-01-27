@@ -59,7 +59,7 @@ static const char* const kUpdatedColumnName = "updated";
 static const int64_t kNoSnapshot = -1;
 static const int64_t kNoParticularCountExpected = -1;
 
-// Vector of snapshot timestamp, count pairs.
+// Vector of snapshot hybrid_time, count pairs.
 typedef vector<pair<uint64_t, int64_t> > SnapsAndCounts;
 
 // Provides methods for writing data and reading it back in such a way that
@@ -100,16 +100,16 @@ class LinkedListTester {
       int num_samples,
       int64_t *written_count);
 
-  // Variant of VerifyLinkedListRemote that verifies at the specified snapshot timestamp.
+  // Variant of VerifyLinkedListRemote that verifies at the specified snapshot hybrid_time.
   CHECKED_STATUS VerifyLinkedListAtSnapshotRemote(
-      const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
+      const uint64_t snapshot_hybrid_time, const int64_t expected, const bool log_errors,
       const bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
       int64_t* verified_count) {
-    LOG(INFO) << __func__ << ": snapshot_timestamp=" << snapshot_timestamp
+    LOG(INFO) << __func__ << ": snapshot_hybrid_time=" << snapshot_hybrid_time
                           << ", latest_at_leader=" << latest_at_leader
                           << ", expected=" << expected
                           << ", log_errors=" << log_errors;
-    return VerifyLinkedListRemote(snapshot_timestamp,
+    return VerifyLinkedListRemote(snapshot_hybrid_time,
                                   expected,
                                   log_errors,
                                   latest_at_leader,
@@ -117,7 +117,7 @@ class LinkedListTester {
                                   verified_count);
   }
 
-  // Variant of VerifyLinkedListRemote that verifies without specifying a snapshot timestamp.
+  // Variant of VerifyLinkedListRemote that verifies without specifying a snapshot hybrid_time.
   CHECKED_STATUS VerifyLinkedListNoSnapshotRemote(const int64_t expected,
                                           const bool log_errors,
                                           const bool latest_at_leader,
@@ -133,7 +133,7 @@ class LinkedListTester {
   // Run the verify step on a table with RPCs. Calls the provided callback 'cb' once during
   // verification to test scanner fault tolerance.
   CHECKED_STATUS VerifyLinkedListRemote(
-      const uint64_t snapshot_timestamp, const int64_t expected, const bool log_errors,
+      const uint64_t snapshot_hybrid_time, const int64_t expected, const bool log_errors,
       bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
       int64_t* verified_count);
 
@@ -178,7 +178,7 @@ class LinkedListTester {
   const bool enable_mutation_;
   HdrHistogram latency_histogram_;
   std::shared_ptr<client::YBClient> client_;
-  SnapsAndCounts sampled_timestamps_and_counts_;
+  SnapsAndCounts sampled_hybrid_times_and_counts_;
 
  private:
   CHECKED_STATUS ReturnOk(const std::string& str) { return Status::OK(); }
@@ -241,7 +241,7 @@ class LinkedListChainGenerator {
   DISALLOW_COPY_AND_ASSIGN(LinkedListChainGenerator);
 };
 
-// A thread that updates the timestamps of rows whose keys are put in its BlockingQueue.
+// A thread that updates the hybrid_times of rows whose keys are put in its BlockingQueue.
 class ScopedRowUpdater {
  public:
 
@@ -445,14 +445,14 @@ Status LinkedListTester::LoadLinkedList(
     int num_samples,
     int64_t *written_count) {
 
-  sampled_timestamps_and_counts_.clear();
+  sampled_hybrid_times_and_counts_.clear();
   std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name_, &table),
                         "Could not open table " + table_name_);
 
-  // Instantiate a hybrid clock so that we can collect timestamps since we're running the
+  // Instantiate a hybrid clock so that we can collect hybrid_times since we're running the
   // tablet servers in an external mini cluster.
-  // TODO when they become available (KUDU-420), use client-propagated timestamps
+  // TODO when they become available (KUDU-420), use client-propagated hybrid_times
   // instead of reading from the clock directly. This will allow to run this test
   // against a "real" cluster and not force the client to be synchronized.
   scoped_refptr<server::Clock> ht_clock(new server::HybridClock());
@@ -490,11 +490,11 @@ Status LinkedListTester::LoadLinkedList(
 
     MonoTime now = MonoTime::Now(MonoTime::COARSE);
     if (next_sample.ComesBefore(now)) {
-      Timestamp now = ht_clock->Now();
-      sampled_timestamps_and_counts_.push_back(
+      HybridTime now = ht_clock->Now();
+      sampled_hybrid_times_and_counts_.push_back(
           pair<uint64_t, int64_t>(now.ToUint64(), *written_count));
       next_sample.AddDelta(sample_interval);
-      LOG(INFO) << "Sample at HT timestamp: " << now.ToString()
+      LOG(INFO) << "Sample at HT hybrid_time: " << now.ToString()
                 << " Inserted count: " << *written_count;
     }
     if (deadline.ComesBefore(now)) {
@@ -572,13 +572,13 @@ static void VerifyNoDuplicateEntries(const std::vector<int64_t>& ints, int* erro
 }
 
 Status LinkedListTester::VerifyLinkedListRemote(
-    const uint64_t snapshot_timestamp, const int64_t expected, bool log_errors,
+    const uint64_t snapshot_hybrid_time, const int64_t expected, bool log_errors,
     bool latest_at_leader, const std::function<Status(const std::string&)>& cb,
     int64_t* verified_count) {
-  const bool is_latest = snapshot_timestamp == kNoSnapshot;
+  const bool is_latest = snapshot_hybrid_time == kNoSnapshot;
   LOG(INFO) << __func__
-            << ": snapshot_timestamp="
-            << (is_latest ? "LATEST" : std::to_string(snapshot_timestamp))
+            << ": snapshot_hybrid_time="
+            << (is_latest ? "LATEST" : std::to_string(snapshot_hybrid_time))
             << ", expected=" << expected
             << ", log_errors=" << log_errors
             << ", latest_at_leader=" << latest_at_leader;
@@ -589,7 +589,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
   if (is_latest) {
     snapshot_str = "LATEST";
   } else {
-    snapshot_str = server::HybridClock::StringifyTimestamp(Timestamp(snapshot_timestamp));
+    snapshot_str = server::HybridClock::StringifyHybridTime(HybridTime(snapshot_hybrid_time));
   }
 
   client::YBScanner scanner(table.get());
@@ -611,7 +611,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
   } else {
     RETURN_NOT_OK(scanner.SetReadMode(client::YBScanner::READ_AT_SNAPSHOT));
     RETURN_NOT_OK(scanner.SetFaultTolerant());
-    RETURN_NOT_OK(scanner.SetSnapshotRaw(snapshot_timestamp));
+    RETURN_NOT_OK(scanner.SetSnapshotRaw(snapshot_hybrid_time));
   }
 
   LOG(INFO) << "Verifying Snapshot: " << snapshot_str << " Expected Rows: " << expected;
@@ -629,7 +629,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
   while (scanner.HasMoreRows()) {
     // If we're doing a snapshot scan with a big enough cluster, call the callback on the scanner's
     // tserver. Do this only once.
-    if (snapshot_timestamp != kNoSnapshot && !cb_called) {
+    if (snapshot_hybrid_time != kNoSnapshot && !cb_called) {
       client::YBTabletServer* kts_ptr;
       RETURN_NOT_OK(scanner.GetCurrentServer(&kts_ptr));
       gscoped_ptr<client::YBTabletServer> kts(kts_ptr);
@@ -648,9 +648,9 @@ Status LinkedListTester::VerifyLinkedListRemote(
 
       // For non-snapshot reads we also verify that all rows were updated. We don't
       // for snapshot reads as updates are performed by their own thread. This means
-      // that there is no guarantee that, for any snapshot timestamp that comes before
+      // that there is no guarantee that, for any snapshot hybrid_time that comes before
       // all writes are completed, all rows will be updated.
-      if (snapshot_timestamp == kNoSnapshot) {
+      if (snapshot_hybrid_time == kNoSnapshot) {
         RETURN_NOT_OK(row.GetBool(2, &updated));
       } else {
         updated = enable_mutation_;
@@ -705,8 +705,8 @@ Status LinkedListTester::VerifyLinkedListLocal(const tablet::Tablet* tablet,
 Status LinkedListTester::WaitAndVerify(
     int seconds_to_run, int64_t expected, bool latest_at_leader,
     const std::function<Status(const std::string&)>& cb) {
-  std::list<pair<int64_t, int64_t> > samples_as_list(sampled_timestamps_and_counts_.begin(),
-                                                     sampled_timestamps_and_counts_.end());
+  std::list<pair<int64_t, int64_t> > samples_as_list(sampled_hybrid_times_and_counts_.begin(),
+                                                     sampled_hybrid_times_and_counts_.end());
 
   int64_t seen = 0;
   bool called = false;
@@ -740,11 +740,11 @@ Status LinkedListTester::WaitAndVerify(
         //
         // The reasoning is the following:
         //
-        // - We know that when we read this snapshot's timestamp the writes had completed, thus
-        //   at timestamp '(*iter).first' any replica should have precisely '(*iter).second' rows.
-        // - We also chose to perform a snapshot scan, which, when passed a timestamp, waits for
-        //   that timestamp to become "clean", i.e. it makes sure that all transactions with lower
-        //   timestamps have completed before it actually performs the scan.
+        // - We know that when we read this snapshot's hybrid_time the writes had completed, thus
+        //   at hybrid_time '(*iter).first' any replica should have precisely '(*iter).second' rows.
+        // - We also chose to perform a snapshot scan, which, when passed a hybrid_time, waits for
+        //   that hybrid_time to become "clean", i.e. it makes sure that all transactions with lower
+        //   hybrid_times have completed before it actually performs the scan.
         //
         // Together these conditions mean that if we don't get the expected rows back something
         // is wrong with the read path or with the write path and we should fail immediately.

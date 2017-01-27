@@ -1408,7 +1408,7 @@ TEST_F(RaftConsensusITest, TestKUDU_597) {
 void RaftConsensusITest::AddOp(const OpId& id, ConsensusRequestPB* req) {
   ReplicateMsg* msg = req->add_ops();
   msg->mutable_id()->CopyFrom(id);
-  msg->set_timestamp(id.index());
+  msg->set_hybrid_time(id.index());
   msg->set_op_type(consensus::WRITE_OP);
   WriteRequestPB* write_req = msg->mutable_write_request();
   CHECK_OK(SchemaToPB(schema_, write_req->mutable_schema()));

@@ -215,8 +215,8 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
                                  PrepareState prep_state);
 
   // Sets the timestamp on the response PB, if there is one.
-  void SetResponseTimestamp(TransactionState* transaction_state,
-                            const Timestamp& timestamp);
+  void SetResponseHybridTime(TransactionState* transaction_state,
+                            const HybridTime& hybrid_time);
   TransactionTracker* const txn_tracker_;
   consensus::Consensus* const consensus_;
   log::Log* const log_;
@@ -254,7 +254,7 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver>,
 
   // The system monotonic time when the operation was prepared.
   // This is used for debugging only, not any actual operation ordering.
-  MicrosecondsInt64 prepare_physical_timestamp_;
+  MicrosecondsInt64 prepare_physical_hybrid_time_;
 
   TableType table_type_;
 

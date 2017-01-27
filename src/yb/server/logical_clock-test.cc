@@ -28,7 +28,7 @@ namespace server {
 class LogicalClockTest : public YBTest {
  public:
   LogicalClockTest()
-      : clock_(LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp)) {
+      : clock_(LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime)) {
   }
 
  protected:
@@ -37,49 +37,49 @@ class LogicalClockTest : public YBTest {
 
 // Test that two subsequent time reads are monotonically increasing.
 TEST_F(LogicalClockTest, TestNow_ValuesIncreaseMonotonically) {
-  const Timestamp now1 = clock_->Now();
-  const Timestamp now2 = clock_->Now();
+  const HybridTime now1 = clock_->Now();
+  const HybridTime now2 = clock_->Now();
   ASSERT_EQ(now1.value() + 1, now2.value());
 }
 
 // Tests that the clock gets updated if the incoming value is higher.
 TEST_F(LogicalClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
-  Timestamp initial = clock_->Now();
-  Timestamp future(initial.value() + 10);
+  HybridTime initial = clock_->Now();
+  HybridTime future(initial.value() + 10);
   ASSERT_OK(clock_->Update(future));
-  Timestamp now = clock_->Now();
+  HybridTime now = clock_->Now();
   // now should be 1 after future
   ASSERT_EQ(initial.value() + 11, now.value());
 }
 
 // Tests that the clock doesn't get updated if the incoming value is lower.
 TEST_F(LogicalClockTest, TestUpdate_LogicalValueDoesNotIncrease) {
-  Timestamp ts(1);
+  HybridTime ht(1);
   // update the clock to 1, the initial value, should do nothing
-  ASSERT_OK(clock_->Update(ts));
-  Timestamp now = clock_->Now();
+  ASSERT_OK(clock_->Update(ht));
+  HybridTime now = clock_->Now();
   ASSERT_EQ(now.value(), 2);
 }
 
 TEST_F(LogicalClockTest, TestWaitUntilAfterIsUnavailable) {
   Status status = clock_->WaitUntilAfter(
-      Timestamp(10), MonoTime::Now(MonoTime::FINE));
+      HybridTime(10), MonoTime::Now(MonoTime::FINE));
   ASSERT_TRUE(status.IsServiceUnavailable());
 }
 
 TEST_F(LogicalClockTest, TestIsAfter) {
-  Timestamp ts1 = clock_->Now();
-  ASSERT_TRUE(clock_->IsAfter(ts1));
+  HybridTime ht1 = clock_->Now();
+  ASSERT_TRUE(clock_->IsAfter(ht1));
 
   // Update the clock in the future, make sure it still
   // handles "IsAfter" properly even when it's running in
   // "logical" mode.
-  Timestamp now_increased = Timestamp(1000);
+  HybridTime now_increased = HybridTime(1000);
   ASSERT_OK(clock_->Update(now_increased));
-  Timestamp ts2 = clock_->Now();
+  HybridTime ht2 = clock_->Now();
 
-  ASSERT_TRUE(clock_->IsAfter(ts1));
-  ASSERT_TRUE(clock_->IsAfter(ts2));
+  ASSERT_TRUE(clock_->IsAfter(ht1));
+  ASSERT_TRUE(clock_->IsAfter(ht2));
 }
 
 }  // namespace server

@@ -9,7 +9,7 @@
 #include "rocksdb/table.h"
 #include "rocksdb/util/statistics.h"
 
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
@@ -179,13 +179,13 @@ vector<DocKey> GenRandomDocKeys(RandomNumberGenerator* rng, bool use_hash, int n
 
 vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, bool use_hash, int num_keys) {
   vector<SubDocKey> result;
-  result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), Timestamp((*rng)())));
+  result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), HybridTime((*rng)())));
   for (int iteration = 0; iteration < num_keys; ++iteration) {
     result.push_back(SubDocKey(GenRandomDocKey(rng, use_hash)));
     for (int i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
-      result.back().AppendSubKeysAndMaybeTimestamp(GenRandomPrimitiveValue(rng));
+      result.back().AppendSubKeysAndMaybeHybridTime(GenRandomPrimitiveValue(rng));
     }
-    result.back().set_timestamp(Timestamp((*rng)()));
+    result.back().set_hybrid_time(HybridTime((*rng)()));
   }
   return result;
 }
@@ -272,7 +272,7 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
 // ------------------------------------------------------------------------------------------------
 
 DocDBRocksDBFixture::DocDBRocksDBFixture()
-    : retention_policy_(make_shared<FixedTimestampRetentionPolicy>(Timestamp::kMin)) {
+    : retention_policy_(make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin)) {
   InitRocksDBOptions(&rocksdb_options_, "mytablet", rocksdb::CreateDBStatistics(), nullptr);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
@@ -308,9 +308,9 @@ void DocDBRocksDBFixture::DestroyRocksDB() {
 }
 
 rocksdb::Status DocDBRocksDBFixture::WriteToRocksDB(const DocWriteBatch& doc_write_batch) {
-  // We specify Timestamp::kMax to disable timestamp substitution before we write to RocksDB, as
-  // we typically already specify the timestamp while constructing DocWriteBatch.
-  rocksdb::Status status = doc_write_batch.WriteToRocksDBInTest(Timestamp::kMax, write_options_);
+  // We specify HybridTime::kMax to disable hybrid_time substitution before we write to RocksDB, as
+  // we typically already specify the hybrid_time while constructing DocWriteBatch.
+  rocksdb::Status status = doc_write_batch.WriteToRocksDBInTest(HybridTime::kMax, write_options_);
   if (!status.ok()) {
     LOG(ERROR) << "Failed writing to RocksDB: " << status.ToString();
   }
@@ -318,17 +318,17 @@ rocksdb::Status DocDBRocksDBFixture::WriteToRocksDB(const DocWriteBatch& doc_wri
 }
 
 
-void DocDBRocksDBFixture::SetHistoryCutoffTimestamp(Timestamp history_cutoff) {
-  down_cast<FixedTimestampRetentionPolicy*>(
+void DocDBRocksDBFixture::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
+  down_cast<FixedHybridTimeRetentionPolicy*>(
       retention_policy_.get())->SetHistoryCutoff(history_cutoff);
 }
 
-void DocDBRocksDBFixture::CompactHistoryBefore(Timestamp history_cutoff) {
-  LOG(INFO) << "Compacting history before timestamp " << history_cutoff.ToDebugString();
-  SetHistoryCutoffTimestamp(history_cutoff);
+void DocDBRocksDBFixture::CompactHistoryBefore(HybridTime history_cutoff) {
+  LOG(INFO) << "Compacting history before hybrid_time " << history_cutoff.ToDebugString();
+  SetHistoryCutoffHybridTime(history_cutoff);
   FlushRocksDB();
   FullyCompactDB(rocksdb_.get());
-  SetHistoryCutoffTimestamp(Timestamp::kMin);
+  SetHistoryCutoffHybridTime(HybridTime::kMin);
 }
 
 string DocDBRocksDBFixture::DocDBDebugDumpToStr() {
@@ -347,7 +347,7 @@ string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
 
 void DocDBRocksDBFixture::SetPrimitive(const DocPath& doc_path,
                                        const Value& value,
-                                       const Timestamp timestamp,
+                                       const HybridTime hybrid_time,
                                        DocWriteBatch* doc_write_batch) {
   DocWriteBatch local_doc_write_batch(rocksdb_.get());
   if (doc_write_batch == nullptr) {
@@ -357,7 +357,7 @@ void DocDBRocksDBFixture::SetPrimitive(const DocPath& doc_path,
   }
 
   doc_write_batch->Clear();
-  ASSERT_OK(doc_write_batch->SetPrimitive(doc_path, value, timestamp));
+  ASSERT_OK(doc_write_batch->SetPrimitive(doc_path, value, hybrid_time));
   ASSERT_OK(WriteToRocksDB(*doc_write_batch));
 }
 
@@ -393,7 +393,7 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
 
   // This is done so we can use VerifySnapshot with in_mem_docdb_. That should preform a "latest"
   // read.
-  in_mem_docdb_.SetCaptureTimestamp(Timestamp::kMax);
+  in_mem_docdb_.SetCaptureHybridTime(HybridTime::kMax);
 }
 
 void DocDBLoadGenerator::PerformOperation(bool compact_history) {
@@ -433,8 +433,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 
   const DocPath doc_path(encoded_doc_key, subkeys);
   const auto value = GenRandomPrimitiveValue(&random_);
-  const Timestamp timestamp(current_iteration);
-  last_operation_ts_ = timestamp;
+  const HybridTime hybrid_time(current_iteration);
+  last_operation_ht_ = hybrid_time;
 
   if (random_() % deletion_chance_ == 0) {
     is_deletion = true;
@@ -445,13 +445,13 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 
   if (is_deletion) {
     DOCDB_DEBUG_LOG("Iteration $0: deleting doc path $1", current_iteration, doc_path.ToString());
-    ASSERT_OK(dwb.DeleteSubDoc(doc_path, timestamp));
+    ASSERT_OK(dwb.DeleteSubDoc(doc_path, hybrid_time));
     ASSERT_OK(in_mem_docdb_.DeleteSubDoc(doc_path));
   } else {
     DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
                     current_iteration, doc_path.ToString(), value.ToString());
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, value));
-    const auto set_primitive_status = dwb.SetPrimitive(doc_path, value, timestamp);
+    const auto set_primitive_status = dwb.SetPrimitive(doc_path, value, hybrid_time);
     if (!set_primitive_status.ok()) {
       DocDBDebugDump(rocksdb(), std::cerr);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
@@ -471,7 +471,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     if (do_compaction_now) {
       // This will happen between the two iterations of the loop. If compact_history is false,
       // there is only one iteration and the compaction does not happen.
-      fixture_->CompactHistoryBefore(timestamp);
+      fixture_->CompactHistoryBefore(hybrid_time);
     }
     SubDocument doc_from_rocksdb;
     bool doc_found_in_rocksdb = false;
@@ -496,29 +496,29 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   }
 
   if (current_iteration % verification_frequency_ == 0) {
-    // in_mem_docdb_ has its captured_at() timestamp set to Timestamp::kMax, so the following will
-    // result in checking the latest state of DocDB stored in RocksDB against in_mem_docdb_.
+    // in_mem_docdb_ has its captured_at() hybrid_time set to HybridTime::kMax, so the following
+    // will result in checking the latest state of DocDB stored in RocksDB against in_mem_docdb_.
     NO_FATALS(VerifySnapshot(in_mem_docdb_))
         << "Discrepancy between RocksDB-based and in-memory DocDB state found after iteration "
         << current_iteration;
   }
 }
 
-Timestamp DocDBLoadGenerator::last_operation_ts() const {
-  CHECK_NE(last_operation_ts_, Timestamp::kInvalidTimestamp);
-  return last_operation_ts_;
+HybridTime DocDBLoadGenerator::last_operation_ht() const {
+  CHECK_NE(last_operation_ht_, HybridTime::kInvalidHybridTime);
+  return last_operation_ht_;
 }
 
 void DocDBLoadGenerator::FlushRocksDB() {
-  LOG(INFO) << "Forcing a RocksDB flush after timestamp " << last_operation_ts().value();
+  LOG(INFO) << "Forcing a RocksDB flush after hybrid_time " << last_operation_ht().value();
   NO_FATALS(fixture_->FlushRocksDB());
 }
 
 void DocDBLoadGenerator::CaptureDocDbSnapshot() {
   // Capture snapshots from time to time.
   docdb_snapshots_.emplace_back();
-  docdb_snapshots_.back().CaptureAt(rocksdb(), Timestamp::kMax);
-  docdb_snapshots_.back().SetCaptureTimestamp(last_operation_ts_);
+  docdb_snapshots_.back().CaptureAt(rocksdb(), HybridTime::kMax);
+  docdb_snapshots_.back().SetCaptureHybridTime(last_operation_ht_);
 }
 
 void DocDBLoadGenerator::VerifyOldestSnapshot() {
@@ -527,32 +527,32 @@ void DocDBLoadGenerator::VerifyOldestSnapshot() {
   }
 }
 
-void DocDBLoadGenerator::CheckIfOldestSnapshotIsStillValid(const Timestamp cleanup_ts) {
+void DocDBLoadGenerator::CheckIfOldestSnapshotIsStillValid(const HybridTime cleanup_ht) {
   if (docdb_snapshots_.empty()) {
     return;
   }
 
-  const InMemDocDbState* latest_snapshot_before_ts = nullptr;
+  const InMemDocDbState* latest_snapshot_before_ht = nullptr;
   for (const auto& snapshot : docdb_snapshots_) {
-    const Timestamp snap_ts = snapshot.captured_at();
-    if (snap_ts.CompareTo(cleanup_ts) < 0 &&
-        (latest_snapshot_before_ts == nullptr ||
-         latest_snapshot_before_ts->captured_at().CompareTo(snap_ts) < 0)) {
-      latest_snapshot_before_ts = &snapshot;
+    const HybridTime snap_ht = snapshot.captured_at();
+    if (snap_ht.CompareTo(cleanup_ht) < 0 &&
+        (latest_snapshot_before_ht == nullptr ||
+         latest_snapshot_before_ht->captured_at().CompareTo(snap_ht) < 0)) {
+      latest_snapshot_before_ht = &snapshot;
     }
   }
 
-  if (latest_snapshot_before_ts == nullptr) {
+  if (latest_snapshot_before_ht == nullptr) {
     return;
   }
 
-  const auto& snapshot = *latest_snapshot_before_ts;
-  LOG(INFO) << "Checking whether snapshot at timestamp "
+  const auto& snapshot = *latest_snapshot_before_ht;
+  LOG(INFO) << "Checking whether snapshot at hybrid_time "
             << snapshot.captured_at().ToDebugString()
-            << " is no longer valid after history cleanup for timestamps before "
-            << cleanup_ts.ToDebugString()
-            << ", last operation timestamp: " << last_operation_ts() << ".";
-  RecordSnapshotDivergence(snapshot, cleanup_ts);
+            << " is no longer valid after history cleanup for hybrid_times before "
+            << cleanup_ht.ToDebugString()
+            << ", last operation hybrid_time: " << last_operation_ht() << ".";
+  RecordSnapshotDivergence(snapshot, cleanup_ht);
 }
 
 void DocDBLoadGenerator::VerifyRandomDocDbSnapshot() {
@@ -562,11 +562,11 @@ void DocDBLoadGenerator::VerifyRandomDocDbSnapshot() {
   }
 }
 
-void DocDBLoadGenerator::RemoveSnapshotsBefore(Timestamp ts) {
+void DocDBLoadGenerator::RemoveSnapshotsBefore(HybridTime ht) {
   docdb_snapshots_.erase(
       std::remove_if(docdb_snapshots_.begin(),
                      docdb_snapshots_.end(),
-                     [=](const InMemDocDbState& entry) { return entry.captured_at() < ts; }),
+                     [=](const InMemDocDbState& entry) { return entry.captured_at() < ht; }),
       docdb_snapshots_.end());
   // Double-check that there is no state corruption in any of the snapshots. Such corruption
   // happened when I (Mikhail) initially forgot to add the "erase" call above (as per the
@@ -588,21 +588,21 @@ const InMemDocDbState& DocDBLoadGenerator::GetOldestSnapshot() {
 }
 
 void DocDBLoadGenerator::VerifySnapshot(const InMemDocDbState& snapshot) {
-  const Timestamp snap_ts = snapshot.captured_at();
+  const HybridTime snap_ht = snapshot.captured_at();
   InMemDocDbState flashback_state;
 
   string details_msg;
   {
     stringstream details_ss;
-    details_ss << "After operation at timestamp " << last_operation_ts().value() << ": "
-        << "performing a flashback query at timestamp " << snap_ts.ToDebugString() << " "
-        << "(last operation's timestamp: " << last_operation_ts() << ") "
-        << "and verifying it against the snapshot captured at that timestamp.";
+    details_ss << "After operation at hybrid_time " << last_operation_ht().value() << ": "
+        << "performing a flashback query at hybrid_time " << snap_ht.ToDebugString() << " "
+        << "(last operation's hybrid_time: " << last_operation_ht() << ") "
+        << "and verifying it against the snapshot captured at that hybrid_time.";
     details_msg = details_ss.str();
   }
   LOG(INFO) << details_msg;
 
-  flashback_state.CaptureAt(rocksdb(), snap_ts);
+  flashback_state.CaptureAt(rocksdb(), snap_ht);
   const bool is_match = flashback_state.EqualsAndLogDiff(snapshot);
   if (!is_match) {
     LOG(ERROR) << details_msg << "\nDOCDB SNAPSHOT VERIFICATION FAILED, DOCDB STATE:";
@@ -612,15 +612,15 @@ void DocDBLoadGenerator::VerifySnapshot(const InMemDocDbState& snapshot) {
 }
 
 void DocDBLoadGenerator::RecordSnapshotDivergence(const InMemDocDbState &snapshot,
-                                                  const Timestamp cleanup_ts) {
+                                                  const HybridTime cleanup_ht) {
   InMemDocDbState flashback_state;
-  const auto snap_ts = snapshot.captured_at();
-  flashback_state.CaptureAt(rocksdb(), snap_ts);
+  const auto snap_ht = snapshot.captured_at();
+  flashback_state.CaptureAt(rocksdb(), snap_ht);
   if (!flashback_state.EqualsAndLogDiff(snapshot, /* log_diff = */ false)) {
-    // Implicitly converting timestamps to ints. That's OK, because we're using small enough integer
-    // values for timestamps.
-    divergent_snapshot_ts_and_cleanup_ts_.emplace_back(snapshot.captured_at().value(),
-                                                       cleanup_ts.value());
+    // Implicitly converting hybrid_times to ints. That's OK, because we're using small enough
+    // integer values for hybrid_times.
+    divergent_snapshot_ht_and_cleanup_ht_.emplace_back(snapshot.captured_at().value(),
+                                                       cleanup_ht.value());
   }
 }
 

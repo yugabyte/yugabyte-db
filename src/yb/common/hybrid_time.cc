@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/util/faststring.h"
 #include "yb/util/memcmpable_varint.h"
@@ -27,37 +27,37 @@ using strings::Substitute;
 
 namespace yb {
 
-const Timestamp Timestamp::kMin(MathLimits<Timestamp::val_type>::kMin);
-const Timestamp Timestamp::kMax(MathLimits<Timestamp::val_type>::kMax);
-const Timestamp Timestamp::kInitialTimestamp(MathLimits<Timestamp::val_type>::kMin + 1);
-const Timestamp Timestamp::kInvalidTimestamp(MathLimits<Timestamp::val_type>::kMax - 1);
+const HybridTime HybridTime::kMin(MathLimits<HybridTime::val_type>::kMin);
+const HybridTime HybridTime::kMax(MathLimits<HybridTime::val_type>::kMax);
+const HybridTime HybridTime::kInitialHybridTime(MathLimits<HybridTime::val_type>::kMin + 1);
+const HybridTime HybridTime::kInvalidHybridTime(MathLimits<HybridTime::val_type>::kMax - 1);
 
-bool Timestamp::DecodeFrom(Slice *input) {
+bool HybridTime::DecodeFrom(Slice *input) {
   return GetMemcmpableVarint64(input, &v);
 }
 
-void Timestamp::EncodeTo(faststring *dst) const {
+void HybridTime::EncodeTo(faststring *dst) const {
   PutMemcmpableVarint64(dst, v);
 }
 
-string Timestamp::ToString() const {
+string HybridTime::ToString() const {
   return strings::Substitute("$0", v);
 }
 
-string Timestamp::ToDebugString() const {
-  return Substitute("$0($1)", kTimestampDebugStrPrefix,
+string HybridTime::ToDebugString() const {
+  return Substitute("$0($1)", kHybridTimeDebugStrPrefix,
                     v == kMax.v ? "Max" : ToString());
 }
 
-uint64_t Timestamp::ToUint64() const {
+uint64_t HybridTime::ToUint64() const {
   return v;
 }
 
-Status Timestamp::FromUint64(uint64_t value) {
+Status HybridTime::FromUint64(uint64_t value) {
   v = value;
   return Status::OK();
 }
 
-const char* const Timestamp::kTimestampDebugStrPrefix = "TS";
+const char* const HybridTime::kHybridTimeDebugStrPrefix = "HT";
 
 }  // namespace yb

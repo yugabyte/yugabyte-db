@@ -107,7 +107,7 @@ Status MemRowSet::DebugDump(vector<string> *lines) {
   while (iter->HasNext()) {
     MRSRow row = iter->GetCurrentRow();
     LOG_STRING(INFO, lines)
-      << "@" << row.insertion_timestamp() << ": row "
+      << "@" << row.insertion_hybrid_time() << ": row "
       << schema_.DebugRow(row)
       << " mutations=" << Mutation::StringifyMutationList(schema_, row.header_->redo_head)
       << std::endl;
@@ -118,7 +118,7 @@ Status MemRowSet::DebugDump(vector<string> *lines) {
 }
 
 
-Status MemRowSet::Insert(Timestamp timestamp,
+Status MemRowSet::Insert(HybridTime hybrid_time,
                          const ConstContiguousRow& row,
                          const OpId& op_id) {
   CHECK(row.schema()->has_column_ids());
@@ -146,13 +146,13 @@ Status MemRowSet::Insert(Timestamp timestamp,
       }
 
       // Insert a "reinsert" mutation.
-      return Reinsert(timestamp, row, &ms_row);
+      return Reinsert(hybrid_time, row, &ms_row);
     }
 
     // Copy the non-encoded key onto the stack since we need
     // to mutate it when we relocate its Slices into our arena.
     DEFINE_MRSROW_ON_STACK(this, mrsrow, mrsrow_slice);
-    mrsrow.header_->insertion_timestamp = timestamp;
+    mrsrow.header_->insertion_hybrid_time = hybrid_time;
     mrsrow.header_->redo_head = nullptr;
     RETURN_NOT_OK(mrsrow.CopyRow(row, arena_.get()));
 
@@ -167,7 +167,7 @@ Status MemRowSet::Insert(Timestamp timestamp,
   return Status::OK();
 }
 
-Status MemRowSet::Reinsert(Timestamp timestamp, const ConstContiguousRow& row, MRSRow *ms_row) {
+Status MemRowSet::Reinsert(HybridTime hybrid_time, const ConstContiguousRow& row, MRSRow *ms_row) {
   DCHECK_SCHEMA_EQ(schema_, *row.schema());
 
   // TODO(perf): This path makes some unnecessary copies that could be reduced,
@@ -185,7 +185,7 @@ Status MemRowSet::Reinsert(Timestamp timestamp, const ConstContiguousRow& row, M
   encoder.SetToReinsert(row_copy.row_slice());
 
   // Move the REINSERT mutation itself into our Arena.
-  Mutation *mut = Mutation::CreateInArena(arena_.get(), timestamp, encoder.as_changelist());
+  Mutation *mut = Mutation::CreateInArena(arena_.get(), hybrid_time, encoder.as_changelist());
 
   // Append the mutation into the row's mutation list.
   // This function has "release" semantics which ensures that the memory writes
@@ -195,7 +195,7 @@ Status MemRowSet::Reinsert(Timestamp timestamp, const ConstContiguousRow& row, M
   return Status::OK();
 }
 
-Status MemRowSet::MutateRow(Timestamp timestamp,
+Status MemRowSet::MutateRow(HybridTime hybrid_time,
                             const RowSetKeyProbe &probe,
                             const RowChangeList &delta,
                             const consensus::OpId& op_id,
@@ -219,7 +219,7 @@ Status MemRowSet::MutateRow(Timestamp timestamp,
     }
 
     // Append to the linked list of mutations for this row.
-    Mutation *mut = Mutation::CreateInArena(arena_.get(), timestamp, delta);
+    Mutation *mut = Mutation::CreateInArena(arena_.get(), hybrid_time, delta);
 
     // This function has "release" semantics which ensures that the memory writes
     // for the mutation are fully published before any concurrent reader sees
@@ -471,7 +471,7 @@ Status MemRowSet::Iterator::FetchRows(RowBlock* dst, size_t* fetched) {
     iter_->GetCurrentEntry(&k, &v);
     MRSRow row(memrowset_.get(), v);
 
-    if (mvcc_snap_.IsCommitted(row.insertion_timestamp())) {
+    if (mvcc_snap_.IsCommitted(row.insertion_hybrid_time())) {
       if (has_upper_bound() && out_of_bounds(k)) {
         state_ = kFinished;
         break;
@@ -515,7 +515,7 @@ Status MemRowSet::Iterator::ApplyMutationsToProjectedRow(
   for (const Mutation *mut = mutation_head;
        mut != nullptr;
        mut = mut->next_) {
-    if (!mvcc_snap_.IsCommitted(mut->timestamp_)) {
+    if (!mvcc_snap_.IsCommitted(mut->hybrid_time_)) {
       // Transaction which wasn't committed yet in the reader's snapshot.
       continue;
     }
@@ -569,14 +569,14 @@ Status MemRowSet::Iterator::GetCurrentRow(RowBlockRow* dst_row,
                                           Arena* row_arena,
                                           const Mutation** redo_head,
                                           Arena* mutation_arena,
-                                          Timestamp* insertion_timestamp) {
+                                          HybridTime* insertion_hybrid_time) {
 
   DCHECK(redo_head != nullptr);
 
   // Get the row from the MemRowSet. It may have a different schema from the iterator projection.
   const MRSRow src_row = GetCurrentRow();
 
-  *insertion_timestamp = src_row.insertion_timestamp();
+  *insertion_hybrid_time = src_row.insertion_hybrid_time();
 
   // Project the RowChangeList if required
   *redo_head = src_row.redo_head();
@@ -594,7 +594,7 @@ Status MemRowSet::Iterator::GetCurrentRow(RowBlockRow* dst_row,
       if (delta_buf_.size() == 0) continue;
 
       Mutation *mutation = Mutation::CreateInArena(mutation_arena,
-                                                   mut->timestamp(),
+                                                   mut->hybrid_time(),
                                                    RowChangeList(delta_buf_));
       if (prev_redo != nullptr) {
         prev_redo->set_next(mutation);

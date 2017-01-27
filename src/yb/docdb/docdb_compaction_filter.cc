@@ -23,7 +23,7 @@ namespace docdb {
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBCompactionFilter::DocDBCompactionFilter(Timestamp history_cutoff, bool is_full_compaction)
+DocDBCompactionFilter::DocDBCompactionFilter(HybridTime history_cutoff, bool is_full_compaction)
     : history_cutoff_(history_cutoff),
       is_full_compaction_(is_full_compaction),
       is_first_key_value_(true),
@@ -66,51 +66,51 @@ bool DocDBCompactionFilter::Filter(int level,
         << "First key in compaction is expected to only have the DocKey component: "
         << subdoc_key.ToString()
         << ", is_full_compaction: " << this->is_full_compaction_;
-    CHECK_EQ(0, overwrite_ts_.size());
+    CHECK_EQ(0, overwrite_ht_.size());
     is_first_key_value_ = false;
   }
 
   const size_t num_shared_components = prev_subdoc_key_.NumSharedPrefixComponents(subdoc_key);
 
-  // Remove overwrite timestamps for components that are no longer relevant for the current
+  // Remove overwrite hybrid_times for components that are no longer relevant for the current
   // SubDocKey.
-  overwrite_ts_.resize(min(overwrite_ts_.size(), num_shared_components));
+  overwrite_ht_.resize(min(overwrite_ht_.size(), num_shared_components));
 
-  const Timestamp ts = subdoc_key.timestamp();
+  const HybridTime ht = subdoc_key.hybrid_time();
 
-  // We're comparing the timestamp in this key with the _previous_ stack top of overwrite_ts_,
-  // after truncating the previous timestamp to the number of components in the common prefix
+  // We're comparing the hybrid_time in this key with the _previous_ stack top of overwrite_ht_,
+  // after truncating the previous hybrid_time to the number of components in the common prefix
   // of previous and current key.
   //
   // Example (history_cutoff_ = 12):
   // --------------------------------------------------------------------------------------------
-  // Key          overwrite_ts_ stack and relevant notes
+  // Key          overwrite_ht_ stack and relevant notes
   // --------------------------------------------------------------------------------------------
-  // k1 T10       [MinTS]
+  // k1 T10       [MinHT]
   // k1 T5        [T10]
   // k1 col1 T11  [T10, T11]
   // k1 col1 T7   The stack does not get truncated (shared prefix length is 2), so
-  //              prev_overwrite_ts = 11. Removing this entry because 7 < 11.
-  // k1 col2 T9   Truncating the stack to [T10], setting prev_overwrite_ts to 10, and therefore
+  //              prev_overwrite_ht = 11. Removing this entry because 7 < 11.
+  // k1 col2 T9   Truncating the stack to [T10], setting prev_overwrite_ht to 10, and therefore
   //              deciding to remove this entry because 9 < 10.
   //
-  const Timestamp prev_overwrite_ts =
-      overwrite_ts_.empty() ? Timestamp::kMin : overwrite_ts_.back();
+  const HybridTime prev_overwrite_ht =
+      overwrite_ht_.empty() ? HybridTime::kMin : overwrite_ht_.back();
 
-  // We only keep entries with timestamp equal to or later than the latest time the subdocument
-  // was fully overwritten or deleted prior to or at the history cutoff timestamp. The intuition
+  // We only keep entries with hybrid_time equal to or later than the latest time the subdocument
+  // was fully overwritten or deleted prior to or at the history cutoff hybrid_time. The intuition
   // is that key/value pairs that were overwritten at or before history cutoff time will not be
   // visible at history cutoff time or any later time anyway.
   //
-  // Furthermore, we only need to update the overwrite timestamp stack in case we have decided to
-  // keep the new entry. Otherwise, the current entry's timestamp ts is less than the previous
-  // overwrite timestamp prev_overwrite_ts, and therefore it does not provide any new information
-  // about key/value pairs that follow being overwritten at a particular timestamp. Another way to
+  // Furthermore, we only need to update the overwrite hybrid_time stack in case we have decided to
+  // keep the new entry. Otherwise, the current entry's hybrid_time ts is less than the previous
+  // overwrite hybrid_time prev_overwrite_ht, and therefore it does not provide any new information
+  // about key/value pairs that follow being overwritten at a particular hybrid_time. Another way to
   // explain this is to look at the logic that follows. If we don't early-exit here while ts is less
-  // than prev_overwrite_ts, we'll end up adding more prev_overwrite_ts values to the overwrite
-  // timestamp stack, and we might as well do that while handling the next key/value pair that does
-  // not get cleaned up the same way as this one.
-  if (ts < prev_overwrite_ts) {
+  // than prev_overwrite_ht, we'll end up adding more prev_overwrite_ht values to the overwrite
+  // hybrid_time stack, and we might as well do that while handling the next key/value pair that
+  // does not get cleaned up the same way as this one.
+  if (ht < prev_overwrite_ht) {
     return true;  // Remove this key/value pair.
   }
 
@@ -118,25 +118,25 @@ bool DocDBCompactionFilter::Filter(int level,
 
   // Every subdocument was fully overwritten at least at the time any of its parents was fully
   // overwritten.
-  while (overwrite_ts_.size() < new_stack_size - 1) {
-    overwrite_ts_.push_back(prev_overwrite_ts);
+  while (overwrite_ht_.size() < new_stack_size - 1) {
+    overwrite_ht_.push_back(prev_overwrite_ht);
   }
 
   // This will happen in case previous key has the same document key and subkeys as the current
-  // key, and the only difference is in the timestamp. We want to replace the timestamp at the top
-  // of the overwrite_ts stack in this case.
-  if (overwrite_ts_.size() == new_stack_size) {
-    overwrite_ts_.pop_back();
+  // key, and the only difference is in the hybrid_time. We want to replace the hybrid_time at the
+  // top of the overwrite_ht stack in this case.
+  if (overwrite_ht_.size() == new_stack_size) {
+    overwrite_ht_.pop_back();
   }
 
-  // See if we found a higher timestamp not exceeding the history cutoff timestamp at which the
+  // See if we found a higher hybrid_time not exceeding the history cutoff hybrid_time at which the
   // subdocument (including a primitive value) rooted at the current key was fully overwritten.
   // In case ts > history_cutoff_, we just keep the parent document's highest known overwrite
-  // timestamp that does not exceed the cutoff timestamp. In that case this entry is obviously
+  // hybrid_time that does not exceed the cutoff hybrid_time. In that case this entry is obviously
   // too new to be garbage-collected.
-  overwrite_ts_.push_back(ts <= history_cutoff_ ? max(prev_overwrite_ts, ts) : prev_overwrite_ts);
+  overwrite_ht_.push_back(ht <= history_cutoff_ ? max(prev_overwrite_ht, ht) : prev_overwrite_ht);
 
-  CHECK_EQ(new_stack_size, overwrite_ts_.size());
+  CHECK_EQ(new_stack_size, overwrite_ht_.size());
   prev_subdoc_key_ = std::move(subdoc_key);
 
   const ValueType value_type = DecodeValueType(existing_value);
@@ -162,11 +162,11 @@ bool DocDBCompactionFilter::Filter(int level,
     *new_value = Value(PrimitiveValue(ValueType::kTombstone)).Encode();
   }
 
-  // Deletes at or below the history cutoff timestamp can always be cleaned up on full (major)
-  // compactions. However, we do need to update the overwrite timestamp stack in this case (as we
+  // Deletes at or below the history cutoff hybrid_time can always be cleaned up on full (major)
+  // compactions. However, we do need to update the overwrite hybrid_time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
-  // more entries appearing at earlier timestamps.
-  return value_type == ValueType::kTombstone && ts <= history_cutoff_ && is_full_compaction_;
+  // more entries appearing at earlier hybrid_times.
+  return value_type == ValueType::kTombstone && ht <= history_cutoff_ && is_full_compaction_;
 }
 
 const char* DocDBCompactionFilter::Name() const {

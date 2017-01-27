@@ -570,10 +570,10 @@ TEST_F(ClientTest, TestScanAtSnapshot) {
   ASSERT_EQ(half_the_rows, count);
 }
 
-// Test scanning at a timestamp in the future compared to the
+// Test scanning at a hybrid_time in the future compared to the
 // local clock. If we are within the clock error, this should wait.
 // If we are far in the future, we should get an error.
-TEST_F(ClientTest, TestScanAtFutureTimestamp) {
+TEST_F(ClientTest, TestScanAtFutureHybridTime) {
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
 
@@ -2586,30 +2586,30 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
                       "replication factor 3. 1 tablet servers are alive");
 }
 
-TEST_F(ClientTest, TestLatestObservedTimestamp) {
-  // Check that a write updates the latest observed timestamp.
-  uint64_t ts0 = client_->GetLatestObservedTimestamp();
-  ASSERT_EQ(ts0, YBClient::kNoTimestamp);
+TEST_F(ClientTest, TestLatestObservedHybridTime) {
+  // Check that a write updates the latest observed hybrid_time.
+  uint64_t ht0 = client_->GetLatestObservedHybridTime();
+  ASSERT_EQ(ht0, YBClient::kNoHybridTime);
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(), 1, 0));
-  uint64_t ts1 = client_->GetLatestObservedTimestamp();
-  ASSERT_NE(ts0, ts1);
+  uint64_t ht1 = client_->GetLatestObservedHybridTime();
+  ASSERT_NE(ht0, ht1);
 
-  // Check that the timestamp of the previous write will be observed by another
-  // client performing a snapshot scan at that timestamp.
+  // Check that the hybrid_time of the previous write will be observed by another
+  // client performing a snapshot scan at that hybrid_time.
   shared_ptr<YBClient> client;
   shared_ptr<YBTable> table;
   ASSERT_OK(YBClientBuilder()
       .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
       .Build(&client));
-  ASSERT_EQ(client->GetLatestObservedTimestamp(), YBClient::kNoTimestamp);
+  ASSERT_EQ(client->GetLatestObservedHybridTime(), YBClient::kNoHybridTime);
   ASSERT_OK(client->OpenTable(client_table_->name(), &table));
   YBScanner scanner(table.get());
   ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
-  ASSERT_OK(scanner.SetSnapshotRaw(ts1));
+  ASSERT_OK(scanner.SetSnapshotRaw(ht1));
   ASSERT_OK(scanner.Open());
   scanner.Close();
-  uint64_t ts2 = client->GetLatestObservedTimestamp();
-  ASSERT_EQ(ts1, ts2);
+  uint64_t ht2 = client->GetLatestObservedHybridTime();
+  ASSERT_EQ(ht1, ht2);
 }
 
 TEST_F(ClientTest, TestClonePredicates) {

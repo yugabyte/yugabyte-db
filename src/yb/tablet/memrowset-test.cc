@@ -50,7 +50,7 @@ class TestMemRowSet : public ::testing::Test {
       schema_(CreateSchema()),
       key_schema_(schema_.CreateKeyProjection()),
       mvcc_(scoped_refptr<server::Clock>(
-              server::LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp))) {
+              server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime))) {
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
   }
 
@@ -100,7 +100,7 @@ class TestMemRowSet : public ::testing::Test {
       snprintf(keybuf, sizeof(keybuf), "hello %d", i);
       rb.AddString(Slice(keybuf));
       rb.AddUint32(i);
-      RETURN_NOT_OK(mrs->Insert(Timestamp(i), rb.row(), op_id_));
+      RETURN_NOT_OK(mrs->Insert(HybridTime(i), rb.row(), op_id_));
     }
 
     return Status::OK();
@@ -112,7 +112,7 @@ class TestMemRowSet : public ::testing::Test {
     rb.AddString(key);
     rb.AddUint32(val);
     tx.StartApplying();
-    Status s = mrs->Insert(tx.timestamp(), rb.row(), op_id_);
+    Status s = mrs->Insert(tx.hybrid_time(), rb.row(), op_id_);
     tx.Commit();
     return s;
   }
@@ -132,7 +132,7 @@ class TestMemRowSet : public ::testing::Test {
     rb.AddString(Slice(key));
     RowSetKeyProbe probe(rb.row());
     ProbeStats stats;
-    Status s = mrs->MutateRow(tx.timestamp(),
+    Status s = mrs->MutateRow(tx.hybrid_time(),
                               probe,
                               RowChangeList(mutation_buf_),
                               op_id_,
@@ -154,7 +154,7 @@ class TestMemRowSet : public ::testing::Test {
     rb.AddString(Slice(key));
     RowSetKeyProbe probe(rb.row());
     ProbeStats stats;
-    Status s = mrs->MutateRow(tx.timestamp(),
+    Status s = mrs->MutateRow(tx.hybrid_time(),
                               probe,
                               RowChangeList(mutation_buf_),
                               op_id_,
@@ -232,7 +232,7 @@ TEST_F(TestMemRowSet, TestInsertAndIterateCompoundKey) {
     rb.AddString(string("hello world"));
     rb.AddInt32(1);
     rb.AddUint32(12345);
-    Status row1 = mrs->Insert(tx.timestamp(), rb.row(), op_id_);
+    Status row1 = mrs->Insert(tx.hybrid_time(), rb.row(), op_id_);
     ASSERT_OK(row1);
     tx.Commit();
   }
@@ -244,7 +244,7 @@ TEST_F(TestMemRowSet, TestInsertAndIterateCompoundKey) {
     rb.AddString(string("goodbye world"));
     rb.AddInt32(2);
     rb.AddUint32(54321);
-    Status row2 = mrs->Insert(tx2.timestamp(), rb.row(), op_id_);
+    Status row2 = mrs->Insert(tx2.hybrid_time(), rb.row(), op_id_);
     ASSERT_OK(row2);
     tx2.Commit();
   }
@@ -256,7 +256,7 @@ TEST_F(TestMemRowSet, TestInsertAndIterateCompoundKey) {
     rb.AddString(string("goodbye world"));
     rb.AddInt32(1);
     rb.AddUint32(12345);
-    Status row3 = mrs->Insert(tx3.timestamp(), rb.row(), op_id_);
+    Status row3 = mrs->Insert(tx3.hybrid_time(), rb.row(), op_id_);
     ASSERT_OK(row3);
     tx3.Commit();
   }
@@ -386,8 +386,8 @@ TEST_F(TestMemRowSet, TestDelete) {
   EXPECT_TRUE(present);
 
   // Verify the MVCC contents of the memrowset.
-  // NOTE: the REINSERT has timestamp 4 because of the two failed attempts
-  // at mutating the deleted row above -- each of them grabs a timestamp even
+  // NOTE: the REINSERT has hybrid_time 4 because of the two failed attempts
+  // at mutating the deleted row above -- each of them grabs a hybrid_time even
   // though it doesn't actually make any successful mutations.
   vector<string> rows;
   ASSERT_OK(mrs->DebugDump(&rows));
@@ -429,13 +429,13 @@ TEST_F(TestMemRowSet, TestMemRowSetInsertCountAndScan) {
 
   for (int i = 0; i < FLAGS_num_scan_passes; i++) {
     LOG_TIMING(INFO, "Scanning rows where none are committed") {
-      ASSERT_EQ(0, ScanAndCount(mrs.get(), MvccSnapshot(Timestamp(0))));
+      ASSERT_EQ(0, ScanAndCount(mrs.get(), MvccSnapshot(HybridTime(0))));
     }
 
     LOG_TIMING(INFO, "Scanning rows where all are committed") {
       ASSERT_EQ(FLAGS_roundtrip_num_rows,
                 ScanAndCount(mrs.get(),
-                             MvccSnapshot(Timestamp(FLAGS_roundtrip_num_rows + 1))));
+                             MvccSnapshot(HybridTime(FLAGS_roundtrip_num_rows + 1))));
     }
   }
 }
@@ -456,7 +456,7 @@ TEST_F(TestMemRowSet, TestInsertionMVCC) {
       snprintf(keybuf, sizeof(keybuf), "tx%d", i);
       rb.AddString(Slice(keybuf));
       rb.AddUint32(i);
-      ASSERT_OK_FAST(mrs->Insert(tx.timestamp(), rb.row(), op_id_));
+      ASSERT_OK_FAST(mrs->Insert(tx.hybrid_time(), rb.row(), op_id_));
       tx.Commit();
     }
 

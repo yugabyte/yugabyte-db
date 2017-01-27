@@ -53,14 +53,14 @@ Status RemoteYsckTabletServer::Connect() const {
   return generic_proxy_->Ping(req, &resp, &rpc);
 }
 
-Status RemoteYsckTabletServer::CurrentTimestamp(uint64_t* timestamp) const {
+Status RemoteYsckTabletServer::CurrentHybridTime(uint64_t* hybrid_time) const {
   server::ServerClockRequestPB req;
   server::ServerClockResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(GetDefaultTimeout());
   RETURN_NOT_OK(generic_proxy_->ServerClock(req, &resp, &rpc));
-  CHECK(resp.has_timestamp());
-  *timestamp = resp.timestamp();
+  CHECK(resp.has_hybrid_time());
+  *hybrid_time = resp.hybrid_time();
   return Status::OK();
 }
 
@@ -155,7 +155,7 @@ class ChecksumStepper {
         req_.mutable_new_request()->set_cache_blocks(FLAGS_checksum_cache_blocks);
         if (options_.use_snapshot) {
           req_.mutable_new_request()->set_read_mode(READ_AT_SNAPSHOT);
-          req_.mutable_new_request()->set_snap_timestamp(options_.snapshot_timestamp);
+          req_.mutable_new_request()->set_snap_hybrid_time(options_.snapshot_hybrid_time);
         }
         rpc_.set_timeout(GetDefaultTimeout());
         break;

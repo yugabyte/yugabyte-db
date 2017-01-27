@@ -11,7 +11,7 @@
 
 #include "rocksdb/db.h"
 
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
@@ -25,13 +25,13 @@
 #include "yb/util/status.h"
 
 // Document DB mapping on top of the key-value map in RocksDB:
-// <document_key> <timestamp> -> <doc_type>
-// <document_key> <timestamp> <key_a> <gen_ts_a> -> <subdoc_a_type_or_value>
+// <document_key> <hybrid_time> -> <doc_type>
+// <document_key> <hybrid_time> <key_a> <gen_ts_a> -> <subdoc_a_type_or_value>
 //
 // Assuming the type of subdocument corresponding to key_a in the above example is "object", the
 // contents of that subdocument are stored in a similar way:
-// <document_key> <timestamp> <key_a> <gen_ts_a> <key_aa> <gen_ts_aa> -> <subdoc_aa_type_or_value>
-// <document_key> <timestamp> <key_a> <gen_ts_a> <key_ab> <gen_ts_ab> -> <subdoc_ab_type_or_value>
+// <document_key> <hybrid_time> <key_a> <gen_ts_a> <key_aa> <gen_ts_aa> -> <subdoc_aa_type_or_value>
+// <document_key> <hybrid_time> <key_a> <gen_ts_a> <key_ab> <gen_ts_ab> -> <subdoc_ab_type_or_value>
 // ...
 //
 // See doc_key.h for the encoding of the <document_key> part.
@@ -42,9 +42,9 @@
 //   <value_specific_encoding> -- e.g. a big-endian 8-byte integer, or a string in a "zero encoded"
 //                                format. This is empty for null or true/false values.
 //
-// <timestamp>, <gen_ts_a>, <gen_ts_ab> are "generation timestamps" corresponding to hybrid clock
-// timestamps of the last time a particular top-level document / subdocument was fully overwritten
-// or deleted.
+// <hybrid_time>, <gen_ts_a>, <gen_ts_ab> are "generation hybrid_times" corresponding to hybrid
+// clock hybrid_times of the last time a particular top-level document / subdocument was fully
+// overwritten or deleted.
 //
 // <subdoc_a_type_or_value>, <subdoc_aa_type_or_value>, <subdoc_ab_type_or_value> are values of the
 // following form:
@@ -72,12 +72,13 @@ class DocWriteBatch {
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path, const Value& value, Timestamp timestamp = Timestamp::kMax);
-  CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path, const PrimitiveValue& value, Timestamp timestamp = Timestamp::kMax) {
-    return SetPrimitive(doc_path, Value(value), timestamp);
+      const DocPath& doc_path, const Value& value, HybridTime hybrid_time = HybridTime::kMax);
+  CHECKED_STATUS SetPrimitive(const DocPath& doc_path,
+                              const PrimitiveValue& value,
+                              HybridTime hybrid_time = HybridTime::kMax) {
+    return SetPrimitive(doc_path, Value(value), hybrid_time);
   }
-  CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, Timestamp timestamp = Timestamp::kMax);
+  CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, HybridTime hybrid_time = HybridTime::kMax);
 
   std::string ToDebugString();
   void Clear();
@@ -85,10 +86,10 @@ class DocWriteBatch {
 
   void PopulateRocksDBWriteBatchInTest(
       rocksdb::WriteBatch *rocksdb_write_batch,
-      Timestamp timestamp = Timestamp::kMax) const;
+      HybridTime hybrid_time = HybridTime::kMax) const;
 
   rocksdb::Status WriteToRocksDBInTest(
-      const Timestamp timestamp, const rocksdb::WriteOptions &write_options) const;
+      const HybridTime hybrid_time, const rocksdb::WriteOptions &write_options) const;
 
   void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
 
@@ -137,17 +138,17 @@ void PrepareDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>
 
 // This function reads from rocksdb and constructs the write batch.
 //
-// Input: doc_write_ops, read snapshot timestamp if requested in PrepareDocWriteTransaction().
+// Input: doc_write_ops, read snapshot hybrid_time if requested in PrepareDocWriteTransaction().
 // Context: rocksdb
 // Outputs: keys_locked, write_batch
 Status ApplyDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-                                const Timestamp& timestamp,
+                                const HybridTime& hybrid_time,
                                 rocksdb::DB *rocksdb,
                                 KeyValueWriteBatchPB* write_batch);
 
 Status HandleRedisReadTransaction(rocksdb::DB *rocksdb,
     const std::vector<std::unique_ptr<RedisReadOperation>>& doc_read_ops,
-    Timestamp timestamp);
+    HybridTime hybrid_time);
 
 // A visitor class that could be overridden to consume results of scanning SubDocuments.
 // See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.
@@ -182,18 +183,18 @@ class DocVisitor {
   virtual CHECKED_STATUS EndArray() = 0;
 };
 
-// Note: subdocument_key should be an encoded SubDocument without the timestamp.
+// Note: subdocument_key should be an encoded SubDocument without the hybrid_time.
 yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
     const KeyBytes &subdocument_key,
     DocVisitor *visitor,
-    Timestamp scan_ts = Timestamp::kMax);
+    HybridTime scan_ts = HybridTime::kMax);
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 yb::Status GetSubDocument(rocksdb::DB *rocksdb,
     const KeyBytes &subdocument_key,
     SubDocument *result,
     bool *doc_found,
-    Timestamp scan_ts = Timestamp::kMax);
+    HybridTime scan_ts = HybridTime::kMax);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

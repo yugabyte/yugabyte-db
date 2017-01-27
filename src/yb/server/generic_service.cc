@@ -116,7 +116,7 @@ void GenericServiceImpl::FlushCoverage(const FlushCoverageRequestPB* req,
 void GenericServiceImpl::ServerClock(const ServerClockRequestPB* req,
                                      ServerClockResponsePB* resp,
                                      rpc::RpcContext* rpc) {
-  resp->set_timestamp(server_->clock()->Now().ToUint64());
+  resp->set_hybrid_time(server_->clock()->Now().ToUint64());
   rpc->RespondSuccess();
 }
 

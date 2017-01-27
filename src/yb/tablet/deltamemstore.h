@@ -75,7 +75,7 @@ class DeltaMemStore : public DeltaStore,
   // Update the given row in the database.
   // Copies the data, as well as any referenced values into this DMS's local
   // arena.
-  CHECKED_STATUS Update(Timestamp timestamp, rowid_t row_idx,
+  CHECKED_STATUS Update(HybridTime hybrid_time, rowid_t row_idx,
                 const RowChangeList &update,
                 const consensus::OpId& op_id);
 
@@ -163,7 +163,7 @@ class DeltaMemStore : public DeltaStore,
   const DeltaStats delta_stats_;
 
   // It's possible for multiple mutations to apply to the same row
-  // in the same timestamp (e.g. if a batch contains multiple updates for that
+  // in the same hybrid_time (e.g. if a batch contains multiple updates for that
   // row). In that case, we need to append a sequence number to the delta key
   // in the underlying tree, so that the later operations will sort after
   // the earlier ones. This atomic integer serves to provide such a sequence

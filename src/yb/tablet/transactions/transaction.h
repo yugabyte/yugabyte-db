@@ -21,7 +21,7 @@
 #include <string>
 #include <mutex>
 
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 #include "yb/util/auto_release_pool.h"
@@ -89,10 +89,10 @@ class Transaction {
   // data structures (such as the RocksDB memtable) and without side-effects.
   virtual CHECKED_STATUS Prepare() = 0;
 
-  // Actually starts a transaction, assigning a timestamp to the transaction.
+  // Actually starts a transaction, assigning a hybrid_time to the transaction.
   // LEADER replicas execute this in or right after Prepare(), while FOLLOWER/LEARNER
   // replicas execute this right before the Apply() phase as the transaction's
-  // timestamp is only available on the LEADER's commit message.
+  // hybrid_time is only available on the LEADER's commit message.
   // Once Started(), state might have leaked to other replicas/local log and the
   // transaction can't be cancelled without issuing an abort message.
   virtual void Start() = 0;
@@ -197,28 +197,28 @@ class TransactionState {
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
 
-  // Sets the timestamp for the transaction
-  virtual void set_timestamp(const Timestamp& timestamp) {
-    // make sure we set the timestamp only once
+  // Sets the hybrid_time for the transaction
+  virtual void set_hybrid_time(const HybridTime& hybrid_time) {
+    // make sure we set the hybrid_time only once
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    DCHECK_EQ(timestamp_, Timestamp::kInvalidTimestamp);
-    timestamp_ = timestamp;
+    DCHECK_EQ(hybrid_time_, HybridTime::kInvalidHybridTime);
+    hybrid_time_ = hybrid_time;
   }
 
-  Timestamp timestamp() const {
+  HybridTime hybrid_time() const {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    DCHECK(timestamp_ != Timestamp::kInvalidTimestamp);
-    return timestamp_;
+    DCHECK(hybrid_time_ != HybridTime::kInvalidHybridTime);
+    return hybrid_time_;
   }
 
-  Timestamp timestamp_even_if_unset() const {
+  HybridTime hybrid_time_even_if_unset() const {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    return timestamp_;
+    return hybrid_time_;
   }
 
-  bool has_timestamp() const {
+  bool has_hybrid_time() const {
     std::lock_guard<simple_spinlock> l(txn_state_lock_);
-    return timestamp_ != Timestamp::kInvalidTimestamp;
+    return hybrid_time_ != HybridTime::kInvalidHybridTime;
   }
 
   consensus::OpId* mutable_op_id() {
@@ -247,11 +247,11 @@ class TransactionState {
 
   AutoReleasePool pool_;
 
-  // This transaction's timestamp. Protected by txn_state_lock_.
-  Timestamp timestamp_;
+  // This transaction's hybrid_time. Protected by txn_state_lock_.
+  HybridTime hybrid_time_;
 
-  // The clock error when timestamp_ was read.
-  uint64_t timestamp_error_;
+  // The clock error when hybrid_time_ was read.
+  uint64_t hybrid_time_error_;
 
   Arena arena_;
 

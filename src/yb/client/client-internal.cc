@@ -246,7 +246,7 @@ YBClient::Data::Data()
     : master_server_endpoint_(),
       master_server_addrs_file_(),
       master_server_addrs_(),
-      latest_observed_timestamp_(YBClient::kNoTimestamp) {
+      latest_observed_hybrid_time_(YBClient::kNoHybridTime) {
 }
 
 YBClient::Data::~Data() {
@@ -980,12 +980,12 @@ shared_ptr<master::MasterServiceProxy> YBClient::Data::master_proxy() const {
   return master_proxy_;
 }
 
-uint64_t YBClient::Data::GetLatestObservedTimestamp() const {
-  return latest_observed_timestamp_.Load();
+uint64_t YBClient::Data::GetLatestObservedHybridTime() const {
+  return latest_observed_hybrid_time_.Load();
 }
 
-void YBClient::Data::UpdateLatestObservedTimestamp(uint64_t timestamp) {
-  latest_observed_timestamp_.StoreMax(timestamp);
+void YBClient::Data::UpdateLatestObservedHybridTime(uint64_t hybrid_time) {
+  latest_observed_hybrid_time_.StoreMax(hybrid_time);
 }
 
 } // namespace client

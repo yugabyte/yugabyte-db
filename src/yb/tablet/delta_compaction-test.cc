@@ -115,7 +115,7 @@ TEST_F(TestDeltaCompaction, TestMergeMultipleSchemas) {
 
   faststring buf;
   int row_id = 0;
-  int curr_timestamp = 0;
+  int curr_hybrid_time = 0;
   int deltafile_idx = 0;
   for (const Schema& schema : schemas) {
     // Write the Deltas
@@ -163,11 +163,11 @@ TEST_F(TestDeltaCompaction, TestMergeMultipleSchemas) {
       // To simulate multiple updates on the same row, the first N updates
       // of this new schema will always be on rows [0, 1, 2, ...] while the
       // others will be on new rows. (N is tunable by changing kNumMultipleUpdates)
-      DeltaKey key((i < kNumMultipleUpdates) ? i : row_id, Timestamp(curr_timestamp));
+      DeltaKey key((i < kNumMultipleUpdates) ? i : row_id, HybridTime(curr_hybrid_time));
       RowChangeList row_changes = update.as_changelist();
       ASSERT_OK(dfw->AppendDelta<REDO>(key, row_changes));
-      ASSERT_OK(stats.UpdateStats(key.timestamp(), row_changes));
-      curr_timestamp++;
+      ASSERT_OK(stats.UpdateStats(key.hybrid_time(), row_changes));
+      curr_hybrid_time++;
       row_id++;
     }
 

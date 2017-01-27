@@ -34,19 +34,19 @@ TEST(DocKVUtilTest, KeyBelongsToDocKeyInTest) {
   ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice(just_two_zeros), just_two_zeros));
 }
 
-TEST(DocKVUtilTest, EncodeAndDecodeTimestampInKey) {
+TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
   string initial_str;
-  uint64_t cur_ts = 0;
+  uint64_t cur_ht = 0;
   for (int i = 0; i < 10; ++i) {
     initial_str.push_back('a');
     string buf = initial_str;
     for (int j = 0; j < 2; ++j) {
-      auto ts = Timestamp(cur_ts);
-      cur_ts += kTimestampInversionMask / 10;
+      auto ht = HybridTime(cur_ht);
+      cur_ht += kHybridTimeInversionMask / 10;
       int pos = buf.size();
-      AppendEncodedTimestampToKey(ts, &buf);
+      AppendEncodedHybridTimeToKey(ht, &buf);
       rocksdb::Slice slice(buf);
-      ASSERT_EQ(ts, DecodeTimestampFromKey(slice, pos));
+      ASSERT_EQ(ht, DecodeHybridTimeFromKey(slice, pos));
     }
   }
 }

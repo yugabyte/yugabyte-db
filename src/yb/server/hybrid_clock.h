@@ -39,21 +39,21 @@ class HybridClock : public Clock {
 
   virtual CHECKED_STATUS Init() OVERRIDE;
 
-  // Obtains the timestamp corresponding to the current time.
-  virtual Timestamp Now() OVERRIDE;
+  // Obtains the hybrid_time corresponding to the current time.
+  virtual HybridTime Now() OVERRIDE;
 
-  // Obtains the timestamp corresponding to latest possible current
+  // Obtains the hybrid_time corresponding to latest possible current
   // time.
-  virtual Timestamp NowLatest() OVERRIDE;
+  virtual HybridTime NowLatest() OVERRIDE;
 
-  // Obtain a timestamp which is guaranteed to be later than the current time
+  // Obtain a hybrid_time which is guaranteed to be later than the current time
   // on any machine in the cluster.
   //
   // NOTE: this is not a very tight bound.
-  virtual CHECKED_STATUS GetGlobalLatest(Timestamp* t) OVERRIDE;
+  virtual CHECKED_STATUS GetGlobalLatest(HybridTime* t) OVERRIDE;
 
-  // Updates the clock with a timestamp originating on another machine.
-  virtual CHECKED_STATUS Update(const Timestamp& to_update) OVERRIDE;
+  // Updates the clock with a hybrid_time originating on another machine.
+  virtual CHECKED_STATUS Update(const HybridTime& to_update) OVERRIDE;
 
   virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) OVERRIDE;
 
@@ -85,12 +85,12 @@ class HybridClock : public Clock {
   // synchronized and therefore it couldn't wait out the error.
   //
   // Returns Status::TimedOut() if 'deadline' will pass before the specified
-  // timestamp. NOTE: unlike most "wait" methods, this may return _immediately_
+  // hybrid_time. NOTE: unlike most "wait" methods, this may return _immediately_
   // with a timeout, rather than actually waiting for the timeout to expire.
   // This is because, by looking at the current clock, we can know how long
   // we'll have to wait, in contrast to most Wait() methods which are waiting
   // on some external condition to become true.
-  virtual CHECKED_STATUS WaitUntilAfter(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
                                 const MonoTime& deadline) OVERRIDE;
 
   // Blocks the caller thread until the local time is after 'then'.
@@ -98,51 +98,51 @@ class HybridClock : public Clock {
   // on _all_ machines is past the given time.
   //
   // Returns Status::TimedOut() if 'deadline' will pass before the specified
-  // timestamp. NOTE: unlike most "wait" methods, this may return _immediately_
+  // hybrid_time. NOTE: unlike most "wait" methods, this may return _immediately_
   // with a timeout. See WaitUntilAfter() for details.
-  virtual CHECKED_STATUS WaitUntilAfterLocally(const Timestamp& then,
+  virtual CHECKED_STATUS WaitUntilAfterLocally(const HybridTime& then,
                                        const MonoTime& deadline) OVERRIDE;
 
   // Return true if the given time has passed (i.e any future call
   // to Now() would return a higher value than t).
   //
   // NOTE: this only refers to the _local_ clock, and is not a guarantee
-  // that other nodes' clocks have definitely passed this timestamp.
+  // that other nodes' clocks have definitely passed this hybrid_time.
   // This is in contrast to WaitUntilAfter() above.
-  virtual bool IsAfter(Timestamp t) OVERRIDE;
+  virtual bool IsAfter(HybridTime t) OVERRIDE;
 
-  // Obtains the timestamp corresponding to the current time and the associated
+  // Obtains the hybrid_time corresponding to the current time and the associated
   // error in micros. This may fail if the clock is unsynchronized or synchronized
   // but the error is too high and, since we can't do anything about it,
   // LOG(FATAL)'s in that case.
-  void NowWithError(Timestamp* timestamp, uint64_t* max_error_usec);
+  void NowWithError(HybridTime* hybrid_time, uint64_t* max_error_usec);
 
-  virtual std::string Stringify(Timestamp timestamp) OVERRIDE;
+  virtual std::string Stringify(HybridTime hybrid_time) OVERRIDE;
 
-  // Static encoding/decoding methods for timestamps. Public mostly
+  // Static encoding/decoding methods for hybrid_times. Public mostly
   // for testing/debugging purposes.
 
-  // Returns the logical value embedded in 'timestamp'
-  static uint64_t GetLogicalValue(const Timestamp& timestamp);
+  // Returns the logical value embedded in 'hybrid_time'
+  static uint64_t GetLogicalValue(const HybridTime& hybrid_time);
 
-  // Returns the physical value embedded in 'timestamp', in microseconds.
-  static uint64_t GetPhysicalValueMicros(const Timestamp& timestamp);
+  // Returns the physical value embedded in 'hybrid_time', in microseconds.
+  static uint64_t GetPhysicalValueMicros(const HybridTime& hybrid_time);
 
-  // Obtains a new Timestamp with the logical value zeroed out.
-  static Timestamp TimestampFromMicroseconds(uint64_t micros);
+  // Obtains a new HybridTime with the logical value zeroed out.
+  static HybridTime HybridTimeFromMicroseconds(uint64_t micros);
 
-  // Obtains a new Timestamp that embeds both the physical and logical values.
-  static Timestamp TimestampFromMicrosecondsAndLogicalValue(uint64_t micros,
+  // Obtains a new HybridTime that embeds both the physical and logical values.
+  static HybridTime HybridTimeFromMicrosecondsAndLogicalValue(uint64_t micros,
                                                             uint64_t logical_value);
 
-  // Creates a new timestamp whose physical time is GetPhysicalValue(original) +
+  // Creates a new hybrid_time whose physical time is GetPhysicalValue(original) +
   // 'micros_to_add' and which retains the same logical value.
-  static Timestamp AddPhysicalTimeToTimestamp(const Timestamp& original,
+  static HybridTime AddPhysicalTimeToHybridTime(const HybridTime& original,
                                               const MonoDelta& to_add);
 
-  // Outputs a string containing the physical and logical values of the timestamp,
+  // Outputs a string containing the physical and logical values of the hybrid_time,
   // separated.
-  static std::string StringifyTimestamp(const Timestamp& timestamp);
+  static std::string StringifyHybridTime(const HybridTime& hybrid_time);
 
   // Sets the time to be returned by a mock call to the system clock, for tests.
   // Requires that 'FLAGS_use_mock_wall_clock' is set to true and that 'now_usec' is less
@@ -166,7 +166,7 @@ class HybridClock : public Clock {
   // On OS X, the error will always be 0.
   yb::Status WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec);
 
-  // Used to get the timestamp for metrics.
+  // Used to get the hybrid_time for metrics.
   uint64_t NowForMetrics();
 
   // Used to get the current error, for metrics.
@@ -190,11 +190,11 @@ class HybridClock : public Clock {
 
   // the last clock read/update, in microseconds.
   uint64_t last_usec_;
-  // the next logical value to be assigned to a timestamp
+  // the next logical value to be assigned to a hybrid_time
   uint64_t next_logical_;
 
   // How many bits to left shift a microseconds clock read. The remainder
-  // of the timestamp will be reserved for logical values.
+  // of the hybrid_time will be reserved for logical values.
   static const int kBitsToShift;
 
   // Mask to extract the pure logical bits.

@@ -154,10 +154,10 @@ message ChangeConfigRequestPB {
 message ChangeConfigResponsePB {
   optional tserver.TabletServerErrorPB error = 1;
 
-  // The timestamp chosen by the server for this change config operation.
+  // The hybrid_time chosen by the server for this change config operation.
   // TODO: At the time of writing, this field is never set in the response.
-  // TODO: Propagate signed timestamps. See KUDU-611.
-  optional fixed64 timestamp = 2;
+  // TODO: Propagate signed hybrid_times. See KUDU-611.
+  optional fixed64 hybrid_time = 2;
 }
 
 // A Replicate message, sent to replicas by leader to indicate this operation must
@@ -166,8 +166,8 @@ message ChangeConfigResponsePB {
 message ReplicateMsg {
   // The Raft operation ID (term and index) being replicated.
   required OpId id = 1;
-  // The (hybrid or logical) timestamp assigned to this message.
-  required fixed64 timestamp = 2;
+  // The (hybrid or logical) hybrid_time assigned to this message.
+  required fixed64 hybrid_time = 2;
   // optional ExternalConsistencyMode external_consistency_mode = 3 [default = NO_CONSISTENCY];
   required OperationType op_type = 4;
   optional tserver.WriteRequestPB write_request = 5;

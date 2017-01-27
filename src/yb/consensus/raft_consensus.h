@@ -460,7 +460,7 @@ class RaftConsensus : public Consensus,
 
   scoped_refptr<FailureDetector> failure_detector_;
 
-  // If any RequestVote() RPC arrives before this timestamp,
+  // If any RequestVote() RPC arrives before this hybrid time,
   // the request will be ignored. This prevents abandoned or partitioned
   // nodes from disturbing the healthy leader.
   MonoTime withhold_votes_until_;

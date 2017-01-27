@@ -108,7 +108,7 @@ void YSQLValueCore::Serialize(
       CQLEncodeNum(Store8, static_cast<uint8>(bool_value_ ? 1 : 0), buffer);
       return;
     case TIMESTAMP:
-      CQLEncodeNum(NetworkByteOrder::Store64, timestamp_value_.ToUint64(), buffer);
+      CQLEncodeNum(NetworkByteOrder::Store64, timestamp_value_, buffer);
       return;
 
     YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
@@ -154,9 +154,7 @@ Status YSQLValueCore::Deserialize(
       return Status::OK();;
     }
     case TIMESTAMP: {
-      uint64_t value = 0;
-      RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
-      return timestamp_value_.FromUint64(value);
+      return CQLDecodeNum(len, NetworkByteOrder::Load64, data, &timestamp_value_);
     }
 
     YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
@@ -184,7 +182,7 @@ string YSQLValueCore::ToString(const DataType type, const bool is_null) const {
     case DOUBLE: return s + to_string(double_value_);
     case STRING: return s + FormatBytesAsStr(string_value_);
     case BOOL: return s + (bool_value_ ? "true" : "false");
-    case TIMESTAMP: return s + to_string(timestamp_value_.ToUint64());
+    case TIMESTAMP: return s + to_string(timestamp_value_);
 
     YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -228,7 +226,7 @@ int YSQLValue::CompareTo(const YSQLValue& v) const {
       LOG(FATAL) << "Internal error: bool type not comparable";
       return 0;
     case TIMESTAMP:
-      return GenericCompare(timestamp_value_.ToUint64(), v.timestamp_value_.ToUint64());
+      return GenericCompare(timestamp_value_, v.timestamp_value_);
 
     YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -286,7 +284,7 @@ YSQLValue YSQLValue::FromYSQLValuePB(const YSQLValuePB& vpb) {
       return v;
     case TIMESTAMP:
       if (vpb.has_timestamp_value()) {
-        v.set_timestamp_value(Timestamp(vpb.timestamp_value()));
+        v.set_timestamp_value(vpb.timestamp_value());
       }
       return v;
 

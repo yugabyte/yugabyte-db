@@ -36,7 +36,7 @@ class MvccManager;
 using std::string;
 
 // A snapshot of the current MVCC state, which can determine whether a transaction ID (represented
-// as a timestamp unique within a tablet) should be considered visible.
+// as a hybrid_time unique within a tablet) should be considered visible.
 class MvccSnapshot {
  public:
   MvccSnapshot();
@@ -44,11 +44,11 @@ class MvccSnapshot {
   // Create a snapshot with the current state of the given manager
   explicit MvccSnapshot(const MvccManager &manager);
 
-  // Create a snapshot at a specific Timestamp.
+  // Create a snapshot at a specific HybridTime.
   //
-  // This snapshot considers all transactions timestamps lower than the provided 'timestamp' to be
-  // committed, and all other transactions to be uncommitted.
-  explicit MvccSnapshot(const Timestamp& timestamp);
+  // This snapshot considers all transactions hybrid_times lower than the provided 'hybrid_time' to
+  // be committed, and all other transactions to be uncommitted.
+  explicit MvccSnapshot(const HybridTime& hybrid_time);
 
   // Create a snapshot which considers all transactions as committed.
   // This is mostly useful in test contexts.
@@ -59,31 +59,31 @@ class MvccSnapshot {
 
   // Return true if the given transaction ID should be considered committed
   // in this snapshot.
-  inline bool IsCommitted(const Timestamp& timestamp) const {
+  inline bool IsCommitted(const HybridTime& hybrid_time) const {
     // Inline the most likely path, in which our watermarks determine
     // whether a transaction is committed.
-    if (PREDICT_TRUE(timestamp.CompareTo(all_committed_before_) < 0)) {
+    if (PREDICT_TRUE(hybrid_time.CompareTo(all_committed_before_) < 0)) {
       return true;
     }
-    if (PREDICT_TRUE(timestamp.CompareTo(none_committed_at_or_after_) >= 0)) {
+    if (PREDICT_TRUE(hybrid_time.CompareTo(none_committed_at_or_after_) >= 0)) {
       return false;
     }
     // Out-of-line the unlikely case which involves more complex (loopy) code.
-    return IsCommittedFallback(timestamp);
+    return IsCommittedFallback(hybrid_time);
   }
 
   // Returns true if this snapshot may have any committed transactions with ID
-  // equal to or higher than the provided 'timestamp'.
+  // equal to or higher than the provided 'hybrid_time'.
   //
   // Kudu-specific:
   // If MayHaveCommittedTransactionsAtOrAfter(delta_stats.min) returns true
   // it means that there might be transactions that need to be applied in the
   // context of this snapshot; otherwise no scanning is necessary.
   // This is mostly useful to avoid scanning REDO deltas in certain cases.
-  bool MayHaveCommittedTransactionsAtOrAfter(const Timestamp& timestamp) const;
+  bool MayHaveCommittedTransactionsAtOrAfter(const HybridTime& hybrid_time) const;
 
   // Returns true if this snapshot may have any uncommitted transactions with ID
-  // equal to or lower than the provided 'timestamp'.
+  // equal to or lower than the provided 'hybrid_time'.
   //
   // Kudu-specific:
   // This is mostly useful to avoid scanning UNDO deltas in certain cases.
@@ -91,94 +91,94 @@ class MvccSnapshot {
   // means that all UNDO delta transactions are committed in the context of this
   // snapshot and no scanning is necessary; otherwise there might be some
   // transactions that need to be undone.
-  bool MayHaveUncommittedTransactionsAtOrBefore(const Timestamp& timestamp) const;
+  bool MayHaveUncommittedTransactionsAtOrBefore(const HybridTime& hybrid_time) const;
 
   // Return a string representation of the set of committed transactions
   // in this snapshot, suitable for debug printouts.
   string ToString() const;
 
   // Return true if the snapshot is considered 'clean'. A clean snapshot is one
-  // which is determined only by a timestamp -- the snapshot considers all
-  // transactions with timestamps less than some timestamp to be committed,
+  // which is determined only by a hybrid_time -- the snapshot considers all
+  // transactions with hybrid_times less than some hybrid_time to be committed,
   // and all other transactions to be uncommitted.
   bool is_clean() const {
-    return committed_timestamps_.empty();
+    return committed_hybrid_times_.empty();
   }
 
-  // Consider the given list of timestamps to be committed in this snapshot,
+  // Consider the given list of hybrid_times to be committed in this snapshot,
   // even if they weren't when the snapshot was constructed.
   // This is used in the flush path, where the set of commits going into a
   // flushed file may not be a consistent snapshot from the MVCC point of view,
   // yet we need to construct a scanner that accurately represents that set.
-  void AddCommittedTimestamps(const std::vector<Timestamp>& timestamps);
+  void AddCommittedHybridTimes(const std::vector<HybridTime>& hybrid_times);
 
-  // We use this to translate between Kudu's MVCC snapshots and timestamps needed for reading from
-  // DocDB. This assumes the snapshot is "clean" (no "holes" in the set of committed timestamps).
+  // We use this to translate between Kudu's MVCC snapshots and hybrid_times needed for reading from
+  // DocDB. This assumes the snapshot is "clean" (no "holes" in the set of committed hybrid_times).
   // We should gradually get rid of the need for handling dirty snapshots in YB, because we are
-  // making sure timestamps increase monotonically along with Raft indexes, at least in the absence
-  // of cross-shard transactions, and we always commit/apply REPLICATE messages in the Raft log
-  // order.
-  Timestamp LastCommittedTimestamp() const {
+  // making sure hybrid_times increase monotonically along with Raft indexes, at least in the
+  // absence of cross-shard transactions, and we always commit/apply REPLICATE messages in the Raft
+  // log order.
+  HybridTime LastCommittedHybridTime() const {
     if (!is_clean()) {
-      if (committed_timestamps_.size() == 1 &&
-          all_committed_before_.value() == committed_timestamps_.front()) {
+      if (committed_hybrid_times_.size() == 1 &&
+          all_committed_before_.value() == committed_hybrid_times_.front()) {
         // This is a degenerate case of a dirty snapshot that is in fact clean, consiting of all
-        // timestamps less than X and the set {X}, e.g.:
+        // hybrid_times less than X and the set {X}, e.g.:
         // MvccSnapshot[committed={T|T < 6041797920884666368 or (T in {6041797920884666368})}]
         return all_committed_before_;
       }
       LOG(WARNING) << __func__ << " called on a dirty snapshot: " << ToString();
     }
-    return Timestamp(all_committed_before_.value() - 1);
+    return HybridTime(all_committed_before_.value() - 1);
   }
 
  private:
   friend class MvccManager;
   FRIEND_TEST(MvccTest, TestMayHaveCommittedTransactionsAtOrAfter);
   FRIEND_TEST(MvccTest, TestMayHaveUncommittedTransactionsBefore);
-  FRIEND_TEST(MvccTest, TestWaitUntilAllCommitted_SnapAtTimestampWithInFlights);
+  FRIEND_TEST(MvccTest, TestWaitUntilAllCommitted_SnapAtHybridTimeWithInFlights);
 
-  bool IsCommittedFallback(const Timestamp& timestamp) const;
+  bool IsCommittedFallback(const HybridTime& hybrid_time) const;
 
-  void AddCommittedTimestamp(Timestamp timestamp);
+  void AddCommittedHybridTime(HybridTime hybrid_time);
 
   // Summary rule:
   //   A transaction T is committed if and only if:
   //      T < all_committed_before_ or
-  //   or committed_timestamps_.contains(T)
+  //   or committed_hybrid_times_.contains(T)
   //
   // In ASCII form, where 'C' represents a committed transaction,
   // and 'U' represents an uncommitted one:
   //
   //   CCCCCCCCCCCCCCCCCUUUUUCUUUCU
-  //                    |    \___\___ committed_timestamps_
+  //                    |    \___\___ committed_hybrid_times_
   //                    |
   //                    \- all_committed_before_
 
 
   // A transaction ID below which all transactions have been committed.
-  // For any timestamp X, if X < all_committed_timestamp_, then X is committed.
-  Timestamp all_committed_before_;
+  // For any hybrid_time X, if X < all_committed_hybrid_time_, then X is committed.
+  HybridTime all_committed_before_;
 
   // A transaction ID at or beyond which no transactions have been committed.
-  // For any timestamp X, if X >= none_committed_after_, then X is uncommitted.
-  // This is equivalent to max(committed_timestamps_) + 1, but since
+  // For any hybrid_time X, if X >= none_committed_after_, then X is uncommitted.
+  // This is equivalent to max(committed_hybrid_times_) + 1, but since
   // that vector is unsorted, we cache it.
-  Timestamp none_committed_at_or_after_;
+  HybridTime none_committed_at_or_after_;
 
-  // The set of transactions higher than all_committed_before_timestamp_ which
+  // The set of transactions higher than all_committed_before_hybrid_time_ which
   // are committed in this snapshot.
   // It might seem like using an unordered_set<> or a set<> would be faster here,
   // but in practice, this list tends to be stay pretty small, and is only
   // rarely consulted (most data will be culled by 'all_committed_before_'
   // or none_committed_at_or_after_. So, using the compact vector structure fits
   // the whole thing on one or two cache lines, and it ends up going faster.
-  std::vector<Timestamp::val_type> committed_timestamps_;
+  std::vector<HybridTime::val_type> committed_hybrid_times_;
 
 };
 
 // Coordinator of MVCC transactions. Threads wishing to make updates use
-// the MvccManager to obtain a unique timestamp, usually through the ScopedTransaction
+// the MvccManager to obtain a unique hybrid_time, usually through the ScopedTransaction
 // class defined below.
 //
 // MVCC is used to defer updates until commit time, and allow iterators to
@@ -190,9 +190,9 @@ class MvccSnapshot {
 //   or
 // 2) StartTransaction() -> AbortTransaction()
 //
-// When a transaction is started, a timestamp is assigned. The manager will
-// never assign a timestamp if there is already another transaction with
-// the same timestamp in flight or previously committed.
+// When a transaction is started, a hybrid_time is assigned. The manager will
+// never assign a hybrid_time if there is already another transaction with
+// the same hybrid_time in flight or previously committed.
 //
 // When a transaction is ready to start making changes to in-memory data,
 // it should transition to APPLYING state by calling StartApplyingTransaction().
@@ -211,23 +211,23 @@ class MvccManager {
   // Callers should generally prefer using the ScopedTransaction class defined
   // below, which will automatically finish the transaction when it goes out
   // of scope.
-  Timestamp StartTransaction();
+  HybridTime StartTransaction();
 
   // The same as the above but but starts the transaction at the latest possible
-  // time, i.e. now + max_error. Returns Timestamp::kInvalidTimestamp if it was
+  // time, i.e. now + max_error. Returns HybridTime::kInvalidHybridTime if it was
   // not possible to obtain the latest time.
-  Timestamp StartTransactionAtLatest();
+  HybridTime StartTransactionAtLatest();
 
-  // Begins a new transaction, which is assigned the provided timestamp.
+  // Begins a new transaction, which is assigned the provided hybrid_time.
   // Returns Status::OK() if the transaction was started successfully or
-  // Status::IllegalState() if the provided timestamp is already considered
-  // committed, e.g. if timestamp < 'all_committed_before_'.
-  CHECKED_STATUS StartTransactionAtTimestamp(Timestamp timestamp);
+  // Status::IllegalState() if the provided hybrid_time is already considered
+  // committed, e.g. if hybrid_time < 'all_committed_before_'.
+  CHECKED_STATUS StartTransactionAtHybridTime(HybridTime hybrid_time);
 
-  // Mark that the transaction with the given timestamp is starting to apply
+  // Mark that the transaction with the given hybrid_time is starting to apply
   // its writes to in-memory stores. This must be called before CommitTransaction().
-  // If this is called, then AbortTransaction(timestamp) must never be called.
-  void StartApplyingTransaction(Timestamp timestamp);
+  // If this is called, then AbortTransaction(hybrid_time) must never be called.
+  void StartApplyingTransaction(HybridTime hybrid_time);
 
   // Commit the given transaction.
   //
@@ -242,7 +242,7 @@ class MvccManager {
   //
   // The transaction must already have been marked as 'APPLYING' by calling
   // StartApplyingTransaction(), or else this logs a FATAL error.
-  void CommitTransaction(Timestamp timestamp);
+  void CommitTransaction(HybridTime hybrid_time);
 
   // Abort the given transaction.
   //
@@ -250,42 +250,42 @@ class MvccManager {
   // assertion error. It is an error to abort the same transaction more
   // than once.
   //
-  // This makes sure that the transaction with 'timestamp' is removed from
+  // This makes sure that the transaction with 'hybrid_time' is removed from
   // the in-flight set but without advancing the safe time since a new
-  // transaction with a lower timestamp might be executed later.
+  // transaction with a lower hybrid_time might be executed later.
   //
   // The transaction must not have been marked as 'APPLYING' by calling
   // StartApplyingTransaction(), or else this logs a FATAL error.
-  void AbortTransaction(Timestamp timestamp);
+  void AbortTransaction(HybridTime hybrid_time);
 
   // Same as commit transaction but does not advance 'all_committed_before_'.
   // Used for bootstrap and delayed processing in FOLLOWERS/LEARNERS.
   //
   // The transaction must already have been marked as 'APPLYING' by calling
   // StartApplyingTransaction(), or else this logs a FATAL error.
-  void OfflineCommitTransaction(Timestamp timestamp);
+  void OfflineCommitTransaction(HybridTime hybrid_time);
 
   // Used in conjunction with OfflineCommitTransaction() so that the mvcc
   // manager can trim state.
-  void OfflineAdjustSafeTime(Timestamp safe_time);
+  void OfflineAdjustSafeTime(HybridTime safe_time);
 
   // Take a snapshot of the current MVCC state, which indicates which
   // transactions have been committed at the time of this call.
   void TakeSnapshot(MvccSnapshot *snapshot) const;
 
-  // Take a snapshot of the MVCC state at 'timestamp' (i.e which includes
-  // all transactions which have a lower timestamp)
+  // Take a snapshot of the MVCC state at 'hybrid_time' (i.e which includes
+  // all transactions which have a lower hybrid_time)
   //
-  // If there are any in-flight transactions at a lower timestamp, waits for
+  // If there are any in-flight transactions at a lower hybrid_time, waits for
   // them to complete before returning. Hence, we guarantee that, upon return,
   // snapshot->is_clean().
   //
   // TODO(KUDU-689): this may currently block forever, stalling scanner threads
   // and potentially blocking tablet shutdown.
   //
-  // REQUIRES: 'timestamp' must be in the past according to the configured
+  // REQUIRES: 'hybrid_time' must be in the past according to the configured
   // clock.
-  CHECKED_STATUS WaitForCleanSnapshotAtTimestamp(Timestamp timestamp,
+  CHECKED_STATUS WaitForCleanSnapshotAtHybridTime(HybridTime hybrid_time,
                                          MvccSnapshot* snapshot,
                                          const MonoTime& deadline) const WARN_UNUSED_RESULT;
 
@@ -296,20 +296,20 @@ class MvccManager {
   // upon return.
   void WaitForApplyingTransactionsToCommit() const;
 
-  bool AreAllTransactionsCommitted(Timestamp ts) const;
+  bool AreAllTransactionsCommitted(HybridTime ts) const;
 
-  // Returns the earliest possible timestamp for an uncommitted transaction.
-  // All timestamps before this one are guaranteed to be committed.
-  Timestamp GetCleanTimestamp() const;
+  // Returns the earliest possible hybrid_time for an uncommitted transaction.
+  // All hybrid_times before this one are guaranteed to be committed.
+  HybridTime GetCleanHybridTime() const;
 
-  // Return the timestamps of all transactions which are currently 'APPLYING'
+  // Return the hybrid_times of all transactions which are currently 'APPLYING'
   // (i.e. those which have started to apply their operations to in-memory data
-  // structures). Other transactions may have reserved their timestamps via
+  // structures). Other transactions may have reserved their hybrid_times via
   // StartTransaction() but not yet been applied.
   //
   // These transactions are guaranteed to eventually Commit() -- i.e. they will
   // never Abort().
-  void GetApplyingTransactionsTimestamps(std::vector<Timestamp>* timestamps) const;
+  void GetApplyingTransactionsHybridTimes(std::vector<HybridTime>* hybrid_times) const;
 
   ~MvccManager();
 
@@ -325,7 +325,7 @@ class MvccManager {
     APPLYING
   };
 
-  bool InitTransactionUnlocked(const Timestamp& timestamp);
+  bool InitTransactionUnlocked(const HybridTime& hybrid_time);
 
   enum WaitFor {
     ALL_COMMITTED,
@@ -333,23 +333,23 @@ class MvccManager {
   };
 
   struct WaitingState {
-    Timestamp timestamp;
+    HybridTime hybrid_time;
     CountDownLatch* latch;
     WaitFor wait_for;
   };
 
-  // Returns true if all transactions before the given timestamp are committed.
+  // Returns true if all transactions before the given hybrid_time are committed.
   //
   // If 'ts' is not in the past, it's still possible that new transactions could
-  // start with a lower timestamp after this returns.
-  bool AreAllTransactionsCommittedUnlocked(Timestamp ts) const;
+  // start with a lower hybrid_time after this returns.
+  bool AreAllTransactionsCommittedUnlocked(HybridTime ts) const;
 
-  // Return true if there is any APPLYING operation with a timestamp
+  // Return true if there is any APPLYING operation with a hybrid_time
   // less than or equal to 'ts'.
-  bool AnyApplyingAtOrBeforeUnlocked(Timestamp ts) const;
+  bool AnyApplyingAtOrBeforeUnlocked(HybridTime ts) const;
 
   // Waits until all transactions before the given time are committed.
-  CHECKED_STATUS WaitUntil(WaitFor wait_for, Timestamp ts,
+  CHECKED_STATUS WaitUntil(WaitFor wait_for, HybridTime ts,
                    const MonoTime& deadline) const WARN_UNUSED_RESULT;
 
   // Return true if the condition that the given waiter is waiting on has
@@ -358,23 +358,23 @@ class MvccManager {
 
   // Commits the given transaction.
   // Sets *was_earliest to true if this was the earliest in-flight transaction.
-  void CommitTransactionUnlocked(Timestamp timestamp,
+  void CommitTransactionUnlocked(HybridTime hybrid_time,
                                  bool* was_earliest);
 
-  // Remove the timestamp 'ts' from the in-flight map.
+  // Remove the hybrid_time 'ts' from the in-flight map.
   // FATALs if the ts is not in the in-flight map.
   // Returns its state.
-  TxnState RemoveInFlightAndGetStateUnlocked(Timestamp ts);
+  TxnState RemoveInFlightAndGetStateUnlocked(HybridTime ts);
 
-  // Adjusts the clean time, i.e. the timestamp such that all transactions with
-  // lower timestamps are committed or aborted, based on which transactions are
+  // Adjusts the clean time, i.e. the hybrid_time such that all transactions with
+  // lower hybrid_times are committed or aborted, based on which transactions are
   // currently in flight and on what is the latest value of 'no_new_transactions_at_or_before_'.
   void AdjustCleanTime();
 
-  // Advances the earliest in-flight timestamp, based on which transactions are
+  // Advances the earliest in-flight hybrid_time, based on which transactions are
   // currently in-flight. Usually called when the previous earliest transaction
   // commits or aborts.
-  void AdvanceEarliestInFlightTimestamp();
+  void AdvanceEarliestInFlightHybridTime();
 
   int GetNumWaitersForTests() const {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -386,19 +386,19 @@ class MvccManager {
 
   MvccSnapshot cur_snap_;
 
-  // The set of timestamps corresponding to currently in-flight transactions.
-  typedef std::unordered_map<Timestamp::val_type, TxnState> InFlightMap;
-  InFlightMap timestamps_in_flight_;
+  // The set of hybrid_times corresponding to currently in-flight transactions.
+  typedef std::unordered_map<HybridTime::val_type, TxnState> InFlightMap;
+  InFlightMap hybrid_times_in_flight_;
 
   // A transaction ID below which all transactions are either committed or in-flight,
-  // meaning no new transactions will be started with a timestamp that is equal
+  // meaning no new transactions will be started with a hybrid_time that is equal
   // to or lower than this one.
-  Timestamp no_new_transactions_at_or_before_;
+  HybridTime no_new_transactions_at_or_before_;
 
-  // The minimum timestamp in timestamps_in_flight_, or Timestamp::kMax
+  // The minimum hybrid_time in hybrid_times_in_flight_, or HybridTime::kMax
   // if that set is empty. This is cached in order to avoid having to iterate
-  // over timestamps_in_flight_ on every commit.
-  Timestamp earliest_in_flight_;
+  // over hybrid_times_in_flight_ on every commit.
+  HybridTime earliest_in_flight_;
 
   scoped_refptr<server::Clock> clock_;
   mutable std::vector<WaitingState*> waiters_;
@@ -412,11 +412,11 @@ class MvccManager {
 class ScopedTransaction {
  public:
 
-  // How to assign the timestamp to this transaction:
+  // How to assign the hybrid_time to this transaction:
   // NOW - Based on the value obtained from clock_->Now().
   // NOW_LATEST - Based on the value obtained from clock_->NowLatest().
   // PRE_ASSIGNED - Based on the value passed in the ctor.
-  enum TimestampAssignmentType {
+  enum HybridTimeAssignmentType {
     NOW,
     NOW_LATEST,
     PRE_ASSIGNED
@@ -427,21 +427,21 @@ class ScopedTransaction {
   // instead of MvccManager::StartTransaction().
   //
   // The MvccManager must remain valid for the lifetime of this object.
-  explicit ScopedTransaction(MvccManager *manager, TimestampAssignmentType assignment_type = NOW);
+  explicit ScopedTransaction(MvccManager *manager, HybridTimeAssignmentType assignment_type = NOW);
 
-  // Like the ctor above but starts the transaction at a pre-defined timestamp.
+  // Like the ctor above but starts the transaction at a pre-defined hybrid_time.
   // When this transaction is committed it will use MvccManager::OfflineCommitTransaction()
   // so this is appropriate for offline replaying of transactions for replica catch-up or
   // bootstrap.
   explicit ScopedTransaction(MvccManager *manager,
-                             Timestamp timestamp);
+                             HybridTime hybrid_time);
 
   // Commit the transaction referenced by this scoped object, if it hasn't
   // already been committed.
   ~ScopedTransaction();
 
-  Timestamp timestamp() const {
-    return timestamp_;
+  HybridTime hybrid_time() const {
+    return hybrid_time_;
   }
 
   // Mark that this transaction is about to begin applying its modifications to
@@ -464,8 +464,8 @@ class ScopedTransaction {
  private:
   bool done_;
   MvccManager * const manager_;
-  TimestampAssignmentType assignment_type_;
-  Timestamp timestamp_;
+  HybridTimeAssignmentType assignment_type_;
+  HybridTime hybrid_time_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedTransaction);
 };

@@ -71,7 +71,7 @@ const char* const kAreTabletsRunningOp = "are_tablets_running";
 const char* const kSetFlagOp = "set_flag";
 const char* const kDumpTabletOp = "dump_tablet";
 const char* const kDeleteTabletOp = "delete_tablet";
-const char* const kCurrentTimestamp = "current_timestamp";
+const char* const kCurrentHybridTime = "current_hybrid_time";
 const char* const kStatus = "status";
 
 DEFINE_string(server_address, "localhost",
@@ -145,8 +145,8 @@ class TsAdminClient {
   Status DeleteTablet(const std::string& tablet_id,
                       const std::string& reason);
 
-  // Sets timestamp to the value of the tablet server's current timestamp.
-  Status CurrentTimestamp(uint64_t* timestamp);
+  // Sets hybrid_time to the value of the tablet server's current hybrid_time.
+  Status CurrentHybridTime(uint64_t* hybrid_time);
 
   // Get the server status
   Status GetStatus(ServerStatusPB* pb);
@@ -322,14 +322,14 @@ Status TsAdminClient::DeleteTablet(const string& tablet_id,
   return Status::OK();
 }
 
-Status TsAdminClient::CurrentTimestamp(uint64_t* timestamp) {
+Status TsAdminClient::CurrentHybridTime(uint64_t* hybrid_time) {
   server::ServerClockRequestPB req;
   server::ServerClockResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK(generic_proxy_->ServerClock(req, &resp, &rpc));
-  CHECK(resp.has_timestamp()) << resp.DebugString();
-  *timestamp = resp.timestamp();
+  CHECK(resp.has_hybrid_time()) << resp.DebugString();
+  *hybrid_time = resp.hybrid_time();
   return Status::OK();
 }
 
@@ -356,7 +356,7 @@ void SetUsage(const char* argv0) {
       << "  " << kSetFlagOp << " [-force] <flag> <value>\n"
       << "  " << kDumpTabletOp << " <tablet_id>\n"
       << "  " << kDeleteTabletOp << " <tablet_id> <reason string>\n"
-      << "  " << kCurrentTimestamp << "\n"
+      << "  " << kCurrentHybridTime << "\n"
       << "  " << kStatus;
   google::SetUsageMessage(str.str());
 }
@@ -462,13 +462,13 @@ static int TsCliMain(int argc, char** argv) {
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DeleteTablet(tablet_id, reason),
                                     "Unable to delete tablet");
-  } else if (op == kCurrentTimestamp) {
+  } else if (op == kCurrentHybridTime) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
-    uint64_t timestamp;
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CurrentTimestamp(&timestamp),
-                                    "Unable to get timestamp");
-    std::cout << timestamp << std::endl;
+    uint64_t hybrid_time;
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CurrentHybridTime(&hybrid_time),
+                                    "Unable to get hybrid_time");
+    std::cout << hybrid_time << std::endl;
   } else if (op == kStatus) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 

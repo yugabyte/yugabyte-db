@@ -130,15 +130,15 @@ TEST(DocKeyTest, TestDocKeyToString) {
 
 TEST(DocKeyTest, TestSubDocKeyToString) {
   ASSERT_EQ(
-      "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [TS(12345)])",
+      "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT(12345)])",
       SubDocKey(DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
-                Timestamp(12345L)).ToString());
+                HybridTime(12345L)).ToString());
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), "
-      "[\"subkey1\"; TS(20000)])",
+      "[\"subkey1\"; HT(20000)])",
       SubDocKey(
           DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
-          PrimitiveValue("subkey1"), Timestamp(20000L)
+          PrimitiveValue("subkey1"), HybridTime(20000L)
       ).ToString());
 
 }
@@ -183,7 +183,7 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   const SubDocKey subdoc_key(DocKey({PrimitiveValue("some_doc_key")}),
                              PrimitiveValue("sk1"),
                              PrimitiveValue("sk2"),
-                             Timestamp(1000));
+                             HybridTime(1000));
   const KeyBytes encoded_subdoc_key(subdoc_key.Encode());
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
@@ -250,15 +250,15 @@ TEST(DocKeyTest, TestSubDocKeyStartsWith) {
   for (const auto& subdoc_key : subdoc_keys) {
     if (subdoc_key.num_subkeys() > 0) {
       const SubDocKey doc_key_only = SubDocKey(subdoc_key.doc_key());
-      const SubDocKey doc_key_only_with_ts =
-          SubDocKey(subdoc_key.doc_key(), subdoc_key.timestamp());
+      const SubDocKey doc_key_only_with_ht =
+          SubDocKey(subdoc_key.doc_key(), subdoc_key.hybrid_time());
       ASSERT_TRUE(subdoc_key.StartsWith(doc_key_only));
       ASSERT_FALSE(doc_key_only.StartsWith(subdoc_key));
-      SubDocKey with_another_doc_gen_ts(subdoc_key);
-      with_another_doc_gen_ts.set_timestamp(Timestamp(subdoc_key.timestamp().ToUint64() + 1));
-      ASSERT_FALSE(with_another_doc_gen_ts.StartsWith(doc_key_only_with_ts));
-      ASSERT_FALSE(with_another_doc_gen_ts.StartsWith(subdoc_key));
-      ASSERT_FALSE(subdoc_key.StartsWith(with_another_doc_gen_ts));
+      SubDocKey with_another_doc_gen_ht(subdoc_key);
+      with_another_doc_gen_ht.set_hybrid_time(HybridTime(subdoc_key.hybrid_time().ToUint64() + 1));
+      ASSERT_FALSE(with_another_doc_gen_ht.StartsWith(doc_key_only_with_ht));
+      ASSERT_FALSE(with_another_doc_gen_ht.StartsWith(subdoc_key));
+      ASSERT_FALSE(subdoc_key.StartsWith(with_another_doc_gen_ht));
     }
   }
 }
@@ -266,7 +266,7 @@ TEST(DocKeyTest, TestSubDocKeyStartsWith) {
 TEST(DocKeyTest, TestNumSharedPrefixComponents) {
   const DocKey doc_key({PrimitiveValue("a"), PrimitiveValue("b")});
   const DocKey doc_key2({PrimitiveValue("aa")});
-  const SubDocKey k1(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L), Timestamp(12345));
+  const SubDocKey k1(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L), HybridTime(12345));
 
   // If the document key is different, we have no shared prefix components.
   ASSERT_EQ(0, k1.NumSharedPrefixComponents(SubDocKey(doc_key2)));
@@ -289,7 +289,7 @@ TEST(DocKeyTest, TestNumSharedPrefixComponents) {
 
 std::string EncodeSimpleSubDocKeyFromSlice(const rocksdb::Slice& input) {
   DocKey dk(DocKey(PrimitiveValues(std::string(input.data()))));
-  return SubDocKey(dk, Timestamp(12345L)).Encode().AsStringRef();
+  return SubDocKey(dk, HybridTime(12345L)).Encode().AsStringRef();
 }
 
 TEST(DocKeyTest, TestKeyMatchingThroughFilter) {

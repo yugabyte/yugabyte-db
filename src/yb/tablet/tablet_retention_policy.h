@@ -14,7 +14,7 @@ namespace tablet {
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
   explicit TabletRetentionPolicy(scoped_refptr<yb::server::Clock> clock);
-  Timestamp GetHistoryCutoff() override;
+  HybridTime GetHistoryCutoff() override;
 
  private:
   scoped_refptr<yb::server::Clock> clock_;

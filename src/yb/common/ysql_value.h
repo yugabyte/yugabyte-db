@@ -9,7 +9,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ysql_protocol.pb.h"
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -89,7 +89,7 @@ class YSQLValueCore {
     double double_value_;
     std::string string_value_;
     bool bool_value_;
-    Timestamp timestamp_value_;
+    int64_t timestamp_value_;
   };
 };
 
@@ -124,7 +124,7 @@ class YSQLValue : YSQLValueCore {
   double double_value() const { return value(type_, DOUBLE, is_null_, double_value_); }
   std::string string_value() const { return value(type_, STRING, is_null_, string_value_); }
   bool bool_value() const { return value(type_, BOOL, is_null_, bool_value_); }
-  Timestamp timestamp_value() const { return value(type_, TIMESTAMP, is_null_, timestamp_value_); }
+  int64_t timestamp_value() const { return value(type_, TIMESTAMP, is_null_, timestamp_value_); }
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values. CHECK failure will result if the value stored is not of the
@@ -143,7 +143,7 @@ class YSQLValue : YSQLValueCore {
   void set_double_value(double v) { return set_value(DOUBLE, v, &double_value_); }
   void set_string_value(const std::string& v) { return set_value(STRING, v, &string_value_); }
   void set_bool_value(bool v) { return set_value(BOOL, v, &bool_value_); }
-  void set_timestamp_value(const Timestamp& v) {
+  void set_timestamp_value(const int64_t& v) {
     return set_value(TIMESTAMP, v, &timestamp_value_);
   }
 

@@ -117,7 +117,7 @@ class DeltaTracker {
   // Copies the data, as well as any referenced values into a local arena.
   // "result" tracks the status of the update as well as which data
   // structure(s) it ended up at.
-  CHECKED_STATUS Update(Timestamp timestamp,
+  CHECKED_STATUS Update(HybridTime hybrid_time,
                 rowid_t row_idx,
                 const RowChangeList &update,
                 const consensus::OpId& op_id,
@@ -239,9 +239,9 @@ class DeltaTracker {
 
   // The current DeltaMemStore into which updates should be written.
   std::shared_ptr<DeltaMemStore> dms_;
-  // The set of tracked REDO delta stores, in increasing timestamp order.
+  // The set of tracked REDO delta stores, in increasing hybrid_time order.
   SharedDeltaStoreVector redo_delta_stores_;
-  // The set of tracked UNDO delta stores, in decreasing timestamp order.
+  // The set of tracked UNDO delta stores, in decreasing hybrid_time order.
   SharedDeltaStoreVector undo_delta_stores_;
 
   // read-write lock protecting dms_ and {redo,undo}_delta_stores_.

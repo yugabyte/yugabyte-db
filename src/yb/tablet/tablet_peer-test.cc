@@ -19,7 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/partial_row.h"
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus_meta.h"

@@ -49,7 +49,7 @@ class DeltaStats {
 
   // Increment delete and update counts based on changes contained in
   // 'update'.
-  CHECKED_STATUS UpdateStats(const Timestamp& timestamp,
+  CHECKED_STATUS UpdateStats(const HybridTime& hybrid_time,
                      const RowChangeList& update);
 
   // Return the number of deletes in the current delta store.
@@ -61,23 +61,23 @@ class DeltaStats {
   }
 
   // Returns the maximum transaction id of any mutation in a delta file.
-  Timestamp max_timestamp() const {
-    return max_timestamp_;
+  HybridTime max_hybrid_time() const {
+    return max_hybrid_time_;
   }
 
   // Returns the minimum transaction id of any mutation in a delta file.
-  Timestamp min_timestamp() const {
-    return min_timestamp_;
+  HybridTime min_hybrid_time() const {
+    return min_hybrid_time_;
   }
 
   // Set the maximum transaction id of any mutation in a delta file.
-  void set_max_timestamp(const Timestamp& timestamp) {
-    max_timestamp_ = timestamp;
+  void set_max_hybrid_time(const HybridTime& hybrid_time) {
+    max_hybrid_time_ = hybrid_time;
   }
 
   // Set the minimum transaction id in of any mutation in a delta file.
-  void set_min_timestamp(const Timestamp& timestamp) {
-    min_timestamp_ = timestamp;
+  void set_min_hybrid_time(const HybridTime& hybrid_time) {
+    min_hybrid_time_ = hybrid_time;
   }
 
   std::string ToString() const;
@@ -95,8 +95,8 @@ class DeltaStats {
  private:
   std::unordered_map<ColumnId, int64_t> update_counts_by_col_id_;
   uint64_t delete_count_;
-  Timestamp max_timestamp_;
-  Timestamp min_timestamp_;
+  HybridTime max_hybrid_time_;
+  HybridTime min_hybrid_time_;
 };
 
 

@@ -156,9 +156,9 @@ class YBClient::Data {
 
   HostPort leader_master_hostport() const;
 
-  uint64_t GetLatestObservedTimestamp() const;
+  uint64_t GetLatestObservedHybridTime() const;
 
-  void UpdateLatestObservedTimestamp(uint64_t timestamp);
+  void UpdateLatestObservedHybridTime(uint64_t hybrid_time);
 
   // API's to add/remove/set the master address list in the client
   CHECKED_STATUS SetMasterAddresses(const std::string& addresses);
@@ -240,7 +240,7 @@ class YBClient::Data {
   // in-depth explanation of why this is needed and how it works.
   mutable simple_spinlock leader_master_lock_;
 
-  AtomicInt<uint64_t> latest_observed_timestamp_;
+  AtomicInt<uint64_t> latest_observed_hybrid_time_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

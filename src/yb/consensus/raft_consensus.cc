@@ -632,9 +632,9 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   // TODO: We should have no-ops (?) and config changes be COMMIT_WAIT
   // transactions. See KUDU-798.
-  // Note: This timestamp has no meaning from a serialization perspective
+  // Note: This hybrid_time has no meaning from a serialization perspective
   // because this method is not executed on the TabletPeer's prepare thread.
-  replicate->set_timestamp(clock_->Now().ToUint64());
+  replicate->set_hybrid_time(clock_->Now().ToUint64());
 
   scoped_refptr<ConsensusRound> round(
       new ConsensusRound(this, make_scoped_refptr(new RefCountedReplicate(replicate))));
@@ -713,7 +713,7 @@ Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<Consensu
     // perform local bootstrap more efficiently.
     replicate_msg->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
 
-    // We use this callback to transform write operations by substituting the timestamp into the
+    // We use this callback to transform write operations by substituting the hybrid_time into the
     // write batch inside the write operation.
     auto* const append_cb = round->append_callback();
     if (append_cb != nullptr) {
@@ -1281,9 +1281,9 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
     auto iter = deduped_req.messages.begin();
 
     if (PREDICT_TRUE(deduped_req.messages.size() > 0)) {
-      // TODO Temporary until the leader explicitly propagates the safe timestamp.
+      // TODO Temporary until the leader explicitly propagates the safe hybrid_time.
       // TODO: what if there is a failure here because the updated time is too far in the future?
-      RETURN_NOT_OK(clock_->Update(Timestamp(deduped_req.messages.back()->get()->timestamp())));
+      RETURN_NOT_OK(clock_->Update(HybridTime(deduped_req.messages.back()->get()->hybrid_time())));
 
       // This request contains at least one message, and is likely to increase
       // our memory pressure.
@@ -1756,9 +1756,9 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     *cc_req->mutable_new_config() = new_config;
     // TODO: We should have no-ops (?) and config changes be COMMIT_WAIT
     // transactions. See KUDU-798.
-    // Note: This timestamp has no meaning from a serialization perspective
+    // Note: This hybrid_time has no meaning from a serialization perspective
     // because this method is not executed on the TabletPeer's prepare thread.
-    cc_replicate->set_timestamp(clock_->Now().ToUint64());
+    cc_replicate->set_hybrid_time(clock_->Now().ToUint64());
     cc_replicate->mutable_committed_op_id()->CopyFrom(state_->GetCommittedOpIdUnlocked());
 
     auto context =

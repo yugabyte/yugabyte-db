@@ -304,23 +304,23 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   const MonoDelta& default_admin_operation_timeout() const;
   const MonoDelta& default_rpc_timeout() const;
 
-  // Value for the latest observed timestamp when none has been observed or set.
-  static const uint64_t kNoTimestamp;
+  // Value for the latest observed hybrid_time when none has been observed or set.
+  static const uint64_t kNoHybridTime;
 
-  // Returns highest HybridTime timestamp observed by the client.
-  // The latest observed timestamp can be used to start a snapshot scan on a
+  // Returns highest hybrid_time observed by the client.
+  // The latest observed hybrid_time can be used to start a snapshot scan on a
   // table which is guaranteed to contain all data written or previously read by
-  // this client. See YBScanner for more details on timestamps.
-  uint64_t GetLatestObservedTimestamp() const;
+  // this client. See YBScanner for more details on hybrid_times.
+  uint64_t GetLatestObservedHybridTime() const;
 
-  // Sets the latest observed HybridTime timestamp, encoded in the HybridTime format.
-  // This is only useful when forwarding timestamps between clients to enforce
+  // Sets the latest observed hybrid_time, encoded in the HybridTime format.
+  // This is only useful when forwarding hybrid_times between clients to enforce
   // external consistency when using YBSession::CLIENT_PROPAGATED external consistency
   // mode.
-  // To use this the user must obtain the HybridTime encoded timestamp from the first
-  // client with YBClient::GetLatestObservedTimestamp() and the set it in the new
+  // To use this the user must obtain the HybridTime encoded hybrid_time from the first
+  // client with YBClient::GetLatestObservedHybridTime() and the set it in the new
   // client with this method.
-  void SetLatestObservedTimestamp(uint64_t ht_timestamp);
+  void SetLatestObservedHybridTime(uint64_t ht_hybrid_time);
 
   // Given a host and port for a master, get the uuid of that process.
   CHECKED_STATUS GetMasterUUID(const std::string& host, int16_t port, std::string* uuid);
@@ -746,18 +746,18 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
 
   // The possible external consistency modes on which YB operates.
   enum ExternalConsistencyMode {
-    // The response to any write will contain a timestamp. Any further calls from the same
-    // client to other servers will update those servers with that timestamp. Following
-    // write operations from the same client will be assigned timestamps that are strictly
+    // The response to any write will contain a hybrid_time. Any further calls from the same
+    // client to other servers will update those servers with that hybrid_time. Following
+    // write operations from the same client will be assigned hybrid_times that are strictly
     // higher, enforcing external consistency without having to wait or incur any latency
     // penalties.
     //
     // In order to maintain external consistency for writes between two different clients
-    // in this mode, the user must forward the timestamp from the first client to the
-    // second by using YBClient::GetLatestObservedTimestamp() and
-    // YBClient::SetLatestObservedTimestamp().
+    // in this mode, the user must forward the hybrid_time from the first client to the
+    // second by using YBClient::GetLatestObservedHybridTime() and
+    // YBClient::SetLatestObservedHybridTime().
     //
-    // WARNING: Failure to propagate timestamp information through back-channels between
+    // WARNING: Failure to propagate hybrid_time information through back-channels between
     // two different clients will negate any external consistency guarantee under this
     // mode.
     //
@@ -765,10 +765,10 @@ class YB_EXPORT YBSession : public std::enable_shared_from_this<YBSession> {
     CLIENT_PROPAGATED,
 
     // The server will guarantee that write operations from the same or from other client
-    // are externally consistent, without the need to propagate timestamps across clients.
+    // are externally consistent, without the need to propagate hybrid_times across clients.
     // This is done by making write operations wait until there is certainty that all
     // follow up write operations (operations that start after the previous one finishes)
-    // will be assigned a timestamp that is strictly higher, enforcing external consistency.
+    // will be assigned a hybrid_time that is strictly higher, enforcing external consistency.
     //
     // WARNING: Depending on the clock synchronization state of TabletServers this may
     // imply considerable latency. Moreover operations in COMMIT_WAIT external consistency
@@ -952,7 +952,7 @@ class YB_EXPORT YBScanner {
   enum ReadMode {
     // When READ_LATEST is specified the server will always return committed writes at
     // the time the request was received. This type of read does not return a snapshot
-    // timestamp and is not repeatable.
+    // hybrid_time and is not repeatable.
     //
     // In ACID terms this corresponds to Isolation mode: "Read Committed"
     //
@@ -960,11 +960,11 @@ class YB_EXPORT YBScanner {
     READ_LATEST,
 
     // When READ_AT_SNAPSHOT is specified the server will attempt to perform a read
-    // at the provided timestamp. If no timestamp is provided the server will take the
-    // current time as the snapshot timestamp. In this mode reads are repeatable, i.e.
-    // all future reads at the same timestamp will yield the same data. This is
-    // performed at the expense of waiting for in-flight transactions whose timestamp
-    // is lower than the snapshot's timestamp to complete, so it might incur a latency
+    // at the provided hybrid_time. If no hybrid_time is provided the server will take the
+    // current time as the snapshot hybrid_time. In this mode reads are repeatable, i.e.
+    // all future reads at the same hybrid_time will yield the same data. This is
+    // performed at the expense of waiting for in-flight transactions whose hybrid_time
+    // is lower than the snapshot's hybrid_time to complete, so it might incur a latency
     // penalty.
     //
     // In ACID terms this, by itself, corresponds to Isolation mode "Repeatable
@@ -1144,16 +1144,16 @@ class YB_EXPORT YBScanner {
   //
   // Fault tolerant scans typically have lower throughput than non
   // fault-tolerant scans. Fault tolerant scans use READ_AT_SNAPSHOT mode,
-  // if no snapshot timestamp is provided, the server will pick one.
+  // if no snapshot hybrid_time is provided, the server will pick one.
   CHECKED_STATUS SetFaultTolerant() WARN_UNUSED_RESULT;
 
-  // Sets the snapshot timestamp, in microseconds since the epoch, for scans in
+  // Sets the snapshot hybrid_time, in microseconds since the epoch, for scans in
   // READ_AT_SNAPSHOT mode.
-  CHECKED_STATUS SetSnapshotMicros(uint64_t snapshot_timestamp_micros) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetSnapshotMicros(uint64_t snapshot_hybrid_time_micros) WARN_UNUSED_RESULT;
 
-  // Sets the snapshot timestamp in raw encoded form (i.e. as returned by a
+  // Sets the snapshot hybrid_time in raw encoded form (i.e. as returned by a
   // previous call to a server), for scans in READ_AT_SNAPSHOT mode.
-  CHECKED_STATUS SetSnapshotRaw(uint64_t snapshot_timestamp) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetSnapshotRaw(uint64_t snapshot_hybrid_time) WARN_UNUSED_RESULT;
 
   // Sets the maximum time that Open() and NextBatch() are allowed to take.
   CHECKED_STATUS SetTimeoutMillis(int millis);

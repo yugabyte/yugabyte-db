@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_peers.h"
@@ -58,7 +58,7 @@ using strings::Substitute;
 
 static gscoped_ptr<ReplicateMsg> CreateDummyReplicate(int term,
                                                       int index,
-                                                      const Timestamp& timestamp,
+                                                      const HybridTime& hybrid_time,
                                                       int payload_size) {
     gscoped_ptr<ReplicateMsg> msg(new ReplicateMsg);
     OpId* id = msg->mutable_id();
@@ -67,7 +67,7 @@ static gscoped_ptr<ReplicateMsg> CreateDummyReplicate(int term,
 
     msg->set_op_type(NO_OP);
     msg->mutable_noop_request()->mutable_payload_for_tests()->resize(payload_size);
-    msg->set_timestamp(timestamp.ToUint64());
+    msg->set_hybrid_time(hybrid_time.ToUint64());
     return msg.Pass();
 }
 

@@ -34,7 +34,7 @@ string DeltaKeyAndUpdate::Stringify(DeltaType type, const Schema& schema) const 
   return StrCat(Substitute("($0 delta key=$1, change_list=$2)",
                            type == UNDO ? "UNDO" : "REDO",
                            StringPrintf("%06u@tx%06u", key.row_idx(),
-                                        atoi(key.timestamp().ToString().c_str())),
+                                        atoi(key.hybrid_time().ToString().c_str())),
                            RowChangeList(cell).ToString(schema)));
 
 }
@@ -113,7 +113,7 @@ Status WriteDeltaIteratorToFile(DeltaIterator* iter,
     for (const DeltaKeyAndUpdate& cell : cells) {
       RowChangeList rcl(cell.cell);
       RETURN_NOT_OK(out->AppendDelta<Type>(cell.key, rcl));
-      RETURN_NOT_OK(stats.UpdateStats(cell.key.timestamp(), rcl));
+      RETURN_NOT_OK(stats.UpdateStats(cell.key.hybrid_time(), rcl));
     }
 
     i += n;

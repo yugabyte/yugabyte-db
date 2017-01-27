@@ -19,11 +19,11 @@ enum class ValueType : char {
   // of components of another key sorts before the other key.
   kGroupEnd = '!',  // ASCII code 33 -- we pick the lowest code graphic character.
 
-  // Timestamp must be lower than all other primitive types (other than kGroupEnd) so that
+  // HybridTime must be lower than all other primitive types (other than kGroupEnd) so that
   // SubDocKeys that have fewer subkeys within a document sort above those that have all the same
-  // subkeys and more. In our MVCC document model layout the timestamp always appears at the end of
-  // the key.
-  kTimestamp = '#',  // ASCII code 35 (34 is double quote, which would be a bit confusing here).
+  // subkeys and more. In our MVCC document model layout the hybrid time always appears at the end
+  // of the key.
+  kHybridTime = '#',  // ASCII code 35 (34 is double quote, which would be a bit confusing here).
 
   // Primitive value types
   kString = '$',  // ASCII code 36

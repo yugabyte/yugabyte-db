@@ -107,7 +107,7 @@ class BootstrapTest : public LogTestBase {
     // Now attempt to recover the log
     RETURN_NOT_OK(BootstrapTablet(
         meta,
-        scoped_refptr<Clock>(LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp)),
+        scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime)),
         shared_ptr<MemTracker>(),
         NULL,
         listener.get(),
@@ -146,8 +146,8 @@ class BootstrapTest : public LogTestBase {
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
     gscoped_ptr<RowwiseIterator> iter;
-    // TODO: there seems to be something funny with timestamps in this test.
-    // Unless we explicitly scan at a snapshot including all timestamps, we don't
+    // TODO: there seems to be something funny with hybrid_times in this test.
+    // Unless we explicitly scan at a snapshot including all hybrid_times, we don't
     // see the bootstrapped operation. This is likely due to KUDU-138 -- perhaps
     // we aren't properly setting up the clock after bootstrap.
     MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllTransactions();
@@ -394,7 +394,7 @@ TEST_F(BootstrapTest, TestOutOfOrderCommits) {
   // This appends Insert(1) with op 10.10
   OpId insert_opid = MakeOpId(10, 10);
   replicate->get()->mutable_id()->CopyFrom(insert_opid);
-  replicate->get()->set_timestamp(clock_->Now().ToUint64());
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::INSERT, schema_, 10, 1,
                  "this is a test insert", batch_request->mutable_row_operations());
   AppendReplicateBatch(replicate, true);
@@ -403,7 +403,7 @@ TEST_F(BootstrapTest, TestOutOfOrderCommits) {
   OpId mutate_opid = MakeOpId(10, 11);
   batch_request->mutable_row_operations()->Clear();
   replicate->get()->mutable_id()->CopyFrom(mutate_opid);
-  replicate->get()->set_timestamp(clock_->Now().ToUint64());
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
                  10, 2, "this is a test mutate",
                  batch_request->mutable_row_operations());
@@ -458,7 +458,7 @@ TEST_F(BootstrapTest, TestMissingCommitMessage) {
   // This appends Insert(1) with op 10.10
   OpId insert_opid = MakeOpId(10, 10);
   replicate->get()->mutable_id()->CopyFrom(insert_opid);
-  replicate->get()->set_timestamp(clock_->Now().ToUint64());
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::INSERT, schema_, 10, 1,
                  "this is a test insert", batch_request->mutable_row_operations());
   AppendReplicateBatch(replicate, true);
@@ -467,7 +467,7 @@ TEST_F(BootstrapTest, TestMissingCommitMessage) {
   OpId mutate_opid = MakeOpId(10, 11);
   batch_request->mutable_row_operations()->Clear();
   replicate->get()->mutable_id()->CopyFrom(mutate_opid);
-  replicate->get()->set_timestamp(clock_->Now().ToUint64());
+  replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
   AddTestRowToPB(RowOperationsPB::UPDATE, schema_,
                  10, 2, "this is a test mutate",
                  batch_request->mutable_row_operations());
@@ -496,28 +496,28 @@ TEST_F(BootstrapTest, TestMissingCommitMessage) {
   ASSERT_EQ(0, results.size());
 }
 
-// Test that we do not crash when a consensus-only operation has a timestamp
-// that is higher than a timestamp assigned to a write operation that follows
+// Test that we do not crash when a consensus-only operation has a hybrid_time
+// that is higher than a hybrid_time assigned to a write operation that follows
 // it in the log.
-TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderTimestamp) {
+TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
   BuildLog();
 
   // Append NO_OP.
   ReplicateRefPtr noop_replicate = make_scoped_refptr_replicate(new ReplicateMsg());
   noop_replicate->get()->set_op_type(consensus::NO_OP);
   *noop_replicate->get()->mutable_id() = MakeOpId(1, 1);
-  noop_replicate->get()->set_timestamp(2);
+  noop_replicate->get()->set_hybrid_time(2);
 
   AppendReplicateBatch(noop_replicate, true);
 
-  // Append WRITE_OP with higher OpId and lower timestamp.
+  // Append WRITE_OP with higher OpId and lower hybrid_time.
   ReplicateRefPtr write_replicate = make_scoped_refptr_replicate(new ReplicateMsg());
   write_replicate->get()->set_op_type(consensus::WRITE_OP);
   WriteRequestPB* batch_request = write_replicate->get()->mutable_write_request();
   ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
   batch_request->set_tablet_id(log::kTestTablet);
   *write_replicate->get()->mutable_id() = MakeOpId(1, 2);
-  write_replicate->get()->set_timestamp(1);
+  write_replicate->get()->set_hybrid_time(1);
   AddTestRowToPB(RowOperationsPB::INSERT, schema_, 1, 1, "foo",
                  batch_request->mutable_row_operations());
 

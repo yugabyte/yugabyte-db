@@ -84,7 +84,7 @@ void PrintIdOnly(const LogEntryPB& entry) {
     case log::REPLICATE:
     {
       cout << entry.replicate().id().term() << "." << entry.replicate().id().index()
-           << "@" << entry.replicate().timestamp() << "\t";
+           << "@" << entry.replicate().hybrid_time() << "\t";
       cout << "REPLICATE "
            << OperationType_Name(entry.replicate().op_type());
       break;
@@ -116,8 +116,8 @@ Status PrintDecodedWriteRequestPB(const string& indent,
   cout << indent << "Tablet: " << write.tablet_id() << endl;
   cout << indent << "Consistency: "
        << ExternalConsistencyMode_Name(write.external_consistency_mode()) << endl;
-  if (write.has_propagated_timestamp()) {
-    cout << indent << "Propagated TS: " << write.propagated_timestamp() << endl;
+  if (write.has_propagated_hybrid_time()) {
+    cout << indent << "Propagated TS: " << write.propagated_hybrid_time() << endl;
   }
 
   int i = 0;

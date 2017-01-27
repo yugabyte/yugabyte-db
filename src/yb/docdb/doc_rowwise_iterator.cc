@@ -39,11 +39,11 @@ CHECKED_STATUS ExpectValueType(ValueType expected_value_type,
 DocRowwiseIterator::DocRowwiseIterator(const Schema &projection,
                                        const Schema &schema,
                                        rocksdb::DB *db,
-                                       Timestamp timestamp,
+                                       HybridTime hybrid_time,
                                        yb::util::PendingOperationCounter* pending_op_counter)
     : projection_(projection),
       schema_(schema),
-      timestamp_(timestamp),
+      hybrid_time_(hybrid_time),
       db_(db),
       has_upper_bound_key_(false),
       pending_op_(pending_op_counter),
@@ -59,8 +59,8 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   db_iter_ = CreateRocksDBIterator(db_, false /* use_bloom_on_scan */);
 
   if (spec->lower_bound_key() != nullptr) {
-    ROCKSDB_SEEK(db_iter_.get(),
-                 SubDocKey(KuduToDocKey(*spec->lower_bound_key()), timestamp_).Encode().AsSlice());
+    ROCKSDB_SEEK(db_iter_.get(), SubDocKey(KuduToDocKey(*spec->lower_bound_key()),
+                                           hybrid_time_).Encode().AsSlice());
   } else {
     // The equivalent of db_iter_->SeekToFirst().
     ROCKSDB_SEEK(db_iter_.get(), "");
@@ -83,7 +83,7 @@ Status DocRowwiseIterator::Init(const YSQLScanSpec& spec) {
 
   // Start scan with the lower bound doc key.
   const DocKey& lower_bound = spec.lower_bound();
-  ROCKSDB_SEEK(db_iter_.get(), SubDocKey(lower_bound, timestamp_).Encode().AsSlice());
+  ROCKSDB_SEEK(db_iter_.get(), SubDocKey(lower_bound, hybrid_time_).Encode().AsSlice());
 
   // End scan with the upper bound key bytes.
   has_upper_bound_key_ = true;
@@ -129,13 +129,13 @@ bool DocRowwiseIterator::HasNext() const {
     if (subdoc_key_.num_subkeys() == 1) {
       // Even without optional init markers (i.e. if we require an object init marker at the top of
       // each row), we may get into the row/column section if we don't have any data at or older
-      // than our scan timestamp. In this case, we need to skip the row and go to the next row.
+      // than our scan hybrid_time. In this case, we need to skip the row and go to the next row.
       //
       // When we switch to supporting optional init markers for SQL rows, we'll need to add a check
-      // to see if we've got any row/column keys within the expected timestamp range, or perhaps
-      // perform a seek into the row/column section with the specified scan timestamp, skip
-      // key/value pairs outside of the timestamp range (the lower end of that range is based on
-      // the delete timestamp), and come up with a return value for HasNext. We might also have to
+      // to see if we've got any row/column keys within the expected hybrid_time range, or perhaps
+      // perform a seek into the row/column section with the specified scan hybrid_time, skip
+      // key/value pairs outside of the hybrid_time range (the lower end of that range is based on
+      // the delete hybrid_time), and come up with a return value for HasNext. We might also have to
       // go the next row as part of this process.
       ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfSubDoc().AsSlice());
       continue;
@@ -149,10 +149,11 @@ bool DocRowwiseIterator::HasNext() const {
       return true;
     }
 
-    if (subdoc_key_.timestamp().CompareTo(timestamp_) > 0) {
-      // This document was fully overwritten after the timestamp we are trying to scan at. We have
-      // to read the latest version of the document that existed at the specified timestamp instead.
-      subdoc_key_.set_timestamp(timestamp_);
+    if (subdoc_key_.hybrid_time().CompareTo(hybrid_time_) > 0) {
+      // This document was fully overwritten after the hybrid_time we are trying to scan at. We have
+      // to read the latest version of the document that existed at the specified hybrid_time
+      // instead.
+      subdoc_key_.set_hybrid_time(hybrid_time_);
       ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.Encode().AsSlice());
       continue;
     }
@@ -165,7 +166,7 @@ bool DocRowwiseIterator::HasNext() const {
     }
     const auto value_type = top_level_value.value_type();
     if (value_type == ValueType::kObject) {
-      // Success: found a valid document at the given timestamp.
+      // Success: found a valid document at the given hybrid_time.
       return true;
     }
     if (value_type != ValueType::kTombstone) {
@@ -175,7 +176,7 @@ bool DocRowwiseIterator::HasNext() const {
           ValueTypeToStr(value_type));
       return true;
     }
-    // No document with this key exists at this timestamp (it has been deleted). Advance out
+    // No document with this key exists at this hybrid_time (it has been deleted). Advance out
     // of this doc key to go to the next document key and repeat.
     ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfDocKeyPrefix().AsSlice());
   }
@@ -192,21 +193,21 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
 
   for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
     const auto& column_id = projection.column_id(i);
-    subdoc_key_.RemoveTimestamp();
-    subdoc_key_.AppendSubKeysAndMaybeTimestamp(
-        PrimitiveValue(static_cast<int32_t>(column_id)), timestamp_);
+    subdoc_key_.RemoveHybridTime();
+    subdoc_key_.AppendSubKeysAndMaybeHybridTime(
+        PrimitiveValue(static_cast<int32_t>(column_id)), hybrid_time_);
 
     const KeyBytes key_for_column = subdoc_key_.Encode();
     ROCKSDB_SEEK(db_iter_.get(), key_for_column.AsSlice());
 
     bool is_null = true;
-    if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastTimestampFrom(db_iter_->key())) {
+    if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastHybridTimeFrom(db_iter_->key())) {
       Value value;
       RETURN_NOT_OK(value.Decode(db_iter_->value()));
 
       // Check for TTL.
       bool has_expired = false;
-      RETURN_NOT_OK(HasExpiredTTL(db_iter_->key(), value.ttl(), timestamp_, &has_expired));
+      RETURN_NOT_OK(HasExpiredTTL(db_iter_->key(), value.ttl(), hybrid_time_, &has_expired));
 
       if (value.primitive_value().value_type() != ValueType::kNull &&
           value.primitive_value().value_type() != ValueType::kTombstone &&

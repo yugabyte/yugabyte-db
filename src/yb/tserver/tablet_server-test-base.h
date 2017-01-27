@@ -181,7 +181,7 @@ class TabletServerTestBase : public YBTest {
                             uint64_t num_batches = -1,
                             TabletServerServiceProxy* proxy = NULL,
                             string tablet_id = kTabletId,
-                            vector<uint64_t>* write_timestamps_collector = NULL,
+                            vector<uint64_t>* write_hybrid_times_collector = NULL,
                             TimeSeries *ts = NULL,
                             bool string_field_defined = true) {
 
@@ -224,8 +224,8 @@ class TabletServerTestBase : public YBTest {
                                          cstr_val, data);
       }
       CHECK_OK(DCHECK_NOTNULL(proxy)->Write(req, &resp, &controller));
-      if (write_timestamps_collector) {
-        write_timestamps_collector->push_back(resp.timestamp());
+      if (write_hybrid_times_collector) {
+        write_hybrid_times_collector->push_back(resp.hybrid_time());
       }
 
       if (resp.has_error() || resp.per_row_errors_size() > 0) {

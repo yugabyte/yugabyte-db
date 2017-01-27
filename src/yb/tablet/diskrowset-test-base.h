@@ -58,7 +58,7 @@ class TestRowSet : public YBRowSetTest {
       n_rows_(FLAGS_roundtrip_num_rows),
       op_id_(consensus::MaximumOpId()),
       mvcc_(scoped_refptr<server::Clock>(
-          server::LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp))) {
+          server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime))) {
     CHECK_GT(n_rows_, 0);
   }
 
@@ -185,7 +185,7 @@ class TestRowSet : public YBRowSetTest {
     ProbeStats stats;
     ScopedTransaction tx(&mvcc_);
     tx.StartApplying();
-    Status s = rs->MutateRow(tx.timestamp(), probe, mutation, op_id_, &stats, result);
+    Status s = rs->MutateRow(tx.hybrid_time(), probe, mutation, op_id_, &stats, result);
     tx.Commit();
     return s;
   }

@@ -121,7 +121,7 @@ using internal::MetaCache;
 using internal::RemoteTabletServer;
 using std::shared_ptr;
 
-static const int kHtTimestampBitsToShift = 12;
+static const int kHtHybridTimeBitsToShift = 12;
 
 // Adapts between the internal LogSeverity and the client's YBLogSeverity.
 static void LoggingAdapterCB(YBLoggingCallback* user_cb,
@@ -601,14 +601,14 @@ const MonoDelta& YBClient::default_rpc_timeout() const {
   return data_->default_rpc_timeout_;
 }
 
-const uint64_t YBClient::kNoTimestamp = 0;
+const uint64_t YBClient::kNoHybridTime = 0;
 
-uint64_t YBClient::GetLatestObservedTimestamp() const {
-  return data_->GetLatestObservedTimestamp();
+uint64_t YBClient::GetLatestObservedHybridTime() const {
+  return data_->GetLatestObservedHybridTime();
 }
 
-void YBClient::SetLatestObservedTimestamp(uint64_t ht_timestamp) {
-  data_->UpdateLatestObservedTimestamp(ht_timestamp);
+void YBClient::SetLatestObservedHybridTime(uint64_t ht_hybrid_time) {
+  data_->UpdateLatestObservedHybridTime(ht_hybrid_time);
 }
 
 ////////////////////////////////////////////////////////////
@@ -1353,21 +1353,21 @@ Status YBScanner::SetFaultTolerant() {
   return Status::OK();
 }
 
-Status YBScanner::SetSnapshotMicros(uint64_t snapshot_timestamp_micros) {
+Status YBScanner::SetSnapshotMicros(uint64_t snapshot_hybrid_time_micros) {
   if (data_->open_) {
-    return STATUS(IllegalState, "Snapshot timestamp must be set before Open()");
+    return STATUS(IllegalState, "Snapshot hybrid_time must be set before Open()");
   }
-  // Shift the HT timestamp bits to get well-formed HT timestamp with the logical
+  // Shift the HT hybrid_time bits to get well-formed HT hybrid_time with the logical
   // bits zeroed out.
-  data_->snapshot_timestamp_ = snapshot_timestamp_micros << kHtTimestampBitsToShift;
+  data_->snapshot_hybrid_time_ = snapshot_hybrid_time_micros << kHtHybridTimeBitsToShift;
   return Status::OK();
 }
 
-Status YBScanner::SetSnapshotRaw(uint64_t snapshot_timestamp) {
+Status YBScanner::SetSnapshotRaw(uint64_t snapshot_hybrid_time) {
   if (data_->open_) {
-    return STATUS(IllegalState, "Snapshot timestamp must be set before Open()");
+    return STATUS(IllegalState, "Snapshot hybrid_time must be set before Open()");
   }
-  data_->snapshot_timestamp_ = snapshot_timestamp;
+  data_->snapshot_hybrid_time_ = snapshot_hybrid_time;
   return Status::OK();
 }
 

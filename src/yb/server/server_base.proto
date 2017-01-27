@@ -84,12 +84,12 @@ message FlushCoverageResponsePB {
   optional bool success = 1;
 }
 
-// Requests the server's current timestamp.
+// Requests the server's current hybrid_time.
 message ServerClockRequestPB {
 }
 message ServerClockResponsePB {
-  // The current timestamp of the server.
-  optional fixed64 timestamp = 1;
+  // The current hybrid_time of the server.
+  optional fixed64 hybrid_time = 1;
 }
 
 // Requests the server's status and version info

@@ -395,8 +395,8 @@ bool YBSingleThreadedWriter::Write(
     Status flush_status = session_->Flush();
     if (flush_status.ok()) {
       multi_threaded_writer_->inserted_keys_.Insert(key_index);
-      VLOG(2) << "Successfully inserted key #" << key_index << " at timestamp "
-              << client_->GetLatestObservedTimestamp() << " or earlier";
+      VLOG(2) << "Successfully inserted key #" << key_index << " at hybrid_time "
+              << client_->GetLatestObservedHybridTime() << " or earlier";
     } else {
       LOG(WARNING) << "Error inserting key '" << key_str << "': "
                    << "Flush() failed"
@@ -561,7 +561,7 @@ bool NoopSingleThreadedWriter::Write(
 
 ReadStatus YBSingleThreadedReader::PerformRead(
     int64_t key_index, const string& key_str, const string& expected_value_str) {
-  uint64_t read_ts = client_->GetLatestObservedTimestamp();
+  uint64_t read_ts = client_->GetLatestObservedHybridTime();
   YBScanner scanner(table_);
   CHECK_OK(scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY));
   CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
@@ -579,7 +579,8 @@ ReadStatus YBSingleThreadedReader::PerformRead(
   CHECK_OK(scanner_open_status);
 
   if (!scanner.HasMoreRows()) {
-    LOG(ERROR) << "No rows found for key #" << key_index << " (read timestamp: " << read_ts << ")";
+    LOG(ERROR) << "No rows found for key #" << key_index << " (read hybrid_time: " << read_ts
+               << ")";
     // We don't increment the read error count here because the caller may retry up to the
     // configured number of times in this case.
     return ReadStatus::NO_ROWS;
@@ -589,7 +590,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
   CHECK_OK(scanner.NextBatch(&rows));
   if (rows.size() != 1) {
     LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": " << rows.size()
-               << " (expected to find 1 row), read timestamp: " << read_ts;
+               << " (expected to find 1 row), read hybrid_time: " << read_ts;
     multi_threaded_reader_->IncrementReadErrorCount();
     return ReadStatus::OTHER_ERROR;
   }
@@ -598,7 +599,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
   CHECK_OK(rows.front().GetBinary("k", &returned_key));
   if (returned_key != key_str) {
     LOG(ERROR) << "Invalid key returned by the read operation: '" << returned_key << "', "
-               << "expected: '" << key_str << "', read timestamp: " << read_ts;
+               << "expected: '" << key_str << "', read hybrid_time: " << read_ts;
     multi_threaded_reader_->IncrementReadErrorCount();
     return ReadStatus::OTHER_ERROR;
   }
@@ -608,7 +609,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     LOG(ERROR) << "Invalid value returned by the read operation for key '" << key_str
                << "': " << FormatWithSize(returned_value.ToString())
                << ", expected: " << FormatWithSize(expected_value_str)
-               << ", read timestamp: " << read_ts;
+               << ", read hybrid_time: " << read_ts;
     multi_threaded_reader_->IncrementReadErrorCount();
     return ReadStatus::OTHER_ERROR;
   }

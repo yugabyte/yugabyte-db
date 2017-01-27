@@ -47,7 +47,7 @@ namespace docdb {
 Status SeekToValidKvAtTs(
     rocksdb::Iterator *iter,
     const rocksdb::Slice &search_key,
-    Timestamp timestamp,
+    HybridTime hybrid_time,
     SubDocKey *found_key,
     Value *found_value,
     bool *is_found) {
@@ -62,9 +62,9 @@ Status SeekToValidKvAtTs(
   MonoDelta ttl;
   RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
   if (!ttl.Equals(Value::kMaxTtl)) {
-    const Timestamp expiry =
-        server::HybridClock::AddPhysicalTimeToTimestamp(found_key->timestamp(), ttl);
-    if (timestamp.CompareTo(expiry) > 0) {
+    const HybridTime expiry =
+        server::HybridClock::AddPhysicalTimeToHybridTime(found_key->hybrid_time(), ttl);
+    if (hybrid_time.CompareTo(expiry) > 0) {
       *is_found = false;
       return Status::OK();
     }

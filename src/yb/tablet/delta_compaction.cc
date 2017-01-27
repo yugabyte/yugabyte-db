@@ -164,9 +164,9 @@ Status MajorDeltaCompaction::FlushRowSetAndDeltas() {
         RETURN_NOT_OK(OpenUndoDeltaFileWriter());
       }
       for (const Mutation *mut = new_undos_head; mut != nullptr; mut = mut->next()) {
-        DeltaKey undo_key(nrows + dst_row.row_index(), mut->timestamp());
+        DeltaKey undo_key(nrows + dst_row.row_index(), mut->hybrid_time());
         RETURN_NOT_OK(new_undo_delta_writer_->AppendDelta<UNDO>(undo_key, mut->changelist()));
-        undo_stats.UpdateStats(mut->timestamp(), mut->changelist());
+        undo_stats.UpdateStats(mut->hybrid_time(), mut->changelist());
         undo_delta_mutations_written_++;
       }
     }
@@ -190,7 +190,7 @@ Status MajorDeltaCompaction::FlushRowSetAndDeltas() {
       RowChangeList update(key_and_update.cell);
       RETURN_NOT_OK_PREPEND(new_redo_delta_writer_->AppendDelta<REDO>(key_and_update.key, update),
                             "Failed to append a delta");
-      WARN_NOT_OK(redo_stats.UpdateStats(key_and_update.key.timestamp(), update),
+      WARN_NOT_OK(redo_stats.UpdateStats(key_and_update.key.hybrid_time(), update),
                   "Failed to update stats");
     }
     redo_delta_mutations_written_ += out.size();

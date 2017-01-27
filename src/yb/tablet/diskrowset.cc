@@ -374,9 +374,9 @@ Status RollingDiskRowSetWriter::AppendDeltas(rowid_t row_idx_in_block,
 
   *row_idx = row_idx_in_cur_drs_ + row_idx_in_block;
   for (const Mutation *mut = delta_head; mut != nullptr; mut = mut->next()) {
-    DeltaKey undo_key(*row_idx, mut->timestamp());
+    DeltaKey undo_key(*row_idx, mut->hybrid_time());
     RETURN_NOT_OK(writer->AppendDelta<Type>(undo_key, mut->changelist()));
-    delta_stats->UpdateStats(mut->timestamp(), mut->changelist());
+    delta_stats->UpdateStats(mut->hybrid_time(), mut->changelist());
   }
   return Status::OK();
 }
@@ -408,14 +408,14 @@ Status RollingDiskRowSetWriter::FinishCurrentWriter() {
     // If the writer is not null _AND_ we've written something to the undo
     // delta store commit the undo delta block.
     if (cur_undo_writer_.get() != nullptr &&
-        cur_undo_delta_stats->min_timestamp().CompareTo(Timestamp::kMax) != 0) {
+        cur_undo_delta_stats->min_hybrid_time().CompareTo(HybridTime::kMax) != 0) {
       cur_drs_metadata_->CommitUndoDeltaDataBlock(cur_undo_ds_block_id_);
     }
 
     // If the writer is not null _AND_ we've written something to the redo
     // delta store commit the redo delta block.
     if (cur_redo_writer_.get() != nullptr &&
-        cur_redo_delta_stats->min_timestamp().CompareTo(Timestamp::kMax) != 0) {
+        cur_redo_delta_stats->min_hybrid_time().CompareTo(HybridTime::kMax) != 0) {
       cur_drs_metadata_->CommitRedoDeltaDataBlock(0, cur_redo_ds_block_id_);
     } else {
       // TODO: KUDU-678: the block will get orphaned here, since we're not putting
@@ -592,7 +592,7 @@ Status DiskRowSet::NewCompactionInput(const Schema* projection,
   return CompactionInput::Create(*this, projection, snap, out);
 }
 
-Status DiskRowSet::MutateRow(Timestamp timestamp,
+Status DiskRowSet::MutateRow(HybridTime hybrid_time,
                              const RowSetKeyProbe &probe,
                              const RowChangeList &update,
                              const consensus::OpId& op_id,
@@ -612,7 +612,7 @@ Status DiskRowSet::MutateRow(Timestamp timestamp,
     return STATUS(NotFound, "row not found");
   }
 
-  RETURN_NOT_OK(delta_tracker_->Update(timestamp, row_idx, update, op_id, result));
+  RETURN_NOT_OK(delta_tracker_->Update(hybrid_time, row_idx, update, op_id, result));
 
   return Status::OK();
 }

@@ -6,7 +6,7 @@
 
 #include "rocksdb/db.h"
 
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -90,7 +90,7 @@ const SubDocument* InMemDocDbState::GetDocument(const KeyBytes& encoded_doc_key)
   return root_.GetChild(PrimitiveValue(encoded_doc_key.AsStringRef()));
 }
 
-void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, Timestamp timestamp) {
+void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
   // Clear the internal state.
   root_ = SubDocument();
 
@@ -114,7 +114,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, Timestamp timestamp) {
     //       to extract document key out of a subdocument key.
     auto encoded_doc_key = subdoc_key.doc_key().Encode();
     const Status get_doc_status =
-        yb::docdb::GetSubDocument(rocksdb, encoded_doc_key, &subdoc, &doc_found, timestamp);
+        yb::docdb::GetSubDocument(rocksdb, encoded_doc_key, &subdoc, &doc_found, hybrid_time);
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
       LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, /* include_binary = */ true);
@@ -138,19 +138,19 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, Timestamp timestamp) {
     }
   }
 
-  // Initialize the "captured at" timestamp now, even though we expect it to be overwritten in many
-  // cases. One common usage pattern is that this will be called with Timestamp::kMax, but we'll
-  // later call SetCaptureTimestamp and set the timestamp to the last known timestamp of an
-  // operation performed on DocDB.
-  captured_at_ = timestamp;
+  // Initialize the "captured at" hybrid_time now, even though we expect it to be overwritten in
+  // many cases. One common usage pattern is that this will be called with HybridTime::kMax, but
+  // we'll later call SetCaptureHybridTime and set the hybrid_time to the last known hybrid_time of
+  // an operation performed on DocDB.
+  captured_at_ = hybrid_time;
 
   // Ensure we don't get any funny value types in the root node (had a test failure like this).
   CHECK_EQ(root_.value_type(), ValueType::kObject);
 }
 
-void InMemDocDbState::SetCaptureTimestamp(Timestamp timestamp) {
-  CHECK_NE(timestamp, Timestamp::kInvalidTimestamp);
-  captured_at_ = timestamp;
+void InMemDocDbState::SetCaptureHybridTime(HybridTime hybrid_time) {
+  CHECK_NE(hybrid_time, HybridTime::kInvalidHybridTime);
+  captured_at_ = hybrid_time;
 }
 
 bool InMemDocDbState::EqualsAndLogDiff(const InMemDocDbState &expected, bool log_diff) {
@@ -230,8 +230,8 @@ string InMemDocDbState::ToDebugString() const {
   return dump_str.empty() ? "<Empty>" : dump_str;
 }
 
-Timestamp InMemDocDbState::captured_at() const {
-  CHECK_NE(captured_at_, Timestamp::kInvalidTimestamp);
+HybridTime InMemDocDbState::captured_at() const {
+  CHECK_NE(captured_at_, HybridTime::kInvalidHybridTime);
   return captured_at_;
 }
 

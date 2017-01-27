@@ -86,7 +86,7 @@ DECLARE_int32(memory_limit_warn_threshold_percentage);
 
 DEFINE_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
-             "scan at the given timestamp.");
+             "scan at the given hybrid_time.");
 
 namespace yb {
 namespace tserver {
@@ -705,7 +705,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
 
 Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
                                            const RpcContext* rpc_context,
-                                           const Timestamp& timestamp,
+                                           const HybridTime& hybrid_time,
                                            tablet::MvccSnapshot* snap) {
   // Wait for the in-flights in the snapshot to be finished.
   // We'll use the client-provided deadline, but not if it's more than
@@ -730,8 +730,8 @@ Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
   TRACE("Waiting for operations in snapshot to commit");
   MonoTime before = MonoTime::Now(MonoTime::FINE);
   RETURN_NOT_OK_PREPEND(
-      tablet->mvcc_manager()->WaitForCleanSnapshotAtTimestamp(timestamp, snap, deadline),
-      "could not wait for desired snapshot timestamp to be consistent");
+      tablet->mvcc_manager()->WaitForCleanSnapshotAtHybridTime(hybrid_time, snap, deadline),
+      "could not wait for desired snapshot hybrid_time to be consistent");
 
   uint64_t duration_usec = MonoTime::Now(MonoTime::FINE).GetDeltaSince(before).ToMicroseconds();
   tablet->metrics()->snapshot_read_inflight_wait_duration->Increment(duration_usec);
@@ -788,10 +788,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  // If the client sent us a timestamp, decode it and update the clock so that all future
-  // timestamps are greater than the passed timestamp.
-  if (req->has_propagated_timestamp()) {
-    Timestamp ts(req->propagated_timestamp());
+  // If the client sent us a hybrid_time, decode it and update the clock so that all future
+  // hybrid_times are greater than the passed hybrid_time.
+  if (req->has_propagated_hybrid_time()) {
+    HybridTime ts(req->propagated_hybrid_time());
     s = server_->clock()->Update(ts);
   }
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
@@ -1148,9 +1148,9 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
       return;
     }
     string scanner_id;
-    Timestamp scan_timestamp;
+    HybridTime scan_hybrid_time;
     Status s = HandleNewScanRequest(tablet_peer.get(), req, context,
-                                    &collector, &scanner_id, &scan_timestamp, &has_more_results,
+                                    &collector, &scanner_id, &scan_hybrid_time, &has_more_results,
                                     &error_code);
     if (PREDICT_FALSE(!s.ok())) {
       SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
@@ -1161,8 +1161,8 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
     if (has_more_results) {
       resp->set_scanner_id(scanner_id);
     }
-    if (scan_timestamp != Timestamp::kInvalidTimestamp) {
-      resp->set_snap_timestamp(scan_timestamp.ToUint64());
+    if (scan_hybrid_time != HybridTime::kInvalidHybridTime) {
+      resp->set_snap_hybrid_time(scan_hybrid_time.ToUint64());
     }
   } else if (req->has_scanner_id()) {
     Status s = HandleContinueScanRequest(req, &collector, &has_more_results, &error_code);
@@ -1286,17 +1286,17 @@ void TabletServiceImpl::Checksum(const ChecksumRequestPB* req,
     }
 
     string scanner_id;
-    Timestamp snap_timestamp;
+    HybridTime snap_hybrid_time;
     Status s = HandleNewScanRequest(tablet_peer.get(), &scan_req, context,
-                                    &collector, &scanner_id, &snap_timestamp, &has_more,
+                                    &collector, &scanner_id, &snap_hybrid_time, &has_more,
                                     &error_code);
     if (PREDICT_FALSE(!s.ok())) {
       SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
       return;
     }
     resp->set_scanner_id(scanner_id);
-    if (snap_timestamp != Timestamp::kInvalidTimestamp) {
-      resp->set_snap_timestamp(snap_timestamp.ToUint64());
+    if (snap_hybrid_time != HybridTime::kInvalidHybridTime) {
+      resp->set_snap_hybrid_time(snap_hybrid_time.ToUint64());
     }
   } else if (req->has_continue_request()) {
     const ContinueChecksumRequestPB& continue_req = req->continue_request();
@@ -1477,7 +1477,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
                                                const RpcContext* rpc_context,
                                                ScanResultCollector* result_collector,
                                                std::string* scanner_id,
-                                               Timestamp* snap_timestamp,
+                                               HybridTime* snap_hybrid_time,
                                                bool* has_more_results,
                                                TabletServerErrorPB::Code* error_code) {
   DCHECK(result_collector != nullptr);
@@ -1570,7 +1570,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
         break;
       }
       case READ_AT_SNAPSHOT: {
-        s = HandleScanAtSnapshot(scan_pb, rpc_context, projection, tablet, &iter, snap_timestamp);
+        s = HandleScanAtSnapshot(scan_pb, rpc_context, projection, tablet, &iter, snap_hybrid_time);
         if (!s.ok()) {
           tmp_error_code = TabletServerErrorPB::INVALID_SNAPSHOT;
         }
@@ -1777,48 +1777,48 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
                                                const Schema& projection,
                                                const shared_ptr<Tablet>& tablet,
                                                gscoped_ptr<RowwiseIterator>* iter,
-                                               Timestamp* snap_timestamp) {
+                                               HybridTime* snap_hybrid_time) {
 
   // TODO check against the earliest boundary (i.e. how early can we go) right
   // now we're keeping all undos/redos forever!
 
-  // If the client sent a timestamp update our clock with it.
-  if (scan_pb.has_propagated_timestamp()) {
-    Timestamp propagated_timestamp(scan_pb.propagated_timestamp());
+  // If the client sent a hybrid_time update our clock with it.
+  if (scan_pb.has_propagated_hybrid_time()) {
+    HybridTime propagated_hybrid_time(scan_pb.propagated_hybrid_time());
 
     // Update the clock so that we never generate snapshots lower that
-    // 'propagated_timestamp'. If 'propagated_timestamp' is lower than
-    // 'now' this call has no effect. If 'propagated_timestamp' is too much
+    // 'propagated_hybrid_time'. If 'propagated_hybrid_time' is lower than
+    // 'now' this call has no effect. If 'propagated_hybrid_time' is too much
     // into the future this will fail and we abort.
-    RETURN_NOT_OK(server_->clock()->Update(propagated_timestamp));
+    RETURN_NOT_OK(server_->clock()->Update(propagated_hybrid_time));
   }
 
-  Timestamp tmp_snap_timestamp;
+  HybridTime tmp_snap_hybrid_time;
 
-  // If the client provided no snapshot timestamp we take the current clock
-  // time as the snapshot timestamp.
-  if (!scan_pb.has_snap_timestamp()) {
-    tmp_snap_timestamp = server_->clock()->Now();
+  // If the client provided no snapshot hybrid_time we take the current clock
+  // time as the snapshot hybrid_time.
+  if (!scan_pb.has_snap_hybrid_time()) {
+    tmp_snap_hybrid_time = server_->clock()->Now();
     // ... else we use the client provided one, but make sure it is not too far
     // in the future as to be invalid.
   } else {
-    RETURN_NOT_OK(tmp_snap_timestamp.FromUint64(scan_pb.snap_timestamp()));
-    Timestamp max_allowed_ts;
+    RETURN_NOT_OK(tmp_snap_hybrid_time.FromUint64(scan_pb.snap_hybrid_time()));
+    HybridTime max_allowed_ts;
     Status s = server_->clock()->GetGlobalLatest(&max_allowed_ts);
     if (!s.ok()) {
       return STATUS(NotSupported, "Snapshot scans not supported on this server",
                     s.ToString());
     }
-    if (tmp_snap_timestamp.CompareTo(max_allowed_ts) > 0) {
+    if (tmp_snap_hybrid_time.CompareTo(max_allowed_ts) > 0) {
       return STATUS(InvalidArgument,
-                    Substitute("Snapshot time $0 in the future. Max allowed timestamp is $1",
-                               server_->clock()->Stringify(tmp_snap_timestamp),
+                    Substitute("Snapshot time $0 in the future. Max allowed hybrid_time is $1",
+                               server_->clock()->Stringify(tmp_snap_hybrid_time),
                                server_->clock()->Stringify(max_allowed_ts)));
     }
   }
 
   tablet::MvccSnapshot snap;
-  RETURN_NOT_OK(TakeReadSnapshot(tablet.get(), rpc_context, tmp_snap_timestamp, &snap));
+  RETURN_NOT_OK(TakeReadSnapshot(tablet.get(), rpc_context, tmp_snap_hybrid_time, &snap));
 
   tablet::Tablet::OrderMode order;
   switch (scan_pb.order_mode()) {
@@ -1827,7 +1827,7 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
     default: LOG(FATAL) << "Unexpected order mode.";
   }
   RETURN_NOT_OK(tablet->NewRowIterator(projection, snap, order, iter));
-  *snap_timestamp = tmp_snap_timestamp;
+  *snap_hybrid_time = tmp_snap_hybrid_time;
   return Status::OK();
 }
 

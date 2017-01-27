@@ -167,7 +167,7 @@ void DoNothing(std::shared_ptr<consensus::StateChangeContext> context) {
 class RaftConsensusTest : public YBTest {
  public:
   RaftConsensusTest()
-      : clock_(server::LogicalClock::CreateStartingAt(Timestamp(0))),
+      : clock_(server::LogicalClock::CreateStartingAt(HybridTime(0))),
         metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-consensus-test")),
         schema_(GetSimpleTestSchema()) {
     FLAGS_enable_leader_failure_detection = false;
@@ -275,7 +275,7 @@ class RaftConsensusTest : public YBTest {
   scoped_refptr<ConsensusRound> AppendNoOpRound() {
     ReplicateRefPtr replicate_ptr(make_scoped_refptr_replicate(new ReplicateMsg));
     replicate_ptr->get()->set_op_type(NO_OP);
-    replicate_ptr->get()->set_timestamp(clock_->Now().ToUint64());
+    replicate_ptr->get()->set_hybrid_time(clock_->Now().ToUint64());
     scoped_refptr<ConsensusRound> round(new ConsensusRound(consensus_.get(), replicate_ptr));
     round->SetConsensusReplicatedCallback(
         Bind(&RaftConsensusSpy::NonTxRoundReplicationFinished,
@@ -333,7 +333,7 @@ void RaftConsensusTest::AddNoOpToConsensusRequest(ConsensusRequestPB* request,
   ReplicateMsg* noop_msg = request->add_ops();
   *noop_msg->mutable_id() = noop_opid;
   noop_msg->set_op_type(NO_OP);
-  noop_msg->set_timestamp(clock_->Now().ToUint64());
+  noop_msg->set_hybrid_time(clock_->Now().ToUint64());
   noop_msg->mutable_noop_request();
 }
 
@@ -609,7 +609,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
   ReplicateMsg* noop_msg = request.add_ops();
   noop_msg->mutable_id()->CopyFrom(MakeOpId(3, 6));
   noop_msg->set_op_type(NO_OP);
-  noop_msg->set_timestamp(clock_->Now().ToUint64());
+  noop_msg->set_hybrid_time(clock_->Now().ToUint64());
   noop_msg->mutable_noop_request();
 
   // Overwrite another 3 of the original rounds for a total of 4 overwrites.
@@ -617,7 +617,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
     ReplicateMsg* replicate = request.add_ops();
     replicate->mutable_id()->CopyFrom(MakeOpId(3, i));
     replicate->set_op_type(NO_OP);
-    replicate->set_timestamp(clock_->Now().ToUint64());
+    replicate->set_hybrid_time(clock_->Now().ToUint64());
   }
 
   request.mutable_committed_index()->CopyFrom(MakeOpId(3, 6));

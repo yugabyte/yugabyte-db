@@ -105,7 +105,7 @@ class YBScanner::Data {
 
   ReadMode read_mode_;
   bool is_fault_tolerant_;
-  int64_t snapshot_timestamp_;
+  int64_t snapshot_hybrid_time_;
 
   // The encoded last primary key from the most recent tablet scan response.
   std::string last_primary_key_;

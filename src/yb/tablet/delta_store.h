@@ -154,7 +154,7 @@ class DeltaIterator {
   // Each entry in the vector will be treated as a singly linked list of Mutation
   // objects. If there are no mutations for that row, the entry will be unmodified.
   // If there are mutations, they will be appended at the tail of the linked list
-  // (i.e in ascending timestamp order)
+  // (i.e in ascending hybrid_time order)
   //
   // The Mutation objects will be allocated out of the provided Arena, which must be non-NULL.
   // Must have called PrepareBatch() with flag = PREPARE_FOR_COLLECT.

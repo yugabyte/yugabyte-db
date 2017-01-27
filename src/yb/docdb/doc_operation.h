@@ -22,13 +22,13 @@ class DocOperation {
   virtual ~DocOperation() {}
 
   // Does the operation require a read snapshot to be taken before being applied? If so, a
-  // clean snapshot timestamp will be supplied when Apply() is called. For example,
+  // clean snapshot hybrid_time will be supplied when Apply() is called. For example,
   // YSQLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
   virtual DocPath DocPathToLock() const = 0;
   virtual CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) = 0;
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) = 0;
 };
 
 class KuduWriteOperation: public DocOperation {
@@ -41,7 +41,7 @@ class KuduWriteOperation: public DocOperation {
   DocPath DocPathToLock() const override;
 
   CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) override;
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
 
  private:
   DocPath doc_path_;
@@ -50,13 +50,13 @@ class KuduWriteOperation: public DocOperation {
 
 class RedisWriteOperation: public DocOperation {
  public:
-  RedisWriteOperation(yb::RedisWriteRequestPB request, Timestamp read_timestamp)
-      : request_(request), response_(), read_timestamp_(read_timestamp) {}
+  RedisWriteOperation(yb::RedisWriteRequestPB request, HybridTime read_hybrid_time)
+      : request_(request), response_(), read_hybrid_time_(read_hybrid_time) {}
 
   bool RequireReadSnapshot() const override { return false; }
 
   CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) override;
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
 
   DocPath DocPathToLock() const override;
 
@@ -77,23 +77,23 @@ class RedisWriteOperation: public DocOperation {
 
   RedisWriteRequestPB request_;
   RedisResponsePB response_;
-  Timestamp read_timestamp_;
+  HybridTime read_hybrid_time_;
 };
 
 class RedisReadOperation {
  public:
   explicit RedisReadOperation(yb::RedisReadRequestPB request) : request_(request) {}
 
-  CHECKED_STATUS Execute(rocksdb::DB *rocksdb, const Timestamp& timestamp);
+  CHECKED_STATUS Execute(rocksdb::DB *rocksdb, const HybridTime& hybrid_time);
 
   const RedisResponsePB &response();
 
  private:
   int ApplyIndex(int32_t index, const int32_t len);
-  Status ExecuteGet(rocksdb::DB *rocksdb, Timestamp timestamp);
-  Status ExecuteStrLen(rocksdb::DB *rocksdb, Timestamp timestamp);
-  Status ExecuteExists(rocksdb::DB *rocksdb, Timestamp timestamp);
-  Status ExecuteGetRange(rocksdb::DB *rocksdb, Timestamp timestamp);
+  Status ExecuteGet(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  Status ExecuteStrLen(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  Status ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid_time);
+  Status ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time);
 
   RedisReadRequestPB request_;
   RedisResponsePB response_;
@@ -109,7 +109,7 @@ class YSQLWriteOperation : public DocOperation {
   DocPath DocPathToLock() const override;
 
   CHECKED_STATUS Apply(
-      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const Timestamp& timestamp) override;
+      DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
 
   const YSQLWriteRequestPB& request() const { return request_; }
   YSQLResponsePB* response() const { return response_; }
@@ -119,7 +119,7 @@ class YSQLWriteOperation : public DocOperation {
 
  private:
   CHECKED_STATUS IsConditionSatisfied(
-      const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const Timestamp& timestamp,
+      const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
       bool* should_apply, std::unique_ptr<YSQLRowBlock>* rowblock);
 
   const Schema& schema_;
@@ -139,7 +139,7 @@ class YSQLReadOperation {
   explicit YSQLReadOperation(const YSQLReadRequestPB& request);
 
   CHECKED_STATUS Execute(
-      rocksdb::DB *rocksdb, const Timestamp& timestamp, const Schema& schema,
+      rocksdb::DB *rocksdb, const HybridTime& hybrid_time, const Schema& schema,
       YSQLRowBlock* rowblock);
 
   const YSQLResponsePB& response() const;

@@ -250,7 +250,7 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
                      &writer_thread));
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
 
-  uint64_t ts = client_->GetLatestObservedTimestamp();
+  uint64_t ts = client_->GetLatestObservedHybridTime();
   MonoTime start(MonoTime::Now(MonoTime::FINE));
   MonoTime deadline = start;
   deadline.AddDelta(MonoDelta::FromSeconds(30));
@@ -278,8 +278,8 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
 }
 
 // Test that followers & leader wait until safe time to respond to a snapshot
-// scan at current timestamp. TODO: Safe time not yet implemented. See KUDU-1056.
-TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
+// scan at current hybrid_time. TODO: Safe time not yet implemented. See KUDU-1056.
+TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentHybridTime) {
   CountDownLatch started_writing(1);
   AtomicBool continue_writing(true);
   Promise<Status> promise;
@@ -295,7 +295,7 @@ TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
   ASSERT_OK(ysck_->FetchTableAndTabletInfo());
   ASSERT_OK(ysck_->ChecksumData(vector<string>(), vector<string>(),
                                 ChecksumOptions(MonoDelta::FromSeconds(10), 16, true,
-                                                ChecksumOptions::kCurrentTimestamp)));
+                                                ChecksumOptions::kCurrentHybridTime)));
   continue_writing.Store(false);
   ASSERT_OK(promise.Get());
   writer_thread->Join();

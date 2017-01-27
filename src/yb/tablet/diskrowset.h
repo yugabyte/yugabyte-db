@@ -296,7 +296,7 @@ class DiskRowSet : public RowSet {
   // Update the given row.
   // 'key' should be the key portion of the row -- i.e a contiguous
   // encoding of the key columns.
-  CHECKED_STATUS MutateRow(Timestamp timestamp,
+  CHECKED_STATUS MutateRow(HybridTime hybrid_time,
                    const RowSetKeyProbe &probe,
                    const RowChangeList &update,
                    const consensus::OpId& op_id,

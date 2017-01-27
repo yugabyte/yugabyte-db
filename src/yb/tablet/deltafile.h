@@ -71,8 +71,8 @@ class DeltaFileWriter {
   CHECKED_STATUS FinishAndReleaseBlock(fs::ScopedWritableBlockCloser* closer);
 
   // Append a given delta to the file. This must be called in ascending order
-  // of (key, timestamp) for REDOS and ascending order of key, descending order
-  // of timestamp for UNDOS.
+  // of (key, hybrid_time) for REDOS and ascending order of key, descending order
+  // of hybrid_time for UNDOS.
   template<DeltaType Type>
   CHECKED_STATUS AppendDelta(const DeltaKey &key, const RowChangeList &delta);
 

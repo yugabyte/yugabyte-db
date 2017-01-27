@@ -78,7 +78,7 @@ set(COMMON_SRCS
   scan_predicate.cc
   scan_spec.cc
   schema.cc
-  timestamp.cc
+  hybrid_time.cc
   types.cc
   wire_protocol.cc
   ysql_value.cc

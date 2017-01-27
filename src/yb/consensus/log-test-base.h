@@ -26,7 +26,7 @@
 #include <vector>
 #include <string>
 
-#include "yb/common/timestamp.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
@@ -89,7 +89,7 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
 
     repl->mutable_id()->CopyFrom(*op_id);
     repl->set_op_type(NO_OP);
-    repl->set_timestamp(clock->Now().ToUint64());
+    repl->set_hybrid_time(clock->Now().ToUint64());
 
     // Increment op_id.
     op_id->set_index(op_id->index() + 1);
@@ -195,7 +195,7 @@ class LogTestBase : public YBTest {
     consensus::ReplicateRefPtr replicate = make_scoped_refptr_replicate(new ReplicateMsg());
     replicate->get()->set_op_type(WRITE_OP);
     replicate->get()->mutable_id()->CopyFrom(opid);
-    replicate->get()->set_timestamp(clock_->Now().ToUint64());
+    replicate->get()->set_hybrid_time(clock_->Now().ToUint64());
     WriteRequestPB* batch_request = replicate->get()->mutable_write_request();
     ASSERT_OK(SchemaToPB(schema_, batch_request->mutable_schema()));
     AddTestRowToPB(RowOperationsPB::INSERT, schema_,
