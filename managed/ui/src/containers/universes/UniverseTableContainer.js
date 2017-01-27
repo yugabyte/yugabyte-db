@@ -9,6 +9,7 @@ import { fetchUniverseList, fetchUniverseListSuccess,
   resetUniverseTasks} from '../../actions/universe';
 import { fetchTaskProgress, fetchCurrentTaskListSuccess,
   fetchCurrentTaskListFailure, resetTaskProgress } from '../../actions/tasks';
+import { queryMetrics, setUniverseListMetricsSuccess, setUniverseListMetricsFailure} from '../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -55,15 +56,34 @@ const mapDispatchToProps = (dispatch) => {
           });
       })
     },
+    universeReadWriteData: () => {
+      var startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
+      var endTime = Math.floor(Date.now() / 1000);
+      var queryParams = {
+        metrics: ["disk_iops"],
+        start: startTime,
+        end: endTime
+      }
+      dispatch(queryMetrics(queryParams))
+        .then((response) => {
+          if (response.payload.status === 200) {
+            dispatch(setUniverseListMetricsSuccess(response.payload));
+          } else {
+            dispatch(setUniverseListMetricsFailure(response.payload));
+          }
+        });
+
+    },
     resetTaskProgress: () => {
       dispatch(resetTaskProgress());
     }
   }
 }
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   return {
-    universe: state.universe
+    universe: state.universe,
+    graph: state.graph
   };
 }
 

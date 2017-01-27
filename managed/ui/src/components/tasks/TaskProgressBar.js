@@ -22,7 +22,7 @@ export default class TaskProgressBar extends Component {
   render() {
     const { progressData: { status, percent } } = this.props;
     return (
-      <ProgressBar now={percent} label={`${percent}%`} bsStyle={this.getStyleByStatus(status)} />
+       <ProgressBar now={percent} label={`${percent}%`} bsStyle={this.getStyleByStatus(status)} />
     );
   }
 }
