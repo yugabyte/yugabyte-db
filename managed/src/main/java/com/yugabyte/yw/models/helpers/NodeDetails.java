@@ -55,9 +55,14 @@ public class NodeDetails {
   public int masterRpcPort = 7100;
 
   // True if this node is a tserver, along with port info.
-  public boolean isTserver;
+  public boolean isTserver = true;
   public int tserverHttpPort = 9000;
   public int tserverRpcPort = 9100;
+
+  // True if this node is a YSQL server, along with port info.
+  public boolean isYqlServer = true;
+  public int yqlServerHttpPort = 12000;
+  public int yqlServerRpcPort = 9042;
 
   @Override
   public String toString() {
