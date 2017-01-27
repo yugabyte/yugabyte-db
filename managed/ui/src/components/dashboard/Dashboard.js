@@ -5,7 +5,7 @@ import { Col } from 'react-bootstrap';
 
 import { RegionMapLegend } from '../maps';
 import { UniverseRegionLocationPanelContainer,
-   UniverseDisplayPanelContainer } from '../../containers/panels';
+   UniverseDisplayPanelContainer } from '../panels';
 import './stylesheets/Dashboard.css'
 
 export default class Dashboard extends Component {

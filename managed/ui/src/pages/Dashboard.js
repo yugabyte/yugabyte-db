@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import DashboardContainer from '../containers/dashboard/DashboardContainer';
+import DashboardContainer from '../components/dashboard/DashboardContainer';
 
 class Dashboard extends Component {
   render() {

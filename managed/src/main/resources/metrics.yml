@@ -42,6 +42,7 @@ disk_iops:
       alias:
         "iostat_write_count": "Writes"
         "iostat_read_count": "Reads"
+
 memory_usage:
   metric: "collectd_memory"
   function: "avg"

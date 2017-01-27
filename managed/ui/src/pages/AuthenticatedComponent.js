@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import NavBar from '../components/common/nav_bar/NavBar';
-import AuthenticatedComponentContainer from '../containers/AuthenticatedComponentContainer';
+import AuthenticatedComponentContainer from '../components/Authenticated/AuthenticatedComponentContainer';
 
 export default class AuthenticatedComponent extends Component {
   render() {

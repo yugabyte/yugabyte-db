@@ -11,7 +11,7 @@ export function isValidObject(obj) {
 }
 
 export function isValidArray(arr) {
-  if (typeof arr !== "undefined" && arr.length > 0) {
+  if (typeof arr !== "undefined" && arr.length > 0 && Array.isArray(arr)) {
     return true;
   } else {
     return false;
