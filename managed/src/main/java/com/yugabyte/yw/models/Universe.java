@@ -291,6 +291,22 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of YQL servers for this universe.
+   *
+   * @return a list of YQL server nodes
+   */
+  public List<NodeDetails> getYsqlServers() {
+    List<NodeDetails> yservers = new LinkedList<NodeDetails>();
+    UniverseDefinitionTaskParams details = getUniverseDetails();
+    for (NodeDetails nodeDetails : details.nodeDetailsSet) {
+      if (nodeDetails.isYqlServer) {
+        yservers.add(nodeDetails);
+      }
+    }
+    return yservers;
+  }
+
+  /**
    * Verifies that the provided list of masters is not empty and that each master is in a queryable
    * state. If so, returns true. Otherwise, returns false.
    *
@@ -338,6 +354,28 @@ public class Universe extends Model {
       }
     }
     return masterAddresses.toString();
+  }
+
+  /**
+   * Returns a comma separated list of <privateIp:yqlRPCPort> for all nodes that have the
+   * isYQLServer flag set to true in this cluster.
+   *
+   * @return a comma separated string of 'host:port'.
+   */
+  public String getYQLServerAddresses() {
+    List<NodeDetails> servers = getYsqlServers();
+    StringBuilder ysqlServers = new StringBuilder();
+    for (NodeDetails node : servers) {
+      if (node.cloudInfo.private_ip != null) {
+        if (ysqlServers.length() != 0) {
+          ysqlServers.append(",");
+        }
+        ysqlServers.append(node.cloudInfo.private_ip);
+        ysqlServers.append(":");
+        ysqlServers.append(node.yqlServerRpcPort);
+      }
+    }
+    return ysqlServers.toString();
   }
 
   /**
