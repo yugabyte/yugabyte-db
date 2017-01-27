@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 
-import { UniverseDetailContainer } from '../containers/universes';
+import { UniverseDetailContainer } from '../components/universes';
 import Universes from './Universes';
 
 class UniverseDetail extends Component {

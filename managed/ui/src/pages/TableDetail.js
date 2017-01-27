@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import Universes from './Universes';
-import { TableDetailContainer } from '../containers/tables';
+import { TableDetailContainer } from '../components/tables';
 
 export default class TableDetail extends Component {
   render() {

@@ -2,7 +2,7 @@
 
 import React, {Component} from 'react';
 
-import { ListUniverseContainer } from '../containers/universes';
+import { ListUniverseContainer } from '../components/universes';
 import Universes from './Universes';
 
 export default class ListUniverse extends Component {
