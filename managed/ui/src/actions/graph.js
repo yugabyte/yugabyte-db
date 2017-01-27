@@ -10,6 +10,8 @@ export const QUERY_METRICS = 'QUERY_METRICS';
 export const QUERY_METRICS_SUCCESS = 'QUERY_METRICS_SUCCESS';
 export const QUERY_METRICS_FAILURE = 'QUERY_METRICS_FAILURE';
 export const RESET_METRICS = 'RESET_METRICS';
+export const SET_UNIVERSE_LIST_METRICS_FAILURE = "SET_UNIVERSE_LIST_METRICS_FAILURE";
+export const SET_UNIVERSE_LIST_METRICS_SUCCESS = "SET_UNIVERSE_LIST_METRICS_SUCCESS";
 
 export function changeGraphQueryPeriod(params) {
   return {
@@ -53,4 +55,18 @@ export function resetMetrics() {
   return {
     type: RESET_METRICS
   };
+}
+
+export function setUniverseListMetricsSuccess(response) {
+  return {
+    type: SET_UNIVERSE_LIST_METRICS_SUCCESS,
+    payload: response
+  }
+}
+
+export function setUniverseListMetricsFailure(error) {
+  return {
+    type: SET_UNIVERSE_LIST_METRICS_FAILURE,
+    payload: error
+  }
 }

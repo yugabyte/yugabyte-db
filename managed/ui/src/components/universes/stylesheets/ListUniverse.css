@@ -1,5 +1,14 @@
 /* Copyright (c) YugaByte, Inc. */
 
+.universe-table-header {
+    margin-top: 1%;
+    margin-left: 1%;
+}
+.universe-table-header-action {
+    margin-top: 30px;
+    margin-bottom: 0;
+}
+
 .universe-table-header-action .universe-button {
     width: auto;
     font-size: 14px;

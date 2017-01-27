@@ -6,3 +6,4 @@ export { default as InlineFrame } from './InlineFrame';
 export { default as MetricsPanel } from './MetricsPanel';
 export { default as CustomerMetricsPanel } from './CustomerMetricsPanel';
 export { DEFAULT_GRAPH_FILTER } from './GraphPanelHeader';
+export { default as UniverseReadWriteMetrics} from './UniverseReadWriteMetrics';

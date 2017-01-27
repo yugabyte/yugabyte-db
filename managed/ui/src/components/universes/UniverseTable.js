@@ -1,144 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
+import { Row, Col, ListGroup, ListGroupItem, ProgressBar } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { FormattedDate } from 'react-intl';
-import { Row, Col, Image } from 'react-bootstrap';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { isValidArray, isValidObject } from '../../utils/ObjectUtils';
-import universelogo from './images/universe_icon.png';
-import { DescriptionItem, DescriptionList } from '../common/descriptors';
-import { TaskProgressContainer } from '../../containers/tasks';
-import './stylesheets/UniverseTable.css'
-
-class StatusStringCell extends Component {
- render() {
-   const {status, tasks} = this.props;
-   const stringHeader = <div className='table-cell-sub-text text-center'> Status </div>;
-   var statusInfo = "";
-   if (status === "success") {
-     statusInfo = <i className='fa fa-check fa-fw' aria-hidden='true'> Succeeded </i>;
-   } else if (status === "failure") {
-     statusInfo = <i className='fa fa-times fa-fw' > Failed </i>
-   }
-
-   if(status === "failure" || status === "success" ) {
-     return (
-       <Row>
-         <Col lg={8} lgOffset={2}>
-           <DescriptionItem title={stringHeader}>
-             <div className="text-center">{statusInfo}</div>
-           </DescriptionItem>
-         </Col>
-       </Row>
-     )
-    }
-   else if (isValidArray(tasks)){
-     var taskIds = tasks.map(function(item, idx){
-       return (item.id);
-     })
-     var currentOp = tasks[0].data.title.split(":")[0];
-     return (
-       <Row>
-         <Col lg={12} className="universe-table-status-cell">
-           <DescriptionItem title={stringHeader}>
-             <TaskProgressContainer taskUUIDs={taskIds} type="BarWithDetails"
-                                    currentOperation={currentOp} />
-           </DescriptionItem>
-         </Col>
-       </Row>
-   )
-   }
-   else {
-     return ( <span /> )
-   }
- }
-}
-
-class UniverseNameCell extends Component {
-    render() {
-      const { cell } = this.props;
-      return (
-        <Link to={"/universes/" + cell.id}>
-          <div className='universe-name-cell'>
-            <Image src={universelogo} />
-             &nbsp;{cell.name}&nbsp;
-          </div>
-          <small className="table-cell-sub-text">Created on&nbsp;
-            {cell.creationTime}
-          </small>
-        </Link>)
-    }
-}
-
-class RegionDataComponent extends Component {
-
-  render() {
-    const { regions, name } = this.props;
-
-    var completeRegionList = regions.map(function(item,idx){
-      return {"data": item.name, "dataClass": "show-data"}
-    });
-     return (
-        <Col lg={4} className="detail-item-cell">
-          <DescriptionItem title={name}>
-            <DescriptionList listItems={completeRegionList} showNames={false}/>
-          </DescriptionItem>
-        </Col>
-      )
-
-    }
-}
-
-class DataComponents extends Component {
-  render() {
-    const {data, name} = this.props;
-    return (
-      <Col lg={2} className="detail-item-cell">
-        <DescriptionItem title={name}>
-          <div className="universe-item-cell">{data}</div>
-        </DescriptionItem>
-      </Col>
-    )
-  }
-}
-
-class UniverseDetailsCell extends Component {
-  static propTypes = {
-    cell: PropTypes.object.isRequired
-  };
-
-  render() {
-    const { cell } = this.props;
-    var taskUUIDs = cell["TaskUUIDs"];
-    if (isValidArray(taskUUIDs)) {
-      delete cell["TaskUUIDs"];
-    }
-    var universeDetailsItems = Object.keys(cell).map(function(key, index) {
-      if(key !== "Regions") {
-        return <DataComponents key={key+index} name={key} data={cell[key]}/>
-      } else {
-        return <RegionDataComponent key={key+index} name={key} regions={cell[key]} />
-      }
-    });
-
-    return (
-      <Row>
-        <Col lg={1}></Col>
-         {universeDetailsItems.map(function(item,idx){
-           return <div key={item+idx}>{item}</div>
-          })}
-      </Row>
-    )
-  }
-}
+import { isValidObject, isValidArray } from '../../utils/ObjectUtils';
+import './stylesheets/UniverseTable.scss'
+import {UniverseReadWriteMetrics} from '../metrics';
+import {YBCost} from '../common/descriptors';
 
 export default class UniverseTable extends Component {
 
   componentWillMount() {
     this.props.fetchUniverseList();
     this.props.fetchUniverseTasks();
+    this.props.universeReadWriteData();
   }
 
   componentWillUnmount() {
@@ -149,126 +25,177 @@ export default class UniverseTable extends Component {
 
   render() {
     var self = this;
-    var universeDisplay = [];
-
-    function detailStringFormatter(cell, row) {
-      return <UniverseDetailsCell cell={cell} />;
-    }
-
-    function universeNameTypeFormatter(cell, row) {
-      return <UniverseNameCell cell={cell}/>
-    }
-
-    function statusStringFormatter(cell, row){
-      return <StatusStringCell status={cell.status} tasks={cell.tasks} />
-    }
-
-    const { universe: { universeList, universeTasks, loading } } = this.props;
-
+    const { universe: { universeList, universeTasks, loading }, universeReadWriteData } = this.props;
     if (loading) {
       return <div className="container">Loading...</div>;
     }
 
-    if (isValidArray(universeList)) {
-      universeDisplay = universeList.map(function (item, idx) {
-        const { provider, regions, universeDetails } = item
-
-        var regionNames = "";
-        if (typeof(regions) !== "undefined") {
-          regionNames = regions.map(function(region, idx) {
-            return {"idx": idx, "name": region.name};
-
-          });
-        }
-        var providerName = "";
-        if (isValidObject(provider)) {
-          providerName = provider.name;
-        }
-
-        var numNodes;
-        var replicationFactor;
-        if (isValidObject(universeDetails) && isValidArray(universeDetails.nodeDetailsSet)) {
-          numNodes = universeDetails.nodeDetailsSet.length;
-
-          if (isValidObject(universeDetails.userIntent)) {
-            replicationFactor = universeDetails.userIntent.replicationFactor;
-          }
-        }
-
+    var universeRowItem =
+      universeList.map(function (item, idx) {
         var universeTaskUUIDs = [];
         if (isValidObject(universeTasks) && universeTasks[item.universeUUID] !== undefined) {
-          universeTaskUUIDs = universeTasks[item.universeUUID].map(function (task) {
-            return {"id": task.id, "data": task, "universe": item.universeUUID};
-          });
-        }
+        universeTaskUUIDs = universeTasks[item.universeUUID].map(function (task) {
+          return {"id": task.id, "data": task, "universe": item.universeUUID};
+        });
+      }
         self.props.fetchCurrentTaskList(universeTaskUUIDs);
-
-
-        var universeDetailString = {
-          "Provider": providerName,
-          "Regions": regionNames.length > 0 ? regionNames: [],
-          "Num of Nodes": numNodes,
-          "Replication Factor": replicationFactor
-        };
-
-        var updateProgressStatus = false;
-        var updateSuccessStatus = false;
-        var status = "";
-        if (isValidObject(item.universeDetails.updateInProgress)) {
-          updateProgressStatus = item.universeDetails.updateInProgress;
-        }
-        if (isValidObject(item.universeDetails.updateSucceeded)) {
-          updateSuccessStatus = item.universeDetails.updateSucceeded;
-        }
-        if (!updateProgressStatus && !updateSuccessStatus) {
-          status = "failure";
-        } else if (updateSuccessStatus) {
-          status = "success";
-        } else {
-          status = "pending";
-        }
-        var statusString={"status": status, "tasks": universeTaskUUIDs};
-
-        var formattedCreationTime = <FormattedDate value={item.creationDate}
-          year='numeric' month='long' day='2-digit'/>
-        var actionString = item.universeUUID;
-        var universeNameObject = { "name": item.name,
-                                   "creationTime": formattedCreationTime,
-                                   "id": item.universeUUID};
-        return {
-          id: item.universeUUID,
-          name: universeNameObject,
-          details: universeDetailString,
-          provider: providerName,
-          nodes: numNodes,
-          action: actionString,
-          status: statusString
-        };
+        return <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
+                               taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />
       });
-    }
-
-    const tableHeaderStyle = {"display": "none"};
-    const tableBodyStyle = {"marginBottom": "1%","paddingBottom": "1%"};
-
     return (
       <div className="row">
-        <BootstrapTable data={universeDisplay}
-                        trClassName="data-table-row" bodyStyle={tableBodyStyle} headerStyle={tableHeaderStyle}>
-          <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
-          <TableHeaderColumn dataField="name"
-                             dataFormat={universeNameTypeFormatter}
-                             columnClassName="no-border-cell name-column"
-                             className="no-border-cell">
-            Universe Name
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="status" dataFormat={statusStringFormatter}
-                             columnClassName="no-border-cell status-column" className="no-border-cell">
-            Status
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="details"
-                             dataFormat={detailStringFormatter} columnClassName="no-border-cell detail-column">
-            Details</TableHeaderColumn>
-        </BootstrapTable>
+        <ListGroup>
+          {universeRowItem}
+        </ListGroup>
+      </div>
+    )
+  }
+}
+
+class YBUniverseItem extends Component {
+  render() {
+    const {universe, taskId} = this.props;
+    var updateProgressStatus = false;
+    var updateSuccessStatus = false;
+    var currentStatusItem = "";
+    if (isValidObject(universe.universeDetails.updateInProgress)) {
+      updateProgressStatus = universe.universeDetails.updateInProgress;
+    }
+    if (isValidObject(universe.universeDetails.updateSucceeded)) {
+      updateSuccessStatus = universe.universeDetails.updateSucceeded;
+    }
+    var percentComplete = 0 ;
+    if (isValidArray(taskId) && isValidObject(taskId[0].data)) {
+      percentComplete = taskId[0].data.percentComplete;
+    }
+    if (!updateProgressStatus && !updateSuccessStatus) {
+      currentStatusItem = <div className={"status-failure-container"}>
+                            <div className={"status-failure-item"}>
+                              <i className={"fa fa-exclamation fa-fw"}/>
+                            </div>
+                            <div className={"status-failure-name"}>
+                              Provisioning Error
+                            </div>
+                           </div>;
+    } else if (updateSuccessStatus) {
+      currentStatusItem = <div className={"status-success-container"}>
+                            <div className={"status-success-item"}>
+                            <i className={"fa fa-check fa-fw"}/>
+                            </div>
+                            <div className="status-success-label"> Ready</div>
+                          </div>;
+    } else {
+      currentStatusItem =
+        <div className={"status-pending"}>
+          <Row className={"status-pending-display-container"}>
+            <span className={"status-pending-name"}>{percentComplete} % complete&nbsp;</span>
+            <i className={"fa fa fa-spinner fa-spin"}/>
+            <Col className={"status-pending-name"}>
+              Pending...
+            </Col>
+          </Row>
+          <Row  className={"status-pending-progress-container "}>
+            <ProgressBar className={"pending-action-progress"} now={percentComplete}/>
+          </Row>
+        </div>;
+    }
+
+    return (
+      <div className={"universe-list-item"}>
+        <ListGroupItem >
+          <Row>
+            <Col lg={6}>
+              <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
+            </Col>
+            <Col lg={6}>
+              {currentStatusItem}
+            </Col>
+          </Row>
+          <Row className={"universe-list-detail-item"}>
+            <Col lg={8}>
+              <CellLocationPanel {...this.props}/>
+            </Col>
+            <Col lg={4}>
+              <CellResourcesPanel {...this.props}/>
+            </Col>
+          </Row>
+        </ListGroupItem>
+      </div>
+    )
+  }
+}
+
+
+class CellLocationPanel extends Component {
+  render() {
+    const {universe, universe: {universeDetails: {userIntent}}} = this.props;
+    var isMultiAz = userIntent.isMultiAZ ? "MutliAZ" : "Single AZ";
+    var regionList = universe.regions.map(function(regionItem, idx){
+      return <span key={idx}>{regionItem.name}</span>
+    })
+
+    return (
+      <div >
+        <Row className={"cell-position-detail"}>
+          <Col lg={3} className={"cell-num-nodes"}>{userIntent.numNodes} Nodes</Col>
+          <Col lg={9}>
+            <span className={"cell-provider-name"}>{universe.provider.name}</span>
+            <span className={"cell-multi-az"}>{isMultiAz}</span>
+          </Col>
+        </Row>
+        <Row className={"cell-position-detail"}>
+          <Col lg={3} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
+          <Col lg={9}>{regionList}</Col>
+        </Row>
+      </div>
+    )
+  }
+}
+
+class CellResourcesPanel extends Component {
+
+  render() {
+    const {universe: {pricePerHour, universeUUID}, graph: {universeMetricList}} = this.props;
+    var averageReadRate = 0;
+    var averageWriteRate = 0;
+    var disk_iops =universeMetricList.disk_iops;
+    if (isValidObject(disk_iops) && isValidArray(disk_iops.data)) {
+      var readMetricArray = disk_iops.data[0].y;
+      var sum = readMetricArray.reduce(function(a, b) { return a + b; });
+      averageReadRate = (sum / readMetricArray.length).toFixed(2);
+      var writeMetricArray = disk_iops.data[1].y;
+      sum = writeMetricArray.reduce(function(a, b) { return parseFloat(a) + parseFloat(b); });
+      averageWriteRate = (sum / writeMetricArray.length).toFixed(2);
+    }
+    return (
+      <div>
+        <Col lg={4}>
+          <div className={"cell-cost-item"}>
+            <YBCost value={pricePerHour} multiplier={"month"}/>
+          </div>
+          <div>Estimated Cost</div>
+          <div>Per Month</div>
+        </Col>
+        <Col lg={8}>
+          <Row>
+            <Row>
+              <Col lg={6} className={"cell-bold-label"}>
+                Read <span className="cell-bold-letters">{averageReadRate}</span>
+              </Col>
+              <Col lg={6} className={"cell-chart-container"}>
+                <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-read`} type={"read"}/>
+              </Col>
+            </Row>
+            <Row >
+              <Col lg={6} className={"cell-bold-label"}>
+                Write <span className="cell-bold-letters">{averageWriteRate}</span>
+              </Col>
+              <Col lg={6} className={"cell-chart-container"}>
+                <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-write`} type={"write"}/>
+              </Col>
+            </Row>
+          </Row>
+        </Col>
       </div>
     )
   }
