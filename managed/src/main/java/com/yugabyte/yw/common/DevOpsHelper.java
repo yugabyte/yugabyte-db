@@ -39,6 +39,16 @@ public class DevOpsHelper {
     String command = appConfig.getString("yb.devops.home") + YBCLOUD_SCRIPT + " " + nodeTaskParam.cloud;
     command += " --zone " + nodeTaskParam.getAZ().code;
     command += " --region " + nodeTaskParam.getRegion().code;
+
+    // Right now for docker we grab the network from application conf.
+    if (nodeTaskParam.cloud == Common.CloudType.docker) {
+      String networkName = appConfig.getString("yb.docker.network");
+      if (networkName == null) {
+        throw new RuntimeException("yb.docker.network is not set in application.conf");
+      }
+      command += " --network " + networkName;
+    }
+
     return command;
   }
 

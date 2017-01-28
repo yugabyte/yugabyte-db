@@ -353,4 +353,34 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.process + " " + params.command + " " +  params.nodeName;
     assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
   }
+
+  @Test
+  public void testDockerNodeCommandWithoutDockerNetwork() {
+    AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+    params.cloud = Common.CloudType.docker;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    try {
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), is("yb.docker.network is not set in application.conf")));
+    }
+  }
+
+  @Test
+  public void testDockerNodeCommandWithDockerNetwork() {
+    when(mockAppConfig.getString("yb.docker.network")).thenReturn("yugaware_bridge");
+
+    AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+    params.cloud = Common.CloudType.docker;
+    params.azUuid = defaultAZ.uuid;
+    params.nodeName = "foo";
+    String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
+    System.out.println(command);
+    String expectedCommand = "/my/devops/bin/ybcloud.sh " + params.cloud +
+            " --zone " + defaultAZ.code +  " --region " + defaultRegion.code +
+            " --network yugaware_bridge" +
+            " instance list --as_json " +  params.nodeName;
+    assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+  }
 }
