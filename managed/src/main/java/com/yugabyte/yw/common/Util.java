@@ -5,12 +5,15 @@ import com.google.common.base.Functions;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,4 +111,18 @@ public class Util {
      return curServers;
   }
 
+  /**
+   * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
+   */
+  public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
+    Universe universe = Universe.get(universeUUID);
+    List<InetSocketAddress> inetAddrs = new ArrayList<InetSocketAddress>();
+    for (String address : universe.getYQLServerAddresses().split(",")) {
+      String[] splitAddress = address.split(":");
+      String privateIp = splitAddress[0];
+      int yqlRPCPort = Integer.parseInt(splitAddress[1]);
+      inetAddrs.add(new InetSocketAddress(privateIp, yqlRPCPort));
+    }
+    return inetAddrs;
+  }
 }

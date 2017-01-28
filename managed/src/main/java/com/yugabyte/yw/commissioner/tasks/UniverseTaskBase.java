@@ -22,6 +22,8 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TableDetails;
+import org.yb.Common;
 
 public abstract class UniverseTaskBase extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseTaskBase.class);
@@ -244,17 +246,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Create a task to create a redis table.
+   * Create a task to create a table.
    * 
    * @param tableName name of the table.
    * @param numTablets number of tablets.
    */
-  public TaskList createTableTask(String tableName, int numTablets) {
+  public TaskList createTableTask(Common.TableType tableType, String tableName, int numTablets,
+                                  TableDetails tableDetails) {
     TaskList taskList = new TaskList("CreateTable", executor);
     CreateTable task = new CreateTable();
     CreateTable.Params params = new CreateTable.Params();
     params.universeUUID = taskParams().universeUUID;
+    params.tableType = tableType;
     params.tableName = tableName;
+    params.tableDetails = tableDetails;
     params.numTablets = numTablets;
     task.initialize(params);
     taskList.addTask(task);

@@ -3,12 +3,15 @@
 package com.yugabyte.yw.common;
 
 import java.util.HashSet;
+import java.util.LinkedList;
 
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TableDetails;
 
 public class ApiUtils {
   public static Universe.UniverseUpdater mockUniverseUpdater() {
@@ -91,5 +94,28 @@ public class ApiUtils {
     }
     node.nodeIdx = idx;
     return node;
+  }
+
+  public static TableDetails getDummyTableDetails(int partitionKeyCount, int clusteringKeyCount) {
+    TableDetails table = new TableDetails();
+    table.tableName = "dummy_table";
+    table.columns = new LinkedList<>();
+    for (int i = 0; i < partitionKeyCount + clusteringKeyCount; ++i) {
+      ColumnDetails column = new ColumnDetails();
+      column.name = "k" + i;
+      column.columnOrder = i;
+      column.type = ColumnDetails.CQLDataType.INT;
+      column.isPartitionKey = i < partitionKeyCount;
+      column.isClusteringKey = !column.isPartitionKey;
+      table.columns.add(column);
+    }
+    ColumnDetails column = new ColumnDetails();
+    column.name = "v";
+    column.columnOrder = partitionKeyCount + clusteringKeyCount;
+    column.type = ColumnDetails.CQLDataType.VARCHAR;
+    column.isPartitionKey = false;
+    column.isClusteringKey = false;
+    table.columns.add(column);
+    return table;
   }
 }
