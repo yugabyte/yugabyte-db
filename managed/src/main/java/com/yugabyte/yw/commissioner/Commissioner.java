@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.yugabyte.yw.forms.ITaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,7 +66,7 @@ public class Commissioner {
   /**
    * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
    */
-  public UUID submit(TaskInfo.Type taskType, UniverseTaskParams taskParams) {
+  public UUID submit(TaskInfo.Type taskType, ITaskParams taskParams) {
     try {
       // Claim the task if we can - check if we will go above the max local concurrent task
       // threshold. If we can claim it, set ourselves as the owner of the task. Otherwise, do not
@@ -74,8 +75,7 @@ public class Commissioner {
       boolean claimTask = true;
 
       // Create the task runner object based on the various parameters passed in.
-      TaskRunner taskRunner =
-        TaskRunner.createTask(taskType, taskParams, claimTask);
+      TaskRunner taskRunner = TaskRunner.createTask(taskType, taskParams, claimTask);
 
       if (claimTask) {
         // Add this task to our queue.
@@ -86,7 +86,7 @@ public class Commissioner {
       }
       return taskRunner.getTaskUUID();
     } catch (Throwable t) {
-      String msg = "Error processing " + taskType + " task for universe " + taskParams.universeUUID;
+      String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);
       throw new RuntimeException(msg, t);
     }
