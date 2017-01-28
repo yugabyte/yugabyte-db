@@ -8,6 +8,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.Common;
 import org.yb.client.YBClient;
 
 import com.yugabyte.yw.commissioner.TaskListQueue;
@@ -89,8 +90,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createSwamperTargetUpdateTask(false /* removeFile */, SubTaskType.ConfigureUniverse);
 
       // Create a simple redis table.
-      createTableTask(YBClient.REDIS_DEFAULT_TABLE_NAME, NUM_TABLETS_PER_TSERVER *
-                      PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet).size())
+      int numTablets = NUM_TABLETS_PER_TSERVER *
+          PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet).size();
+      createTableTask(Common.TableType.REDIS_TABLE_TYPE,
+                      YBClient.REDIS_DEFAULT_TABLE_NAME,
+                      numTablets,
+                      null)
           .setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.

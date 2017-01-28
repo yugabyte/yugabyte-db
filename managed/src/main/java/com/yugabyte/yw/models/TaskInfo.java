@@ -25,6 +25,7 @@ public class TaskInfo extends Model {
 
   /**
    * These are the various types of user tasks.
+   * Max length is 15 chars.
    */
   public enum Type {
     @EnumValue("CreateUniverse")
@@ -38,6 +39,9 @@ public class TaskInfo extends Model {
 
     @EnumValue("UpgradeUniverse")
     UpgradeUniverse,
+
+    @EnumValue("CreateCassTable")
+    CreateCassandraTable
   }
 
   /**

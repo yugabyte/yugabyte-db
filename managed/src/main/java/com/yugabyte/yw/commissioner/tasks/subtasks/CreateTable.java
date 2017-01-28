@@ -2,17 +2,17 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.util.ArrayList;
-
+import com.yugabyte.yw.models.helpers.TableDetails;
+import com.yugabyte.yw.common.Util;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.ColumnSchema;
-import org.yb.Schema;
-import org.yb.Type;
 import org.yb.Common.TableType;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
-import org.yb.client.CreateTableOptions;
+
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.Session;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -22,16 +22,27 @@ import com.yugabyte.yw.models.Universe;
 
 import play.api.Play;
 
+import java.net.InetSocketAddress;
+import java.util.List;
+
 public class CreateTable extends AbstractTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateTable.class);
 
   // The YB client to use.
   public YBClientService ybService;
 
+  // To use for the Cassandra client
+  private Cluster cassandraCluster;
+  private Session cassandraSession;
+
   // Parameters for create table task.
   public static class Params extends NodeTaskParams {
     // The name of the table to be created.
     public String tableName;
+    // The type of the table to be created (Redis, YSQL)
+    public TableType tableType;
+    // The schema of the table to be created (required for YSQL)
+    public TableDetails tableDetails;
     // Number of tablets to be created for the table.
     public int numTablets;
   }
@@ -39,6 +50,48 @@ public class CreateTable extends AbstractTaskBase {
   @Override
   protected Params taskParams() {
     return (Params)taskParams;
+  }
+
+  private Session getCassandraSession() {
+    if (cassandraCluster == null) {
+      List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().universeUUID);
+      cassandraCluster = Cluster.builder()
+                                .addContactPointsWithPorts(addresses)
+                                .build();
+      LOG.info("Connected to cluster: " + cassandraCluster.getClusterName());
+    }
+    if (cassandraSession == null) {
+      LOG.info("Creating a session...");
+      cassandraSession = cassandraCluster.connect();
+    }
+    return cassandraSession;
+  }
+
+  private void createCassandraTable() {
+    if (StringUtils.isEmpty(taskParams().tableName) || taskParams().tableDetails == null) {
+      throw new IllegalArgumentException("No name specified for table.");
+    }
+    getCassandraSession().execute(taskParams().tableDetails.toCQLCreateString());
+    LOG.info("Created table '{}' of type {}.", taskParams().tableName, taskParams().tableType);
+  }
+
+  private void createRedisTable() throws Exception {
+    // Get the master addresses.
+    Universe universe = Universe.get(taskParams().universeUUID);
+    String masterAddresses = universe.getMasterAddresses();
+    LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
+        taskParams().universeUUID, masterAddresses);
+    if (masterAddresses == null || masterAddresses.isEmpty()) {
+      throw new IllegalStateException("No master host/ports for a table creation op in " +
+          taskParams().universeUUID);
+    }
+
+    YBClient client = ybService.getClient(masterAddresses);
+    if (StringUtils.isEmpty(taskParams().tableName)) {
+      taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
+    }
+    YBTable table = client.createRedisTable(taskParams().tableName, taskParams().numTablets);
+    LOG.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
   }
 
   @Override
@@ -50,7 +103,7 @@ public class CreateTable extends AbstractTaskBase {
   @Override
   public String getName() {
     return super.getName() + "(" + taskParams().tableName + " with numTablets = " +
-           taskParams().numTablets + ")";
+        taskParams().numTablets + ")";
   }
 
   @Override
@@ -60,25 +113,12 @@ public class CreateTable extends AbstractTaskBase {
 
   @Override
   public void run() {
-    // Get the master addresses.
-    Universe universe = Universe.get(taskParams().universeUUID);
-    String masterAddresses = universe.getMasterAddresses();
-    LOG.info("Running {}: universe = {}, masterAddress = {}", getName(),
-             taskParams().universeUUID, masterAddresses);
-    if (masterAddresses == null || masterAddresses.isEmpty()) {
-      throw new IllegalStateException("No master host/ports for a table creation op in " +
-                                      taskParams().universeUUID);
-    }
-
-    YBClient client = ybService.getClient(masterAddresses);
-
-    if (taskParams().tableName == null || taskParams().tableName.isEmpty()) {
-      taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
-    }
-
     try {
-      YBTable table = client.createRedisTable(taskParams().tableName, taskParams().numTablets);
-      LOG.info("Created table '{}' of type {}.", taskParams().tableName, table.getTableType());
+      if (taskParams().tableType == TableType.YSQL_TABLE_TYPE) {
+        createCassandraTable();
+      } else {
+        createRedisTable();
+      }
     } catch (Exception e) {
       String msg = "Error " + e.getMessage() + " while creating table " + taskParams().tableName;
       LOG.error(msg, e);
