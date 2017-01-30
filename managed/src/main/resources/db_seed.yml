@@ -78,7 +78,7 @@
     provider: *provider_aws
     latitude: 43.804133
     longitude: -120.554201
-    ybImage: ami-9c68a8fc
+    ybImage: ami-b613add6
 - &aws-us-east-1 !!com.yugabyte.yw.models.Region
     code: us-east-1
     name: US East (N. Virginia)
