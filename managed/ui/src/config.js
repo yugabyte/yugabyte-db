@@ -2,4 +2,4 @@
 
 export const ROOT_URL = location.href.indexOf('localhost') > 0 ? 'http://localhost:9000/api' : '/api';
 
-export const SOFTWARE_PACKAGE = "s3://no-such-url/yugabyte/yb-server-0.0.1-SNAPSHOT.1c03117328e18604253bb4fde4e1ada9f1a8b178.tar.gz";
+export const SOFTWARE_PACKAGE = "s3://no-such-url/yugabyte/yb-server.75bfad247be8740e0e3a043cc3a0fd30f898b014-debug.tar.gz;
