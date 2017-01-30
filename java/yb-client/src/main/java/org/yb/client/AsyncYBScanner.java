@@ -680,14 +680,14 @@ public final class AsyncYBScanner {
           newBuilder.setCacheBlocks(cacheBlocks);
           // if the last propagated timestamp is set send it with the scan
           if (table.getAsyncClient().getLastPropagatedTimestamp() != AsyncYBClient.NO_TIMESTAMP) {
-            newBuilder.setPropagatedTimestamp(table.getAsyncClient().getLastPropagatedTimestamp());
+            newBuilder.setPropagatedHybridTime(table.getAsyncClient().getLastPropagatedTimestamp());
           }
           newBuilder.setReadMode(AsyncYBScanner.this.getReadMode().pbVersion());
 
           // if the mode is set to read on snapshot sent the snapshot timestamp
           if (AsyncYBScanner.this.getReadMode() == ReadMode.READ_AT_SNAPSHOT &&
             AsyncYBScanner.this.getSnapshotTimestamp() != AsyncYBClient.NO_TIMESTAMP) {
-            newBuilder.setSnapTimestamp(AsyncYBScanner.this.getSnapshotTimestamp());
+            newBuilder.setSnapHybridTime(AsyncYBScanner.this.getSnapshotTimestamp());
           }
 
           if (AsyncYBScanner.this.startPrimaryKey != AsyncYBClient.EMPTY_ARRAY &&

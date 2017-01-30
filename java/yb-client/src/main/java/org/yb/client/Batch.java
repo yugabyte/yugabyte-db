@@ -105,7 +105,7 @@ class Batch extends YRpc<BatchResponse> implements YRpc.HasKey {
     }
 
     BatchResponse response = new BatchResponse(deadlineTracker.getElapsedMillis(), tsUUID,
-        builder.getTimestamp(), errorsPB, ops);
+        builder.getHybridTime(), errorsPB, ops);
 
     if (injectedError != null) {
       if (injectedlatencyMs > 0) {

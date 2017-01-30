@@ -117,7 +117,7 @@ public abstract class Operation extends YRpc<OperationResponse> implements YRpc.
     builder.setTabletId(ZeroCopyLiteralByteString.wrap(getTablet().getTabletIdAsBytes()));
     builder.setExternalConsistencyMode(this.externalConsistencyMode.pbVersion());
     if (this.propagatedTimestamp != AsyncYBClient.NO_TIMESTAMP) {
-      builder.setPropagatedTimestamp(this.propagatedTimestamp);
+      builder.setPropagatedHybridTime(this.propagatedTimestamp);
     }
     return toChannelBuffer(header, builder.build());
   }
@@ -132,7 +132,7 @@ public abstract class Operation extends YRpc<OperationResponse> implements YRpc.
       error = builder.getPerRowErrors(0);
     }
     OperationResponse response = new OperationResponse(deadlineTracker.getElapsedMillis(), tsUUID,
-        builder.getTimestamp(), this, error);
+        builder.getHybridTime(), this, error);
     return new Pair<OperationResponse, Object>(
         response, builder.hasError() ? builder.getError() : null);
   }
