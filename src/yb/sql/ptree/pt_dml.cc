@@ -20,10 +20,8 @@ using client::YBColumnSchema;
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTOptionExist option_exists,
                      int64_t ttl_msec)
   : PTCollection(memctx, loc),
-    option_exists_(option_exists),
     table_columns_(memctx),
     num_key_columns_(0),
     num_hash_key_columns_(0),
@@ -115,7 +113,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       break;
 
     case ExprOperator::kEQ: {
-      RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
+      RETURN_NOT_OK(AnalyzeCompareExpr(sem_context, expr, &col_desc, &value));
 
       if ((*col_stats)[col_desc->index()].has_eq_ ||
           (*col_stats)[col_desc->index()].has_lt_ ||
@@ -147,7 +145,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
     }
 
     case ExprOperator::kLT: {
-      RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
+      RETURN_NOT_OK(AnalyzeCompareExpr(sem_context, expr, &col_desc, &value));
 
       if (col_desc->is_hash()) {
         return sem_context->Error(expr->loc(), "Partition column cannot be used in this expression",
@@ -174,7 +172,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
     }
 
     case ExprOperator::kGT: {
-      RETURN_NOT_OK(AnalyzeWhereCompareExpr(sem_context, expr, &col_desc, &value));
+      RETURN_NOT_OK(AnalyzeCompareExpr(sem_context, expr, &col_desc, &value));
 
       if (col_desc->is_hash()) {
         return sem_context->Error(expr->loc(), "Partition column cannot be used in this expression",
@@ -209,10 +207,82 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeWhereCompareExpr(SemContext *sem_context,
-                                                  PTExpr *expr,
-                                                  const ColumnDesc **col_desc,
-                                                  PTExpr::SharedPtr *value) {
+CHECKED_STATUS PTDmlStmt::AnalyzeIfExpr(SemContext *sem_context,
+                                        PTExpr *expr) {
+
+  if (expr == nullptr) {
+    return Status::OK();
+  }
+
+  switch (expr->expr_op()) {
+    case ExprOperator::kAND: FALLTHROUGH_INTENDED;
+    case ExprOperator::kOR: {
+      PTPredicate2 *bool_expr = static_cast<PTPredicate2*>(expr);
+      RETURN_NOT_OK(AnalyzeIfExpr(sem_context, bool_expr->op1().get()));
+      RETURN_NOT_OK(AnalyzeIfExpr(sem_context, bool_expr->op2().get()));
+      break;
+    }
+    case ExprOperator::kNot: {
+      PTPredicate1 *bool_expr = static_cast<PTPredicate1*>(expr);
+      RETURN_NOT_OK(AnalyzeIfExpr(sem_context, bool_expr->op1().get()));
+      break;
+    }
+
+    case ExprOperator::kEQ: FALLTHROUGH_INTENDED;
+    case ExprOperator::kLT: FALLTHROUGH_INTENDED;
+    case ExprOperator::kGT: FALLTHROUGH_INTENDED;
+    case ExprOperator::kLE: FALLTHROUGH_INTENDED;
+    case ExprOperator::kGE: FALLTHROUGH_INTENDED;
+    case ExprOperator::kNE: {
+      RETURN_NOT_OK(AnalyzeCompareExpr(sem_context, expr));
+      break;
+    }
+
+    case ExprOperator::kBetween: FALLTHROUGH_INTENDED;
+    case ExprOperator::kNotBetween: {
+      RETURN_NOT_OK(AnalyzeBetweenExpr(sem_context, expr));
+      break;
+    }
+
+    case ExprOperator::kIsNull:    FALLTHROUGH_INTENDED;
+    case ExprOperator::kIsNotNull: FALLTHROUGH_INTENDED;
+    case ExprOperator::kIsTrue:    FALLTHROUGH_INTENDED;
+    case ExprOperator::kIsFalse: {
+      RETURN_NOT_OK(AnalyzeColumnExpr(sem_context, expr));
+      break;
+    }
+
+    case ExprOperator::kExists: FALLTHROUGH_INTENDED;
+    case ExprOperator::kNotExists:
+      break;
+
+    case ExprOperator::kIn:      FALLTHROUGH_INTENDED;
+    case ExprOperator::kNotIn:   FALLTHROUGH_INTENDED;
+    case ExprOperator::kLike:    FALLTHROUGH_INTENDED;
+    case ExprOperator::kNotLike:
+      return sem_context->Error(expr->loc(), "Operator not supported yet",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+
+    default:
+      LOG(FATAL) << "Illegal op = " << int(expr->expr_op());
+      break;
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTDmlStmt::AnalyzeIfClause(SemContext *sem_context,
+                                          const PTExpr::SharedPtr& if_clause) {
+  if (if_clause != nullptr) {
+    RETURN_NOT_OK(AnalyzeIfExpr(sem_context, if_clause.get()));
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS PTDmlStmt::AnalyzeCompareExpr(SemContext *sem_context,
+                                             PTExpr *expr,
+                                             const ColumnDesc **col_desc,
+                                             PTExpr::SharedPtr *value) {
   PTPredicate2 *bool_expr = static_cast<PTPredicate2*>(expr);
   expr = bool_expr->op1().get();
   if (expr->expr_op() != ExprOperator::kRef) {
@@ -221,15 +291,55 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereCompareExpr(SemContext *sem_context,
   }
   RETURN_NOT_OK(expr->Analyze(sem_context));
 
-  *col_desc = static_cast<PTRef*>(expr)->desc();
+  if (col_desc != nullptr) {
+    *col_desc = static_cast<PTRef*>(expr)->desc();
+  }
   expr = bool_expr->op2().get();
   if (expr->expr_op() != ExprOperator::kConst) {
     return sem_context->Error(expr->loc(), "Only literal value is allowed here",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
-  *value = bool_expr->op2();
+  if (value != nullptr) {
+    *value = bool_expr->op2();
+  }
 
   return Status::OK();
+}
+
+CHECKED_STATUS PTDmlStmt::AnalyzeBetweenExpr(SemContext *sem_context,
+                                             PTExpr *expr) {
+  PTPredicate3 *bool_expr = static_cast<PTPredicate3*>(expr);
+  expr = bool_expr->op1().get();
+  if (expr->expr_op() != ExprOperator::kRef) {
+    return sem_context->Error(expr->loc(), "Only column reference is allowed here",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  RETURN_NOT_OK(expr->Analyze(sem_context));
+
+  expr = bool_expr->op2().get();
+  if (expr->expr_op() != ExprOperator::kConst) {
+    return sem_context->Error(expr->loc(), "Only literal value is allowed here",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  expr = bool_expr->op3().get();
+  if (expr->expr_op() != ExprOperator::kConst) {
+    return sem_context->Error(expr->loc(), "Only literal value is allowed here",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTDmlStmt::AnalyzeColumnExpr(SemContext *sem_context,
+                                            PTExpr *expr) {
+  PTPredicate1 *bool_expr = static_cast<PTPredicate1*>(expr);
+  expr = bool_expr->op1().get();
+  if (expr->expr_op() != ExprOperator::kRef) {
+    return sem_context->Error(expr->loc(), "Only column reference is allowed here",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  return expr->Analyze(sem_context);
 }
 
 } // namespace sql

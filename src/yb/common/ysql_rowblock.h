@@ -158,7 +158,7 @@ using YSQLValueMap = std::unordered_map<ColumnId, YSQLValue>;
 
 // Evaluate a boolean condition for the given row.
 CHECKED_STATUS EvaluateCondition(
-    const YSQLConditionPB& condition, const YSQLValueMap& row, bool* result);
+    const YSQLConditionPB& condition, const YSQLValueMap& row, const Schema& schema, bool* result);
 
 } // namespace yb
 

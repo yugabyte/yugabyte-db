@@ -38,18 +38,23 @@ CHECKED_STATUS SqlEnv::DeleteTable(const string& name) {
 
   CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
   // Clear the previous result.
-  read_op_ = nullptr;
+  rows_result_ = nullptr;
 
   // Execute the write.
   RETURN_NOT_OK(write_session_->Apply(yb_op));
   RETURN_NOT_OK(write_session_->Flush());
+
+  // Read the processing result.
+  if (!yb_op->rows_data().empty()) {
+    rows_result_.reset(new RowsResult(yb_op.get()));
+  }
 
   return Status::OK();
 }
 
 CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBSqlReadOp> yb_op) {
   // Clear the previous result.
-  read_op_ = nullptr;
+  rows_result_ = nullptr;
 
   if (yb_op.get() != nullptr) {
     // Execute the read.
@@ -57,7 +62,7 @@ CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBSqlReadOp> yb_op) {
     RETURN_NOT_OK(read_session_->Flush());
 
     // Read the processing result.
-    read_op_ = yb_op;
+    rows_result_.reset(new RowsResult(yb_op.get()));
   }
 
   return Status::OK();

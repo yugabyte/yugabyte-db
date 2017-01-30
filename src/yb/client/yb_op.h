@@ -34,7 +34,6 @@ class RedisResponsePB;
 class YSQLWriteRequestPB;
 class YSQLReadRequestPB;
 class YSQLResponsePB;
-class YSQLRowBlock;
 
 namespace client {
 
@@ -228,6 +227,14 @@ class YB_EXPORT YBSqlOp : public YBOperation {
  public:
   virtual ~YBSqlOp();
 
+  const YSQLResponsePB& response() const { return *ysql_response_; }
+
+  YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
+
+  std::string&& rows_data() { return std::move(rows_data_); }
+
+  std::string* mutable_rows_data() { return &rows_data_; }
+
   // Set the row key in the YBPartialRow.
   virtual CHECKED_STATUS SetKey() = 0;
 
@@ -236,6 +243,8 @@ class YB_EXPORT YBSqlOp : public YBOperation {
 
  protected:
   explicit YBSqlOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<YSQLResponsePB> ysql_response_;
+  std::string rows_data_;
 };
 
 class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
@@ -247,26 +256,12 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
 
   YSQLWriteRequestPB* mutable_request() { return ysql_write_request_.get(); }
 
-  const YSQLResponsePB& response() const { return *ysql_response_; }
-
-  YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
-
-  const std::string& rows_data() const { return rows_data_; }
-
-  std::string* mutable_rows_data() { return &rows_data_; }
-
-  // Parse the rows data and return it as a row block. It is the caller's responsibility to free
-  // the row block after use.
-  YSQLRowBlock* GetRowBlock() const;
-
   virtual std::string ToString() const OVERRIDE;
 
   virtual bool read_only() OVERRIDE { return false; };
 
-  // Set the row key from the primary key in YSQLWriteRequestPB.
   virtual CHECKED_STATUS SetKey() OVERRIDE;
 
-  // Set the hash key in the partial row of this YSQL operation.
   virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
 
  protected:
@@ -280,8 +275,6 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
   static YBSqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
   static YBSqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<YSQLWriteRequestPB> ysql_write_request_;
-  std::unique_ptr<YSQLResponsePB> ysql_response_;
-  std::string rows_data_;
 };
 
 class YB_EXPORT YBSqlReadOp : public YBSqlOp {
@@ -294,26 +287,12 @@ class YB_EXPORT YBSqlReadOp : public YBSqlOp {
 
   YSQLReadRequestPB* mutable_request() { return ysql_read_request_.get(); }
 
-  const YSQLResponsePB& response() const { return *ysql_response_; }
-
-  YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
-
-  const std::string& rows_data() const { return rows_data_; }
-
-  std::string* mutable_rows_data() { return &rows_data_; }
-
-  // Parse the rows data and return it as a row block. It is the caller's responsibility to free
-  // the row block after use.
-  YSQLRowBlock* GetRowBlock() const;
-
   virtual std::string ToString() const OVERRIDE;
 
   virtual bool read_only() OVERRIDE { return true; };
 
-  // Set the row key from the primary key in YSQLReadRequestPB.
   virtual CHECKED_STATUS SetKey() OVERRIDE;
 
-  // Set the hash key in the partial row of this YSQL operation.
   virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
 
  protected:
@@ -323,8 +302,6 @@ class YB_EXPORT YBSqlReadOp : public YBSqlOp {
   friend class YBTable;
   explicit YBSqlReadOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<YSQLReadRequestPB> ysql_read_request_;
-  std::unique_ptr<YSQLResponsePB> ysql_response_;
-  std::string rows_data_;
 };
 
 

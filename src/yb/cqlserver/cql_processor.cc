@@ -38,11 +38,11 @@ CQLResponse *CQLProcessor::ProcessQuery(const QueryRequest& req) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
 
-  if (read_op() == nullptr) {
+  if (rows_result() == nullptr) {
     return new VoidResultResponse(req);
   }
 
-  return new RowsResultResponse(req, *read_op());
+  return new RowsResultResponse(req, *rows_result());
 }
 
 } // namespace cqlserver

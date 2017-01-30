@@ -14,9 +14,8 @@
 #include <set>
 #include <unordered_map>
 
-#include "yb/client/schema.h"
-#include "yb/client/yb_op.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/sql/util/rows_result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
@@ -240,7 +239,8 @@ class CQLRequest : public CQLMessage {
   CHECKED_STATUS ParseInet(Sockaddr* value);
   CHECKED_STATUS ParseConsistency(Consistency* consistency);
   CHECKED_STATUS ParseStringMap(std::unordered_map<std::string, std::string>* map);
-  CHECKED_STATUS ParseStringMultiMap(std::unordered_map<std::string, std::vector<std::string>>* map);
+  CHECKED_STATUS ParseStringMultiMap(
+      std::unordered_map<std::string, std::vector<std::string>>* map);
   CHECKED_STATUS ParseBytesMap(std::unordered_map<std::string, std::string>* map);
   CHECKED_STATUS ParseValue(bool with_name, Value* value);
   CHECKED_STATUS ParseQueryParameters(QueryParameters* params);
@@ -628,7 +628,7 @@ class ResultResponse : public CQLResponse {
       explicit Type(std::shared_ptr<const UDTType> udt_type);
       explicit Type(std::shared_ptr<const TupleComponentTypes> tuple_component_types);
       explicit Type(const Type& t);
-      explicit Type(client::YBColumnSchema::DataType type);
+      explicit Type(DataType type);
       ~Type();
     };
     struct ColSpec {
@@ -643,7 +643,8 @@ class ResultResponse : public CQLResponse {
     int32_t col_count;
     std::vector<ColSpec> col_specs;
 
-    explicit RowsMetadata(const client::YBSqlReadOp& read_op, bool no_metadata);
+    explicit RowsMetadata(
+        const std::string& table_name, const std::vector<ColumnSchema>& columns, bool no_metadata);
   };
 
   ResultResponse(const CQLRequest& request, Kind kind);
@@ -676,14 +677,14 @@ class VoidResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class RowsResultResponse : public ResultResponse {
  public:
-  RowsResultResponse(const QueryRequest& request, const client::YBSqlReadOp& read_op);
+  RowsResultResponse(const QueryRequest& request, const sql::RowsResult& rows_result);
   virtual ~RowsResultResponse() override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
 
  private:
-  const client::YBSqlReadOp& read_op_;
+  const sql::RowsResult& rows_result_;
   const bool skip_metadata_;
 };
 

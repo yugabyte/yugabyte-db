@@ -25,6 +25,10 @@ enum class ExprOperator : int {
   kAlias,
   kRef,
 
+  // Operators that take no operand.
+  kExists,
+  kNotExists,
+
   // Operators that take one operand.
   kNot,
   kIsNull,
@@ -363,6 +367,7 @@ using PTConstBool = PTExprConst<yb::DataType::BOOL,
                                 bool>;
 
 // Tree node for comparisons.
+using PTPredicate0 = PTExpr0<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;
 using PTPredicate1 = PTExpr1<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;
 using PTPredicate2 = PTExpr2<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;
 using PTPredicate3 = PTExpr3<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;

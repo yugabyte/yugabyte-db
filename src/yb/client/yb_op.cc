@@ -149,7 +149,8 @@ RedisResponsePB* YBRedisReadOp::mutable_response() {
 }
 
 // YBSqlOp -----------------------------------------------------------------
-YBSqlOp::YBSqlOp(const shared_ptr<YBTable>& table) : YBOperation(table) {
+YBSqlOp::YBSqlOp(const shared_ptr<YBTable>& table)
+    : YBOperation(table) , ysql_response_(new YSQLResponsePB()) {
 }
 
 YBSqlOp::~YBSqlOp() {
@@ -158,9 +159,7 @@ YBSqlOp::~YBSqlOp() {
 // YBSqlWriteOp -----------------------------------------------------------------
 
 YBSqlWriteOp::YBSqlWriteOp(const shared_ptr<YBTable>& table)
-    : YBSqlOp(table),
-      ysql_write_request_(new YSQLWriteRequestPB()),
-      ysql_response_(new YSQLResponsePB()) {
+    : YBSqlOp(table), ysql_write_request_(new YSQLWriteRequestPB()) {
 }
 
 YBSqlWriteOp::~YBSqlWriteOp() {}
@@ -275,24 +274,10 @@ void YBSqlWriteOp::SetHashCode(const uint16_t hash_code) {
   ysql_write_request_->set_hash_code(hash_code);
 }
 
-YSQLRowBlock* YBSqlWriteOp::GetRowBlock() const {
-  Schema schema;
-  CHECK_OK(ColumnPBsToSchema(ysql_response_->column_schemas(), &schema));
-  unique_ptr<YSQLRowBlock> rowblock(new YSQLRowBlock(schema));
-  Slice data(rows_data_);
-  if (!data.empty()) {
-    // TODO: a better way to handle errors here?
-    CHECK_OK(rowblock->Deserialize(ysql_write_request_->client(), &data));
-  }
-  return rowblock.release();
-}
-
 // YBSqlReadOp -----------------------------------------------------------------
 
 YBSqlReadOp::YBSqlReadOp(const shared_ptr<YBTable>& table)
-    : YBSqlOp(table),
-      ysql_read_request_(new YSQLReadRequestPB()),
-      ysql_response_(new YSQLResponsePB()) {
+    : YBSqlOp(table), ysql_read_request_(new YSQLReadRequestPB()) {
 }
 
 YBSqlReadOp::~YBSqlReadOp() {}
@@ -320,20 +305,6 @@ Status YBSqlReadOp::SetKey() {
 
 void YBSqlReadOp::SetHashCode(const uint16_t hash_code) {
   ysql_read_request_->set_hash_code(hash_code);
-}
-
-YSQLRowBlock* YBSqlReadOp::GetRowBlock() const {
-  vector<ColumnId> column_ids;
-  for (const auto column_id : ysql_read_request_->column_ids()) {
-    column_ids.emplace_back(column_id);
-  }
-  unique_ptr<YSQLRowBlock> rowblock(new YSQLRowBlock(*table_->schema().schema_, column_ids));
-  Slice data(rows_data_);
-  if (!data.empty()) {
-    // TODO: a better way to handle errors here?
-    CHECK_OK(rowblock->Deserialize(ysql_read_request_->client(), &data));
-  }
-  return rowblock.release();
 }
 
 }  // namespace client

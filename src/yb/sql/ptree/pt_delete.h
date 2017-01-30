@@ -32,7 +32,7 @@ class PTDeleteStmt : public PTDmlStmt {
                PTTableRef::SharedPtr relation,
                TreeNode::SharedPtr using_clause,
                PTExpr::SharedPtr where_clause,
-               PTOptionExist option_exists = PTOptionExist::DEFAULT);
+               PTExpr::SharedPtr if_clause = nullptr);
   virtual ~PTDeleteStmt();
 
   template<typename... TypeArgs>
@@ -60,9 +60,15 @@ class PTDeleteStmt : public PTDmlStmt {
     return TreeNodeOpcode::kPTDeleteStmt;
   }
 
+  // IF clause.
+  const PTExpr* if_clause() const {
+    return if_clause_.get();
+  }
+
  private:
   PTTableRef::SharedPtr relation_;
   PTExpr::SharedPtr where_clause_;
+  PTExpr::SharedPtr if_clause_;
 };
 
 }  // namespace sql

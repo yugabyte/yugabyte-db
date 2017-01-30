@@ -480,6 +480,147 @@ CHECKED_STATUS Executor::WhereOpToPB(YSQLConditionPB *condition, const ColumnOp&
   return ExprToPB<YSQLExpressionPB>(col_op.expr(), col_desc->type_id(), op);
 }
 
+CHECKED_STATUS Executor::RelationalOpToPB(YSQLConditionPB *condition,
+                                          const YSQLOperator opr,
+                                          const PTExpr *relation) {
+  const PTPredicate2* pred = static_cast<const PTPredicate2*>(relation);
+
+  // Set the operator.
+  condition->set_op(opr);
+
+  // Operand 1: The column.
+  const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
+  YSQLExpressionPB *op = condition->add_operands();
+  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
+  op->set_column_id(col_desc->id());
+
+  // Operand 2: The expression.
+  const PTExpr::SharedPtr& expr = pred->op2();
+  op = condition->add_operands();
+  return ExprToPB<YSQLExpressionPB>(expr, col_desc->type_id(), op);
+}
+
+CHECKED_STATUS Executor::ColumnConditionToPB(YSQLConditionPB *condition,
+                                             const YSQLOperator opr,
+                                             const PTExpr *cond) {
+  const PTPredicate1* pred = static_cast<const PTPredicate1*>(cond);
+
+  // Set the operator.
+  condition->set_op(opr);
+
+  // Operand 1: The column.
+  const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
+  YSQLExpressionPB *op = condition->add_operands();
+  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
+  op->set_column_id(col_desc->id());
+  return Status::OK();
+}
+
+CHECKED_STATUS Executor::BetweenToPB(YSQLConditionPB *condition,
+                                     const YSQLOperator opr,
+                                     const PTExpr *between) {
+  const PTPredicate3* pred = static_cast<const PTPredicate3*>(between);
+
+  // Set the operator.
+  condition->set_op(opr);
+
+  // Operand 1: The column.
+  const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
+  YSQLExpressionPB *op = condition->add_operands();
+  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
+  op->set_column_id(col_desc->id());
+
+  // Operand 2: The lower-bound expression.
+  const PTExpr::SharedPtr& lower_bound = pred->op2();
+  op = condition->add_operands();
+  RETURN_NOT_OK(ExprToPB<YSQLExpressionPB>(lower_bound, col_desc->type_id(), op));
+
+  // Operand 3: The upper-bound expression.
+  const PTExpr::SharedPtr& upper_bound = pred->op3();
+  op = condition->add_operands();
+  return ExprToPB<YSQLExpressionPB>(upper_bound, col_desc->type_id(), op);
+}
+
+CHECKED_STATUS Executor::BoolExprToPB(YSQLConditionPB *cond, const PTExpr* expr) {
+
+  switch (expr->expr_op()) {
+
+    case ExprOperator::kAND: {
+      cond->set_op(YSQL_OP_AND);
+      const PTPredicate2 *pred = static_cast<const PTPredicate2*>(expr);
+      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
+      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op2().get()));
+      break;
+    }
+    case ExprOperator::kOR: {
+      cond->set_op(YSQL_OP_OR);
+      const PTPredicate2 *pred = static_cast<const PTPredicate2*>(expr);
+      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
+      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op2().get()));
+      break;
+    }
+    case ExprOperator::kNot: {
+      cond->set_op(YSQL_OP_NOT);
+      const PTPredicate1 *pred = static_cast<const PTPredicate1*>(expr);
+      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
+      break;
+    }
+
+    case ExprOperator::kEQ:
+      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_EQUAL, expr));
+      break;
+    case ExprOperator::kLT:
+      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_LESS_THAN, expr));
+      break;
+    case ExprOperator::kGT:
+      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_GREATER_THAN, expr));
+      break;
+    case ExprOperator::kLE:
+      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_LESS_THAN_EQUAL, expr));
+      break;
+    case ExprOperator::kGE:
+      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_GREATER_THAN_EQUAL, expr));
+      break;
+    case ExprOperator::kNE:
+      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_NOT_EQUAL, expr));
+      break;
+
+    case ExprOperator::kIsNull:
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_NULL, expr));
+      break;
+    case ExprOperator::kIsNotNull:
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_NOT_NULL, expr));
+      break;
+    case ExprOperator::kIsTrue:
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_TRUE, expr));
+      break;
+    case ExprOperator::kIsFalse:
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_FALSE, expr));
+      break;
+
+    case ExprOperator::kBetween:
+      RETURN_NOT_OK(BetweenToPB(cond, YSQL_OP_BETWEEN, expr));
+      break;
+
+    case ExprOperator::kNotBetween:
+      RETURN_NOT_OK(BetweenToPB(cond, YSQL_OP_NOT_BETWEEN, expr));
+      break;
+
+    case ExprOperator::kExists:
+      cond->set_op(YSQL_OP_EXISTS);
+      break;
+    case ExprOperator::kNotExists:
+      cond->set_op(YSQL_OP_NOT_EXISTS);
+      break;
+
+    default:
+      LOG(FATAL) << "Illegal op = " << int(expr->expr_op());
+      break;
+  }
+
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
@@ -525,6 +666,14 @@ CHECKED_STATUS Executor::ExecPTNode(const PTInsertStmt *tnode) {
     return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
   }
 
+  // Set the IF clause.
+  if (tnode->if_clause() != nullptr) {
+    s = BoolExprToPB(insert_op->mutable_request()->mutable_if_condition(), tnode->if_clause());
+    if (!s.ok()) {
+      return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    }
+  }
+
   // Apply the operator.
   RETURN_NOT_OK(exec_context_->ApplyWrite(insert_op, tnode));
   return Status::OK();
@@ -542,6 +691,15 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
   YBPartialRow *row = delete_op->mutable_row();
   RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
+
+  // Set the IF clause.
+  if (tnode->if_clause() != nullptr) {
+    Status s = BoolExprToPB(delete_op->mutable_request()->mutable_if_condition(),
+                            tnode->if_clause());
+    if (!s.ok()) {
+      return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    }
+  }
 
   // Apply the operator.
   RETURN_NOT_OK(exec_context_->ApplyWrite(delete_op, tnode));
@@ -566,6 +724,15 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
                                            tnode,
                                            update_op->mutable_request(),
                                            update_op->mutable_row()));
+
+  // Set the IF clause.
+  if (tnode->if_clause() != nullptr) {
+    Status s = BoolExprToPB(update_op->mutable_request()->mutable_if_condition(),
+                            tnode->if_clause());
+    if (!s.ok()) {
+      return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    }
+  }
 
   // Apply the operator.
   RETURN_NOT_OK(exec_context_->ApplyWrite(update_op, tnode));

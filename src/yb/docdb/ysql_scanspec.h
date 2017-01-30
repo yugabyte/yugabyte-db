@@ -35,9 +35,6 @@ class YSQLScanRange {
   // TODO(robert): allow only a subset (prefix) of range components to be specified as optimization.
   vector<YSQLValue> range_values(bool lower_bound) const;
 
-  // Return the table schema of this scan range.
-  const Schema& schema() const { return schema_; }
-
  private:
   // Table schema being scanned.
   const Schema& schema_;
@@ -51,7 +48,7 @@ class YSQLScanRange {
 class YSQLScanSpec {
  public:
   // Scan for the specified doc_key.
-  explicit YSQLScanSpec(const DocKey& doc_key);
+  explicit YSQLScanSpec(const Schema& schema, const DocKey& doc_key);
   // Scan for the given hash key and a condition.
   YSQLScanSpec(
       const Schema& schema, uint32_t hash_code,
@@ -71,6 +68,9 @@ class YSQLScanSpec {
  private:
   // Return inclusive lower/upper range doc key
   DocKey range_doc_key(bool lower_bound) const;
+
+  // Schema of the columns to scan.
+  const Schema& schema_;
 
   // Specific doc key to scan. The doc key is owned by the caller of YSQLScanSpec.
   const DocKey* doc_key_;

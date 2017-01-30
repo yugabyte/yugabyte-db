@@ -34,7 +34,7 @@ class PTInsertStmt : public PTDmlStmt {
                PTQualifiedName::SharedPtr relation,
                PTQualifiedNameListNode::SharedPtr columns,
                PTCollection::SharedPtr value_clause,
-               PTOptionExist option_exists = PTOptionExist::DEFAULT,
+               PTExpr::SharedPtr if_clause = nullptr,
                int64_t ttl_msec = PTDmlStmt::kNoTTL);
   virtual ~PTInsertStmt();
 
@@ -63,11 +63,17 @@ class PTInsertStmt : public PTDmlStmt {
     return relation_->loc();
   }
 
+  // IF clause.
+  const PTExpr* if_clause() const {
+    return if_clause_.get();
+  }
+
  private:
   // The parser will constructs the following tree nodes.
   PTQualifiedName::SharedPtr relation_;
   PTQualifiedNameListNode::SharedPtr columns_;
   PTCollection::SharedPtr value_clause_;
+  PTExpr::SharedPtr if_clause_;
 };
 
 }  // namespace sql

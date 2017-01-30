@@ -104,6 +104,7 @@ GramProcessor::symbol_type LexProcessor::Scan() {
       // Replace NOT by NOT_LA if it's followed by BETWEEN, IN, etc.
       switch (next_token_type) {
         case GramProcessor::token::TOK_BETWEEN:
+        case GramProcessor::token::TOK_EXISTS:
         case GramProcessor::token::TOK_IN_P:
         case GramProcessor::token::TOK_LIKE:
         case GramProcessor::token::TOK_ILIKE:

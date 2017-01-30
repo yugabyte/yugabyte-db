@@ -28,9 +28,10 @@ class SqlProcessor {
   // Execute the given statement.
   CHECKED_STATUS Run(const std::string& sql_stmt);
 
-  // Send the readop back for processing. If there's an error, the read_op_ is set to nullptr.
-  const std::shared_ptr<client::YBSqlReadOp>& read_op() const {
-    return sql_env_->read_op();
+  // Send the rows_result back for processing. If there's an error, the rows_result is set to
+  // nullptr.
+  const RowsResult* rows_result() const {
+    return sql_env_->rows_result();
   }
 
   // Construct a row_block and send it back.

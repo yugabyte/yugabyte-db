@@ -1,9 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/client/ysql-dml-base.h"
+#include "yb/sql/util/rows_result.h"
 
 namespace yb {
 namespace client {
+
+using yb::sql::RowsResult;
 
 // Verify all column values of a row. We use a macro instead of a function so that EXPECT_EQ can
 // show the caller's line number should the test fails.
@@ -97,7 +100,7 @@ TEST_F(YsqlDmlTest, TestInsertUpdateAndSelect) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -130,7 +133,7 @@ TEST_F(YsqlDmlTest, TestInsertUpdateAndSelect) {
 
     // Expect 4, 'd' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.int32_value(0), 4);
@@ -180,15 +183,9 @@ TEST_F(YsqlDmlTest, TestInsertMultipleRows) {
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
     {
-      unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+      unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
       EXPECT_EQ(rowblock->row_count(), 1);
-      const auto& row = rowblock->row(0);
-      EXPECT_EQ(row.int32_value(0), 1);
-      EXPECT_EQ(row.string_value(1), "a");
-      EXPECT_EQ(row.int32_value(2), 2);
-      EXPECT_EQ(row.string_value(3), "b");
-      EXPECT_EQ(row.int32_value(4), 3);
-      EXPECT_EQ(row.string_value(5), "c");
+      EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
     }
 
     // Test reusing the read op and updating where clause to select the other row.
@@ -203,7 +200,7 @@ TEST_F(YsqlDmlTest, TestInsertMultipleRows) {
     // Expect 1, 'a', 2, 'd', 4, 'e' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
     {
-      unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+      unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
       EXPECT_EQ(rowblock->row_count(), 1);
       EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "d", 4, "e");
     }
@@ -248,7 +245,7 @@ TEST_F(YsqlDmlTest, TestSelectMultipleRows) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' and 1, 'a', 2, 'd', 4, 'e' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 2);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
     EXPECT_ROW_VALUES(rowblock->row(1), 1, "a", 2, "d", 4, "e");
@@ -280,7 +277,7 @@ TEST_F(YsqlDmlTest, TestSelectMultipleRows) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' and 1, 'a', 2, 'd', 4, 'e' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 2);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
     EXPECT_ROW_VALUES(rowblock->row(1), 1, "a", 2, "d", 4, "e");
@@ -335,7 +332,7 @@ TEST_F(YsqlDmlTest, TestSelectWithoutConditionWithLimit) {
     //   1, 'a', 5, 'b', 6, 'c'
     //   1, 'a', 6, 'b', 7, 'c'
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 5);
     for (int32_t i = 0; i < 5; i++) {
       EXPECT_ROW_VALUES(rowblock->row(i), 1, "a", 2 + i, "b", 3 + i, "c");
@@ -374,7 +371,7 @@ TEST_F(YsqlDmlTest, TestUpsert) {
 
     // Expect 1, 'a', 2, 'b', 3, null returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -410,7 +407,7 @@ TEST_F(YsqlDmlTest, TestUpsert) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -448,7 +445,7 @@ TEST_F(YsqlDmlTest, TestDelete) {
 
     // Expect null, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_TRUE(row.column(0).IsNull());
@@ -478,7 +475,7 @@ TEST_F(YsqlDmlTest, TestDelete) {
 
     // Expect no row returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 0);
   }
 }
@@ -499,7 +496,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -523,7 +520,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect not applied
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -539,7 +536,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -565,7 +562,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect not applied, return c2 = 'd'. Verify column names ("[applied]" and "c2") also.
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -584,7 +581,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -610,7 +607,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect applied
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -626,7 +623,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 4, "d");
   }
@@ -647,7 +644,7 @@ TEST_F(YsqlDmlTest, TestConditionalInsert) {
 
     // Expect 1, 'a', 2, 'b', 5, 'e' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 5, "e");
   }
@@ -669,7 +666,7 @@ TEST_F(YsqlDmlTest, TestConditionalUpdate) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -692,7 +689,7 @@ TEST_F(YsqlDmlTest, TestConditionalUpdate) {
 
     // Expect not applied
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -708,7 +705,7 @@ TEST_F(YsqlDmlTest, TestConditionalUpdate) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -731,7 +728,7 @@ TEST_F(YsqlDmlTest, TestConditionalUpdate) {
 
     // Expect applied
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -747,7 +744,7 @@ TEST_F(YsqlDmlTest, TestConditionalUpdate) {
 
     // Expect 1, 'a', 2, 'b', 6, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 6, "c");
   }
@@ -769,7 +766,7 @@ TEST_F(YsqlDmlTest, TestConditionalDelete) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -791,7 +788,7 @@ TEST_F(YsqlDmlTest, TestConditionalDelete) {
 
     // Expect not applied, return c1 = 3. Verify column names also.
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().num_columns(), 2);
@@ -811,7 +808,7 @@ TEST_F(YsqlDmlTest, TestConditionalDelete) {
 
     // Expect 1, 'a', 2, 'b', 3, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     EXPECT_ROW_VALUES(rowblock->row(0), 1, "a", 2, "b", 3, "c");
   }
@@ -836,7 +833,7 @@ TEST_F(YsqlDmlTest, TestConditionalDelete) {
 
     // Expect applied
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
@@ -852,7 +849,7 @@ TEST_F(YsqlDmlTest, TestConditionalDelete) {
 
     // Expect 1, 'a', 2, 'b', null, 'c' returned
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -880,7 +877,7 @@ TEST_F(YsqlDmlTest, TestConditionalDelete) {
 
     // Expect not applied
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");

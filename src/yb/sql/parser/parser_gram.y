@@ -193,6 +193,7 @@ using namespace yb::sql;
 %type <PValues>           values_clause
 
 %type <PExpr>             // Expression clause. These expressions are used in a specific context.
+                          if_clause
                           where_clause opt_where_clause
                           where_or_current_clause opt_where_or_current_clause
                           opt_select_limit select_limit limit_clause select_limit_value
@@ -1881,17 +1882,16 @@ InsertStmt:
   | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
   using_ttl_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::DEFAULT, $9);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, nullptr, $9);
   }
-  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
-  IF_P NOT EXISTS
+  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause if_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9);
   }
-  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause
-  IF_P NOT EXISTS using_ttl_clause
+  | opt_with_clause INSERT INTO insert_target '(' insert_column_list ')' values_clause if_clause
+  using_ttl_clause
   {
-    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, PTOptionExist::IF_NOT_EXISTS, $12);
+    $$ = MAKE_NODE(@2, PTInsertStmt, $4, $6, $8, $9, $10);
   }
   | opt_with_clause INSERT INTO insert_target DEFAULT VALUES
   opt_on_conflict returning_clause {
@@ -2005,12 +2005,12 @@ DeleteStmt:
     $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6);
   }
   | opt_with_clause DELETE_P FROM relation_expr_opt_alias
-  where_or_current_clause IF_P EXISTS {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $5, PTOptionExist::IF_EXISTS);
+  where_or_current_clause if_clause {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $5, $6);
   }
   | opt_with_clause DELETE_P FROM relation_expr_opt_alias
-  using_clause where_or_current_clause IF_P EXISTS {
-    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6, PTOptionExist::IF_EXISTS);
+  using_clause where_or_current_clause if_clause {
+    $$ = MAKE_NODE(@2, PTDeleteStmt, nullptr, $4, nullptr, $6, $7);
   }
 ;
 
@@ -2027,15 +2027,11 @@ using_clause:
 UpdateStmt:
   opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
   opt_where_or_current_clause returning_clause {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, PTOptionExist::DEFAULT, $4);
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, nullptr, $4);
   }
   | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
-  opt_where_or_current_clause IF_P EXISTS {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, PTOptionExist::IF_EXISTS, $4);
-  }
-  | opt_with_clause UPDATE relation_expr_opt_alias opt_using_ttl_clause SET set_clause_list
-  opt_where_or_current_clause IF_P NOT EXISTS {
-    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, PTOptionExist::IF_NOT_EXISTS, $4);
+  opt_where_or_current_clause if_clause {
+    $$ = MAKE_NODE(@2, PTUpdateStmt, $3, $6, $7, $8, $4);
   }
 ;
 
@@ -2358,6 +2354,10 @@ where_clause:
   WHERE a_expr                  { $$ = $2; }
 ;
 
+if_clause:
+  IF_P a_expr                   { $$ = $2; }
+;
+
 /* variant for UPDATE and DELETE */
 opt_where_or_current_clause:
   /*EMPTY*/                     { $$ = nullptr; }
@@ -2422,11 +2422,16 @@ a_expr:
     $$ = $1;
   }
 
+  // Predicates that have no operand.
+  | EXISTS {
+    $$ = MAKE_NODE(@1, PTPredicate0, ExprOperator::kExists);
+  }
+  | NOT_LA EXISTS {
+    $$ = MAKE_NODE(@1, PTPredicate0, ExprOperator::kNotExists);
+  }
+
   // Predicates that have one operand.
   | NOT a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kNot, $2);
-  }
-  | NOT_LA a_expr                                              %prec NOT {
     $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kNot, $2);
   }
   | a_expr IS NULL_P                                           %prec IS {
@@ -2662,6 +2667,13 @@ c_expr:
   | AexprConst {
     $$ = $1;
   }
+  | '(' a_expr ')' opt_indirection {
+    if ($4) {
+      PARSER_UNSUPPORTED(@1);
+    } else {
+      $$ = $2;
+    }
+  }
   | inactive_c_expr {
     PARSER_UNSUPPORTED(@1);
   }
@@ -2669,8 +2681,6 @@ c_expr:
 
 inactive_c_expr:
   PARAM opt_indirection {
-  }
-  | '(' a_expr ')' opt_indirection {
   }
   | case_expr {
   }
@@ -4172,7 +4182,6 @@ col_name_keyword:
   | COALESCE { $$ = $1; }
   | DEC { $$ = $1; }
   | DECIMAL_P { $$ = $1; }
-  | EXISTS { $$ = $1; }
   | EXTRACT { $$ = $1; }
   | FLOAT_P { $$ = $1; }
   | GREATEST { $$ = $1; }

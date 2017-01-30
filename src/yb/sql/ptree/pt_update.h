@@ -81,7 +81,7 @@ class PTUpdateStmt : public PTDmlStmt {
                PTTableRef::SharedPtr relation,
                PTAssignListNode::SharedPtr set_clause,
                PTExpr::SharedPtr where_clause,
-               PTOptionExist option_exists = PTOptionExist::DEFAULT,
+               PTExpr::SharedPtr if_clause = nullptr,
                int64_t ttl_msec = PTDmlStmt::kNoTTL);
   virtual ~PTUpdateStmt();
 
@@ -111,10 +111,16 @@ class PTUpdateStmt : public PTDmlStmt {
     return TreeNodeOpcode::kPTUpdateStmt;
   }
 
+  // IF clause.
+  const PTExpr* if_clause() const {
+    return if_clause_.get();
+  }
+
  private:
   PTTableRef::SharedPtr relation_;
   PTAssignListNode::SharedPtr set_clause_;
   PTExpr::SharedPtr where_clause_;
+  PTExpr::SharedPtr if_clause_;
 };
 
 }  // namespace sql

@@ -260,18 +260,18 @@ vector<YSQLValue> YSQLScanRange::range_values(const bool lower_bound) const {
 }
 
 //-------------------------------------- YSQL scan spec ---------------------------------------
-YSQLScanSpec::YSQLScanSpec(const DocKey& doc_key)
-    : doc_key_(&doc_key), hash_code_(0), hashed_components_(nullptr),
-      condition_(nullptr), row_count_limit_(1),
-      range_(nullptr) {
+YSQLScanSpec::YSQLScanSpec(const Schema& schema, const DocKey& doc_key)
+    : schema_(schema), doc_key_(&doc_key), hash_code_(0), hashed_components_(nullptr),
+      condition_(nullptr), row_count_limit_(1), range_(nullptr) {
 }
 
 YSQLScanSpec::YSQLScanSpec(
     const Schema& schema, const uint32_t hash_code,
     const std::vector<PrimitiveValue>& hashed_components, const YSQLConditionPB* condition,
     const size_t row_count_limit)
-    : doc_key_(nullptr), hash_code_(hash_code), hashed_components_(&hashed_components),
-      condition_(condition), row_count_limit_(row_count_limit),
+    : schema_(schema), doc_key_(nullptr), hash_code_(hash_code),
+      hashed_components_(&hashed_components), condition_(condition),
+      row_count_limit_(row_count_limit),
       range_(condition != nullptr ? new YSQLScanRange(schema, *condition) : nullptr) {
 }
 
@@ -296,7 +296,7 @@ DocKey YSQLScanSpec::range_doc_key(const bool lower_bound) const {
 // Evaluate the WHERE condition for the given row.
 Status YSQLScanSpec::Match(const YSQLValueMap& row, bool* match) const {
   if (condition_ != nullptr) {
-    return EvaluateCondition(*condition_, row, match);
+    return EvaluateCondition(*condition_, row, schema_, match);
   }
   *match = true;
   return Status::OK();

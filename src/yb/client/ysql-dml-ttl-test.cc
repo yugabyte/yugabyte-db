@@ -1,9 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/client/ysql-dml-base.h"
+#include "yb/sql/util/rows_result.h"
 
 namespace yb {
 namespace client {
+
+using yb::sql::RowsResult;
 
 class YsqlDmlTTLTest : public YsqlDmlBase {
  public:
@@ -66,7 +69,7 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
 
     // Expect all 4 columns (c1, c2, c3, c4) to be valid right now.
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -95,7 +98,7 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
 
     // Expect columns (c1, c2) to be null and (c3, c4) to be valid right now.
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -124,7 +127,7 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
 
     // Expect all 4 columns (c1, c2, c3, c4) to be null.
     EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(op->GetRowBlock());
+    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     // TODO: need to revisit this since cassandra semantics might be a little different when all
     // non primary key columns are null.

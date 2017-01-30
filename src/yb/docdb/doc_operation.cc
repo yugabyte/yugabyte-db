@@ -441,10 +441,9 @@ CHECKED_STATUS GetNonKeyColumns(
       case YSQLExpressionPB::ExprCase::kValue:
         continue;
       case YSQLExpressionPB::ExprCase::kColumnId: {
-        const auto id = ColumnId(operand.column_id());
-        const size_t idx = schema.find_column_by_id(id);
-        if (!schema.is_key_column(idx)) {
-          non_key_columns->insert(id);
+        const auto column_id = ColumnId(operand.column_id());
+        if (!schema.is_key_column(column_id)) {
+          non_key_columns->insert(column_id);
         }
         continue;
       }
@@ -488,7 +487,6 @@ Status YSQLWriteOperation::IsConditionSatisfied(
     const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
     bool* should_apply, std::unique_ptr<YSQLRowBlock>* rowblock) {
   // Prepare the projection schema to scan the docdb for the row.
-  YSQLScanSpec spec(doc_key_);
   unordered_set<ColumnId> non_key_columns;
   RETURN_NOT_OK(GetNonKeyColumns(schema_, condition, &non_key_columns));
   Schema projection;
@@ -497,6 +495,7 @@ Status YSQLWriteOperation::IsConditionSatisfied(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
   // Scan docdb for the row.
+  YSQLScanSpec spec(projection, doc_key_);
   YSQLValueMap value_map;
   DocRowwiseIterator iterator(projection, schema_, rocksdb, hybrid_time);
   RETURN_NOT_OK(iterator.Init(spec));
@@ -505,7 +504,7 @@ Status YSQLWriteOperation::IsConditionSatisfied(
   }
 
   // See if the if-condition is satisfied.
-  RETURN_NOT_OK(EvaluateCondition(condition, value_map, should_apply));
+  RETURN_NOT_OK(EvaluateCondition(condition, value_map, projection, should_apply));
 
   // Populate the result set to return the "applied" status, and optionally the present column
   // values if the condition is not satisfied and the row does exist (value_map is not empty).
@@ -622,7 +621,7 @@ Status YSQLReadOperation::Execute(
   unordered_set<ColumnId> non_key_columns;
   for (size_t idx = 0; idx < rowblock->schema().num_columns(); idx++) {
     const auto column_id = rowblock->schema().column_id(idx);
-    if (!schema.is_key_column(schema.find_column_by_id(column_id))) {
+    if (!schema.is_key_column(column_id)) {
       non_key_columns.insert(column_id);
     }
   }

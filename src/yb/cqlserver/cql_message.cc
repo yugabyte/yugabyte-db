@@ -912,38 +912,42 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
 }
 
-ResultResponse::RowsMetadata::Type::Type(const client::YBColumnSchema::DataType type) {
+ResultResponse::RowsMetadata::Type::Type(const DataType type) {
   switch (type) {
-    case client::YBColumnSchema::DataType::INT8:
+    case DataType::INT8:
       id = Id::TINYINT;
       return;
-    case client::YBColumnSchema::DataType::INT16:
+    case DataType::INT16:
       id = Id::SMALLINT;
       return;
-    case client::YBColumnSchema::DataType::INT32:
+    case DataType::INT32:
       id = Id::INT;
       return;
-    case client::YBColumnSchema::DataType::INT64:
+    case DataType::INT64:
       id = Id::BIGINT;
       return;
-    case client::YBColumnSchema::DataType::FLOAT:
+    case DataType::FLOAT:
       id = Id::FLOAT;
       return;
-    case client::YBColumnSchema::DataType::DOUBLE:
+    case DataType::DOUBLE:
       id = Id::DOUBLE;
       return;
-    case client::YBColumnSchema::DataType::STRING:
+    case DataType::STRING:
       id = Id::VARCHAR;
       return;
-    case client::YBColumnSchema::DataType::BOOL:
+    case DataType::BOOL:
       id = Id::BOOLEAN;
       return;
-    case client::YBColumnSchema::DataType::TIMESTAMP:
+    case DataType::TIMESTAMP:
       id = Id::TIMESTAMP;
       return;
 
-    case client::YBColumnSchema::DataType::BINARY: FALLTHROUGH_INTENDED;
-    case client::YBColumnSchema::DataType::MAX_TYPE_INDEX:
+    case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::UINT8:  FALLTHROUGH_INTENDED;
+    case DataType::UINT16: FALLTHROUGH_INTENDED;
+    case DataType::UINT32: FALLTHROUGH_INTENDED;
+    case DataType::UINT64: FALLTHROUGH_INTENDED;
+    case DataType::UNKNOWN_DATA:
       break;
 
     // default: fall through
@@ -998,17 +1002,15 @@ ResultResponse::RowsMetadata::Type::~Type() {
 }
 
 
-ResultResponse::RowsMetadata::RowsMetadata(const client::YBSqlReadOp& read_op, bool no_metadata)
+ResultResponse::RowsMetadata::RowsMetadata(
+    const string& table_name, const vector<ColumnSchema>& columns, bool no_metadata)
     : flags(no_metadata ? kNoMetadata : kHasGlobalTableSpec), paging_state(""),
-      global_table_spec(
-          GlobalTableSpec("" /* keyspace */, no_metadata ? "" : read_op.table()->name())),
-      col_count(read_op.request().column_ids_size()) {
+      global_table_spec(GlobalTableSpec("" /* keyspace */, no_metadata ? "" : table_name)),
+      col_count(columns.size()) {
   if (!no_metadata) {
     col_specs.reserve(col_count);
-    const auto& schema = read_op.table()->schema();
-    for (const auto column_id : read_op.request().column_ids()) {
-      const auto column = schema.ColumnById(column_id);
-      col_specs.emplace_back(column.name(), Type(column.type()));
+    for (const auto column : columns) {
+      col_specs.emplace_back(column.name(), Type(column.type_info()->type()));
     }
   }
 }
@@ -1120,8 +1122,8 @@ void VoidResultResponse::SerializeResultBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 RowsResultResponse::RowsResultResponse(
-    const QueryRequest& request, const client::YBSqlReadOp& read_op)
-    : ResultResponse(request, Kind::ROWS), read_op_(read_op),
+    const QueryRequest& request, const sql::RowsResult& rows_result)
+    : ResultResponse(request, Kind::ROWS), rows_result_(rows_result),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
@@ -1129,8 +1131,9 @@ RowsResultResponse::~RowsResultResponse() {
 }
 
 void RowsResultResponse::SerializeResultBody(faststring* mesg) {
-  SerializeRowsMetadata(RowsMetadata(read_op_, skip_metadata_), mesg);
-  mesg->append(read_op_.rows_data());
+  SerializeRowsMetadata(
+      RowsMetadata(rows_result_.table_name(), rows_result_.column_schemas(), skip_metadata_), mesg);
+  mesg->append(rows_result_.rows_data());
 }
 
 //----------------------------------------------------------------------------------------

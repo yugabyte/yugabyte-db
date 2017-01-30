@@ -57,12 +57,13 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
                            PTTableRef::SharedPtr relation,
                            PTAssignListNode::SharedPtr set_clause,
                            PTExpr::SharedPtr where_clause,
-                           PTOptionExist option_exists,
+                           PTExpr::SharedPtr if_clause,
                            int64_t ttl_msec)
-    : PTDmlStmt(memctx, loc, true, option_exists, ttl_msec),
+    : PTDmlStmt(memctx, loc, true, ttl_msec),
       relation_(relation),
       set_clause_(set_clause),
-      where_clause_(where_clause) {
+      where_clause_(where_clause),
+      if_clause_(if_clause) {
 }
 
 PTUpdateStmt::~PTUpdateStmt() {
@@ -90,6 +91,9 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
+
+  // Run error checking on the IF conditions.
+  RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
 
   return Status::OK();
 }

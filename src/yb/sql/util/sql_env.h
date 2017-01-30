@@ -11,7 +11,7 @@
 #define YB_SQL_UTIL_SQL_ENV_H_
 
 #include "yb/client/client.h"
-#include "yb/common/ysql_rowblock.h"
+#include "yb/sql/util/rows_result.h"
 
 namespace yb {
 namespace sql {
@@ -40,18 +40,19 @@ class SqlEnv {
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name,
                                                         bool refresh_metadata);
 
-  // Access function for read_op. If there's an error in execution, read_op_ would be null.
-  const std::shared_ptr<client::YBSqlReadOp>& read_op() const {
-    return read_op_;
+  // Access function for rows_result. If the statement executed is a regular DML or there's an
+  // error in execution, rows_result would be null.
+  const RowsResult* rows_result() const {
+    return rows_result_.get();
   }
 
   // Construct a row_block and send it back.
   std::shared_ptr<YSQLRowBlock> row_block() const {
-    if (read_op_ == nullptr) {
+    if (rows_result_ == nullptr) {
       // There isn't any query result.
       return nullptr;
     }
-    return std::shared_ptr<YSQLRowBlock>(read_op_->GetRowBlock());
+    return std::shared_ptr<YSQLRowBlock>(rows_result_->GetRowBlock());
   }
 
  private:
@@ -64,9 +65,8 @@ class SqlEnv {
   // A specific session (within YBClient) to execute a statement.
   std::shared_ptr<client::YBSession> read_session_;
 
-  // Result for apply. CQL uses read_op_ to form a response.
-  // TODO(neil): Need to find a better way to send the response back instead of the whole operator.
-  std::shared_ptr<client::YBSqlReadOp> read_op_;
+  // Rows resulted from executing the last statement.
+  std::shared_ptr<RowsResult> rows_result_;
 };
 
 } // namespace sql

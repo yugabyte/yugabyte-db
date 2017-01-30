@@ -54,7 +54,6 @@ class PTDmlStmt : public PTCollection {
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTOptionExist option_exists = PTOptionExist::DEFAULT,
                      int64_t ttl_msec = kNoTTL);
   virtual ~PTDmlStmt();
 
@@ -68,6 +67,9 @@ class PTDmlStmt : public PTCollection {
 
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
+
+  // Semantic-analyzing the if clause.
+  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context, const PTExpr::SharedPtr& if_clause);
 
   // Table name.
   virtual const char *table_name() const = 0;
@@ -124,13 +126,16 @@ class PTDmlStmt : public PTCollection {
   CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context,
                                   PTExpr *expr,
                                   MCVector<WhereSemanticStats> *col_stats);
-  CHECKED_STATUS AnalyzeWhereCompareExpr(SemContext *sem_context,
-                                         PTExpr *expr,
-                                         const ColumnDesc **col_desc,
-                                         PTExpr::SharedPtr *value);
-
-  // DML statement options.
-  PTOptionExist option_exists_;
+  CHECKED_STATUS AnalyzeIfExpr(SemContext *sem_context,
+                               PTExpr *expr);
+  CHECKED_STATUS AnalyzeCompareExpr(SemContext *sem_context,
+                                    PTExpr *expr,
+                                    const ColumnDesc **col_desc = nullptr,
+                                    PTExpr::SharedPtr *value = nullptr);
+  CHECKED_STATUS AnalyzeBetweenExpr(SemContext *sem_context,
+                                    PTExpr *expr);
+  CHECKED_STATUS AnalyzeColumnExpr(SemContext *sem_context,
+                                   PTExpr *expr);
 
   // The sematic analyzer will decorate this node with the following information.
   std::shared_ptr<client::YBTable> table_;

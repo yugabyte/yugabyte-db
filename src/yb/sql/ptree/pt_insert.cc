@@ -23,12 +23,13 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
                            PTQualifiedName::SharedPtr relation,
                            PTQualifiedNameListNode::SharedPtr columns,
                            PTCollection::SharedPtr value_clause,
-                           PTOptionExist option_exists,
+                           PTExpr::SharedPtr if_clause,
                            int64_t ttl_msec)
-    : PTDmlStmt(memctx, loc, false, option_exists, ttl_msec),
+    : PTDmlStmt(memctx, loc, false, ttl_msec),
       relation_(relation),
       columns_(columns),
-      value_clause_(value_clause) {
+      value_clause_(value_clause),
+      if_clause_(if_clause) {
 }
 
 PTInsertStmt::~PTInsertStmt() {
@@ -126,6 +127,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
+
+  // Run error checking on the IF conditions.
+  RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
 
   return Status::OK();
 }

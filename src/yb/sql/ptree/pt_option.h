@@ -11,11 +11,7 @@
 namespace yb {
 namespace sql {
 
-enum class PTOptionExist : int {
-  DEFAULT = 0,
-  IF_EXISTS,
-  IF_NOT_EXISTS,
-};
+// No option is defined currently.
 
 }  // namespace sql
 }  // namespace yb

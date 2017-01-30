@@ -122,6 +122,24 @@ class Executor {
   // Convert an expression op in where claluse to protobuf.
   CHECKED_STATUS WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op);
 
+  // Convert a bool expression to protobuf.
+  CHECKED_STATUS BoolExprToPB(YSQLConditionPB *condition, const PTExpr* expr);
+
+  // Convert a relational op to protobuf
+  CHECKED_STATUS RelationalOpToPB(YSQLConditionPB *condition,
+                                  YSQLOperator opr,
+                                  const PTExpr *relation);
+
+  // Convert a column condition to protobuf
+  CHECKED_STATUS ColumnConditionToPB(YSQLConditionPB *condition,
+                                     YSQLOperator opr,
+                                     const PTExpr *cond);
+
+  // Convert a between (not) to protobuf
+  CHECKED_STATUS BetweenToPB(YSQLConditionPB *condition,
+                             YSQLOperator opr,
+                             const PTExpr *between);
+
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.
   ExecContext::UniPtr exec_context_;

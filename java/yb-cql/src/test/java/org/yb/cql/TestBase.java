@@ -70,7 +70,11 @@ public class TestBase {
   public void SetUpBefore() throws Exception {
     cluster = Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
-              .build();
+              // To sniff the CQL wire protocol using Wireshark and debug, uncomment the following
+              // line to force the use of CQL V3 protocol. Wireshark does not decode V4 or higher
+              // protocol yet.
+              // .withProtocolVersion(com.datastax.driver.core.ProtocolVersion.V3)
+             .build();
     LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
 
     session = cluster.connect();
@@ -107,6 +111,12 @@ public class TestBase {
         test_table, idx, idx, idx+100, idx+100, idx+1000, idx+1000);
       session.execute(insert_stmt);
     }
+  }
+
+  public void TearDownTable(String test_table) throws Exception {
+    LOG.info("DROP TABLE " + test_table);
+    String drop_stmt = String.format("DROP TABLE %s;", test_table);
+    session.execute(drop_stmt);
   }
 
   protected Iterator<Row> RunSelect(String tableName, String select_stmt) {
