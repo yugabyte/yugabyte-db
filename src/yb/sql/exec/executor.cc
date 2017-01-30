@@ -119,12 +119,6 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   YBSchema schema;
   YBSchemaBuilder b;
 
-  // tnode->table_already_exists() will only be true when we are processing a 'CREATE IF NOT EXISTS'
-  // statement.
-  if (tnode->table_already_exists()) {
-    return Status::OK();
-  }
-
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (const auto& column : hash_columns) {
     b.AddColumn(column->yb_name())->Type(column->sql_type())
@@ -159,9 +153,20 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
                                                      .num_replicas(1)
                                                      .Create();
   if (!exec_status.ok()) {
+    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+    if (exec_status.IsAlreadyPresent()) {
+      error_code = ErrorCode::DUPLICATE_TABLE;
+    } else if (exec_status.IsInvalidArgument()) {
+      error_code = ErrorCode::INVALID_TABLE_DEFINITION;
+    }
+
+    if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TABLE) {
+      return Status::OK();
+    }
+
     return exec_context_->Error(tnode->name_loc(),
                                 exec_status.ToString().c_str(),
-                                ErrorCode::INVALID_TABLE_DEFINITION);
+                                error_code);
   }
   return Status::OK();
 }

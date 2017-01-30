@@ -11,8 +11,7 @@ namespace sql {
 do {                                                                                               \
   Status s = processor->Run(sql_stmt);                                                             \
   EXPECT_FALSE(s.ok());                                                                            \
-  EXPECT_FALSE(s.ToString().find("Duplicate Table - Cannot create a table that already exists") == \
-                   string::npos);                                                                  \
+  EXPECT_FALSE(s.ToString().find("Duplicate Table - Already present") == string::npos);            \
 } while (false)
 
 class YbSqlCreateTable : public YbSqlTestBase {

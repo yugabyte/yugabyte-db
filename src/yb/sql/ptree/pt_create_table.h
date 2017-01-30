@@ -190,8 +190,8 @@ class PTCreateTable : public TreeNode {
     return hash_columns_;
   }
 
-  bool table_already_exists() const {
-    return table_already_exists_;
+  bool create_if_not_exists() const {
+    return create_if_not_exists_;
   }
 
   void AppendColumn(PTColumnDefinition *column) {
@@ -230,7 +230,6 @@ class PTCreateTable : public TreeNode {
   MCList<PTColumnDefinition *> hash_columns_;
 
   bool create_if_not_exists_;
-  bool table_already_exists_;
 };
 
 }  // namespace sql
