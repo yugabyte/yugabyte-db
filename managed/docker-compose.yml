@@ -10,7 +10,7 @@ services:
       - ./src/main/resources/db_seed.yml:/opt/docker/conf/db_seed.yml
       - /opt/docker/public/
       - /var/run/docker.sock:/var/run/docker.sock:rw
-      - /usr/bin/docker:/usr/local/bin/docker
+      - /usr/bin/docker:/usr/bin/docker
     expose:
       - 9000
     ports:
@@ -35,15 +35,17 @@ services:
       - ./src/main/resources/db/migration/default/:/docker-entrypoint-initdb.d/
 
   nginx:
-      image: nginx:latest
-      volumes:
-        - ./docker/nginx/:/etc/nginx/conf.d/
-      links:
-        - yugaware
-      ports:
-        - "80:80"
-      volumes_from:
-        - yugaware
+    image: nginx:latest
+    volumes:
+      - ./docker/nginx/:/etc/nginx/conf.d/
+    links:
+      - yugaware
+    ports:
+      - "80:80"
+    expose:
+      - 80
+    volumes_from:
+      - yugaware
 
   prometheus:
     image: prom/prometheus
@@ -75,7 +77,3 @@ services:
     command:
       - '-config.file=/etc/alertmanager/alertmanager.yml'
       - '-storage.path=./docker/alertmanager'
-networks:
-  default:
-    external:
-      name: yugabyte-bridge
