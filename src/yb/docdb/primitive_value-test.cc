@@ -75,6 +75,19 @@ TEST(PrimitiveValueTest, TestToString) {
             PrimitiveValue::UInt16Hash(numeric_limits<uint16_t>::max()).ToString());
   ASSERT_EQ("UInt16Hash(65535)", PrimitiveValue::UInt16Hash(-1).ToString());
   ASSERT_EQ("UInt16Hash(0)", PrimitiveValue::UInt16Hash(0).ToString());
+
+  ASSERT_EQ("ColumnId(2147483647)",
+            PrimitiveValue(ColumnId(numeric_limits<int32_t>::max())).ToString());
+  ASSERT_EQ("ColumnId(0)",
+            PrimitiveValue(ColumnId(0)).ToString());
+
+  ASSERT_EQ("SystemColumnId(2147483647)",
+            PrimitiveValue::SystemColumnId(ColumnId(numeric_limits<int32_t>::max())).ToString());
+  ASSERT_EQ("SystemColumnId(0)",
+            PrimitiveValue::SystemColumnId(ColumnId(0)).ToString());
+
+  // Negative column ids are not allowed.
+  EXPECT_EXIT(ColumnId(-1), ::testing::KilledBySignal(SIGABRT), "Check failed.*");
 }
 
 TEST(PrimitiveValueTest, TestRoundTrip) {
@@ -82,7 +95,11 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
       PrimitiveValue("foo"),
       PrimitiveValue(string("foo\0bar\x01", 8)),
       PrimitiveValue(123L),
-      PrimitiveValue(HybridTime(1000L))
+      PrimitiveValue(HybridTime(1000L)),
+      PrimitiveValue(ColumnId(numeric_limits<int32_t>::max())),
+      PrimitiveValue(ColumnId(0)),
+      PrimitiveValue::SystemColumnId(ColumnId(numeric_limits<int32_t>::max())),
+      PrimitiveValue::SystemColumnId(ColumnId(0)),
   }) {
     EncodeAndDecode(primitive_value);
   }
@@ -129,6 +146,30 @@ TEST(PrimitiveValueTest, TestPrimitiveValuesAsMapKeys) {
   ASSERT_TRUE(m.emplace(key1, "value1").second);
   ASSERT_EQ(1, m.count(key1));
   ASSERT_NE(m.find(key1), m.end());
+}
+
+TEST(PrimitiveValueTest, TestCorruption) {
+  // No column id specified.
+  KeyBytes key_bytes;
+  key_bytes.AppendValueType(ValueType::kColumnId);
+  rocksdb::Slice slice = key_bytes.AsSlice();
+  PrimitiveValue decoded;
+  ASSERT_TRUE(decoded.DecodeFromKey(&slice).IsCorruption());
+
+  // Invalid varint.
+  key_bytes.AppendInt64(std::numeric_limits<int64_t>::max());
+  ASSERT_TRUE(decoded.DecodeFromKey(&slice).IsCorruption());
+}
+
+TEST(PrimitiveValueTest, TestVarintStorage) {
+  // Verify varint occupies the appropriate amount of bytes.
+  KeyBytes key_bytes;
+  key_bytes.AppendColumnId(ColumnId(240));
+  ASSERT_EQ(1, key_bytes.AsSlice().size());
+
+  key_bytes.Clear();
+  key_bytes.AppendColumnId(ColumnId(std::numeric_limits<int32_t>::max()));
+  ASSERT_EQ(5, key_bytes.AsSlice().size());
 }
 
 }  // namespace docdb

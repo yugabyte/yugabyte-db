@@ -26,6 +26,8 @@ string ValueTypeToStr(ValueType value_type) {
     case ValueType::kArrayIndex: return "ArrayIndex";
     case ValueType::kTombstone: return "Tombstone";
     case ValueType ::kTtl: return "Ttl";
+    case ValueType ::kColumnId: return "ColumnId";
+    case ValueType ::kSystemColumnId: return "SystemColumnId";
     case ValueType::kInvalidValueType: return "InvalidValueType";
     // No default case so that we get a compiler warning (which we treat as an error) if we miss
     // a valid enum value here.

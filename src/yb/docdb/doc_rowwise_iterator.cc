@@ -210,7 +210,7 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
     const auto& column_id = projection.column_id(i);
     subdoc_key_.RemoveHybridTime();
     subdoc_key_.AppendSubKeysAndMaybeHybridTime(
-        PrimitiveValue(static_cast<int32_t>(column_id)), hybrid_time_);
+        PrimitiveValue(column_id), hybrid_time_);
 
     const KeyBytes key_for_column = subdoc_key_.Encode();
     ROCKSDB_SEEK(db_iter_.get(), key_for_column.AsSlice());

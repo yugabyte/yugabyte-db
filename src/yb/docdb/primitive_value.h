@@ -32,6 +32,10 @@ int GenericCompare(const T& a, const T& b) {
   return 0;
 }
 
+enum class SystemColumnIds : int32_t {
+  kLivenessColumn = 0 // Stores the TTL for the row.
+};
+
 class PrimitiveValue {
  public:
   PrimitiveValue() : type_(ValueType::kNull) {
@@ -86,6 +90,10 @@ class PrimitiveValue {
     hybrid_time_val_ = hybrid_time;
   }
 
+  explicit PrimitiveValue(const ColumnId column_id) : type_(ValueType::kColumnId) {
+    column_id_val_ = column_id;
+  }
+
   // Construct a primitive value from a Slice containing a Kudu value.
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
@@ -126,6 +134,8 @@ class PrimitiveValue {
   static PrimitiveValue Double(double d);
   static PrimitiveValue ArrayIndex(int64_t index);
   static PrimitiveValue UInt16Hash(uint16_t hash);
+  static PrimitiveValue SystemColumnId(ColumnId column_id);
+  static PrimitiveValue SystemColumnId(SystemColumnIds system_column_id);
 
   KeyBytes ToKeyBytes() const;
 
@@ -202,6 +212,7 @@ class PrimitiveValue {
     Timestamp timestamp_val_;
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
+    ColumnId column_id_val_;
   };
 
  private:

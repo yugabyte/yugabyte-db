@@ -12,6 +12,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/endian.h"
+#include "yb/util/memcmpable_varint.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
@@ -86,6 +87,10 @@ inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
   char buf[sizeof(uint16_t)];
   BigEndian::Store16(buf, val);
   dest->append(buf, sizeof(buf));
+}
+
+inline void AppendColumnIdToKey(ColumnId val, std::string* dest) {
+  PutMemcmpableVarint64(dest, val.ToUint64());
 }
 
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given

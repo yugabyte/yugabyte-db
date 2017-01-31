@@ -68,6 +68,10 @@ string PrimitiveValue::ToString() const {
       return hybrid_time_val_.ToDebugString();
     case ValueType::kUInt16Hash:
       return Substitute("UInt16Hash($0)", uint16_val_);
+    case ValueType::kColumnId:
+      return Substitute("ColumnId($0)", column_id_val_);
+    case ValueType::kSystemColumnId:
+      return Substitute("SystemColumnId($0)", column_id_val_);
     case ValueType::kObject:
       return "{}";
     case ValueType::kTombstone:
@@ -116,6 +120,11 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kUInt16Hash:
       key_bytes->AppendUInt16(uint16_val_);
+      return;
+
+    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
+    case ValueType::kSystemColumnId:
+      key_bytes->AppendColumnId(column_id_val_);
       return;
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
@@ -168,6 +177,8 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kArray: FALLTHROUGH_INTENDED;
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
+    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
+    case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType:
       break;
   }
@@ -237,6 +248,20 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       }
       timestamp_val_ = Timestamp(BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask);
       slice->remove_prefix(sizeof(Timestamp));
+      type_ = value_type;
+      return Status::OK();
+
+    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
+    case ValueType::kSystemColumnId:
+      // ColumnId is stored as a varint (needs to be atleast 1 byte).
+      if (slice->size() < sizeof(uint8_t)) {
+        return STATUS(Corruption, Substitute("Need at least $0 bytes to decode a varint, found: $1",
+                                             static_cast<int>(sizeof(uint8_t)), slice->size()));
+      }
+      uint64_t varint;
+      RETURN_NOT_OK(GetMemcmpableVarint64(slice, &varint));
+
+      RETURN_NOT_OK(ColumnId::FromUint64(varint, &column_id_val_));
       type_ = value_type;
       return Status::OK();
 
@@ -320,6 +345,8 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
+    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
+    case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime:
       return STATUS(Corruption,
           Substitute("$0 is not allowed in a RocksDB PrimitiveValue", ValueTypeToStr(value_type)));
@@ -349,6 +376,17 @@ PrimitiveValue PrimitiveValue::UInt16Hash(uint16_t hash) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::SystemColumnId(SystemColumnIds system_column_id) {
+  return PrimitiveValue::SystemColumnId(ColumnId(static_cast<ColumnIdRep>(system_column_id)));
+}
+
+PrimitiveValue PrimitiveValue::SystemColumnId(ColumnId column_id) {
+  PrimitiveValue primitive_value;
+  primitive_value.type_ = ValueType::kSystemColumnId;
+  primitive_value.column_id_val_ = column_id;
+  return primitive_value;
+}
+
 KeyBytes PrimitiveValue::ToKeyBytes() const {
   KeyBytes kb;
   AppendToKey(&kb);
@@ -371,6 +409,9 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kDouble: return double_val_ == other.double_val_;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
     case ValueType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
+
+    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
+    case ValueType::kSystemColumnId: return column_id_val_ == other.column_id_val_;
     case ValueType::kHybridTime: return hybrid_time_val_.CompareTo(other.hybrid_time_val_) == 0;
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
@@ -397,6 +438,9 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return GenericCompare(uint16_val_, other.uint16_val_);
     case ValueType::kTimestamp:
       return GenericCompare(timestamp_val_, other.timestamp_val_);
+    case ValueType::kColumnId: FALLTHROUGH_INTENDED;
+    case ValueType::kSystemColumnId:
+      return GenericCompare(column_id_val_, other.column_id_val_);
     case ValueType::kHybridTime:
       // HybridTimes are sorted in reverse order.
       return -GenericCompare(hybrid_time_val_.value(), other.hybrid_time_val_.value());

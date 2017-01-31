@@ -101,6 +101,7 @@
 #include "yb/gutil/endian.h"
 #include "yb/util/faststring.h"
 #include "yb/util/memcmpable_varint.h"
+#include "yb/util/cast.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -211,28 +212,28 @@ static int sqlite4GetVarint64(
     return 3;
   }
   if (z[0] == 250) {
-    *pResult = (z[1]<<16) + (z[2]<<8) + z[3];
+    *pResult = (z[1] << 16) + (z[2] << 8) + z[3];
     return 4;
   }
-  x = (z[1]<<24) + (z[2]<<16) + (z[3]<<8) + z[4];
+  x = (z[1] << 24) + (z[2] << 16) + (z[3] << 8) + z[4];
   if (z[0] == 251) {
     *pResult = x;
     return 5;
   }
   if (z[0] == 252) {
-    *pResult = (((uint64_t)x)<<8) + z[5];
+    *pResult = (((uint64_t)x) << 8) + z[5];
     return 6;
   }
   if (z[0] == 253) {
-    *pResult = (((uint64_t)x)<<16) + (z[5]<<8) + z[6];
+    *pResult = (((uint64_t)x) << 16) + (z[5] << 8) + z[6];
     return 7;
   }
   if (z[0] == 254) {
-    *pResult = (((uint64_t)x)<<24) + (z[5]<<16) + (z[6]<<8) + z[7];
+    *pResult = (((uint64_t)x) << 24) + (z[5] << 16) + (z[6] << 8) + z[7];
     return 8;
   }
-  *pResult = (((uint64_t)x)<<32) +
-               (0xffffffff & ((z[5]<<24) + (z[6]<<16) + (z[7]<<8) + z[8]));
+  *pResult = (((uint64_t)x) << 32) +
+               (0xffffffff & ((z[5] << 24) + (z[6] << 16) + (z[7] << 8) + z[8]));
   return 9;
 }
 
@@ -240,10 +241,21 @@ static int sqlite4GetVarint64(
 // End code ripped from sqlite4
 ////////////////////////////////////////////////////////////
 
+int PutVarint64ToBuf(uint8_t* buf, size_t bufsize, uint64_t value) {
+  int used = sqlite4PutVarint64(buf, value);
+  DCHECK_LE(used, bufsize);
+  return used;
+}
+
+void PutMemcmpableVarint64(std::string *dst, uint64_t value) {
+  uint8_t buf[9];
+  int used = PutVarint64ToBuf(buf, sizeof(buf), value);
+  dst->append(yb::util::to_char_ptr(buf), used);
+}
+
 void PutMemcmpableVarint64(faststring *dst, uint64_t value) {
   uint8_t buf[9];
-  int used = sqlite4PutVarint64(buf, value);
-  DCHECK_LE(used, sizeof(buf));
+  int used = PutVarint64ToBuf(buf, sizeof(buf), value);
   dst->append(buf, used);
 }
 
@@ -253,5 +265,13 @@ bool GetMemcmpableVarint64(Slice *input, uint64_t *value) {
   return size > 0;
 }
 
+Status GetMemcmpableVarint64(rocksdb::Slice *input, uint64_t *value) {
+  size_t size = sqlite4GetVarint64(yb::util::to_uchar_ptr(input->data()), input->size(), value);
+  input->remove_prefix(size);
+  if (size <= 0) {
+    return STATUS(InvalidArgument, "Valid varint couldn't be decoded");
+  }
+  return Status::OK();
+}
 
 } // namespace yb

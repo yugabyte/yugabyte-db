@@ -29,15 +29,24 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "rocksdb/slice.h"
 
 namespace yb {
 
+// Appends the varint to the end of the string.
+void PutMemcmpableVarint64(std::string *dst, uint64_t value);
+
+// Appends the varint to the end of the string.
 void PutMemcmpableVarint64(faststring *dst, uint64_t value);
 
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
 bool GetMemcmpableVarint64(Slice *input, uint64_t *value);
 
+// Parses a value from the beginning of a Slice and advance the slice past the parsed value.
+CHECKED_STATUS GetMemcmpableVarint64(rocksdb::Slice *input, uint64_t *value);
+
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_MEMCMPABLE_VARINT_H"

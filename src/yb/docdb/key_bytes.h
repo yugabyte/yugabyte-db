@@ -7,6 +7,7 @@
 
 #include "rocksdb/slice.h"
 
+#include "yb/common/schema.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/value_type.h"
 #include "yb/util/bytes_formatter.h"
@@ -52,7 +53,7 @@ class KeyBytes {
     AppendInt64ToKey(x, &data_);
   }
 
-  void AppendUInt32(int32_t x) {
+  void AppendUInt32(uint32_t x) {
     AppendUInt32ToKey(x, &data_);
   }
 
@@ -62,6 +63,10 @@ class KeyBytes {
 
   void AppendHybridTime(HybridTime hybrid_time) {
     AppendEncodedHybridTimeToKey(hybrid_time, &data_);
+  }
+
+  void AppendColumnId(ColumnId column_id) {
+    AppendColumnIdToKey(column_id, &data_);
   }
 
   void RemoveValueTypeSuffix(ValueType value_type) {

@@ -56,27 +56,48 @@ using std::unordered_map;
 using std::unordered_set;
 
 // The ID of a column. Each column in a table has a unique ID.
+typedef int32_t ColumnIdRep;
 struct ColumnId {
-  explicit ColumnId(int32_t t_) : t(t_) {}
+  explicit ColumnId(ColumnIdRep t_) {
+    CHECK_GE(t_, 0);
+    t = t_;
+  }
   ColumnId() : t() {}
   ColumnId(const ColumnId& t_) : t(t_.t) {}
   ColumnId& operator=(const ColumnId& rhs) { t = rhs.t; return *this; }
-  ColumnId& operator=(const int32_t& rhs) { t = rhs; return *this; }
-  operator const int32_t() const { return t; }
+  ColumnId& operator=(const ColumnIdRep& rhs) { t = rhs; return *this; }
+  operator const ColumnIdRep() const { return t; }
   operator const strings::internal::SubstituteArg() const { return t; }
   operator const AlphaNum() const { return t; }
   bool operator==(const ColumnId & rhs) const { return t == rhs.t; }
   bool operator<(const ColumnId & rhs) const { return t < rhs.t; }
+  bool operator>(const ColumnId & rhs) const { return t > rhs.t; }
   friend std::ostream& operator<<(std::ostream& os, ColumnId column_id) {
     return os << column_id.t;
   }
+
   std::string ToString() {
     std::ostringstream s;
     s << t;
     return s.str();
   }
+
+  uint64_t ToUint64() const {
+    DCHECK_GE(t, 0);
+    return static_cast<uint64_t>(t);
+  }
+
+  static CHECKED_STATUS FromUint64(uint64_t value, ColumnId *column_id) {
+    if (value > std::numeric_limits<ColumnIdRep>::max()) {
+      return STATUS(Corruption, strings::Substitute("$0 overflows for column id representation",
+                                                    value));
+    }
+    column_id->t = static_cast<ColumnIdRep>(value);
+    return Status::OK();
+  }
+
  private:
-  int32_t t;
+  ColumnIdRep t;
 };
 
 // Class for storing column attributes such as compression and

@@ -550,13 +550,21 @@ Status YQLWriteOperation::Apply(
       // primary key at least.
       case YQLWriteRequestPB::YQL_STMT_INSERT:
       case YQLWriteRequestPB::YQL_STMT_UPDATE: {
+        // Add the appropriate liveness column only for inserts.
+        if (request_.type() == YQLWriteRequestPB::YQL_STMT_INSERT) {
+          const DocPath sub_path(doc_key_.Encode(),
+                                 PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+          const auto value = Value(PrimitiveValue(), ttl);
+          RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value));
+        }
         if (request_.column_values_size() > 0) {
           for (const auto& column_value : request_.column_values()) {
             CHECK(column_value.has_column_id())
                 << "column id missing: " << column_value.DebugString();
             CHECK(column_value.has_value())
                 << "column value missing: " << column_value.DebugString();;
-            const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
+            const DocPath sub_path(doc_key_.Encode(),
+                                   PrimitiveValue(ColumnId(column_value.column_id())));
             const auto value = Value(PrimitiveValue::FromYQLValuePB(column_value.value()), ttl);
             RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value));
           }
@@ -573,7 +581,8 @@ Status YQLWriteOperation::Apply(
           for (const auto& column_value : request_.column_values()) {
             CHECK(column_value.has_column_id())
                 << "column id missing: " << column_value.DebugString();
-            const DocPath sub_path(doc_key_.Encode(), PrimitiveValue(column_value.column_id()));
+            const DocPath sub_path(doc_key_.Encode(),
+                                   PrimitiveValue(ColumnId(column_value.column_id())));
             RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path));
           }
         } else {

@@ -638,19 +638,19 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   // Row 1
   // We only perform one seek to get the hybrid_time of the top-level document. Additional writes to
   // fields within that document do not incur any reads.
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30), PrimitiveValue("row1_c"),
-            HybridTime(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(30))),
+                             PrimitiveValue("row1_c"), HybridTime(1000)));
   ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40), PrimitiveValue(10000),
-            HybridTime(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
+                             PrimitiveValue(10000), HybridTime(1000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50), PrimitiveValue("row1_e"),
-            HybridTime(1000)));
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
+                             PrimitiveValue("row1_e"), HybridTime(1000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // Row 2: one null column, one column that gets deleted and overwritten, another that just gets
   // overwritten. We should still need one seek, because the document key has changed.
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40),
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(20000),
                              HybridTime(2000)));
   ASSERT_EQ(1, dwb.GetAndResetNumRocksDBSeeks());
@@ -659,20 +659,22 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
   // that to provide the expected result (the number of rows deleted in SQL or whether a key was
   // deleted in Redis). However, because we've just set a value at this path, we don't expect to
   // perform any reads for this deletion.
-  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey2, 40), HybridTime(2500)));
+  ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
+                             HybridTime(2500)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
   // The entire subdocument under DocPath(encoded_doc_key2, 40) just got deleted, and that fact
   // should still be in the write batch's cache, so we should not perform a seek to overwrite it.
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40),
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(30000),
                              HybridTime(3000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
   ASSERT_OK(
-      dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50), PrimitiveValue("row2_e"), HybridTime(2000)));
+      dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(50))),
+                       PrimitiveValue("row2_e"), HybridTime(2000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 50),
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(50))),
       PrimitiveValue("row2_e_prime"), HybridTime(4000)));
   ASSERT_EQ(0, dwb.GetAndResetNumRocksDBSeeks());
 
@@ -680,15 +682,15 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
 
   AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [HT(1000)]) -> {}
-SubDocKey(DocKey([], ["row1", 11111]), [30; HT(1000)]) -> "row1_c"
-SubDocKey(DocKey([], ["row1", 11111]), [40; HT(1000)]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [50; HT(1000)]) -> "row1_e"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(1000)]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(1000)]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(1000)]) -> "row1_e"
 SubDocKey(DocKey([], ["row2", 22222]), [HT(2000)]) -> {}
-SubDocKey(DocKey([], ["row2", 22222]), [40; HT(3000)]) -> 30000
-SubDocKey(DocKey([], ["row2", 22222]), [40; HT(2500)]) -> DEL
-SubDocKey(DocKey([], ["row2", 22222]), [40; HT(2000)]) -> 20000
-SubDocKey(DocKey([], ["row2", 22222]), [50; HT(4000)]) -> "row2_e_prime"
-SubDocKey(DocKey([], ["row2", 22222]), [50; HT(2000)]) -> "row2_e"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(3000)]) -> 30000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(2500)]) -> DEL
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(2000)]) -> 20000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(4000)]) -> "row2_e_prime"
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT(2000)]) -> "row2_e"
       )#");
 
   const Schema& schema = kSchemaForIteratorTests;
@@ -779,16 +781,16 @@ TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
   DocWriteBatch dwb(rocksdb());
 
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 30),
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(30))),
                              PrimitiveValue("row1_c"),
                              HybridTime(1000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 40),
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(10000),
                              HybridTime(1000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, 50),
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, PrimitiveValue(ColumnId(50))),
                              PrimitiveValue("row1_e"),
                              HybridTime(1000)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, 40),
+  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, PrimitiveValue(ColumnId(40))),
                              PrimitiveValue(20000),
                              HybridTime(2000)));
 
@@ -801,11 +803,11 @@ TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
   AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [HT(2500)]) -> DEL
 SubDocKey(DocKey([], ["row1", 11111]), [HT(1000)]) -> {}
-SubDocKey(DocKey([], ["row1", 11111]), [30; HT(1000)]) -> "row1_c"
-SubDocKey(DocKey([], ["row1", 11111]), [40; HT(1000)]) -> 10000
-SubDocKey(DocKey([], ["row1", 11111]), [50; HT(1000)]) -> "row1_e"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT(1000)]) -> "row1_c"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT(1000)]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(1000)]) -> "row1_e"
 SubDocKey(DocKey([], ["row2", 22222]), [HT(2000)]) -> {}
-SubDocKey(DocKey([], ["row2", 22222]), [40; HT(2000)]) -> 20000
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT(2000)]) -> 20000
       )#");
 
   const Schema& schema = kSchemaForIteratorTests;
