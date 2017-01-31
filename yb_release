@@ -1,7 +1,12 @@
 #!/bin/bash
 set -e
 if [[ -z "$DEVOPS_HOME" ]]; then
-  echo "DEVOPS_HOME not set" >&2
+  echo "ERROR: DEVOPS_HOME not set" >&2
+  exit 1
+fi
+
+if [[ $OSTYPE =~ ^darwin ]]; then
+  echo "ERROR: Server tarball is only expected to be built on CentOS7."
   exit 1
 fi
 
