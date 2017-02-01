@@ -850,16 +850,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  // Do all reads in the same request with a consistent MVCC snapshot
-  tablet::MvccSnapshot snap;
-  s = TakeReadSnapshot(tablet.get(), context, server_->clock()->Now(), &snap);
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-
+  tablet::ScopedReadTransaction read_tx(tablet.get());
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {
       for (const RedisReadRequestPB& redis_read_req : req->redis_batch()) {
         RedisResponsePB redis_response;
-        s = tablet->HandleRedisReadRequest(snap, redis_read_req, &redis_response);
+        s = tablet->HandleRedisReadRequest(
+            read_tx.GetReadTimestamp(), redis_read_req, &redis_response);
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
         *(resp->add_redis_batch()) = redis_response;
       }
@@ -870,7 +867,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         YQLResponsePB yql_response;
         gscoped_ptr<faststring> rows_data;
         int rows_data_sidecar_idx = 0;
-        s = tablet->HandleYQLReadRequest(snap, yql_read_req, &yql_response, &rows_data);
+        s = tablet->HandleYQLReadRequest(
+            read_tx.GetReadTimestamp(), yql_read_req, &yql_response, &rows_data);
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
         if (rows_data.get() != nullptr) {
           s = context->AddRpcSidecar(make_gscoped_ptr(

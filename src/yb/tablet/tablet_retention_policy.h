@@ -1,8 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_TABLET_TABLET_RETENTION_POLICY_H
-#define YB_TABLET_TABLET_RETENTION_POLICY_H
+#ifndef YB_TABLET_TABLET_RETENTION_POLICY_H_
+#define YB_TABLET_TABLET_RETENTION_POLICY_H_
 
+#include "yb/tablet/tablet.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/server/clock.h"
 
@@ -13,11 +14,11 @@ namespace tablet {
 // time. As the next step we need to start tracking pending reads.
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
-  explicit TabletRetentionPolicy(scoped_refptr<yb::server::Clock> clock);
+  explicit TabletRetentionPolicy(const Tablet* tablet);
   HybridTime GetHistoryCutoff() override;
 
  private:
-  scoped_refptr<yb::server::Clock> clock_;
+  const Tablet* tablet_;
 
   // The delta to be added to the current time to get the history cutoff timestamp. This is always
   // a negative amount.
@@ -27,4 +28,4 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 }  // namespace tablet
 }  // namespace yb
 
-#endif  // YB_TABLET_TABLET_RETENTION_POLICY_H
+#endif  // YB_TABLET_TABLET_RETENTION_POLICY_H_

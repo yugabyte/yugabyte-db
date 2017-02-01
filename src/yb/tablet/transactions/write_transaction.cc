@@ -232,8 +232,7 @@ WriteTransactionState::WriteTransactionState(TabletPeer* tablet_peer,
   }
 }
 
-
-void WriteTransactionState::SetMvccTxAndHybridTime(gscoped_ptr<ScopedTransaction> mvcc_tx) {
+void WriteTransactionState::SetMvccTxAndHybridTime(gscoped_ptr<ScopedWriteTransaction> mvcc_tx) {
   DCHECK(!mvcc_tx_) << "Mvcc transaction already started/set.";
   if (has_hybrid_time()) {
     DCHECK_EQ(hybrid_time(), mvcc_tx->hybrid_time());
@@ -274,7 +273,7 @@ void WriteTransactionState::StartApplying() {
 }
 
 void WriteTransactionState::Abort() {
-  ResetMvccTx([](ScopedTransaction* mvcc_tx) { mvcc_tx->Abort(); });
+  ResetMvccTx([](ScopedWriteTransaction* mvcc_tx) { mvcc_tx->Abort(); });
 
   release_row_locks();
   ReleaseSchemaLock();
@@ -285,7 +284,7 @@ void WriteTransactionState::Abort() {
 }
 
 void WriteTransactionState::Commit() {
-  ResetMvccTx([](ScopedTransaction* mvcc_tx) { mvcc_tx->Commit(); });
+  ResetMvccTx([](ScopedWriteTransaction* mvcc_tx) { mvcc_tx->Commit(); });
 
   // After committing, we may respond to the RPC and delete the
   // original request, so null them out here.
@@ -357,7 +356,7 @@ void WriteTransactionState::ResetRpcFields() {
   STLDeleteElements(&row_ops_);
 }
 
-void WriteTransactionState::ResetMvccTx(std::function<void(ScopedTransaction*)> txn_action) {
+void WriteTransactionState::ResetMvccTx(std::function<void(ScopedWriteTransaction*)> txn_action) {
   lock_guard<mutex> lock(mvcc_tx_mutex_);
   if (mvcc_tx_.get() != nullptr) {
     // Abort the transaction.

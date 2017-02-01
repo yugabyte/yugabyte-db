@@ -11,13 +11,14 @@ DEFINE_int32(timestamp_history_retention_interval_sec, 10,
 namespace yb {
 namespace tablet {
 
-TabletRetentionPolicy::TabletRetentionPolicy(scoped_refptr<yb::server::Clock> clock)
-    : clock_(clock),
-      retention_delta_(MonoDelta::FromSeconds(-FLAGS_timestamp_history_retention_interval_sec)) {
-}
+TabletRetentionPolicy::TabletRetentionPolicy(const Tablet* tablet)
+    : tablet_(tablet),
+      retention_delta_(MonoDelta::FromSeconds(-FLAGS_timestamp_history_retention_interval_sec)) {}
 
 HybridTime TabletRetentionPolicy::GetHistoryCutoff() {
-  return server::HybridClock::AddPhysicalTimeToHybridTime(clock_->Now(), retention_delta_);
+  return std::min<HybridTime>(
+      tablet_->OldestReadPoint(),
+      server::HybridClock::AddPhysicalTimeToHybridTime(tablet_->clock()->Now(), retention_delta_));
 }
 
 }  // namespace tablet

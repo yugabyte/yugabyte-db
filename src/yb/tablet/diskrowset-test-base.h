@@ -183,7 +183,7 @@ class TestRowSet : public YBRowSetTest {
     RowSetKeyProbe probe(rb.row());
 
     ProbeStats stats;
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     Status s = rs->MutateRow(tx.hybrid_time(), probe, mutation, op_id_, &stats, result);
     tx.Commit();

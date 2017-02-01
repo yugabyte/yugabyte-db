@@ -216,7 +216,7 @@ TEST_F(MvccTest, TestOfflineTransactions) {
   // now start a transaction in the "past"
   ASSERT_OK(mgr.StartTransactionAtHybridTime(HybridTime(50)));
 
-  ASSERT_EQ(mgr.GetCleanHybridTime().CompareTo(HybridTime::kInitialHybridTime), 0);
+  ASSERT_GE(mgr.GetMaxSafeTimeToReadAt().CompareTo(HybridTime::kInitialHybridTime), 0);
 
   // and committing this transaction "offline" this
   // should not advance the MvccManager 'all_committed_before_'
@@ -236,7 +236,7 @@ TEST_F(MvccTest, TestOfflineTransactions) {
   // Now advance the watermark to the last committed transaction.
   mgr.OfflineAdjustSafeTime(HybridTime(50));
 
-  ASSERT_EQ(mgr.GetCleanHybridTime().CompareTo(HybridTime(50)), 0);
+  ASSERT_GE(mgr.GetMaxSafeTimeToReadAt().CompareTo(HybridTime(50)), 0);
 
   MvccSnapshot snap2;
   mgr.TakeSnapshot(&snap2);
@@ -249,8 +249,8 @@ TEST_F(MvccTest, TestScopedTransaction) {
   MvccSnapshot snap;
 
   {
-    ScopedTransaction t1(&mgr);
-    ScopedTransaction t2(&mgr);
+    ScopedWriteTransaction t1(&mgr);
+    ScopedWriteTransaction t2(&mgr);
 
     ASSERT_EQ(1, t1.hybrid_time().value());
     ASSERT_EQ(2, t2.hybrid_time().value());
@@ -504,7 +504,6 @@ TEST_F(MvccTest, TestTxnAbort) {
   // Now abort tx1, this shouldn't move the clean time and the transaction
   // shouldn't be reported as committed.
   mgr.AbortTransaction(tx1);
-  ASSERT_EQ(mgr.GetCleanHybridTime().CompareTo(HybridTime::kInitialHybridTime), 0);
   ASSERT_FALSE(mgr.cur_snap_.IsCommitted(tx1));
 
   // Committing tx3 shouldn't advance the clean time since it is not the earliest
@@ -519,7 +518,7 @@ TEST_F(MvccTest, TestTxnAbort) {
   mgr.StartApplyingTransaction(tx2);
   mgr.CommitTransaction(tx2);
   ASSERT_TRUE(mgr.cur_snap_.IsCommitted(tx2));
-  ASSERT_EQ(mgr.GetCleanHybridTime().CompareTo(tx3), 0);
+  ASSERT_GE(mgr.GetMaxSafeTimeToReadAt().CompareTo(tx3), 0);
 }
 
 // This tests for a bug we were observing, where a clean snapshot would not

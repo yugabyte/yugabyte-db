@@ -114,7 +114,7 @@ class WriteTransactionState : public TransactionState {
   // after the MvccManager has assigned a hybrid_time.
   // This also copies the hybrid_time from the MVCC transaction into the
   // WriteTransactionState object.
-  void SetMvccTxAndHybridTime(gscoped_ptr<ScopedTransaction> mvcc_tx);
+  void SetMvccTxAndHybridTime(gscoped_ptr<ScopedWriteTransaction> mvcc_tx);
 
   // Set the Tablet components that this transaction will write into.
   // Called exactly once at the beginning of Apply, before applying its
@@ -208,7 +208,7 @@ class WriteTransactionState : public TransactionState {
   void ResetRpcFields();
 
   // Sets mvcc_tx_ to nullptr after commit/abort in a thread-safe manner.
-  void ResetMvccTx(std::function<void(ScopedTransaction*)> txn_action);
+  void ResetMvccTx(std::function<void(ScopedWriteTransaction*)> txn_action);
 
   // pointers to the rpc context, request and response, lifecyle
   // is managed by the rpc subsystem. These pointers maybe NULL if the
@@ -229,7 +229,7 @@ class WriteTransactionState : public TransactionState {
   std::vector<std::string> docdb_locks_;
 
   // The MVCC transaction, set up during PREPARE phase
-  gscoped_ptr<ScopedTransaction> mvcc_tx_;
+  gscoped_ptr<ScopedWriteTransaction> mvcc_tx_;
 
   // A lock protecting mvcc_tx_. This is important at least because mvcc_tx_ can be reset to nullptr
   // when a transaction is being aborted (e.g. on server shutdown), and we don't want that to race

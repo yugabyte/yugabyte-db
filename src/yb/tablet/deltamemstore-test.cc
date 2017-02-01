@@ -75,7 +75,7 @@ class TestDeltaMemStore : public YBTest {
     RowChangeListEncoder update(&buf);
 
     for (uint32_t idx_to_update : indexes_to_update) {
-      ScopedTransaction tx(&mvcc_);
+      ScopedWriteTransaction tx(&mvcc_);
       tx.StartApplying();
       update.Reset();
       uint32_t new_val = idx_to_update * 10;
@@ -150,7 +150,7 @@ TEST_F(TestDeltaMemStore, TestUpdateCount) {
                              schema_.column_id(kStringColumn), &s);
     }
     if (idx % 2 == 0) {
-      ScopedTransaction tx(&mvcc_);
+      ScopedWriteTransaction tx(&mvcc_);
       tx.StartApplying();
       uint32_t new_val = idx * 10;
       update.AddColumnUpdate(schema_.column(kIntColumn),
@@ -220,7 +220,7 @@ TEST_F(TestDeltaMemStore, BenchmarkManyUpdatesToOneRow) {
     faststring buf;
     RowChangeListEncoder update(&buf);
 
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     string str(kStringDataSize, 'x');
     Slice s(str);
@@ -254,7 +254,7 @@ TEST_F(TestDeltaMemStore, TestReUpdateSlice) {
   // the update gets cleared after usage. This ensures that the
   // underlying data is properly copied into the DMS arena.
   {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     char buf[256] = "update 1";
     Slice s(buf);
@@ -268,7 +268,7 @@ TEST_F(TestDeltaMemStore, TestReUpdateSlice) {
 
   // Update the same cell again with a different value
   {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     char buf[256] = "update 2";
     Slice s(buf);
@@ -305,8 +305,8 @@ TEST_F(TestDeltaMemStore, TestOutOfOrderTxns) {
   RowChangeListEncoder update(&update_buf);
 
   {
-    ScopedTransaction tx1(&mvcc_);
-    ScopedTransaction tx2(&mvcc_);
+    ScopedWriteTransaction tx1(&mvcc_);
+    ScopedWriteTransaction tx2(&mvcc_);
 
     tx2.StartApplying();
     Slice s("update 2");
@@ -340,7 +340,7 @@ TEST_F(TestDeltaMemStore, TestDMSBasic) {
 
   char buf[256];
   for (uint32_t i = 0; i < 1000; i++) {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     update.Reset();
 
@@ -384,7 +384,7 @@ TEST_F(TestDeltaMemStore, TestDMSBasic) {
   // these are separate transactions and we need to maintain the
   // old ones for snapshot consistency purposes.
   for (uint32_t i = 0; i < 1000; i++) {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     update.Reset();
 

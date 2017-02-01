@@ -93,7 +93,7 @@ class TestCompaction : public YBRowSetTest {
   // The 'nullable_val' column is set to either NULL (when val is odd)
   // or 'val' (when val is even).
   void InsertRow(MemRowSet *mrs, int row_key, int32_t val) {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     row_builder_.Reset();
     snprintf(key_buf_, sizeof(key_buf_), kRowKeyFormat, row_key);
@@ -132,7 +132,7 @@ class TestCompaction : public YBRowSetTest {
     ColumnId nullable_col_id = schema_.column_id(schema_.find_column("nullable_val"));
     for (uint32_t i = 0; i < n_rows; i++) {
       SCOPED_TRACE(i);
-      ScopedTransaction tx(&mvcc_);
+      ScopedWriteTransaction tx(&mvcc_);
       tx.StartApplying();
       snprintf(keybuf, sizeof(keybuf), kRowKeyFormat, i * 10 + delta);
 
@@ -167,7 +167,7 @@ class TestCompaction : public YBRowSetTest {
     faststring update_buf;
     for (uint32_t i = 0; i < n_rows; i++) {
       SCOPED_TRACE(i);
-      ScopedTransaction tx(&mvcc_);
+      ScopedWriteTransaction tx(&mvcc_);
       tx.StartApplying();
       snprintf(keybuf, sizeof(keybuf), kRowKeyFormat, i * 10 + delta);
 

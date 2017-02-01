@@ -178,7 +178,7 @@ class MvccSnapshot {
 };
 
 // Coordinator of MVCC transactions. Threads wishing to make updates use
-// the MvccManager to obtain a unique hybrid_time, usually through the ScopedTransaction
+// the MvccManager to obtain a unique hybrid_time, usually through the ScopedWriteTransaction
 // class defined below.
 //
 // MVCC is used to defer updates until commit time, and allow iterators to
@@ -208,7 +208,7 @@ class MvccManager {
   explicit MvccManager(const scoped_refptr<server::Clock>& clock, bool enforce_invariants = false);
 
   // Begin a new transaction, assigning it a transaction ID.
-  // Callers should generally prefer using the ScopedTransaction class defined
+  // Callers should generally prefer using the ScopedWriteTransaction class defined
   // below, which will automatically finish the transaction when it goes out
   // of scope.
   HybridTime StartTransaction();
@@ -300,7 +300,7 @@ class MvccManager {
 
   // Returns the earliest possible hybrid_time for an uncommitted transaction.
   // All hybrid_times before this one are guaranteed to be committed.
-  HybridTime GetCleanHybridTime() const;
+  HybridTime GetMaxSafeTimeToReadAt() const;
 
   // Return the hybrid_times of all transactions which are currently 'APPLYING'
   // (i.e. those which have started to apply their operations to in-memory data
@@ -369,7 +369,7 @@ class MvccManager {
   // Adjusts the clean time, i.e. the hybrid_time such that all transactions with
   // lower hybrid_times are committed or aborted, based on which transactions are
   // currently in flight and on what is the latest value of 'no_new_transactions_at_or_before_'.
-  void AdjustCleanTime();
+  void AdjustMaxSafetimeToRead();
 
   // Advances the earliest in-flight hybrid_time, based on which transactions are
   // currently in-flight. Usually called when the previous earliest transaction
@@ -414,7 +414,7 @@ class MvccManager {
 // A scoped handle to a running transaction.
 // When this object goes out of scope, the transaction is automatically
 // committed.
-class ScopedTransaction {
+class ScopedWriteTransaction {
  public:
 
   // How to assign the hybrid_time to this transaction:
@@ -432,18 +432,18 @@ class ScopedTransaction {
   // instead of MvccManager::StartTransaction().
   //
   // The MvccManager must remain valid for the lifetime of this object.
-  explicit ScopedTransaction(MvccManager *manager, HybridTimeAssignmentType assignment_type = NOW);
+  explicit ScopedWriteTransaction(
+      MvccManager* manager, HybridTimeAssignmentType assignment_type = NOW);
 
   // Like the ctor above but starts the transaction at a pre-defined hybrid_time.
   // When this transaction is committed it will use MvccManager::OfflineCommitTransaction()
   // so this is appropriate for offline replaying of transactions for replica catch-up or
   // bootstrap.
-  explicit ScopedTransaction(MvccManager *manager,
-                             HybridTime hybrid_time);
+  explicit ScopedWriteTransaction(MvccManager* manager, HybridTime hybrid_time);
 
   // Commit the transaction referenced by this scoped object, if it hasn't
   // already been committed.
-  ~ScopedTransaction();
+  ~ScopedWriteTransaction();
 
   HybridTime hybrid_time() const {
     return hybrid_time_;
@@ -472,7 +472,7 @@ class ScopedTransaction {
   HybridTimeAssignmentType assignment_type_;
   HybridTime hybrid_time_;
 
-  DISALLOW_COPY_AND_ASSIGN(ScopedTransaction);
+  DISALLOW_COPY_AND_ASSIGN(ScopedWriteTransaction);
 };
 
 }  // namespace tablet

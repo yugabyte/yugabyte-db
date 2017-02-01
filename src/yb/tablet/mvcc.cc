@@ -155,8 +155,8 @@ void MvccManager::CommitTransaction(HybridTime hybrid_time) {
 
   if (was_earliest) {
     // If this transaction was the earliest in-flight, we might have to adjust
-    // the "clean" hybrid_time.
-    AdjustCleanTime();
+    // the max safe hybrid_time to read.
+    AdjustMaxSafetimeToRead();
   }
 }
 
@@ -186,8 +186,8 @@ void MvccManager::OfflineCommitTransaction(HybridTime hybrid_time) {
   if (was_earliest
       && no_new_transactions_at_or_before_.CompareTo(hybrid_time) >= 0) {
     // If this transaction was the earliest in-flight, we might have to adjust
-    // the "clean" hybrid_time.
-    AdjustCleanTime();
+    // the max safe hybrid_time to read.
+    AdjustMaxSafetimeToRead();
   }
 }
 
@@ -246,7 +246,7 @@ void MvccManager::OfflineAdjustSafeTime(HybridTime safe_time) {
     no_new_transactions_at_or_before_ = safe_time;
   }
 
-  AdjustCleanTime();
+  AdjustMaxSafetimeToRead();
 }
 
 // Remove any elements from 'v' which are < the given watermark.
@@ -261,7 +261,7 @@ static void FilterHybridTimes(std::vector<HybridTime::val_type>* v,
   v->resize(j);
 }
 
-void MvccManager::AdjustCleanTime() {
+void MvccManager::AdjustMaxSafetimeToRead() {
   // There are two possibilities:
   //
   // 1) We still have an in-flight transaction earlier than 'no_new_transactions_at_or_before_'.
@@ -411,9 +411,21 @@ bool MvccManager::AreAllTransactionsCommitted(HybridTime ts) const {
   return AreAllTransactionsCommittedUnlocked(ts);
 }
 
-HybridTime MvccManager::GetCleanHybridTime() const {
+HybridTime MvccManager::GetMaxSafeTimeToReadAt() const {
   std::lock_guard<LockType> l(lock_);
-  return cur_snap_.all_committed_before_;
+  if (hybrid_times_in_flight_.empty()) {
+    // Note(TBD): Until we introduce leader leases or have the read operations go through consensus
+    // to register the reads across all the nodes, it is possible that a leadership change could
+    // end up bringing up a new leader (who is slightly behind the current leader) that accepts
+    // a write timestamp lower than this.
+    return HybridTime(clock_->Now().ToUint64() - 1);
+  } else {
+    // for non-trivial all_committed_before_ return something that is strictly less than that value
+    // because the docdb comparisions include up to <= read point.
+    return cur_snap_.all_committed_before_ == HybridTime::kInitialHybridTime
+               ? HybridTime::kInitialHybridTime
+               : HybridTime(cur_snap_.all_committed_before_.ToUint64() - 1);
+  }
 }
 
 void MvccManager::GetApplyingTransactionsHybridTimes(std::vector<HybridTime>* hybrid_times) const {
@@ -517,9 +529,9 @@ void MvccSnapshot::AddCommittedHybridTime(HybridTime hybrid_time) {
 }
 
 ////////////////////////////////////////////////////////////
-// ScopedTransaction
+// ScopedWriteTransaction
 ////////////////////////////////////////////////////////////
-ScopedTransaction::ScopedTransaction(MvccManager *mgr, HybridTimeAssignmentType assignment_type)
+ScopedWriteTransaction::ScopedWriteTransaction(MvccManager *mgr, HybridTimeAssignmentType assignment_type)
   : done_(false),
     manager_(DCHECK_NOTNULL(mgr)),
     assignment_type_(assignment_type) {
@@ -540,8 +552,7 @@ ScopedTransaction::ScopedTransaction(MvccManager *mgr, HybridTimeAssignmentType 
   }
 }
 
-ScopedTransaction::ScopedTransaction(MvccManager *mgr,
-                                     HybridTime hybrid_time)
+ScopedWriteTransaction::ScopedWriteTransaction(MvccManager* mgr, HybridTime hybrid_time)
     : done_(false),
       manager_(DCHECK_NOTNULL(mgr)),
       assignment_type_(PRE_ASSIGNED),
@@ -549,17 +560,17 @@ ScopedTransaction::ScopedTransaction(MvccManager *mgr,
   CHECK_OK(mgr->StartTransactionAtHybridTime(hybrid_time));
 }
 
-ScopedTransaction::~ScopedTransaction() {
+ScopedWriteTransaction::~ScopedWriteTransaction() {
   if (!done_) {
     Abort();
   }
 }
 
-void ScopedTransaction::StartApplying() {
+void ScopedWriteTransaction::StartApplying() {
   manager_->StartApplyingTransaction(hybrid_time_);
 }
 
-void ScopedTransaction::Commit() {
+void ScopedWriteTransaction::Commit() {
   switch (assignment_type_) {
     case NOW:
     case NOW_LATEST: {
@@ -576,7 +587,7 @@ void ScopedTransaction::Commit() {
   LOG(FATAL) << "Unexpected transaction assignment type " << assignment_type_;
 }
 
-void ScopedTransaction::Abort() {
+void ScopedWriteTransaction::Abort() {
   manager_->AbortTransaction(hybrid_time_);
   done_ = true;
 }

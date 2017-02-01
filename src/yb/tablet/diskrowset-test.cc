@@ -332,7 +332,7 @@ TEST_F(TestRowSet, TestFlushedUpdatesRespectMVCC) {
   RowChangeListEncoder update(&update_buf);
   for (uint32_t i = 2; i <= 5; i++) {
     {
-      ScopedTransaction tx(&mvcc_);
+      ScopedWriteTransaction tx(&mvcc_);
       tx.StartApplying();
       update.Reset();
       update.AddColumnUpdate(schema_.column(1), schema_.column_id(1), &i);

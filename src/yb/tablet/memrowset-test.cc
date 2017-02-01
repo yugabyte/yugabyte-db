@@ -107,7 +107,7 @@ class TestMemRowSet : public ::testing::Test {
   }
 
   Status InsertRow(MemRowSet *mrs, const string &key, uint32_t val) {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     RowBuilder rb(schema_);
     rb.AddString(key);
     rb.AddUint32(val);
@@ -121,7 +121,7 @@ class TestMemRowSet : public ::testing::Test {
                    const string &key,
                    uint32_t new_val,
                    OperationResultPB* result) {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
 
     mutation_buf_.clear();
@@ -143,7 +143,7 @@ class TestMemRowSet : public ::testing::Test {
   }
 
   Status DeleteRow(MemRowSet *mrs, const string &key, OperationResultPB* result) {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
 
     mutation_buf_.clear();
@@ -227,7 +227,7 @@ TEST_F(TestMemRowSet, TestInsertAndIterateCompoundKey) {
 
   RowBuilder rb(compound_key_schema);
   {
-    ScopedTransaction tx(&mvcc_);
+    ScopedWriteTransaction tx(&mvcc_);
     tx.StartApplying();
     rb.AddString(string("hello world"));
     rb.AddInt32(1);
@@ -238,7 +238,7 @@ TEST_F(TestMemRowSet, TestInsertAndIterateCompoundKey) {
   }
 
   {
-    ScopedTransaction tx2(&mvcc_);
+    ScopedWriteTransaction tx2(&mvcc_);
     tx2.StartApplying();
     rb.Reset();
     rb.AddString(string("goodbye world"));
@@ -250,7 +250,7 @@ TEST_F(TestMemRowSet, TestInsertAndIterateCompoundKey) {
   }
 
   {
-    ScopedTransaction tx3(&mvcc_);
+    ScopedWriteTransaction tx3(&mvcc_);
     tx3.StartApplying();
     rb.Reset();
     rb.AddString(string("goodbye world"));
@@ -448,7 +448,7 @@ TEST_F(TestMemRowSet, TestInsertionMVCC) {
   // Insert 5 rows in tx 0 through 4
   for (uint32_t i = 0; i < 5; i++) {
     {
-      ScopedTransaction tx(&mvcc_);
+      ScopedWriteTransaction tx(&mvcc_);
       tx.StartApplying();
       RowBuilder rb(schema_);
       char keybuf[256];

@@ -89,6 +89,7 @@ class MvccSnapshot;
 struct RowOp;
 class RowSetsInCompaction;
 class RowSetTree;
+class ScopedReadTransaction;
 struct TabletComponents;
 struct TabletMetrics;
 class WriteTransactionState;
@@ -217,9 +218,9 @@ class Tablet {
       vector<string> *keys_locked,
       vector<RedisResponsePB>* responses);
 
-  CHECKED_STATUS HandleRedisReadRequest(const MvccSnapshot &snap,
-                                const RedisReadRequestPB& redis_read_request,
-                                RedisResponsePB* response);
+  CHECKED_STATUS HandleRedisReadRequest(
+      HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
+      RedisResponsePB* response);
 
   CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
       const tserver::WriteRequestPB& write_request,
@@ -228,10 +229,9 @@ class Tablet {
       tserver::WriteResponsePB* write_response,
       WriteTransactionState* tx_state);
 
-  CHECKED_STATUS HandleYQLReadRequest(const MvccSnapshot &snap,
-                               const YQLReadRequestPB& yql_read_request,
-                               YQLResponsePB* response,
-                               gscoped_ptr<faststring>* rows_data);
+  CHECKED_STATUS HandleYQLReadRequest(
+      HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
+      gscoped_ptr<faststring>* rows_data);
 
   // Takes a Kudu WriteRequestPB as input with its row operations.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
@@ -460,9 +460,19 @@ class Tablet {
 
   static const char* kDMSMemTrackerId;
 
+  // Returns the timestamp corresponding to the oldest active reader. If none exists returns
+  // the latest timestamp that is safe to read.
+  // This is used to figure out what can be garbage collected during a compaction.
+  HybridTime OldestReadPoint() const;
+
+  const scoped_refptr<server::Clock> &clock() const {
+    return clock_;
+  }
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
+  friend class ScopedReadTransaction;
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
   CHECKED_STATUS FlushUnlocked();
@@ -585,6 +595,12 @@ class Tablet {
   static int64_t GetLogRetentionSizeForIndex(int64_t min_log_index,
                                              const MaxIdxToSegmentMap& max_idx_to_segment_size);
 
+  // Register/Unregister a read operation, with an associated timestamp, for the purpose of
+  // tracking the oldest read point.
+  void RegisterReaderTimestamp(HybridTime read_point);
+  void UnregisterReader(HybridTime read_point);
+  HybridTime SafeTimestampToRead() const;
+
   // Lock protecting schema_ and key_schema_.
   //
   // Writers take this lock in shared mode before decoding and projecting
@@ -643,6 +659,12 @@ class Tablet {
   scoped_refptr<server::Clock> clock_;
 
   MvccManager mvcc_;
+
+  // Maps a timestamp to the number active readers with that timestamp.
+  // TODO(ENG-961): Check if this is a point of contention. If so, shard it as suggested in D1219.
+  std::map<HybridTime, int64_t> active_readers_cnt_;
+  mutable std::mutex active_readers_mutex_;
+
   // This is used for Kudu tables only. Docdb uses shared_lock_manager_. lock_manager_ may be
   // deprecated in future.
   LockManager lock_manager_;
@@ -706,6 +728,21 @@ class Tablet {
   std::shared_ptr<yb::docdb::HistoryRetentionPolicy> retention_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
+};
+
+// A helper class to manage read transactions. Grabs and registers a read point with the tablet
+// when created, and deregisters the read point when this object is destructed.
+class ScopedReadTransaction {
+ public:
+  explicit ScopedReadTransaction(Tablet* tablet);
+
+  ~ScopedReadTransaction();
+
+  HybridTime GetReadTimestamp();
+
+ private:
+  Tablet* tablet_;
+  HybridTime timestamp_;
 };
 
 // Hooks used in test code to inject faults or other code into interesting

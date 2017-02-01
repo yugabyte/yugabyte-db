@@ -312,9 +312,10 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, tablet_id(), rocksdb_statistics_, block_cache_);
 
-  // Install the history cleanup handler.
+  // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
+  // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
-      make_shared<TabletRetentionPolicy>(clock_), metadata_->schema());
+      make_shared<TabletRetentionPolicy>(this), metadata_->schema());
 
   rocksdb_options.listeners.emplace_back(largest_flushed_seqno_collector_);
 
@@ -580,21 +581,21 @@ Status Tablet::AcquireLockForOp(WriteTransactionState* tx_state, RowOp* op) {
 }
 
 void Tablet::StartTransaction(WriteTransactionState* tx_state) {
-  gscoped_ptr<ScopedTransaction> mvcc_tx;
+  gscoped_ptr<ScopedWriteTransaction> mvcc_tx;
 
   // If the state already has a hybrid_time then we're replaying a transaction that occurred
   // before a crash or at another node...
   const HybridTime existing_hybrid_time = tx_state->hybrid_time_even_if_unset();
 
   if (existing_hybrid_time != HybridTime::kInvalidHybridTime) {
-    mvcc_tx.reset(new ScopedTransaction(&mvcc_, existing_hybrid_time));
-  // ... otherwise this is a new transaction and we must assign a new hybrid_time. We either
-  // assign a hybrid_time in the future, if the consistency mode is COMMIT_WAIT, or we assign
-  // one in the present if the consistency mode is any other one.
+    mvcc_tx.reset(new ScopedWriteTransaction(&mvcc_, existing_hybrid_time));
+    // ... otherwise this is a new transaction and we must assign a new hybrid_time. We either
+    // assign a hybrid_time in the future, if the consistency mode is COMMIT_WAIT, or we assign
+    // one in the present if the consistency mode is any other one.
   } else if (tx_state->external_consistency_mode() == COMMIT_WAIT) {
-    mvcc_tx.reset(new ScopedTransaction(&mvcc_, ScopedTransaction::NOW_LATEST));
+    mvcc_tx.reset(new ScopedWriteTransaction(&mvcc_, ScopedWriteTransaction::NOW_LATEST));
   } else {
-    mvcc_tx.reset(new ScopedTransaction(&mvcc_, ScopedTransaction::NOW));
+    mvcc_tx.reset(new ScopedWriteTransaction(&mvcc_, ScopedWriteTransaction::NOW));
   }
   tx_state->SetMvccTxAndHybridTime(mvcc_tx.Pass());
 }
@@ -903,15 +904,13 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
   return Status::OK();
 }
 
-Status Tablet::HandleRedisReadRequest(const MvccSnapshot &snap,
+Status Tablet::HandleRedisReadRequest(HybridTime timestamp,
                                       const RedisReadRequestPB& redis_read_request,
                                       RedisResponsePB* response) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   docdb::RedisReadOperation doc_op(redis_read_request);
-  // We use the latest safe time for the read hybrid_time, whose state cannot be changed by future
-  // commits.
-  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), snap.LastCommittedHybridTime()));
+  RETURN_NOT_OK(doc_op.Execute(rocksdb_.get(), timestamp));
   *response = std::move(doc_op.response());
   return Status::OK();
 }
@@ -949,7 +948,7 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   return Status::OK();
 }
 
-Status Tablet::HandleYQLReadRequest(const MvccSnapshot &snap,
+Status Tablet::HandleYQLReadRequest(HybridTime timestamp,
                                     const YQLReadRequestPB& yql_read_request,
                                     YQLResponsePB* response,
                                     gscoped_ptr<faststring>* rows_data) {
@@ -964,7 +963,7 @@ Status Tablet::HandleYQLReadRequest(const MvccSnapshot &snap,
   }
   YQLRowBlock rowblock(metadata_->schema(), column_ids);
   const Status s = doc_op.Execute(
-      rocksdb_.get(), snap.LastCommittedHybridTime(), metadata_->schema(), &rowblock);
+      rocksdb_.get(), timestamp, metadata_->schema(), &rowblock);
   if (!s.ok()) {
     response->set_status(YQLResponsePB::YQL_STATUS_RUNTIME_ERROR);
     response->set_error_message(s.message().ToString());
@@ -2185,9 +2184,13 @@ Status Tablet::StartDocWriteTransaction(const vector<unique_ptr<DocOperation>> &
   HybridTime hybrid_time;
   docdb::PrepareDocWriteTransaction(
       doc_ops, &shared_lock_manager_, keys_locked, &need_read_snapshot);
+  unique_ptr<ScopedReadTransaction> read_txn;
   if (need_read_snapshot) {
-    hybrid_time = mvcc_.GetCleanHybridTime();
+    read_txn.reset(new ScopedReadTransaction(this));
+    hybrid_time = read_txn->GetReadTimestamp();
   }
+  // We expect all read operations for this transaction to be done in ApplyDocWriteTransaction.
+  // Once read_txn goes out of scope, the read point is deregistered.
   return docdb::ApplyDocWriteTransaction(doc_ops, hybrid_time, rocksdb_.get(), write_batch);
 }
 
@@ -2546,6 +2549,44 @@ string Tablet::Iterator::ToString() const {
 
 void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
   iter_->GetIteratorStats(stats);
+}
+
+HybridTime Tablet::SafeTimestampToRead() const {
+  return mvcc_.GetMaxSafeTimeToReadAt();
+}
+
+HybridTime Tablet::OldestReadPoint() const {
+  std::lock_guard<std::mutex> lock(active_readers_mutex_);
+  if (active_readers_cnt_.empty()) {
+    return SafeTimestampToRead();
+  }
+  return active_readers_cnt_.begin()->first;
+}
+
+void Tablet::RegisterReaderTimestamp(HybridTime read_point) {
+  std::lock_guard<std::mutex> lock(active_readers_mutex_);
+  active_readers_cnt_[read_point]++;
+}
+
+void Tablet::UnregisterReader(HybridTime timestamp) {
+  std::lock_guard<std::mutex> lock(active_readers_mutex_);
+  active_readers_cnt_[timestamp]--;
+  if (active_readers_cnt_[timestamp] == 0) {
+    active_readers_cnt_.erase(timestamp);
+  }
+}
+
+ScopedReadTransaction::ScopedReadTransaction(Tablet* tablet)
+    : tablet_(tablet), timestamp_(tablet_->SafeTimestampToRead()) {
+  tablet_->RegisterReaderTimestamp(timestamp_);
+}
+
+ScopedReadTransaction::~ScopedReadTransaction() {
+  tablet_->UnregisterReader(timestamp_);
+}
+
+HybridTime ScopedReadTransaction::GetReadTimestamp() {
+  return timestamp_;
 }
 
 }  // namespace tablet
