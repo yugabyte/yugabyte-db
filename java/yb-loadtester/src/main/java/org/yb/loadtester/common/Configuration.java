@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -23,6 +24,11 @@ import org.yb.loadtester.Workload;
 
 public class Configuration {
   private static final Logger LOG = Logger.getLogger(Configuration.class);
+
+  public static final UUID loadTesterUUID = UUID.randomUUID();
+  static {
+    LOG.info("Load tester UUID: " + loadTesterUUID);
+  }
 
   // The types of workloads currently registered.
   public static enum WorkLoadType {
@@ -114,6 +120,23 @@ public class Configuration {
              ", num writer threads: " + numWriterThreads);
   }
 
+  public void initializeNumKeys(CommandLine cmd) {
+    if (cmd.hasOption("num_writes")) {
+      Workload.workloadConfig.numKeysToWrite = Long.parseLong(cmd.getOptionValue("num_writes"));
+    }
+    if (cmd.hasOption("num_reads")) {
+      Workload.workloadConfig.numKeysToRead = Long.parseLong(cmd.getOptionValue("num_reads"));
+    }
+    if (cmd.hasOption("num_unique_keys")) {
+      Workload.workloadConfig.numUniqueKeysToWrite =
+          Long.parseLong(cmd.getOptionValue("num_unique_keys"));
+    }
+    LOG.info("Num keys to insert: " + Workload.workloadConfig.numUniqueKeysToWrite);
+    LOG.info("Num keys to update: " +
+        (Workload.workloadConfig.numKeysToWrite - Workload.workloadConfig.numUniqueKeysToWrite));
+    LOG.info("Num keys to read: " + Workload.workloadConfig.numKeysToRead);
+  }
+
   public static Configuration createFromArgs(String[] args) throws Exception {
     Options options = new Options();
     options.addOption("h", "help", false, "show help.");
@@ -123,42 +146,62 @@ public class Configuration {
     appType.setRequired(true);
     appType.setLongOpt("workload");
     appType.setArgs(1);
+    options.addOption(appType);
 
     Option proxyAddrs = OptionBuilder.create("nodes");
     proxyAddrs.setDescription("Comma separated proxies, host1:port1,....,hostN:portN");
     proxyAddrs.setRequired(true);
     proxyAddrs.setLongOpt("nodes");
     proxyAddrs.setArgs(1);
+    options.addOption(proxyAddrs);
 
     Option numThreads = OptionBuilder.create("num_threads");
     numThreads.setDescription("The total number of threads.");
     numThreads.setRequired(false);
     numThreads.setLongOpt("num_threads");
     numThreads.setArgs(1);
+    options.addOption(numThreads);
 
     Option numReadThreads = OptionBuilder.create("num_threads_read");
     numReadThreads.setDescription("The total number of threads that perform reads.");
     numReadThreads.setRequired(false);
     numReadThreads.setLongOpt("num_threads_read");
     numReadThreads.setArgs(1);
+    options.addOption(numReadThreads);
 
     Option numWriteThreads = OptionBuilder.create("num_threads_write");
     numWriteThreads.setDescription("The total number of threads that perform writes.");
     numWriteThreads.setRequired(false);
     numWriteThreads.setLongOpt("num_threads_write");
     numWriteThreads.setArgs(1);
+    options.addOption(numWriteThreads);
+
+    Option numWrites = OptionBuilder.create("num_writes");
+    numWrites.setDescription("The total number of writes to perform.");
+    numWrites.setRequired(false);
+    numWrites.setLongOpt("num_writes");
+    numWrites.setArgs(1);
+    options.addOption(numWrites);
+
+    Option numReads = OptionBuilder.create("num_reads");
+    numReads.setDescription("The total number of reads to perform.");
+    numReads.setRequired(false);
+    numReads.setLongOpt("num_reads");
+    numReads.setArgs(1);
+    options.addOption(numReads);
+
+    Option numUniqueKeys = OptionBuilder.create("num_unique_keys");
+    numUniqueKeys.setDescription("The total number of unique keys to write into the DB.");
+    numUniqueKeys.setRequired(false);
+    numUniqueKeys.setLongOpt("num_unique_keys");
+    numUniqueKeys.setArgs(1);
+    options.addOption(numUniqueKeys);
 
     Option logtostderr = OptionBuilder.create("logtostderr");
     logtostderr.setDescription("Log to console.");
     logtostderr.setRequired(false);
     logtostderr.setLongOpt("logtostderr");
     logtostderr.setArgs(0);
-
-    options.addOption(appType);
-    options.addOption(proxyAddrs);
-    options.addOption(numThreads);
-    options.addOption(numReadThreads);
-    options.addOption(numWriteThreads);
     options.addOption(logtostderr);
 
     CommandLineParser parser = new BasicParser();
@@ -195,6 +238,8 @@ public class Configuration {
     Configuration configuration = new Configuration(workloadType, hostPortList);
     // Set the number of threads.
     configuration.initializeThreadCount(cmd);
+    // Initialize num keys.
+    configuration.initializeNumKeys(cmd);
 
     return configuration;
   }

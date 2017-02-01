@@ -13,9 +13,13 @@ public class WorkloadConfig {
   public int numWriterThreads;
 
   // The number of keys to write as a part of this workload.
-  public int numKeysToWrite;
+  public long numKeysToWrite;
 
   // The number of keys to read as a part of this workload. This ignores the attempts to read where
   // no data has yet to be written.
-  public int numKeysToRead;
+  public long numKeysToRead;
+
+  // The number of unique keys to write, once these are written, the subsequent writes will be
+  // updates to existing keys.
+  public long numUniqueKeysToWrite;
 }

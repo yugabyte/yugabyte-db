@@ -30,9 +30,11 @@ public class CassandraSimpleReadWrite extends Workload {
     // Set the number of keys to read and write.
     workloadConfig.numKeysToRead = NUM_KEYS_TO_READ;
     workloadConfig.numKeysToWrite = NUM_KEYS_TO_WRITE;
+    workloadConfig.numUniqueKeysToWrite = NUM_KEYS_TO_WRITE;
   }
   // Instance of the load generator.
-  private static SimpleLoadGenerator loadGenerator = new SimpleLoadGenerator(0, NUM_KEYS_TO_WRITE);
+  private static SimpleLoadGenerator loadGenerator =
+      new SimpleLoadGenerator(0, workloadConfig.numUniqueKeysToWrite);
   // The table name.
   private String tableName = CassandraSimpleReadWrite.class.getSimpleName();
 
@@ -41,11 +43,15 @@ public class CassandraSimpleReadWrite extends Workload {
 
   @Override
   public void createTableIfNeeded() {
-    String create_stmt =
-        String.format("CREATE TABLE %s (k varchar, v varchar, primary key (k));",
-                      tableName);
-    getCassandraClient().execute(create_stmt);
-    LOG.info("Created a Cassandra table + " + tableName + " using query: [" + create_stmt + "]");
+    try {
+      String create_stmt =
+          String.format("CREATE TABLE %s (k varchar, v varchar, primary key (k));",
+                        tableName);
+      getCassandraClient().execute(create_stmt);
+      LOG.info("Created a Cassandra table + " + tableName + " using query: [" + create_stmt + "]");
+    } catch (Exception e) {
+      LOG.info("Ignoring exception creating table: " + e.getMessage());
+    }
   }
 
   @Override

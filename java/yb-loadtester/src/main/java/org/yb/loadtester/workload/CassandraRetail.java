@@ -81,7 +81,7 @@ public class CassandraRetail extends Workload {
     String select_stmt =
         String.format("SELECT * from %s WHERE item_number=%d" +
                       " AND price_list=%d;",
-                      pricingTable, key.getInteger(), 1);
+                      pricingTable, key.asNumber(), 1);
     ResultSet rs = getCassandraClient().execute(select_stmt);
     List<Row> rows = rs.all();
     LOG.debug("Read " + rows.size() + " data points, query [" + select_stmt + "]");
@@ -104,7 +104,7 @@ public class CassandraRetail extends Workload {
                                       "created_date, modified_date, item_cost, " +
                                       "list_price, status) VALUES " +
                                       "(%d, %d, %d, %d, %d, %d, %d, %d, %d) USING TTL %d;",
-                      pricingTable, key.getInteger(), price_list, effective_from, effective_to,
+                      pricingTable, key.asNumber(), price_list, effective_from, effective_to,
                       now, now, item_cost, list_price, status, ttl);
     ResultSet resultSet = getCassandraClient().execute(insert_stmt);
     LOG.debug("Executed query: " + insert_stmt);

@@ -5,7 +5,8 @@ package org.yb.loadtester.common;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.log4j.Logger;
 
@@ -16,18 +17,18 @@ public class SimpleLoadGenerator {
     private static final Logger LOG = Logger.getLogger(Key.class);
 
     // The underlying key is an integer.
-    Integer key;
-    // The prefix if any.
-    String keyPrefix = "";
+    Long key;
+    // The randomized loadtester prefix.
+    String keyPrefix = Configuration.loadTesterUUID.toString();
 
-    public Key(int key, String keyPrefix) {
-      this.key = new Integer(key);
+    public Key(long key, String keyPrefix) {
+      this.key = new Long(key);
       if (keyPrefix != null) {
         this.keyPrefix = keyPrefix;
       }
     }
 
-    public int getInteger() {
+    public long asNumber() {
       return key;
     }
 
@@ -54,17 +55,17 @@ public class SimpleLoadGenerator {
   }
 
   // The key to start from.
-  final int startKey;
+  final long startKey;
   // The key to write till.
-  final int endKey;
+  final long endKey;
   // The max key that was successfully written consecutively.
-  AtomicInteger maxWrittenKey;
+  AtomicLong maxWrittenKey;
   // The max key that has been generated and handed out so far.
-  AtomicInteger maxGeneratedKey;
+  AtomicLong maxGeneratedKey;
   // Set of keys that failed to write.
-  Set<Integer> failedKeys;
+  Set<Long> failedKeys;
   // Keys that have been written above maxWrittenKey.
-  Set<Integer> writtenKeys;
+  Set<Long> writtenKeys;
   // A background thread to track keys written and increment maxWrittenKey.
   Thread writtenKeysTracker;
   // The prefix for the key.
@@ -72,18 +73,18 @@ public class SimpleLoadGenerator {
   // Random number generator.
   Random random = new Random();
 
-  public SimpleLoadGenerator(int startKey, int endKey) {
+  public SimpleLoadGenerator(long startKey, long endKey) {
     this.startKey = startKey;
     this.endKey = endKey;
-    maxWrittenKey = new AtomicInteger(-1);
-    maxGeneratedKey = new AtomicInteger(-1);
-    failedKeys = new HashSet<Integer>();
-    writtenKeys = new HashSet<Integer>();
+    maxWrittenKey = new AtomicLong(-1);
+    maxGeneratedKey = new AtomicLong(-1);
+    failedKeys = new HashSet<Long>();
+    writtenKeys = new HashSet<Long>();
     writtenKeysTracker = new Thread("Written Keys Tracker") {
         @Override
         public void run() {
           do {
-            int key = maxWrittenKey.get() + 1;
+            long key = maxWrittenKey.get() + 1;
             synchronized (this) {
               if (failedKeys.contains(key) || writtenKeys.remove(key)) {
                 maxWrittenKey.set(key);
@@ -110,40 +111,41 @@ public class SimpleLoadGenerator {
 
   public void recordWriteSuccess(Key key) {
     synchronized (writtenKeysTracker) {
-      writtenKeys.add(key.getInteger());
+      writtenKeys.add(key.asNumber());
       writtenKeysTracker.notify();
     }
   }
 
   public void recordWriteFailure(Key key) {
     synchronized (writtenKeysTracker) {
-      failedKeys.add(key.getInteger());
+      failedKeys.add(key.asNumber());
       writtenKeysTracker.notify();
     }
   }
 
   public Key getKeyToWrite() {
+    // Return a random key to update if we have already written all keys.
     if (maxGeneratedKey.get() == endKey - 1) {
-      maxGeneratedKey.set(-1);
+      return getKeyToRead();
     }
     return generateKey(maxGeneratedKey.incrementAndGet());
   }
 
   public Key getKeyToRead() {
-    int maxKey = maxWrittenKey.get();
+    long maxKey = maxWrittenKey.get();
     if (maxKey < 0) {
       return null;
     } else if (maxKey == 0) {
       return generateKey(0);
     }
     do {
-      int key = random.nextInt(maxKey);
+      long key = ThreadLocalRandom.current().nextLong(maxKey);
       if (!failedKeys.contains(key))
         return generateKey(key);
     } while (true);
   }
 
-  private Key generateKey(int key) {
+  private Key generateKey(long key) {
     return new Key(key, keyPrefix);
   }
 }
