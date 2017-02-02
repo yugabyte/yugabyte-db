@@ -17,4 +17,4 @@ var setupDCForm = reduxForm({
   form: 'SetupDCForm'
 })
 
-module.exports = connect(mapDispatchToProps)(setupDCForm(SetupDataCenterForm));
+export default connect(mapDispatchToProps)(setupDCForm(SetupDataCenterForm));

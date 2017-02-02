@@ -51,5 +51,4 @@ var loginForm = reduxForm({
   validate
 })
 
-
-module.exports = connect(mapStateToProps, mapDispatchToProps)(loginForm(LoginForm));
+export default connect(mapStateToProps, mapDispatchToProps)(loginForm(LoginForm));

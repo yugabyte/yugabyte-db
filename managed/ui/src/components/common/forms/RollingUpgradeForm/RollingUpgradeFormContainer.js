@@ -37,4 +37,4 @@ var rollingUpgradeForm = reduxForm({
   form: 'RollingUpgradeForm'
 })
 
-module.exports = connect(mapStateToProps, mapDispatchToProps)(rollingUpgradeForm(RollingUpgradeForm));
+export default connect(mapStateToProps, mapDispatchToProps)(rollingUpgradeForm(RollingUpgradeForm));
