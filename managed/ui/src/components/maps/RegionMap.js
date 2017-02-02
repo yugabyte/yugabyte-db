@@ -31,7 +31,7 @@ export default class RegionMap extends Component {
     if (type === "all") {
       regionMarkers =  <MarkerClusterLayer newMarkerData={regions}/>
     }
-    if (isValidArray(regionLatLngs) && regionLatLngs.length >=2) {
+    if (isValidArray(regionLatLngs) && regionLatLngs.length >= 1) {
       bounds = regionLatLngs;
     }
     const attribution =
