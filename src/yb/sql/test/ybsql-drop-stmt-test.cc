@@ -61,6 +61,47 @@ TEST_F(YbSqlDropTable, TestSqlDropTable) {
   EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
 }
 
+TEST_F(YbSqlDropTable, TestSqlDropKeyspace) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  vector<string> objects = {"KEYSPACE", "SCHEMA"};
+  for (const auto& object : objects) {
+    const string create_stmt = "CREATE " + object + " test;";
+    const string drop_stmt = "DROP " + object + " test;";
+    const string drop_cond_stmt = "DROP " + object + " IF EXISTS test;";
+    const string not_found_drop_error = "SQL Error (1."
+        + std::to_string((string(" DROP ") + object).size()) + "): Keyspace Not Found";
+
+    // No keyspaces exist at this point. Verify that this statement fails.
+    EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+
+    // Although the keyspace doesn't exist, a DROP KEYSPACE IF EXISTS should succeed.
+    EXEC_VALID_STMT(drop_cond_stmt);
+
+    // Now create the keyspace.
+    EXEC_VALID_STMT(create_stmt);
+
+    // Now verify that we can drop the keyspace.
+    EXEC_VALID_STMT(drop_stmt);
+
+    // Verify that the keyspace was indeed deleted.
+    EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+
+    // Create the keyspace again.
+    EXEC_VALID_STMT(create_stmt);
+
+    // Now verify that we can drop the keyspace with a DROP KEYSPACE IF EXISTS statement.
+    EXEC_VALID_STMT(drop_cond_stmt);
+
+    // Verify that the keyspace was indeed deleted.
+    EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
+  }
+}
+
 TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
   // Init the simulated cluster.
   NO_FATALS(CreateSimulatedCluster());
@@ -94,7 +135,6 @@ TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
       "EVENT TRIGGER",
       "COLLATION",
       "CONVERSION",
-      "SCHEMA",
       "EXTENSION",
       "TEXT SEARCH PARSER",
       "TEXT SEARCH DICTIONARY",
@@ -121,13 +161,13 @@ TEST_F(YbSqlDropTable, TestSqlDropStmtAnalyzer) {
   SqlProcessor *processor = GetSqlProcessor();
 
   string expected_drop_error = CqlError(strlen("DROP TABLE "),
-                                        " - Only one table name is allowed in a drop statement");
+                                        " - Only one object name is allowed in a drop statement");
   EXEC_INVALID_DROP_STMT("DROP TABLE a, b", expected_drop_error);
   EXEC_INVALID_DROP_STMT("DROP TABLE a, b, c", expected_drop_error);
   EXEC_INVALID_DROP_STMT("DROP TABLE a, b, c, d", expected_drop_error);
 
   expected_drop_error = CqlError(strlen("DROP TABLE IF EXISTS "),
-                                 " - Only one table name is allowed in a drop statement");
+                                 " - Only one object name is allowed in a drop statement");
   EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b", expected_drop_error);
   EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b, c", expected_drop_error);
   EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b, c, d", expected_drop_error);

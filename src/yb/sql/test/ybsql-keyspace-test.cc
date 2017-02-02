@@ -24,6 +24,7 @@ class YbSqlKeyspace : public YbSqlTestBase {
   YbSqlKeyspace() : YbSqlTestBase() {
   }
 
+  // CREATE statements.
   inline const string CreateStmt(string params) {
     return "CREATE " + params;
   }
@@ -43,6 +44,23 @@ class YbSqlKeyspace : public YbSqlTestBase {
   inline const string CreateSchemaIfNotExistsStmt(string params) {
     return CreateStmt("SCHEMA IF NOT EXISTS " + params);
   }
+
+  // DROP statements.
+  inline const string DropKeyspaceStmt(string params) {
+    return "DROP KEYSPACE " + params;
+  }
+
+  inline const string DropKeyspaceIfExistsStmt(string params) {
+    return "DROP KEYSPACE IF EXISTS " + params;
+  }
+
+  inline const string DropSchemaStmt(string params) {
+    return "DROP SCHEMA " + params;
+  }
+
+  inline const string DropSchemaIfExistsStmt(string params) {
+    return "DROP SCHEMA IF EXISTS " + params;
+  }
 };
 
 TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceSimple) {
@@ -54,6 +72,15 @@ TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceSimple) {
 
   const string keyspace1 = "test;";
 
+  // Try to delete unknown keyspace1.
+  LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
+  EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1), "Keyspace Not Found",
+      "The namespace does not exist");
+
+  // Delete unknown keyspace1 BUT with IF EXISTS.
+  LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
+  EXEC_VALID_STMT(DropKeyspaceIfExistsStmt(keyspace1));
+
   // Create the keyspace1.
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
   EXEC_VALID_STMT(CreateKeyspaceStmt(keyspace1));
@@ -62,6 +89,19 @@ TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceSimple) {
   LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceStmt(keyspace1), "Keyspace Already Exists",
       "Already present");
+
+  // Delete the keyspace1.
+  LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
+  EXEC_VALID_STMT(DropKeyspaceStmt(keyspace1));
+
+  // Try to delete already deleted keyspace1.
+  LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
+  EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1), "Keyspace Not Found",
+      "The namespace does not exist");
+
+  // Delete already deleted keyspace1 BUT with IF EXISTS.
+  LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
+  EXEC_VALID_STMT(DropKeyspaceIfExistsStmt(keyspace1));
 
   // Try to create a keyspace with a syntax error ('KEYSPAC' instead of 'KEYSPACE').
   LOG(INFO) << "Exec SQL: " << CreateStmt("KEYSPAC " + keyspace1);
@@ -123,6 +163,15 @@ TEST_F(YbSqlKeyspace, TestSqlCreateSchemaSimple) {
 
   const string keyspace1 = "test;";
 
+  // Try to delete unknown keyspace1.
+  LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
+  EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1), "Keyspace Not Found",
+      "The namespace does not exist");
+
+  // Delete unknown keyspace1 BUT with IF EXISTS.
+  LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
+  EXEC_VALID_STMT(DropSchemaIfExistsStmt(keyspace1));
+
   // Create the keyspace1.
   LOG(INFO) << "Exec SQL: " << CreateSchemaStmt(keyspace1);
   EXEC_VALID_STMT(CreateSchemaStmt(keyspace1));
@@ -131,6 +180,19 @@ TEST_F(YbSqlKeyspace, TestSqlCreateSchemaSimple) {
   LOG(INFO) << "Exec SQL: " << CreateSchemaStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaStmt(keyspace1), "Keyspace Already Exists",
       "Already present");
+
+  // Delete the keyspace1.
+  LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
+  EXEC_VALID_STMT(DropSchemaStmt(keyspace1));
+
+  // Try to delete already deleted keyspace1.
+  LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
+  EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1), "Keyspace Not Found",
+      "The namespace does not exist");
+
+  // Delete already deleted keyspace1 BUT with IF EXISTS.
+  LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
+  EXEC_VALID_STMT(DropSchemaIfExistsStmt(keyspace1));
 
   // Try to create the keyspace1 with a syntax error ('SCHEM' instead of 'SCHEMA').
   LOG(INFO) << "Exec SQL: " << CreateStmt("SCHEM " + keyspace1);

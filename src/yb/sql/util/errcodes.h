@@ -66,6 +66,7 @@ enum class ErrorCode : int64_t {
   TOO_FEW_ARGUMENTS = -305,
   TOO_MANY_ARGUMENTS = -306,
   KEYSPACE_ALREADY_EXISTS = -307,
+  KEYSPACE_NOT_FOUND = -308,
 
   //------------------------------------------------------------------------------------------------
   // All error codes < SUCCESS

@@ -740,9 +740,9 @@ TEST_F(MasterTest, TestNamespaces) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::NAMESPACE_NOT_FOUND);
-    ASSERT_EQ(resp.error().status().code(), AppStatusPB::INVALID_ARGUMENT);
+    ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_FOUND);
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
-        "Invalid namespace id or namespace name");
+        "The namespace does not exist");
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));

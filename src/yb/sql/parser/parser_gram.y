@@ -1284,10 +1284,10 @@ columnOptions:
 
 DropStmt:
   DROP drop_type IF_P EXISTS any_name_list opt_drop_behavior {
-    $$ = MAKE_NODE(@1, PTDropStmt, $5, true);
+    $$ = MAKE_NODE(@1, PTDropStmt, $2, $5, true);
   }
   | DROP drop_type any_name_list opt_drop_behavior {
-    $$ = MAKE_NODE(@1, PTDropStmt, $3, false);
+    $$ = MAKE_NODE(@1, PTDropStmt, $2, $3, false);
   }
   | DROP TYPE_P type_name_list opt_drop_behavior {
     PARSER_CQL_INVALID_MSG(@2, "DROP TYPE statement not supported");
@@ -1320,6 +1320,8 @@ drop_type:
 
 cql_drop_type:
   TABLE                           { $$ = OBJECT_TABLE; }
+  | SCHEMA                        { $$ = OBJECT_SCHEMA; }
+  | KEYSPACE                      { $$ = OBJECT_SCHEMA; }
 ;
 
 sql_drop_type:
@@ -1331,7 +1333,6 @@ sql_drop_type:
   | EVENT TRIGGER                 { $$ = OBJECT_EVENT_TRIGGER; }
   | COLLATION                     { $$ = OBJECT_COLLATION; }
   | CONVERSION_P                  { $$ = OBJECT_CONVERSION; }
-  | SCHEMA                        { $$ = OBJECT_SCHEMA; }
   | EXTENSION                     { $$ = OBJECT_EXTENSION; }
   | TEXT_P SEARCH PARSER          { $$ = OBJECT_TSPARSER; }
   | TEXT_P SEARCH DICTIONARY      { $$ = OBJECT_TSDICTIONARY; }

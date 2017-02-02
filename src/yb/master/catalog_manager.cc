@@ -2148,8 +2148,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   TRACE("Looking up namespace");
   RETURN_NOT_OK(FindNamespace(req->namespace_(), &ns));
   if (ns == nullptr) {
-    Status s = STATUS(InvalidArgument,
-        "Invalid namespace id or namespace name", req->DebugString());
+    Status s = STATUS(NotFound, "The namespace does not exist", req->DebugString());
     SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
     return s;
   }

@@ -186,26 +186,44 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::ExecPTNode(const PTDropStmt *tnode) {
-  const char* table_name = tnode->yb_table_name();
+  DCHECK_NOTNULL(exec_context_.get());
+  Status exec_status;
+  ErrorCode error_not_found = ErrorCode::EXEC_ERROR;
 
-  // Drop the table.
-  auto exec_status = exec_context_->DeleteTable(table_name);
+  switch (tnode->drop_type()) {
+    case OBJECT_TABLE:
+      // Drop the table.
+      exec_status = exec_context_->DeleteTable(tnode->name());
+      error_not_found = ErrorCode::TABLE_NOT_FOUND;
+      break;
+
+    case OBJECT_SCHEMA:
+      // Drop the keyspace.
+      exec_status = exec_context_->DeleteKeyspace(tnode->name());
+      error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
+      break;
+
+    default:
+      return exec_context_->Error(tnode->name_loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+  }
 
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::EXEC_ERROR;
-    if (exec_status.IsNotFound()) {
-      error_code = ErrorCode::TABLE_NOT_FOUND;
-    }
 
-    // Ignore not found error for a DROP IF EXISTS statement.
-    if (tnode->drop_if_exists() && error_code == ErrorCode::TABLE_NOT_FOUND) {
-      return Status::OK();
+    if (exec_status.IsNotFound()) {
+      // Ignore not found error for a DROP IF EXISTS statement.
+      if (tnode->drop_if_exists()) {
+        return Status::OK();
+      }
+
+      error_code = error_not_found;
     }
 
     return exec_context_->Error(tnode->name_loc(),
                                 exec_status.ToString().c_str(),
                                 error_code);
   }
+
   return Status::OK();
 }
 

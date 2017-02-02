@@ -11,12 +11,13 @@
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
+#include "yb/sql/ptree/pt_option.h"
 
 namespace yb {
 namespace sql {
 
 //--------------------------------------------------------------------------------------------------
-// DROP TABLE statement.
+// DROP <OBJECT> statement (<OBJECT> can be TABLE, KEYSPACE, etc.).
 
 class PTDropStmt : public TreeNode {
  public:
@@ -29,6 +30,7 @@ class PTDropStmt : public TreeNode {
   // Constructor and destructor.
   PTDropStmt(MemoryContext *memctx,
              YBLocation::SharedPtr loc,
+             ObjectType drop_type,
              PTQualifiedNameListNode::SharedPtr names,
              bool drop_if_exists);
   virtual ~PTDropStmt();
@@ -48,21 +50,26 @@ class PTDropStmt : public TreeNode {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
+  ObjectType drop_type() const {
+    return drop_type_;
+  }
+
   bool drop_if_exists() const {
     return drop_if_exists_;
   }
 
-  // Table name.
-  const char* yb_table_name() const {
+  // Dropping object name.
+  const char* name() const {
     return names_->element(0)->last_name().c_str();
   }
 
-  // Returns location of table name.
+  // Returns location of droppping object name.
   const YBLocation& name_loc() const {
     return names_->loc();
   }
 
  private:
+  ObjectType drop_type_;
   PTQualifiedNameListNode::SharedPtr names_;
 
   // Set to true for DROP IF EXISTS statements.
