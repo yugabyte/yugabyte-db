@@ -9,8 +9,8 @@
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/common/redis_protocol.pb.h"
-#include "yb/common/ysql_protocol.pb.h"
-#include "yb/common/ysql_rowblock.h"
+#include "yb/common/yql_protocol.pb.h"
+#include "yb/common/yql_rowblock.h"
 
 namespace yb {
 namespace docdb {
@@ -23,7 +23,7 @@ class DocOperation {
 
   // Does the operation require a read snapshot to be taken before being applied? If so, a
   // clean snapshot hybrid_time will be supplied when Apply() is called. For example,
-  // YSQLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
+  // YQLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
   virtual DocPath DocPathToLock() const = 0;
@@ -99,10 +99,10 @@ class RedisReadOperation {
   RedisResponsePB response_;
 };
 
-class YSQLWriteOperation : public DocOperation {
+class YQLWriteOperation : public DocOperation {
  public:
-  YSQLWriteOperation(
-      const YSQLWriteRequestPB& request, const Schema& schema, YSQLResponsePB* response);
+  YQLWriteOperation(
+      const YQLWriteRequestPB& request, const Schema& schema, YQLResponsePB* response);
 
   bool RequireReadSnapshot() const override;
 
@@ -111,42 +111,42 @@ class YSQLWriteOperation : public DocOperation {
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
 
-  const YSQLWriteRequestPB& request() const { return request_; }
-  YSQLResponsePB* response() const { return response_; }
+  const YQLWriteRequestPB& request() const { return request_; }
+  YQLResponsePB* response() const { return response_; }
 
   // Rowblock to return the "[applied]" status for conditional DML.
-  const YSQLRowBlock* rowblock() const { return rowblock_.get(); }
+  const YQLRowBlock* rowblock() const { return rowblock_.get(); }
 
  private:
   CHECKED_STATUS IsConditionSatisfied(
-      const YSQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
-      bool* should_apply, std::unique_ptr<YSQLRowBlock>* rowblock);
+      const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
+      bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock);
 
   const Schema& schema_;
   const DocKey doc_key_;
   const DocPath doc_path_;
-  const YSQLWriteRequestPB request_;
-  YSQLResponsePB* response_;
+  const YQLWriteRequestPB request_;
+  YQLResponsePB* response_;
   // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE
   // that has a "... IF <condition> ..." clause. The row contains the "[applied]" status column
   // plus the values of all columns referenced in the if-clause if the condition is not satisfied.
   std::unique_ptr<Schema> projection_;
-  std::unique_ptr<YSQLRowBlock> rowblock_;
+  std::unique_ptr<YQLRowBlock> rowblock_;
 };
 
-class YSQLReadOperation {
+class YQLReadOperation {
  public:
-  explicit YSQLReadOperation(const YSQLReadRequestPB& request);
+  explicit YQLReadOperation(const YQLReadRequestPB& request);
 
   CHECKED_STATUS Execute(
       rocksdb::DB *rocksdb, const HybridTime& hybrid_time, const Schema& schema,
-      YSQLRowBlock* rowblock);
+      YQLRowBlock* rowblock);
 
-  const YSQLResponsePB& response() const;
+  const YQLResponsePB& response() const;
 
  private:
-  const YSQLReadRequestPB request_;
-  YSQLResponsePB response_;
+  const YQLReadRequestPB request_;
+  YQLResponsePB response_;
 };
 
 }  // namespace docdb

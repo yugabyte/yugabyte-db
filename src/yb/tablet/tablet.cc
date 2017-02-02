@@ -45,7 +45,7 @@
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/ysql_rowblock.h"
+#include "yb/common/yql_rowblock.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -139,7 +139,7 @@ using yb::docdb::ValueType;
 using yb::docdb::KeyBytes;
 using yb::docdb::DocOperation;
 using yb::docdb::RedisWriteOperation;
-using yb::docdb::YSQLWriteOperation;
+using yb::docdb::YQLWriteOperation;
 using yb::docdb::DocDBCompactionFilterFactory;
 using yb::docdb::KuduWriteOperation;
 
@@ -291,7 +291,7 @@ Status Tablet::Open() {
   CHECK(schema()->has_column_ids());
 
   switch (table_type_) {
-    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       RETURN_NOT_OK(OpenKeyValueTablet());
       break;
@@ -770,7 +770,7 @@ void Tablet::ApplyRowOperations(WriteTransactionState* tx_state) {
       }
       return;
     }
-    case TableType::YSQL_TABLE_TYPE:
+    case TableType::YQL_TABLE_TYPE:
     case TableType::REDIS_TABLE_TYPE: {
       const KeyValueWriteBatchPB& put_batch =
           tx_state->consensus_round() && tx_state->consensus_round()->replicate_msg()
@@ -915,7 +915,7 @@ Status Tablet::HandleRedisReadRequest(const MvccSnapshot &snap,
   return Status::OK();
 }
 
-Status Tablet::KeyValueBatchFromYSQLWriteBatch(
+Status Tablet::KeyValueBatchFromYQLWriteBatch(
     const WriteRequestPB& write_request,
     unique_ptr<const WriteRequestPB>* write_batch_pb,
     vector<string> *keys_locked,
@@ -925,22 +925,22 @@ Status Tablet::KeyValueBatchFromYSQLWriteBatch(
 
   vector<unique_ptr<DocOperation>> doc_ops;
 
-  for (size_t i = 0; i < write_request.ysql_write_batch_size(); i++) {
-    const YSQLWriteRequestPB& req = write_request.ysql_write_batch(i);
-    doc_ops.emplace_back(new YSQLWriteOperation(
-        req, metadata_->schema(), write_response->add_ysql_response_batch()));
+  for (size_t i = 0; i < write_request.yql_write_batch_size(); i++) {
+    const YQLWriteRequestPB& req = write_request.yql_write_batch(i);
+    doc_ops.emplace_back(new YQLWriteOperation(
+        req, metadata_->schema(), write_response->add_yql_response_batch()));
   }
   WriteRequestPB* const write_request_copy = new WriteRequestPB(write_request);
   write_batch_pb->reset(write_request_copy);
   RETURN_NOT_OK(StartDocWriteTransaction(
       doc_ops, keys_locked, write_request_copy->mutable_write_batch()));
-  for (size_t i = 0; i < write_request.ysql_write_batch_size(); i++) {
-    YSQLWriteOperation* ysql_write_op = down_cast<YSQLWriteOperation*>(doc_ops[i].get());
-    // If the YSQL write op returns a rowblock, move the op to the transaction state to return the
+  for (size_t i = 0; i < write_request.yql_write_batch_size(); i++) {
+    YQLWriteOperation* yql_write_op = down_cast<YQLWriteOperation*>(doc_ops[i].get());
+    // If the YQL write op returns a rowblock, move the op to the transaction state to return the
     // rows data as a sidecar after the transaction completes.
-    if (ysql_write_op->rowblock() != nullptr) {
+    if (yql_write_op->rowblock() != nullptr) {
       doc_ops[i].release();
-      tx_state->ysql_write_ops()->emplace_back(unique_ptr<YSQLWriteOperation>(ysql_write_op));
+      tx_state->yql_write_ops()->emplace_back(unique_ptr<YQLWriteOperation>(yql_write_op));
     }
   }
   write_request_copy->clear_row_operations();
@@ -948,32 +948,32 @@ Status Tablet::KeyValueBatchFromYSQLWriteBatch(
   return Status::OK();
 }
 
-Status Tablet::HandleYSQLReadRequest(const MvccSnapshot &snap,
-                                     const YSQLReadRequestPB& ysql_read_request,
-                                     YSQLResponsePB* response,
-                                     gscoped_ptr<faststring>* rows_data) {
+Status Tablet::HandleYQLReadRequest(const MvccSnapshot &snap,
+                                    const YQLReadRequestPB& yql_read_request,
+                                    YQLResponsePB* response,
+                                    gscoped_ptr<faststring>* rows_data) {
   GUARD_AGAINST_ROCKSDB_SHUTDOWN;
 
   // TODO(Robert): verify that all key column values are provided
-  docdb::YSQLReadOperation doc_op(ysql_read_request);
+  docdb::YQLReadOperation doc_op(yql_read_request);
 
   vector<ColumnId> column_ids;
-  for (const auto column_id : ysql_read_request.column_ids()) {
+  for (const auto column_id : yql_read_request.column_ids()) {
     column_ids.emplace_back(column_id);
   }
-  YSQLRowBlock rowblock(metadata_->schema(), column_ids);
+  YQLRowBlock rowblock(metadata_->schema(), column_ids);
   const Status s = doc_op.Execute(
       rocksdb_.get(), snap.LastCommittedHybridTime(), metadata_->schema(), &rowblock);
   if (!s.ok()) {
-    response->set_status(YSQLResponsePB::YSQL_STATUS_RUNTIME_ERROR);
+    response->set_status(YQLResponsePB::YQL_STATUS_RUNTIME_ERROR);
     response->set_error_message(s.message().ToString());
     return Status::OK();
   }
 
   *response = std::move(doc_op.response());
-  response->set_status(YSQLResponsePB::YSQL_STATUS_OK);
+  response->set_status(YQLResponsePB::YQL_STATUS_OK);
   rows_data->reset(new faststring());
-  rowblock.Serialize(ysql_read_request.client(), rows_data->get());
+  rowblock.Serialize(yql_read_request.client(), rows_data->get());
   return Status::OK();
 }
 
@@ -994,12 +994,12 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
         invalid_table_type = false;
         break;
       }
-      case TableType::YSQL_TABLE_TYPE: {
-        CHECK_NE(req.ysql_write_batch_size() > 0, req.row_operations().rows().size() > 0)
-            << "YSQL write and Kudu row operations not supported in the same request";
-        if (req.ysql_write_batch_size() > 0) {
-          vector<YSQLResponsePB> responses;
-          RETURN_NOT_OK(KeyValueBatchFromYSQLWriteBatch(
+      case TableType::YQL_TABLE_TYPE: {
+        CHECK_NE(req.yql_write_batch_size() > 0, req.row_operations().rows().size() > 0)
+            << "YQL write and Kudu row operations not supported in the same request";
+        if (req.yql_write_batch_size() > 0) {
+          vector<YQLResponsePB> responses;
+          RETURN_NOT_OK(KeyValueBatchFromYQLWriteBatch(
               req, &key_value_write_request, &locks_held, state->response(), state));
         } else {
           // Kudu-compatible codepath - we'll construct a new WriteRequestPB for raft replication.
@@ -2062,7 +2062,7 @@ Status Tablet::DebugDump(vector<string> *lines) {
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduDebugDump(lines);
-    case TableType::YSQL_TABLE_TYPE:
+    case TableType::YQL_TABLE_TYPE:
     case TableType::REDIS_TABLE_TYPE:
       return DocDBDebugDump(lines);
   }
@@ -2101,15 +2101,15 @@ Status Tablet::CaptureConsistentIterators(
   switch (table_type_) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       return KuduColumnarCaptureConsistentIterators(projection, snap, spec, iters);
-    case TableType::YSQL_TABLE_TYPE:
-      return YSQLCaptureConsistentIterators(projection, snap, spec, iters);
+    case TableType::YQL_TABLE_TYPE:
+      return YQLCaptureConsistentIterators(projection, snap, spec, iters);
     default:
       LOG(FATAL) << __FUNCTION__ << " is undefined for table type " << table_type_;
   }
   return STATUS(IllegalState, "This should never happen");
 }
 
-Status Tablet::YSQLCaptureConsistentIterators(
+Status Tablet::YQLCaptureConsistentIterators(
     const Schema *projection,
     const MvccSnapshot &snap,
     const ScanSpec *spec,

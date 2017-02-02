@@ -104,40 +104,40 @@ class Executor {
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
                                             const PTDmlStmt *tnode,
-                                            YSQLWriteRequestPB *req,
+                                            YQLWriteRequestPB *req,
                                             YBPartialRow *row);
 
   // Convert where clause to protobuf for read request.
-  CHECKED_STATUS WhereClauseToPB(YSQLReadRequestPB *req,
+  CHECKED_STATUS WhereClauseToPB(YQLReadRequestPB *req,
                                  YBPartialRow *row,
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops);
 
   // Convert where clause to protobuf for write request.
-  CHECKED_STATUS WhereClauseToPB(YSQLWriteRequestPB *req,
+  CHECKED_STATUS WhereClauseToPB(YQLWriteRequestPB *req,
                                  YBPartialRow *row,
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops);
 
   // Convert an expression op in where claluse to protobuf.
-  CHECKED_STATUS WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op);
+  CHECKED_STATUS WhereOpToPB(YQLConditionPB *condition, const ColumnOp& col_op);
 
   // Convert a bool expression to protobuf.
-  CHECKED_STATUS BoolExprToPB(YSQLConditionPB *condition, const PTExpr* expr);
+  CHECKED_STATUS BoolExprToPB(YQLConditionPB *condition, const PTExpr* expr);
 
   // Convert a relational op to protobuf
-  CHECKED_STATUS RelationalOpToPB(YSQLConditionPB *condition,
-                                  YSQLOperator opr,
+  CHECKED_STATUS RelationalOpToPB(YQLConditionPB *condition,
+                                  YQLOperator opr,
                                   const PTExpr *relation);
 
   // Convert a column condition to protobuf
-  CHECKED_STATUS ColumnConditionToPB(YSQLConditionPB *condition,
-                                     YSQLOperator opr,
+  CHECKED_STATUS ColumnConditionToPB(YQLConditionPB *condition,
+                                     YQLOperator opr,
                                      const PTExpr *cond);
 
   // Convert a between (not) to protobuf
-  CHECKED_STATUS BetweenToPB(YSQLConditionPB *condition,
-                             YSQLOperator opr,
+  CHECKED_STATUS BetweenToPB(YQLConditionPB *condition,
+                             YQLOperator opr,
                              const PTExpr *between);
 
   //------------------------------------------------------------------------------------------------

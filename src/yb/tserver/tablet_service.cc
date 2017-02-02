@@ -325,21 +325,21 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_);
     } else {
-      // Retrieve the rowblocks returned from the YSQL write operations and return them as RPC
+      // Retrieve the rowblocks returned from the YQL write operations and return them as RPC
       // sidecars. Populate the row schema also.
-      for (const auto& ysql_write_op : *state_->ysql_write_ops()) {
-        const auto& ysql_write_req = ysql_write_op->request();
-        auto* ysql_write_resp = ysql_write_op->response();
-        const YSQLRowBlock* rowblock = ysql_write_op->rowblock();
+      for (const auto& yql_write_op : *state_->yql_write_ops()) {
+        const auto& yql_write_req = yql_write_op->request();
+        auto* yql_write_resp = yql_write_op->response();
+        const YQLRowBlock* rowblock = yql_write_op->rowblock();
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(
-            SchemaToColumnPBs(rowblock->schema(), ysql_write_resp->mutable_column_schemas()),
+            SchemaToColumnPBs(rowblock->schema(), yql_write_resp->mutable_column_schemas()),
             response_, context_);
         gscoped_ptr<faststring> rows_data(new faststring());
-        rowblock->Serialize(ysql_write_req.client(), rows_data.get());
+        rowblock->Serialize(yql_write_req.client(), rows_data.get());
         int rows_data_sidecar_idx = 0;
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(context_->AddRpcSidecar(make_gscoped_ptr(
             new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx), response_, context_);
-        ysql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
+        yql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
       }
       context_->RespondSuccess();
     }
@@ -865,25 +865,25 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       }
       break;
     }
-    case TableType::YSQL_TABLE_TYPE: {
-      for (const YSQLReadRequestPB& ysql_read_req : req->ysql_batch()) {
-        YSQLResponsePB ysql_response;
+    case TableType::YQL_TABLE_TYPE: {
+      for (const YQLReadRequestPB& yql_read_req : req->yql_batch()) {
+        YQLResponsePB yql_response;
         gscoped_ptr<faststring> rows_data;
         int rows_data_sidecar_idx = 0;
-        s = tablet->HandleYSQLReadRequest(snap, ysql_read_req, &ysql_response, &rows_data);
+        s = tablet->HandleYQLReadRequest(snap, yql_read_req, &yql_response, &rows_data);
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
         if (rows_data.get() != nullptr) {
           s = context->AddRpcSidecar(make_gscoped_ptr(
               new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx);
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-          ysql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
+          yql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
         }
-        *(resp->add_ysql_batch()) = ysql_response;
+        *(resp->add_yql_batch()) = yql_response;
       }
       break;
     }
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
-      LOG(FATAL) << "Currently, read requests are only supported for Redis and YSQL table type. "
+      LOG(FATAL) << "Currently, read requests are only supported for Redis and YQL table type. "
                  << "Existing tablet's table type is: " << tablet->table_type();
       break;
     default:

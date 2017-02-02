@@ -17,7 +17,7 @@ using tablet::TabletStatusListener;
 
 class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
  public:
-  RemoteBootstrapRocksDBClientTest() : RemoteBootstrapClientTest(YSQL_TABLE_TYPE) {}
+  RemoteBootstrapRocksDBClientTest() : RemoteBootstrapClientTest(YQL_TABLE_TYPE) {}
 
   virtual void SetUp() OVERRIDE {
     RemoteBootstrapClientTest::SetUp();

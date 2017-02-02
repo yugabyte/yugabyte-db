@@ -16,8 +16,8 @@ using client::YBOperation;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
-using client::YBSqlReadOp;
-using client::YBSqlWriteOp;
+using client::YBqlReadOp;
+using client::YBqlWriteOp;
 
 SqlEnv::SqlEnv(shared_ptr<YBClient> client,
                shared_ptr<YBSession> write_session,
@@ -35,7 +35,7 @@ CHECKED_STATUS SqlEnv::DeleteTable(const string& name) {
   return client_->DeleteTable(name);
 }
 
-CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
+CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> yb_op) {
   // The previous result must have been cleared.
   DCHECK(rows_result_ == nullptr);
 
@@ -51,7 +51,7 @@ CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
   return Status::OK();
 }
 
-CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBSqlReadOp> yb_op) {
+CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBqlReadOp> yb_op) {
   // The previous result must have been cleared.
   DCHECK(rows_result_ == nullptr);
 

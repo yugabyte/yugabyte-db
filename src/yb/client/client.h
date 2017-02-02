@@ -80,7 +80,7 @@ class AsyncRpc;
 // We have static_assert's in tablet-test.cc to verify this.
 enum YBTableType {
   KUDU_COLUMNAR_TABLE_TYPE = 1,
-  YSQL_TABLE_TYPE = 2,
+  YQL_TABLE_TYPE = 2,
   REDIS_TABLE_TYPE = 3,
   UNKNOWN_TABLE_TYPE = -1
 };
@@ -505,14 +505,14 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
   YBRedisWriteOp* NewRedisWrite();
   YBRedisReadOp* NewRedisRead();
 
-  // Create a new YSQL operation for this table.
-  YBSqlWriteOp* NewYSQLWrite();
-  YBSqlWriteOp* NewYSQLInsert();
-  YBSqlWriteOp* NewYSQLUpdate();
-  YBSqlWriteOp* NewYSQLDelete();
+  // Create a new YQL operation for this table.
+  YBqlWriteOp* NewYQLWrite();
+  YBqlWriteOp* NewYQLInsert();
+  YBqlWriteOp* NewYQLUpdate();
+  YBqlWriteOp* NewYQLDelete();
 
-  YBSqlReadOp* NewYSQLRead();
-  YBSqlReadOp* NewYSQLSelect();
+  YBqlReadOp* NewYQLRead();
+  YBqlReadOp* NewYQLSelect();
 
   // Create a new comparison predicate which can be used for scanners
   // on this table.

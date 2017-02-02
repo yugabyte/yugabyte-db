@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 //
-// This file contains the YSQLValue class that represents YSQL values.
+// This file contains the YQLValue class that represents YQL values.
 
-#include "yb/common/ysql_value.h"
+#include "yb/common/yql_value.h"
 
 #include <cfloat>
 
@@ -12,12 +12,12 @@
 #include "yb/util/bytes_formatter.h"
 
 // The list of unsupported datypes to use in switch statements
-#define YSQL_UNSUPPORTED_TYPES_IN_SWITCH \
-  case UINT8:  FALLTHROUGH_INTENDED;     \
-  case UINT16: FALLTHROUGH_INTENDED;     \
-  case UINT32: FALLTHROUGH_INTENDED;     \
-  case UINT64: FALLTHROUGH_INTENDED;     \
-  case BINARY: FALLTHROUGH_INTENDED;     \
+#define YQL_UNSUPPORTED_TYPES_IN_SWITCH \
+  case UINT8:  FALLTHROUGH_INTENDED;    \
+  case UINT16: FALLTHROUGH_INTENDED;    \
+  case UINT32: FALLTHROUGH_INTENDED;    \
+  case UINT64: FALLTHROUGH_INTENDED;    \
+  case BINARY: FALLTHROUGH_INTENDED;    \
   case UNKNOWN_DATA
 
 namespace yb {
@@ -26,10 +26,10 @@ using std::string;
 using std::to_string;
 using util::FormatBytesAsStr;
 
-//---------------------------------------- YSQLValueCore --------------------------------------
-YSQLValueCore::YSQLValueCore(const DataType type, const bool is_null, const YSQLValueCore& other) {
+//----------------------------------------- YQLValueCore --------------------------------------
+YQLValueCore::YQLValueCore(const DataType type, const bool is_null, const YQLValueCore& other) {
   if (is_null) {
-    new(this) YSQLValueCore(type);
+    new(this) YQLValueCore(type);
     return;
   }
 
@@ -43,16 +43,16 @@ YSQLValueCore::YSQLValueCore(const DataType type, const bool is_null, const YSQL
     case STRING: new(&string_value_) string(other.string_value_); return;
     case BOOL: bool_value_ = other.bool_value_; return;
     case TIMESTAMP: timestamp_value_ = other.timestamp_value_; return;
-    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+    YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
     // default: fall through
   }
   LOG(FATAL) << "Internal error: unsupported type " << type;
 }
 
-YSQLValueCore::YSQLValueCore(const DataType type, const bool is_null, YSQLValueCore* other) {
+YQLValueCore::YQLValueCore(const DataType type, const bool is_null, YQLValueCore* other) {
   if (is_null) {
-    new(this) YSQLValueCore(type);
+    new(this) YQLValueCore(type);
     other->Free(type);
     return;
   }
@@ -67,16 +67,16 @@ YSQLValueCore::YSQLValueCore(const DataType type, const bool is_null, YSQLValueC
     case STRING: new(&string_value_) string(std::move(other->string_value_)); return;
     case BOOL: bool_value_ = other->bool_value_; return;
     case TIMESTAMP: timestamp_value_ = other->timestamp_value_; return;
-    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+    YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
     // default: fall through
   }
   LOG(FATAL) << "Internal error: unsupported type " << type;
 }
 
-void YSQLValueCore::Serialize(
-    const DataType type, const bool is_null, const YSQLClient client, faststring* buffer) const {
-  CHECK_EQ(client, YSQL_CLIENT_CQL);
+void YQLValueCore::Serialize(
+    const DataType type, const bool is_null, const YQLClient client, faststring* buffer) const {
+  CHECK_EQ(client, YQL_CLIENT_CQL);
   if (is_null) {
     CQLEncodeLength(-1, buffer);
     return;
@@ -111,7 +111,7 @@ void YSQLValueCore::Serialize(
       CQLEncodeNum(NetworkByteOrder::Store64, timestamp_value_, buffer);
       return;
 
-    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+    YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
 
     // default: fall through
@@ -120,10 +120,10 @@ void YSQLValueCore::Serialize(
   LOG(FATAL) << "Internal error: unsupported type " << type;
 }
 
-Status YSQLValueCore::Deserialize(
-    const DataType type, const YSQLClient client, Slice* data, bool* is_null) {
+Status YQLValueCore::Deserialize(
+    const DataType type, const YQLClient client, Slice* data, bool* is_null) {
 
-  CHECK_EQ(client, YSQL_CLIENT_CQL);
+  CHECK_EQ(client, YQL_CLIENT_CQL);
 
   int32_t len = 0;
   RETURN_NOT_OK(CQLDecodeNum(sizeof(len), NetworkByteOrder::Load32, data, &len));
@@ -157,7 +157,7 @@ Status YSQLValueCore::Deserialize(
       return CQLDecodeNum(len, NetworkByteOrder::Load64, data, &timestamp_value_);
     }
 
-    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+    YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
 
     // default: fall through
@@ -167,7 +167,7 @@ Status YSQLValueCore::Deserialize(
   return STATUS(RuntimeError, "unsupported type");
 }
 
-string YSQLValueCore::ToString(const DataType type, const bool is_null) const {
+string YQLValueCore::ToString(const DataType type, const bool is_null) const {
   string s = DataType_Name(type) + ":";
   if (is_null) {
     return s + "null";
@@ -184,7 +184,7 @@ string YSQLValueCore::ToString(const DataType type, const bool is_null) const {
     case BOOL: return s + (bool_value_ ? "true" : "false");
     case TIMESTAMP: return s + to_string(timestamp_value_);
 
-    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+    YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
     // default: fall through
   }
@@ -193,24 +193,24 @@ string YSQLValueCore::ToString(const DataType type, const bool is_null) const {
   return s;
 }
 
-//------------------------------------------ YSQLValue ----------------------------------------
-YSQLValue& YSQLValue::operator=(const YSQLValue& other) {
+//------------------------------------------- YQLValue ----------------------------------------
+YQLValue& YQLValue::operator=(const YQLValue& other) {
   CHECK_EQ(type_, other.type_);
   is_null_ = other.is_null_;
   Free(type_);
-  new(this) YSQLValueCore(other.type_, other.is_null_, other);
+  new(this) YQLValueCore(other.type_, other.is_null_, other);
   return *this;
 }
 
-YSQLValue& YSQLValue::operator=(YSQLValue&& other) {
+YQLValue& YQLValue::operator=(YQLValue&& other) {
   CHECK_EQ(type_, other.type_);
   is_null_ = other.is_null_;
   Free(type_);
-  new(this) YSQLValueCore(other.type_, other.is_null_, &other);
+  new(this) YQLValueCore(other.type_, other.is_null_, &other);
   return *this;
 }
 
-int YSQLValue::CompareTo(const YSQLValue& v) const {
+int YQLValue::CompareTo(const YQLValue& v) const {
   CHECK_EQ(type_, v.type_);
   CHECK(!is_null_);
   CHECK(!v.is_null_);
@@ -228,7 +228,7 @@ int YSQLValue::CompareTo(const YSQLValue& v) const {
     case TIMESTAMP:
       return GenericCompare(timestamp_value_, v.timestamp_value_);
 
-    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+    YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
 
     // default: fall through
@@ -238,9 +238,9 @@ int YSQLValue::CompareTo(const YSQLValue& v) const {
   return 0;
 }
 
-YSQLValue YSQLValue::FromYSQLValuePB(const YSQLValuePB& vpb) {
+YQLValue YQLValue::FromYQLValuePB(const YQLValuePB& vpb) {
   CHECK(vpb.has_datatype());
-  YSQLValue v(vpb.datatype());
+  YQLValue v(vpb.datatype());
   switch (vpb.datatype()) {
     case INT8:
       if (vpb.has_int8_value()) {
@@ -288,7 +288,7 @@ YSQLValue YSQLValue::FromYSQLValuePB(const YSQLValuePB& vpb) {
       }
       return v;
 
-    YSQL_UNSUPPORTED_TYPES_IN_SWITCH:
+    YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
 
     // default: fall through

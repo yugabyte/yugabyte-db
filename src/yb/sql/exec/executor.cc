@@ -18,8 +18,8 @@ using client::YBSchemaBuilder;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
-using client::YBSqlWriteOp;
-using client::YBSqlReadOp;
+using client::YBqlWriteOp;
+using client::YBqlReadOp;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -148,7 +148,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   // TODO(neil): Number of replica should be automatically computed by the master, but it hasn't.
   // We passed '1' for now. Once server is fixed, num_replicas should be removed here.
   shared_ptr<YBTableCreator> table_creator(exec_context_->NewTableCreator());
-  exec_status = table_creator->table_name(table_name).table_type(YBTableType::YSQL_TABLE_TYPE)
+  exec_status = table_creator->table_name(table_name).table_type(YBTableType::YQL_TABLE_TYPE)
                                                      .schema(&schema)
                                                      .num_replicas(1)
                                                      .Create();
@@ -371,7 +371,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
 CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBTable>& table,
                                                     const PTDmlStmt *tnode,
-                                                    YSQLWriteRequestPB *req,
+                                                    YQLWriteRequestPB *req,
                                                     YBPartialRow *row) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
   // Set the ttl.
@@ -385,7 +385,7 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
     }
 
     const ColumnDesc *col_desc = col.desc();
-    YSQLColumnValuePB* col_pb;
+    YQLColumnValuePB* col_pb;
 
     if (col_desc->is_hash()) {
       col_pb = req->add_hashed_column_values();
@@ -398,10 +398,10 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     if (col_desc->is_hash()) {
-      RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(
+      RETURN_NOT_OK(ExprToPB<YQLColumnValuePB>(
           col.expr(), col_desc->type_id(), col_pb, row, col_desc->index()));
     } else {
-      RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(
+      RETURN_NOT_OK(ExprToPB<YQLColumnValuePB>(
           col.expr(), col_desc->type_id(), col_pb));
     }
   }
@@ -411,14 +411,14 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::WhereClauseToPB(YSQLWriteRequestPB *req,
+CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
                                          YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops) {
   // Setup the key columns.
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    YSQLColumnValuePB *col_pb;
+    YQLColumnValuePB *col_pb;
     if (col_desc->is_hash()) {
       col_pb = req->add_hashed_column_values();
     } else if (col_desc->is_primary()) {
@@ -429,34 +429,34 @@ CHECKED_STATUS Executor::WhereClauseToPB(YSQLWriteRequestPB *req,
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
     RETURN_NOT_OK(
-      ExprToPB<YSQLColumnValuePB>(op.expr(), col_desc->type_id(), col_pb, row, col_desc->index()));
+      ExprToPB<YQLColumnValuePB>(op.expr(), col_desc->type_id(), col_pb, row, col_desc->index()));
   }
 
   // Setup the rest of the columns.
   CHECK(where_ops.empty()) << "Server doesn't support range operation yet";
   for (const auto& op : where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    YSQLColumnValuePB *col_pb;
+    YQLColumnValuePB *col_pb;
     if (col_desc->is_primary()) {
       col_pb = req->add_range_column_values();
     } else {
       col_pb = req->add_column_values();
     }
     col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(op.expr(), col_desc->type_id(), col_pb));
+    RETURN_NOT_OK(ExprToPB<YQLColumnValuePB>(op.expr(), col_desc->type_id(), col_pb));
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
+CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
                                          YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops) {
   // Setup the hash key columns.
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
-    YSQLColumnValuePB *col_pb;
+    YQLColumnValuePB *col_pb;
     if (col_desc->is_hash()) {
       col_pb = req->add_hashed_column_values();
     } else {
@@ -464,11 +464,11 @@ CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
     }
     VLOG(3) << "READ request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(ExprToPB<YSQLColumnValuePB>(op.expr(),
-                                              col_desc->type_id(),
-                                              col_pb,
-                                              row,
-                                              col_desc->index()));
+    RETURN_NOT_OK(ExprToPB<YQLColumnValuePB>(op.expr(),
+                                             col_desc->type_id(),
+                                             col_pb,
+                                             row,
+                                             col_desc->index()));
   }
 
   // Not generate any code if where clause is empty.
@@ -477,7 +477,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
   }
 
   // Setup the rest of the where clause.
-  YSQLConditionPB *current_cond = req->mutable_where_condition();
+  YQLConditionPB *current_cond = req->mutable_where_condition();
   for (const auto& col_op : where_ops) {
     if (&col_op == &where_ops.back()) {
       // This is the last operator. Use the current ConditionPB.
@@ -485,8 +485,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
 
     } else {
       // Current ConditionPB would be AND of this op and the next one.
-      current_cond->set_op(YSQL_OP_AND);
-      YSQLExpressionPB *op = current_cond->add_operands();
+      current_cond->set_op(YQL_OP_AND);
+      YQLExpressionPB *op = current_cond->add_operands();
       RETURN_NOT_OK(WhereOpToPB(op->mutable_condition(), col_op));
 
       // Create a new the ConditionPB for the next operand.
@@ -497,23 +497,23 @@ CHECKED_STATUS Executor::WhereClauseToPB(YSQLReadRequestPB *req,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::WhereOpToPB(YSQLConditionPB *condition, const ColumnOp& col_op) {
+CHECKED_STATUS Executor::WhereOpToPB(YQLConditionPB *condition, const ColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = col_op.desc();
-  YSQLExpressionPB *op = condition->add_operands();
+  YQLExpressionPB *op = condition->add_operands();
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   op->set_column_id(col_desc->id());
 
   // Operand 2: The expression.
   op = condition->add_operands();
-  return ExprToPB<YSQLExpressionPB>(col_op.expr(), col_desc->type_id(), op);
+  return ExprToPB<YQLExpressionPB>(col_op.expr(), col_desc->type_id(), op);
 }
 
-CHECKED_STATUS Executor::RelationalOpToPB(YSQLConditionPB *condition,
-                                          const YSQLOperator opr,
+CHECKED_STATUS Executor::RelationalOpToPB(YQLConditionPB *condition,
+                                          const YQLOperator opr,
                                           const PTExpr *relation) {
   const PTPredicate2* pred = static_cast<const PTPredicate2*>(relation);
 
@@ -522,18 +522,18 @@ CHECKED_STATUS Executor::RelationalOpToPB(YSQLConditionPB *condition,
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
-  YSQLExpressionPB *op = condition->add_operands();
+  YQLExpressionPB *op = condition->add_operands();
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   op->set_column_id(col_desc->id());
 
   // Operand 2: The expression.
   const PTExpr::SharedPtr& expr = pred->op2();
   op = condition->add_operands();
-  return ExprToPB<YSQLExpressionPB>(expr, col_desc->type_id(), op);
+  return ExprToPB<YQLExpressionPB>(expr, col_desc->type_id(), op);
 }
 
-CHECKED_STATUS Executor::ColumnConditionToPB(YSQLConditionPB *condition,
-                                             const YSQLOperator opr,
+CHECKED_STATUS Executor::ColumnConditionToPB(YQLConditionPB *condition,
+                                             const YQLOperator opr,
                                              const PTExpr *cond) {
   const PTPredicate1* pred = static_cast<const PTPredicate1*>(cond);
 
@@ -542,14 +542,14 @@ CHECKED_STATUS Executor::ColumnConditionToPB(YSQLConditionPB *condition,
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
-  YSQLExpressionPB *op = condition->add_operands();
+  YQLExpressionPB *op = condition->add_operands();
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   op->set_column_id(col_desc->id());
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::BetweenToPB(YSQLConditionPB *condition,
-                                     const YSQLOperator opr,
+CHECKED_STATUS Executor::BetweenToPB(YQLConditionPB *condition,
+                                     const YQLOperator opr,
                                      const PTExpr *between) {
   const PTPredicate3* pred = static_cast<const PTPredicate3*>(between);
 
@@ -558,91 +558,91 @@ CHECKED_STATUS Executor::BetweenToPB(YSQLConditionPB *condition,
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
-  YSQLExpressionPB *op = condition->add_operands();
+  YQLExpressionPB *op = condition->add_operands();
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   op->set_column_id(col_desc->id());
 
   // Operand 2: The lower-bound expression.
   const PTExpr::SharedPtr& lower_bound = pred->op2();
   op = condition->add_operands();
-  RETURN_NOT_OK(ExprToPB<YSQLExpressionPB>(lower_bound, col_desc->type_id(), op));
+  RETURN_NOT_OK(ExprToPB<YQLExpressionPB>(lower_bound, col_desc->type_id(), op));
 
   // Operand 3: The upper-bound expression.
   const PTExpr::SharedPtr& upper_bound = pred->op3();
   op = condition->add_operands();
-  return ExprToPB<YSQLExpressionPB>(upper_bound, col_desc->type_id(), op);
+  return ExprToPB<YQLExpressionPB>(upper_bound, col_desc->type_id(), op);
 }
 
-CHECKED_STATUS Executor::BoolExprToPB(YSQLConditionPB *cond, const PTExpr* expr) {
+CHECKED_STATUS Executor::BoolExprToPB(YQLConditionPB *cond, const PTExpr* expr) {
 
   switch (expr->expr_op()) {
 
     case ExprOperator::kAND: {
-      cond->set_op(YSQL_OP_AND);
+      cond->set_op(YQL_OP_AND);
       const PTPredicate2 *pred = static_cast<const PTPredicate2*>(expr);
       RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
       RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op2().get()));
       break;
     }
     case ExprOperator::kOR: {
-      cond->set_op(YSQL_OP_OR);
+      cond->set_op(YQL_OP_OR);
       const PTPredicate2 *pred = static_cast<const PTPredicate2*>(expr);
       RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
       RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op2().get()));
       break;
     }
     case ExprOperator::kNot: {
-      cond->set_op(YSQL_OP_NOT);
+      cond->set_op(YQL_OP_NOT);
       const PTPredicate1 *pred = static_cast<const PTPredicate1*>(expr);
       RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
       break;
     }
 
     case ExprOperator::kEQ:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_EQUAL, expr));
+      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_EQUAL, expr));
       break;
     case ExprOperator::kLT:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_LESS_THAN, expr));
+      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_LESS_THAN, expr));
       break;
     case ExprOperator::kGT:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_GREATER_THAN, expr));
+      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_GREATER_THAN, expr));
       break;
     case ExprOperator::kLE:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_LESS_THAN_EQUAL, expr));
+      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_LESS_THAN_EQUAL, expr));
       break;
     case ExprOperator::kGE:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_GREATER_THAN_EQUAL, expr));
+      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_GREATER_THAN_EQUAL, expr));
       break;
     case ExprOperator::kNE:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YSQL_OP_NOT_EQUAL, expr));
+      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_NOT_EQUAL, expr));
       break;
 
     case ExprOperator::kIsNull:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_NULL, expr));
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_NULL, expr));
       break;
     case ExprOperator::kIsNotNull:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_NOT_NULL, expr));
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_NOT_NULL, expr));
       break;
     case ExprOperator::kIsTrue:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_TRUE, expr));
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_TRUE, expr));
       break;
     case ExprOperator::kIsFalse:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YSQL_OP_IS_FALSE, expr));
+      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_FALSE, expr));
       break;
 
     case ExprOperator::kBetween:
-      RETURN_NOT_OK(BetweenToPB(cond, YSQL_OP_BETWEEN, expr));
+      RETURN_NOT_OK(BetweenToPB(cond, YQL_OP_BETWEEN, expr));
       break;
 
     case ExprOperator::kNotBetween:
-      RETURN_NOT_OK(BetweenToPB(cond, YSQL_OP_NOT_BETWEEN, expr));
+      RETURN_NOT_OK(BetweenToPB(cond, YQL_OP_NOT_BETWEEN, expr));
       break;
 
     case ExprOperator::kExists:
-      cond->set_op(YSQL_OP_EXISTS);
+      cond->set_op(YQL_OP_EXISTS);
       break;
     case ExprOperator::kNotExists:
-      cond->set_op(YSQL_OP_NOT_EXISTS);
+      cond->set_op(YQL_OP_NOT_EXISTS);
       break;
 
     default:
@@ -662,8 +662,8 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
   // Create the read request.
   const shared_ptr<client::YBTable>& table = tnode->table();
-  shared_ptr<YBSqlReadOp> select_op(table->NewYSQLSelect());
-  YSQLReadRequestPB *req = select_op->mutable_request();
+  shared_ptr<YBqlReadOp> select_op(table->NewYQLSelect());
+  YQLReadRequestPB *req = select_op->mutable_request();
 
   // Where clause - Hash, range, and regular columns.
   YBPartialRow *row = select_op->mutable_row();
@@ -686,7 +686,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
 CHECKED_STATUS Executor::ExecPTNode(const PTInsertStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
-  shared_ptr<YBSqlWriteOp> insert_op(table->NewYSQLInsert());
+  shared_ptr<YBqlWriteOp> insert_op(table->NewYQLInsert());
 
   // Set the values for columns.
   Status s = ColumnArgsToWriteRequestPB(table,
@@ -715,8 +715,8 @@ CHECKED_STATUS Executor::ExecPTNode(const PTInsertStmt *tnode) {
 CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
-  shared_ptr<YBSqlWriteOp> delete_op(table->NewYSQLDelete());
-  YSQLWriteRequestPB *req = delete_op->mutable_request();
+  shared_ptr<YBqlWriteOp> delete_op(table->NewYQLDelete());
+  YQLWriteRequestPB *req = delete_op->mutable_request();
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
@@ -742,8 +742,8 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
 CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
-  shared_ptr<YBSqlWriteOp> update_op(table->NewYSQLUpdate());
-  YSQLWriteRequestPB *req = update_op->mutable_request();
+  shared_ptr<YBqlWriteOp> update_op(table->NewYQLUpdate());
+  YQLWriteRequestPB *req = update_op->mutable_request();
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.

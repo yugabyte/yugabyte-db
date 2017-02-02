@@ -21,7 +21,7 @@ option java_package = "org.yb.tserver";
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/common/redis_protocol.proto";
-import "yb/common/ysql_protocol.proto";
+import "yb/common/yql_protocol.proto";
 import "yb/tablet/tablet.proto";
 import "yb/docdb/docdb.proto";
 
@@ -130,8 +130,8 @@ message WriteRequestPB {
   // A batch of redis operations.
   repeated RedisWriteRequestPB redis_write_batch = 8;
 
-  // A batch of YSQL operations.
-  repeated YSQLWriteRequestPB ysql_write_batch = 10;
+  // A batch of YQL operations.
+  repeated YQLWriteRequestPB yql_write_batch = 10;
 
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
@@ -170,8 +170,8 @@ message WriteResponsePB {
   // A batch of redis responses.
   repeated RedisResponsePB redis_response_batch = 8;
 
-  // A batch of YSQL responses.
-  repeated YSQLResponsePB ysql_response_batch = 9;
+  // A batch of YQL responses.
+  repeated YQLResponsePB yql_response_batch = 9;
 
   // The hybrid_time chosen by the server for this write.
   // TODO KUDU-611 propagate hybrid_times with server signature.
@@ -233,7 +233,7 @@ message ReadRequestPB {
 
   repeated RedisReadRequestPB redis_batch = 2;
 
-  repeated YSQLReadRequestPB ysql_batch = 4;
+  repeated YQLReadRequestPB yql_batch = 4;
 
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
@@ -245,7 +245,7 @@ message ReadRequestPB {
 message ReadResponsePB {
   repeated RedisResponsePB redis_batch = 1;
 
-  repeated YSQLResponsePB ysql_batch = 4;
+  repeated YQLResponsePB yql_batch = 4;
 
   // The hybrid_time chosen by the server for this read.
   optional fixed64 hybrid_time = 2;

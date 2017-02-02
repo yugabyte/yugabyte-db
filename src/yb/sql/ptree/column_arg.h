@@ -11,7 +11,7 @@
 #include "yb/common/types.h"
 #include "yb/sql/util/base_types.h"
 #include "yb/sql/ptree/pt_expr.h"
-#include "yb/common/ysql_value.h"
+#include "yb/common/yql_value.h"
 
 namespace yb {
 namespace sql {
@@ -67,7 +67,7 @@ class ColumnOp : public ColumnArg {
   ColumnOp(const ColumnDesc *desc = nullptr,
            const PTExpr::SharedPtr& expr = nullptr,
            ExprOperator expr_op = ExprOperator::kNoOp,
-           yb::YSQLOperator yb_op = yb::YSQLOperator::YSQL_OP_NOOP)
+           yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
       : ColumnArg(desc, expr), expr_op_(expr_op), yb_op_(yb_op) {
   }
   ColumnOp(const ColumnOp &column_op)
@@ -77,7 +77,7 @@ class ColumnOp : public ColumnArg {
   }
 
   void Init(const ColumnDesc *desc, const PTExpr::SharedPtr& expr,
-            ExprOperator expr_op, yb::YSQLOperator yb_op) {
+            ExprOperator expr_op, yb::YQLOperator yb_op) {
     desc_ = desc;
     expr_ = expr;
     expr_op_ = expr_op;
@@ -88,13 +88,13 @@ class ColumnOp : public ColumnArg {
     return expr_op_;
   }
 
-  yb::YSQLOperator yb_op() const {
+  yb::YQLOperator yb_op() const {
     return yb_op_;
   }
 
  private:
   ExprOperator expr_op_;
-  yb::YSQLOperator yb_op_;
+  yb::YQLOperator yb_op_;
 };
 
 }  // namespace sql

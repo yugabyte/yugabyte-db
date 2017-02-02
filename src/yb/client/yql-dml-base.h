@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef YB_CLIENT_YSQL_DML_BASE_H
-#define YB_CLIENT_YSQL_DML_BASE_H
+#ifndef YB_CLIENT_YQL_DML_BASE_H
+#define YB_CLIENT_YQL_DML_BASE_H
 
 #include <algorithm>
 #include <functional>
@@ -12,8 +12,8 @@
 #include "yb/client/client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/callbacks.h"
-#include "yb/common/ysql_protocol.pb.h"
-#include "yb/common/ysql_rowblock.h"
+#include "yb/common/yql_protocol.pb.h"
+#include "yb/common/yql_rowblock.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
@@ -28,11 +28,11 @@ using std::vector;
 using std::shared_ptr;
 using std::unique_ptr;
 
-static const char kTableName[] = "ysql_client_test_table";
+static const char kTableName[] = "yql_client_test_table";
 
-class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
+class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
  public:
-  YsqlDmlBase() {
+  YqlDmlBase() {
   }
 
   virtual void addColumns(YBSchemaBuilder *b) = 0;
@@ -59,7 +59,7 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
 
     unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
-        .table_type(YBTableType::YSQL_TABLE_TYPE)
+        .table_type(YBTableType::YQL_TABLE_TYPE)
         .schema(&schema)
         .num_replicas(3)
         .Create());
@@ -87,20 +87,20 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::DoTearDown();
   }
 
-  shared_ptr<YBSqlWriteOp> NewWriteOp(YSQLWriteRequestPB::YSQLStmtType type) {
-    shared_ptr<YBSqlWriteOp> op(table_->NewYSQLWrite());
+  shared_ptr<YBqlWriteOp> NewWriteOp(YQLWriteRequestPB::YQLStmtType type) {
+    shared_ptr<YBqlWriteOp> op(table_->NewYQLWrite());
     auto *req = op->mutable_request();
     req->set_type(type);
-    req->set_client(YSQL_CLIENT_CQL);
+    req->set_client(YQL_CLIENT_CQL);
     req->set_request_id(0);
     req->set_schema_version(0);
     return op;
   }
 
-  shared_ptr<YBSqlReadOp> NewReadOp() {
-    shared_ptr<YBSqlReadOp> op(table_->NewYSQLRead());
+  shared_ptr<YBqlReadOp> NewReadOp() {
+    shared_ptr<YBqlReadOp> op(table_->NewYQLRead());
     auto *req = op->mutable_request();
-    req->set_client(YSQL_CLIENT_CQL);
+    req->set_client(YQL_CLIENT_CQL);
     req->set_request_id(0);
     req->set_schema_version(0);
     return op;
@@ -118,7 +118,7 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetInt32ColumnValue(
-      YSQLColumnValuePB *column_value, const string &column_name, const int32_t value,
+      YQLColumnValuePB *column_value, const string &column_name, const int32_t value,
       YBPartialRow *prow = nullptr, int prow_index = -1) {
 
     column_value->set_column_id(ColumnId(column_name));
@@ -131,7 +131,7 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void SetStringColumnValue(
-      YSQLColumnValuePB *column_value, const string &column_name, const string &value,
+      YQLColumnValuePB *column_value, const string &column_name, const string &value,
       YBPartialRow *prow = nullptr, int prow_index = -1) {
 
     column_value->set_column_id(ColumnId(column_name));
@@ -145,14 +145,14 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
 
   // Set a column id without value - for DELETE
   void SetColumn(
-      YSQLColumnValuePB *column_value, const string &column_name) {
+      YQLColumnValuePB *column_value, const string &column_name) {
     column_value->set_column_id(ColumnId(column_name));
   }
 
   // Set a int32 column value comparison.
   // E.g. <column-id> = <int32-value>
   void SetInt32Condition(
-      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
+      YQLConditionPB *const condition, const string &column_name, const YQLOperator op,
       const int32_t value) {
     condition->add_operands()->set_column_id(ColumnId(column_name));
     condition->set_op(op);
@@ -164,7 +164,7 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
   // Set a string column value comparison.
   // E.g. <column-id> = <string-value>
   void SetStringCondition(
-      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
+      YQLConditionPB *const condition, const string &column_name, const YQLOperator op,
       const string &value) {
     condition->add_operands()->set_column_id(ColumnId(column_name));
     condition->set_op(op);
@@ -176,7 +176,7 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
   // Add a int32 column value comparison under a logical comparison condition.
   // E.g. Add <column-id> = <int32-value> under "... AND <column-id> = <int32-value>".
   void AddInt32Condition(
-      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
+      YQLConditionPB *const condition, const string &column_name, const YQLOperator op,
       const int32_t value) {
     SetInt32Condition(condition->add_operands()->mutable_condition(), column_name, op, value);
   }
@@ -184,14 +184,14 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
   // Add a string column value comparison under a logical comparison condition.
   // E.g. Add <column-id> = <string-value> under "... AND <column-id> = <string-value>".
   void AddStringCondition(
-      YSQLConditionPB *const condition, const string &column_name, const YSQLOperator op,
+      YQLConditionPB *const condition, const string &column_name, const YQLOperator op,
       const string &value) {
     SetStringCondition(condition->add_operands()->mutable_condition(), column_name, op, value);
   }
 
   // Add a simple comparison operation under a logical comparison condition.
   // E.g. Add <EXISTS> under "... AND <EXISTS>".
-  void AddCondition(YSQLConditionPB *const condition, const YSQLOperator op) {
+  void AddCondition(YQLConditionPB *const condition, const YQLOperator op) {
     condition->add_operands()->mutable_condition()->set_op(op);
   }
 
@@ -204,4 +204,4 @@ class YsqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
 }  // namespace client
 }  // namespace yb
 
-#endif  // YB_CLIENT_YSQL_DML_BASE_H
+#endif  // YB_CLIENT_YQL_DML_BASE_H

@@ -220,11 +220,11 @@ class ClientStressTest_LowMemory : public ClientStressTest {
 
 // Stress test where, due to absurdly low memory limits, many client requests
 // are rejected, forcing the client to retry repeatedly.
-// TODO(mbautin): switch this test to YSQL (RocksDB-backed) after we implement proper memory
+// TODO(mbautin): switch this test to YQL (RocksDB-backed) after we implement proper memory
 // tracking for RocksDB (https://yugabyte.atlassian.net/browse/ENG-442).
 TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
   // TODO (tyusupov): remove DontVerifyClusterBeforeNextTearDown check once this test is switched
-  // to YSQL. Cluster check is disabled, because checksum checking is failing for Kudu tables here.
+  // to YQL. Cluster check is disabled, because checksum checking is failing for Kudu tables here.
   DontVerifyClusterBeforeNextTearDown();
 
 #ifdef THREAD_SANITIZER

@@ -3,7 +3,7 @@
 #include <regex>
 
 #include "yb/client/client.h"
-#include "yb/common/ysql_protocol.pb.h"
+#include "yb/common/yql_protocol.pb.h"
 #include "yb/cqlserver/cql_message.h"
 #include "yb/cqlserver/cql_processor.h"
 

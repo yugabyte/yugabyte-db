@@ -35,7 +35,7 @@ class SqlProcessor {
   }
 
   // Construct a row_block and send it back.
-  std::shared_ptr<YSQLRowBlock> row_block() const {
+  std::shared_ptr<YQLRowBlock> row_block() const {
     return sql_env_->row_block();
   }
 

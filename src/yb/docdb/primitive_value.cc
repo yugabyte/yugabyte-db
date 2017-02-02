@@ -14,7 +14,7 @@
 
 using std::string;
 using strings::Substitute;
-using yb::YSQLValuePB;
+using yb::YQLValuePB;
 using yb::util::FormatBytesAsStr;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
@@ -401,7 +401,7 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-PrimitiveValue PrimitiveValue::FromYSQLValuePB(const YSQLValuePB& value) {
+PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value) {
   CHECK(value.has_datatype());
   switch (value.datatype()) {
     case INT8:
@@ -449,7 +449,7 @@ PrimitiveValue PrimitiveValue::FromYSQLValuePB(const YSQLValuePB& value) {
   LOG(FATAL) << "Unsupported datatype " << value.datatype();
 }
 
-PrimitiveValue PrimitiveValue::FromYSQLValue(const YSQLValue& value) {
+PrimitiveValue PrimitiveValue::FromYQLValue(const YQLValue& value) {
   if (value.IsNull()) {
     return PrimitiveValue(ValueType::kNull);
   }
@@ -490,7 +490,7 @@ PrimitiveValue PrimitiveValue::FromYSQLValue(const YSQLValue& value) {
   LOG(FATAL) << "Unsupported datatype " << value.type();
 }
 
-void PrimitiveValue::ToYSQLValue(YSQLValue* v) const {
+void PrimitiveValue::ToYQLValue(YQLValue* v) const {
   if (value_type() == ValueType::kNull) {
     v->SetNull(true);
     return;

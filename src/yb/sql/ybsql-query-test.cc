@@ -20,7 +20,7 @@ class YbSqlQuery : public YbSqlTestBase {
   YbSqlQuery() : YbSqlTestBase() {
   }
 
-  std::shared_ptr<YSQLRowBlock> ExecSelect(SqlProcessor *processor) {
+  std::shared_ptr<YQLRowBlock> ExecSelect(SqlProcessor *processor) {
     auto select = "SELECT c1, c2, c3 FROM test_table WHERE c1 = 1";
     Status s = processor->Run(select);
     CHECK(s.ok());
@@ -31,7 +31,7 @@ class YbSqlQuery : public YbSqlTestBase {
 
   void VerifyExpiry(SqlProcessor *processor) {
     auto row_block_expired = ExecSelect(processor);
-    YSQLRow& row = row_block_expired->row(0);
+    YQLRow& row = row_block_expired->row(0);
     // TODO: need to revisit this since cassandra semantics might be a little different when all
     // non primary key columns are null.
     EXPECT_EQ(1, row.column(0).int32_value());
@@ -59,7 +59,7 @@ class YbSqlQuery : public YbSqlTestBase {
 
     // Verify row is present.
     auto row_block = ExecSelect(processor);
-    YSQLRow& row = row_block->row(0);
+    YQLRow& row = row_block->row(0);
 
     EXPECT_EQ(1, row.column(0).int32_value());
     EXPECT_EQ(2, row.column(1).int32_value());
@@ -86,7 +86,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   // Test NOTFOUND. Select from empty table.
   CHECK_INVALID_STMT("SELECT * FROM test_table");
   CHECK_VALID_STMT("SELECT * FROM test_table WHERE h1 = 0 AND h2 = ''");
-  std::shared_ptr<YSQLRowBlock> empty_row_block = processor->row_block();
+  std::shared_ptr<YQLRowBlock> empty_row_block = processor->row_block();
   CHECK_EQ(empty_row_block->row_count(), 0);
 
   // Insert 100 rows into the table.
@@ -113,9 +113,9 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   CHECK_VALID_STMT("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
                    "  WHERE h1 = 7 AND h2 = 'h7' AND r1 = 107;");
 
-  std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+  std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const YSQLRow& ordered_row = row_block->row(0);
+  const YQLRow& ordered_row = row_block->row(0);
   CHECK_EQ(ordered_row.column(0).int32_value(), 7);
   CHECK_EQ(ordered_row.column(1).string_value(), "h7");
   CHECK_EQ(ordered_row.column(2).int32_value(), 107);
@@ -129,7 +129,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
 
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const YSQLRow& unordered_row = row_block->row(0);
+  const YQLRow& unordered_row = row_block->row(0);
   CHECK_EQ(unordered_row.column(0).int32_value(), 1007);
   CHECK_EQ(unordered_row.column(1).string_value(), "v1007");
   CHECK_EQ(unordered_row.column(2).int32_value(), 7);
@@ -147,7 +147,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
 
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const YSQLRow& row = row_block->row(0);
+    const YQLRow& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), idx);
     CHECK_EQ(row.column(1).string_value(), Substitute("h$0", idx));
     CHECK_EQ(row.column(2).int32_value(), idx + 100);
@@ -179,7 +179,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   // Check the result set.
   CHECK_EQ(row_block->row_count(), kHashNumRows);
   for (int idx = 0; idx < kHashNumRows; idx++) {
-    const YSQLRow& row = row_block->row(idx);
+    const YQLRow& row = row_block->row(idx);
     CHECK_EQ(row.column(0).int32_value(), h1_shared);
     CHECK_EQ(row.column(1).string_value(), h2_shared);
     CHECK_EQ(row.column(2).int32_value(), idx + 100);

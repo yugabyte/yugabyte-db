@@ -56,7 +56,7 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
 
   // Testing UPDATE one row.
   string select_stmt;
-  std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+  std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
   for (int idx = 0; idx < kNumRows; idx++) {
     // SELECT an entry to make sure it's there.
     select_stmt = Substitute("SELECT * FROM test_table"
@@ -75,7 +75,7 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
     CHECK_VALID_STMT(select_stmt);
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const YSQLRow& row = row_block->row(0);
+    const YQLRow& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), idx);
     CHECK_EQ(row.column(1).string_value(), Substitute("h$0", idx));
     CHECK_EQ(row.column(2).int32_value(), idx + 100);

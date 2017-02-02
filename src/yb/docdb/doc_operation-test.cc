@@ -50,12 +50,12 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   EXPECT_EQ(2000, ttl.ToMilliseconds());
 }
 
-TEST_F(DocOperationTest, TestYSQLWriteWithTTL) {
+TEST_F(DocOperationTest, TestYQLWriteWithTTL) {
 
   // Write key with ttl to docdb.
   auto db = rocksdb();
-  yb::YSQLWriteRequestPB  ysql_writereq_pb;
-  yb::YSQLResponsePB  ysql_writeresp_pb;
+  yb::YQLWriteRequestPB  yql_writereq_pb;
+  yb::YQLResponsePB  yql_writeresp_pb;
 
   // Define the schema.
   ColumnSchema hash_column_schema("k", INT32, false, true);
@@ -65,23 +65,23 @@ TEST_F(DocOperationTest, TestYSQLWriteWithTTL) {
   Schema schema (columns, col_ids, columns.size());
 
   // Add two columns.
-  auto hashed_column = ysql_writereq_pb.add_hashed_column_values();
+  auto hashed_column = yql_writereq_pb.add_hashed_column_values();
   hashed_column->set_column_id(0);
   hashed_column->mutable_value()->set_datatype(INT32);
   hashed_column->mutable_value()->set_int32_value(1);
 
-  auto range_column = ysql_writereq_pb.add_range_column_values();
+  auto range_column = yql_writereq_pb.add_range_column_values();
   range_column->set_column_id(1);
   range_column->mutable_value()->set_datatype(INT32);
   range_column->mutable_value()->set_int32_value(2);
 
   // Add ttl to request.
-  ysql_writereq_pb.set_ttl(2000);
+  yql_writereq_pb.set_ttl(2000);
 
   // Write to docdb.
-  YSQLWriteOperation ysql_write_op(ysql_writereq_pb, schema, &ysql_writeresp_pb);
+  YQLWriteOperation yql_write_op(yql_writereq_pb, schema, &yql_writeresp_pb);
   DocWriteBatch doc_write_batch(db);
-  CHECK_OK(ysql_write_op.Apply(&doc_write_batch, db, HybridTime()));
+  CHECK_OK(yql_write_op.Apply(&doc_write_batch, db, HybridTime()));
 
   WriteToRocksDB(doc_write_batch, db);
 

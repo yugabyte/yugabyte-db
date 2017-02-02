@@ -31,9 +31,9 @@ class RedisWriteRequestPB;
 class RedisReadRequestPB;
 class RedisResponsePB;
 
-class YSQLWriteRequestPB;
-class YSQLReadRequestPB;
-class YSQLResponsePB;
+class YQLWriteRequestPB;
+class YQLReadRequestPB;
+class YQLResponsePB;
 
 namespace client {
 
@@ -63,8 +63,8 @@ class YB_EXPORT YBOperation {
     DELETE = 3,
     REDIS_WRITE = 4,
     REDIS_READ = 5,
-    YSQL_WRITE = 6,
-    YSQL_READ = 7,
+    YQL_WRITE = 6,
+    YQL_READ = 7,
   };
   virtual ~YBOperation();
 
@@ -223,13 +223,13 @@ class YB_EXPORT YBRedisReadOp : public YBOperation {
 };
 
 
-class YB_EXPORT YBSqlOp : public YBOperation {
+class YB_EXPORT YBqlOp : public YBOperation {
  public:
-  virtual ~YBSqlOp();
+  virtual ~YBqlOp();
 
-  const YSQLResponsePB& response() const { return *ysql_response_; }
+  const YQLResponsePB& response() const { return *yql_response_; }
 
-  YSQLResponsePB* mutable_response() { return ysql_response_.get(); }
+  YQLResponsePB* mutable_response() { return yql_response_.get(); }
 
   std::string&& rows_data() { return std::move(rows_data_); }
 
@@ -238,23 +238,23 @@ class YB_EXPORT YBSqlOp : public YBOperation {
   // Set the row key in the YBPartialRow.
   virtual CHECKED_STATUS SetKey() = 0;
 
-  // Set the hash key in the partial row of this YSQL operation.
+  // Set the hash key in the partial row of this YQL operation.
   virtual void SetHashCode(uint16_t hash_code) = 0;
 
  protected:
-  explicit YBSqlOp(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<YSQLResponsePB> ysql_response_;
+  explicit YBqlOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<YQLResponsePB> yql_response_;
   std::string rows_data_;
 };
 
-class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
+class YB_EXPORT YBqlWriteOp : public YBqlOp {
  public:
-  explicit YBSqlWriteOp(const std::shared_ptr<YBTable>& table);
-  virtual ~YBSqlWriteOp();
+  explicit YBqlWriteOp(const std::shared_ptr<YBTable>& table);
+  virtual ~YBqlWriteOp();
 
-  const YSQLWriteRequestPB& request() const { return *ysql_write_request_; }
+  const YQLWriteRequestPB& request() const { return *yql_write_request_; }
 
-  YSQLWriteRequestPB* mutable_request() { return ysql_write_request_.get(); }
+  YQLWriteRequestPB* mutable_request() { return yql_write_request_.get(); }
 
   virtual std::string ToString() const OVERRIDE;
 
@@ -266,26 +266,26 @@ class YB_EXPORT YBSqlWriteOp : public YBSqlOp {
 
  protected:
   virtual Type type() const OVERRIDE {
-    return YSQL_WRITE;
+    return YQL_WRITE;
   }
 
  private:
   friend class YBTable;
-  static YBSqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
-  static YBSqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
-  static YBSqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<YSQLWriteRequestPB> ysql_write_request_;
+  static YBqlWriteOp *NewInsert(const std::shared_ptr<YBTable>& table);
+  static YBqlWriteOp *NewUpdate(const std::shared_ptr<YBTable>& table);
+  static YBqlWriteOp *NewDelete(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<YQLWriteRequestPB> yql_write_request_;
 };
 
-class YB_EXPORT YBSqlReadOp : public YBSqlOp {
+class YB_EXPORT YBqlReadOp : public YBqlOp {
  public:
-  virtual ~YBSqlReadOp();
+  virtual ~YBqlReadOp();
 
-  static YBSqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
+  static YBqlReadOp *NewSelect(const std::shared_ptr<YBTable>& table);
 
-  const YSQLReadRequestPB& request() const { return *ysql_read_request_; }
+  const YQLReadRequestPB& request() const { return *yql_read_request_; }
 
-  YSQLReadRequestPB* mutable_request() { return ysql_read_request_.get(); }
+  YQLReadRequestPB* mutable_request() { return yql_read_request_.get(); }
 
   virtual std::string ToString() const OVERRIDE;
 
@@ -296,12 +296,12 @@ class YB_EXPORT YBSqlReadOp : public YBSqlOp {
   virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
 
  protected:
-  virtual Type type() const OVERRIDE { return YSQL_READ; }
+  virtual Type type() const OVERRIDE { return YQL_READ; }
 
  private:
   friend class YBTable;
-  explicit YBSqlReadOp(const std::shared_ptr<YBTable>& table);
-  std::unique_ptr<YSQLReadRequestPB> ysql_read_request_;
+  explicit YBqlReadOp(const std::shared_ptr<YBTable>& table);
+  std::unique_ptr<YQLReadRequestPB> yql_read_request_;
 };
 
 

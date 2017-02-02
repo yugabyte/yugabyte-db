@@ -604,7 +604,7 @@ TEST_P(TabletPeerTest, TestFlushOpsPerfImprovements) {
 }
 
 INSTANTIATE_TEST_CASE_P(KUDU, TabletPeerTest, ::testing::Values(KUDU_COLUMNAR_TABLE_TYPE));
-INSTANTIATE_TEST_CASE_P(Rocks, TabletPeerTest, ::testing::Values(YSQL_TABLE_TYPE));
+INSTANTIATE_TEST_CASE_P(Rocks, TabletPeerTest, ::testing::Values(YQL_TABLE_TYPE));
 
 } // namespace tablet
 } // namespace yb

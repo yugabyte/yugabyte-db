@@ -39,11 +39,11 @@ class ExecContext : public ProcessContext {
   }
 
   // Apply YBClient write operator.
-  CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op,
+  CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op,
                             const TreeNode *tnode);
 
   // Apply YBClient read operator.
-  CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op,
+  CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op,
                            const TreeNode *tnode);
 
  private:

@@ -71,7 +71,7 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
       cout << s.ToString(false);
     } else {
       // Check rowblock.
-      std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
       if (row_block == nullptr) {
         cout << s.ToString(false);
       } else {

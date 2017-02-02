@@ -74,7 +74,7 @@ enum TableType {
   option allow_alias = true;
 
   KUDU_COLUMNAR_TABLE_TYPE = 1;
-  YSQL_TABLE_TYPE = 2;
+  YQL_TABLE_TYPE = 2;
   REDIS_TABLE_TYPE = 3;
 
   // This is KUDU_COLUMNAR for now but we'll change this as we deprecate Kudu's columnar format.

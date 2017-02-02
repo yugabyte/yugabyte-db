@@ -128,13 +128,13 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       // The condition to "where" operator list.
       if (col_desc->is_hash()) {
         key_where_ops_[col_desc->index()].Init(
-          col_desc, value, ExprOperator::kEQ, YSQLOperator::YSQL_OP_EQUAL);
+          col_desc, value, ExprOperator::kEQ, YQLOperator::YQL_OP_EQUAL);
       } else if (col_desc->is_primary()) {
         if (write_only_) {
           key_where_ops_[col_desc->index()].Init(
-            col_desc, value, ExprOperator::kEQ, YSQLOperator::YSQL_OP_EQUAL);
+            col_desc, value, ExprOperator::kEQ, YQLOperator::YQL_OP_EQUAL);
         } else {
-          ColumnOp col_op(col_desc, value, ExprOperator::kEQ, YSQLOperator::YSQL_OP_EQUAL);
+          ColumnOp col_op(col_desc, value, ExprOperator::kEQ, YQLOperator::YQL_OP_EQUAL);
           where_ops_.push_back(col_op);
         }
       } else {
@@ -166,7 +166,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       (*col_stats)[col_desc->index()].has_lt_ = true;
 
       // The condition to "where" operator list.
-      ColumnOp col_op(col_desc, value, ExprOperator::kLT, YSQLOperator::YSQL_OP_LESS_THAN);
+      ColumnOp col_op(col_desc, value, ExprOperator::kLT, YQLOperator::YQL_OP_LESS_THAN);
       where_ops_.push_back(col_op);
       break;
     }
@@ -193,7 +193,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       (*col_stats)[col_desc->index()].has_gt_ = true;
 
       // The condition to "where" operator list.
-      ColumnOp col_op(col_desc, value, ExprOperator::kGT, YSQLOperator::YSQL_OP_GREATER_THAN);
+      ColumnOp col_op(col_desc, value, ExprOperator::kGT, YQLOperator::YQL_OP_GREATER_THAN);
       where_ops_.push_back(col_op);
       break;
     }

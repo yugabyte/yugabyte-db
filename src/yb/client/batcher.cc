@@ -234,10 +234,10 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   in_flight_op->yb_op = yb_op;
   in_flight_op->state = InFlightOp::kLookingUpTablet;
 
-  // For YSQL read and write ops, populate the hash code of this op.
-  if (yb_op->type() == YBOperation::Type::YSQL_READ ||
-      yb_op->type() == YBOperation::Type::YSQL_WRITE) {
-    down_cast<YBSqlOp*>(yb_op.get())->SetHashCode(
+  // For YQL read and write ops, populate the hash code of this op.
+  if (yb_op->type() == YBOperation::Type::YQL_READ ||
+      yb_op->type() == YBOperation::Type::YQL_WRITE) {
+    down_cast<YBqlOp*>(yb_op.get())->SetHashCode(
         PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
   }
 

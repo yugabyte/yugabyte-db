@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 //
-// This file contains YSQLScanSpec that implements a YSQL scan specification.
+// This file contains YQLScanSpec that implements a YQL scan specification.
 
-#include "yb/docdb/ysql_scanspec.h"
+#include "yb/docdb/yql_scanspec.h"
 
 namespace yb {
 namespace docdb {
@@ -10,8 +10,8 @@ namespace docdb {
 using std::unordered_map;
 using std::pair;
 
-//-------------------------------------- YSQL scan range --------------------------------------
-YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condition)
+//-------------------------------------- YQL scan range --------------------------------------
+YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition)
     : schema_(schema) {
 
   // If there is no range column, return.
@@ -25,7 +25,7 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
     const auto& column = schema.column(i);
     if (!column.is_hash_key()) {
       const auto data_type = column.type_info()->type();
-      ranges_.emplace(schema.column_id(i), YSQLRange(YSQLValue(data_type), YSQLValue(data_type)));
+      ranges_.emplace(schema.column_id(i), YQLRange(YQLValue(data_type), YQLValue(data_type)));
     }
   }
 
@@ -33,7 +33,7 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
   const auto& operands = condition.operands();
   bool has_range_column = false;
   for (const auto& operand : operands) {
-    if (operand.expr_case() == YSQLExpressionPB::ExprCase::kColumnId &&
+    if (operand.expr_case() == YQLExpressionPB::ExprCase::kColumnId &&
         schema.is_range_column(ColumnId(operand.column_id()))) {
         has_range_column = true;
         break;
@@ -42,20 +42,20 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
 
   switch (condition.op()) {
 
-#define YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr)                       \
-      CHECK_EQ(operands.size(), 2);                                                      \
-      YSQLExpressionPB const* col_expr = nullptr;                                        \
-      YSQLExpressionPB const* val_expr = nullptr;                                        \
-      if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId &&        \
-          operands.Get(1).expr_case() == YSQLExpressionPB::ExprCase::kValue) {           \
-        col_expr = &operands.Get(0);                                                     \
-        val_expr = &operands.Get(1);                                                     \
-      } else if (operands.Get(1).expr_case() == YSQLExpressionPB::ExprCase::kColumnId && \
-                 operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kValue) {    \
-        col_expr = &operands.Get(1);                                                     \
-        val_expr = &operands.Get(0);                                                     \
-      } else {                                                                           \
-        return;                                                                          \
+#define YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr)                       \
+      CHECK_EQ(operands.size(), 2);                                                     \
+      YQLExpressionPB const* col_expr = nullptr;                                        \
+      YQLExpressionPB const* val_expr = nullptr;                                        \
+      if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId &&        \
+          operands.Get(1).expr_case() == YQLExpressionPB::ExprCase::kValue) {           \
+        col_expr = &operands.Get(0);                                                    \
+        val_expr = &operands.Get(1);                                                    \
+      } else if (operands.Get(1).expr_case() == YQLExpressionPB::ExprCase::kColumnId && \
+                 operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kValue) {    \
+        col_expr = &operands.Get(1);                                                    \
+        val_expr = &operands.Get(0);                                                    \
+      } else {                                                                          \
+        return;                                                                         \
       }
 
     // For relational conditions, the bounds are as follows. If the column is not a range column,
@@ -66,24 +66,24 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
     // measure. There may be a some ways to optimize and distinguish the two in future, like using
     // exclusive lower bound in DocRowwiseIterator or increment the bound value by "1" to become
     // inclusive bound. Same for > and >=.
-    case YSQL_OP_EQUAL: {
+    case YQL_OP_EQUAL: {
       if (has_range_column) {
         // - <column> = <value> --> lower/upper bounds = <value>
-        YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
+        YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
-        YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
+        YQLValue value = YQLValue::FromYQLValuePB(val_expr->value());
         ranges_.at(column_id).lower_bound = value;
         ranges_.at(column_id).upper_bound = value;
       }
       return;
     }
-    case YSQL_OP_LESS_THAN:
-    case YSQL_OP_LESS_THAN_EQUAL: {
+    case YQL_OP_LESS_THAN:
+    case YQL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
-        YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
+        YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
-        YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
-        if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
+        YQLValue value = YQLValue::FromYQLValuePB(val_expr->value());
+        if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
           // - <column> <= <value> --> upper_bound = <value>
           ranges_.at(column_id).upper_bound = value;
         } else {
@@ -93,13 +93,13 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       }
       return;
     }
-    case YSQL_OP_GREATER_THAN:
-    case YSQL_OP_GREATER_THAN_EQUAL: {
+    case YQL_OP_GREATER_THAN:
+    case YQL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
-        YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
+        YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
-        YSQLValue value = YSQLValue::FromYSQLValuePB(val_expr->value());
-        if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
+        YQLValue value = YQLValue::FromYQLValuePB(val_expr->value());
+        if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
           // - <column> >= <value> --> lower_bound = <value>
           ranges_.at(column_id).lower_bound = value;
         } else {
@@ -109,34 +109,34 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       }
       return;
     }
-    case YSQL_OP_BETWEEN: {
+    case YQL_OP_BETWEEN: {
       if (has_range_column) {
         // <column> BETWEEN <value_1> <value_2>:
         // - lower_bound = <value_1>
         // - upper_bound = <value_2>
         CHECK_EQ(operands.size(), 3);
-        if (operands.Get(0).expr_case() == YSQLExpressionPB::ExprCase::kColumnId) {
+        if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
           const ColumnId column_id(operands.Get(0).column_id());
-          if (operands.Get(1).expr_case() == YSQLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).lower_bound = YSQLValue::FromYSQLValuePB(operands.Get(1).value());
+          if (operands.Get(1).expr_case() == YQLExpressionPB::ExprCase::kValue) {
+            ranges_.at(column_id).lower_bound = YQLValue::FromYQLValuePB(operands.Get(1).value());
           }
-          if (operands.Get(2).expr_case() == YSQLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).upper_bound = YSQLValue::FromYSQLValuePB(operands.Get(2).value());
+          if (operands.Get(2).expr_case() == YQLExpressionPB::ExprCase::kValue) {
+            ranges_.at(column_id).upper_bound = YQLValue::FromYQLValuePB(operands.Get(2).value());
           }
         }
       }
       return;
     }
 
-#undef YSQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN
+#undef YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN
 
     // For logical conditions, the bounds are union/intersect/complement of the operands' ranges.
-    case YSQL_OP_AND: {
+    case YQL_OP_AND: {
       CHECK_EQ(operands.size(), 2);
-      CHECK_EQ(operands.Get(0).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
-      CHECK_EQ(operands.Get(1).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
-      const YSQLScanRange left(schema_, operands.Get(0).condition());
-      const YSQLScanRange right(schema_, operands.Get(1).condition());
+      CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
+      CHECK_EQ(operands.Get(1).expr_case(), YQLExpressionPB::ExprCase::kCondition);
+      const YQLScanRange left(schema_, operands.Get(0).condition());
+      const YQLScanRange right(schema_, operands.Get(1).condition());
       for (auto& elem : ranges_) {
         const auto column_id = elem.first;
         auto& range = elem.second;
@@ -165,12 +165,12 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       }
       return;
     }
-    case YSQL_OP_OR: {
+    case YQL_OP_OR: {
       CHECK_EQ(operands.size(), 2);
-      CHECK_EQ(operands.Get(0).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
-      CHECK_EQ(operands.Get(1).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
-      const YSQLScanRange left(schema_, operands.Get(0).condition());
-      const YSQLScanRange right(schema_, operands.Get(1).condition());
+      CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
+      CHECK_EQ(operands.Get(1).expr_case(), YQLExpressionPB::ExprCase::kCondition);
+      const YQLScanRange left(schema_, operands.Get(0).condition());
+      const YQLScanRange right(schema_, operands.Get(1).condition());
       for (auto& elem : ranges_) {
         const auto column_id = elem.first;
         auto& range = elem.second;
@@ -191,10 +191,10 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       }
       return;
     }
-    case YSQL_OP_NOT: {
+    case YQL_OP_NOT: {
       CHECK_EQ(operands.size(), 1);
-      CHECK_EQ(operands.Get(0).expr_case(), YSQLExpressionPB::ExprCase::kCondition);
-      const YSQLScanRange other(schema_, operands.Get(0).condition());
+      CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
+      const YQLScanRange other(schema_, operands.Get(0).condition());
       for (auto& elem : ranges_) {
         const auto column_id = elem.first;
         auto& range = elem.second;
@@ -216,22 +216,22 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
       return;
     }
 
-    case YSQL_OP_IS_NULL:     FALLTHROUGH_INTENDED;
-    case YSQL_OP_IS_NOT_NULL: FALLTHROUGH_INTENDED;
-    case YSQL_OP_IS_TRUE:     FALLTHROUGH_INTENDED;
-    case YSQL_OP_IS_FALSE:    FALLTHROUGH_INTENDED;
-    case YSQL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
-    case YSQL_OP_LIKE:        FALLTHROUGH_INTENDED;
-    case YSQL_OP_NOT_LIKE:    FALLTHROUGH_INTENDED;
-    case YSQL_OP_IN:          FALLTHROUGH_INTENDED;
-    case YSQL_OP_NOT_IN:      FALLTHROUGH_INTENDED;
-    case YSQL_OP_NOT_BETWEEN:
+    case YQL_OP_IS_NULL:     FALLTHROUGH_INTENDED;
+    case YQL_OP_IS_NOT_NULL: FALLTHROUGH_INTENDED;
+    case YQL_OP_IS_TRUE:     FALLTHROUGH_INTENDED;
+    case YQL_OP_IS_FALSE:    FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
+    case YQL_OP_LIKE:        FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_LIKE:    FALLTHROUGH_INTENDED;
+    case YQL_OP_IN:          FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_IN:      FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_BETWEEN:
       // No simple range can be deduced from these conditions. So the range will be unbounded.
       return;
 
-    case YSQL_OP_EXISTS:     FALLTHROUGH_INTENDED;
-    case YSQL_OP_NOT_EXISTS: FALLTHROUGH_INTENDED;
-    case YSQL_OP_NOOP:
+    case YQL_OP_EXISTS:     FALLTHROUGH_INTENDED;
+    case YQL_OP_NOT_EXISTS: FALLTHROUGH_INTENDED;
+    case YQL_OP_NOOP:
       break;
     // default: fall through
   }
@@ -242,8 +242,8 @@ YSQLScanRange::YSQLScanRange(const Schema& schema, const YSQLConditionPB& condit
 // Return the lower/upper range components for the scan. We can use the range group as the bounds
 // in DocRowwiseIterator only when all the range columns have bounded values. So return an empty
 // group if any of the range column does not have a bound.
-vector<YSQLValue> YSQLScanRange::range_values(const bool lower_bound) const {
-  vector<YSQLValue> range_values;
+vector<YQLValue> YQLScanRange::range_values(const bool lower_bound) const {
+  vector<YQLValue> range_values;
   range_values.reserve(schema_.num_range_key_columns());
   for (size_t i = 0; i < schema_.num_key_columns(); i++) {
     if (!schema_.column(i).is_hash_key()) {
@@ -259,23 +259,23 @@ vector<YSQLValue> YSQLScanRange::range_values(const bool lower_bound) const {
   return range_values;
 }
 
-//-------------------------------------- YSQL scan spec ---------------------------------------
-YSQLScanSpec::YSQLScanSpec(const Schema& schema, const DocKey& doc_key)
+//-------------------------------------- YQL scan spec ---------------------------------------
+YQLScanSpec::YQLScanSpec(const Schema& schema, const DocKey& doc_key)
     : schema_(schema), doc_key_(&doc_key), hash_code_(0), hashed_components_(nullptr),
       condition_(nullptr), row_count_limit_(1), range_(nullptr) {
 }
 
-YSQLScanSpec::YSQLScanSpec(
+YQLScanSpec::YQLScanSpec(
     const Schema& schema, const uint32_t hash_code,
-    const std::vector<PrimitiveValue>& hashed_components, const YSQLConditionPB* condition,
+    const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
     const size_t row_count_limit)
     : schema_(schema), doc_key_(nullptr), hash_code_(hash_code),
       hashed_components_(&hashed_components), condition_(condition),
       row_count_limit_(row_count_limit),
-      range_(condition != nullptr ? new YSQLScanRange(schema, *condition) : nullptr) {
+      range_(condition != nullptr ? new YQLScanRange(schema, *condition) : nullptr) {
 }
 
-DocKey YSQLScanSpec::range_doc_key(const bool lower_bound) const {
+DocKey YQLScanSpec::range_doc_key(const bool lower_bound) const {
   // If a full doc key is specify, that is the exactly doc to scan. Otherwise, compute the
   // lower/upper bound doc keys to scan from the range.
   if (doc_key_ != nullptr) {
@@ -283,10 +283,10 @@ DocKey YSQLScanSpec::range_doc_key(const bool lower_bound) const {
   }
   vector<PrimitiveValue> range_components;
   if (range_.get() != nullptr) {
-    const vector<YSQLValue> range_values = range_->range_values(lower_bound);
+    const vector<YQLValue> range_values = range_->range_values(lower_bound);
     range_components.reserve(range_values.size());
     for (const auto& value : range_values) {
-      range_components.emplace_back(PrimitiveValue::FromYSQLValue(value));
+      range_components.emplace_back(PrimitiveValue::FromYQLValue(value));
     }
   }
   CHECK(hashed_components_ != nullptr) << "hashed primary key columns missing";
@@ -294,7 +294,7 @@ DocKey YSQLScanSpec::range_doc_key(const bool lower_bound) const {
 }
 
 // Evaluate the WHERE condition for the given row.
-Status YSQLScanSpec::Match(const YSQLValueMap& row, bool* match) const {
+Status YQLScanSpec::Match(const YQLValueMap& row, bool* match) const {
   if (condition_ != nullptr) {
     return EvaluateCondition(*condition_, row, schema_, match);
   }

@@ -17,12 +17,12 @@ using std::string;
 using std::vector;
 using std::unique_ptr;
 
-using client::YBSqlReadOp;
-using client::YBSqlWriteOp;
+using client::YBqlReadOp;
+using client::YBqlWriteOp;
 
 namespace {
 
-vector<ColumnSchema> GetColumnSchemasFromReadOp(const YBSqlReadOp& op) {
+vector<ColumnSchema> GetColumnSchemasFromReadOp(const YBqlReadOp& op) {
   vector<ColumnSchema> column_schemas;
   column_schemas.reserve(op.request().column_ids_size());
   const auto& schema = op.table()->schema();
@@ -33,7 +33,7 @@ vector<ColumnSchema> GetColumnSchemasFromReadOp(const YBSqlReadOp& op) {
   return column_schemas;
 }
 
-vector<ColumnSchema> GetColumnSchemasFromWriteOp(const YBSqlWriteOp& op) {
+vector<ColumnSchema> GetColumnSchemasFromWriteOp(const YBqlWriteOp& op) {
   vector<ColumnSchema> column_schemas;
   column_schemas.reserve(op.response().column_schemas_size());
   for (const auto column_schema : op.response().column_schemas()) {
@@ -44,23 +44,23 @@ vector<ColumnSchema> GetColumnSchemasFromWriteOp(const YBSqlWriteOp& op) {
 
 } // namespace
 
-RowsResult::RowsResult(YBSqlReadOp* op)
+RowsResult::RowsResult(YBqlReadOp* op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromReadOp(*op)),
       rows_data_(op->rows_data()),
       client_(op->request().client()) {
 }
 
-RowsResult::RowsResult(YBSqlWriteOp* op)
+RowsResult::RowsResult(YBqlWriteOp* op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromWriteOp(*op)),
       rows_data_(op->rows_data()),
       client_(op->request().client()) {
 }
 
-YSQLRowBlock* RowsResult::GetRowBlock() const {
+YQLRowBlock* RowsResult::GetRowBlock() const {
   Schema schema(column_schemas_, 0);
-  unique_ptr<YSQLRowBlock> rowblock(new YSQLRowBlock(schema));
+  unique_ptr<YQLRowBlock> rowblock(new YQLRowBlock(schema));
   Slice data(rows_data_);
   if (!data.empty()) {
     // TODO: a better way to handle errors here?

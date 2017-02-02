@@ -7,7 +7,7 @@ namespace tserver {
 
 class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
  public:
-  RemoteBootstrapRocksDBTest() : RemoteBootstrapTest(YSQL_TABLE_TYPE) {}
+  RemoteBootstrapRocksDBTest() : RemoteBootstrapTest(YQL_TABLE_TYPE) {}
 
   virtual void SetUp() OVERRIDE {
     RemoteBootstrapTest::SetUp();
@@ -44,7 +44,7 @@ TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
 TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields) {
   auto superblock = session_->tablet_superblock();
   LOG(INFO) << superblock.ShortDebugString();
-  ASSERT_TRUE(superblock.table_type() == YSQL_TABLE_TYPE);
+  ASSERT_TRUE(superblock.table_type() == YQL_TABLE_TYPE);
   ASSERT_TRUE(superblock.has_rocksdb_dir());
 
   const auto& checkpoint_dir = session_->checkpoint_dir_;

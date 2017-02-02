@@ -15,8 +15,8 @@
 #include "yb/docdb/key_bytes.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/common.pb.h"
-#include "yb/common/ysql_protocol.pb.h"
-#include "yb/common/ysql_rowblock.h"
+#include "yb/common/yql_protocol.pb.h"
+#include "yb/common/yql_rowblock.h"
 
 namespace yb {
 namespace docdb {
@@ -84,14 +84,14 @@ class PrimitiveValue {
   // Construct a primitive value from a Slice containing a Kudu value.
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
-  // Construct a primitive value from a YSQLValuePB.
-  static PrimitiveValue FromYSQLValuePB(const YSQLValuePB& value);
+  // Construct a primitive value from a YQLValuePB.
+  static PrimitiveValue FromYQLValuePB(const YQLValuePB& value);
 
-  // Construct a primitive value from a YSQLValue.
-  static PrimitiveValue FromYSQLValue(const YSQLValue& value);
+  // Construct a primitive value from a YQLValue.
+  static PrimitiveValue FromYQLValue(const YQLValue& value);
 
-  // Set a primitive value in a YSQLValue.
-  void ToYSQLValue(YSQLValue* v) const;
+  // Set a primitive value in a YQLValue.
+  void ToYQLValue(YQLValue* v) const;
 
   ValueType value_type() const { return type_; }
 

@@ -55,9 +55,9 @@ DEFINE_int32(testcompaction_num_rows, 1000,
 static_assert(to_underlying(TableType::KUDU_COLUMNAR_TABLE_TYPE) ==
                   to_underlying(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE),
               "Numeric code for KUDU_COLUMNAR_TABLE_TYPE table type must be consistent");
-static_assert(to_underlying(TableType::YSQL_TABLE_TYPE) ==
-                  to_underlying(client::YBTableType::YSQL_TABLE_TYPE),
-              "Numeric code for YSQL_TABLE_TYPE table type must be consistent");
+static_assert(to_underlying(TableType::YQL_TABLE_TYPE) ==
+                  to_underlying(client::YBTableType::YQL_TABLE_TYPE),
+              "Numeric code for YQL_TABLE_TYPE table type must be consistent");
 static_assert(to_underlying(TableType::REDIS_TABLE_TYPE) ==
                   to_underlying(client::YBTableType::REDIS_TABLE_TYPE),
               "Numeric code for REDIS_TABLE_TYPE table type must be consistent");

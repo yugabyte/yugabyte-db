@@ -33,9 +33,9 @@ class SqlEnv {
 
   virtual CHECKED_STATUS DeleteTable(const string& name);
 
-  virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op);
+  virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op);
 
-  virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op);
+  virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name,
                                                         bool refresh_metadata);
@@ -47,12 +47,12 @@ class SqlEnv {
   }
 
   // Construct a row_block and send it back.
-  std::shared_ptr<YSQLRowBlock> row_block() const {
+  std::shared_ptr<YQLRowBlock> row_block() const {
     if (rows_result_ == nullptr) {
       // There isn't any query result.
       return nullptr;
     }
-    return std::shared_ptr<YSQLRowBlock>(rows_result_->GetRowBlock());
+    return std::shared_ptr<YQLRowBlock>(rows_result_->GetRowBlock());
   }
 
   // Reset all env states or variables before executing the next statement.

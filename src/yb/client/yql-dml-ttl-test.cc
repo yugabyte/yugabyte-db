@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-#include "yb/client/ysql-dml-base.h"
+#include "yb/client/yql-dml-base.h"
 #include "yb/sql/util/rows_result.h"
 
 namespace yb {
@@ -8,9 +8,9 @@ namespace client {
 
 using yb::sql::RowsResult;
 
-class YsqlDmlTTLTest : public YsqlDmlBase {
+class YqlDmlTTLTest : public YqlDmlBase {
  public:
-  YsqlDmlTTLTest() {
+  YqlDmlTTLTest() {
   }
 
   virtual void addColumns(YBSchemaBuilder *b) override {
@@ -22,10 +22,10 @@ class YsqlDmlTTLTest : public YsqlDmlBase {
   }
 };
 
-TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
+TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
   {
     // insert into t (k, c1, c2) values (1, 1, "yuga-hello") using ttl 2;
-    const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
     SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
@@ -35,12 +35,12 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
-    EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
+    EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
   }
 
   {
     // insert into t (k, c3, c4) values (1, 2, "yuga-hi") using ttl 4;
-    const shared_ptr<YBSqlWriteOp> op = NewWriteOp(YSQLWriteRequestPB::YSQL_STMT_INSERT);
+    const shared_ptr<YBqlWriteOp> op = NewWriteOp(YQLWriteRequestPB::YQL_STMT_INSERT);
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
     SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
@@ -50,12 +50,12 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
     const shared_ptr<YBSession> session(client_->NewSession(false /* read_only */));
     CHECK_OK(session->Apply(op));
 
-    EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
+    EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
   }
 
   {
     // select * from t where k = 1;
-    const shared_ptr<YBSqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
     SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
@@ -68,8 +68,8 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
     CHECK_OK(session->Apply(op));
 
     // Expect all 4 columns (c1, c2, c3, c4) to be valid right now.
-    EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
+    unique_ptr<YQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -84,7 +84,7 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const shared_ptr<YBSqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
     SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
@@ -97,8 +97,8 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
     CHECK_OK(session->Apply(op));
 
     // Expect columns (c1, c2) to be null and (c3, c4) to be valid right now.
-    EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
+    unique_ptr<YQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(row.column(0).int32_value(), 1);
@@ -113,7 +113,7 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
 
   {
     // select * from t where k = 1;
-    const shared_ptr<YBSqlReadOp> op = NewReadOp();
+    const shared_ptr<YBqlReadOp> op = NewReadOp();
     auto* const req = op->mutable_request();
     YBPartialRow *prow = op->mutable_row();
     SetInt32ColumnValue(req->add_hashed_column_values(), "k", 1, prow, 0);
@@ -126,8 +126,8 @@ TEST_F(YsqlDmlTTLTest, TestInsertWithTTL) {
     CHECK_OK(session->Apply(op));
 
     // Expect all 4 columns (c1, c2, c3, c4) to be null.
-    EXPECT_EQ(op->response().status(), YSQLResponsePB::YSQL_STATUS_OK);
-    unique_ptr<YSQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
+    EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
+    unique_ptr<YQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     // TODO: need to revisit this since cassandra semantics might be a little different when all
     // non primary key columns are null.

@@ -281,7 +281,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     kSysCatalogTableId,
     kSysCatalogTabletId,
     table_name(),
-    TableType::YSQL_TABLE_TYPE,
+    TableType::YQL_TABLE_TYPE,
     schema, partition_schema,
     partitions[0],
     tablet::TABLET_DATA_READY,

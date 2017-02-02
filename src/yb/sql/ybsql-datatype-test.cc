@@ -38,7 +38,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   CHECK_INVALID_STMT("SELECT * FROM test_table");
   CHECK_VALID_STMT("SELECT * FROM test_table"
                    "  WHERE h1 = 0 AND h2 = 0 AND h3 = 0 AND h4 = 'zero';");
-  std::shared_ptr<YSQLRowBlock> empty_row_block = processor->row_block();
+  std::shared_ptr<YQLRowBlock> empty_row_block = processor->row_block();
   CHECK_EQ(empty_row_block->row_count(), 0);
 
   // Insert 10 rows into the table.
@@ -66,9 +66,9 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   CHECK_VALID_STMT("SELECT * FROM test_table "
                    "  WHERE h1 = 7 AND h2 = 7 AND h3 = 7 AND h4 = 'h7';");
 
-  std::shared_ptr<YSQLRowBlock> row_block = processor->row_block();
+  std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const YSQLRow& row = row_block->row(0);
+  const YQLRow& row = row_block->row(0);
   CHECK_EQ(row.column(0).int16_value(), 7);
   CHECK_EQ(row.column(1).int32_value(), 7);
   CHECK_EQ(row.column(2).int64_value(), 7);

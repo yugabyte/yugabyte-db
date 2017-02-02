@@ -434,7 +434,7 @@ Status LinkedListTester::CreateLinkedListTable() {
                         .schema(&schema_)
                         .split_rows(GenerateSplitRows(schema_))
                         .num_replicas(num_replicas_)
-                        .table_type(client::YBTableType::YSQL_TABLE_TYPE)
+                        .table_type(client::YBTableType::YQL_TABLE_TYPE)
                         .Create(),
                         "Failed to create table");
   return Status::OK();

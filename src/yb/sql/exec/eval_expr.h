@@ -8,7 +8,7 @@
 #define YB_SQL_EXEC_EVAL_EXPR_H_
 
 #include "yb/sql/ptree/pt_expr.h"
-#include "yb/common/ysql_value.h"
+#include "yb/common/yql_value.h"
 
 namespace yb {
 namespace sql {

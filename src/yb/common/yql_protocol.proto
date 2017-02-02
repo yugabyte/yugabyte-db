@@ -6,14 +6,14 @@ option java_package = "org.yb";
 
 import "yb/common/common.proto";
 
-// This is an internal protocol for communicating YSQL operations from a YB client to a tserver.
+// This is an internal protocol for communicating YQL operations from a YB client to a tserver.
 //
 // Reference:
 // Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
 // Usage notes - https://docs.google.com/document/d/1q9i7a9X5rDdTC0q8hNAqo9i9NyDh0n_Fhm5vdzmtBEw
 
-// A YSQL value
-message YSQLValuePB {
+// A YQL value
+message YQLValuePB {
   // Note: UINT8, UINT16, UINT32, UINT64, and BINARY are not supported.
   optional DataType datatype = 1;
   // Note: an absent value means NULL
@@ -31,82 +31,82 @@ message YSQLValuePB {
 }
 
 // A column value
-message YSQLColumnValuePB {
+message YQLColumnValuePB {
   optional int32 column_id = 1;
-  optional YSQLValuePB value = 2;
+  optional YQLValuePB value = 2;
 }
 
 // An expression in a WHERE condition
-message YSQLExpressionPB {
+message YQLExpressionPB {
   oneof expr {
-    YSQLValuePB value = 1;
+    YQLValuePB value = 1;
     int32 column_id = 2;
-    YSQLConditionPB condition = 3;
+    YQLConditionPB condition = 3;
   }
 }
 
 // Condition operators
-enum YSQLOperator {
-  YSQL_OP_NOOP = 0;
+enum YQLOperator {
+  YQL_OP_NOOP = 0;
 
   // Operators that take one operand.
-  YSQL_OP_NOT = 1;
-  YSQL_OP_IS_NULL = 2;
-  YSQL_OP_IS_NOT_NULL = 3;
-  YSQL_OP_IS_TRUE = 4;
-  YSQL_OP_IS_FALSE = 5;
+  YQL_OP_NOT = 1;
+  YQL_OP_IS_NULL = 2;
+  YQL_OP_IS_NOT_NULL = 3;
+  YQL_OP_IS_TRUE = 4;
+  YQL_OP_IS_FALSE = 5;
 
   // Operators that take two operands.
-  YSQL_OP_EQUAL = 6;
-  YSQL_OP_LESS_THAN = 7;
-  YSQL_OP_LESS_THAN_EQUAL = 8;
-  YSQL_OP_GREATER_THAN = 9;
-  YSQL_OP_GREATER_THAN_EQUAL = 10;
-  YSQL_OP_NOT_EQUAL = 11;
+  YQL_OP_EQUAL = 6;
+  YQL_OP_LESS_THAN = 7;
+  YQL_OP_LESS_THAN_EQUAL = 8;
+  YQL_OP_GREATER_THAN = 9;
+  YQL_OP_GREATER_THAN_EQUAL = 10;
+  YQL_OP_NOT_EQUAL = 11;
 
-  YSQL_OP_AND = 12;
-  YSQL_OP_OR = 13;
-  YSQL_OP_LIKE = 14;
-  YSQL_OP_NOT_LIKE = 15;
-  YSQL_OP_IN = 16;
-  YSQL_OP_NOT_IN = 17;
+  YQL_OP_AND = 12;
+  YQL_OP_OR = 13;
+  YQL_OP_LIKE = 14;
+  YQL_OP_NOT_LIKE = 15;
+  YQL_OP_IN = 16;
+  YQL_OP_NOT_IN = 17;
 
   // Operators that take three operands.
-  YSQL_OP_BETWEEN = 18;
-  YSQL_OP_NOT_BETWEEN = 19;
+  YQL_OP_BETWEEN = 18;
+  YQL_OP_NOT_BETWEEN = 19;
 
   // Operators that take no operand. For use in "if" clause only currently.
-  YSQL_OP_EXISTS = 20;     // IF EXISTS
-  YSQL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
+  YQL_OP_EXISTS = 20;     // IF EXISTS
+  YQL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
 }
 
 // A logical condition that evaluates to true/false. Used in the WHERE clause.
-message YSQLConditionPB {
-  optional YSQLOperator op = 1;
-  repeated YSQLExpressionPB operands = 2;
+message YQLConditionPB {
+  optional YQLOperator op = 1;
+  repeated YQLExpressionPB operands = 2;
 }
 
 // Client type: only CQL client is supported currently
-enum YSQLClient {
-  YSQL_CLIENT_CQL = 1;
+enum YQLClient {
+  YQL_CLIENT_CQL = 1;
 }
 
 //-------------------------------------- Write request ---------------------------------------
 
-message YSQLWriteRequestPB {
+message YQLWriteRequestPB {
 
   // Statement types
-  enum YSQLStmtType {
-    YSQL_STMT_INSERT = 1;
-    YSQL_STMT_UPDATE = 2;
-    YSQL_STMT_DELETE = 3;
+  enum YQLStmtType {
+    YQL_STMT_INSERT = 1;
+    YQL_STMT_UPDATE = 2;
+    YQL_STMT_DELETE = 3;
   }
 
   // Statement type
-  optional YSQLStmtType type = 1; // required
+  optional YQLStmtType type = 1; // required
 
   // Client info
-  optional YSQLClient client = 2; // required
+  optional YQLClient client = 2; // required
   optional uint64 request_id = 3; // client request id - for debug tracing purpose only
 
   // Table schema version
@@ -119,15 +119,15 @@ message YSQLWriteRequestPB {
   // recomputed by tserver also, but since the client already calculates this to look up the
   // correct tablet server, it is passed in.
   optional uint32 hash_code = 5;
-  repeated YSQLColumnValuePB hashed_column_values = 6;
-  repeated YSQLColumnValuePB range_column_values = 7;
+  repeated YQLColumnValuePB hashed_column_values = 6;
+  repeated YQLColumnValuePB range_column_values = 7;
 
   // Column values to insert/update/delete - required
   // Note: DELETE statement has no column value.
-  repeated YSQLColumnValuePB column_values = 8;
+  repeated YQLColumnValuePB column_values = 8;
 
   // If clause condition
-  optional YSQLConditionPB if_condition = 9;
+  optional YQLConditionPB if_condition = 9;
 
   // Time to live in millisecondss.
   optional uint64 ttl = 10;
@@ -135,10 +135,10 @@ message YSQLWriteRequestPB {
 
 //-------------------------------------- Read request ----------------------------------------
 
-message YSQLReadRequestPB {
+message YQLReadRequestPB {
 
   // Client info
-  optional YSQLClient client = 1; // required
+  optional YQLClient client = 1; // required
   optional uint64 request_id = 2; // client request id - for debug tracing purpose only
 
   // Table schema version
@@ -147,10 +147,10 @@ message YSQLReadRequestPB {
   // Hashed key of row(s) to read - all fields required. The hashed column values must be in the
   // same order as the column order in the table schema.
   optional uint32 hash_code = 4;
-  repeated YSQLColumnValuePB hashed_column_values = 5;
+  repeated YQLColumnValuePB hashed_column_values = 5;
 
   // Where clause condition
-  optional YSQLConditionPB where_condition = 6;
+  optional YQLConditionPB where_condition = 6;
 
   // Column ids to read (select)
   repeated int32 column_ids = 7; // required
@@ -161,17 +161,17 @@ message YSQLReadRequestPB {
 
 //------------------------------ Response (for both read and write) -----------------------------
 
-message YSQLResponsePB {
+message YQLResponsePB {
 
   // Response status
-  enum YSQLStatus {
-    YSQL_STATUS_OK = 0;
-    YSQL_STATUS_SCHEMA_VERSION_MISMATCH = 1;
-    YSQL_STATUS_RUNTIME_ERROR = 2;
+  enum YQLStatus {
+    YQL_STATUS_OK = 0;
+    YQL_STATUS_SCHEMA_VERSION_MISMATCH = 1;
+    YQL_STATUS_RUNTIME_ERROR = 2;
   }
 
   // Status and error message
-  optional YSQLStatus status = 1 [ default = YSQL_STATUS_OK ]; // required
+  optional YQLStatus status = 1 [ default = YQL_STATUS_OK ]; // required
   optional string error_message = 2;
 
   // Schema of the rows returned if present (used by conditional DML (write) request only

@@ -29,7 +29,7 @@ set(DOCDB_SRCS
     value.cc
     subdocument.cc
     value_type.cc
-    ysql_scanspec.cc)
+    yql_scanspec.cc)
 
 set(DOCDB_DEPS
     rocksdb

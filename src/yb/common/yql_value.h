@@ -1,14 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 //
-// This file contains the YSQLValue class that represents YSQL values.
+// This file contains the YQLValue class that represents YQL values.
 
-#ifndef YB_COMMON_YSQL_VALUE_H
-#define YB_COMMON_YSQL_VALUE_H
+#ifndef YB_COMMON_YQL_VALUE_H
+#define YB_COMMON_YQL_VALUE_H
 
 #include <stdint.h>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/ysql_protocol.pb.h"
+#include "yb/common/yql_protocol.pb.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
@@ -16,18 +16,18 @@
 
 namespace yb {
 
-// A class that stores just the YSQL value part. The datatype and null state are stored out-of-line.
-// For YSQL row blocks, it is memory-inefficient for the same column in repeated rows to store the
+// A class that stores just the YQL value part. The datatype and null state are stored out-of-line.
+// For YQL row blocks, it is memory-inefficient for the same column in repeated rows to store the
 // datatype info. Also, the null state of the columns in the same row can be stored efficiently
-// in a bitmap. See YSQLRow for details.
-class YSQLValueCore {
+// in a bitmap. See YQLRow for details.
+class YQLValueCore {
 
  private:
-  friend class YSQLValue;
-  friend class YSQLRow;
+  friend class YQLValue;
+  friend class YQLRow;
 
-  // Construct a YSQLValueCore for the specified datatype.
-  inline explicit YSQLValueCore(const DataType type) {
+  // Construct a YQLValueCore for the specified datatype.
+  inline explicit YQLValueCore(const DataType type) {
     // No need to call timestamp's constructor because it is a simple wrapper over an uint64_t.
     if (type == STRING) {
       new(&string_value_) std::string();
@@ -35,12 +35,12 @@ class YSQLValueCore {
   }
 
   // Copy/move constructor for the specified datatype.
-  YSQLValueCore(DataType type, bool is_null, const YSQLValueCore& other);
-  YSQLValueCore(DataType type, bool is_null, YSQLValueCore* other);
+  YQLValueCore(DataType type, bool is_null, const YQLValueCore& other);
+  YQLValueCore(DataType type, bool is_null, YQLValueCore* other);
 
   // Since destructor cannot take an argument to indicate the datatype of the value stored, a
-  // YSQLValueCore should be destroyed by first calling the Free() method below with the datatype.
-  virtual inline ~YSQLValueCore() { }
+  // YQLValueCore should be destroyed by first calling the Free() method below with the datatype.
+  virtual inline ~YQLValueCore() { }
 
   inline void Free(const DataType type) {
     // No need to call timestamp's destructor because it is a simple wrapper over an uint64_t.
@@ -71,8 +71,8 @@ class YSQLValueCore {
   }
 
   //----------------------------- serializer / deserializer ---------------------------------
-  void Serialize(DataType type, bool is_null, YSQLClient client, faststring* buffer) const;
-  CHECKED_STATUS Deserialize(DataType type, YSQLClient client, Slice* data, bool* is_null);
+  void Serialize(DataType type, bool is_null, YQLClient client, faststring* buffer) const;
+  CHECKED_STATUS Deserialize(DataType type, YQLClient client, Slice* data, bool* is_null);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
@@ -93,14 +93,14 @@ class YSQLValueCore {
   };
 };
 
-// A YSQL value with datatype and null state. This class is good for expression evaluation.
-class YSQLValue : YSQLValueCore {
+// A YQL value with datatype and null state. This class is good for expression evaluation.
+class YQLValue : YQLValueCore {
  public:
-  explicit YSQLValue(DataType type) : YSQLValueCore(type), type_(type), is_null_(true) { }
-  YSQLValue(const YSQLValue& other) : YSQLValue(other.type_, other.is_null_, other) { }
-  YSQLValue(YSQLValue&& other) : YSQLValue(other.type_, other.is_null_, &other) { }
+  explicit YQLValue(DataType type) : YQLValueCore(type), type_(type), is_null_(true) { }
+  YQLValue(const YQLValue& other) : YQLValue(other.type_, other.is_null_, other) { }
+  YQLValue(YQLValue&& other) : YQLValue(other.type_, other.is_null_, &other) { }
 
-  virtual ~YSQLValue() {
+  virtual ~YQLValue() {
     Free(type_);
   }
 
@@ -131,7 +131,7 @@ class YSQLValue : YSQLValueCore {
   // expected datatype.
   template<typename type_t>
   void set_value(const DataType expected_type, const type_t other, type_t* value) {
-    YSQLValueCore::set_value(type_, expected_type, other, value);
+    YQLValueCore::set_value(type_, expected_type, other, value);
     is_null_ = false;
   }
 
@@ -148,11 +148,11 @@ class YSQLValue : YSQLValueCore {
   }
 
   // Assignment operator
-  YSQLValue& operator=(const YSQLValue& other);
-  YSQLValue& operator=(YSQLValue&& other);
+  YQLValue& operator=(const YQLValue& other);
+  YQLValue& operator=(YQLValue&& other);
 
   // Comparison methods / operators
-  bool Comparable(const YSQLValue& other) const { return type_ == other.type_; }
+  bool Comparable(const YQLValue& other) const { return type_ == other.type_; }
 
   template<typename T>
   int GenericCompare(const T& a, const T& b) const {
@@ -161,38 +161,38 @@ class YSQLValue : YSQLValueCore {
     return 0;
   }
 
-  int CompareTo(const YSQLValue& v) const;
+  int CompareTo(const YQLValue& v) const;
 
-  inline bool operator <(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) < 0; }
-  inline bool operator >(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) > 0; }
-  inline bool operator <=(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) <= 0; }
-  inline bool operator >=(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) >= 0; }
-  inline bool operator ==(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) == 0; }
-  inline bool operator !=(const YSQLValue& v) const { return BothNotNull(v) && CompareTo(v) != 0; }
+  inline bool operator <(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) < 0; }
+  inline bool operator >(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) > 0; }
+  inline bool operator <=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) <= 0; }
+  inline bool operator >=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) >= 0; }
+  inline bool operator ==(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) == 0; }
+  inline bool operator !=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) != 0; }
 
-  // Get a YSQLValue from a YSQLValuePB protobuf.
-  static YSQLValue FromYSQLValuePB(const YSQLValuePB& v);
+  // Get a YQLValue from a YQLValuePB protobuf.
+  static YQLValue FromYQLValuePB(const YQLValuePB& v);
 
-  // Note: YSQLValue doesn't have serialize / deserialize methods because we expect YSQL values
-  // to be serialized / deserialized as part of a row block. See YSQLRowBlock.
+  // Note: YQLValue doesn't have serialize / deserialize methods because we expect YQL values
+  // to be serialized / deserialized as part of a row block. See YQLRowBlock.
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
-  std::string ToString() const { return YSQLValueCore::ToString(type_, is_null_); }
+  std::string ToString() const { return YQLValueCore::ToString(type_, is_null_); }
 
   //-------------------------------- value datatype and null state --------------------------
  private:
-  friend class YSQLRow;
+  friend class YQLRow;
 
-  YSQLValue(const DataType type, const bool is_null, const YSQLValueCore& v)
-      : YSQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
+  YQLValue(const DataType type, const bool is_null, const YQLValueCore& v)
+      : YQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
   }
 
-  YSQLValue(const DataType type, const bool is_null, YSQLValueCore* v)
-      : YSQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
+  YQLValue(const DataType type, const bool is_null, YQLValueCore* v)
+      : YQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
   }
 
-  inline bool BothNotNull(const YSQLValue& v) const { return !is_null_ && !v.is_null_; }
+  inline bool BothNotNull(const YQLValue& v) const { return !is_null_ && !v.is_null_; }
 
   const DataType type_;
   bool is_null_;
@@ -200,4 +200,4 @@ class YSQLValue : YSQLValueCore {
 
 } // namespace yb
 
-#endif // YB_COMMON_YSQL_VALUE_H
+#endif // YB_COMMON_YQL_VALUE_H

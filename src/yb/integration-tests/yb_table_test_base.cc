@@ -151,7 +151,7 @@ void YBTableTestBase::CreateTable() {
     ASSERT_OK(b.Build(&schema_));
 
     ASSERT_OK(table_creator->table_name(table_name())
-                  .table_type(YBTableType::YSQL_TABLE_TYPE)
+                  .table_type(YBTableType::YQL_TABLE_TYPE)
                   .num_replicas(3)
                   .schema(&schema_)
                   .Create());

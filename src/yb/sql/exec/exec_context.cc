@@ -18,7 +18,7 @@ ExecContext::ExecContext(const char *sql_stmt,
 ExecContext::~ExecContext() {
 }
 
-CHECKED_STATUS ExecContext::ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_op,
+CHECKED_STATUS ExecContext::ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op,
                                        const TreeNode *tnode) {
   Status s = sql_env_->ApplyWrite(yb_op);
   if (!s.ok()) {
@@ -27,7 +27,7 @@ CHECKED_STATUS ExecContext::ApplyWrite(std::shared_ptr<client::YBSqlWriteOp> yb_
   return s;
 }
 
-CHECKED_STATUS ExecContext::ApplyRead(std::shared_ptr<client::YBSqlReadOp> yb_op,
+CHECKED_STATUS ExecContext::ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op,
                                       const TreeNode *tnode) {
   Status s = sql_env_->ApplyRead(yb_op);
   // NOTE: Unlike other SQL storages, when query is empty, YB server does not use NOTFOUND status.

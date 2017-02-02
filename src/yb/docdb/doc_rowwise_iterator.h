@@ -14,7 +14,7 @@
 #include "yb/common/scan_spec.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/doc_key.h"
-#include "yb/docdb/ysql_scanspec.h"
+#include "yb/docdb/yql_scanspec.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"
 
@@ -51,21 +51,21 @@ class DocRowwiseIterator : public RowwiseIterator {
 
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
 
-  // Init YSQL read scan.
-  CHECKED_STATUS Init(const YSQLScanSpec& spec);
+  // Init YQL read scan.
+  CHECKED_STATUS Init(const YQLScanSpec& spec);
 
   // Read next row into a value map.
-  CHECKED_STATUS NextRow(const YSQLScanSpec& spec, YSQLValueMap* value_map);
+  CHECKED_STATUS NextRow(const YQLScanSpec& spec, YQLValueMap* value_map);
 
-  // Read next set of rows into YSQL row block (note: we are reading just 1 row per call for now).
-  CHECKED_STATUS NextBlock(const YSQLScanSpec& spec, YSQLRowBlock* rowblock);
+  // Read next set of rows into YQL row block (note: we are reading just 1 row per call for now).
+  CHECKED_STATUS NextBlock(const YQLScanSpec& spec, YQLRowBlock* rowblock);
 
  private:
   DocKey KuduToDocKey(const EncodedKey &encoded_key) {
     return DocKey::FromKuduEncodedKey(encoded_key, schema_);
   }
 
-  // Get the non-key column values of a YSQL row.
+  // Get the non-key column values of a YQL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<PrimitiveValue>* values);
 
   const Schema& projection_;

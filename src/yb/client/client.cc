@@ -156,8 +156,8 @@ static TableType ClientToPBTableType(YBTableType table_type) {
   switch (table_type) {
     case YBTableType::KUDU_COLUMNAR_TABLE_TYPE:
       return TableType::KUDU_COLUMNAR_TABLE_TYPE;
-    case YBTableType::YSQL_TABLE_TYPE:
-      return TableType::YSQL_TABLE_TYPE;
+    case YBTableType::YQL_TABLE_TYPE:
+      return TableType::YQL_TABLE_TYPE;
     case YBTableType::REDIS_TABLE_TYPE:
       return TableType::REDIS_TABLE_TYPE;
     default:
@@ -866,28 +866,28 @@ YBRedisReadOp* YBTable::NewRedisRead() {
   return new YBRedisReadOp(shared_from_this());
 }
 
-YBSqlWriteOp* YBTable::NewYSQLWrite() {
-  return new YBSqlWriteOp(shared_from_this());
+YBqlWriteOp* YBTable::NewYQLWrite() {
+  return new YBqlWriteOp(shared_from_this());
 }
 
-YBSqlWriteOp* YBTable::NewYSQLInsert() {
-  return YBSqlWriteOp::NewInsert(shared_from_this());
+YBqlWriteOp* YBTable::NewYQLInsert() {
+  return YBqlWriteOp::NewInsert(shared_from_this());
 }
 
-YBSqlWriteOp* YBTable::NewYSQLUpdate() {
-  return YBSqlWriteOp::NewUpdate(shared_from_this());
+YBqlWriteOp* YBTable::NewYQLUpdate() {
+  return YBqlWriteOp::NewUpdate(shared_from_this());
 }
 
-YBSqlWriteOp* YBTable::NewYSQLDelete() {
-  return YBSqlWriteOp::NewDelete(shared_from_this());
+YBqlWriteOp* YBTable::NewYQLDelete() {
+  return YBqlWriteOp::NewDelete(shared_from_this());
 }
 
-YBSqlReadOp* YBTable::NewYSQLSelect() {
-  return YBSqlReadOp::NewSelect(shared_from_this());
+YBqlReadOp* YBTable::NewYQLSelect() {
+  return YBqlReadOp::NewSelect(shared_from_this());
 }
 
-YBSqlReadOp* YBTable::NewYSQLRead() {
-  return new YBSqlReadOp(shared_from_this());
+YBqlReadOp* YBTable::NewYQLRead() {
+  return new YBqlReadOp(shared_from_this());
 }
 
 YBClient* YBTable::client() const {

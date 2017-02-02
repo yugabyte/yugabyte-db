@@ -295,7 +295,7 @@ void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client)
           .split_rows(splits)
           .num_replicas(FLAGS_num_replicas)
           .table_type(
-              FLAGS_use_kv_table ? yb::client::YBTableType::YSQL_TABLE_TYPE
+              FLAGS_use_kv_table ? yb::client::YBTableType::YQL_TABLE_TYPE
                                  : yb::client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE)
           .Create();
   if (!table_creation_status.ok()) {

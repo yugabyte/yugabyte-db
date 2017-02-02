@@ -25,8 +25,8 @@
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/redis_protocol.pb.h"
-#include "yb/common/ysql_protocol.pb.h"
-#include "yb/common/ysql_rowblock.h"
+#include "yb/common/yql_protocol.pb.h"
+#include "yb/common/yql_rowblock.h"
 #include "yb/redisserver/redis_constants.h"
 
 namespace yb {
@@ -148,28 +148,28 @@ RedisResponsePB* YBRedisReadOp::mutable_response() {
   return redis_response_.get();
 }
 
-// YBSqlOp -----------------------------------------------------------------
-YBSqlOp::YBSqlOp(const shared_ptr<YBTable>& table)
-    : YBOperation(table) , ysql_response_(new YSQLResponsePB()) {
+// YBqlOp -----------------------------------------------------------------
+YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
+    : YBOperation(table) , yql_response_(new YQLResponsePB()) {
 }
 
-YBSqlOp::~YBSqlOp() {
+YBqlOp::~YBqlOp() {
 }
 
-// YBSqlWriteOp -----------------------------------------------------------------
+// YBqlWriteOp -----------------------------------------------------------------
 
-YBSqlWriteOp::YBSqlWriteOp(const shared_ptr<YBTable>& table)
-    : YBSqlOp(table), ysql_write_request_(new YSQLWriteRequestPB()) {
+YBqlWriteOp::YBqlWriteOp(const shared_ptr<YBTable>& table)
+    : YBqlOp(table), yql_write_request_(new YQLWriteRequestPB()) {
 }
 
-YBSqlWriteOp::~YBSqlWriteOp() {}
+YBqlWriteOp::~YBqlWriteOp() {}
 
-static YBSqlWriteOp *NewYBSqlWriteOp(const shared_ptr<YBTable>& table,
-                                     YSQLWriteRequestPB::YSQLStmtType stmt_type) {
-  YBSqlWriteOp *op = new YBSqlWriteOp(table);
-  YSQLWriteRequestPB *req = op->mutable_request();
+static YBqlWriteOp *NewYBqlWriteOp(const shared_ptr<YBTable>& table,
+                                   YQLWriteRequestPB::YQLStmtType stmt_type) {
+  YBqlWriteOp *op = new YBqlWriteOp(table);
+  YQLWriteRequestPB *req = op->mutable_request();
   req->set_type(stmt_type);
-  req->set_client(YSQL_CLIENT_CQL);
+  req->set_client(YQL_CLIENT_CQL);
   req->set_request_id(reinterpret_cast<uint64_t>(op));
 
   // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
@@ -179,25 +179,25 @@ static YBSqlWriteOp *NewYBSqlWriteOp(const shared_ptr<YBTable>& table,
   return op;
 }
 
-YBSqlWriteOp *YBSqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
-  return NewYBSqlWriteOp(table, YSQLWriteRequestPB::YSQL_STMT_INSERT);
+YBqlWriteOp *YBqlWriteOp::NewInsert(const std::shared_ptr<YBTable>& table) {
+  return NewYBqlWriteOp(table, YQLWriteRequestPB::YQL_STMT_INSERT);
 }
 
-YBSqlWriteOp *YBSqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
-  return NewYBSqlWriteOp(table, YSQLWriteRequestPB::YSQL_STMT_UPDATE);
+YBqlWriteOp *YBqlWriteOp::NewUpdate(const std::shared_ptr<YBTable>& table) {
+  return NewYBqlWriteOp(table, YQLWriteRequestPB::YQL_STMT_UPDATE);
 }
 
-YBSqlWriteOp *YBSqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
-  return NewYBSqlWriteOp(table, YSQLWriteRequestPB::YSQL_STMT_DELETE);
+YBqlWriteOp *YBqlWriteOp::NewDelete(const std::shared_ptr<YBTable>& table) {
+  return NewYBqlWriteOp(table, YQLWriteRequestPB::YQL_STMT_DELETE);
 }
 
-std::string YBSqlWriteOp::ToString() const {
-  return "YSQL_WRITE " + ysql_write_request_->DebugString();
+std::string YBqlWriteOp::ToString() const {
+  return "YQL_WRITE " + yql_write_request_->DebugString();
 }
 
 namespace {
 
-Status SetColumn(YBPartialRow* row, const int32 column_id, const YSQLValuePB& value) {
+Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& value) {
   const auto column_idx = row->schema()->find_column_by_id(ColumnId(column_id));
   CHECK_NE(column_idx, Schema::kColumnNotFound);
   CHECK(value.has_datatype());
@@ -249,7 +249,7 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YSQLValuePB& va
 
 Status SetPartialRowKey(
     YBPartialRow* row,
-    const google::protobuf::RepeatedPtrField<YSQLColumnValuePB>& hashed_column_values) {
+    const google::protobuf::RepeatedPtrField<YQLColumnValuePB>& hashed_column_values) {
   // Set the partition key in partial row from the hashed columns.
   for (const auto& column_value : hashed_column_values) {
     RETURN_NOT_OK(SetColumn(row, column_value.column_id(), column_value.value()));
@@ -266,26 +266,26 @@ Status SetPartialRowKey(
 
 } // namespace
 
-Status YBSqlWriteOp::SetKey() {
-  return SetPartialRowKey(mutable_row(), ysql_write_request_->hashed_column_values());
+Status YBqlWriteOp::SetKey() {
+  return SetPartialRowKey(mutable_row(), yql_write_request_->hashed_column_values());
 }
 
-void YBSqlWriteOp::SetHashCode(const uint16_t hash_code) {
-  ysql_write_request_->set_hash_code(hash_code);
+void YBqlWriteOp::SetHashCode(const uint16_t hash_code) {
+  yql_write_request_->set_hash_code(hash_code);
 }
 
-// YBSqlReadOp -----------------------------------------------------------------
+// YBqlReadOp -----------------------------------------------------------------
 
-YBSqlReadOp::YBSqlReadOp(const shared_ptr<YBTable>& table)
-    : YBSqlOp(table), ysql_read_request_(new YSQLReadRequestPB()) {
+YBqlReadOp::YBqlReadOp(const shared_ptr<YBTable>& table)
+    : YBqlOp(table), yql_read_request_(new YQLReadRequestPB()) {
 }
 
-YBSqlReadOp::~YBSqlReadOp() {}
+YBqlReadOp::~YBqlReadOp() {}
 
-YBSqlReadOp *YBSqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
-  YBSqlReadOp *op = new YBSqlReadOp(table);
-  YSQLReadRequestPB *req = op->mutable_request();
-  req->set_client(YSQL_CLIENT_CQL);
+YBqlReadOp *YBqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
+  YBqlReadOp *op = new YBqlReadOp(table);
+  YQLReadRequestPB *req = op->mutable_request();
+  req->set_client(YQL_CLIENT_CQL);
   req->set_request_id(reinterpret_cast<uint64_t>(op));
 
   // TODO(neil): When ALTER TABLE is supported, we'll need to set schema version of 'table'.
@@ -295,16 +295,16 @@ YBSqlReadOp *YBSqlReadOp::NewSelect(const shared_ptr<YBTable>& table) {
   return op;
 }
 
-std::string YBSqlReadOp::ToString() const {
-  return "YSQL_READ " + ysql_read_request_->DebugString();
+std::string YBqlReadOp::ToString() const {
+  return "YQL_READ " + yql_read_request_->DebugString();
 }
 
-Status YBSqlReadOp::SetKey() {
-  return SetPartialRowKey(mutable_row(), ysql_read_request_->hashed_column_values());
+Status YBqlReadOp::SetKey() {
+  return SetPartialRowKey(mutable_row(), yql_read_request_->hashed_column_values());
 }
 
-void YBSqlReadOp::SetHashCode(const uint16_t hash_code) {
-  ysql_read_request_->set_hash_code(hash_code);
+void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
+  yql_read_request_->set_hash_code(hash_code);
 }
 
 }  // namespace client

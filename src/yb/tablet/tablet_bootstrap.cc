@@ -510,7 +510,7 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
     case TableType::KUDU_COLUMNAR_TABLE_TYPE:
       *has_blocks = tablet->num_rowsets() != 0;
       break;
-    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType ::REDIS_TABLE_TYPE:
       *has_blocks = tablet->HasSSTables();
       break;
@@ -1138,7 +1138,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // in the logs with the correct point-in-time schema.
   //
   // We only do this for legacy Kudu columnar-format tables as of 10/03/2016.
-  // TODO(mbautin): should we also do this for YSQL tables?
+  // TODO(mbautin): should we also do this for YQL tables?
   if (!segments.empty() && tablet_->table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     const scoped_refptr<ReadableLogSegment>& segment = segments[0];
     // Set the point-in-time schema for the tablet based on the log header.
@@ -1422,7 +1422,7 @@ Status TabletBootstrap::PlayRowOperations(WriteTransactionState* tx_state,
                             "Failed to acquire row locks");
       RETURN_NOT_OK(FilterAndApplyOperations(tx_state, result));
       break;
-    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
     case TableType::REDIS_TABLE_TYPE:
       tablet_->ApplyRowOperations(tx_state);
       break;

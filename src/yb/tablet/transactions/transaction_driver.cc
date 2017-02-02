@@ -392,8 +392,8 @@ Status TransactionDriver::ApplyAsync() {
 
   TRACE_EVENT_FLOW_BEGIN0("txn", "ApplyTask", this);
   switch (table_type_) {
-    case TableType::YSQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
-    case TableType ::REDIS_TABLE_TYPE:
+    case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
+    case TableType::REDIS_TABLE_TYPE:
       // Key-value tables backed by RocksDB require that we apply changes synchronously to enforce
       // the order.
       ApplyTask();

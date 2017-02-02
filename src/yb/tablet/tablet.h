@@ -221,16 +221,16 @@ class Tablet {
                                 const RedisReadRequestPB& redis_read_request,
                                 RedisResponsePB* response);
 
-  CHECKED_STATUS KeyValueBatchFromYSQLWriteBatch(
+  CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
       const tserver::WriteRequestPB& write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* write_batch_pb,
       vector<string> *keys_locked,
       tserver::WriteResponsePB* write_response,
       WriteTransactionState* tx_state);
 
-  CHECKED_STATUS HandleYSQLReadRequest(const MvccSnapshot &snap,
-                               const YSQLReadRequestPB& ysql_read_request,
-                               YSQLResponsePB* response,
+  CHECKED_STATUS HandleYQLReadRequest(const MvccSnapshot &snap,
+                               const YQLReadRequestPB& yql_read_request,
+                               YQLResponsePB* response,
                                gscoped_ptr<faststring>* rows_data);
 
   // Takes a Kudu WriteRequestPB as input with its row operations.
@@ -252,7 +252,7 @@ class Tablet {
                                         std::vector<std::string>* keys_locked);
 
   // Create a RocksDB checkpoint in the provided directory. Only used when table_type_ ==
-  // YSQL_TABLE_TYPE.
+  // YQL_TABLE_TYPE.
   CHECKED_STATUS CreateCheckpoint(const std::string& dir,
                           google::protobuf::RepeatedPtrField<RocksDBFilePB>* rocksdb_files);
 
@@ -505,7 +505,7 @@ class Tablet {
     const ScanSpec *spec,
     vector<std::shared_ptr<RowwiseIterator> > *iters) const;
 
-  CHECKED_STATUS YSQLCaptureConsistentIterators(
+  CHECKED_STATUS YQLCaptureConsistentIterators(
       const Schema *projection,
       const MvccSnapshot &snap,
       const ScanSpec *spec,
