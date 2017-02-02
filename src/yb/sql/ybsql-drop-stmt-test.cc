@@ -14,9 +14,9 @@ do {                                                                            
   ASSERT_FALSE(s.ToString().find(expected_error) == string::npos);                                 \
 } while (false);
 
-class YbSqlCreateTable : public YbSqlTestBase {
+class YbSqlDropTable : public YbSqlTestBase {
  public:
-  YbSqlCreateTable() : YbSqlTestBase() {
+  YbSqlDropTable() : YbSqlTestBase() {
   }
 
   inline const string CqlError(int pos, string last = "") {
@@ -24,7 +24,7 @@ class YbSqlCreateTable : public YbSqlTestBase {
   }
 };
 
-TEST_F(YbSqlCreateTable, TestSqlDropTable) {
+TEST_F(YbSqlDropTable, TestSqlDropTable) {
   // Init the simulated cluster.
   NO_FATALS(CreateSimulatedCluster());
 
@@ -61,7 +61,7 @@ TEST_F(YbSqlCreateTable, TestSqlDropTable) {
   EXEC_INVALID_DROP_STMT(drop_stmt, not_found_drop_error);
 }
 
-TEST_F(YbSqlCreateTable, TestSqlDropStmtParser) {
+TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
   // Init the simulated cluster.
   NO_FATALS(CreateSimulatedCluster());
 
@@ -113,7 +113,7 @@ TEST_F(YbSqlCreateTable, TestSqlDropStmtParser) {
   }
 }
 
-TEST_F(YbSqlCreateTable, TestSqlDropStmtAnalyzer) {
+TEST_F(YbSqlDropTable, TestSqlDropStmtAnalyzer) {
   // Init the simulated cluster.
   NO_FATALS(CreateSimulatedCluster());
 
@@ -122,11 +122,15 @@ TEST_F(YbSqlCreateTable, TestSqlDropStmtAnalyzer) {
 
   string expected_drop_error = CqlError(strlen("DROP TABLE "),
                                         " - Only one table name is allowed in a drop statement");
+  EXEC_INVALID_DROP_STMT("DROP TABLE a, b", expected_drop_error);
   EXEC_INVALID_DROP_STMT("DROP TABLE a, b, c", expected_drop_error);
+  EXEC_INVALID_DROP_STMT("DROP TABLE a, b, c, d", expected_drop_error);
 
   expected_drop_error = CqlError(strlen("DROP TABLE IF EXISTS "),
                                  " - Only one table name is allowed in a drop statement");
+  EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b", expected_drop_error);
   EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b, c", expected_drop_error);
+  EXEC_INVALID_DROP_STMT("DROP TABLE IF EXISTS a, b, c, d", expected_drop_error);
 }
 
 } // namespace sql
