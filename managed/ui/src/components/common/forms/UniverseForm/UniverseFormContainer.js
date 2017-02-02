@@ -184,6 +184,4 @@ var universeForm = reduxForm({
 })
 
 
-
-
-module.exports = connect(mapStateToProps, mapDispatchToProps)(universeForm(UniverseForm));
+export default connect(mapStateToProps, mapDispatchToProps)(universeForm(UniverseForm));

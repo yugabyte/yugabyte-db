@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { TaskProgressBar, TaskProgressWidget, TaskProgressBarWithDetails, TaskProgressStepBar  } from '../../tasks';
+import { TaskProgressBar, TaskProgressBarWithDetails, TaskProgressStepBar  } from '..';
 import { isValidObject } from '../../../utils/ObjectUtils';
 
 export default class TaskProgress extends Component {
@@ -44,9 +44,10 @@ export default class TaskProgress extends Component {
       return <span />;
     }
 
-    if ( type === "Widget" ) {
-      return <TaskProgressWidget progressData={taskProgressData} />;
-    } else if( type === "BarWithDetails" ) {
+    // if ( type === "Widget" ) {
+    //   return <TaskProgressWidget progressData={taskProgressData} />;
+    // } else
+    if (type === "BarWithDetails") {
       if (!isValidObject(currentTaskList[currentTaskId])) {
         return <div className="container">Loading...</div>;
       }
@@ -54,8 +55,7 @@ export default class TaskProgress extends Component {
                                          currentOperation={currentOperation}/>
     } else if (type === "StepBar") {
       return <TaskProgressStepBar progressData={taskProgressData}/>
-    }
-    else {
+    } else {
       return <TaskProgressBar progressData={taskProgressData} />;
     }
   }

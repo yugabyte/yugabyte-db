@@ -68,4 +68,4 @@ var registerForm = reduxForm({
   validate
 });
 
-module.exports = connect(mapStateToProps, mapDispatchToProps)(registerForm(RegisterForm));
+export default connect(mapStateToProps, mapDispatchToProps)(registerForm(RegisterForm));

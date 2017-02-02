@@ -4,8 +4,8 @@ import {
   VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_SUCCESS, VALIDATE_FROM_TOKEN_FAILURE,
 	REGISTER, REGISTER_SUCCESS, REGISTER_FAILURE,
 	LOGIN, LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE,
-  FETCH_CUSTOMER_TASKS, FETCH_CUSTOMER_TASKS_SUCCESS, FETCH_CUSTOMER_TASKS_FAILURE,
-  RESET_CUSTOMER_TASKS
+  // FETCH_CUSTOMER_TASKS, FETCH_CUSTOMER_TASKS_SUCCESS, FETCH_CUSTOMER_TASKS_FAILURE,
+  // RESET_CUSTOMER_TASKS
 } from '../actions/customers';
 import {isValidObject} from '../utils/ObjectUtils';
 
@@ -54,14 +54,14 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, customer: null, status: 'logout_success', error: null, loading: false};
     case LOGOUT_FAILURE:
       return {...state, status: 'logout_failure', error: error, loading: false};
-    case FETCH_CUSTOMER_TASKS:
-      return { ...state, tasks: [], error: null, loading: true};
-    case FETCH_CUSTOMER_TASKS_SUCCESS:
-      return { ...state, tasks: action.payload.data, error: null, loading: false};
-    case FETCH_CUSTOMER_TASKS_FAILURE:
-      return { ...state, tasks: [], error: null, loading: false};
-    case RESET_CUSTOMER_TASKS:
-      return { ...state, tasks: [], error: null, loading: false};
+    // case FETCH_CUSTOMER_TASKS:
+    //   return { ...state, tasks: [], error: null, loading: true};
+    // case FETCH_CUSTOMER_TASKS_SUCCESS:
+    //   return { ...state, tasks: action.payload.data, error: null, loading: false};
+    // case FETCH_CUSTOMER_TASKS_FAILURE:
+    //   return { ...state, tasks: [], error: null, loading: false};
+    // case RESET_CUSTOMER_TASKS:
+    //   return { ...state, tasks: [], error: null, loading: false};
     default:
       return state;
   }
