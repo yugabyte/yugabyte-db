@@ -264,6 +264,9 @@ class ClusterLoadBalancer {
   // VOTER, but it's not a VOTER yet.
   bool ConfigMemberInTransitionMode(const TabletId& tablet_id) const;
 
+  // Dump the sorted load on tservers (it is usually per table).
+  void DumpSortedLoad() const;
+
   // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;

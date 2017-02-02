@@ -227,7 +227,8 @@ public class YBClient implements AutoCloseable {
    * Get the tablet load move completion percentage for blacklisted nodes, if any.
    * @return the response with percent load completed.
    */
-  public GetLoadMovePercentResponse getLoadMoveCompletion() throws Exception {
+  public GetLoadMovePercentResponse getLoadMoveCompletion()
+      throws Exception {
     Deferred<GetLoadMovePercentResponse> d;
     GetLoadMovePercentResponse resp;
     int numTries = 0;
@@ -240,10 +241,13 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Check if the tablet load is balanced as per the master leader.
+   * @param numServers expected number of servers across which the load needs to balanced.
+   *                   Zero implies load distribution can be checked across all servers
+   *                   which the master leader knows about.
    * @return a deferred object that yields if the load is balanced.
    */
-  public IsLoadBalancedResponse getIsLoadBalanced() throws Exception {
-    Deferred<IsLoadBalancedResponse> d = asyncClient.getIsLoadBalanced();
+  public IsLoadBalancedResponse getIsLoadBalanced(int numServers) throws Exception {
+    Deferred<IsLoadBalancedResponse> d = asyncClient.getIsLoadBalanced(numServers);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -553,14 +557,15 @@ public class YBClient implements AutoCloseable {
   /**
   * Wait for the tablet load to be balanced by master leader.
   * @param timeoutMs the amount of time, in MS, to wait
+  * @param numServers expected number of servers which need to balanced.
   * @return true if the master leader does not return any error balance check.
   */
-  public boolean waitForLoadBalance(final long timeoutMs) {
+  public boolean waitForLoadBalance(final long timeoutMs, int numServers) {
     Exception finalException = null;
     long start = System.currentTimeMillis();
     do {
       try {
-        IsLoadBalancedResponse resp = getIsLoadBalanced();
+        IsLoadBalancedResponse resp = getIsLoadBalanced(numServers);
         if (!resp.hasError()) {
           return true;
         }

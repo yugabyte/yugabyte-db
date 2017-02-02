@@ -75,6 +75,12 @@ message MasterErrorPB {
     NAMESPACE_ALREADY_PRESENT = 12;
     CANNOT_DELETE_DEFAULT_NAMESPACE = 13;
     NAMESPACE_IS_NOT_EMPTY = 14;
+
+    // Client set some fields incorrectly in the cluster config proto.
+    INVALID_CLUSTER_CONFIG = 15;
+
+    // Indicator to client that the load balance operation can be retried.
+    CAN_RETRY_LOAD_BALANCE_CHECK = 16;
   }
 
   // The error code.
@@ -149,6 +155,10 @@ message ReplicationInfoPB {
 // new load.
 message BlacklistPB {
   repeated HostPortPB hosts = 1;
+
+  // Field to track the number of replicas in current set of tablets which have a blacklist server.
+  // Client should not set this. Set by server side when persisting the blacklist load.
+  optional int32 initial_replica_load = 2;
 }
 
 ////////////////////////////////////////////////////////////
@@ -758,10 +768,14 @@ message IsMasterLeaderReadyResponsePB {
 }
 
 // When no errors, the master leader will have balanced all the load across the live tservers.
+// The client can send in an optional value for the expected number of servers. If the master
+// finds fewer alive in its snapshot than these, it will consider the load imbalanced.
 message IsLoadBalancedRequestPB {
+  optional int32 expected_num_servers = 1;
 }
 
 message IsLoadBalancedResponsePB {
+  // Any error being set implies that the load is not balanced across the servers.
   optional MasterErrorPB error = 1;
 }
 

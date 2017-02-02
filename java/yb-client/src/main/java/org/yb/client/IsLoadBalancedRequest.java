@@ -15,8 +15,12 @@ import java.util.List;
 
 @InterfaceAudience.Public
 class IsLoadBalancedRequest extends YRpc<IsLoadBalancedResponse> {
-  public IsLoadBalancedRequest(YBTable masterTable) {
+  // Number of tservers which are expected to have their load balanced.
+  int expectedServers = 0;
+
+  public IsLoadBalancedRequest(YBTable masterTable, int numServers) {
     super(masterTable);
+    expectedServers = numServers;
   }
 
   @Override
@@ -24,7 +28,7 @@ class IsLoadBalancedRequest extends YRpc<IsLoadBalancedResponse> {
     assert header.isInitialized();
     final Master.IsLoadBalancedRequestPB.Builder builder =
       Master.IsLoadBalancedRequestPB.newBuilder();
-
+    builder.setExpectedNumServers(expectedServers);
     return toChannelBuffer(header, builder.build());
   }
 

@@ -17,10 +17,10 @@
 
 #include "yb/master/master_service.h"
 
-#include <gflags/gflags.h>
 #include <memory>
 #include <string>
 #include <vector>
+#include <gflags/gflags.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_manager.h"
@@ -546,7 +546,7 @@ void MasterServiceImpl::IsLoadBalanced(
   if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
     return;
   }
-  Status s = server_->catalog_manager()->IsLoadBalanced(resp);
+  Status s = server_->catalog_manager()->IsLoadBalanced(req, resp);
   CheckRespErrorOrSetUnknown(s, resp);
   rpc->RespondSuccess();
 }

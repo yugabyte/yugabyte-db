@@ -107,7 +107,7 @@ public class TestYBClient extends BaseYBTest {
   @Test(timeout = 100000)
   public void testIsLoadBalanced() throws Exception {
     LOG.info("Starting testIsLoadBalanced");
-    IsLoadBalancedResponse resp = syncClient.getIsLoadBalanced();
+    IsLoadBalancedResponse resp = syncClient.getIsLoadBalanced(0 /* numServers */);
     assertFalse(resp.hasError());
   }
   

@@ -140,11 +140,12 @@ public class MiniYBCluster implements AutoCloseable {
   /**
    * Take into account any started processes and return the next possibly free port number.
    * The multiply by 2 is to account for one port each for rpc and web services per server.
+   * The multiply by 3 is to account for tserver, yql and redis ports in tserver process.
    * @param none
    * @return Port number for a potentially free port.
    */
   private int getNextPotentiallyFreePort() {
-    return PORT_START + 2 * (masterProcesses.size() + tserverProcesses.size());
+    return PORT_START + 2 * (masterProcesses.size() + 3 * tserverProcesses.size());
   }
 
   /**

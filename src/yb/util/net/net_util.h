@@ -82,7 +82,7 @@ class HostPort {
     uint16_t default_port,
     std::vector<HostPort> *res);
 
-  bool operator==(const HostPort other) const {
+  bool operator==(const HostPort& other) const {
     return host() == other.host() && port() == other.port();
   }
 
@@ -91,36 +91,42 @@ class HostPort {
   uint16_t port_;
 };
 
+struct HostPortHash {
+  size_t operator()(const HostPort& hostPort) const {
+    return hash<std::string>()(std::to_string(hostPort.port()) + hostPort.host());
+  }
+};
+
 // Parse and resolve the given comma-separated list of addresses.
 //
 // The resulting addresses will be resolved, made unique, and added to
 // the 'addresses' vector.
 //
 // Any elements which do not include a port will be assigned 'default_port'.
-Status ParseAddressList(const std::string& addr_list,
-                        uint16_t default_port,
-                        std::vector<Sockaddr>* addresses);
+CHECKED_STATUS ParseAddressList(const std::string& addr_list,
+                                uint16_t default_port,
+                                std::vector<Sockaddr>* addresses);
 
 // Return true if the given port is likely to need root privileges to bind to.
 bool IsPrivilegedPort(uint16_t port);
 
 // Return the local machine's hostname.
-Status GetHostname(std::string* hostname);
+CHECKED_STATUS GetHostname(std::string* hostname);
 
 // Return the local machine's FQDN.
-Status GetFQDN(std::string* fqdn);
+CHECKED_STATUS GetFQDN(std::string* fqdn);
 
 // Returns a single socket address from a HostPort.
 // If the hostname resolves to multiple addresses, returns the first in the
 // list and logs a message in verbose mode.
-Status SockaddrFromHostPort(const HostPort& host_port, Sockaddr* addr);
+CHECKED_STATUS SockaddrFromHostPort(const HostPort& host_port, Sockaddr* addr);
 
 // Converts the given Sockaddr into a HostPort, substituting the FQDN
 // in the case that the provided address is the wildcard.
 //
 // In the case of other addresses, the returned HostPort will contain just the
 // stringified form of the IP.
-Status HostPortFromSockaddrReplaceWildcard(const Sockaddr& addr, HostPort* hp);
+CHECKED_STATUS HostPortFromSockaddrReplaceWildcard(const Sockaddr& addr, HostPort* hp);
 
 // Try to run 'lsof' to determine which process is preventing binding to
 // the given 'addr'. If pids can be determined, outputs full 'ps' and 'pstree'
@@ -137,4 +143,4 @@ void TryRunLsof(const Sockaddr& addr, std::vector<std::string>* log = NULL);
 uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock);
 
 } // namespace yb
-#endif
+#endif  // YB_UTIL_NET_NET_UTIL_H

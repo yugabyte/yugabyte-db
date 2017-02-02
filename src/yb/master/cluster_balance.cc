@@ -731,15 +731,6 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
       get_total_wrong_placement(), get_total_blacklisted_servers());
 
-  // Temp log to get info when there are blacklisted.
-  if (get_total_blacklisted_servers() != 0) {
-    LOG(INFO) << Substitute(
-        "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
-        "Wrong placement: $3. BlackListed: $4.",
-        get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
-        get_total_wrong_placement(), get_total_blacklisted_servers());
-  }
-
   return true;
 }
 
@@ -838,10 +829,25 @@ bool ClusterLoadBalancer::HandleAddReplicas(
   // Finally, handle normal load balancing.
   if (!GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts)) {
     VLOG(1) << "Cannot find any more tablets to move, under current constraints!";
+    if (VLOG_IS_ON(1)) {
+      DumpSortedLoad();
+    }
     return false;
   }
 
   return true;
+}
+
+void ClusterLoadBalancer::DumpSortedLoad() const {
+  int last_pos = state_->sorted_load_.size() - 1;
+  std::ostringstream out;
+  out << "Table load: ";
+  for (int left = 0; left <= last_pos; ++left) {
+    const TabletServerId& uuid = state_->sorted_load_[left];
+    int load = state_->GetLoad(uuid);
+    out << uuid << ":" << load << " ";
+  }
+  VLOG(1) << out.str();
 }
 
 bool ClusterLoadBalancer::GetLoadToMove(

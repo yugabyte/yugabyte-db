@@ -414,6 +414,23 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
 };
 
+// Component within the catalog manager which tracks blacklist (decommission) operation
+// related information.
+class BlacklistState {
+ public:
+  BlacklistState() { Reset(); }
+  ~BlacklistState() {}
+
+  void Reset();
+
+  std::string ToString();
+
+  // Set of blacklisted servers host/ports. Protected by leader_lock_ in catalog manager.
+  std::unordered_set<HostPort, HostPortHash> tservers_;
+  // In-memory tracker for initial blacklist load.
+  int64_t initial_load_;
+};
+
 // Convenience typedefs for the locks.
 typedef MetadataLock<TabletInfo> TabletMetadataLock;
 typedef MetadataLock<TableInfo> TableMetadataLock;
@@ -425,15 +442,6 @@ typedef std::unordered_map<TableId, scoped_refptr<TableInfo>> TableInfoMap;
 typedef std::pair<NamespaceId, TableName> TableNameKey;
 typedef std::unordered_map<
     TableNameKey, scoped_refptr<TableInfo>, boost::hash<TableNameKey>> TableInfoByNameMap;
-
-// Info per black listed tablet server.
-struct BlackListInfo {
-  HostPortPB hp;
-  TabletServerId uuid;
-
-  // Once this value goes to 0, we will skip checking this server's load.
-  int64_t last_reported_load;
-};
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -687,13 +695,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS SetClusterConfig(
       const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp);
 
-  // Set's the percentage of tablets that have been moved off of the initial list of load on the
-  // black-listed tablet servers, if there are no errors and not in transit. If in-transit when
-  // using a new leader master, then the in_transit error code is set and percent is not set.
+  // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
 
-  // API to check if all the live tservers have similar tablet worklaod.
-  CHECKED_STATUS IsLoadBalanced(IsLoadBalancedResponsePB* resp);
+  // API to check if all the live tservers have similar tablet workload.
+  CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
+                                IsLoadBalancedResponsePB* resp);
 
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
@@ -930,15 +937,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS EnableBgTasks();
 
   // Set the current list of black listed nodes, which is used to track the load movement off of
-  // these blacklist nodes. Also sets the initial tablet load on these. If bootup is true, then we
-  // skip setting the uuid part of BlackListInfo, they are filled on first call to get percent
-  // completion to avoid having to persist this.
-  CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist, bool bootup = false);
+  // these nodes. Also sets the initial load (which is the number of tablets on these nodes)
+  // when the blacklist load removal operation was started. It permits overwrite semantics
+  // for the blacklist.
+  CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist);
 
   // Given a tablet, find the leader uuid among its peers. If false is returned,
   // caller should not use the 'leader_uuid'.
   bool getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
                      TabletServerId* leader_uuid);
+
+  // Calculate the total number of replicas which are being handled by blacklisted servers.
+  int64_t GetNumBlacklistReplicas();
 
   int leader_ready_term() {
     std::lock_guard<simple_spinlock> l(state_lock_);
@@ -987,14 +997,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class CatalogManagerBgTasks;
   gscoped_ptr<CatalogManagerBgTasks> background_tasks_;
 
-  // List of blacklisted servers which can be checked for load info.
-  std::list<BlackListInfo> blacklist_tservers_;
-  // Initial load on all these black listed servers.
-  int64_t initial_blacklist_load_;
-  // This bool is used to check in a new leader takeover case, if we can trust initial load value.
-  bool is_initial_blacklist_load_set_;
-  // Track the data move percent completed when all blacklisted servers report their pending load.
-  double last_known_percent_complete_;
+  // Track all information related to the black list operations.
+  BlacklistState blacklistState;
 
   enum State {
     kConstructed,

@@ -20,6 +20,7 @@ import org.yb.ColumnSchema;
 import org.yb.Schema;
 import org.yb.Type;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +43,7 @@ public class TestYBTable extends BaseYBTest {
     BaseYBTest.setUpBeforeClass();
   }
 
-  @Test(expected = IllegalArgumentException.class)
+  @Ignore
   public void testBadSchema() {
     // Test creating a table with keys in the wrong order
     List<ColumnSchema> badColumns = new ArrayList<ColumnSchema>(2);
@@ -53,7 +54,7 @@ public class TestYBTable extends BaseYBTest {
     new Schema(badColumns);
   }
 
-  @Test(timeout = 100000)
+  @Ignore
   public void testAlterTable() throws Exception {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     createTable(tableName, basicSchema, null);
@@ -113,7 +114,7 @@ public class TestYBTable extends BaseYBTest {
    * Test creating tables of different sizes and see that we get the correct number of tablets back
    * @throws Exception
    */
-  @Test
+  @Ignore
   public void testGetLocations() throws Exception {
     String table1 = BASE_TABLE_NAME + System.currentTimeMillis();
 

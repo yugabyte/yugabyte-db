@@ -367,7 +367,7 @@ class ClusterConfigLoader : public ClusterConfigVisitor {
 
     if (metadata.has_server_blacklist()) {
       // Rebuild the blacklist state for load movement completion tracking.
-      RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist(), true /* bootup */));
+      RETURN_NOT_OK(catalog_manager_->SetBlackList(metadata.server_blacklist()));
     }
 
     // Update in memory state.
@@ -541,8 +541,6 @@ CatalogManager::CatalogManager(Master* master)
     : master_(master),
       rng_(GetRandomSeed32()),
       tablet_exists_(false),
-      is_initial_blacklist_load_set_(false),
-      last_known_percent_complete_(0),
       state_(kConstructed),
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
@@ -4363,58 +4361,52 @@ Status CatalogManager::GetClusterConfig(SysClusterConfigEntryPB* config) {
   return Status::OK();
 }
 
-Status CatalogManager::SetBlackList(const BlacklistPB& blacklist, bool bootup) {
-  int64_t total_load = 0;
-  if (!blacklist_tservers_.empty()) {
-    return STATUS(InvalidArgument, Substitute("Cannot overwrite blacklist of size $0 with load $1.",
-                                              blacklist_tservers_.size(), initial_blacklist_load_));
+Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
+  if (!blacklistState.tservers_.empty()) {
+    LOG(WARNING) << Substitute("Overwriting $0 with new size $1 and initial load $2.",
+                               blacklistState.ToString(), blacklist.hosts_size(),
+                               blacklist.initial_replica_load());
+    blacklistState.Reset();
   }
 
-  LOG(INFO) << "Set blacklist size=" << blacklist.hosts_size() << ", bootup=" << bootup
-            << " num_tablets=" << tablet_map_.size();
-  int num_blacklist_valid = 0;
-  for (const auto &hp : blacklist.hosts()) {
-    // We always set the host port info here, the load might not be available, especially after
-    // new leader bootup.
-    BlackListInfo bli;
-    bli.hp = hp;
-    blacklist_tservers_.push_back(bli);
+  LOG(INFO) << "Set blacklist size = " << blacklist.hosts_size() << " with load "
+            << blacklist.initial_replica_load() << " for num_tablets = " << tablet_map_.size();
 
-    std::shared_ptr<TSDescriptor> ts_desc = master_->ts_manager()->GetTSDescriptor(hp);
-    if (ts_desc == nullptr) {
-      continue;
-    }
-    bli.uuid = ts_desc->permanent_uuid();
-    int64_t load = ts_desc->num_live_replicas();
-    LOG(INFO) << "Blacklist node : " << hp.ShortDebugString() << " uuid='" << bli.uuid
-              << "', load=" << load;
-    bli.last_reported_load = load;
-    total_load += load;
-    num_blacklist_valid++;
+  for (const auto& pb : blacklist.hosts()) {
+    HostPort hp;
+    RETURN_NOT_OK(HostPortFromPB(pb, &hp));
+    blacklistState.tservers_.insert(hp);
   }
 
-  // If it is the new leader bootup case or there are no blacklist nodes, we do not
-  // have the initial load on the blacklist.
-  if (bootup || blacklist.hosts_size() == 0 || num_blacklist_valid != blacklist.hosts_size()) {
-    is_initial_blacklist_load_set_ = false;
-  } else {
-    initial_blacklist_load_ = total_load;
-    is_initial_blacklist_load_set_ = true;
-  }
+  blacklistState.initial_load_ = blacklist.initial_replica_load();
 
   return Status::OK();
 }
 
 Status CatalogManager::SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) {
-  const auto& config = req->cluster_config();
+  SysClusterConfigEntryPB config(req->cluster_config());
+
+  // Save the list of blacklisted servers to be used for completion checking.
+  if (config.has_server_blacklist()) {
+    if (config.server_blacklist().has_initial_replica_load()) {
+      Status s = STATUS(InvalidArgument, "Replica load field should not be set by the client.");
+      SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+      return s;
+    }
+
+    config.mutable_server_blacklist()->set_initial_replica_load(GetNumBlacklistReplicas());
+
+    RETURN_NOT_OK(SetBlackList(config.server_blacklist()));
+  }
+
   ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::WRITE);
-  // We should only set the config, if the caller provided us with a valid update to the previous
-  // config.
+  // We should only set the config, if the caller provided us with a valid update to the
+  // existing config.
   if (l.data().pb.version() != config.version()) {
     Status s = STATUS(IllegalState, Substitute(
-        "Config version does not match, got $0, but most recent one is $1. Should call Get again",
-        config.version(), l.data().pb.version()));
+      "Config version does not match, got $0, but most recent one is $1. Should call Get again",
+      config.version(), l.data().pb.version()));
     SetupError(resp->mutable_error(), MasterErrorPB::CONFIG_VERSION_MISMATCH, s);
     return s;
   }
@@ -4423,12 +4415,7 @@ Status CatalogManager::SetClusterConfig(
   // Bump the config version, to indicate an update.
   l.mutable_data()->pb.set_version(config.version() + 1);
 
-  LOG(INFO) << "Updated cluster config to " << config.version() + 1;
-
-  // Save the list of blacklisted servers to be used for completion checking.
-  if (config.has_server_blacklist()) {
-    RETURN_NOT_OK(SetBlackList(config.server_blacklist()));
-  }
+  LOG(INFO) << "Updating cluster config to " << config.version() + 1;
 
   RETURN_NOT_OK(sys_catalog_->UpdateClusterConfigInfo(cluster_config_.get()));
 
@@ -4437,10 +4424,20 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
-Status CatalogManager::IsLoadBalanced(IsLoadBalancedResponsePB* resp) {
+Status CatalogManager::IsLoadBalanced(const IsLoadBalancedRequestPB* req,
+                                      IsLoadBalancedResponsePB* resp) {
   vector<double> load;
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
+
+  if (req->has_expected_num_servers() && req->expected_num_servers() > ts_descs.size()) {
+    Status s = STATUS(IllegalState,
+                      Substitute("Found $0, which is below the expected number of servers $1.",
+                                 ts_descs.size(), req->expected_num_servers()));
+    SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
+    return s;
+  }
+
   for (const auto ts_desc : ts_descs) {
     load.push_back(ts_desc->num_live_replicas());
   }
@@ -4448,91 +4445,66 @@ Status CatalogManager::IsLoadBalanced(IsLoadBalancedResponsePB* resp) {
   LOG(INFO) << "Load standard deviation is " << std_dev << " for "
             << ts_descs.size() << " tservers.";
   if (std_dev >= 2.0) {
-    return STATUS(IllegalState, "Load is not balanced");
+    Status s = STATUS(IllegalState, Substitute("Load not balanced: deviation=$0.", std_dev));
+    SetupError(resp->mutable_error(), MasterErrorPB::CAN_RETRY_LOAD_BALANCE_CHECK, s);
+    return s;
   }
 
   return Status::OK();
 }
 
+void BlacklistState::Reset() {
+  tservers_.clear();
+  initial_load_ = 0;
+}
+
+std::string BlacklistState::ToString() {
+  return Substitute("Blacklist has $0 servers, initial load is $1.",
+                    tservers_.size(), initial_load_);
+}
+
+int64_t CatalogManager::GetNumBlacklistReplicas() {
+  int64_t blacklist_replicas = 0;
+  std::lock_guard <LockType> tablet_map_lock(lock_);
+  for (const TabletInfoMap::value_type& entry : tablet_map_) {
+    scoped_refptr<TabletInfo> tablet = entry.second;
+    TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
+    // Not checking being created on purpose as we do not want initial load to be under accounted.
+    if (!tablet->table() ||
+        PREDICT_FALSE(l.data().is_deleted())) {
+      continue;
+    }
+
+    TabletInfo::ReplicaMap locs;
+    TSRegistrationPB reg;
+    tablet->GetReplicaLocations(&locs);
+    for (const TabletInfo::ReplicaMap::value_type& replica : locs) {
+      replica.second.ts_desc->GetRegistration(&reg);
+      HostPort hp;
+      HostPortFromPB(reg.common().rpc_addresses(0), &hp);
+      if (blacklistState.tservers_.count(hp) != 0) {
+        blacklist_replicas++;
+      }
+    }
+  }
+
+  return blacklist_replicas;
+}
+
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
-  LOG(INFO) << "Blacklist completion check start " << blacklist_tservers_.empty()
-            << " load=" << initial_blacklist_load_ << " set=" << is_initial_blacklist_load_set_;
-  int64_t total_pending = 0;
-  int num_blacklist_valid = 0;
-  for (auto entry : blacklist_tservers_) {
-    // If it is a valid uuid and there was no last reported load, then we stop getting its load.
-    if (entry.uuid != "" && entry.last_reported_load == 0) {
-      num_blacklist_valid++;
-      continue;
-    }
+  int64_t blacklist_replicas = GetNumBlacklistReplicas();
+  LOG(INFO) << "Blacklisted count " << blacklist_replicas << " in " << tablet_map_.size()
+            << " tablets, across " << blacklistState.tservers_.size()
+            << " servers, with initial load " << blacklistState.initial_load_;
 
-    // For the case where new leader set up the blacklist, the uuid might not have been filled in.
-    // Try to get it from ts desc, or skip it if no ts has registered at this host/port yet.
-    shared_ptr<TSDescriptor> ts_desc = master_->ts_manager()->GetTSDescriptor(entry.hp);
-    if (ts_desc == nullptr) {
-      continue;
-    }
-
-    num_blacklist_valid++;
-    if (entry.uuid == "") {
-      entry.uuid = ts_desc->permanent_uuid();
-    }
-
-    int load = ts_desc->num_live_replicas();
-    entry.last_reported_load = load;
-    total_pending += load;
-  }
-
-  // Set the initial load after a reboot/new leader case only when we have some blacklisted nodes.
-  if (!is_initial_blacklist_load_set_ && !blacklist_tservers_.empty() &&
-      num_blacklist_valid == blacklist_tservers_.size()) {
-    initial_blacklist_load_ = total_pending;
-    is_initial_blacklist_load_set_ = true;
-  }
-
-  // We do not expect the load to increase, bail out for now if it does, with some logging.
-  // This could happen if new ones are being added while we were taking init load snapshot,
-  // not an error case. The in-transit ones that were being added will also get removed soon.
-  if (is_initial_blacklist_load_set_ && initial_blacklist_load_ < total_pending) {
-    LOG(WARNING) << "Blacklist load has increased from " << initial_blacklist_load_
-                 << " to " << total_pending << " num_valid=" << num_blacklist_valid;
-    resp->set_percent(0);
+  // Case when a blacklisted servers did not have any starting load.
+  if (blacklistState.initial_load_ == 0) {
+    resp->set_percent(100);
     return Status::OK();
   }
 
-  LOG(INFO) << "Load went from " << initial_blacklist_load_ << " to "
-            << total_pending << ", num_valid=" << num_blacklist_valid << ", set="
-            << is_initial_blacklist_load_set_;
-
-  if (initial_blacklist_load_ == 0) {
-    // For case where there are known blacklisted servers but load unknown, ask client to retry.
-    if (!is_initial_blacklist_load_set_ && !blacklist_tservers_.empty()) {
-      Status s = STATUS(ServiceUnavailable,
-        "In transition: the load could not be set on a newly elected leader.");
-      // For the case where tserver load could not be set, return a retriable state.
-      SetupError(resp->mutable_error(), MasterErrorPB::IN_TRANSITION_CAN_RETRY, s);
-      return s;
-    } else {
-      // When there is no load to move, return completed.
-      if (is_initial_blacklist_load_set_ && total_pending == 0) {
-        resp->set_percent(100);
-        return Status::OK();
-      }
-      // Nothing else to do if no initial load.
-      resp->set_percent(0);
-      return Status::OK();
-    }
-  }
-
-  // Only when we have heard from all blacklisted servers, accept the total_pending value
-  // and store it, so we do not regress the value when some of the blacklisted tservers fail or get
-  // disconnected. This is a fail safe to ensure we do not claim data move completed prematurely.
-  if (num_blacklist_valid == blacklist_tservers_.size()) {
-    last_known_percent_complete_ =
-      100 - (static_cast<double>(total_pending) * 100 / initial_blacklist_load_);
-  }
-
-  resp->set_percent(last_known_percent_complete_);
+  resp->set_percent(
+      100 - (static_cast<double>(blacklist_replicas) * 100 / blacklistState.initial_load_));
 
   return Status::OK();
 }
