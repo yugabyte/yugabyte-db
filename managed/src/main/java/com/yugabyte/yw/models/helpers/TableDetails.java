@@ -2,7 +2,11 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import org.yb.ColumnSchema;
+import org.yb.Schema;
+
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
 public class TableDetails {
@@ -12,6 +16,21 @@ public class TableDetails {
 
   // Details of the columns that make up the table (to be used to create ColumnSchemas)
   public List<ColumnDetails> columns;
+
+  /**
+   * Create a new TableDetails object based on the provided Schema. tableName will still need to be
+   * defined after using this constructor.
+   *
+   * @param schema The Schema that defines this table
+   */
+  public static TableDetails createWithSchema(Schema schema) {
+    TableDetails tableDetails = new TableDetails();
+    tableDetails.columns = new LinkedList<>();
+    for (ColumnSchema columnSchema : schema.getColumns()) {
+      tableDetails.columns.add(ColumnDetails.createWithColumnSchema(columnSchema));
+    }
+    return tableDetails;
+  }
 
   /**
    * This method produces a CQL statement of the following format to create a table from the

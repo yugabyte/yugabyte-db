@@ -27,7 +27,7 @@ public class CreateCassandraTable extends UniverseTaskBase {
       lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
 
       // Create table task
-      createTableTask(Common.TableType.YSQL_TABLE_TYPE, taskParams().tableName, -1,
+      createTableTask(Common.TableType.YSQL_TABLE_TYPE, taskParams().tableDetails.tableName, -1,
                       taskParams().tableDetails);
 
       // TODO: wait for table creation

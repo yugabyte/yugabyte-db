@@ -104,7 +104,7 @@ public class ApiUtils {
       ColumnDetails column = new ColumnDetails();
       column.name = "k" + i;
       column.columnOrder = i;
-      column.type = ColumnDetails.CQLDataType.INT;
+      column.type = ColumnDetails.YQLDataType.INT;
       column.isPartitionKey = i < partitionKeyCount;
       column.isClusteringKey = !column.isPartitionKey;
       table.columns.add(column);
@@ -112,7 +112,7 @@ public class ApiUtils {
     ColumnDetails column = new ColumnDetails();
     column.name = "v";
     column.columnOrder = partitionKeyCount + clusteringKeyCount;
-    column.type = ColumnDetails.CQLDataType.VARCHAR;
+    column.type = ColumnDetails.YQLDataType.VARCHAR;
     column.isPartitionKey = false;
     column.isClusteringKey = false;
     table.columns.add(column);
