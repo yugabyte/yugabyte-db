@@ -31,6 +31,7 @@ SqlProcessor::~SqlProcessor() {
 }
 
 CHECKED_STATUS SqlProcessor::Run(const string& sql_stmt) {
+  sql_env_->Reset();
   return ybsql_->Process(sql_env_.get(), sql_stmt);
 }
 

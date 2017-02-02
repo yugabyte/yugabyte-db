@@ -35,7 +35,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   // Get an available processor.
   SqlProcessor *processor = GetSqlProcessor();
 
-  const string table1 = "human_resource1(id int, name varchar);";
+  const string table1 = "human_resource1(id int, name varchar, primary key(id));";
   const string table2 = "human_resource2(id int primary key, name varchar);";
   const string table3 = "human_resource3(id int, name varchar primary key);";
   const string table4 = "human_resource4(id int, name varchar, primary key(id, name));";
@@ -43,7 +43,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   const string table6 =
       "human_resource6(id int, name varchar, salary int, primary key((id, name), salary));";
 
-  const string table7 = "human_resource7(id int, name varchar);";
+  const string table7 = "human_resource7(id int, name varchar, primary key(id));";
   const string table8 = "human_resource8(id int primary key, name varchar);";
   const string table9 = "human_resource9(id int, name varchar primary key);";
   const string table10 = "human_resource10(id int, name varchar, primary key(id, name));";
@@ -101,7 +101,6 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table11));
   EXEC_DUPLICATE_TABLE_CREATE_STMT(CreateStmt(table12));
 
-
   // Verify that all 'CREATE TABLE IF EXISTS' statements succeed for tables that have already been
   // created.
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table1));
@@ -117,8 +116,8 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table11));
   EXEC_VALID_STMT(CreateIfNotExistsStmt(table12));
 
-  EXEC_VALID_STMT("DROP TABLE human_resource1");
-
+  const string drop_stmt = "DROP TABLE human_resource1;";
+  EXEC_VALID_STMT(drop_stmt);
 }
 
 } // namespace sql

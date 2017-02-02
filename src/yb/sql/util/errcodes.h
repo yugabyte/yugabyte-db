@@ -48,6 +48,11 @@ enum class ErrorCode : int64_t {
   DUPLICATE_TABLE = -202,
   UNDEFINED_COLUMN = -203,
   DUPLICATE_COLUMN = -204,
+  MISSING_PRIMARY_KEY = -205,
+  INVALID_PRIMARY_COLUMN_TYPE = -206,
+  MISSING_ARGUMENT_FOR_PRIMARY_KEY = -207,
+  NULL_ARGUMENT_FOR_PRIMARY_KEY = -208,
+  INCOMPARABLE_DATATYPES = -209,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
@@ -55,10 +60,9 @@ enum class ErrorCode : int64_t {
   TABLE_NOT_FOUND = -301,
   INVALID_TABLE_DEFINITION = -302,
   WRONG_METADATA_VERSION = -303,
-  MISSING_ARGUMENT_FOR_PRIMARY_KEY = -304,
-  INVALID_ARGUMENTS = -305,
-  TOO_FEW_ARGUMENTS = -306,
-  TOO_MANY_ARGUMENTS = -307,
+  INVALID_ARGUMENTS = -304,
+  TOO_FEW_ARGUMENTS = -305,
+  TOO_MANY_ARGUMENTS = -306,
 
   //------------------------------------------------------------------------------------------------
   // All error codes < SUCCESS

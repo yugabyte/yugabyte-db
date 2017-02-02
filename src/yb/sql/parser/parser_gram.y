@@ -239,7 +239,7 @@ using namespace yb::sql;
 
 %type <PQualifiedName>    qualified_name indirection relation_expr
                           insert_target insert_column_item opt_indirection
-                          set_target any_name opt_opfamily opclass_purpose
+                          set_target any_name attrs opt_opfamily opclass_purpose
                           opt_collate opt_class
 
 %type <PString>           // Identifier name.
@@ -416,7 +416,7 @@ using namespace yb::sql;
                           RuleActionMulti opt_column_list opt_name_list
                           index_params name_list role_list
                           opt_array_bounds qualified_name_list
-                          type_name_list any_operator expr_list attrs
+                          type_name_list any_operator expr_list
                           multiple_set_clause def_list
                           reloption_list TriggerFuncArgs
                           opclass_item_list opclass_drop_list
@@ -713,7 +713,7 @@ CreateStmt:
   OptInherit OptWith OnCommitOption OptTableSpace {
     $$ = MAKE_NODE(@1, PTCreateTable, $4, $6, false);
   }
-  | CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '(' OptTableElementList ')'
+  | CREATE OptTemp TABLE IF_P NOT_LA EXISTS qualified_name '(' OptTableElementList ')'
   OptInherit OptWith OnCommitOption OptTableSpace {
     $$ = MAKE_NODE(@1, PTCreateTable, $7, $9, true);
   }
@@ -722,7 +722,7 @@ CreateStmt:
     PARSER_UNSUPPORTED(@5);
     $$ = nullptr;
   }
-  | CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
+  | CREATE OptTemp TABLE IF_P NOT_LA EXISTS qualified_name OF any_name
   OptTypedTableElementList OptWith OnCommitOption OptTableSpace {
     PARSER_UNSUPPORTED(@8);
     $$ = nullptr;
@@ -1226,6 +1226,7 @@ DropStmt:
 
 drop_type:
   cql_drop_type {
+    $$ = $1;
   }
   | sql_drop_type {
     PARSER_CQL_INVALID(@1);
@@ -1268,13 +1269,20 @@ any_name:
     $$ = MAKE_NODE(@1, PTQualifiedName, $1);
   }
   | ColId attrs {
+    PTName::SharedPtr name_node = MAKE_NODE(@1, PTName, $1);
+    $2->Prepend(name_node);
+    $$ = $2;
   }
 ;
 
 attrs:
   '.' attr_name {
+    $$ = MAKE_NODE(@2, PTQualifiedName, $2);
   }
   | attrs '.' attr_name {
+    PTName::SharedPtr name_node = MAKE_NODE(@3, PTName, $3);
+    $1->Append(name_node);
+    $$ = $1;
   }
 ;
 
@@ -3457,24 +3465,29 @@ AexprConst:
   | FALSE_P {
     $$ = MAKE_NODE(@1, PTConstBool, false);
   }
+  | NULL_P {
+    $$ = MAKE_NODE(@1, PTNull, nullptr);
+  }
   | BCONST {                                                           // Binary string (BLOB type)
     PARSER_NOCODE(@1);
   }
   | XCONST {                                                                        // Hexadecimal.
     PARSER_NOCODE(@1);
   }
-  | NULL_P {
-    PARSER_NOCODE(@1);
-  }
   | func_name Sconst {
+    PARSER_CQL_INVALID(@1);
   }
   | func_name '(' func_arg_list opt_sort_clause ')' Sconst {
+    PARSER_CQL_INVALID(@1);
   }
   | ConstTypename Sconst {
+    PARSER_CQL_INVALID(@1);
   }
   | ConstInterval Sconst opt_interval {
+    PARSER_CQL_INVALID(@1);
   }
   | ConstInterval '(' Iconst ')' Sconst {
+    PARSER_CQL_INVALID(@1);
   }
 ;
 
@@ -3682,6 +3695,9 @@ Numeric:
   | FLOAT_P opt_float {
     $$ = MAKE_NODE(@1, PTFloat, $2);
   }
+  | DOUBLE_P {
+    $$ = MAKE_NODE(@1, PTDouble);
+  }
   | DOUBLE_P PRECISION {
     $$ = MAKE_NODE(@1, PTDouble);
   }
@@ -3777,6 +3793,9 @@ CharacterWithoutLength:
 
 character:
   VARCHAR {
+    $$ = MAKE_NODE(@1, PTVarchar);
+  }
+  | TEXT_P {
     $$ = MAKE_NODE(@1, PTVarchar);
   }
   | CHARACTER opt_varying {
@@ -3957,7 +3976,6 @@ unreserved_keyword:
   | DISCARD { $$ = $1; }
   | DOCUMENT_P { $$ = $1; }
   | DOMAIN_P { $$ = $1; }
-  | DOUBLE_P { $$ = $1; }
   | DROP { $$ = $1; }
   | EACH { $$ = $1; }
   | ENABLE_P { $$ = $1; }
@@ -4125,12 +4143,12 @@ unreserved_keyword:
   | TEMP { $$ = $1; }
   | TEMPLATE { $$ = $1; }
   | TEMPORARY { $$ = $1; }
-  | TEXT_P { $$ = $1; }
   | TRANSACTION { $$ = $1; }
   | TRANSFORM { $$ = $1; }
   | TRIGGER { $$ = $1; }
   | TRUNCATE { $$ = $1; }
   | TRUSTED { $$ = $1; }
+  | TTL { $$ = $1; }
   | TYPE_P { $$ = $1; }
   | TYPES_P { $$ = $1; }
   | UNBOUNDED { $$ = $1; }
@@ -4182,6 +4200,7 @@ col_name_keyword:
   | COALESCE { $$ = $1; }
   | DEC { $$ = $1; }
   | DECIMAL_P { $$ = $1; }
+  | DOUBLE_P { $$ = $1; }
   | EXTRACT { $$ = $1; }
   | FLOAT_P { $$ = $1; }
   | GREATEST { $$ = $1; }
@@ -4205,6 +4224,7 @@ col_name_keyword:
   | SETOF { $$ = $1; }
   | SMALLINT { $$ = $1; }
   | SUBSTRING { $$ = $1; }
+  | TEXT_P { $$ = $1; }
   | TIME { $$ = $1; }
   | TIMESTAMP { $$ = $1; }
   | TREAT { $$ = $1; }
@@ -4647,9 +4667,9 @@ CreateSchemaStmt:
   }
   | CREATE SCHEMA ColId OptSchemaEltList {
   }
-  | CREATE SCHEMA IF_P NOT EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+  | CREATE SCHEMA IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
   }
-  | CREATE SCHEMA IF_P NOT EXISTS ColId OptSchemaEltList {
+  | CREATE SCHEMA IF_P NOT_LA EXISTS ColId OptSchemaEltList {
   }
 ;
 
@@ -5328,7 +5348,7 @@ copy_generic_opt_arg_list_item:
 CreateAsStmt:
   CREATE OptTemp TABLE create_as_target AS SelectStmt opt_with_data {
   }
-  | CREATE OptTemp TABLE IF_P NOT EXISTS create_as_target AS SelectStmt opt_with_data {
+  | CREATE OptTemp TABLE IF_P NOT_LA EXISTS create_as_target AS SelectStmt opt_with_data {
   }
 ;
 
@@ -5353,7 +5373,8 @@ opt_with_data:
 CreateMatViewStmt:
   CREATE OptNoLog MATERIALIZED VIEW create_mv_target AS SelectStmt opt_with_data {
   }
-  | CREATE OptNoLog MATERIALIZED VIEW IF_P NOT EXISTS create_mv_target AS SelectStmt opt_with_data {
+  | CREATE OptNoLog MATERIALIZED VIEW IF_P NOT_LA EXISTS create_mv_target AS SelectStmt
+  opt_with_data {
   }
 ;
 
@@ -5392,7 +5413,7 @@ RefreshMatViewStmt:
 CreateSeqStmt:
   CREATE OptTemp SEQUENCE qualified_name OptSeqOptList {
   }
-  | CREATE OptTemp SEQUENCE IF_P NOT EXISTS qualified_name OptSeqOptList {
+  | CREATE OptTemp SEQUENCE IF_P NOT_LA EXISTS qualified_name OptSeqOptList {
   }
 ;
 
@@ -5579,7 +5600,7 @@ DropTableSpaceStmt:
 CreateExtensionStmt:
   CREATE EXTENSION name opt_with create_extension_opt_list {
   }
-  | CREATE EXTENSION IF_P NOT EXISTS name opt_with create_extension_opt_list {
+  | CREATE EXTENSION IF_P NOT_LA EXISTS name opt_with create_extension_opt_list {
   }
 ;
 
@@ -5878,7 +5899,7 @@ CreateForeignTableStmt:
   CREATE FOREIGN TABLE qualified_name '(' OptTableElementList ')'
   OptInherit SERVER name create_generic_options {
   }
-  | CREATE FOREIGN TABLE IF_P NOT EXISTS qualified_name '(' OptTableElementList ')'
+  | CREATE FOREIGN TABLE IF_P NOT_LA EXISTS qualified_name '(' OptTableElementList ')'
   OptInherit SERVER name create_generic_options {
   }
 ;
@@ -6352,7 +6373,7 @@ AlterEnumStmt:
 ;
 
 opt_if_not_exists:
-  IF_P NOT EXISTS            { $$ = true; }
+  IF_P NOT_LA EXISTS         { $$ = true; }
   | /* empty */              { $$ = false; }
 ;
 
@@ -6927,7 +6948,7 @@ IndexStmt:
   CREATE opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
   access_method_clause '(' index_params ')' opt_reloptions OptTableSpace opt_where_clause {
   }
-  | CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS index_name ON qualified_name
+  | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS index_name ON qualified_name
   access_method_clause '(' index_params ')' opt_reloptions OptTableSpace opt_where_clause {
   }
 ;

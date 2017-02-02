@@ -57,7 +57,7 @@ class UndefTreeNode : public TreeNode {
 // that has no match in the other relation.
 //
 // This is needed in both parsenodes.h and plannodes.h, so put it here...
-typedef enum JoinType {
+typedef enum JoinType : int {
   // The canonical kinds of joins according to the SQL JOIN syntax. Only
   // these codes can appear in parser output (e.g., JoinExpr nodes).
   JOIN_INNER,         /* matching tuple pairs only */
@@ -83,61 +83,7 @@ typedef enum JoinType {
   // We might need additional join types someday.
 } JoinType;
 
-typedef enum DropBehavior {
-  DROP_RESTRICT,        /* drop fails if any dependent objects */
-  DROP_CASCADE        /* remove dependent objects too */
-} DropBehavior;
-
-// When a command can act on several kinds of objects with only one
-// parse structure required, use these constants to designate the
-// object type.  Note that commands typically don't support all the types.
-typedef enum ObjectType {
-  OBJECT_AGGREGATE,
-  OBJECT_AMOP,
-  OBJECT_AMPROC,
-  OBJECT_ATTRIBUTE,     /* type's attribute, when distinct from column */
-  OBJECT_CAST,
-  OBJECT_COLUMN,
-  OBJECT_COLLATION,
-  OBJECT_CONVERSION,
-  OBJECT_DATABASE,
-  OBJECT_DEFAULT,
-  OBJECT_DEFACL,
-  OBJECT_DOMAIN,
-  OBJECT_DOMCONSTRAINT,
-  OBJECT_EVENT_TRIGGER,
-  OBJECT_EXTENSION,
-  OBJECT_FDW,
-  OBJECT_FOREIGN_SERVER,
-  OBJECT_FOREIGN_TABLE,
-  OBJECT_FUNCTION,
-  OBJECT_INDEX,
-  OBJECT_LANGUAGE,
-  OBJECT_LARGEOBJECT,
-  OBJECT_MATVIEW,
-  OBJECT_OPCLASS,
-  OBJECT_OPERATOR,
-  OBJECT_OPFAMILY,
-  OBJECT_POLICY,
-  OBJECT_ROLE,
-  OBJECT_RULE,
-  OBJECT_SCHEMA,
-  OBJECT_SEQUENCE,
-  OBJECT_TABCONSTRAINT,
-  OBJECT_TABLE,
-  OBJECT_TABLESPACE,
-  OBJECT_TRANSFORM,
-  OBJECT_TRIGGER,
-  OBJECT_TSCONFIGURATION,
-  OBJECT_TSDICTIONARY,
-  OBJECT_TSPARSER,
-  OBJECT_TSTEMPLATE,
-  OBJECT_TYPE,
-  OBJECT_USER_MAPPING,
-  OBJECT_VIEW
-} ObjectType;
-
-typedef enum FunctionParameterMode {
+typedef enum FunctionParameterMode : int {
   // the assigned enum values appear in pg_proc, don't change 'em!.
   FUNC_PARAM_IN = 'i',    /* input only */
   FUNC_PARAM_OUT = 'o',   /* output only */
@@ -147,7 +93,7 @@ typedef enum FunctionParameterMode {
 } FunctionParameterMode;
 
 // What to do at commit time for temporary relations.
-typedef enum OnCommitAction {
+typedef enum OnCommitAction : int {
   ONCOMMIT_NOOP,        /* No ON COMMIT clause (do nothing) */
   ONCOMMIT_PRESERVE_ROWS,   /* ON COMMIT PRESERVE ROWS (do nothing) */
   ONCOMMIT_DELETE_ROWS,   /* ON COMMIT DELETE ROWS */
@@ -155,7 +101,7 @@ typedef enum OnCommitAction {
 } OnCommitAction;
 
 // TableLikeClause - CREATE TABLE ( ... LIKE ... ) clause
-typedef enum TableLikeOption {
+typedef enum TableLikeOption : int {
   CREATE_TABLE_LIKE_DEFAULTS = 1 << 0,
   CREATE_TABLE_LIKE_CONSTRAINTS = 1 << 1,
   CREATE_TABLE_LIKE_INDEXES = 1 << 2,
@@ -176,7 +122,7 @@ typedef enum TableLikeOption {
 #define FKCONSTR_MATCH_PARTIAL      'p'
 #define FKCONSTR_MATCH_SIMPLE       's'
 
-typedef enum GrantObjectType {
+typedef enum GrantObjectType : int {
   ACL_OBJECT_COLUMN,      /* column */
   ACL_OBJECT_RELATION,    /* table, view */
   ACL_OBJECT_SEQUENCE,    /* sequence */
@@ -193,14 +139,14 @@ typedef enum GrantObjectType {
 } GrantObjectType;
 
 /* Sort ordering options for ORDER BY and CREATE INDEX */
-typedef enum SortByDir {
+typedef enum SortByDir : int {
   SORTBY_DEFAULT,
   SORTBY_ASC,
   SORTBY_DESC,
   SORTBY_USING        /* not allowed in CREATE INDEX ... */
 } SortByDir;
 
-typedef enum SortByNulls {
+typedef enum SortByNulls : int {
   SORTBY_NULLS_DEFAULT,
   SORTBY_NULLS_FIRST,
   SORTBY_NULLS_LAST
@@ -209,7 +155,7 @@ typedef enum SortByNulls {
 // Reindex options.
 #define REINDEXOPT_VERBOSE 1 << 0   /* print progress info */
 
-typedef enum ReindexObjectType {
+typedef enum ReindexObjectType : int {
   REINDEX_OBJECT_INDEX,   /* index */
   REINDEX_OBJECT_TABLE,   /* table or materialized view */
   REINDEX_OBJECT_SCHEMA,    /* schema */
@@ -221,7 +167,7 @@ typedef enum ReindexObjectType {
 //    enums for type of operation represented by a Query or PlannedStmt
 //
 // This is needed in both parsenodes.h and plannodes.h, so put it here...
-typedef enum CmdType {
+typedef enum CmdType : int {
   CMD_UNKNOWN,
   CMD_SELECT,         /* select stmt */
   CMD_UPDATE,         /* update stmt */
@@ -232,7 +178,7 @@ typedef enum CmdType {
 } CmdType;
 
 //    Create View Statement
-typedef enum ViewCheckOption {
+typedef enum ViewCheckOption : int {
   NO_CHECK_OPTION,
   LOCAL_CHECK_OPTION,
   CASCADED_CHECK_OPTION
@@ -243,7 +189,7 @@ typedef enum ViewCheckOption {
 // Even though these are nominally two statements, it's convenient to use
 // just one node type for both.  Note that at least one of VACOPT_VACUUM
 // and VACOPT_ANALYZE must be set in options.
-typedef enum VacuumOption {
+typedef enum VacuumOption : int {
   VACOPT_VACUUM = 1 << 0,   /* do VACUUM */
   VACOPT_ANALYZE = 1 << 1,  /* do ANALYZE */
   VACOPT_VERBOSE = 1 << 2,  /* print progress info */
@@ -269,7 +215,7 @@ typedef enum VacuumOption {
 #define CURSOR_OPT_CUSTOM_PLAN  0x0080  /* force use of custom plan */
 
 // Import Foreign Schema Statement
-typedef enum ImportForeignSchemaType {
+typedef enum ImportForeignSchemaType : int {
   FDW_IMPORT_SCHEMA_ALL,    /* all relations wanted */
   FDW_IMPORT_SCHEMA_LIMIT_TO, /* include only listed tables in import */
   FDW_IMPORT_SCHEMA_EXCEPT  /* exclude listed tables from import */

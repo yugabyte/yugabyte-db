@@ -213,11 +213,15 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
-      int8_t actual_value = static_cast<int8_t>(int_value.value_);
-      VLOG(3) << "Expr actual value = " << actual_value;
-      col_pb->mutable_value()->set_int8_value(actual_value);
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetInt8(col_index, actual_value));
+      if (int_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        int8_t actual_value = static_cast<int8_t>(int_value.value_);
+        VLOG(3) << "Expr actual value = " << actual_value;
+        col_pb->mutable_value()->set_int8_value(actual_value);
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetInt8(col_index, actual_value));
+        }
       }
       break;
     }
@@ -227,11 +231,15 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
-      int16_t actual_value = static_cast<int16_t>(int_value.value_);
-      VLOG(3) << "Expr actual value = " << actual_value;
-      col_pb->mutable_value()->set_int16_value(actual_value);
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetInt16(col_index, actual_value));
+      if (int_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        int16_t actual_value = static_cast<int16_t>(int_value.value_);
+        VLOG(3) << "Expr actual value = " << actual_value;
+        col_pb->mutable_value()->set_int16_value(actual_value);
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetInt16(col_index, actual_value));
+        }
       }
       break;
     }
@@ -241,11 +249,15 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
-      int32_t actual_value = static_cast<int32_t>(int_value.value_);
-      VLOG(3) << "Expr actual value = " << actual_value;
-      col_pb->mutable_value()->set_int32_value(actual_value);
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetInt32(col_index, actual_value));
+      if (int_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        int32_t actual_value = static_cast<int32_t>(int_value.value_);
+        VLOG(3) << "Expr actual value = " << actual_value;
+        col_pb->mutable_value()->set_int32_value(actual_value);
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetInt32(col_index, actual_value));
+        }
       }
       break;
     }
@@ -255,11 +267,15 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
       // TODO(neil): Check for overflow and raise runtime error if needed.
-      int64_t actual_value = int_value.value_;
-      VLOG(3) << "Expr actual value = " << actual_value;
-      col_pb->mutable_value()->set_int64_value(actual_value);
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetInt64(col_index, actual_value));
+      if (int_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        int64_t actual_value = int_value.value_;
+        VLOG(3) << "Expr actual value = " << actual_value;
+        col_pb->mutable_value()->set_int64_value(actual_value);
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetInt64(col_index, actual_value));
+        }
       }
       break;
     }
@@ -268,12 +284,16 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalStringValue string_value;
       RETURN_NOT_OK(EvalExpr(expr, &string_value));
 
-      col_pb->mutable_value()->set_string_value(string_value.value_->data(),
-                                                string_value.value_->size());
-      VLOG(3) << "Expr actual value = " << string_value.value_->c_str();
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetString(
+      if (string_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        col_pb->mutable_value()->set_string_value(string_value.value_->data(),
+                                                  string_value.value_->size());
+        VLOG(3) << "Expr actual value = " << string_value.value_->c_str();
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetString(
             col_index, Slice(string_value.value_->data(), string_value.value_->size())));
+        }
       }
       break;
     }
@@ -282,11 +302,15 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
-      float actual_value = double_value.value_;
-      VLOG(3) << "Expr actual value = " << actual_value;
-      col_pb->mutable_value()->set_float_value(actual_value);
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetFloat(col_index, actual_value));
+      if (double_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        float actual_value = double_value.value_;
+        VLOG(3) << "Expr actual value = " << actual_value;
+        col_pb->mutable_value()->set_float_value(actual_value);
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetFloat(col_index, actual_value));
+        }
       }
       break;
     }
@@ -295,11 +319,15 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
-      double actual_value = double_value.value_;
-      VLOG(3) << "Expr actual value = " << actual_value;
-      col_pb->mutable_value()->set_double_value(actual_value);
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetDouble(col_index, actual_value));
+      if (double_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        double actual_value = double_value.value_;
+        VLOG(3) << "Expr actual value = " << actual_value;
+        col_pb->mutable_value()->set_double_value(actual_value);
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetDouble(col_index, actual_value));
+        }
       }
       break;
     }
@@ -308,10 +336,14 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalBoolValue bool_value;
       RETURN_NOT_OK(EvalExpr(expr, &bool_value));
 
-      col_pb->mutable_value()->set_bool_value(bool_value.value_);
-      VLOG(3) << "Expr actual value = " << bool_value.value_;
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetBool(col_index, bool_value.value_));
+      if (bool_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        col_pb->mutable_value()->set_bool_value(bool_value.value_);
+        VLOG(3) << "Expr actual value = " << bool_value.value_;
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetBool(col_index, bool_value.value_));
+        }
       }
       break;
     }
@@ -624,24 +656,23 @@ CHECKED_STATUS Executor::BoolExprToPB(YSQLConditionPB *cond, const PTExpr* expr)
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
-  shared_ptr<YBSqlReadOp> select_op;
+  if (tnode->is_system()) {
+    return Status::OK();
+  }
 
-  if (!tnode->is_system()) {
+  // Create the read request.
+  const shared_ptr<client::YBTable>& table = tnode->table();
+  shared_ptr<YBSqlReadOp> select_op(table->NewYSQLSelect());
+  YSQLReadRequestPB *req = select_op->mutable_request();
 
-    // Create the read request.
-    const shared_ptr<client::YBTable>& table = tnode->table();
-    select_op.reset(table->NewYSQLSelect());
-    YSQLReadRequestPB *req = select_op->mutable_request();
+  // Where clause - Hash, range, and regular columns.
+  YBPartialRow *row = select_op->mutable_row();
 
-    // Where clause - Hash, range, and regular columns.
-    YBPartialRow *row = select_op->mutable_row();
+  RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
 
-    RETURN_NOT_OK(WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops()));
-
-    // Specify selected columns.
-    for (const ColumnDesc *col_desc : tnode->selected_columns()) {
-      req->add_column_ids(col_desc->id());
-    }
+  // Specify selected columns.
+  for (const ColumnDesc *col_desc : tnode->selected_columns()) {
+    req->add_column_ids(col_desc->id());
   }
 
   // Apply the operator always even when select_op is "null" so that the last read_op saved in

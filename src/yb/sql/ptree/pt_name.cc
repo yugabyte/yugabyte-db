@@ -32,7 +32,7 @@ CHECKED_STATUS PTName::SetupPrimaryKey(SemContext *sem_context) {
 
   // Add the analyzed column to table.
   PTCreateTable *table = sem_context->current_table();
-  table->AppendPrimaryColumn(column);
+  RETURN_NOT_OK(table->AppendPrimaryColumn(sem_context, column));
 
   return Status::OK();
 }
@@ -47,7 +47,7 @@ CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
 
   // Add the analyzed column to table.
   PTCreateTable *table = sem_context->current_table();
-  table->AppendHashColumn(column);
+  RETURN_NOT_OK(table->AppendHashColumn(sem_context, column));
 
   return Status::OK();
 }

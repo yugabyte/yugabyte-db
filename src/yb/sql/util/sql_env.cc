@@ -35,10 +35,9 @@ CHECKED_STATUS SqlEnv::DeleteTable(const string& name) {
   return client_->DeleteTable(name);
 }
 
-
-  CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
-  // Clear the previous result.
-  rows_result_ = nullptr;
+CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBSqlWriteOp> yb_op) {
+  // The previous result must have been cleared.
+  DCHECK(rows_result_ == nullptr);
 
   // Execute the write.
   RETURN_NOT_OK(write_session_->Apply(yb_op));
@@ -53,8 +52,8 @@ CHECKED_STATUS SqlEnv::DeleteTable(const string& name) {
 }
 
 CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBSqlReadOp> yb_op) {
-  // Clear the previous result.
-  rows_result_ = nullptr;
+  // The previous result must have been cleared.
+  DCHECK(rows_result_ == nullptr);
 
   if (yb_op.get() != nullptr) {
     // Execute the read.
@@ -79,6 +78,10 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const char *table_name, bool refresh_me
   }
   CHECK(s.ok()) << "Server returns unexpected error. " << s.ToString();
   return yb_table;
+}
+
+void SqlEnv::Reset() {
+  rows_result_ = nullptr;
 }
 
 } // namespace sql

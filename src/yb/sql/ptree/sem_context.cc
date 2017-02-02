@@ -79,27 +79,52 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
 //--------------------------------------------------------------------------------------------------
 
 ConversionMode SemContext::GetConversionMode(client::YBColumnSchema::DataType lhs_type,
-                                             client::YBColumnSchema::DataType rhs_type) {
+                                             client::YBColumnSchema::DataType rhs_type) const {
   static const ConversionMode kIM = ConversionMode::kImplicit;
   static const ConversionMode kEX = ConversionMode::kExplicit;
   static const ConversionMode kNA = ConversionMode::kNotAllowed;
-  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX;
+  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX + 1;
   static const ConversionMode conversion_mode[max_index][max_index] = {
     // RHS (source)
-    // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst                    // LHS (dest)
-    { kIM,  kIM,  kIM,  kIM,  kIM,  kNA,   kIM,  kIM,  kEX,  kNA  },                 // int8
-    { kIM,  kIM,  kIM,  kIM,  kIM,  kNA,   kIM,  kIM,  kEX,  kNA  },                 // int16
-    { kIM,  kIM,  kIM,  kIM,  kIM,  kNA,   kIM,  kIM,  kEX,  kNA  },                 // int32
-    { kIM,  kIM,  kIM,  kIM,  kIM,  kNA,   kIM,  kIM,  kEX,  kNA  },                 // int64
-    { kIM,  kIM,  kIM,  kIM,  kIM,  kNA,   kIM,  kIM,  kEX,  kNA  },                 // string
-    { kNA,  kNA,  kNA,  kNA,  kNA,  kIM,   kNA,  kNA,  kNA,  kNA  },                 // bool
-    { kIM,  kIM,  kIM,  kIM,  kIM,  kNA,   kIM,  kIM,  kEX,  kNA  },                 // float
-    { kIM,  kIM,  kIM,  kIM,  kIM,  kNA,   kIM,  kIM,  kEX,  kNA  },                 // double
-    { kEX,  kEX,  kEX,  kEX,  kEX,  kNA,   kEX,  kEX,  kIM,  kNA  },                 // bin
-    { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kNA,  kIM  },                 // timestamp
+    // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)
+    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int8
+    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int16
+    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int32
+    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int64
+    { kNA,  kNA,  kNA,  kNA,  kIM,  kNA,   kNA,  kNA,  kNA,  kNA,  kIM },            // string
+    { kNA,  kNA,  kNA,  kNA,  kNA,  kIM,   kNA,  kNA,  kNA,  kNA,  kIM },            // bool
+    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kIM,  kNA,  kNA,  kNA,  kIM },            // float
+    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kNA,  kIM,  kNA,  kNA,  kIM },            // double
+    { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kIM,  kNA,  kIM },            // bin
+    { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kNA,  kIM,  kIM },            // timestamp
+    { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kNA,  kNA,  kNA },            // null
   };
 
-  return conversion_mode[rhs_type][lhs_type];
+  return conversion_mode[lhs_type][rhs_type];
+}
+
+bool SemContext::IsComparable(client::YBColumnSchema::DataType lhs_type,
+                              client::YBColumnSchema::DataType rhs_type) const {
+  static const bool kYS = true;
+  static const bool kNO = false;
+  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX + 1;
+  static const bool compare_mode[max_index][max_index] = {
+    // RHS (source)
+    // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)
+    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int8
+    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int16
+    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int32
+    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int64
+    { kNO,  kNO,  kNO,  kNO,  kYS,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // string
+    { kNO,  kNO,  kNO,  kNO,  kNO,  kYS,   kNO,  kNO,  kNO,  kNO,  kNO },            // bool
+    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kYS,  kNO,  kNO,  kNO,  kNO },            // float
+    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kYS,  kNO,  kNO,  kNO },            // double
+    { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kYS,  kNO,  kNO },            // bin
+    { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kNO,  kYS,  kNO },            // timestamp
+    { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // null
+  };
+
+  return compare_mode[lhs_type][rhs_type];
 }
 
 }  // namespace sql

@@ -13,6 +13,12 @@ namespace sql {
 Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
 
   switch (expr->type_id()) {
+    case DataType::UNKNOWN_DATA: {
+      // This is a null node.
+      result->set_null();
+      break;
+    }
+
     case DataType::INT8: FALLTHROUGH_INTENDED;
     case DataType::INT16: FALLTHROUGH_INTENDED;
     case DataType::INT32: FALLTHROUGH_INTENDED;

@@ -126,10 +126,14 @@ class PTColumnDefinition : public TreeNode {
     order_ = order;
   }
 
-  // Return the data types that are expected by docdb.
   const char *yb_name() const {
     return name_->c_str();
   }
+
+  const PTBaseType::SharedPtr& datatype() const {
+    return datatype_;
+  }
+
   client::YBColumnSchema::DataType sql_type() const {
     return datatype_->sql_type();
   }
@@ -194,17 +198,13 @@ class PTCreateTable : public TreeNode {
     return create_if_not_exists_;
   }
 
-  void AppendColumn(PTColumnDefinition *column) {
-    columns_.push_back(column);
-  }
+  CHECKED_STATUS AppendColumn(SemContext *sem_context, PTColumnDefinition *column);
 
-  void AppendPrimaryColumn(PTColumnDefinition *column) {
-    primary_columns_.push_back(column);
-  }
+  CHECKED_STATUS AppendPrimaryColumn(SemContext *sem_context, PTColumnDefinition *column);
 
-  void AppendHashColumn(PTColumnDefinition *column) {
-    hash_columns_.push_back(column);
-  }
+  CHECKED_STATUS AppendHashColumn(SemContext *sem_context, PTColumnDefinition *column);
+
+  CHECKED_STATUS CheckPrimaryType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
 
   // Table name.
   const char *yb_table_name() const {

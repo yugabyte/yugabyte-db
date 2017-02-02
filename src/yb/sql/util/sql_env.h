@@ -55,6 +55,9 @@ class SqlEnv {
     return std::shared_ptr<YSQLRowBlock>(rows_result_->GetRowBlock());
   }
 
+  // Reset all env states or variables before executing the next statement.
+  void Reset();
+
  private:
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;

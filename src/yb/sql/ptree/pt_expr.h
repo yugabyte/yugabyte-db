@@ -86,6 +86,11 @@ class PTExpr : public TreeNode {
 
   // Returns the expression operator.
   virtual ExprOperator expr_op() const = 0;
+
+  // Predicate for null.
+  virtual bool is_null() {
+    return false;
+  }
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
@@ -170,6 +175,10 @@ class PTExprConst : public PTExprOperator<type_id_, sql_type_, ReturnType> {
   // Evaluate this expression and its operand.
   virtual ReturnType Eval() const {
     return value_;
+  }
+
+  virtual bool is_null() {
+    return sql_type_ == client::YBColumnSchema::MAX_TYPE_INDEX;
   }
 
  private:
@@ -350,6 +359,10 @@ class PTExpr3 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
 
 //--------------------------------------------------------------------------------------------------
 // Tree node for constants
+using PTNull = PTExprConst<yb::DataType::UNKNOWN_DATA,
+                           client::YBColumnSchema::MAX_TYPE_INDEX,
+                           void*>;
+
 using PTConstInt = PTExprConst<yb::DataType::INT64,
                                client::YBColumnSchema::INT64,
                                int64_t>;

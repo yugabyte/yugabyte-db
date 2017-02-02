@@ -47,6 +47,14 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::DUPLICATE_TABLE), "Duplicate Table" },
   { static_cast<int64_t>(ErrorCode::UNDEFINED_COLUMN), "Undefined Column" },
   { static_cast<int64_t>(ErrorCode::DUPLICATE_COLUMN), "Duplicate Column" },
+  { static_cast<int64_t>(ErrorCode::MISSING_PRIMARY_KEY), "Missing Primary Key" },
+  { static_cast<int64_t>(ErrorCode::INVALID_PRIMARY_COLUMN_TYPE),
+      "Invalid Primary Key Column Datatype" },
+  { static_cast<int64_t>(ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY),
+      "Missing Argument for Primary Key" },
+  { static_cast<int64_t>(ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY),
+      "Null Argument for Primary Key" },
+  { static_cast<int64_t>(ErrorCode::INCOMPARABLE_DATATYPES), "Incomparable Datatypes" },
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).
@@ -54,8 +62,6 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::TABLE_NOT_FOUND), "Table Not Found" },
   { static_cast<int64_t>(ErrorCode::INVALID_TABLE_DEFINITION), "Invalid Table Definition" },
   { static_cast<int64_t>(ErrorCode::WRONG_METADATA_VERSION), "Wrong Metadata Version" },
-  { static_cast<int64_t>(ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY),
-      "Missing Argument for Primary Key" },
   { static_cast<int64_t>(ErrorCode::INVALID_ARGUMENTS), "Invalid Arguments" },
   { static_cast<int64_t>(ErrorCode::TOO_FEW_ARGUMENTS), "Too Few Arguments" },
   { static_cast<int64_t>(ErrorCode::TOO_MANY_ARGUMENTS), "Too Many Arguments" },

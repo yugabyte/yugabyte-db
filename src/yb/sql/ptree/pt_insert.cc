@@ -82,8 +82,8 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
         return sem_context->Error(name->loc(), ErrorCode::UNDEFINED_COLUMN);
       }
 
-      // Check that the datatypes are compatible.
-      if (!sem_context->IsCompatible(col_desc->sql_type(), (*iter)->sql_type())) {
+      // Check that the datatypes are convertible.
+      if (!sem_context->IsConvertible(col_desc->sql_type(), (*iter)->sql_type())) {
         return sem_context->Error((*iter)->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
@@ -105,11 +105,11 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       }
     }
 
-    // Check that the argument datatypes are compatible with all columns.
+    // Check that the argument datatypes are convertible with all columns.
     idx = 0;
     for (const auto& expr : exprs) {
       ColumnDesc *col_desc = &table_columns_[idx];
-      if (!sem_context->IsCompatible(col_desc->sql_type(), expr->sql_type())) {
+      if (!sem_context->IsConvertible(col_desc->sql_type(), expr->sql_type())) {
         return sem_context->Error(expr->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
@@ -125,6 +125,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   for (idx = 0; idx < num_keys; idx++) {
     if (!column_args_[idx].IsInitialized()) {
       return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
+    }
+    if (column_args_[idx].expr()->is_null()) {
+      return sem_context->Error(value_clause_->loc(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
 

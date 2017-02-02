@@ -39,7 +39,7 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
     return sem_context->Error(rhs_->loc(), "Only literal values are allowed in this context",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
-  if (!sem_context->IsCompatible(col_desc_->sql_type(), rhs_->sql_type())) {
+  if (!sem_context->IsConvertible(col_desc_->sql_type(), rhs_->sql_type())) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 

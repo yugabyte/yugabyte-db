@@ -11,6 +11,7 @@ namespace yb {
 namespace sql {
 
 using std::to_string;
+using client::YBColumnSchema;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -68,12 +69,11 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   if (hash_columns_.empty()) {
     if (!primary_columns_.empty()) {
       // First primary column must be a partition key.
-      AppendHashColumn(primary_columns_.front());
+      RETURN_NOT_OK(AppendHashColumn(sem_context, primary_columns_.front()));
       primary_columns_.pop_front();
     } else {
-      // First column must be a partition key.
-      AppendHashColumn(columns_.front());
-      columns_.pop_front();
+      // ERROR: Primary key is not defined.
+      return sem_context->Error(elements_->loc(), ErrorCode::MISSING_PRIMARY_KEY);
     }
   }
 
@@ -84,6 +84,40 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   }
 
   return Status::OK();
+}
+
+CHECKED_STATUS PTCreateTable::AppendColumn(SemContext *sem_context, PTColumnDefinition *column) {
+  columns_.push_back(column);
+  return Status::OK();
+}
+
+CHECKED_STATUS PTCreateTable::AppendPrimaryColumn(SemContext *sem_context,
+                                                  PTColumnDefinition *column) {
+  RETURN_NOT_OK(CheckPrimaryType(sem_context, column->datatype()));
+  primary_columns_.push_back(column);
+  return Status::OK();
+}
+
+CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
+                                               PTColumnDefinition *column) {
+  RETURN_NOT_OK(CheckPrimaryType(sem_context, column->datatype()));
+  hash_columns_.push_back(column);
+  return Status::OK();
+}
+
+CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
+                                               const PTBaseType::SharedPtr& datatype) {
+  switch (datatype->sql_type()) {
+  case YBColumnSchema::DataType::DOUBLE: FALLTHROUGH_INTENDED;
+  case YBColumnSchema::DataType::FLOAT: FALLTHROUGH_INTENDED;
+  case YBColumnSchema::DataType::BOOL:
+    return sem_context->Error(datatype->loc(), ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);
+
+  default:
+    // Let all other types go. Because we already process column datatype before getting here, just
+    // assume that they are all valid types.
+    return Status::OK();
+  }
 }
 
 void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
@@ -146,7 +180,7 @@ CHECKED_STATUS PTColumnDefinition::Analyze(SemContext *sem_context) {
 
   // Add the analyzed column to table.
   PTCreateTable *table = sem_context->current_table();
-  table->AppendColumn(this);
+  RETURN_NOT_OK(table->AppendColumn(sem_context, this));
 
   // Restore the context value as we are done with this colummn.
   sem_context->set_current_processing_id(cached_entry);
@@ -176,7 +210,7 @@ CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
     // Decorate the current processing name node as this is a column constraint.
     PTColumnDefinition *column = sem_context->current_column();
     column->set_is_hash_key();
-    table->AppendHashColumn(column);
+    RETURN_NOT_OK(table->AppendHashColumn(sem_context, column));
 
   } else {
     // Decorate all name node of this key as this is a table constraint.

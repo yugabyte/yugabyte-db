@@ -303,6 +303,11 @@ CHECKED_STATUS PTDmlStmt::AnalyzeCompareExpr(SemContext *sem_context,
     *value = bool_expr->op2();
   }
 
+  if (!sem_context->IsComparable(bool_expr->op1()->sql_type(), bool_expr->op2()->sql_type())) {
+    return sem_context->Error(bool_expr->loc(), "Cannot compare values of these datatypes",
+                              ErrorCode::INCOMPARABLE_DATATYPES);
+  }
+
   return Status::OK();
 }
 
@@ -326,6 +331,12 @@ CHECKED_STATUS PTDmlStmt::AnalyzeBetweenExpr(SemContext *sem_context,
   if (expr->expr_op() != ExprOperator::kConst) {
     return sem_context->Error(expr->loc(), "Only literal value is allowed here",
                               ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  if (!sem_context->IsComparable(bool_expr->op1()->sql_type(), bool_expr->op2()->sql_type()) ||
+      !sem_context->IsComparable(bool_expr->op1()->sql_type(), bool_expr->op3()->sql_type())) {
+    return sem_context->Error(bool_expr->loc(), "Cannot compare values of these datatypes",
+                              ErrorCode::INCOMPARABLE_DATATYPES);
   }
 
   return Status::OK();

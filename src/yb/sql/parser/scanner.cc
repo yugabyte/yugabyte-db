@@ -73,8 +73,9 @@ GramProcessor::symbol_type LexProcessor::Scan() {
   ScanState scan_state;
 
   if (lookahead_.token() != 0) {
-    // Remove lookahead from the context.
+    // Remove lookahead from the context and reset it to type 0.
     cur_token.move(lookahead_);
+    lookahead_.type = 0;
   } else {
     // Read the next token and save it to 'cur_token'.
     ScanNextToken(scan_state, &cur_token);

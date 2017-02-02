@@ -15,6 +15,16 @@ namespace sql {
 
 struct EvalValue {
   virtual yb::DataType datatype() = 0;
+  bool is_null() {
+    return is_null_;
+  }
+  void set_null() {
+    is_null_ = true;
+  }
+  void set_not_null() {
+    is_null_ = false;
+  }
+  bool is_null_ = false;
 };
 
 // To avoid overflow, all integer expressions are resulted in "int64_t".

@@ -106,15 +106,14 @@ class SemContext : public ProcessContext {
   // Find column descriptor from symbol table.
   const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
 
-  // Find conversion mode from 'rhs_type' to 'lhs_type'.
-  ConversionMode GetConversionMode(client::YBColumnSchema::DataType lhs_type,
-                                   client::YBColumnSchema::DataType rhs_type);
-
   // Check if the rhs and lhs datatypes are compatible. Their conversion mode must be implicit.
-  bool IsCompatible(client::YBColumnSchema::DataType lhs_type,
-                    client::YBColumnSchema::DataType rhs_type) {
+  bool IsConvertible(client::YBColumnSchema::DataType lhs_type,
+                     client::YBColumnSchema::DataType rhs_type) const {
     return (GetConversionMode(lhs_type, rhs_type) == ConversionMode::kImplicit);
   }
+
+  bool IsComparable(client::YBColumnSchema::DataType lhs_type,
+                    client::YBColumnSchema::DataType rhs_type) const;
 
   // Access function to retry counter.
   int retry_count() {
@@ -122,6 +121,10 @@ class SemContext : public ProcessContext {
   }
 
  private:
+  // Find conversion mode from 'rhs_type' to 'lhs_type'.
+  ConversionMode GetConversionMode(client::YBColumnSchema::DataType lhs_type,
+                                   client::YBColumnSchema::DataType rhs_type) const;
+
   // Find symbol.
   const SymbolEntry *SeekSymbol(const MCString& name) const;
 
