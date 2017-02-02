@@ -1,0 +1,10 @@
+---
+extends: 'react-app'
+
+plugins:
+  - import
+
+rules:
+  import/named: 2
+  import/namespace: 2
+  import/export: 2
