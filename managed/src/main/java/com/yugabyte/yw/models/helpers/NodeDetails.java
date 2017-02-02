@@ -59,6 +59,11 @@ public class NodeDetails {
   public int tserverHttpPort = 9000;
   public int tserverRpcPort = 9100;
 
+  // True if this node is a Redis server, along with port info.
+  public boolean isRedisServer = true;
+  public int redisServerHttpPort = 11000;
+  public int redisServerRpcPort = 6379;
+
   // True if this node is a YSQL server, along with port info.
   public boolean isYqlServer = true;
   public int yqlServerHttpPort = 12000;
