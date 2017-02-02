@@ -31,7 +31,7 @@ TEST_F(YbSqlCreateTable, TestSqlDropTable) {
   // Get an available processor.
   SqlProcessor *processor = GetSqlProcessor();
 
-  const string create_stmt = "CREATE TABLE human_resource1(id int, name varchar);";
+  const string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
   const string drop_stmt = "DROP TABLE human_resource1";
   const string drop_cond_stmt = "DROP TABLE IF EXISTS human_resource1";
   const string not_found_drop_error = "SQL Error (1.11): Table Not Found";
