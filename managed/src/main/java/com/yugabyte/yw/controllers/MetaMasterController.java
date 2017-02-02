@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -38,23 +39,18 @@ public class MetaMasterController extends Controller {
   }
 
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
-    // Verify the customer with this universe is present.
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-
-    try {
-      // Lookup the entry for the instanceUUID.
-      Universe universe = Universe.get(universeUUID);
-      return ApiResponse.success(universe.getMasterAddresses());
-    } catch (RuntimeException e) {
-      LOG.error("Error finding universe", e);
-      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
-    }
+    return getServerAddresses(customerUUID, universeUUID, ServerType.MASTER);
   }
 
   public Result getYQLServerAddresses(UUID customerUUID, UUID universeUUID) {
+    return getServerAddresses(customerUUID, universeUUID, ServerType.YQLSERVER);
+  }
+
+  public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
+    return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
+  }
+
+  private Result getServerAddresses(UUID customerUUID, UUID universeUUID, ServerType type) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.get(customerUUID);
     if (customer == null) {
@@ -64,7 +60,12 @@ public class MetaMasterController extends Controller {
     try {
       // Lookup the entry for the instanceUUID.
       Universe universe = Universe.get(universeUUID);
-      return ApiResponse.success(universe.getYQLServerAddresses());
+      switch (type) {
+        case MASTER: return ApiResponse.success(universe.getMasterAddresses());
+        case YQLSERVER: return ApiResponse.success(universe.getYQLServerAddresses());
+        case REDISSERVER: return ApiResponse.success(universe.getRedisServerAddresses()); 
+        default: throw new IllegalArgumentException("Unexpected type " + type);
+      }
     } catch (RuntimeException e) {
       LOG.error("Error finding universe", e);
       return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);

@@ -35,6 +35,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public enum ServerType {
     MASTER,
     TSERVER,
+    YQLSERVER,
+    REDISSERVER,
     EITHER
   }
 

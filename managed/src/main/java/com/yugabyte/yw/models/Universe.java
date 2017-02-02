@@ -26,6 +26,7 @@ import com.avaje.ebean.SqlUpdate;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
@@ -264,14 +265,7 @@ public class Universe extends Model {
    * @return a list of master nodes
    */
   public List<NodeDetails> getMasters() {
-    List<NodeDetails> masters = new LinkedList<NodeDetails>();
-    UniverseDefinitionTaskParams details = getUniverseDetails();
-    for (NodeDetails nodeDetails : details.nodeDetailsSet) {
-      if (nodeDetails.isMaster) {
-        masters.add(nodeDetails);
-      }
-    }
-    return masters;
+    return getServers(ServerType.MASTER);
   }
 
   /**
@@ -280,14 +274,7 @@ public class Universe extends Model {
    * @return a list of tserver nodes
    */
   public List<NodeDetails> getTServers() {
-    List<NodeDetails> tservers = new LinkedList<NodeDetails>();
-    UniverseDefinitionTaskParams details = getUniverseDetails();
-    for (NodeDetails nodeDetails : details.nodeDetailsSet) {
-      if (nodeDetails.isTserver) {
-        tservers.add(nodeDetails);
-      }
-    }
-    return tservers;
+    return getServers(ServerType.TSERVER);
   }
 
   /**
@@ -296,14 +283,36 @@ public class Universe extends Model {
    * @return a list of YQL server nodes
    */
   public List<NodeDetails> getYsqlServers() {
-    List<NodeDetails> yservers = new LinkedList<NodeDetails>();
+    return getServers(ServerType.YQLSERVER);
+  }
+
+  /**
+   * Return the list of Redis servers for this universe.
+   *
+   * @return a list of Redis server nodes
+   */
+  public List<NodeDetails> getRedisServers() {
+    return getServers(ServerType.REDISSERVER);
+  }
+
+  public List<NodeDetails> getServers(ServerType type) {
+    List<NodeDetails> servers = new LinkedList<NodeDetails>();
     UniverseDefinitionTaskParams details = getUniverseDetails();
     for (NodeDetails nodeDetails : details.nodeDetailsSet) {
-      if (nodeDetails.isYqlServer) {
-        yservers.add(nodeDetails);
+      switch(type) {
+      case YQLSERVER:
+        if (nodeDetails.isYqlServer) servers.add(nodeDetails); break;
+      case TSERVER:
+        if (nodeDetails.isTserver) servers.add(nodeDetails); break;
+      case MASTER:
+        if (nodeDetails.isMaster) servers.add(nodeDetails); break;
+      case REDISSERVER:
+        if (nodeDetails.isRedisServer) servers.add(nodeDetails); break;
+      default:
+        throw new IllegalArgumentException("Unexpected server type " + type);
       }
     }
-    return yservers;
+    return servers;
   }
 
   /**
@@ -342,18 +351,7 @@ public class Universe extends Model {
     if (mastersQueryable && !verifyMastersAreQueryable(masters)) {
       return "";
     }
-    StringBuilder masterAddresses = new StringBuilder();
-    for (NodeDetails nodeDetails : masters) {
-      if (nodeDetails.cloudInfo.private_ip != null) {
-        if (masterAddresses.length() != 0) {
-          masterAddresses.append(",");
-        }
-        masterAddresses.append(nodeDetails.cloudInfo.private_ip);
-        masterAddresses.append(":");
-        masterAddresses.append(nodeDetails.masterRpcPort);
-      }
-    }
-    return masterAddresses.toString();
+    return getHostPortsString(masters, ServerType.MASTER);
   }
 
   /**
@@ -363,19 +361,45 @@ public class Universe extends Model {
    * @return a comma separated string of 'host:port'.
    */
   public String getYQLServerAddresses() {
-    List<NodeDetails> servers = getYsqlServers();
-    StringBuilder ysqlServers = new StringBuilder();
-    for (NodeDetails node : servers) {
+    return getHostPortsString(getYsqlServers(), ServerType.YQLSERVER);
+  }
+
+  /**
+   * Returns a comma separated list of <privateIp:redisRPCPort> for all nodes that have the
+   * isRedisServer flag set to true in this cluster.
+   *
+   * @return a comma separated string of 'host:port'.
+   */
+  public String getRedisServerAddresses() {
+    return getHostPortsString(getRedisServers(), ServerType.REDISSERVER);
+  }
+
+  // Helper API to create the based on the server type.
+  private String getHostPortsString(List<NodeDetails> serverNodes, ServerType type) {
+    StringBuilder servers = new StringBuilder();
+    for (NodeDetails node : serverNodes) {
       if (node.cloudInfo.private_ip != null) {
-        if (ysqlServers.length() != 0) {
-          ysqlServers.append(",");
+        int port = 0;
+        switch (type) {
+        case YQLSERVER:
+          if (node.isYqlServer) port = node.yqlServerRpcPort; break;
+        case TSERVER:
+          if (node.isTserver) port = node.tserverRpcPort; break;
+        case MASTER:
+          if (node.isMaster) port = node.masterRpcPort; break;
+        case REDISSERVER:
+          if (node.isRedisServer) port = node.redisServerRpcPort; break;
+        default:
+          throw new IllegalArgumentException("Unexpected server type " + type);
         }
-        ysqlServers.append(node.cloudInfo.private_ip);
-        ysqlServers.append(":");
-        ysqlServers.append(node.yqlServerRpcPort);
+
+        if (servers.length() != 0) {
+          servers.append(",");
+        }
+        servers.append(node.cloudInfo.private_ip).append(":").append(port);
       }
     }
-    return ysqlServers.toString();
+    return servers.toString();
   }
 
   /**
