@@ -4,7 +4,6 @@ import java.util.List;
 
 import org.apache.log4j.Logger;
 import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.SimpleLoadGenerator;
 import org.yb.loadtester.common.SimpleLoadGenerator.Key;
 
 import com.datastax.driver.core.ResultSet;
@@ -32,9 +31,6 @@ public class CassandraSimpleReadWrite extends Workload {
     workloadConfig.numKeysToWrite = NUM_KEYS_TO_WRITE;
     workloadConfig.numUniqueKeysToWrite = NUM_KEYS_TO_WRITE;
   }
-  // Instance of the load generator.
-  private static SimpleLoadGenerator loadGenerator =
-      new SimpleLoadGenerator(0, workloadConfig.numUniqueKeysToWrite);
   // The table name.
   private String tableName = CassandraSimpleReadWrite.class.getSimpleName();
 
@@ -56,7 +52,7 @@ public class CassandraSimpleReadWrite extends Workload {
 
   @Override
   public long doRead() {
-    Key key = loadGenerator.getKeyToRead();
+    Key key = getSimpleLoadGenerator().getKeyToRead();
     if (key == null) {
       // There are no keys to read yet.
       return 0;
@@ -71,19 +67,19 @@ public class CassandraSimpleReadWrite extends Workload {
     }
     String value = rows.get(0).getString(1);
     key.verify(value);
-    LOG.info("Read key: " + key.toString());
+    LOG.debug("Read key: " + key.toString());
     return 1;
   }
 
   @Override
   public long doWrite() {
-    Key key = loadGenerator.getKeyToWrite();
+    Key key = getSimpleLoadGenerator().getKeyToWrite();
     // Do the write to Cassandra.
     String insert_stmt = String.format("INSERT INTO %s (k, v) VALUES ('%s', '%s');",
                                        tableName, key.asString(), key.getValueStr());
     ResultSet resultSet = getCassandraClient().execute(insert_stmt);
-    LOG.info("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
-    loadGenerator.recordWriteSuccess(key);
+    LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
+    getSimpleLoadGenerator().recordWriteSuccess(key);
     return 1;
   }
 }

@@ -16,10 +16,8 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
 import org.yb.loadtester.Workload;
 
 public class Configuration {
@@ -77,7 +75,7 @@ public class Configuration {
 
   public Node getRandomNode() {
     int nodeId = random.nextInt(nodes.size());
-    LOG.info("Returning random node id " + nodeId);
+    LOG.debug("Returning random node id " + nodeId);
     return nodes.get(nodeId);
   }
 
@@ -197,12 +195,12 @@ public class Configuration {
     numUniqueKeys.setArgs(1);
     options.addOption(numUniqueKeys);
 
-    Option logtostderr = OptionBuilder.create("logtostderr");
-    logtostderr.setDescription("Log to console.");
-    logtostderr.setRequired(false);
-    logtostderr.setLongOpt("logtostderr");
-    logtostderr.setArgs(0);
-    options.addOption(logtostderr);
+    Option verbose = OptionBuilder.create("verbose");
+    verbose.setDescription("Enable debug level logging.");
+    verbose.setRequired(false);
+    verbose.setLongOpt("verbose");
+    verbose.setArgs(0);
+    options.addOption(verbose);
 
     CommandLineParser parser = new BasicParser();
     CommandLine cmd = null;
@@ -214,16 +212,8 @@ public class Configuration {
       System.exit(0);
     }
 
-    // Enable console logging.
-    if (cmd.hasOption("logtostderr")) {
-      // Add in console logging so its easier to see logs.
-      ConsoleAppender console = new ConsoleAppender();
-      String PATTERN = "%d [%p|%c|%C{1}] %m%n";
-      console.setLayout(new PatternLayout(PATTERN));
-      console.setThreshold(Level.INFO);
-      console.activateOptions();
-      Logger.getRootLogger().addAppender(console);
-    }
+    // Set the appropriate log level.
+    Logger.getRootLogger().setLevel(cmd.hasOption("verbose") ? Level.DEBUG : Level.INFO);
 
     if (cmd.hasOption("h")) {
       printUsage(options, "Usage:");

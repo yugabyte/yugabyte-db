@@ -3,7 +3,10 @@ package org.yb.loadtester;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.log4j.ConsoleAppender;
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.apache.log4j.PatternLayout;
 import org.yb.loadtester.LoadTester.IOPSThread.IOType;
 import org.yb.loadtester.common.Configuration;
 
@@ -12,6 +15,16 @@ import org.yb.loadtester.common.Configuration;
  */
 public class LoadTester {
   private static final Logger LOG = Logger.getLogger(LoadTester.class);
+
+  static {
+    // Enable console logging.
+    ConsoleAppender console = new ConsoleAppender();
+    String PATTERN = "%d [%p|%c|%C{1}] %m%n";
+    console.setLayout(new PatternLayout(PATTERN));
+    console.setThreshold(Level.INFO);
+    console.activateOptions();
+    Logger.getRootLogger().addAppender(console);
+  }
 
   public static class IOPSThread extends Thread {
     private static final Logger LOG = Logger.getLogger(IOPSThread.class);

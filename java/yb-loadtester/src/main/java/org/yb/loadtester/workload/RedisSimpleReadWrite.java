@@ -2,7 +2,6 @@ package org.yb.loadtester.workload;
 
 import org.apache.log4j.Logger;
 import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.SimpleLoadGenerator;
 import org.yb.loadtester.common.SimpleLoadGenerator.Key;
 
 /**
@@ -25,9 +24,8 @@ public class RedisSimpleReadWrite extends Workload {
     // Set the number of keys to read and write.
     workloadConfig.numKeysToRead = NUM_KEYS_TO_READ;
     workloadConfig.numKeysToWrite = NUM_KEYS_TO_WRITE;
+    workloadConfig.numUniqueKeysToWrite = NUM_KEYS_TO_WRITE;
   }
-  // Instance of the load generator.
-  private static SimpleLoadGenerator loadGenerator = new SimpleLoadGenerator(0, NUM_KEYS_TO_WRITE);
 
   @Override
   public void initialize(String args) {}
@@ -39,24 +37,27 @@ public class RedisSimpleReadWrite extends Workload {
 
   @Override
   public long doRead() {
-    Key key = loadGenerator.getKeyToRead();
+    Key key = getSimpleLoadGenerator().getKeyToRead();
     if (key == null) {
       // There are no keys to read yet.
       return 0;
     }
     String value = getRedisClient().get(key.asString());
     key.verify(value);
-    LOG.info("Read key: " + key.toString());
+    LOG.debug("Read key: " + key.toString());
     return 1;
   }
 
   @Override
   public long doWrite() {
-    Key key = loadGenerator.getKeyToWrite();
+    Key key = getSimpleLoadGenerator().getKeyToWrite();
     String retVal = getRedisClient().set(key.asString(), key.getValueStr());
-    LOG.info("Wrote key: " + key.toString() + ", return code: " + retVal);
-    loadGenerator.recordWriteSuccess(key);
+    if (retVal == null) {
+      getSimpleLoadGenerator().recordWriteFailure(key);
+      return 0;
+    }
+    LOG.debug("Wrote key: " + key.toString() + ", return code: " + retVal);
+    getSimpleLoadGenerator().recordWriteSuccess(key);
     return 1;
   }
-
 }

@@ -7,6 +7,7 @@ import java.util.List;
 import org.apache.log4j.Logger;
 import org.yb.loadtester.common.Configuration;
 import org.yb.loadtester.common.Configuration.Node;
+import org.yb.loadtester.common.SimpleLoadGenerator;
 import org.yb.loadtester.metrics.MetricsTracker;
 import org.yb.loadtester.metrics.MetricsTracker.MetricName;
 
@@ -34,6 +35,9 @@ public abstract class Workload {
   protected Session cassandra_session = null;
   // The Java redis client.
   private Jedis jedisClient;
+  // Instance of the load generator.
+  private static SimpleLoadGenerator loadGenerator = null;
+
 
   /**
    * The load tester framework call this method of the base class. This in turn calls the
@@ -143,7 +147,7 @@ public abstract class Workload {
     destroyClients();
   }
 
-  protected Session getCassandraClient() {
+  protected synchronized Session getCassandraClient() {
     if (cassandra_cluster == null) {
       createCassandraClient();
     }
@@ -163,7 +167,7 @@ public abstract class Workload {
     }
   }
 
-  protected Jedis getRedisClient() {
+  protected synchronized Jedis getRedisClient() {
     if (jedisClient == null) {
       Node node = getRandomNode();
       jedisClient = new Jedis(node.getHost(), node.getPort());
@@ -171,7 +175,7 @@ public abstract class Workload {
     return jedisClient;
   }
 
-  protected void destroyClients() {
+  protected synchronized void destroyClients() {
     if (cassandra_session != null) {
       cassandra_session.close();
       cassandra_session = null;
@@ -183,5 +187,16 @@ public abstract class Workload {
     if (jedisClient != null) {
       jedisClient.close();
     }
+  }
+
+  public SimpleLoadGenerator getSimpleLoadGenerator() {
+    if (loadGenerator == null) {
+      synchronized (this) {
+        if (loadGenerator == null) {
+          loadGenerator = new SimpleLoadGenerator(0, workloadConfig.numUniqueKeysToWrite);
+        }
+      }
+    }
+    return loadGenerator;
   }
 }

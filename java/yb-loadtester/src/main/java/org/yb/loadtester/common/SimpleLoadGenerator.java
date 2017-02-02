@@ -12,10 +12,9 @@ import org.apache.log4j.Logger;
 
 
 public class SimpleLoadGenerator {
+  private static final Logger LOG = Logger.getLogger(SimpleLoadGenerator.class);
 
   public static class Key {
-    private static final Logger LOG = Logger.getLogger(Key.class);
-
     // The underlying key is an integer.
     Long key;
     // The randomized loadtester prefix.
@@ -74,6 +73,7 @@ public class SimpleLoadGenerator {
   Random random = new Random();
 
   public SimpleLoadGenerator(long startKey, long endKey) {
+    LOG.info("Creating a load generator in key range (" + startKey + ", " + endKey + ")");
     this.startKey = startKey;
     this.endKey = endKey;
     maxWrittenKey = new AtomicLong(-1);
@@ -125,7 +125,7 @@ public class SimpleLoadGenerator {
 
   public Key getKeyToWrite() {
     // Return a random key to update if we have already written all keys.
-    if (maxGeneratedKey.get() == endKey - 1) {
+    if (maxGeneratedKey.get() != -1 && maxGeneratedKey.get() == endKey - 1) {
       return getKeyToRead();
     }
     return generateKey(maxGeneratedKey.incrementAndGet());
