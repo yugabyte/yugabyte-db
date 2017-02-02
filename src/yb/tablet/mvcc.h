@@ -205,7 +205,7 @@ class MvccSnapshot {
 //
 class MvccManager {
  public:
-  explicit MvccManager(const scoped_refptr<server::Clock>& clock);
+  explicit MvccManager(const scoped_refptr<server::Clock>& clock, bool enforce_invariants = false);
 
   // Begin a new transaction, assigning it a transaction ID.
   // Callers should generally prefer using the ScopedTransaction class defined
@@ -381,6 +381,8 @@ class MvccManager {
     return waiters_.size();
   }
 
+  void EnforceInvariantsIfNecessary(const HybridTime& next);
+
   typedef simple_spinlock LockType;
   mutable LockType lock_;
 
@@ -399,6 +401,9 @@ class MvccManager {
   // if that set is empty. This is cached in order to avoid having to iterate
   // over hybrid_times_in_flight_ on every commit.
   HybridTime earliest_in_flight_;
+  // Used only to verify monotonicity. Not needed functionally.
+  HybridTime max_write_timestamp_;
+  const bool enforce_invariants_;
 
   scoped_refptr<server::Clock> clock_;
   mutable std::vector<WaitingState*> waiters_;

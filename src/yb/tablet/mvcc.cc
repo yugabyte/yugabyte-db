@@ -34,10 +34,12 @@
 
 namespace yb { namespace tablet {
 
-MvccManager::MvccManager(const scoped_refptr<server::Clock>& clock)
-  : no_new_transactions_at_or_before_(HybridTime::kMin),
-    earliest_in_flight_(HybridTime::kMax),
-    clock_(clock) {
+MvccManager::MvccManager(const scoped_refptr<server::Clock>& clock, bool enforce_invariants)
+    : no_new_transactions_at_or_before_(HybridTime::kMin),
+      earliest_in_flight_(HybridTime::kMax),
+      max_write_timestamp_(HybridTime::kMin),
+      enforce_invariants_(enforce_invariants),
+      clock_(clock) {
   cur_snap_.all_committed_before_ = HybridTime::kInitialHybridTime;
   cur_snap_.none_committed_at_or_after_ = HybridTime::kInitialHybridTime;
 }
@@ -47,12 +49,19 @@ HybridTime MvccManager::StartTransaction() {
     HybridTime now = clock_->Now();
     std::lock_guard<LockType> l(lock_);
     if (PREDICT_TRUE(InitTransactionUnlocked(now))) {
+      EnforceInvariantsIfNecessary(now);
       return now;
     }
   }
   // dummy return to avoid compiler warnings
   LOG(FATAL) << "Unreachable, added to avoid compiler warning.";
   return HybridTime::kInvalidHybridTime;
+}
+void MvccManager::EnforceInvariantsIfNecessary(const HybridTime& next) {
+  if (enforce_invariants_) {
+    DCHECK_GT(next, max_write_timestamp_) << "Timestamps assigned should be strictly monotonic.";
+    max_write_timestamp_ = next;
+  }
 }
 
 HybridTime MvccManager::StartTransactionAtLatest() {
@@ -72,6 +81,7 @@ HybridTime MvccManager::StartTransactionAtLatest() {
   }
 #endif
 
+  EnforceInvariantsIfNecessary(now_latest);
   return now_latest;
 }
 
@@ -87,6 +97,8 @@ Status MvccManager::StartTransactionAtHybridTime(HybridTime hybrid_time) {
         strings::Substitute("There is already a transaction with hybrid_time: $0 in flight.",
                             hybrid_time.value()));
   }
+
+  EnforceInvariantsIfNecessary(hybrid_time);
   return Status::OK();
 }
 
@@ -570,5 +582,5 @@ void ScopedTransaction::Abort() {
 }
 
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb

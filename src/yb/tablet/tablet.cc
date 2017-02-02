@@ -39,12 +39,13 @@
 #include "rocksdb/write_batch.h"
 
 #include "yb/cfile/cfile_writer.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/iterator.h"
 #include "yb/common/row_changelist.h"
 #include "yb/common/row_operations.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/schema.h"
-#include "yb/common/hybrid_time.h"
 #include "yb/common/yql_rowblock.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -237,7 +238,7 @@ Tablet::Tablet(
       dms_mem_tracker_(MemTracker::CreateTracker(-1, kDMSMemTrackerId, mem_tracker_)),
       next_mrs_id_(0),
       clock_(clock),
-      mvcc_(clock),
+      mvcc_(clock, metadata->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE),
       rowsets_flush_sem_(1),
       state_(kInitialized),
       rocksdb_statistics_(nullptr),
