@@ -11,12 +11,8 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,9 +24,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import play.libs.Json;
 import play.mvc.Result;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -68,25 +62,22 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testYqlGetWithInvalidUniverse() {
-    String universeUUID = "11111111-2222-3333-4444-555555555555";
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
-                                       universeUUID + "/yqlservers"));
-    assertRestResult(result, false, BAD_REQUEST);
+    testServerGetWithInvalidUniverse(true);
+  }
+
+  @Test
+  public void testRedisGetWithInvalidUniverse() {
+    testServerGetWithInvalidUniverse(false);
   }
 
   @Test
   public void testYqlGetWithValidUniverse() {
-    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
-    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
-    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.save();
+    testServerGetWithValidUniverse(true);
+  }
 
-    Result r = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
-                                 u1.universeUUID + "/yqlservers"));
-    LOG.info("Fetched yql server list from universe, response: " + contentAsString(r));
-    assertRestResult(r, true, OK);
+  @Test
+  public void testRedisGetWithValidUniverse() {
+    testServerGetWithValidUniverse(false);
   }
 
   private void assertRestResult(Result result, boolean expectSuccess, int expectStatus) {
@@ -98,5 +89,25 @@ public class MetaMasterControllerTest extends FakeDBApplication {
       assertNotNull(json.get("error"));
       assertFalse(json.get("error").asText().isEmpty());
     }
+  }
+
+  private void testServerGetWithInvalidUniverse(boolean isYql) {
+    String universeUUID = "11111111-2222-3333-4444-555555555555";
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
+                                       universeUUID + (isYql ? "/yqlservers" : "/redisservers")));
+    assertRestResult(result, false, BAD_REQUEST);
+  }
+
+  private void testServerGetWithValidUniverse(boolean isYql) {
+    Customer customer = Customer.create("Valid Customer", "abd@def.ghi", "password");
+    Universe u1 = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.save();
+
+    Result r = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" +
+                                 u1.universeUUID + (isYql ? "/yqlservers" : "/redisservers")));
+    assertRestResult(r, true, OK);
   }
 }
