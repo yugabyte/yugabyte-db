@@ -90,9 +90,9 @@ public abstract class Workload {
       return;
     }
     // Perform the write and track the number of successfully written keys.
-    long startTs = System.currentTimeMillis();
+    long startTs = System.nanoTime();
     long count = doWrite();
-    long endTs = System.currentTimeMillis();
+    long endTs = System.nanoTime();
     if (count > 0) {
       numKeysWritten += count;
       metricsTracker.getMetric(MetricName.Write).accumulate(count, endTs - startTs);
@@ -109,9 +109,9 @@ public abstract class Workload {
       return;
     }
     // Perform the read and track the number of successfully read keys.
-    long startTs = System.currentTimeMillis();
+    long startTs = System.nanoTime();
     long count = doRead();
-    long endTs = System.currentTimeMillis();
+    long endTs = System.nanoTime();
     if (count > 0) {
       numKeysRead += count;
       metricsTracker.getMetric(MetricName.Read).accumulate(count, endTs - startTs);

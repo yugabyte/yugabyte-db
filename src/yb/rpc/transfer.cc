@@ -347,7 +347,6 @@ Status CQLInboundTransfer::ReceiveBuffer(Socket& socket) {
     RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status);
     cur_offset_ += nread;
   }
-  LOG(INFO) << "CQLInboundTransfer::ReceiveBuffer: " << cur_offset_ << " bytes read";
 
   return Status::OK();
 }
