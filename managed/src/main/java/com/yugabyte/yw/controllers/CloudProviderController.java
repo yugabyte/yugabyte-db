@@ -12,7 +12,6 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.inject.Inject;
@@ -106,6 +105,8 @@ public class CloudProviderController extends AuthenticatedController {
           InstanceType it = InstanceType.get(p.code, i.code);
           if (it == null) {
             // TODO: instance type metadata?
+            InstanceTypeDetails details = new InstanceTypeDetails();
+            details.volumeDetailsList = i.volumeDetailsList;
             it = InstanceType.upsert(
                 p.code,
                 i.code,
@@ -114,7 +115,7 @@ public class CloudProviderController extends AuthenticatedController {
                 0, // volumeCount
                 0, // volumeSizeGB
                 InstanceType.VolumeType.SSD,
-                new InstanceTypeDetails()
+                details
                 );
           }
         }
