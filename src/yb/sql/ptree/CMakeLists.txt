@@ -7,6 +7,7 @@ add_library(ybsql_ptree
             pt_name.cc
             pt_table_property.cc
             pt_create_keyspace.cc
+            pt_use_keyspace.cc
             pt_create_table.cc
             pt_drop.cc
             pt_dml.cc

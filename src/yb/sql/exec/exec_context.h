@@ -50,6 +50,11 @@ class ExecContext : public ProcessContext {
     return sql_env_->DeleteKeyspace(keyspace_name);
   }
 
+  // Use keyspace with the given name.
+  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
+    return sql_env_->UseKeyspace(keyspace_name);
+  }
+
   // Apply YBClient write operator.
   CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op,
                             const TreeNode *tnode);

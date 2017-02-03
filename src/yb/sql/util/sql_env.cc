@@ -5,6 +5,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/sql/util/sql_env.h"
+#include "yb/master/catalog_manager.h"
 
 namespace yb {
 namespace sql {
@@ -24,7 +25,8 @@ SqlEnv::SqlEnv(shared_ptr<YBClient> client,
                shared_ptr<YBSession> read_session)
     : client_(client),
       write_session_(write_session),
-      read_session_(read_session) {
+      read_session_(read_session),
+      current_keyspace_(yb::master::kDefaultNamespaceName) {
 }
 
 YBTableCreator *SqlEnv::NewTableCreator() {
@@ -82,6 +84,23 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const char *table_name, bool refresh_me
 
 void SqlEnv::Reset() {
   rows_result_ = nullptr;
+}
+
+CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
+  // Check if a keyspace with the specified name exists.
+  bool exists = false;
+  RETURN_NOT_OK(client_->NamespaceExists(keyspace_name, &exists));
+
+  if (!exists) {
+    return STATUS(NotFound, "Cannot use unknown keyspace");
+  }
+
+  // Set the current keyspace name.
+
+  // TODO(Oleg): Keyspace should be cached in CQL layer. We keep it here only as a workaround.
+  current_keyspace_ = keyspace_name;
+
+  return Status::OK();
 }
 
 } // namespace sql

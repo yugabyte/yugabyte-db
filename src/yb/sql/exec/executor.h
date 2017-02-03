@@ -10,6 +10,7 @@
 #include "yb/sql/exec/exec_context.h"
 #include "yb/sql/exec/eval_expr.h"
 #include "yb/sql/ptree/pt_create_keyspace.h"
+#include "yb/sql/ptree/pt_use_keyspace.h"
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_select.h"
@@ -81,6 +82,9 @@ class Executor {
 
   // Create keyspace.
   CHECKED_STATUS ExecPTNode(const PTCreateKeyspace *tnode);
+
+  // Use keyspace.
+  CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.

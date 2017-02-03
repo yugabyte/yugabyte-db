@@ -94,6 +94,9 @@ CHECKED_STATUS Executor::ExecTreeNode(const TreeNode *tnode) {
     case TreeNodeOpcode::kPTCreateKeyspace:
       return ExecPTNode(static_cast<const PTCreateKeyspace*>(tnode));
 
+    case TreeNodeOpcode::kPTUseKeyspace:
+      return ExecPTNode(static_cast<const PTUseKeyspace*>(tnode));
+
     default:
       return ExecPTNode(tnode);
   }
@@ -844,6 +847,26 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
                                 error_code);
   }
 
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS Executor::ExecPTNode(const PTUseKeyspace *tnode) {
+  DCHECK_NOTNULL(exec_context_.get());
+  Status exec_status = exec_context_->UseKeyspace(tnode->name());
+
+  if (!exec_status.ok()) {
+    ErrorCode error_code = ErrorCode::EXEC_ERROR;
+
+    if(exec_status.IsNotFound()) {
+      error_code = ErrorCode::KEYSPACE_NOT_FOUND;
+    }
+
+    return exec_context_->Error(tnode->loc(),
+                                exec_status.ToString().c_str(),
+                                error_code);
+  }
   return Status::OK();
 }
 

@@ -66,6 +66,7 @@
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/parser/parser_inactive_nodes.h"
 #include "yb/sql/ptree/pt_create_keyspace.h"
+#include "yb/sql/ptree/pt_use_keyspace.h"
 #include "yb/sql/ptree/pt_create_table.h"
 #include "yb/sql/ptree/pt_drop.h"
 #include "yb/sql/ptree/pt_type.h"
@@ -191,8 +192,8 @@ using namespace yb::sql;
                           UpdateStmt
                           set_target_list
 
-                          // Create keyspace.
-                          CreateSchemaStmt
+                          // Keyspace related statements.
+                          CreateSchemaStmt UseSchemaStmt
 
 %type <PCollection>       // Select can be either statement or expression of collection types.
                           SelectStmt select_no_parens select_with_parens select_clause
@@ -532,7 +533,7 @@ using namespace yb::sql;
                           TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
-                          UNLOGGED UNTIL UPDATE USER USING
+                          UNLOGGED UNTIL UPDATE USE USER USING
 
                           VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC
                           VARYING VERBOSE VERSION_P VIEW VIEWS VOLATILE
@@ -681,6 +682,9 @@ stmt:
   | CreateSchemaStmt {
     $$ = $1;
   }
+  | UseSchemaStmt {
+    $$ = $1;
+  }
   | CreateStmt {
     $$ = $1;
   }
@@ -762,6 +766,18 @@ OptSchemaEltList:
     PARSER_UNSUPPORTED(@1);
   }
   | /* EMPTY */ {
+  }
+;
+
+//--------------------------------------------------------------------------------------------------
+// USE KEYSPACE statement.
+// Syntax:
+//   USE keyspace_name
+//--------------------------------------------------------------------------------------------------
+
+UseSchemaStmt:
+  USE ColId {
+    $$ = MAKE_NODE(@1, PTUseKeyspace, $2);
   }
 ;
 
@@ -4450,6 +4466,7 @@ reserved_keyword:
   | TRUE_P { $$ = $1; }
   | UNION { $$ = $1; }
   | UNIQUE { $$ = $1; }
+  | USE { $$ = $1; }
   | USER { $$ = $1; }
   | USING { $$ = $1; }
   | VARIADIC { $$ = $1; }

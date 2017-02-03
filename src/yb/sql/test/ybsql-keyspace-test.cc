@@ -61,6 +61,10 @@ class YbSqlKeyspace : public YbSqlTestBase {
   inline const string DropSchemaIfExistsStmt(string params) {
     return "DROP SCHEMA IF EXISTS " + params;
   }
+
+  inline const string UseStmt(string params) {
+    return "USE " + params;
+  }
 };
 
 TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceSimple) {
@@ -243,6 +247,38 @@ TEST_F(YbSqlKeyspace, TestSqlCreateSchemaIfNotExists) {
 //  LOG(INFO) << "Exec SQL: " << CreateSchemaIfNotExistsStmt("ks1 AUTHORIZATION user1;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaIfNotExistsStmt("ks1 AUTHORIZATION user1;"),
 //      "Feature Not Supported", "AUTHORIZATION");
+}
+
+TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceSimple) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  const string keyspace1 = "test;";
+
+  // Try to use unknown keyspace1.
+  LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
+  EXEC_INVALID_STMT_WITH_ERROR(UseStmt(keyspace1), "Keyspace Not Found",
+      "Cannot use unknown keyspace");
+
+  // Create the keyspace1.
+  LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
+  EXEC_VALID_STMT(CreateKeyspaceStmt(keyspace1));
+
+  // Use the keyspace1.
+  LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
+  EXEC_VALID_STMT(UseStmt(keyspace1));
+
+  // Delete keyspace1.
+  LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
+  EXEC_VALID_STMT(DropKeyspaceStmt(keyspace1));
+
+  // Try to use deleted keyspace1.
+  LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
+  EXEC_INVALID_STMT_WITH_ERROR(UseStmt(keyspace1), "Keyspace Not Found",
+      "Cannot use unknown keyspace");
 }
 
 } // namespace sql

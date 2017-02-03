@@ -58,6 +58,13 @@ class SqlEnv {
     return client_->DeleteNamespace(keyspace_name);
   }
 
+  // Use keyspace with the given name.
+  virtual CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
+
+  virtual std::string CurrentKeyspace() const {
+      return current_keyspace_;
+  }
+
   // Construct a row_block and send it back.
   std::shared_ptr<YQLRowBlock> row_block() const {
     if (rows_result_ == nullptr) {
@@ -71,6 +78,8 @@ class SqlEnv {
   void Reset();
 
  private:
+  // Persistent attributes.
+
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;
 
@@ -80,8 +89,15 @@ class SqlEnv {
   // A specific session (within YBClient) to execute a statement.
   std::shared_ptr<client::YBSession> read_session_;
 
+  // The following attributes are reset implicitly for every execution.
+
   // Rows resulted from executing the last statement.
   std::shared_ptr<RowsResult> rows_result_;
+
+  // TODO(Oleg): The following attribute must be moved to CQL layer.
+  //             However, CQL is not ready yet, so we leave it here as a workaround.
+
+  std::string current_keyspace_;
 };
 
 } // namespace sql
