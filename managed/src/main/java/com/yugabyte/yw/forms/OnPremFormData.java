@@ -2,12 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.List;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
+import com.yugabyte.yw.models.InstanceType;
 import play.data.validation.Constraints;
 
 /**
@@ -50,6 +49,7 @@ public class OnPremFormData {
 
   static public class InstanceTypeData {
     public String code;
+    public List<InstanceType.VolumeDetails> volumeDetailsList = new ArrayList<>();
   }
 
   // TODO: placeholder

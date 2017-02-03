@@ -76,7 +76,7 @@ public class InstanceTypeController extends AuthenticatedController {
                                             formData.get().volumeCount,
                                             formData.get().volumeSizeGB,
                                             formData.get().volumeType,
-                                            new InstanceTypeDetails());
+                                            formData.get().instanceTypeDetails);
       return ok(Json.toJson(it));
     } catch (Exception e) {
       responseJson.put("error", e.getMessage());

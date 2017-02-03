@@ -2,8 +2,8 @@
 package com.yugabyte.yw.models;
 
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -11,7 +11,6 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 
-import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -145,6 +144,9 @@ public class InstanceType extends Model {
       instanceType = new InstanceType();
       instanceType.idKey = InstanceTypeKey.create(instanceTypeCode, providerCode);
     }
+    if (instanceTypeDetails == null) {
+      instanceTypeDetails = new InstanceTypeDetails();
+    }
     instanceType.volumeCount = volumeCount;
     instanceType.volumeSizeGB = volumeSize;
     instanceType.volumeType = volumeType;
@@ -202,11 +204,22 @@ public class InstanceType extends Model {
     return instanceTypes;
   }
 
+  public static class VolumeDetails {
+
+    public Integer volumeSizeGB;
+
+    public VolumeType volumeType;
+
+    public String mountPath;
+  }
+
   public static class InstanceTypeDetails {
     public Map<String, List<InstanceTypeRegionDetails>> regionCodeToDetailsMap;
+    public List<VolumeDetails> volumeDetailsList;
 
     public InstanceTypeDetails() {
       regionCodeToDetailsMap = new HashMap<String, List<InstanceTypeRegionDetails>>();
+      volumeDetailsList = new LinkedList<VolumeDetails>();
     }
   }
 
