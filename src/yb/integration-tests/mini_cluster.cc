@@ -38,6 +38,7 @@ using strings::Substitute;
 
 DECLARE_int32(tablet_server_svc_num_threads);
 DECLARE_int32(ts_consensus_svc_num_threads);
+DECLARE_int32(default_num_replicas);
 
 namespace yb {
 
@@ -92,6 +93,7 @@ Status MiniCluster::Start() {
   // where several unit tests tend to run in parallel.
   FLAGS_tablet_server_svc_num_threads = 64;
   FLAGS_ts_consensus_svc_num_threads = 20;
+  FLAGS_default_num_replicas = num_masters_initial_;
 
   // start the masters
   if (num_masters_initial_ > 1) {

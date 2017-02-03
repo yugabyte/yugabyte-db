@@ -145,12 +145,9 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   // Create table.
-  // TODO(neil): Number of replica should be automatically computed by the master, but it hasn't.
-  // We passed '1' for now. Once server is fixed, num_replicas should be removed here.
   shared_ptr<YBTableCreator> table_creator(exec_context_->NewTableCreator());
   exec_status = table_creator->table_name(table_name).table_type(YBTableType::YQL_TABLE_TYPE)
                                                      .schema(&schema)
-                                                     .num_replicas(1)
                                                      .Create();
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::EXEC_ERROR;

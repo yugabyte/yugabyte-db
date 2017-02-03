@@ -95,6 +95,7 @@ using yb::rpc::RpcController;
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
 DECLARE_string(vmodule);
+DECLARE_int32(default_num_replicas);
 
 namespace yb {
 
@@ -160,6 +161,7 @@ Status ExternalMiniCluster::Start() {
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
       << tablet_servers_.size() << "). Maybe you meant Restart()?";
   RETURN_NOT_OK(HandleOptions());
+  FLAGS_default_num_replicas = opts_.num_masters;
 
   RETURN_NOT_OK_PREPEND(rpc::MessengerBuilder("minicluster-messenger")
                         .set_num_reactors(1)
