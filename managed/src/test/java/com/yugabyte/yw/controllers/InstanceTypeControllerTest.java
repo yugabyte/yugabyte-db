@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.core.IsNull.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -15,6 +16,7 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import java.util.UUID;
+
 import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Before;
@@ -110,6 +112,12 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateInstanceTypeWithValidParams() {
+    InstanceType.InstanceTypeDetails details = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.EBS;
+    volumeDetails.volumeSizeGB = 10;
+    volumeDetails.mountPath = "/tmp/path/";
+    details.volumeDetailsList.add(volumeDetails);
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
@@ -120,6 +128,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.put("volumeSizeGB", 10);
     instanceTypeJson.put("volumeType", "EBS");
     instanceTypeJson.put("numCores", 3);
+    instanceTypeJson.set("instanceTypeDetails", Json.toJson(details));
 
     Result result = FakeApiHelper.doRequestWithBody(
       "POST",
@@ -135,12 +144,25 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertThat(json.get("numCores").asInt(), allOf(notNullValue(), equalTo(3)));
     assertThat(json.get("volumeType").asText(), allOf(notNullValue(), equalTo("EBS")));
     assertTrue(json.get("active").asBoolean());
+    JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
+    assertThat(machineDetailsNode, notNullValue());
+    assertThat(machineDetailsNode.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(10)));
+    assertThat(machineDetailsNode.get("volumeType").asText(),
+        allOf(notNullValue(), equalTo("EBS")));
+    assertThat(machineDetailsNode.get("mountPath").asText(),
+        allOf(notNullValue(), equalTo("/tmp/path/")));
   }
 
   @Test
   public void testGetInstanceTypeWithValidParams() {
+    InstanceType.InstanceTypeDetails details = new InstanceType.InstanceTypeDetails();
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.EBS;
+    volumeDetails.volumeSizeGB = 20;
+    volumeDetails.mountPath = "/tmp/path/";
+    details.volumeDetailsList.add(volumeDetails);
     InstanceType it = InstanceType.upsert(provider.code, "test-i1", 3, 5.0, 1, 20,
-            InstanceType.VolumeType.EBS, new InstanceType.InstanceTypeDetails());
+            InstanceType.VolumeType.EBS, details);
 
     Result result = FakeApiHelper.doRequest(
             "GET",
@@ -155,6 +177,13 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertThat(json.get("numCores").asInt(), allOf(notNullValue(), equalTo(3)));
     assertThat(json.get("volumeType").asText(), allOf(notNullValue(), equalTo("EBS")));
     assertTrue(json.get("active").asBoolean());
+    JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
+    assertThat(machineDetailsNode, notNullValue());
+    assertThat(machineDetailsNode.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(20)));
+    assertThat(machineDetailsNode.get("volumeType").asText(),
+        allOf(notNullValue(), equalTo("EBS")));
+    assertThat(machineDetailsNode.get("mountPath").asText(),
+        allOf(notNullValue(), equalTo("/tmp/path/")));
   }
 
   @Test
