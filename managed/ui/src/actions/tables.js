@@ -13,6 +13,9 @@ export const RESET_TABLE_DETAIL = 'RESET_TABLE_DETAIL';
 export const CREATE_UNIVERSE_TABLE = 'CREATE_UNIVERSE_TABLE';
 export const CREATE_UNIVERSE_TABLE_SUCCESS = 'CREATE_UNIVERSE_TABLE_SUCCESS';
 export const CREATE_UNIVERSE_TABLE_FAILURE = 'CREATE_UNIVERSE_TABLE_FAILURE';
+export const FETCH_COLUMN_TYPES = 'FETCH_COLUMN_TYPES';
+export const FETCH_COLUMN_TYPES_SUCCESS = 'FETCH_COLUMN_TYPES_SUCCESS';
+export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
 
 export function fetchUniverseTables(universeUUID) {
   var customerId = localStorage.getItem("customer_id");
@@ -98,3 +101,25 @@ export function createUniverseTableFailure(error) {
   }
 }
 
+export function fetchColumnTypes() {
+  var customerId = localStorage.getItem("customer_id");
+  var request = axios.get(`${ROOT_URL}/metadata/column_types`);
+  return {
+    type: FETCH_COLUMN_TYPES,
+    payload: request
+  }
+}
+
+export function fetchColumnTypesSuccess(result) {
+  return {
+    type: FETCH_COLUMN_TYPES_SUCCESS,
+    payload: result
+  }
+}
+
+export function fetchColumnTypesFailure(error) {
+  return {
+    type: FETCH_COLUMN_TYPES_FAILURE,
+    payload: error
+  }
+}

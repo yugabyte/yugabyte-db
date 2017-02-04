@@ -9,6 +9,7 @@ import './CreateTables.scss';
 import cassandraLogo from '../images/cassandra.png';
 import redisLogo from '../images/redis.png';
 import { DescriptionItem } from '../../common/descriptors';
+import {isValidArray} from '../../../utils/ObjectUtils';
 
 class KeyColumnList extends Component {
   static propTypes = {
@@ -63,7 +64,7 @@ class KeyColumnList extends Component {
   }
 
   render() {
-    const {fields, columnType} = this.props;
+    const {fields, columnType, tables: {columnDataTypes}} = this.props;
     var getFieldLabel = function() {
       if (columnType === "partitionKey") {
         return "Partition Key";
@@ -77,7 +78,13 @@ class KeyColumnList extends Component {
     }
     var typeOptions = [<option value="type" key={"type"}>
                          Type
-                       </option>]
+                       </option>];
+
+    if (isValidArray(columnDataTypes)) {
+      typeOptions = typeOptions.concat(columnDataTypes.map(function(item, idx){
+                     return <option key={idx} value={item}>{item}</option>
+                    }));
+    }
     return (
       <div>
         {fields.map((item, index) =>
@@ -118,7 +125,7 @@ class CassandraColumnSpecification extends Component {
             </DescriptionItem>
           </Col>
           <Col lg={9}>
-            <FieldArray name="partitionKeyColumns" component={KeyColumnList} columnType={"partitionKey"}/>
+            <FieldArray name="partitionKeyColumns" component={KeyColumnList} columnType={"partitionKey"} {...this.props}/>
           </Col>
         </Row>
         <Row>
@@ -128,7 +135,7 @@ class CassandraColumnSpecification extends Component {
             </DescriptionItem>
           </Col>
           <Col lg={9}>
-            <FieldArray name="clusteringColumns" component={KeyColumnList} columnType={"clustering"} />
+            <FieldArray name="clusteringColumns" component={KeyColumnList} columnType={"clustering"} {...this.props}/>
           </Col>
         </Row>
         <Row className="other-column-container">
@@ -138,7 +145,7 @@ class CassandraColumnSpecification extends Component {
             </DescriptionItem>
           </Col>
           <Col lg={9}>
-            <FieldArray name="otherColumns" component={KeyColumnList} columnType={"other"}/>
+            <FieldArray name="otherColumns" component={KeyColumnList} columnType={"other"} {...this.props} />
           </Col>
         </Row>
       </div>
@@ -151,7 +158,10 @@ export default class CreateTable extends Component {
     this.state = {  'activeTable': 'cassandra' }
     this.createTable = this.createTable.bind(this);
     this.radioClicked = this.radioClicked.bind(this);
+  }
 
+  componentWillMount() {
+    this.props.fetchTableColumnTypes();
   }
 
   radioClicked(event) {
@@ -159,7 +169,8 @@ export default class CreateTable extends Component {
   }
 
   createTable(values) {
-    this.props.submitCreateTable(values);
+    const {universe: {currentUniverse}} = this.props;
+    this.props.submitCreateTable(currentUniverse, values);
   }
 
   render() {

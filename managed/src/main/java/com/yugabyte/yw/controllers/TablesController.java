@@ -11,6 +11,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ColumnDetails;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.GetTableSchemaResponse;
@@ -103,7 +104,7 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result getColumnTypes() {
-    return play.mvc.Results.TODO;
+    return ok(Json.toJson(ColumnDetails.YQLDataType.values()));
   }
 
   public Result universeList(UUID customerUUID, UUID universeUUID) {
