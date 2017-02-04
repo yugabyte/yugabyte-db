@@ -70,11 +70,13 @@ network_bytes:
         "net_bytes_recv": "RX"
 
 network_packets:
-  metric: "multi-metric"
-  function: "avg"
+  metric: "collectd_yb_system_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  operator: "/ 10"
   filters:
-    __name__: "node_network_(.*)_packets"
-  group_by: "__name__"
+    type: "net_packets_sent|net_packets_recv"
+  group_by: "type"
   layout:
     title: "Network Packets / sec / host"
     xaxis:
@@ -85,19 +87,20 @@ network_packets:
         "node_network_transmit_packets": "TX"
 
 network_errors:
-  metric: "multi-metric"
-  function: "avg"
+  metric: "collectd_yb_system_counter_total"
+  function: "rate|avg"
+  range: "1m"
   filters:
-    __name__: "node_network_(.*)_errs"
-  group_by: "__name__"
+    type: "net_errin|net_errout"
+  group_by: "type"
   layout:
     title: "Network Errors / sec / host"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "node_network_receive_errs": "RX"
-        "node_network_transmit_errs": "TX"
+        "net_errin": "RX"
+        "net_errout": "TX"
 
 system_load_over_time:
   metric: "multi-metric"
@@ -116,19 +119,20 @@ system_load_over_time:
         "collectd_load_2": "Large"
 
 disk_bytes_per_second_per_node:
-  metric: "multi-metric"
+  metric: "collectd_yb_system_counter_total"
   filters:
-    __name__: "node_disk_bytes_.+"
-  function: "avg"
-  group_by: "__name__"
+    type: "iostat_read_bytes|iostat_write_bytes"
+  range: "1m"
+  function: "rate|avg"
+  group_by: "type"
   layout:
     title: "Disk Bytes / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "node_disk_bytes_read": "RX"
-        "node_disk_bytes_written": "TX"
+        "iostat_read_bytes": "RX"
+        "iostat_write_bytes": "TX"
 
 redis_ops_latency:
   metric: "collectd_yb_redis_counter_total"
@@ -161,6 +165,8 @@ redis_rpcs_per_sec:
         "rpc_RedisServerService_get.num": "Get"
         "rpc_RedisServerService_set.num": "Set"
         "rpc_RedisServerService_echo.num": "Echo"
+
+# tserver metrics
 tserver_ops_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
@@ -192,3 +198,180 @@ tserver_rpcs_per_sec:
         "rpc_TabletServerService_Scan.num": "Scan"
         "rpc_TabletServerService_Write.num": "Write"
         "rpc_TabletServerService_Read.num": "Read"
+tserver_cache_ops_per_sec:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "block_cache_hits|block_cache_lookups"
+  group_by: "type"
+  layout:
+    title: "Block Cache Ops / sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "block_cache_hits": "Hits"
+        "block_cache_lookups": "Lookups"
+tserver_threads:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "threads_running|threads_started"
+  group_by: "type"
+  layout:
+    title: "Threads"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "threads_running": "Running"
+        "threads_started": "Started"
+tserver_change_config:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rpc_ConsensusService_ChangeConfig.avg"
+  group_by: "type"
+  layout:
+    title: "Change Config"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_ConsensusService_ChangeConfig.avg": "Change Config"
+tserver_context_switches:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "involuntary_context_switches|voluntary_context_switches"
+  group_by: "type"
+  layout:
+    title: "Context Switches"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "involuntary_context_switches": "Involuntary"
+        "voluntary_context_switches": "Voluntary"
+tserver_spinlock_server:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "spinlock_contention_time"
+  group_by: "type"
+  layout:
+    title: "SpinLock Pct / Server"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "spinlock_contention_time": "SpinLock"
+tserver_log_latency:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "avg"
+  filters:
+    type: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
+  group_by: "type"
+  layout:
+    title: "TServer Log Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_sync_latency.avg": "Sync"
+        "log_group_commit_latency.avg": "Commit"
+        "log_append_latency.avg": "Append"
+tserver_log_bytes_written:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "log_bytes_logged"
+  group_by: "type"
+  layout:
+    title: "Log Bytes Written / Sec / Tserver"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_bytes_logged": "Log Bytes Logged"
+tserver_log_bytes_read:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "log_reader_bytes_read"
+  group_by: "type"
+  layout:
+    title: "Log Bytes Read / Sec / Tserver"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_reader_bytes_read": "Log Bytes Read"
+tserver_log_ops_second:
+   metric: "collectd_yb_tserver_counter_total"
+   function: "rate|avg"
+   range: "1m"
+   filters:
+     type: "log_group_commit_latency.avg|log_append_latency.avg|log_sync_latency.avg"
+   group_by: "type"
+   layout:
+     title: "TServer Log Ops / sec / host"
+     xaxis:
+       type: "date"
+     yaxis:
+       alias:
+         "log_group_commit_latency.avg": "Commit"
+         "log_append_latency.avg": "Append"
+         "log_sync_latency.avg": "Sync"
+tserver_tc_malloc_stats:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "avg"
+  filters:
+    type: "tcmalloc_current_total_thread_cache_bytes|tcmalloc_max_total_thread_cache_bytes|
+           tcmalloc_pageheap_free_bytes|tcmalloc_pageheap_unmapped_bytes"
+  group_by: "type"
+  layout:
+    title: "TServer TCMalloc Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "tcmalloc_current_total_thread_cache_bytes": "Reserved"
+        "tcmalloc_max_total_thread_cache_bytes": "Usage"
+        "tcmalloc_pageheap_free_bytes": "Free"
+        "tcmalloc_pageheap_unmapped_bytes": "Small"
+tserver_log_stats:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "avg"
+  filters:
+    type: "log_reader_bytes_read|log_cache_size"
+  group_by: "type"
+  layout:
+    title: "Log Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_reader_bytes_read": "Log Bytes Read"
+        "log_cache_size": "Log Cache Size"
+tserver_cache_reader_num_ops:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "avg"
+  filters:
+    type: "log_reader_bytes_read|log_cache_num_ops"
+  group_by: "type"
+  layout:
+    title: "Log Cache / Reader Num Ops"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_reader_bytes_read": "Log Bytes Read"
+        "log_cache_num_ops": "Num Ops"

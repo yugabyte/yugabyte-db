@@ -9,7 +9,6 @@ import { isValidObject } from '../../../utils/ObjectUtils';
 var momentLocalizer = require('react-widgets/lib/localizers/moment');
 require('react-widgets/dist/css/react-widgets.css');
 import {Field} from 'redux-form';
-
 import './GraphPanelHeader.scss'
 
 // We can define different filter types here, the type parameter should be
