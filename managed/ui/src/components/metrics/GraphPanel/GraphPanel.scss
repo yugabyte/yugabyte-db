@@ -11,7 +11,7 @@
 }
 
 .graph-panel .metrics-container {
-  margin: 10px;
+  margin: 0px;
 }
 
 .graph-panel .js-plotly-plot {
@@ -33,4 +33,8 @@ display: inline-block;
 }
 .graph-panel .panel-title a.collapsed:after {
   content: "\f054";
+}
+
+.panel-body .col-lg-4 {
+  padding: 0;
 }

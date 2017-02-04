@@ -458,7 +458,7 @@ public class UniverseController extends AuthenticatedController {
     Map<String, String> params = formData.data();
     if (universe.getUniverseDetails().nodePrefix != null) {
       ObjectNode filterJson = Json.newObject();
-      filterJson.put("node_prefix", universe.getUniverseDetails().nodePrefix);
+     // filterJson.put("node_prefix", universe.getUniverseDetails().nodePrefix);
       params.put("filters", Json.stringify(filterJson));
     }
 

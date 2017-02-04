@@ -1,18 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Accordion, Panel, Col } from 'react-bootstrap';
+import { Accordion, Panel, Col, Row } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
-import './GraphPanel.scss'
+import './GraphPanel.scss';
+import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 
 const panelTypes = {
-  redis:   { title: "Redis Stats",
-             metrics: ["redis_ops_latency", "redis_rpcs_per_sec"]},
-  tserver: { title: "TServer Stats",
-             metrics: ["tserver_ops_latency", "tserver_rpcs_per_sec"]},
   server:  { title: "YB Server Stats",
-             metrics: ["cpu_usage", "memory_usage", "disk_iops", "network_bytes", "system_load_over_time",
-                       "network_packets", "network_errors", "disk_bytes_per_second_per_node"]}
+             metrics: ["memory_usage", "disk_iops", "cpu_usage", "network_bytes", "system_load_over_time",
+                       "network_packets", "network_errors", "disk_bytes_per_second_per_node"]},
+  tserver: { title: "TServer Stats",
+             metrics: ["tserver_ops_latency", "tserver_rpcs_per_sec", "tserver_cache_ops_per_sec","tserver_threads",
+              "tserver_change_config", "tserver_context_switches", "tserver_spinlock_server", "tserver_log_latency",
+              "tserver_log_bytes_written", "tserver_log_bytes_read", "tserver_log_ops_second", "tserver_tc_malloc_stats",
+              "tserver_log_stats", "tserver_cache_reader_num_ops"]},
+  redis:   { title: "Redis Stats",
+             metrics: ["redis_ops_latency", "redis_rpcs_per_sec"]}
 }
 
 export default class GraphPanel extends Component {
@@ -45,44 +49,32 @@ export default class GraphPanel extends Component {
 
   render() {
     const { type, graph: { loading, metrics }} = this.props;
-    var metricsPanelsByType = []
 
-    if (!loading && Object.keys(metrics).length > 0) {
+    if (!loading && Object.keys(metrics).length > 0 && isValidObject(metrics[type])) {
       /* Logic here is, since there will be multiple instances of GraphPanel
-         we basically would have metrics data keyed off panel type. So we
-         loop through all the possible panel types in the metric data fetched
-         and group metrics by panel type and filter out anything that is empty.
-      */
-      metricsPanelsByType = Object.keys(metrics).map(function(panelType) {
-        var panelMetrics = metrics[panelType]
-        var metricsPanels = Object.keys(panelMetrics).map(function(key) {
-          if (panelTypes[type].metrics.includes(key)) {
-            return (
-              <Col lg={4} key={key} >
-                <MetricsPanel metricKey={key} metric={panelMetrics[key]} className={"metrics-panel-container"}/>
-              </Col>
-            )
-          }
+       we basically would have metrics data keyed off panel type. So we
+       loop through all the possible panel types in the metric data fetched
+       and group metrics by panel type and filter out anything that is empty.
+       */
+      var panelItem = panelTypes[type].metrics.map(function(metricKey) {
+        if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
+          return <Col lg={4} key={metricKey}>
+            <MetricsPanel metricKey={metricKey} metric={metrics[type][metricKey]}
+                          className={"metrics-panel-container"}/>
+             </Col>
+          } else {
           return null
-        }).filter(Boolean);
-        if (metricsPanels.length > 0) {
-          const panelHeader = <h3>{panelTypes[panelType].title}</h3>
-          return (
-            <Panel header={panelHeader} key={panelType} className="metrics-container">
-              {metricsPanels}
-            </Panel>
-          );
-        }
-        return null
-      }).filter(Boolean);
-      
+          }
+      });
       return (
         <Accordion>
-          {metricsPanelsByType}
+          <Panel header={panelTypes[type].title} key={panelTypes[type]} className="metrics-container">
+            {panelItem}
+          </Panel>
         </Accordion>
       );
     }
-    // TODO: add loading indicator
+
     return (<div />)
   }
 }
