@@ -9,6 +9,7 @@ import 'brace/theme/github';
 import YBPanelItem from '../../../panels';
 import { YBButton } from '../fields';
 import sampleDataCenterConfig from '../templates/SampleDataCenterConfig.json';
+import './SetupDataCenterForm.css';
 
 class SetupDataCenterFormTitle extends Component {
   render() {

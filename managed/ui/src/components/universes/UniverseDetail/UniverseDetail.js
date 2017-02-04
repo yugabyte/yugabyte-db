@@ -6,16 +6,13 @@ import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'reac
 import { UniverseInfoPanel, ConnectStringPanel } from '../../panels'
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer } from '../../tasks';
-import { RollingUpgradeFormContainer,
-  UniverseFormContainer } from '../../common/forms';
-import { DeleteUniverseContainer } from '../../universes';
+import { RollingUpgradeFormContainer } from 'components/common/forms';
+import { UniverseFormContainer, UniverseStatus, NodeDetails, DeleteUniverseContainer } from '..';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel } from '../../panels';
 import { YBMapLegendItem, RegionMap } from '../../maps';
-import { NodeDetails } from '../../universes';
 import { ListTablesContainer } from '../../tables';
-import { UniverseStatus } from '../../universes';
 
 class YBMapLegend extends Component {
   render() {

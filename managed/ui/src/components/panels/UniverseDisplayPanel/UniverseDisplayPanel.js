@@ -1,13 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {Link} from 'react-router';
-import { Row, Col, Checkbox } from 'react-bootstrap';
+import { Link } from 'react-router';
+import { Row, Col } from 'react-bootstrap';
 
-import { isValidObject } from '../../../utils/ObjectUtils';
-import { YBCost, DescriptionItem } from '../../common/descriptors';
-import { UniverseFormContainer } from '../../common/forms';
-import './UniverseDisplayPanel.css'
+import { isValidObject } from 'utils/ObjectUtils';
+import { YBCost, DescriptionItem } from 'components/common/descriptors';
+import { UniverseFormContainer } from 'components/universes/UniverseForm';
+import UniverseStatus from '../../universes/UniverseStatus/UniverseStatus';
+import './UniverseDisplayPanel.scss';
 
 class CreateUniverseButtonComponent extends Component {
   render() {
@@ -23,35 +24,40 @@ class CreateUniverseButtonComponent extends Component {
     )
   }
 }
+
 class UniverseDisplayItem extends Component {
   render() {
-    const {universeDetailItem} = this.props;
+    const {universe} = this.props;
     var costPerMonth = <span/>;
-    if (!isValidObject(universeDetailItem)) {
+    if (!isValidObject(universe)) {
       return <span/>;
     }
-    var replicationFactor = <span>{`${universeDetailItem.universeDetails.userIntent.replicationFactor}x`}</span>
-    var numNodes = <span>{universeDetailItem.universeDetails.userIntent.replicationFactor}</span>
-    if (isValidObject(universeDetailItem.pricePerHour)) {
-      costPerMonth = <YBCost value={universeDetailItem.pricePerHour} multiplier={"month"}/>
+    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}x`}</span>
+    var numNodes = <span>{universe.universeDetails.userIntent.replicationFactor}</span>
+    if (isValidObject(universe.pricePerHour)) {
+      costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>
     }
     return (
       <Col lg={2} className="universe-display-item-container">
         <div className="display-name">
-          <Link to={"/universes/" + universeDetailItem.universeUUID}>
-            {universeDetailItem.name}
+          <Link to={"/universes/" + universe.universeUUID}>
+            {universe.name}
           </Link>
-          <div className="float-right"><Checkbox inline/></div>
+          <div className="float-right">
+            <UniverseStatus universe={universe} />
+          </div>
         </div>
-        <DescriptionItem title="Replication Factor">
-          <span>{replicationFactor}</span>
-        </DescriptionItem>
-        <DescriptionItem title="Number of Nodes">
-          <span>{numNodes}</span>
-        </DescriptionItem>
-        <DescriptionItem title="Cost">
-          <span>{costPerMonth}</span>
-        </DescriptionItem>
+        <div className="description-item-list">
+          <DescriptionItem title="Replication Factor">
+            <span>{replicationFactor}</span>
+          </DescriptionItem>
+          <DescriptionItem title="Nodes">
+            <span>{numNodes}</span>
+          </DescriptionItem>
+          <DescriptionItem title="Monthly Cost">
+            <span>{costPerMonth}</span>
+          </DescriptionItem>
+        </div>
         <Row>
           <Col lg={6}>
             Read
@@ -76,12 +82,13 @@ export default class UniverseDisplayPanel extends Component {
       return <span/>;
     }
     var universeDisplayList = universeList.map(function(universeItem, idx){
-        return <UniverseDisplayItem  key={universeItem.name+idx} universeDetailItem={universeItem}/>
+      return <UniverseDisplayItem  key={universeItem.name+idx} universe={universeItem}/>
     });
      var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
     return (
       <div className="universe-display-panel-container">
         <h2>Universes</h2>
+
         {universeDisplayList}
         {createUniverseButton}
         <UniverseFormContainer type="Create"

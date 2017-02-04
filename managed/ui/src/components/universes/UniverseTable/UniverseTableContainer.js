@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 
-import { UniverseTable } from '../../universes';
+import UniverseTable from './UniverseTable';
 import { fetchUniverseList, fetchUniverseListSuccess,
   fetchUniverseListFailure, resetUniverseList, fetchUniverseTasks,
   fetchUniverseTasksSuccess, fetchUniverseTasksFailure,

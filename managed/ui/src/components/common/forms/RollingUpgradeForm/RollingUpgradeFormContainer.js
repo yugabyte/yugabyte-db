@@ -28,7 +28,8 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   var data = {
-    "ybServerPackage": SOFTWARE_PACKAGE
+    "ybServerPackage": SOFTWARE_PACKAGE,
+    
   };
   return {
     universe: state.universe,
