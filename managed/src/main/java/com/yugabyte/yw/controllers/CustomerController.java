@@ -94,7 +94,6 @@ public class CustomerController extends AuthenticatedController {
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
-
     Map<String, String> params = formData.data();
     ObjectNode filterJson = Json.newObject();
     if (!params.containsKey("nodePrefix")) {
@@ -103,10 +102,11 @@ public class CustomerController extends AuthenticatedController {
       filterJson.put("node_prefix", String.join("|", universePrefixes));
     } else {
       filterJson.put("node_prefix", params.remove("nodePrefix"));
+      if (params.containsKey("nodeName")) {
+        filterJson.put("exported_instance", params.remove("nodeName"));
+      }
     }
-
     params.put("filters", Json.stringify(filterJson));
-
     try {
       JsonNode response = metricQueryHelper.query(formData.get().metrics, params);
       if (response.has("error")) {

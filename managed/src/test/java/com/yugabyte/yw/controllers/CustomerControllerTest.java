@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
@@ -275,5 +276,29 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodePrefix = filters.get("node_prefix").asText();
     assertThat(nodePrefix, allOf(notNullValue(), equalTo("host-1")));
+  }
+
+  @Test
+  public void testCustomerMetricsWithNodeNameParam() {
+    String authToken = customer.createAuthToken();
+
+    Universe u1 = Universe.create("Foo-1", UUID.randomUUID(), customer.getCustomerId());
+    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
+    customer.addUniverseUUID(u1.universeUUID);
+    customer.save();
+    ObjectNode params = Json.newObject();
+    params.set("metrics", Json.toJson(ImmutableList.of("metric")));
+    params.put("start", "1479281737");
+    params.put("nodePrefix", "host-1");
+    params.put("nodeName", "host-n1");
+    ArgumentCaptor<ArrayList> metricKeys = ArgumentCaptor.forClass(ArrayList.class);
+    ArgumentCaptor<Map> queryParams = ArgumentCaptor.forClass(Map.class);
+    FakeApiHelper.doRequestWithAuthTokenAndBody("POST", "/api/customers/" + customer.uuid + "/metrics", authToken, params);
+    verify(mockMetricQueryHelper).query((List<String>) metricKeys.capture(),
+      (Map<String, String>) queryParams.capture());
+    assertThat(queryParams.getValue(), is(notNullValue()));
+    JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
+    String nodeName = filters.get("exported_instance").asText();
+    assertThat(nodeName, allOf(notNullValue(), equalTo("host-n1")));
   }
 }

@@ -21,6 +21,7 @@ export default class MetricsPanel extends Component {
       metric.layout["width"] = 490;
       metric.layout["height"] = 400;
       metric.layout["showlegend"] = false;
+      metric.layout["yaxis"] = {rangemode: "nonnegative"}
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.

@@ -176,4 +176,15 @@ public class MetricConfigTest extends FakeDBApplication {
     String query = metricConfig.getQuery(new HashMap<>());
     assertThat(query, allOf(notNullValue(), equalTo("avg(rate(metric{memory=\"used\"}[30m]))")));
   }
+
+  @Test
+  public void testQueryWithOperator() {
+    JsonNode configJson = Json.parse("{\"metric\": \"metric\", \"range\": \"30m\"," +
+      "\"function\": \"rate|avg\", \"filters\": {\"memory\": \"used\"}, \"operator\": \"/10\"}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+
+    String query = metricConfig.getQuery(new HashMap<>());
+    assertThat(query, allOf(notNullValue(), equalTo("avg(rate(metric{memory=\"used\"}[30m])) /10")));
+  }
 }

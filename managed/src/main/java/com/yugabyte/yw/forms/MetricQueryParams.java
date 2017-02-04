@@ -18,4 +18,6 @@ public class MetricQueryParams {
   public Long end;
 
   public String nodePrefix;
+
+  public String nodeName;
 }

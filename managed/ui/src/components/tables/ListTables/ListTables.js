@@ -138,7 +138,7 @@ export default class ListTables extends Component {
           {tableListDisplay}
         </div>
       )
-    } else if (self.state.currentView === "createTable"){
+    } else if (self.state.currentView === "createTable") {
       return (
         <div>
           <CreateTableContainer showListTables={this.showListTables}/>

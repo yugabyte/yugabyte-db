@@ -42,7 +42,8 @@ public class MetricConfig extends Model {
   public String group_by;
   @Transient
   public JsonNode layout;
-
+  @Transient
+  public String operator;
   @Id
   @Column(length = 100)
   private String config_key;
@@ -81,7 +82,7 @@ public class MetricConfig extends Model {
    *  - avg(collectd_cpu_percent{cpu="system"})
    *  - rate(collectd_cpu_percent{cpu="system"}[30m])
    *  - avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory)
-   *
+   *  - avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) /10
    * @return, a valid prometheus query string
    */
   public String getQuery(Map<String, String> additionalFilters) {
@@ -138,7 +139,9 @@ public class MetricConfig extends Model {
     if (getConfig().group_by != null) {
       queryStr = String.format("%s by (%s)", queryStr, metricConfig.group_by);
     }
-
+    if (getConfig().operator != null) {
+      queryStr = String.format("%s %s", queryStr, metricConfig.operator);
+    }
     return queryStr;
   }
 
