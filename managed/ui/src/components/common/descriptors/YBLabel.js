@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 
-import './stylesheets/YBLabel.css'
+import './stylesheets/YBLabel.scss'
 
 export default class YBLabel extends Component {
   render() {
@@ -12,14 +12,14 @@ export default class YBLabel extends Component {
       <div className={`form-group ${ touched && invalid ? 'has-error' : ''}`}>
         <label className="form-item-label">
           {label}
+        </label>
+        <div className="yb-field-group">
           {this.props.children}
           <div className="help-block">
             {touched && error && <span>{error}</span>}
           </div>
-        </label>
+        </div>
       </div>
-
-
     )
   }
 }

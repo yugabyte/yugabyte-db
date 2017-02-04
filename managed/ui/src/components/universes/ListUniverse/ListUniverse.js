@@ -2,9 +2,9 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton } from '../../common/forms/fields';
-import { UniverseFormContainer } from '../../common/forms';
-import { UniverseTableContainer } from '../../universes';
+
+import { YBButton } from 'components/common/forms/fields';
+import { UniverseFormContainer, UniverseTableContainer } from 'components/universes';
 import './ListUniverse.css';
 
 export default class ListUniverse extends Component {

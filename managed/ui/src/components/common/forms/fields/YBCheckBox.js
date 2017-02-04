@@ -2,13 +2,12 @@
 
 import React, { Component } from 'react';
 
-import { YBLabel } from '../../descriptors';
 import {isValidObject} from '../../../../utils/ObjectUtils';
 
 export default class YBCheckBox extends Component {
 
   render() {
-    const { input, label, meta, checkState,
+    const { input, label, checkState,
             onClick } = this.props;
     var onCheckClick = function(event) {
       input.onChange(event);
@@ -17,12 +16,12 @@ export default class YBCheckBox extends Component {
       }
     }
     return (
-       <YBLabel label={label} meta={meta}>
-         <input {...input} type="checkbox"
-                           name={this.props.name} defaultChecked={checkState}
-                           id={this.props.id} onClick={onCheckClick}
-         />
-       </YBLabel>
-      )
-    }
+      <label htmlFor={this.props.name}>
+        <input {...input} type="checkbox"
+          name={this.props.name} defaultChecked={checkState}
+          id={this.props.id} onClick={onCheckClick} />
+        &nbsp; {label}
+      </label>
+    );
+  }
 }

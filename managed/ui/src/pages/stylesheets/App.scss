@@ -6,7 +6,8 @@
     padding: 0
   }
 
-  button.bg-orange {
+  button.bg-orange,
+  .btn.bg-orange {
     background: #CD6500 ;
     border: 1px solid #CD6500 ;
     color: #fff;
@@ -321,5 +322,18 @@ h2, h3, h4 {
 
   .fa {
     margin-right: 8px;
+  }
+}
+
+.yb-field-group {
+  padding-bottom: 10px;
+}
+
+.modal-footer {
+  background-color: #f5f4f0;
+
+  .btn {
+    min-width: 110px;
+    margin-left: 14px !important;
   }
 }

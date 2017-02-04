@@ -4,7 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
-import { isValidObject, isValidArray, removeNullProperties } from '../../../utils/ObjectUtils'
+import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
 
 export default class NodeDetails extends Component {
   static propTypes = {
