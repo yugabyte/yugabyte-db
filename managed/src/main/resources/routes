@@ -75,6 +75,8 @@ GET    /api/customers/:cUUID/universes/:uniUUID/tasks com.yugabyte.yw.controller
 # Initialize cloud information.
 GET    /clouds/aws/initialize                         com.yugabyte.yw.cloud.AWSInitializer.run()
 
+# Metadata API
+GET    /api/metadata/column_types                     com.yugabyte.yw.controllers.TablesController.getColumnTypes()
 
 ###################################################################################################
 #

@@ -303,4 +303,12 @@ public class TablesControllerTest extends FakeDBApplication {
         ") did not match UUID of table in request (" + mockTableUUID1 + ").";
     assertEquals(errMsg, Json.parse(contentAsString(result)).get("error").asText());
   }
+
+  @Test
+  public void testGetColumnTypes() {
+    Result result = FakeApiHelper.doRequest("GET", "/api/metadata/column_types");
+    String resultString  = "[\"BIGINT\",\"INT\",\"SMALLINT\",\"DOUBLE_PRECISION\",\"FLOAT\",\"VARCHAR\",\"BOOLEAN\",\"TIMESTAMP\"]";
+    assertEquals(OK, result.status());
+    assertEquals(contentAsString(result), resultString);
+  }
 }
