@@ -11,7 +11,7 @@ export default class YBModal extends Component {
   render() {
     const {visible, onHide, size, formName, onFormSubmit, title, submitLabel, error, submitting, asyncValidating} = this.props;
     var btnDisabled = false;
-    if (isValidObject(error) || submitting || asyncValidating) {
+    if (submitting || asyncValidating) {
       btnDisabled = true;
     }
     return (

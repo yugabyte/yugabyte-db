@@ -45,6 +45,7 @@ export const CLOSE_DIALOG = 'CLOSE_DIALOG';
 export const ROLLING_UPGRADE = 'ROLLING_UPGRADE';
 export const ROLLING_UPGRADE_SUCCESS = 'ROLLING_UPGRADE_SUCCESS';
 export const ROLLING_UPGRADE_FAILURE = 'ROLLING_UPGRADE_FAILURE';
+export const RESET_ROLLING_UPGRADE = 'RESET_ROLLING_UPGRADE';
 
 // Universe Template Tasks
 export const CONFIGURE_UNIVERSE_TEMPLATE = 'CONFIGURE_UNIVERSE_TEMPLATE';
@@ -312,4 +313,10 @@ export function checkIfUniverseExists(universeName) {
     type: CHECK_IF_UNIVERSE_EXISTS,
     payload: request
   };
+}
+
+export function resetRollingUpgrade() {
+  return {
+    type: RESET_ROLLING_UPGRADE
+  }
 }

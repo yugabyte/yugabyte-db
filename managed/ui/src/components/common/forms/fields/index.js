@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-export { default as ItemList } from './ItemList';
 export { default as YBButton } from './YBButton';
 export { default as YBCheckBox } from './YBCheckBox';
 export { default as YBInputField } from './YBInputField';

@@ -4,9 +4,9 @@ import React, { Component } from 'react';
 import {Field, FieldArray } from 'redux-form';
 import {Row, Col} from 'react-bootstrap';
 
-import { YBButton, YBModal, ItemList, YBInputField } from '../fields';
+import { YBButton, YBModal, YBInputField, YBCheckBox } from '../fields';
 import {SOFTWARE_PACKAGE} from '../../../../config';
-import {isValidObject} from '../../../../utils/ObjectUtils';
+import {isValidObject, isValidArray} from '../../../../utils/ObjectUtils';
 
 class FlagInput extends Component {
   render() {
@@ -28,8 +28,13 @@ class FlagInput extends Component {
 }
 
 class FlagItems extends Component {
-  componentDidMount() {
+  componentWillMount() {
+
     this.props.fields.push({});
+  }
+  componentWillUnmount() {
+    this.props.fields.removeAll();
+    this.props.resetRollingUpgrade();
   }
   render() {
     const { fields } = this.props;
@@ -56,45 +61,44 @@ class FlagItems extends Component {
 
 
 export default class RollingUpgradeForm extends Component {
-
   constructor(props) {
     super(props);
     this.setRollingUpgradeProperties = this.setRollingUpgradeProperties.bind(this);
   }
-
   setRollingUpgradeProperties(values) {
     const { universe: {visibleModal, currentUniverse: {universeDetails: {nodeDetailsSet}, universeUUID}}} = this.props;
-    var nodeIndexArray = values.nodeItemList;
     var nodeNames = [];
-
+    var payload = {};
     nodeDetailsSet.forEach(function(item, idx){
-      if (isValidObject(nodeIndexArray[idx])) {
+      if (!isValidObject(values[item.nodeName]) || values[item.nodeName] !== false) {
         nodeNames.push(item.nodeName);
       }
     });
-
     if (visibleModal === "softwareUpgradesModal") {
-      values.taskType = "Software";
+      payload.taskType = "Software";
     } else if (visibleModal === "gFlagsModal") {
-      values.taskType = "GFlags";
+      payload.taskType = "GFlags";
     } else {
-       return;
+      return;
     }
-    values.nodeNames = nodeNames;
-    values.universeUUID = universeUUID;
-    delete values.nodeItemList;
-    this.props.submitRollingUpgradeForm(values, universeUUID);
+    payload.ybServerPackage = values.ybServerPackage;
+    payload.nodeNames = nodeNames;
+    payload.universeUUID = universeUUID;
+    if (isValidArray(values.gflags)) {
+      payload.gflags = values.gflags;
+    }
+    this.props.submitRollingUpgradeForm(payload, universeUUID);
   }
 
   render() {
     var self = this;
-    const {onHide, modalVisible, handleSubmit, universe: {visibleModal, currentUniverse: {universeDetails: {nodeDetailsSet}}}} = this.props;
+    const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
+           error, currentUniverse: {universeDetails: {nodeDetailsSet}}}, resetRollingUpgrade} = this.props;
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     var title = "";
     var formBody = <span/>;
     var formCloseAction = function() {
       onHide();
-      self.props.reset();
     }
     if (visibleModal === "softwareUpgradesModal") {
       title="Upgrade Software";
@@ -110,19 +114,41 @@ export default class RollingUpgradeForm extends Component {
                    <Col lg={12} className="form-section-title">
                      Set Flag
                    </Col>
-                   <FieldArray name="gflags" component={FlagItems}/>
+                   <FieldArray name="gflags" component={FlagItems} resetRollingUpgrade={resetRollingUpgrade}/>
                  </span>
     }
 
     return (
       <YBModal visible={modalVisible} formName={"RollingUpgradeForm"}
-               onHide={formCloseAction} title={title} onFormSubmit={submitAction}>
+               onHide={formCloseAction} title={title} onFormSubmit={submitAction} error={error}>
         {formBody}
         <Col lg={12} className="form-section-title">
           Nodes
         </Col>
-        <FieldArray name="nodeItemList" component={ItemList} nodeList={nodeDetailsSet}/>
+        <ItemList nodeList={nodeDetailsSet}/>
       </YBModal>
+    )
+  }
+}
+
+class ItemList extends Component {
+  render() {
+    const {nodeList} = this.props;
+    var nodeCheckList = <Field name={"check"} component={YBCheckBox}/>
+    if (isValidArray(nodeList)) {
+      nodeCheckList =
+        nodeList.map(function (item, idx) {
+          return (
+            <Col lg={4} key={idx}>
+              <Field name={item.nodeName} component={YBCheckBox} label={item.nodeName} checkState={true}/>
+            </Col>
+          )
+        });
+    }
+    return (
+      <div>
+        {nodeCheckList}
+      </div>
     )
   }
 }
