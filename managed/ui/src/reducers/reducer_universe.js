@@ -9,7 +9,9 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
          FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS,
          OPEN_DIALOG, CLOSE_DIALOG, CONFIGURE_UNIVERSE_TEMPLATE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
          CONFIGURE_UNIVERSE_TEMPLATE_FAILURE, CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
-         CONFIGURE_UNIVERSE_RESOURCES_FAILURE } from '../actions/universe';
+         CONFIGURE_UNIVERSE_RESOURCES_FAILURE, ROLLING_UPGRADE, ROLLING_UPGRADE_SUCCESS, ROLLING_UPGRADE_FAILURE,
+         RESET_ROLLING_UPGRADE }
+        from '../actions/universe';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], error: null, showModal: false, visibleModal: "",
                        formSubmitSuccess: false, universeConfigTemplate: {}, universeResourceTemplate: {}};
@@ -77,6 +79,14 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, universeResourceTemplate: action.payload.data}
     case CONFIGURE_UNIVERSE_RESOURCES_FAILURE:
       return { ...state, universeResourceTemplate: {}}
+    case ROLLING_UPGRADE:
+      return { ...state, error: null};
+    case ROLLING_UPGRADE_SUCCESS:
+      return { ...state, error: null, formSubmitSuccess: true};
+    case ROLLING_UPGRADE_FAILURE:
+      return {...state, error: action.payload.data.error, formSubmitSuccess: false};
+    case RESET_ROLLING_UPGRADE:
+      return { ...state, error: null};
     default:
       return state;
   }

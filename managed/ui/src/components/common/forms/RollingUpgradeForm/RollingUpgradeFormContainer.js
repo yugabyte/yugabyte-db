@@ -6,7 +6,7 @@ import { connect } from 'react-redux';
 import { SOFTWARE_PACKAGE } from '../../../../config';
 import { RollingUpgradeForm }  from '../../../common/forms';
 import { rollingUpgrade, rollingUpgradeSuccess, rollingUpgradeFailure,
-  closeDialog } from '../../../../actions/universe';
+  closeDialog, resetRollingUpgrade } from '../../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -19,6 +19,9 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(rollingUpgradeSuccess(response.payload));
         }
       })
+    },
+    resetRollingUpgrade: () => {
+      dispatch(resetRollingUpgrade());
     }
   }
 }
