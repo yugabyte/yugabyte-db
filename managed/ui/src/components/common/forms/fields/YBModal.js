@@ -9,7 +9,8 @@ import {isValidObject} from '../../../../utils/ObjectUtils';
 export default class YBModal extends Component {
 
   render() {
-    const {visible, onHide, size, formName, onFormSubmit, title, submitLabel, error, submitting, asyncValidating} = this.props;
+    const {visible, onHide, size, formName, onFormSubmit, title, submitLabel, error, submitting, 
+      asyncValidating, footerAccessory, showCancelButton} = this.props;
     var btnDisabled = false;
     if (submitting || asyncValidating) {
       btnDisabled = true;
@@ -28,7 +29,9 @@ export default class YBModal extends Component {
             {this.props.children}
           </Modal.Body>
           <Modal.Footer>
-            <YBButton btnClass="btn-block bg-orange" disabled={btnDisabled} btnText={submitLabel} btnType="submit" />
+            {footerAccessory && <div className="pull-left">{footerAccessory}</div>}
+            {showCancelButton && <YBButton btnClass="btn" btnText="Cancel" onClick={onHide} />}
+            <YBButton btnClass="btn bg-orange" disabled={btnDisabled} btnText={submitLabel} btnType="submit" />
           </Modal.Footer>
         </form>
       </Modal>
@@ -44,4 +47,4 @@ YBModal.propTypes = {
   onFormSubmit: PropTypes.func.isRequired
 };
 
-YBModal.defaultProps = { visible: false, submitLabel: 'submit' };
+YBModal.defaultProps = { visible: false, submitLabel: 'OK' };

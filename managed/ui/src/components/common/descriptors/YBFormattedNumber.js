@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { FormattedNumber } from 'react-intl';
-import './stylesheets/YBLabel.css'
+import './stylesheets/YBLabel.scss'
 
 export default class YBFormattedNumber extends Component {
   render() {

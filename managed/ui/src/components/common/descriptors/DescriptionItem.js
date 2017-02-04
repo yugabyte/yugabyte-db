@@ -12,11 +12,11 @@ export default class DescriptionItem extends Component {
   render() {
     const {title} = this.props;
     return (
-      <div>
-        <small className="description-item-sub-text">{title}</small>
+      <div className="description-item clearfix">
         <div className="description-item-text">
           {this.props.children}
         </div>
+        <small className="description-item-sub-text">{title}</small>
       </div>
     )
   }

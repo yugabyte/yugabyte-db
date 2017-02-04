@@ -201,18 +201,16 @@ export default class CreateTable extends Component {
             <Col lg={6}>
               <ButtonGroup>
                 <div className={`btn table-selector-container ${cassandraRadioButtonChecked}`}>
-                  <label className={`radio-label`}>
-                    <Field name="tableType" component={YBRadioButton} fieldValue={"cassandra"}
-                           checkState={true} onClick={this.radioClicked}/>
-                    <Image src={cassandraLogo} className="table-type-logo"/> Cassandra
-                  </label>
+                  <Field name="tableType" component={YBRadioButton} fieldValue={"cassandra"}
+                    label={<span><Image src={cassandraLogo} className="table-type-logo"/> Cassandra</span>}
+                    checkState={true} onClick={this.radioClicked}
+                  />
                 </div>
                 <div className={`btn table-selector-container ${redisRadioButtonChecked}`}>
-                  <label className={`radio-label`}>
-                    <Field name="tableType" component={YBRadioButton}
-                           fieldValue={"redis"} onClick={this.radioClicked} />
-                    <Image src={redisLogo} className="table-type-logo"  /> Redis
-                  </label>
+                  <Field name="tableType" component={YBRadioButton} fieldValue={"redis"}
+                    label={<span><Image src={redisLogo} className="table-type-logo"  /> Redis</span>}
+                    checkState={true} onClick={this.radioClicked}
+                  />
                 </div>
               </ButtonGroup>
             </Col>
