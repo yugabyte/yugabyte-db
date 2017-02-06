@@ -30,7 +30,7 @@ enum class ValueType : char {
   kArray = 'A',  // ASCII code 65. TODO: do we need this at the this layer?
   kDouble = 'D',  // ASCII code 68
   kFalse = 'F',  // ASCII code 70
-  kUInt32Hash = 'H',  // ASCII code 72
+  kUInt16Hash = 'G',  // ASCII code 71
   kInt64 = 'I',  // ASCII code 73
   kNull = 'N',  // ASCII code 78
   kTrue = 'T',  // ASCII code 84

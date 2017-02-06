@@ -120,7 +120,7 @@ class PrimitiveValue {
 
   static PrimitiveValue Double(double d);
   static PrimitiveValue ArrayIndex(int64_t index);
-  static PrimitiveValue UInt32Hash(uint32_t hash);
+  static PrimitiveValue UInt16Hash(uint16_t hash);
 
   KeyBytes ToKeyBytes() const;
 
@@ -185,7 +185,7 @@ class PrimitiveValue {
   // TOOD: do we have to worry about alignment here?
   union {
     int64_t int64_val_;
-    uint32_t uint32_val_;
+    uint16_t uint16_val_;
     HybridTime hybrid_time_val_;
     std::string str_val_;
     double double_val_;

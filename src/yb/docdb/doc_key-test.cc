@@ -121,9 +121,9 @@ TEST(DocKeyTest, TestDocKeyToString) {
       "DocKey([], [10, \"foo\", 20, \"bar\"])",
       DocKey(PrimitiveValues(10, "foo", 20, "bar")).ToString());
   ASSERT_EQ(
-      "DocKey(0x12345678, "
+      "DocKey(0x1234, "
       "[\"hashed_key1\", 123, \"hashed_key2\", 234], [10, \"foo\", 20, \"bar\"])",
-      DocKey(0x12345678,
+      DocKey(0x1234,
              PrimitiveValues("hashed_key1", 123, "hashed_key2", 234),
              PrimitiveValues(10, "foo", 20, "bar")).ToString());
 }
@@ -163,8 +163,8 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
-          R"#("H\
-               \xca\xfeg\x89\
+          R"#("G\
+               \xca\xfe\
                $hashed1\x00\x00\
                $hashed2\x00\x00\
                !\
@@ -174,7 +174,7 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
                I\x80\x00\x00\x00\x00\x00\x07\xd0\
                !")#"),
       FormatBytesAsStr(DocKey(
-          0xcafe6789,
+          0xcafe,
           PrimitiveValues("hashed1", "hashed2"),
           PrimitiveValues("range1", 1000, "range2", 2000)).Encode().data()));
 }

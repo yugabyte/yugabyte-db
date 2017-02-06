@@ -71,10 +71,10 @@ TEST(PrimitiveValueTest, TestToString) {
   ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(numeric_limits<uint64_t>::max())).ToString());
   ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(-1)).ToString());
 
-  ASSERT_EQ("UInt32Hash(4294967295)",
-      PrimitiveValue::UInt32Hash(numeric_limits<uint32_t>::max()).ToString());
-  ASSERT_EQ("UInt32Hash(4294967295)", PrimitiveValue::UInt32Hash(-1).ToString());
-  ASSERT_EQ("UInt32Hash(0)", PrimitiveValue::UInt32Hash(0).ToString());
+  ASSERT_EQ("UInt16Hash(65535)",
+            PrimitiveValue::UInt16Hash(numeric_limits<uint16_t>::max()).ToString());
+  ASSERT_EQ("UInt16Hash(65535)", PrimitiveValue::UInt16Hash(-1).ToString());
+  ASSERT_EQ("UInt16Hash(0)", PrimitiveValue::UInt16Hash(0).ToString());
 }
 
 TEST(PrimitiveValueTest, TestRoundTrip) {

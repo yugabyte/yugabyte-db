@@ -81,8 +81,8 @@ KeyBytes DocKey::Encode() const {
   if (hash_present_) {
     // We are not setting the "more items in group" bit on the hash field because it is not part
     // of "hashed" or "range" groups.
-    result.AppendValueType(ValueType::kUInt32Hash);
-    result.AppendUInt32(hash_);
+    result.AppendValueType(ValueType::kUInt16Hash);
+    result.AppendUInt16(hash_);
     AppendDocKeyItems(hashed_group_, &result);
   }
   AppendDocKeyItems(range_group_, &result);
@@ -91,7 +91,7 @@ KeyBytes DocKey::Encode() const {
 
 void DocKey::Clear() {
   hash_present_ = false;
-  hash_ = 0xdeadbeef;
+  hash_ = 0xdead;
   hashed_group_.clear();
   range_group_.clear();
 }
@@ -110,17 +110,17 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
         ValueTypeToStr(first_value_type));
   }
 
-  if (first_value_type == ValueType::kUInt32Hash) {
+  if (first_value_type == ValueType::kUInt16Hash) {
     if (slice->size() >= sizeof(DocKeyHash) + 1) {
       // We'll need to update this code if we ever change the size of the hash field.
-      static_assert(sizeof(DocKeyHash) == sizeof(uint32_t),
+      static_assert(sizeof(DocKeyHash) == sizeof(uint16_t),
           "It looks like the DocKeyHash's size has changed -- need to update encoder/decoder.");
-      hash_ = BigEndian::Load32(slice->data() + 1);
+      hash_ = BigEndian::Load16(slice->data() + 1);
       hash_present_ = true;
       slice->remove_prefix(sizeof(DocKeyHash) + 1);
     } else {
       return STATUS_SUBSTITUTE(Corruption,
-          "Could not decode a 32-bit hash component of a document key: only $0 bytes left",
+          "Could not decode a 16-bit hash component of a document key: only $0 bytes left",
           slice->size());
     }
     RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, &hashed_group_),
@@ -149,7 +149,7 @@ yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
 string DocKey::ToString() const {
   string result = "DocKey(";
   if (hash_present_) {
-    result += StringPrintf("0x%08x", hash_);
+    result += StringPrintf("0x%04x", hash_);
     result += ", ";
   }
 

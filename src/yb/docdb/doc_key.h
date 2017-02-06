@@ -16,7 +16,7 @@
 namespace yb {
 namespace docdb {
 
-using DocKeyHash = uint32_t;
+using DocKeyHash = uint16_t;
 
 // ------------------------------------------------------------------------------------------------
 // DocKey
@@ -31,7 +31,7 @@ using DocKeyHash = uint32_t;
 //
 // The encoded representation of the key is as follows:
 //   - Optional fixed-width hash prefix, followed by hashed components:
-//     * The byte ValueType::kUnit32Hash, followed by four bytes of the hash prefix.
+//     * The byte ValueType::kUInt16Hash, followed by two bytes of the hash prefix.
 //     * Hashed components:
 //       1. Each hash component consists of a type byte (ValueType) followed by the encoded
 //          representation of the respective type (see PrimitiveValue's key encoding).

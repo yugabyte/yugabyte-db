@@ -19,7 +19,7 @@ string ValueTypeToStr(ValueType value_type) {
     case ValueType::kInt64: return "Int64";
     case ValueType::kDouble: return "Double";
     case ValueType::kHybridTime: return "HybridTime";
-    case ValueType::kUInt32Hash: return "UInt32Hash";
+    case ValueType::kUInt16Hash: return "UInt16Hash";
     case ValueType::kObject: return "Object";
     case ValueType::kArray: return "Array";
     case ValueType::kArrayIndex: return "ArrayIndex";

@@ -64,8 +64,8 @@ string PrimitiveValue::ToString() const {
     case ValueType::kHybridTime:
       // TODO: print out hybrid_times in a human-readable way?
       return hybrid_time_val_.ToDebugString();
-    case ValueType::kUInt32Hash:
-      return Substitute("UInt32Hash($0)", uint32_val_);
+    case ValueType::kUInt16Hash:
+      return Substitute("UInt16Hash($0)", uint16_val_);
     case ValueType::kObject:
       return "{}";
     case ValueType::kTombstone:
@@ -108,8 +108,8 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendHybridTime(hybrid_time_val_);
       return;
 
-    case ValueType::kUInt32Hash:
-      key_bytes->AppendUInt32(uint32_val_);
+    case ValueType::kUInt16Hash:
+      key_bytes->AppendUInt16(uint16_val_);
       return;
 
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
@@ -151,7 +151,7 @@ string PrimitiveValue::ToValue() const {
       AppendBigEndianUInt64(hybrid_time_val_.value(), &result);
       return result;
 
-    case ValueType::kUInt32Hash:
+    case ValueType::kUInt16Hash:
       // Hashes are not allowed in a value.
       break;
 
@@ -209,13 +209,13 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       type_ = value_type;
       return Status::OK();
 
-    case ValueType::kUInt32Hash:
-      if (slice->size() < sizeof(int32_t)) {
-        return STATUS(Corruption, Substitute("Not enough bytes to decode a 32-bit hash: $0",
-            slice->size()));
+    case ValueType::kUInt16Hash:
+      if (slice->size() < sizeof(uint16_t)) {
+        return STATUS(Corruption, Substitute("Not enough bytes to decode a 16-bit hash: $0",
+                                             slice->size()));
       }
-      uint32_val_ = BigEndian::Load32(slice->data());
-      slice->remove_prefix(sizeof(uint32_t));
+      uint16_val_ = BigEndian::Load16(slice->data());
+      slice->remove_prefix(sizeof(uint16_t));
       type_ = value_type;
       return Status::OK();
 
@@ -286,7 +286,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return STATUS(IllegalState, "Arrays are currently not supported");
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kUInt32Hash: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt16Hash: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kHybridTime:
@@ -311,10 +311,10 @@ PrimitiveValue PrimitiveValue::ArrayIndex(int64_t index) {
   return primitive_value;
 }
 
-PrimitiveValue PrimitiveValue::UInt32Hash(uint32_t hash) {
+PrimitiveValue PrimitiveValue::UInt16Hash(uint16_t hash) {
   PrimitiveValue primitive_value;
-  primitive_value.type_ = ValueType::kUInt32Hash;
-  primitive_value.uint32_val_ = hash;
+  primitive_value.type_ = ValueType::kUInt16Hash;
+  primitive_value.uint16_val_ = hash;
   return primitive_value;
 }
 
@@ -338,7 +338,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
 
     case ValueType::kDouble: return double_val_ == other.double_val_;
-    case ValueType::kUInt32Hash: return uint32_val_ == other.uint32_val_;
+    case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
     case ValueType::kHybridTime: return hybrid_time_val_.CompareTo(other.hybrid_time_val_) == 0;
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
@@ -361,8 +361,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return GenericCompare(int64_val_, other.int64_val_);
     case ValueType::kDouble:
       return GenericCompare(double_val_, other.double_val_);
-    case ValueType::kUInt32Hash:
-      return GenericCompare(uint32_val_, other.uint32_val_);
+    case ValueType::kUInt16Hash:
+      return GenericCompare(uint16_val_, other.uint16_val_);
     case ValueType::kHybridTime:
       // HybridTimes are sorted in reverse order.
       return -GenericCompare(hybrid_time_val_.value(), other.hybrid_time_val_.value());

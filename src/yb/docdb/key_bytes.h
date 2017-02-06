@@ -56,6 +56,10 @@ class KeyBytes {
     AppendUInt32ToKey(x, &data_);
   }
 
+  void AppendUInt16(int16_t x) {
+    AppendUInt16ToKey(x, &data_);
+  }
+
   void AppendHybridTime(HybridTime hybrid_time) {
     AppendEncodedHybridTimeToKey(hybrid_time, &data_);
   }

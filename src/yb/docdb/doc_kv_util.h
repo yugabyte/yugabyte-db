@@ -77,6 +77,12 @@ inline void AppendUInt32ToKey(uint32_t val, std::string* dest) {
   dest->append(buf, sizeof(buf));
 }
 
+inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
+  char buf[sizeof(uint16_t)];
+  BigEndian::Store16(buf, val);
+  dest->append(buf, sizeof(buf));
+}
+
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given
 // destination string.
 void AppendZeroEncodedStrToKey(const std::string &s, std::string *dest);

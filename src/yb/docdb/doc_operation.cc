@@ -350,7 +350,6 @@ Status RedisReadOperation::ExecuteExists(rocksdb::DB *rocksdb, HybridTime hybrid
   return Status::OK();
 }
 
-
 Status RedisReadOperation::ExecuteGetRange(rocksdb::DB *rocksdb, HybridTime hybrid_time) {
   RedisDataType type;
   string value;
@@ -602,7 +601,7 @@ Status YQLReadOperation::Execute(
   }
 
   // Populate dockey from YQL key columns.
-  docdb::DocKeyHash hash_code = request_.hash_code();
+  docdb::DocKeyHash hash_code = static_cast<docdb::DocKeyHash>(request_.hash_code());
   vector<PrimitiveValue> hashed_components;
   YQLColumnValuesToPrimitiveValues(
       request_.hashed_column_values(), schema, 0,
