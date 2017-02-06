@@ -4,7 +4,7 @@
 
 #include<thread>
 
-#include "yb/sql/ybsql-test-base.h"
+#include "yb/sql/test/ybsql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
 
 using std::string;

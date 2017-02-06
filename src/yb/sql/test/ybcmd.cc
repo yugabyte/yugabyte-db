@@ -8,7 +8,7 @@
 #include <iostream>
 #include <cstddef>
 
-#include "yb/sql/ybsql-test-base.h"
+#include "yb/sql/test/ybsql-test-base.h"
 
 using std::cout;
 using std::cin;

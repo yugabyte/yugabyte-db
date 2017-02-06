@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 #include <memory>
-#include "yb/sql/ybsql-test-base.h"
+#include "yb/sql/test/ybsql-test-base.h"
 
 namespace yb {
 namespace sql {

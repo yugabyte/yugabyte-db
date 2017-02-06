@@ -2,8 +2,8 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_SQL_YBSQL_TEST_BASE_H_
-#define YB_SQL_YBSQL_TEST_BASE_H_
+#ifndef YB_SQL_TEST_YBSQL_TEST_BASE_H_
+#define YB_SQL_TEST_YBSQL_TEST_BASE_H_
 
 #include "yb/sql/ybsql.h"
 #include "yb/sql/sql_processor.h"
@@ -138,4 +138,4 @@ class YbSqlTestBase : public YBTest {
 }  // namespace sql
 }  // namespace yb
 
-#endif  // YB_SQL_YBSQL_TEST_BASE_H_
+#endif  // YB_SQL_TEST_YBSQL_TEST_BASE_H_

@@ -2,7 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/ybsql-test-base.h"
+#include "yb/sql/test/ybsql-test-base.h"
 #include "yb/sql/util/base_types.h"
 #include "yb/sql/ptree/parse_tree.h"
 
