@@ -33,7 +33,7 @@ DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 100 * 1024 * 1024,
 DEFINE_int64(db_block_size_bytes, 64 * 1024,
              "Size of RocksDB block (in bytes).");
 
-DEFINE_bool(use_docdb_aware_bloom_filter, true,
+DEFINE_bool(use_docdb_aware_bloom_filter, false,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 
 using std::shared_ptr;
