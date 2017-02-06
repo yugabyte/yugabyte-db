@@ -164,7 +164,7 @@ typedef enum HintType
 	HINT_TYPE_JOIN_METHOD,
 	HINT_TYPE_LEADING,
 	HINT_TYPE_SET,
-	HINT_TYPE_ROWS,
+	HINT_TYPE_ROWS
 } HintType;
 
 static const char *HintTypeName[] = {
@@ -172,7 +172,7 @@ static const char *HintTypeName[] = {
 	"join method",
 	"leading",
 	"set",
-	"rows",
+	"rows"
 };
 
 /* hint status */
@@ -299,11 +299,10 @@ struct HintState
 
 	/* for scan method hints */
 	ScanMethodHint **scan_hints;		/* parsed scan hints */
-	int				init_scan_mask;		/* initial value scan parameter */
-	Index			parent_relid;		/* inherit parent table relid */
-	ScanMethodHint *parent_hint;		/* inherit parent table scan hint */
-	List		   *parent_index_infos; /* information of inherit parent table's
-										 * index */
+	int				init_scan_mask;		/* initial value of scan parameter */
+	Index			parent_relid;		/* inherit parent of table relid */
+	ScanMethodHint *parent_hint;		/* inherit parent of table scan hint */
+	List		   *parent_index_infos; /* list of parent table's index */
 
 	/* for join method hints */
 	JoinMethodHint **join_hints;		/* parsed join hints */
@@ -352,6 +351,7 @@ static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
 											int levels_needed,
 											List *initial_rels);
 
+/* Scan method hint callbacks */
 static Hint *ScanMethodHintCreate(const char *hint_str, const char *keyword,
 								  HintKeyword hint_keyword);
 static void ScanMethodHintDelete(ScanMethodHint *hint);
@@ -359,6 +359,8 @@ static void ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf, bool nolf);
 static int ScanMethodHintCmp(const ScanMethodHint *a, const ScanMethodHint *b);
 static const char *ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
+
+/* Join method hint callbacks */
 static Hint *JoinMethodHintCreate(const char *hint_str, const char *keyword,
 								  HintKeyword hint_keyword);
 static void JoinMethodHintDelete(JoinMethodHint *hint);
@@ -366,6 +368,8 @@ static void JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf, bool nolf);
 static int JoinMethodHintCmp(const JoinMethodHint *a, const JoinMethodHint *b);
 static const char *JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
+
+/* Leading hint callbacks */
 static Hint *LeadingHintCreate(const char *hint_str, const char *keyword,
 							   HintKeyword hint_keyword);
 static void LeadingHintDelete(LeadingHint *hint);
@@ -373,6 +377,8 @@ static void LeadingHintDesc(LeadingHint *hint, StringInfo buf, bool nolf);
 static int LeadingHintCmp(const LeadingHint *a, const LeadingHint *b);
 static const char *LeadingHintParse(LeadingHint *hint, HintState *hstate,
 									Query *parse, const char *str);
+
+/* Set hint callbacks */
 static Hint *SetHintCreate(const char *hint_str, const char *keyword,
 						   HintKeyword hint_keyword);
 static void SetHintDelete(SetHint *hint);
@@ -380,6 +386,8 @@ static void SetHintDesc(SetHint *hint, StringInfo buf, bool nolf);
 static int SetHintCmp(const SetHint *a, const SetHint *b);
 static const char *SetHintParse(SetHint *hint, HintState *hstate, Query *parse,
 								const char *str);
+
+/* Rows hint callbacks */
 static Hint *RowsHintCreate(const char *hint_str, const char *keyword,
 							HintKeyword hint_keyword);
 static void RowsHintDelete(RowsHint *hint);
@@ -387,8 +395,6 @@ static void RowsHintDesc(RowsHint *hint, StringInfo buf, bool nolf);
 static int RowsHintCmp(const RowsHint *a, const RowsHint *b);
 static const char *RowsHintParse(RowsHint *hint, HintState *hstate,
 								 Query *parse, const char *str);
-static Hint *LeadingHintCreate(const char *hint_str, const char *keyword,
-							   HintKeyword hint_keyword);
 
 static void quote_value(StringInfo buf, const char *value);
 
