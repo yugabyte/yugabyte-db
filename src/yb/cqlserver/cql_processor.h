@@ -17,6 +17,19 @@
 namespace yb {
 namespace cqlserver {
 
+class CQLMetrics : public sql::YbSqlMetrics {
+ public:
+  explicit CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
+
+  scoped_refptr<yb::Histogram> time_to_process_request_;
+  scoped_refptr<yb::Histogram> time_to_get_cql_processor_;
+  scoped_refptr<yb::Histogram> time_to_parse_cql_wrapper_;
+  scoped_refptr<yb::Histogram> time_to_execute_cql_request_;
+
+  scoped_refptr<yb::Histogram> time_to_queue_cql_response_;
+  scoped_refptr<yb::Counter> num_errors_parsing_cql_;
+};
+
 class CQLProcessor : public sql::SqlProcessor {
  public:
   // Public types.
@@ -24,7 +37,7 @@ class CQLProcessor : public sql::SqlProcessor {
   typedef std::unique_ptr<const CQLProcessor> UniPtrConst;
 
   // Constructor and destructor.
-  explicit CQLProcessor(std::shared_ptr<client::YBClient> client);
+  CQLProcessor(std::shared_ptr<client::YBClient> client, std::shared_ptr<CQLMetrics> metrics);
   ~CQLProcessor();
 
   // Processing an inbound call.
@@ -32,9 +45,12 @@ class CQLProcessor : public sql::SqlProcessor {
 
   // Process SQL statement.
   CQLResponse *ProcessQuery(const QueryRequest& req);
+
+ private:
+  std::shared_ptr<CQLMetrics> cql_metrics_;
 };
 
-} // namespace cqlserver
-} // namespace yb
+}  // namespace cqlserver
+}  // namespace yb
 
-#endif // YB_CQLSERVER_CQL_PROCESSOR_H_
+#endif  // YB_CQLSERVER_CQL_PROCESSOR_H_

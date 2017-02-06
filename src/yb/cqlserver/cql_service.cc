@@ -41,19 +41,22 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const string& yb_tier_master_a
           server->metric_entity());
 
   // Setup client.
-  SetUpYBClient(yb_tier_master_addresses);
+  SetUpYBClient(yb_tier_master_addresses, server->metric_entity());
+  cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
 
   // Setup processors.
   processors_.reserve(FLAGS_cql_service_num_threads);
   for (CQLProcessor::UniPtr& processor : processors_) {
-    processor.reset(new CQLProcessor(client_));
+    processor.reset(new CQLProcessor(client_, cql_metrics_));
   }
 }
 
-void CQLServiceImpl::SetUpYBClient(const string& yb_tier_master_addresses) {
+void CQLServiceImpl::SetUpYBClient(
+    const string& yb_tier_master_addresses, const scoped_refptr<MetricEntity>& metric_entity) {
   YBClientBuilder client_builder;
   client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
   client_builder.add_master_server_addr(yb_tier_master_addresses);
+  client_builder.set_metric_entity(metric_entity);
   CHECK_OK(client_builder.Build(&client_));
 }
 
@@ -63,17 +66,28 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   DVLOG(4) << "Handling " << cql_call->ToString();
 
   // Process the call.
+  MonoTime start = MonoTime::Now(MonoTime::FINE);
   CQLProcessor *processor = GetProcessor();
   CHECK(processor != nullptr);
+  MonoTime got_processor = MonoTime::Now(MonoTime::FINE);
+  cql_metrics_->time_to_get_cql_processor_->Increment(
+      got_processor.GetDeltaSince(start).ToMicroseconds());
+
   unique_ptr<CQLResponse> response;
   processor->ProcessCall(cql_call->serialized_request(), &response);
 
   // Reply to client.
+  MonoTime process_done = MonoTime::Now(MonoTime::FINE);
   SendResponse(cql_call, response.get());
   DVLOG(4) << cql_call->ToString() << " responded.";
 
   // Release the processor.
   processor->unused();
+  MonoTime response_done = MonoTime::Now(MonoTime::FINE);
+  cql_metrics_->time_to_process_request_->Increment(
+      response_done.GetDeltaSince(start).ToMicroseconds());
+  cql_metrics_->time_to_queue_cql_response_->Increment(
+      response_done.GetDeltaSince(process_done).ToMicroseconds());
 }
 
 CQLProcessor *CQLServiceImpl::GetProcessor() {
@@ -90,7 +104,7 @@ CQLProcessor *CQLServiceImpl::GetProcessor() {
   // Create a new processor if needed.
   if (cql_processor == nullptr) {
     const int size = processors_.size();
-    cql_processor = new CQLProcessor(client_);
+    cql_processor = new CQLProcessor(client_, cql_metrics_);
     processors_.reserve(std::max<int>(size * 2, size + 10));
     processors_.emplace_back(cql_processor);
   }

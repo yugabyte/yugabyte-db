@@ -8,11 +8,25 @@
 #ifndef YB_SQL_SQL_PROCESSOR_H_
 #define YB_SQL_SQL_PROCESSOR_H_
 
-#include "yb/sql/ybsql.h"
+#include <yb/util/metrics.h>
 #include "yb/sql/util/sql_env.h"
+#include "yb/sql/ybsql.h"
 
 namespace yb {
 namespace sql {
+
+class SQLMetrics {
+ public:
+  explicit SQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
+
+  scoped_refptr<yb::Histogram> time_to_process_request_;
+  scoped_refptr<yb::Histogram> time_to_get_processor_;
+  scoped_refptr<yb::Histogram> time_to_parse_request_;
+  scoped_refptr<yb::Histogram> time_to_execute_request_;
+  scoped_refptr<yb::Histogram> time_to_queue_response_;
+
+  scoped_refptr<yb::Counter> num_errors_parsing_;
+};
 
 class SqlProcessor {
  public:
@@ -26,7 +40,7 @@ class SqlProcessor {
   virtual ~SqlProcessor();
 
   // Execute the given statement.
-  CHECKED_STATUS Run(const std::string& sql_stmt);
+  CHECKED_STATUS Run(const std::string& sql_stmt, YbSqlMetrics* yb_metrics = nullptr);
 
   // Send the rows_result back for processing. If there's an error, the rows_result is set to
   // nullptr.
@@ -69,4 +83,4 @@ class SqlProcessor {
 }  // namespace sql
 }  // namespace yb
 
-#endif // YB_SQL_SQL_PROCESSOR_H_
+#endif  // YB_SQL_SQL_PROCESSOR_H_

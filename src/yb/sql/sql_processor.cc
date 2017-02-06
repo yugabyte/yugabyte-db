@@ -30,9 +30,9 @@ SqlProcessor::SqlProcessor(shared_ptr<YBClient> client)
 SqlProcessor::~SqlProcessor() {
 }
 
-CHECKED_STATUS SqlProcessor::Run(const string& sql_stmt) {
+CHECKED_STATUS SqlProcessor::Run(const string& sql_stmt, YbSqlMetrics* yb_metrics) {
   sql_env_->Reset();
-  return ybsql_->Process(sql_env_.get(), sql_stmt);
+  return ybsql_->Process(sql_env_.get(), sql_stmt, yb_metrics);
 }
 
 }  // namespace sql

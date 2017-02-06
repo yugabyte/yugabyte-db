@@ -13,14 +13,27 @@
 #ifndef YB_SQL_YBSQL_H_
 #define YB_SQL_YBSQL_H_
 
-#include "yb/sql/util/sql_env.h"
+#include <yb/util/metrics.h>
+#include "yb/sql/exec/executor.h"
 #include "yb/sql/parser/parser.h"
 #include "yb/sql/sem/analyzer.h"
-#include "yb/sql/exec/executor.h"
 #include "yb/sql/util/errcodes.h"
+#include "yb/sql/util/sql_env.h"
 
 namespace yb {
 namespace sql {
+
+class YbSqlMetrics {
+ public:
+  explicit YbSqlMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
+
+  scoped_refptr<yb::Histogram> time_to_parse_sql_query_;
+  scoped_refptr<yb::Histogram> time_to_analyse_sql_query_;
+  scoped_refptr<yb::Histogram> time_to_execute_sql_query_;
+  scoped_refptr<yb::Histogram> num_rounds_to_analyse_sql_;
+
+  scoped_refptr<yb::Histogram> sql_response_size_bytes_;
+};
 
 class YbSql {
  public:
@@ -36,7 +49,7 @@ class YbSql {
   virtual ~YbSql();
 
   // Process a SQL statement and return error codes.
-  CHECKED_STATUS Process(SqlEnv *sql_env, const std::string& sql_stmt);
+  CHECKED_STATUS Process(SqlEnv* sql_env, const std::string& sql_stmt, YbSqlMetrics* yb_metrics);
 
  private:
   //------------------------------------------------------------------------------------------------

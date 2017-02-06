@@ -3,8 +3,8 @@
 // This file contains the CQLServiceImpl class that implements the CQL server to handle requests
 // from Cassandra clients using the CQL native protocol.
 
-#ifndef YB_CQLSERVER_CQL_SERVICE_H
-#define YB_CQLSERVER_CQL_SERVICE_H
+#ifndef YB_CQLSERVER_CQL_SERVICE_H_
+#define YB_CQLSERVER_CQL_SERVICE_H_
 
 #include <vector>
 
@@ -45,7 +45,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
   constexpr static int kRpcTimeoutSec = 5;
 
   // Setup YBClient.
-  void SetUpYBClient(const std::string& yb_master_address);
+  void SetUpYBClient(
+      const std::string& yb_master_address, const scoped_refptr<MetricEntity>& metric_entity);
 
   // YBClient is to communicate with either master or tserver.
   std::shared_ptr<client::YBClient> client_;
@@ -58,9 +59,11 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Metrics to be collected and reported.
   yb::rpc::RpcMethodMetrics metrics_;
+
+  std::shared_ptr<CQLMetrics> cql_metrics_;
 };
 
 }  // namespace cqlserver
 }  // namespace yb
 
-#endif  // YB_CQLSERVER_CQL_SERVICE_H
+#endif  // YB_CQLSERVER_CQL_SERVICE_H_
