@@ -520,8 +520,8 @@ using namespace yb::sql;
                           STRICT_P STRIP_P SUBSTRING SYMMETRIC SYSID SYSTEM_P
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
-                          THEN TIME TIMESTAMP TO TRAILING TRANSACTION TRANSFORM TREAT TRIGGER
-                          TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
+                          THEN TIME TIMESTAMP TINYINT TO TRAILING TRANSACTION TRANSFORM TREAT
+                          TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
                           UNLOGGED UNTIL UPDATE USER USING
@@ -3709,6 +3709,9 @@ Numeric:
   | INTEGER {
     $$ = MAKE_NODE(@1, PTInt);
   }
+  | TINYINT {
+    $$ = MAKE_NODE(@1, PTTinyInt);
+  }
   | SMALLINT {
     $$ = MAKE_NODE(@1, PTSmallInt);
   }
@@ -4253,6 +4256,7 @@ col_name_keyword:
   | TEXT_P { $$ = $1; }
   | TIME { $$ = $1; }
   | TIMESTAMP { $$ = $1; }
+  | TINYINT { $$ = $1; }
   | TREAT { $$ = $1; }
   | TRIM { $$ = $1; }
   | VALUES { $$ = $1; }
