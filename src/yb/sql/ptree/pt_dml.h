@@ -53,7 +53,7 @@ class PTDmlStmt : public PTCollection {
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTConstInt::SharedPtr ttl_msec = nullptr);
+                     PTConstInt::SharedPtr ttl_seconds = nullptr);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -102,12 +102,12 @@ class PTDmlStmt : public PTCollection {
   }
 
   bool has_ttl() const {
-    return ttl_msec_ != nullptr;
+    return ttl_seconds_ != nullptr;
   }
 
   int64_t ttl_msec() const {
-    DCHECK_NOTNULL(ttl_msec_.get());
-    return ttl_msec_->Eval();
+    CHECK_NOTNULL(ttl_seconds_.get());
+    return ttl_seconds_->Eval() * MonoTime::kMillisecondsPerSecond;
   }
 
   // Access for column_args.
@@ -164,7 +164,7 @@ class PTDmlStmt : public PTCollection {
 
   // Predicate for write operator (UPDATE & DELETE).
   bool write_only_;
-  PTConstInt::SharedPtr ttl_msec_;
+  PTConstInt::SharedPtr ttl_seconds_;
 
   // Semantic phase will decorate the following field.
   MCVector<ColumnArg> column_args_;

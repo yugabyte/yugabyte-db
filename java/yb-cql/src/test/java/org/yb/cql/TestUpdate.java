@@ -85,14 +85,14 @@ public class TestUpdate extends TestBase {
 
     // Update v1 with a TTL.
     String update_stmt = String.format(
-      "UPDATE %s USING TTL 1000 SET v1 = 500 WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
+      "UPDATE %s USING TTL 1 SET v1 = 500 WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
         "r2 = 'r4';",
       tableName);
     session.execute(update_stmt);
 
     // Update v2 with a TTL.
     update_stmt = String.format(
-      "UPDATE %s USING TTL 2000 SET v2 = 'v600' WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
+      "UPDATE %s USING TTL 2 SET v2 = 'v600' WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
         "r2 = 'r4';",
       tableName);
     session.execute(update_stmt);
@@ -130,18 +130,18 @@ public class TestUpdate extends TestBase {
     assertTrue(row.isNull(5));
   }
 
-  private String getUpdateStmt(String tableName, long ttl) {
+  private String getUpdateStmt(String tableName, long ttl_seconds) {
     return String.format(
       "UPDATE %s USING TTL %d SET v1 = 500 WHERE h1 = 1 AND h2 = 'h2' AND r1 = 3 AND " +
-        "r2 = 'r4';", tableName, ttl);
+        "r2 = 'r4';", tableName, ttl_seconds);
   }
 
-  private void runInvalidUpdateWithTTL(String tableName, long ttl) {
-    RunInvalidStmt(getUpdateStmt(tableName, ttl));
+  private void runInvalidUpdateWithTTL(String tableName, long ttlSeconds) {
+    RunInvalidStmt(getUpdateStmt(tableName, ttlSeconds));
   }
 
-  private void runValidUpdateWithTTL(String tableName, long ttl) {
-    session.execute(getUpdateStmt(tableName, ttl));
+  private void runValidUpdateWithTTL(String tableName, long ttl_seconds) {
+    session.execute(getUpdateStmt(tableName, ttl_seconds));
   }
 
   @Test
@@ -157,11 +157,11 @@ public class TestUpdate extends TestBase {
 
     // Invalid statements.
     runInvalidUpdateWithTTL(tableName, Long.MAX_VALUE);
-    runInvalidUpdateWithTTL(tableName, MAX_TTL + 1);
+    runInvalidUpdateWithTTL(tableName, MAX_TTL_SEC + 1);
     runInvalidUpdateWithTTL(tableName, -1);
 
     // Valid statements.
-    runValidUpdateWithTTL(tableName, MAX_TTL);
+    runValidUpdateWithTTL(tableName, MAX_TTL_SEC);
     runValidUpdateWithTTL(tableName, 0);
   }
 }

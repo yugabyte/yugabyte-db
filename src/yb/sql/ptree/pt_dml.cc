@@ -21,7 +21,7 @@ using client::YBColumnSchema;
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     PTConstInt::SharedPtr ttl_msec)
+                     PTConstInt::SharedPtr ttl_seconds)
   : PTCollection(memctx, loc),
     table_columns_(memctx),
     num_key_columns_(0),
@@ -29,7 +29,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     key_where_ops_(memctx),
     where_ops_(memctx),
     write_only_(write_only),
-    ttl_msec_(ttl_msec),
+    ttl_seconds_(ttl_seconds),
     column_args_(memctx) {
 }
 
@@ -355,15 +355,15 @@ CHECKED_STATUS PTDmlStmt::AnalyzeColumnExpr(SemContext *sem_context,
 }
 
 CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
-  if (ttl_msec_ == nullptr) {
+  if (ttl_seconds_ == nullptr) {
     return Status::OK();
   }
 
-  if (!yb::common::isValidTTLMsec(ttl_msec_->Eval())) {
-    return sem_context->Error(ttl_msec_->loc(),
+  if (!yb::common::isValidTTLSeconds(ttl_seconds_->Eval())) {
+    return sem_context->Error(ttl_seconds_->loc(),
                               strings::Substitute("Valid ttl range : [$0, $1]",
-                                                  yb::common::kMinTtlMsec,
-                                                  yb::common::kMaxTtlMsec).c_str(),
+                                                  yb::common::kMinTtlSeconds,
+                                                  yb::common::kMaxTtlSeconds).c_str(),
                               ErrorCode::INVALID_ARGUMENTS);
   }
   return Status::OK();

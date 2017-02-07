@@ -46,9 +46,9 @@ public class TestBase {
 
   protected static final int DEFAULT_SLEEP = 50000;
 
-  // Long.MAX_VALUE / 1000000 is the max allowed ttl, since internally in docdb we used MonoDelta
+  // Long.MAX_VALUE / 1000000000 is the max allowed ttl, since internally in docdb we use MonoDelta
   // to store the ttl, which uses nanoseconds.
-  protected static final long MAX_TTL = Long.MAX_VALUE / 1000000;
+  protected static final long MAX_TTL_SEC = Long.MAX_VALUE / 1000000000;
 
   protected Cluster cluster;
   protected Session session;

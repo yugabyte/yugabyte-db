@@ -138,7 +138,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableWithTTL) {
   EXEC_VALID_STMT(CreateStmt(table1));
 
   EXEC_VALID_STMT("CREATE TABLE table_with_ttl (c1 int, c2 int, c3 int, PRIMARY KEY(c1)) WITH "
-                      "default_time_to_live = 1000;");
+                      "default_time_to_live = 1;");
 
   // Query the table schema.
   master::Master *master = cluster_->mini_master()->master();
@@ -151,6 +151,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableWithTTL) {
   CHECK_OK(catalog_manager->GetTableSchema(&request_pb, &response_pb));
   const TablePropertiesPB& properties_pb = response_pb.schema().table_properties();
   EXPECT_TRUE(properties_pb.has_default_time_to_live());
+  // We store ttl in milliseconds internally.
   EXPECT_EQ(1000, properties_pb.default_time_to_live());
 }
 

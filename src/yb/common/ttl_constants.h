@@ -12,14 +12,13 @@ namespace common {
 static const MonoDelta kMaxTtl = MonoDelta::FromNanoseconds(
     std::numeric_limits<int64_t>::max());
 
-static const int64_t kMaxTtlMsec = MonoDelta::FromNanoseconds(
-    std::numeric_limits<int64_t>::max()).ToMilliseconds();
+static const int64_t kMaxTtlSeconds = kMaxTtl.ToSeconds();
 
-static const int64_t kMinTtlMsec = 0;
+static const int64_t kMinTtlSeconds = 0;
 
 // Verifies whether the TTL provided in milliseconds is valid.
-inline static bool isValidTTLMsec(int64_t ttl_msec) {
-  return (ttl_msec >= 0 && ttl_msec <= kMaxTtlMsec);
+inline static bool isValidTTLSeconds(int64_t ttl_seconds) {
+  return (ttl_seconds >= 0 && ttl_seconds <= kMaxTtlSeconds);
 }
 
 }  // namespace common

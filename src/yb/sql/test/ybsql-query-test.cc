@@ -50,7 +50,7 @@ class YbSqlQuery : public YbSqlTestBase {
     std::string insert_stmt("INSERT INTO test_table(c1, c2, c3) VALUES(1, 2, 3)");
     if (with_ttl) {
       // Insert row with ttl.
-      insert_stmt += " USING TTL 1000;";
+      insert_stmt += " USING TTL 1;";
     } else {
       insert_stmt += ";";
     }
@@ -214,7 +214,7 @@ TEST_F(YbSqlQuery, TestUpdateWithTTL) {
   CreateTableAndInsertRow(processor, false);
 
   // Now update the row with a TTL.
-  std::string update_stmt("UPDATE test_table USING TTL 1000 SET c2 = 4, c3 = 5 WHERE c1 = 1;");
+  std::string update_stmt("UPDATE test_table USING TTL 1 SET c2 = 4, c3 = 5 WHERE c1 = 1;");
   Status s = processor->Run(update_stmt);
   CHECK(s.ok());
 
@@ -225,7 +225,7 @@ TEST_F(YbSqlQuery, TestUpdateWithTTL) {
 
   // Try an update by setting the primary key, which should fail since set clause can't have
   // primary keys.
-  std::string invalid_update_stmt("UPDATE test_table USING TTL 1000 SET c1 = 4 WHERE c1 = 1;");
+  std::string invalid_update_stmt("UPDATE test_table USING TTL 1 SET c1 = 4 WHERE c1 = 1;");
   s = processor->Run(invalid_update_stmt);
   CHECK(!s.ok());
 }

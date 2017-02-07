@@ -43,10 +43,10 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
   PARSE_VALID_STMT("UPDATE human_resource SET name = \"Joe Street\" WHERE id = 7;");
 
   // Valid statement: UPDATE with TTL.
-  PARSE_VALID_STMT("UPDATE human_resource USING TTL 1000 SET name = \"Joe Street\" WHERE id = 7;");
+  PARSE_VALID_STMT("UPDATE human_resource USING TTL 1 SET name = \"Joe Street\" WHERE id = 7;");
 
   // Invalid statement: UPDATE with TTL.
-  PARSE_INVALID_STMT("UPDATE human_resource USING 1000 SET name = \"Joe Street\" WHERE id = 7;");
+  PARSE_INVALID_STMT("UPDATE human_resource USING 1 SET name = \"Joe Street\" WHERE id = 7;");
 
   // Valid statement: SELECT.
   PARSE_VALID_STMT("SELECT * FROM human_resource;");

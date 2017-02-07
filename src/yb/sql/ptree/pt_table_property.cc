@@ -40,11 +40,12 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
   }
 
   if ((*iterator).first == kDefaultTimeToLive) {
-    if (!yb::common::isValidTTLMsec(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval())) {
+    // TTL value is entered by user in seconds, but we store internally in milliseconds.
+    if (!yb::common::isValidTTLSeconds(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval())) {
       return sem_context->Error(loc(),
                                 strings::Substitute("Valid ttl range : [$0, $1]",
-                                                    yb::common::kMinTtlMsec,
-                                                    yb::common::kMaxTtlMsec).c_str(),
+                                                    yb::common::kMinTtlSeconds,
+                                                    yb::common::kMaxTtlSeconds).c_str(),
                                 ErrorCode::INVALID_ARGUMENTS);
     }
   }

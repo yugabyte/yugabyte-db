@@ -49,7 +49,7 @@ public class TestTableTTL extends TestBase {
     String tableName = "testSimpleTableTTL";
 
     // Create table with TTL.
-    createTable(tableName, 1000);
+    createTable(tableName, 1);
 
     // Insert a row.
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
@@ -73,11 +73,11 @@ public class TestTableTTL extends TestBase {
     String tableName = "testTableTTLOverride";
 
     // Create table with TTL.
-    createTable(tableName, 1000);
+    createTable(tableName, 1);
 
     // Insert a row.
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);", tableName));
-    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (2, 3, 4) USING TTL 2000;",
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (2, 3, 4) USING TTL 2;",
       tableName));
 
     Thread.sleep(1050);
@@ -94,7 +94,7 @@ public class TestTableTTL extends TestBase {
     assertEquals(3, row.getInt(1));
     assertEquals(4, row.getInt(2));
 
-    Thread.sleep(1050);
+    Thread.sleep(1000);
 
     // c1 = 2 should have expired.
     row = getFirstRow(tableName, 2);
@@ -102,9 +102,9 @@ public class TestTableTTL extends TestBase {
     assertTrue(row.isNull(1));
     assertTrue(row.isNull(2));
 
-    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (3, 4, 5) USING TTL 500;",
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (3, 4, 5) USING TTL 1;",
       tableName));
-    Thread.sleep(550);
+    Thread.sleep(1050);
     // c1 = 3 should have expired.
     row = getFirstRow(tableName, 3);
     assertEquals(3, row.getInt(0));
@@ -118,11 +118,11 @@ public class TestTableTTL extends TestBase {
     String tableName = "testTableTTLWithTTLZero";
 
     // Create table with TTL.
-    createTable(tableName, 1000);
+    createTable(tableName, 1);
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 0;",
       tableName));
 
-    Thread.sleep(2050);
+    Thread.sleep(1050);
 
     // Row should not have expired.
     Row row = getFirstRow(tableName, 1);
@@ -137,7 +137,7 @@ public class TestTableTTL extends TestBase {
 
     // Create table with TTL.
     createTable(tableName, 0);
-    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 1000;",
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 1;",
       tableName));
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (2, 2, 3);",
       tableName));
@@ -162,8 +162,8 @@ public class TestTableTTL extends TestBase {
     String tableName = "testTableTTLAndColumnTTL";
 
     // Create table with TTL.
-    createTable(tableName, 2000);
-    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 1000;",
+    createTable(tableName, 2);
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 1;",
       tableName));
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (2, 2, 3);",
       tableName));
@@ -196,8 +196,8 @@ public class TestTableTTL extends TestBase {
     String tableName = "testTableTTLWithDeletes";
 
     // Create table with TTL.
-    createTable(tableName, 2000);
-    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 1000;",
+    createTable(tableName, 2);
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3) USING TTL 1;",
       tableName));
     session.execute(String.format("DELETE FROM %s WHERE c1 = 1;", tableName));
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 4);", tableName));
@@ -221,7 +221,7 @@ public class TestTableTTL extends TestBase {
     String tableName = "testTableTTLWithOverwrites";
 
     // Create table with TTL.
-    createTable(tableName, 2000);
+    createTable(tableName, 2);
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);",
       tableName));
 
@@ -236,15 +236,16 @@ public class TestTableTTL extends TestBase {
     assertNoRow(tableName, 1);
   }
 
+  @Test
   public void testValidInvalidTableTTL() throws Exception {
     String tableName = "testValidInvalidTableTTL";
 
     // Valid create tables.
     createTable(tableName, 0);
-    createTable(tableName + 1, MAX_TTL);
+    createTable(tableName + 1, MAX_TTL_SEC);
 
     // Invalid create tables.
-    createTableInvalid(tableName + 1, MAX_TTL + 1);
+    createTableInvalid(tableName + 1, MAX_TTL_SEC + 1);
     createTableInvalid(tableName + 1, Long.MAX_VALUE);
     createTableInvalid(tableName + 1, Long.MIN_VALUE);
     createTableInvalid(tableName + 1, -1);

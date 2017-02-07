@@ -13,10 +13,10 @@ class YbSqlInsertTable : public YbSqlTestBase {
   YbSqlInsertTable() : YbSqlTestBase() {
   }
 
-  std::string InsertStmtWithTTL(std::string ttl) {
+  std::string InsertStmtWithTTL(std::string ttl_seconds) {
     return strings::Substitute(
         "INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) USING TTL $0;",
-        ttl);
+        ttl_seconds);
   }
 };
 
@@ -35,25 +35,25 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100);");
 
   // INSERT: Valid statement with column list and ttl.
-  EXEC_VALID_STMT(InsertStmtWithTTL("1000"));
+  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(1)));
 
   // INSERT: Valid statement with ttl at the lower limit.
-  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlMsec)));
+  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlSeconds)));
 
   // INSERT: Valid statement with ttl at the upper limit.
-  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlMsec)));
+  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlSeconds)));
 
   // INSERT: Invalid statement with ttl just over limit.
-  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlMsec + 1)));
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlSeconds + 1)));
 
   // INSERT: Invalid statement with ttl just below lower limit.
-  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlMsec - 1)));
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlSeconds - 1)));
 
   // INSERT: Invalid statement with ttl too high.
   EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(std::numeric_limits<int64_t>::max())));
 
   // INSERT: Invalid statement with float ttl.
-  EXEC_INVALID_STMT(InsertStmtWithTTL("1000.1"));
+  EXEC_INVALID_STMT(InsertStmtWithTTL("1.1"));
 
   // INSERT: Invalid statement with negative ttl.
   EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(-1)));

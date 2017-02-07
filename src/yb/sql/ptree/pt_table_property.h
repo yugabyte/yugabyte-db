@@ -49,7 +49,9 @@ class PTTableProperty : public TreeNode {
 
   CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const {
     if (strcmp(lhs_->c_str(), kDefaultTimeToLive) == 0) {
-      table_property->SetDefaultTimeToLive(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval());
+      // TTL value is entered by user in seconds, but we store internally in milliseconds.
+      table_property->SetDefaultTimeToLive(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval() *
+          MonoTime::kMillisecondsPerSecond);
     } else {
       return STATUS(InvalidArgument, strings::Substitute("$0 is not a valid table property",
                     lhs_->c_str()));

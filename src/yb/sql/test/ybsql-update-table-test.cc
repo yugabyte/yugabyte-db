@@ -39,10 +39,10 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
                             "primary key((h1, h2), r1, r2));";
   CHECK_VALID_STMT(create_stmt);
 
-  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMaxTtlMsec));
-  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMinTtlMsec));
-  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMaxTtlMsec + 1));
-  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMinTtlMsec - 1));
+  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMaxTtlSeconds));
+  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMinTtlSeconds));
+  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMaxTtlSeconds + 1));
+  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMinTtlSeconds - 1));
 
   // -----------------------------------------------------------------------------------------------
   // Unknown table.

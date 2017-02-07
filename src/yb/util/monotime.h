@@ -95,6 +95,7 @@ class YB_EXPORT MonoTime {
   static const int64_t kNanosecondsPerMicrosecond = 1000L;
 
   static const int64_t kMicrosecondsPerSecond = 1000000L;
+  static const int64_t kMillisecondsPerSecond = 1000L;
 
   // The coarse monotonic time is faster to retrieve, but "only"
   // accurate to within a millisecond or two.  The speed difference will
@@ -139,4 +140,4 @@ void YB_EXPORT SleepFor(const MonoDelta& delta);
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_MONOTIME_H

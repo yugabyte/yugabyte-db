@@ -74,12 +74,12 @@ public class TestInsert extends TestBase {
 
     // Now insert with ttl.
     String insert_stmt = String.format(
-      "INSERT INTO %s(h1, h2, r1, r2, v1) VALUES(%d, 'h%d', %d, 'r%d', %d) USING TTL 1000;",
+      "INSERT INTO %s(h1, h2, r1, r2, v1) VALUES(%d, 'h%d', %d, 'r%d', %d) USING TTL 1;",
       tableName, 1, 2, 3, 4, 5);
     session.execute(insert_stmt);
 
     insert_stmt = String.format(
-      "INSERT INTO %s(h1, h2, r1, r2, v2) VALUES(%d, 'h%d', %d, 'r%d', 'v%d') USING TTL 2000;",
+      "INSERT INTO %s(h1, h2, r1, r2, v2) VALUES(%d, 'h%d', %d, 'r%d', 'v%d') USING TTL 2;",
       tableName, 1, 2, 3, 4, 6);
     session.execute(insert_stmt);
 
@@ -116,18 +116,18 @@ public class TestInsert extends TestBase {
     assertTrue(row.isNull(5));
   }
 
-  private String getInsertStmt(String tableName, String ttl_msec) {
+  private String getInsertStmt(String tableName, String ttlSeconds) {
     return String.format(
       "INSERT INTO %s(h1, h2, r1, r2, v1) VALUES(%d, 'h%d', %d, 'r%d', %d) USING TTL %s;",
-      tableName, 1, 2, 3, 4, 5, ttl_msec);
+      tableName, 1, 2, 3, 4, 5, ttlSeconds);
   }
 
-  private void runInvalidInsertWithTTL(String tableName, String ttl_msec) {
-    RunInvalidStmt(getInsertStmt(tableName, ttl_msec));
+  private void runInvalidInsertWithTTL(String tableName, String ttlSeconds) {
+    RunInvalidStmt(getInsertStmt(tableName, ttlSeconds));
   }
 
-  private void runValidInsertWithTTL(String tableName, String ttl_msec) {
-    session.execute(getInsertStmt(tableName, ttl_msec));
+  private void runValidInsertWithTTL(String tableName, String ttlSeconds) {
+    session.execute(getInsertStmt(tableName, ttlSeconds));
   }
 
   @Test
@@ -135,10 +135,10 @@ public class TestInsert extends TestBase {
     String tableName = "test_insert_with_invalid_ttl";
     CreateTable(tableName);
 
-    runValidInsertWithTTL(tableName, String.valueOf(MAX_TTL));
+    runValidInsertWithTTL(tableName, String.valueOf(MAX_TTL_SEC));
     runValidInsertWithTTL(tableName, "0");
 
-    runInvalidInsertWithTTL(tableName, String.valueOf(MAX_TTL + 1));
+    runInvalidInsertWithTTL(tableName, String.valueOf(MAX_TTL_SEC + 1));
     runInvalidInsertWithTTL(tableName, String.valueOf(Long.MAX_VALUE));
     runInvalidInsertWithTTL(tableName, "1000.1");
     runInvalidInsertWithTTL(tableName, "abcxyz");
@@ -157,13 +157,13 @@ public class TestInsert extends TestBase {
     // Insert two rows with TTL 1000
     String insert_stmt = String.format(
       "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d') USING TTL " +
-        "1000;",
+        "1;",
       tableName, 1, 2, 3, 4, 5, 6);
     session.execute(insert_stmt);
 
     insert_stmt = String.format(
       "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d') USING TTL " +
-        "1000;",
+        "1;",
       tableName, 10, 20, 30, 40, 50, 60);
     session.execute(insert_stmt);
 
