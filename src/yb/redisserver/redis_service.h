@@ -107,7 +107,7 @@ class RedisServiceImpl : public RedisServerServiceIf {
   void PopulateHandlers();
   // Fetches the appropriate handler for the command, nullptr if none exists.
   const RedisCommandInfo* FetchHandler(const std::vector<Slice>& cmd_args);
-  void SetUpYBClient(string yb_master_address);
+  CHECKED_STATUS SetUpYBClient(string yb_master_address);
   void RespondWithFailure(
       const string& error, yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
   // Verify that the command has the required number of arguments, and if so, handle the call.
