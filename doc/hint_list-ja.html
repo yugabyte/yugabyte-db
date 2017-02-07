@@ -10,7 +10,7 @@
 </head>
 
 <body>
-<h1 id="pg_hint_plan">pg_hint_plan 1.1 付録</h1>
+<h1 id="pg_hint_plan">pg_hint_plan 1.2 付録</h1>
 <div class="navigation">
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
   <a href="hint_list-ja.html">Appendix A. ヒント句一覧</a>
@@ -86,6 +86,12 @@ PostgreSQL 9.2以降で動作します。</td></tr>
 なお、件数や倍率には、strtod()が解釈できる書式で数値を指定してください。
 </td></tr>
 
+<tr><td>パラレル実行の制御</td>
+  <td nowrap>Parallel(テーブル ワーカ数 [強制度])</td>
+  <td>パラレル実行を強制あるいは禁止します。ワーカ数が0の場合はパラレル実行を禁止します。強制度はワーカ数の適用方法を指定するもので "hard" または "soft" を指定します。デフォルト値である"soft"の場合は max_parallel_workers_per_gather のみを変更してあとはプランナに任せます。そして"hard" の場合は指定したワーカ数を強制します。</td>
+
+</td></tr>
+
 <tr><td>GUCパラメータ</td>
   <td nowrap>Set(GUCパラメータ 値)</td>
   <td>そのクエリの実行計画を作成している間だけ、指定したGUCパラメータを指定した値に変更します。</td></tr>
@@ -102,6 +108,6 @@ PostgreSQL 9.2以降で動作します。</td></tr>
   <a href="hint_list-ja.html">Appendix A. ヒント句一覧</a>
 </div>
 
-<p class="footer">Copyright (c) 2012-2014, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+<p class="footer">Copyright (c) 2012-2017, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 </body>
 </html>

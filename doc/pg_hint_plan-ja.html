@@ -10,7 +10,7 @@
 </head>
 
 <body>
-<h1 id="pg_hint_plan">pg_hint_plan 1.1.0</h1>
+<h1 id="pg_hint_plan">pg_hint_plan 1.2</h1>
 <div class="navigation">
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
 </div>
@@ -66,18 +66,18 @@
 <p>ヒント用コメントと通常のコメントを区別するために、ヒント用のブロックコメントは「<span class="bold">/*+</span>」で始めます。ヒントの対象は、カッコ内にオブジェクト名または別名で指定します。オブジェクト名は、スペース、タブ、または改行のいずれかで区切って指定します。</p>
 <p>以下の例では、HashJoinとSeqScanヒント句により、pgbench_accountsテーブルに対するSeq Scanの結果をHash Joinする実行計画が選択されています。なおかつ、Setヒント句によりこのクエリの実行計画を作成する間だけrandom_page_costが2.0に変更されています。</p>
 <pre>
-postgres=# EXPLAIN (VERBOSE, COSTS)
-postgres-# /*+
-postgres*#     SeqScan(a)
-postgres*#     HashJoin(a b)
-postgres*#     Set(random_page_cost 2.0)
-postgres*#  */
-postgres-# SELECT *
-postgres-#   FROM pgbench_accounts a
-postgres-#   JOIN pgbench_branches b
-postgres-#     ON a.bid = b.bid
-postgres-#  ORDER BY a.aid
-postgres-#  LIMIT 10;
+<b>postgres=#</b> EXPLAIN (VERBOSE, COSTS)
+<b>postgres-# /*+</b>
+<b>postgres*#     SeqScan(a)</b>
+<b>postgres*#     HashJoin(a b)</b>
+<b>postgres*#     Set(random_page_cost 2.0)</b>
+<b>postgres*#  */</b>
+<b>postgres-#</b> SELECT *
+<b>postgres-#</b>   FROM pgbench_accounts a
+<b>postgres-#</b>   JOIN pgbench_branches b
+<b>postgres-#</b>     ON a.bid = b.bid
+<b>postgres-#</b>  ORDER BY a.aid
+<b>postgres-#</b>  LIMIT 10;
                                              QUERY PLAN
 ----------------------------------------------------------------------------------------------------
  Limit  (cost=6176.99..6177.01 rows=10 width=461)
@@ -116,7 +116,7 @@ postgres=#
 <tr><td>application_name</td>
   <td>ヒント適用対象のアプリケーション名を指定します。下記の例では「psql」から実行されたクエリのみがヒント適用対象となります。全てのアプリケーションにヒントを適用したいときは、空文字列を登録します。アプリケーション名は、セッションの「application_name」GUCパラメータと等しいか判断します。</td></tr>
 <tr><td>hints</td>
-  <td>ヒントを指定します。ヒント以外のもの（SQLコメントなど）を含めないでください。</td></tr>
+  <td>ヒントを指定します。SQLコメント記号を除いた内容のみを登録します。</td></tr>
 </tbody>
 </table>
 <p>ヒントの登録情報を変更する場合は、変更したい登録情報のidを指定して登録情報を更新してください。</br>
@@ -124,37 +124,37 @@ postgres=#
 <p>以下の例では、ヒントの登録、ヒント登録情報の変更、ヒントの解除の順に、クエリの実行結果を示しています。
 </p>
 <pre>
-postgres=# INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)
-postgres-#     VALUES (
-postgres(#         'EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
-postgres(#         '',
-postgres(#         'SeqScan(t1)'
-postgres(#     );
+<b>postgres=#</b> INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)
+<b>postgres-#</b>     VALUES (
+<b>postgres(#</b>         'EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
+<b>postgres(#</b>         '',
+<b>postgres(#</b>         'SeqScan(t1)'
+<b>postgres(#</b>     );
 INSERT 0 1
-postgres=# UPDATE hint_plan.hints
-postgres-#    SET hints = 'IndexScan(t1)'
-postgres-#  WHERE id = 1;
+<b>postgres=#</b> UPDATE hint_plan.hints
+<b>postgres-#</b>    SET hints = 'IndexScan(t1)'
+<b>postgres-#</b>  WHERE id = 1;
 UPDATE 1
-postgres=# DELETE FROM hint_plan.hints
-postgres-#  WHERE id = 1;
+<b>postgres=#</b> DELETE FROM hint_plan.hints
+<b>postgres-#</b>  WHERE id = 1;
 DELETE 1
-postgres=#
+<b>postgres=#</b>
 </pre>
 <p>なお、ヒントの登録や変更や解除はスーパーユーザでのみ可能です。一般ユーザでヒントの登録や変更や解除を実施したい場合は、スーパーユーザから一般ユーザにhint_plan.hintsテーブルの各権限を付与してください。</p>
 <p>以下の例では、hint_plan.hintsテーブルに対してINSERT権限を持たない一般ユーザがヒントの登録を実施しようとしたときの結果を示しています。</p>
 <pre>
-postgres=> INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)
-postgres->     VALUES (
-postgres(>         'EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
-postgres(>         '',
-postgres(>         'SeqScan(t1)'
-postgres(>     );
+<b>postgres=></b> INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)
+<b>postgres-></b>     VALUES (
+<b>postgres(></b>         'EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
+<b>postgres(></b>         '',
+<b>postgres(></b>         'SeqScan(t1)'
+<b>postgres(></b>     );
 ERROR:  permission denied for relation hints
-postgres=>
+<b>postgres=></b>
 </pre>
 <p>以下の例では、テーブルに登録した「コメントでの指定」の例と同じヒントと、登録したクエリの実行結果を示しています。</p>
 <pre>
-postgres=# SELECT * FROM hint_plan.hints;
+<b>postgres=#</b> SELECT * FROM hint_plan.hints;
  id |     norm_query_string      | application_name |                      hints
 ----+----------------------------+------------------+--------------------------------------------------
   1 | EXPLAIN (VERBOSE, COSTS)  +| psql             | SeqScan(a)HashJoin(a b)Set(random_page_cost 2.0)
@@ -167,14 +167,14 @@ postgres=# SELECT * FROM hint_plan.hints;
     |                            |                  |
 ...
 
-postgres=# SET pg_hint_plan.enable_hint_table TO on;
-postgres=# EXPLAIN (VERBOSE, COSTS)
-postgres-# SELECT *
-postgres-#   FROM pgbench_accounts a
-postgres-#   JOIN pgbench_branches b
-postgres-#     ON a.bid = b.bid
-postgres-#  ORDER BY a.aid
-postgres-#  LIMIT 10;
+<b>postgres=#</b> SET pg_hint_plan.enable_hint_table TO on;
+<b>postgres=#</b> EXPLAIN (VERBOSE, COSTS)
+<b>postgres-#</b> SELECT *
+<b>postgres-#</b>   FROM pgbench_accounts a
+<b>postgres-#</b>   JOIN pgbench_branches b
+<b>postgres-#</b>     ON a.bid = b.bid
+<b>postgres-#</b>  ORDER BY a.aid
+<b>postgres-#</b>  LIMIT 10;
                                              QUERY PLAN
 ----------------------------------------------------------------------------------------------------
  Limit  (cost=6176.99..6177.01 rows=10 width=461)
@@ -182,10 +182,10 @@ postgres-#  LIMIT 10;
    ->  Sort  (cost=6176.99..6426.99 rows=100000 width=461)
          Output: a.aid, a.bid, a.abalance, a.filler, b.bid, b.bbalance, b.filler, a.aid
          Sort Key: a.aid
-         ->  <span class="strong">Hash Join</span>  (cost=1.02..4016.02 rows=100000 width=461)
+         ->  <b><u>Hash Join</u></b>  (cost=1.02..4016.02 rows=100000 width=461)
                Output: a.aid, a.bid, a.abalance, a.filler, b.bid, b.bbalance, b.filler, a.aid
                Hash Cond: (a.bid = b.bid)
-               ->  <span class="strong">Seq Scan on public.pgbench_accounts a</span>  (cost=0.00..2640.00 rows=100000 width=97)
+               ->  <b><u>Seq Scan on public.pgbench_accounts a</u></b>  (cost=0.00..2640.00 rows=100000 width=97)
                      Output: a.aid, a.bid, a.abalance, a.filler
                ->  Hash  (cost=1.01..1.01 rows=1 width=364)
                      Output: b.bid, b.bbalance, b.filler
@@ -240,7 +240,7 @@ postgres-#  ORDER BY a.aid;
 </div>
 
 <h3 id="hint-group">ヒント句のグループ</h3>
-<p>pg_hint_planで使えるヒント句の種類は、スキャン方式と結合方式、結合順序、見積もり件数補正、GUCパラメータの5グループです。各グループの具体的なヒント句は、<a href="hint_list-ja.html">ヒント句一覧</a>を参照してください。</p>
+<p>pg_hint_planで使えるヒント句の種類は、スキャン方式と結合方式、結合順序、見積もり件数補正、並列実行の設定、GUCパラメータの6グループです。各グループの具体的なヒント句は、<a href="hint_list-ja.html">ヒント句一覧</a>を参照してください。</p>
 
 <h4>スキャン方式</h4>
 <p>あるオブジェクトでどのスキャン方式を選択するかを指定できるヒント句のグループです。「SeqScan」や「IndexScan」などを含みます。</p>
@@ -257,25 +257,24 @@ postgres-#  ORDER BY a.aid;
 <p>結合順序を指定できるオブジェクトは結合方式と同じです。</p>
 <p>先に結合して欲しいオブジェクトから順にオブジェクト名または別名を指定します。同じ問合せブロックのオブジェクトに対して複数の結合順序のヒント句を指定した場合は、最後に指定したヒント句が適用されます。 </p>
 <div class="tips">
-<span class="strong"></span>
 <p>結合対象のテーブルが3つ以上ある場合、結合方式のヒント句を指定したとしてもコスト見積もりによっては対象のテーブルが直接結合されないことがあります。対象のテーブルが直接結合されない場合は、結合順序のヒント句を併せて指定します。</p>
 <p>以下の例では、table1とtable2を直接結合する場合はNested Loopを、table1とtable2とtable3を結合する場合はMerge Joinを指定しています。また、コスト見積もりによってはtable1とtable2が直接結合されない場合を避けるため、table1とtable2を結合してからtable3を結合するようにLeadingヒント句を併用しています。</p>
 <pre>
-postgres=# /*+
-postgres*#     NestLoop(t1 t2)
-postgres*#     MergeJoin(t1 t2 t3)
-postgres*#     Leading(t1 t2 t3)
-postgres*#  */
-postgres-# SELECT * FROM table1 t1
-postgres-#     JOIN table table2 t2 ON (t1.key = t2.key)
-postgres-#     JOIN table table3 t3 ON (t2.key = t3.key);
+<b>postgres=# /*+</b>
+<b>postgres*#     NestLoop(t1 t2)</b>
+<b>postgres*#     MergeJoin(t1 t2 t3)</b>
+<b>postgres*#     Leading(t1 t2 t3)</b>
+<b>postgres*#  */</b>
+<b>postgres-#</b> SELECT * FROM table1 t1
+<b>postgres-#</b>     JOIN table table2 t2 ON (t1.key = t2.key)
+<b>postgres-#</b>     JOIN table table3 t3 ON (t2.key = t3.key);
 ...
 </pre>
 </div>
 <h4>結合方向</h4>
 <p>上記の結合順序の指定を行なった際にはプランナの都合により結合方向(外部表/内部表もしくは駆動表/被駆動表の別)が期待とは異なるものになる場合があります。このような状況に対して結合方向を固定したい場合はもうひとつの書式を使う必要があります。</p>
 <pre>
-postgres=# /*+ Leading((t1 (t2 t3))) */ SELECT...
+<b>postgres=# /*+ Leading((t1 (t2 t3))) */</b> SELECT...
 </pre>
 <p>この書式では2つの要素を丸括弧で囲ったものがネストする形になっており、一つの括弧内では1つ目の要素が外部/駆動表、2番めの要素が内部/被駆動表として結合されます。</p>
 <h4>見積もり件数補正</h4>
@@ -283,21 +282,41 @@ postgres=# /*+ Leading((t1 (t2 t3))) */ SELECT...
 <p>見積もり件数補正対象として指定できるオブジェクトは結合方式と同じです。補正できるのは結合結果の見積もり件数だけで、スキャンの見積もり件数を補正することはできません。</p>
 <p>以下の例では、テーブルaとテーブルbの結合結果の件数を、ヒント句で指定した値に補正しています。</p>
 <pre>
-postgres=# /*+ Rows(a b #10) */
-postgres-# EXPLAIN SELECT *
-postgres-#    FROM pgbench_branches b
-postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
-postgres-#   WHERE aid &lt; 20
-postgres-#   ORDER BY a.aid;
+<b>postgres=# /*+ Rows(a b #10) */</b>
+<b>postgres-#</b> EXPLAIN SELECT *
+<b>postgres-#</b>    FROM pgbench_branches b
+<b>postgres-#</b>    JOIN pgbench_accounts a ON b.bid = a.bid
+<b>postgres-#</b>   WHERE aid &lt; 20
+<b>postgres-#</b>   ORDER BY a.aid;
                                                QUERY PLAN
 --------------------------------------------------------------------------------------------------------
- Nested Loop  (cost=0.29..9.92 rows=<span class="strong">10</span> width=461)
+ Nested Loop  (cost=0.29..9.92 rows=<b><u>10</u></b> width=461)
    Join Filter: (b.bid = a.bid)
    ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.29. .8.62 rows=19 width=97)
          Index Cond: (aid &lt; 20)
    ->  Materialize  (cost=0.00..1.01 rows=1 width=364)
          ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=364)
 (6 行)
+</pre>
+
+<h4>並列実行の指定</h4>
+<p>スキャンの並列実行の方法を指定します。最初のパラメータは対象とするオブジェクトの指定で、2番目に指定する数だけ並列処理ワーカを起動するように指定します。
+<p>3番目のパラメータは強制の程度を指定します。 "soft" は max_parallel_workers_per_gather のみを変更して適用はプランナに任せます。"hard" は他のプランナ変数も変更するなどしてワーカ数を強制します。</p>
+<p>以下の例では、テーブル c1 とテーブル c2 の結合で各々異なるワーカ数を強制します。</p>
+<pre>
+<b>postgres=#</b> explain <b>/*+ Parallel(c1 3 hard) Parallel(c2 5 hard) */</b>
+                  select c2.a from c1 join c2 on (c1.a = c2.a);
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Hash Join  (cost=2.86..11406.38 rows=101 width=4)
+   Hash Cond: (c1.a = c2.a)
+   ->  Gather  (cost=0.00..7652.13 rows=1000101 width=4)
+         <b><u>Workers Planned: 3</u></b>
+         ->  Parallel Seq Scan on <b><u>c1</u></b>  (cost=0.00..7652.13 rows=322613 width=4)
+   ->  Hash  (cost=1.59..1.59 rows=101 width=4)
+         ->  Gather  (cost=0.00..1.59 rows=101 width=4)
+               <b><u>Workers Planned: 5</u></b>
+               ->  Parallel Seq Scan on <b><u>c2</u></b>  (cost=0.00..1.59 rows=59 width=4)
 </pre>
 
 <h4>GUCパラメータ</h4>
@@ -325,28 +344,15 @@ postgres-#   ORDER BY a.aid;
   <td>pg_hint_planの機能を有効または無効にします。</td><td>on</td></tr>
 <tr><td>pg_hint_plan.enable_hint_table</td>
   <td>ヒントをテーブルで指定する機能を有効または無効にします。</td><td>off</td></tr>
-<tr><td>pg_hint_plan.debug_print</td>
-  <td>指定したヒントが実行計画生成にどのように影響したかを出力します。メッセージはLOGメッセージレベルで出力されますので、デフォルトではサーバログに出力され、クライアントには渡されません。</td><td>off</td></tr>
 <tr><td>pg_hint_plan.parse_messages</td>
-  <td>指定したヒントを解釈できなかった場合に、どのメッセージ階層でログを出力するかを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warning、またはerrorです。fatalとpanicは指定できません。</td><td>info</td></tr>
+  <td>指定したヒントを解釈できなかった場合のログメッセージのレベルを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warning、またはerrorです。</td><td>INFO</td></tr>
+<tr><td>pg_hint_plan.debug_print</td>
+  <td>動作状況を示すログメッセージの出力を制御します。指定可能な値は off, on, verbose, detailed です。</td><td>off</td></tr>
+<tr><td>pg_hint_plan.message_elevel</td>
+  <td>動作ログメッセージのログレベルを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warning、またはerrorです。</td><td>INFO</td></tr>
 
 </tbody>
 </table>
-<p>
-PostgreSQL 9.1の環境でこれらのパラメータをpostgresql.confファイルで設定するには、<a href="http://www.postgresql.jp/document/9.1/html/runtime-config-custom.html#GUC-CUSTOM-VARIABLE-CLASSES">custom_variable_classes</a>にpg_hint_planを加える必要があります。
-典型的な使用例は以下のようになります。
-</p>
-<pre>
-# postgresql.conf
-shared_preload_libraries = 'pg_hint_plan'
-
-custom_variable_classes = 'pg_hint_plan'    # 9.2以降は廃止されたため記述不要
-pg_hint_plan.parse_messages = 'debug2'
-</pre>
-<p>
-PostgreSQL 9.2以降ではcustom_variable_classesは廃止されているため、pg_hint_planのGUCパラメータを標準のGUCパラメータと同様に記述することができます。
-</p>
-
 <h2 id="install">インストール</h2>
 <p>pg_hint_planのインストール方法について説明します。</p>
 
@@ -401,11 +407,10 @@ $ psql -d <i>dbname</i> -c "DROP SCHEMA hint_plan"
 </pre>
 </ol>
 
-<h2 id="restrictions">使用上の注意と制約</h2>
-<p>pg_hint_planを使用する際には、以下の注意と制約があります。</p>
-<h3>ヒントの指定方法</h3>
+<h2 id="restrictions">ヒントの指定に関する詳細</h2>
+<p>以下にいくつかのトピックに関してヒントの動作について説明します。</p>
 <dl>
-<dt>コメント指定でのヒント記述位置</dt>
+<dt><h3>コメント指定でのヒント記述位置と文法</h3></dt>
 <dd>ヒントはクエリの先頭または途中に記述できます。ただし、ヒントをクエリの途中に記述する場合、ヒント用のブロックコメントより前に以下の文字<span class="strong">以外</span>が含まれると、「/*+」で始まるコメントでもヒントと見なされず無視されます。
 <ul>
 <li>空白文字（半角スペース、水平/垂直タブ、改行、フォームフィード、復帰）</li>
@@ -463,7 +468,7 @@ postgres-#   ORDER BY a.aid;
 
 postgres=# </pre>
 </dd>
-<dt>PL/pgSQL中の個別のクエリに対するヒント</dt>
+<dt><h3>PL/pgSQL中の個別のクエリに対するヒント</h3></dt>
 <dd>ヒントは、PL/pgSQLブロック中の各クエリにも指定できます。ただし、以下のような制約があります。
 <ul>
 <li>指定したヒントが適用されるSQLは以下の通りです。他のSQLにヒントを指定しても適用されません。
@@ -484,18 +489,18 @@ postgres$# DECLARE
 postgres$#     id  integer;
 postgres$#     cnt integer;
 postgres$# BEGIN
-postgres$#     SELECT /*+<span class="strong">NoIndexScan(a)</span>*/ aid
+postgres$#     SELECT <b><u>/*+ NoIndexScan(a) */</u></b> aid
 postgres$#         INTO id FROM pgbench_accounts a WHERE aid = $1;
-postgres$#     SELECT /*+<span class="strong">SeqScan(a)</span>*/ count(*)
+postgres$#     SELECT <b><u>/*+ SeqScan(a) */</u></b> count(*)
 postgres$#         INTO cnt FROM pgbench_accounts a;
 postgres$#     RETURN id + cnt;
 postgres$# END;
 postgres$# $$ LANGUAGE plpgsql;
 </pre>
 </dd>
-<dt>オブジェクト名の引用符付け</dt>
+<dt><h3>オブジェクト名の引用符付け</h3></dt>
 <dd>ヒントに記述するオブジェクト名や別名が括弧（(、)のいずれか）、二重引用符（"）、空白（スペース、タブ、改行のいずれか）を含む場合は、通常のSQL文で使う場合と同じように二重引用符(")で囲んでください。二重引用符を含むオブジェクト名は、全体を二重引用符で括ったうえで、内部に含む二重引用符を二重引用符でエスケープしてください(例: 「quoted"table"name」→「"quoted""table""name"」)。</dd>
-<dt>同一名称テーブルの区別</dt>
+<dt><h3>同一名称テーブルの区別</h3></dt>
 <dd>スキーマ違いや同一テーブルの複数回使用などでクエリ中に同一名称のテーブルが複数回出現する場合は、テーブルに別名をつけてそれぞれのテーブルを区別してください。以下の例の1つ目のSQL文では、HashJoin(t1 t1)をヒントに指定したとき、ヒント句対象のオブジェクトが特定できずにエラーになっています。2つ目のSQL文では、各テーブルにptやstという別名をつけているため、実行計画作成時にヒントで指定した通りにHash Joinを選択しています。</p>
 <pre>
 postgres=# /*+ <span class="strong">HashJoin(t1 t1)</span>*/
@@ -530,32 +535,8 @@ postgres-# JOIN public.t1 pt ON (st.id=pt.id);
 postgres=#</pre>
 </p>
 </dd>
-<dt>FROM句にVALUESコマンドを指定した場合の制限</dt>
-<dd>FROM句にVALUESコマンドを指定した場合は、ヒント句のオブジェクト名に「*VALUES*」を指定してください。これは、VALUESの結果に別名を指定しても、PostgreSQL本体側で「*VALUES*」に名称が置き換えられるためです。複数のVALUESを使用する場合、この動作によりヒント句の対象を特定できません。よって、実行計画を制御できません。
-<pre>
-postgres=# /*+ <span class="strong">MergeJoin(a *VALUES*)</span> */
-postgres-# EXPLAIN SELECT *
-postgres-#    FROM pgbench_accounts a
-postgres-#    JOIN (VALUES (1,1),(2,2)) <span class="strong">v</span> (vid, vbalance) ON a.aid = v.vid
-postgres-#   ORDER BY a.aid;
-                                                  QUERY PLAN
----------------------------------------------------------------------------------------------------------------
- <span class="strong">Merge Join</span>  (cost=0.04..4497.33 rows=2 width=105)
-   Merge Cond: (a.aid = "*VALUES*".column1)
-   ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
-   ->  Sort  (cost=0.04..0.04 rows=2 width=8)
-         Sort Key: "*VALUES*".column1
-         ->  Values Scan on <span class="strong">"*VALUES*"</span>  (cost=0.00..0.03 rows=2 width=8)
-(6 行)
-
-postgres=#
-</pre>
-</dd>
-</dl>
-
-<h3>ヒントの適用対象の指定</h3>
 <dl>
-<dt>クエリに明記されていないテーブルへのヒント句適用</dt>
+<dt><h3>ビューおよびルールの中でアクセスされているテーブル</h3></dt>
 <dd>ヒント句で指定した名称と一致すれば、ビュー定義や関数内クエリなどに出現するテーブルについても、ヒントを指定したクエリ内と同じようにヒント句が適用されます。このため、ヒント句の適用有無や適用するヒント句をそれぞれのテーブルで変えたい場合は、それぞれ異なる別名を指定してください。</br>
 以下の例では、ビュー定義で使われている「t1」という別名をSeqScanヒント句で指定したことで、表スキャンとビュー経由のスキャンの両方でSeq Scanが選択されています。ビュー定義で使用されている「t1」とは別の別名を実表に指定することで、個別にスキャン方式を制御できます。
 <pre>
@@ -570,28 +551,12 @@ postgres=# EXPLAIN SELECT * FROM table1 <span class="strong">t1</span> JOIN view
          Filter: (key = 1)
    ->  Seq Scan on table1 <span class="strong">t1</span>  (cost=0.00..179.00 rows=1 width=8)
          Filter: (key = 1)
-(5 rows)
-
-postgres=# /*+ SeqScan(<span class="strong">t3</span>) */
-postgres=# EXPLAIN SELECT * FROM table1 <span class="strong">t3</span> JOIN view1 t2 ON (t1.key = t2.key) WHERE t2.key = 1;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- Nested Loop  (cost=0.00..187.29 rows=1 width=16)
-   ->  Seq Scan on table1 <span class="strong">t3</span>  (cost=0.00..179.00 rows=1 width=8)
-         Filter: (key = 1)
-   ->  Index Scan using foo_pkey on table1 t1  (cost=0.00..8.28 rows=1 width=8)
-         Index Cond: (key = 1)
-(5 rows)
-
 </pre>
 </dd>
-<dt>継承テーブルに対するヒント句</dt>
+<dt><h3>継承テーブル</h3></dt>
 <dd>継承テーブルにスキャン方式のヒント句を指定する場合は、オブジェクト名として親テーブルの名称または別名を指定してください。全ての子テーブルに同じスキャン方式を選択します。子テーブルごとに別のスキャン方式を指定することはできません。</dd>
-<dt>ビューやルールを使うクエリのヒント</dt>
-<dd>ルールを定義したテーブルやビューを複数用いるときに、各ビュー内のテーブルの別名やルール書き換え後のクエリのテーブルの別名が重複した場合は、ヒント句の対象を区別できません。区別する場合は、各ビュー内のテーブルの別名やルール書き換え後のクエリのテーブルの別名を重複させないでください。</dd>
-<dt>ルールを使うクエリでのヒントの適用範囲</dt>
-<dd>ルールによるクエリ書き換えによってクエリが複数になる場合は、書き換え前のクエリで指定したヒントが全てのクエリで使用されます。ルール内のクエリにヒントを記述しても、そのヒントは適用されません。</dd>
-<dt>マルチステートメントでのヒントの適用範囲</dt>
+
+<dt><h3>マルチステートメント</h3></dt>
 <dd>クエリをマルチステートメントで実行する場合は、ヒントの指定方法によって以下のように注意点が異なります。
 <dl>
 <dt>コメントでの指定</dt>
@@ -600,14 +565,35 @@ postgres=# EXPLAIN SELECT * FROM table1 <span class="strong">t3</span> JOIN view
 <dd>ヒントを指定したいクエリの定数部分を？に置き換えてから、全てのクエリを一つにまとめてヒント用テーブルに登録します。ただし、複数の動的クエリをマルチステートメントで実行する場合には対応していません。</dd>
 </dl>
 </dd>
-<dt>副問い合わせ結果をヒントに指定する方法</dt>
-<dd>以下の副問い合わせの結果をヒントに指定する場合は、ヒント句のオブジェクト名に「ANY_subquery」を指定してください。
+<dt><h3>FROM句にVALUES式を使っている問い合わせ</h3></dt>
+<dd>FROM句にVALUES式を使っている場合は、ヒント句のオブジェクト名に「*VALUES*」を指定することでヒントを与えることができる場合があります。 ただし複数のVALUESを使っている場合は内部的には区別がつかないためヒントを与えることはできません。
+<pre>
+postgres=# /*+ <span class="strong">MergeJoin(a *VALUES*)</span> */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_accounts a
+postgres-#    JOIN (VALUES (1,1),(2,2)) <span class="strong">v</span> (vid, vbalance) ON a.aid = v.vid
+postgres-#   ORDER BY a.aid;
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
+ <b><u>Merge Join</u></b>  (cost=0.04..4497.33 rows=2 width=105)
+   Merge Cond: (a.aid = "*VALUES*".column1)
+   ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
+   ->  Sort  (cost=0.04..0.04 rows=2 width=8)
+         Sort Key: "*VALUES*".column1
+         ->  Values Scan on <b><u>"*VALUES*"</u></b>  (cost=0.00..0.03 rows=2 width=8)
+postgres=#
+</pre>
+</dd>
+</dl>
+
+<dt><h3>副問い合わせ結果</h3></dt>
+<dd>以下のような形式の副問い合わせでは外側の文への併合が行われず「ANY_subquery」という名前の独立した副問合せとして残される場合があります。このような副問合せが一つしかない場合は ANY_subquery という名前でこの副問合せを特定することができます。
 <ul>
-<li>IN (SELECT ... { LIMIT | OFFSET 等} ... )</li>
-<li>ANY (SELECT ... { LIMIT | OFFSET 等} ...)</li>
-<li>SOME (SELECT ... { LIMIT | OFFSET 等} ...)</li>
+<li>IN (SELECT ... { <b>LIMIT | OFFSET 等</b>} ... )</li>
+<li>ANY (SELECT ... { <b>LIMIT | OFFSET 等</b>} ...)</li>
+<li>SOME (SELECT ... { <b>LIMIT | OFFSET 等</b>} ...)</li>
 </ul>
-PostgreSQLは、実行計画を生成するときに副問い合わせを上位の問合せに併合することがあります。しかし、上記のような副問い合わせの場合には併合せず、これらの副問い合わせの結果に内部的に「ANY_subquery」という固定名をつけます。以下の例では、その固定名を指定したヒント句の効果でHash Joinを選択しています。
+以下の例では、そのことを利用して Hash Joinを強制しています。
 <pre>
 postgres=# /*+HashJoin(a1 ANY_subquery)*/
 postgres=# EXPLAIN SELECT *
@@ -626,16 +612,24 @@ postgres=#   WHERE aid IN (SELECT bid FROM pgbench_accounts a2 LIMIT 10);
 
 postgres=#
 </pre>
-一つのクエリで上記のような副問い合わせを複数使用している場合は、「ANY_subquery」と指定しても対象を特定できないため、ヒント句はエラーとなり無視されます。</br>
-</dd>
-<dt>IndexOnlyScanヒント句の指定(PostgreSQL 9.2以降)</dt>
-<dd>ヒント句の対象となるテーブルにIndex Only Scanが可能なインデックスとIndex Only Scanが不可能なインデックスが存在する場合、Index Only Scanが可能なインデックスをテーブルと併せてIndexOnlyScanヒント句に指定しないとIndex Scanが選択されることがあります。</dd>
-<dt>NoIndexScanヒント句の注意点(PostgreSQL 9.2以降)</dt>
-<dd>PostgreSQL 9.2以降でNoIndexScanヒント句を指定した場合は、Index ScanだけでなくIndex Only Scanも選択されません。</dd>
+
+<dt><h3>IndexOnlyScanヒント句</h3></dt>
+<dd>ヒント句の対象となるテーブルにIndex Only Scanが可能なインデックスとIndex Only Scanが不可能なインデックスが同時に存在する場合、Index Only Scanが可能なインデックスをテーブルに対してIndexOnlyScanヒント句を追加で指定しないとIndex Scanが選択されることがあります。</dd>
+
+<dt><h3>NoIndexScanヒントの挙動について</h3></dt>
+<dd>NoIndexScanヒント句を指定した場合は、Index ScanだけでなくIndex Only Scanも選択されません。</dd>
 </dl>
 
-<h3>ヒント指定エラーの扱い</h3>
-<dt>構文エラー</dt>
+<dt><h3>Set ヒントでの pg_hint_plan 自身の制御変数の設定</h3></dt>
+<dd>pg_hint_plan 自身の挙動を設定する変数を Set ヒントで変更した場合は期待通りに動作しない場合があります。</dd>
+<ul>
+<li>enable_hint, enable_hint_tables の設定ヒントはログ上は「使用済み」と出ますが、実際には無視されています。</li>
+<li>debug_print と message_level の変更は処理の途中から影響を与えます。</li>
+</ul>
+</dd>
+
+<h2>ヒントのパースエラーについて</h2>
+<dt><h3>構文エラー</h3></dt>
 <dd>ヒント句の記述に構文上の誤りがあった場合、pg_hint_planは誤った記述より前のヒント句のみ有効とし、誤った記述以降のヒント句を無視してクエリを実行します。誤りの内容はpg_hint_plan.parse_messagesで指定したレベルでサーバログに記録されます。
 <ul>
 <li>ヒント句名を間違っている。</li>
@@ -643,48 +637,43 @@ postgres=#
 <li>オブジェクト名を空白で区切っていない。</li>
 </ul>
 </dd>
-<dt>オブジェクト指定エラー</dt>
-<dd>pg_hint_planは、ヒント句対象のオブジェクト指定に誤りがあった場合、pg_hint_planは不正なヒント句のみを無視し、それ以外のヒント句を使ってクエリを実行します。誤りの内容はpg_hint_plan.parse_messagesで指定したレベルでサーバログに記録されます。誤ったオブジェクト指定の例を以下に示します。
+<dt><h3>オブジェクト指定エラー</h3></dt>
+<dd>pg_hint_planは、ヒント句対象のオブジェクト指定に誤りがあった場合、pg_hint_planは正常に解析できたヒントのみを適用して、それ以外を無視します。誤りの内容はpg_hint_plan.parse_messagesで指定したレベルでサーバログに記録されます。
 <ul>
-<li>クエリ中に同じ名称のテーブル名または別名のテーブルがあり、それに対してヒント句を指定した。</li>
-<li>結合方式や結合順序のヒント句に同じオブジェクト名を複数回指定した。</li>
-</ul>
 </dd>
-<div class="tips">
-<span class="strong">構文エラーとオブジェクト指定エラーが同時に起こった場合</span>
-<p>構文エラーより前のヒント句の中から、オブジェクト指定エラーでないヒント句を適用します。</p>
-</div><br>
-<dt>指定するヒント句の種類の重複</dt>
+
+<dt><h3>重複したヒント</h3></dt>
 <dd>同じオブジェクトに対して同じグループのヒント句を重複して指定した場合は、各グループで最後に指定したヒント句を使用します。</dd>
-<dt>ネストしたブロックコメント</dt>
+<dt><h3>ネストしたブロックコメント</h3></dt>
 <dd>pg_hint_planでは、ヒントを指定したブロックコメントにネストしたブロックコメントを含めることができません。ネストしたブロックコメントを含めた場合は、誤った記述に関する情報を出力しますがエラー終了しません。ヒントを無視してクエリを実行します。</dd>
-<dt>メッセージの出力レベル</dt>
+<dt><h3>メッセージの出力レベル</h3></dt>
 <dd>ヒントに誤りがあった場合に出力されるメッセージのレベルは、基本的にはpg_hint_plan.parse_messagesに指定したレベルです。ただし、ヒント句に指定したオブジェクトの長さが識別子の最大長(デフォルトでは63バイト)を超えた際に切り詰めた場合は、NOTICEで出力します。</dd>
 
-<h3>機能制限</h3>
-<dt>標準のGUCパラメータの影響</dt>
-<dd>FROMリストの数がfrom_collapse_limitの設定値以上の場合、またはFROMリストの数がjoin_collapse_limitの設定値より大きい場合は、結合順序のヒント句が無視されます。また、FROMリストの数がgeqo_thresholdの設定値以上の場合は、結合順序のヒント句、および結合方式のヒント句が無視されます。ヒント句が使われるようにするには、これらのGUCパラメータの値を大きくしてください。</dd>
-<dt>ヒント句で制御できないケース</dt>
-<dd>pg_hint_planでは、PostgreSQLのプランナが候補としてあげる事ができない実行計画をヒント句に指定しても、その実行計画を生成することはできません。PostgreSQLのプランナが候補としてあげる事ができない実行計画の例を以下に示します。
+<h2>注意事項</h2>
+<dt><h3>プランナパラメータの影響</h3></dt>
+<dd>FROM句の要素数が from_collapse_limit 以上または join_collapse_limit を超える場合には、結合順序のヒント句は正しく動作しません。また、FROM句の要素数が geqo_threshold 以上の場合は、結合順序のヒント句、および結合方式のヒント句は動作しません。ヒント句が使われるようにするには、これらのGUCパラメータの値を十分に大きくしてください。</dd>
+<dt><h3>適用不能なヒント</h3></dt>
+<dd>ヒントで指定した結果正しく実行できない実行計画が生成される場合は、実行可能なプランに強制的に修正します。実行不能な実行計画例を以下に示します。
 <ul>
-<li>FULL OUTER JOINではNested Loopは、プランナが実行計画の候補として扱いません。</li>
-<li>WHERE句やJOIN条件などに指定していない列のみを含むインデックスは、プランナが実行計画の候補として扱いません。</li>
-<li>検索条件にctidを指定しない場合はTid Scanは、プランナが実行計画の候補として扱いません。</li>
+<li>特殊な場合を除いた FULL OUTER JOINに対する Nested Loop。</li>
+<li>WHERE句やJOIN条件などに指定していない列のみを含むインデックス。</li>
+<li>検索条件にctidを指定しない場合の Tid Scan。</li>
 </ul>
 </dd>
-<dt>ECPGにおける制限</dt>
-<dd>ECPGで実装したアプリケーションから発行するクエリにヒントをコメントで指定した場合、実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのブロックコメントを取り除いてしまうためです。ただし、C言語文字列に格納したクエリをEXECUTEコマンドで実行する動的SQLの場合は、コメントでヒントを指定しても実行計画を制御できます。</dd>
-<dt>ヒントによるフィンガープリントの変化</dt>
-<dd>SQLコメントでヒントを指定した場合、SQL文フィンガープリントベースのクエリキャッシュなどでは、ヒントが異なれば別のSQL文として扱われます。pg_stat_statementも9.1では別クエリとして集計しますが、9.2ではクエリ集約機能によりコメントが除去されるので、コメントで指定したヒントのみが異なるクエリは同じクエリとして扱われます。</dd>
+<dt><h3>ECPGにおける制限</h3></dt>
+<dd>ECPGで実装したアプリケーションから発行するクエリにヒントをコメントで指定した場合、実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのブロックコメントを取り除いてしまうためです。ただし、EXECUTEコマンドで実行する動的SQLに含まれるコメントは使用可能です。</dd>
+<dt><h3>異なるヒントを与えた同一クエリの pg_stat_statements での扱い</h3></dt>
+<dd>pg_stat_statements ではクエリIDの生成の際にコメントは無視されます。そのため与えているヒントが異なる同一のクエリは一つのクエリとして集計されます。</dd>
 
 </dl>
 
 <h2 id="requirement">動作環境</h2>
+pg_hint_plan 1.2 は PostgreSQL 9.6 のみをサポートします。
 <dl>
 <dt>PostgreSQL</dt>
-  <dd>バージョン 9.1, 9.2, 9.3, 9.4</dd>
+  <dd>バージョン 9.6</dd>
 <dt>動作確認済みOS</dt>
-  <dd>RHEL 6.5</dd>
+  <dd>RHEL 7.3</dd>
 </dl>
 
 <h2 id="seealso">関連項目</h2>
@@ -692,25 +681,13 @@ postgres=#
 <a href="http://www.postgresql.jp/document/current/html/sql-explain.html">EXPLAIN</a>
 <a href="http://www.postgresql.jp/document/current/html/sql-set.html">SET</a>
 <a href="http://www.postgresql.jp/document/current/html/runtime-config.html">サーバの設定</a>
+<a href="http://www.postgresql.jp/document/current/html/parallel-plans.html">パラレルプラン</a>
 <hr>
 
 <div class="navigation">
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
 </div>
 
-<p class="footer">Copyright (c) 2012-2014, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
-
-<!--
-<script type="text/javascript">
-var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
-document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
-</script><script src="pg_statsinfo-ja_files/ga.js" type="text/javascript"></script>
-<script type="text/javascript">
-try{
-var pageTracker = _gat._getTracker("UA-10244036-6");
-pageTracker._trackPageview();
-} catch(err) {}
-</script>
--->
+<p class="footer">Copyright (c) 2012-2017, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 </body>
 </html>

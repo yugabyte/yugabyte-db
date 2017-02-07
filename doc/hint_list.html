@@ -10,7 +10,7 @@
 </head>
 
 <body>
-<h1 id="pg_hint_plan">pg_hint_plan 1.1 Appendices</h1>
+<h1 id="pg_hint_plan">pg_hint_plan 1.2 Appendices</h1>
 <div class="navigation">
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
   <a href="hint_list-ja.html">Appendix A. Hints list</a>
@@ -71,7 +71,10 @@
 
 <tr><td>Row number correction</td>
 	<td nowrap>Rows(table table[ table...] correction)</td>
-  <td>Corrects row number of a result of the joins consist of the specfied tables. The available correction methods are absolute (#&ltn&gt), addition (+&ltn&gt), subtract (-&ltn&gt) and multiplication (*&ltn&gt). &ltn&gt should be a string that strtod() can read.
+  <td>Corrects row number of a result of the joins consist of the specfied tables. The available correction methods are absolute (#&ltn&gt), addition (+&ltn&gt), subtract (-&ltn&gt) and multiplication (*&ltn&gt). &ltn&gt should be a string that strtod() can read.</td></tr>
+<tr><td>Parallel query configuration</td>
+	<td nowrap>ParallelRows(table &lt# of workers&gt [soft|hard])</td>
+  <td>Enforce or inhibit parallel execution of specfied table. &lt# of workers&gt is the desired number of parallel workers, where zero means inhibiting parallel execution. If the third parameter is soft (default), it just changes max_parallel_workers_per_gather and leave everything else to planner. Hard means enforcing the specified number of workers.</td>
 <tr><td>GUC</td>
   <td nowrap>Set(GUC-param value)</td>
   <td>Set the GUC parameter to the value while planner is running.</td></tr>
@@ -85,6 +88,6 @@
   <a href="hint_list-ja.html">Appendix A. hints list</a>
 </div>
 
-<p class="footer">Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+<p class="footer">Copyright (c) 2012-2017, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 </body>
 </html>
