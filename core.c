@@ -575,6 +575,83 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 }
 
 /*
+ * create_plain_partial_paths
+ *	  Build partial access paths for parallel scan of a plain relation
+ */
+static void
+create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
+{
+	int			parallel_workers;
+
+	parallel_workers = compute_parallel_worker(rel, rel->pages);
+
+	/* If any limit was set to zero, the user doesn't want a parallel scan. */
+	if (parallel_workers <= 0)
+		return;
+
+	/* Add an unordered partial path based on a parallel sequential scan. */
+	add_partial_path(rel, create_seqscan_path(root, rel, NULL, parallel_workers));
+}
+
+/*
+ * Compute the number of parallel workers that should be used to scan a
+ * relation.  "pages" is the number of pages from the relation that we
+ * expect to scan.
+ */
+static int
+compute_parallel_worker(RelOptInfo *rel, BlockNumber pages)
+{
+	int			parallel_workers;
+
+	/*
+	 * If the user has set the parallel_workers reloption, use that; otherwise
+	 * select a default number of workers.
+	 */
+	if (rel->rel_parallel_workers != -1)
+		parallel_workers = rel->rel_parallel_workers;
+	else
+	{
+		int			parallel_threshold;
+
+		/*
+		 * If this relation is too small to be worth a parallel scan, just
+		 * return without doing anything ... unless it's an inheritance child.
+		 * In that case, we want to generate a parallel path here anyway.  It
+		 * might not be worthwhile just for this relation, but when combined
+		 * with all of its inheritance siblings it may well pay off.
+		 */
+		if (pages < (BlockNumber) min_parallel_relation_size &&
+			rel->reloptkind == RELOPT_BASEREL)
+			return 0;
+
+		/*
+		 * Select the number of workers based on the log of the size of the
+		 * relation.  This probably needs to be a good deal more
+		 * sophisticated, but we need something here for now.  Note that the
+		 * upper limit of the min_parallel_relation_size GUC is chosen to
+		 * prevent overflow here.
+		 */
+		parallel_workers = 1;
+		parallel_threshold = Max(min_parallel_relation_size, 1);
+		while (pages >= (BlockNumber) (parallel_threshold * 3))
+		{
+			parallel_workers++;
+			parallel_threshold *= 3;
+			if (parallel_threshold > INT_MAX / 3)
+				break;			/* avoid overflow */
+		}
+	}
+
+	/*
+	 * In no case use more than max_parallel_workers_per_gather workers.
+	 */
+	parallel_workers = Min(parallel_workers, max_parallel_workers_per_gather);
+
+	return parallel_workers;
+}
+
+
+/*
  * join_search_one_level
  *	  Consider ways to produce join relations containing exactly 'level'
  *	  jointree items.  (This is one step of the dynamic-programming method

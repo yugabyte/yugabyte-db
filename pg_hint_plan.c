@@ -8,6 +8,8 @@
  *
  *-------------------------------------------------------------------------
  */
+#include <string.h>
+
 #include "postgres.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_index.h"
@@ -71,6 +73,8 @@ PG_MODULE_MAGIC;
 #define HINT_INDEXONLYSCAN		"IndexOnlyScan"
 #define HINT_INDEXONLYSCANREGEXP	"IndexOnlyScanRegexp"
 #define HINT_NOINDEXONLYSCAN	"NoIndexOnlyScan"
+#define HINT_PARALLEL			"Parallel"
+
 #define HINT_NESTLOOP			"NestLoop"
 #define HINT_MERGEJOIN			"MergeJoin"
 #define HINT_HASHJOIN			"HashJoin"
@@ -132,17 +136,30 @@ typedef enum HintKeyword
 	HINT_KEYWORD_INDEXONLYSCAN,
 	HINT_KEYWORD_INDEXONLYSCANREGEXP,
 	HINT_KEYWORD_NOINDEXONLYSCAN,
+
 	HINT_KEYWORD_NESTLOOP,
 	HINT_KEYWORD_MERGEJOIN,
 	HINT_KEYWORD_HASHJOIN,
 	HINT_KEYWORD_NONESTLOOP,
 	HINT_KEYWORD_NOMERGEJOIN,
 	HINT_KEYWORD_NOHASHJOIN,
+
 	HINT_KEYWORD_LEADING,
 	HINT_KEYWORD_SET,
 	HINT_KEYWORD_ROWS,
+	HINT_KEYWORD_PARALLEL,
+
 	HINT_KEYWORD_UNRECOGNIZED
 } HintKeyword;
+
+#define SCAN_HINT_ACCEPTS_INDEX_NAMES(kw) \
+	(kw == HINT_KEYWORD_INDEXSCAN ||			\
+	 kw == HINT_KEYWORD_INDEXSCANREGEXP ||		\
+	 kw == HINT_KEYWORD_INDEXONLYSCAN ||		\
+	 kw == HINT_KEYWORD_INDEXONLYSCANREGEXP ||	\
+	 kw == HINT_KEYWORD_BITMAPSCAN ||				\
+	 kw == HINT_KEYWORD_BITMAPSCANREGEXP)
+
 
 typedef struct Hint Hint;
 typedef struct HintState HintState;
@@ -157,14 +174,15 @@ typedef const char *(*HintParseFunction) (Hint *hint, HintState *hstate,
 										  Query *parse, const char *str);
 
 /* hint types */
-#define NUM_HINT_TYPE	5
+#define NUM_HINT_TYPE	6
 typedef enum HintType
 {
 	HINT_TYPE_SCAN_METHOD,
 	HINT_TYPE_JOIN_METHOD,
 	HINT_TYPE_LEADING,
 	HINT_TYPE_SET,
-	HINT_TYPE_ROWS
+	HINT_TYPE_ROWS,
+	HINT_TYPE_PARALLEL
 } HintType;
 
 static const char *HintTypeName[] = {
@@ -172,7 +190,8 @@ static const char *HintTypeName[] = {
 	"join method",
 	"leading",
 	"set",
-	"rows"
+	"rows",
+	"parallel"
 };
 
 /* hint status */
@@ -282,6 +301,16 @@ typedef struct RowsHint
 	double			rows;
 } RowsHint;
 
+/* parallel hints */
+typedef struct ParallelHint
+{
+	Hint			base;
+	char		   *relname;
+	char		   *nworkers_str;	/* original string of nworkers */
+	int				nworkers;		/* num of workers specified by Worker */
+	bool			force_parallel;	/* force parallel scan */
+} ParallelHint;
+
 /*
  * Describes a context of hint processing.
  */
@@ -299,25 +328,26 @@ struct HintState
 
 	/* for scan method hints */
 	ScanMethodHint **scan_hints;		/* parsed scan hints */
-	int				init_scan_mask;		/* initial value of scan parameter */
+
+	/* Initial values of parameters  */
+	int				init_scan_mask;		/* enable_* mask */
+	int				init_nworkers;		/* max_parallel_workers_per_gather */
+	int				init_min_para_size;	/* min_parallel_relation_size*/
+	int				init_paratup_cost;	/* parallel_tuple_cost */
+	int				init_parasetup_cost;/* parallel_setup_cost */
+
 	Index			parent_relid;		/* inherit parent of table relid */
 	ScanMethodHint *parent_hint;		/* inherit parent of table scan hint */
 	List		   *parent_index_infos; /* list of parent table's index */
 
-	/* for join method hints */
 	JoinMethodHint **join_hints;		/* parsed join hints */
 	int				init_join_mask;		/* initial value join parameter */
 	List		  **join_hint_level;
-
-	/* for Leading hint */
 	LeadingHint	  **leading_hint;		/* parsed Leading hints */
-
-	/* for Set hints */
 	SetHint		  **set_hints;			/* parsed Set hints */
 	GucContext		context;			/* which GUC parameters can we set? */
-
-	/* for Rows hints */
 	RowsHint	  **rows_hints;			/* parsed Rows hints */
+	ParallelHint  **parallel_hints;		/* parsed Parallel hints */
 };
 
 /*
@@ -396,6 +426,15 @@ static int RowsHintCmp(const RowsHint *a, const RowsHint *b);
 static const char *RowsHintParse(RowsHint *hint, HintState *hstate,
 								 Query *parse, const char *str);
 
+/* Parallel hint callbacks */
+static Hint *ParallelHintCreate(const char *hint_str, const char *keyword,
+								HintKeyword hint_keyword);
+static void ParallelHintDelete(ParallelHint *hint);
+static void ParallelHintDesc(ParallelHint *hint, StringInfo buf, bool nolf);
+static int ParallelHintCmp(const ParallelHint *a, const ParallelHint *b);
+static const char *ParallelHintParse(ParallelHint *hint, HintState *hstate,
+									 Query *parse, const char *str);
+
 static void quote_value(StringInfo buf, const char *value);
 
 static const char *parse_quoted_value(const char *str, char **word,
@@ -405,6 +444,12 @@ RelOptInfo *pg_hint_plan_standard_join_search(PlannerInfo *root,
 											  int levels_needed,
 											  List *initial_rels);
 void pg_hint_plan_join_search_one_level(PlannerInfo *root, int level);
+void pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
+								   Index rti, RangeTblEntry *rte);
+static void create_plain_partial_paths(PlannerInfo *root,
+													RelOptInfo *rel);
+static int compute_parallel_worker(RelOptInfo *rel, BlockNumber pages);
+
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel,
 									  ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root,
@@ -431,6 +476,13 @@ static void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 										 bool isCommit,
 										 bool isTopLevel,
 										 void *arg);
+static int set_config_option_wrapper(const char *name, const char *value,
+						  GucContext context, GucSource source,
+						  GucAction action, bool changeVal, int elevel);
+static void set_scan_config_options(unsigned char enforce_mask,
+									GucContext context);
+static void set_config_int32_option(const char *name, int32 value,
+									GucContext context);
 
 /* GUC variables */
 static bool	pg_hint_plan_enable_hint = true;
@@ -445,6 +497,7 @@ static bool	hidestmt = false;				/* Allow or inhibit STATEMENT: output */
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int hint_inhibit_level = 0;			/* Inhibit hinting if this is above 0 */
 											/* (This could not be above 1)        */
+static int max_hint_nworkers = -1;		/* Maximum nworkers of Workers hints */
 
 static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
@@ -486,6 +539,7 @@ static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static planner_hook_type prev_planner = NULL;
 static get_relation_info_hook_type prev_get_relation_info = NULL;
 static join_search_hook_type prev_join_search = NULL;
+static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
 
 /* Hold reference to currently active hint */
 static HintState *current_hint_state = NULL;
@@ -519,15 +573,19 @@ static const HintParser parsers[] = {
 	{HINT_INDEXONLYSCANREGEXP, ScanMethodHintCreate,
 	 HINT_KEYWORD_INDEXONLYSCANREGEXP},
 	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXONLYSCAN},
+
 	{HINT_NESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP},
 	{HINT_MERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_MERGEJOIN},
 	{HINT_HASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_HASHJOIN},
 	{HINT_NONESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NONESTLOOP},
 	{HINT_NOMERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOMERGEJOIN},
 	{HINT_NOHASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOHASHJOIN},
+
 	{HINT_LEADING, LeadingHintCreate, HINT_KEYWORD_LEADING},
 	{HINT_SET, SetHintCreate, HINT_KEYWORD_SET},
 	{HINT_ROWS, RowsHintCreate, HINT_KEYWORD_ROWS},
+	{HINT_PARALLEL, ParallelHintCreate, HINT_KEYWORD_PARALLEL},
+
 	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
 
@@ -598,7 +656,7 @@ _PG_init(void)
 							 NULL);
 
 	DefineCustomBoolVariable("pg_hint_plan.enable_hint_table",
-					 "Force planner to not get hint by using table lookups.",
+							 "Let pg_hint_plan look up the hint table.",
 							 NULL,
 							 &pg_hint_plan_enable_hint_table,
 							 false,
@@ -617,6 +675,8 @@ _PG_init(void)
 	get_relation_info_hook = pg_hint_plan_get_relation_info;
 	prev_join_search = join_search_hook;
 	join_search_hook = pg_hint_plan_join_search;
+	prev_set_rel_pathlist = set_rel_pathlist_hook;
+	set_rel_pathlist_hook = pg_hint_plan_set_rel_pathlist;
 
 	/* setup PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -639,6 +699,7 @@ _PG_fini(void)
 	planner_hook = prev_planner;
 	get_relation_info_hook = prev_get_relation_info;
 	join_search_hook = prev_join_search;
+	set_rel_pathlist_hook = prev_set_rel_pathlist;
 
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -851,6 +912,41 @@ RowsHintDelete(RowsHint *hint)
 	pfree(hint);
 }
 
+static Hint *
+ParallelHintCreate(const char *hint_str, const char *keyword,
+				  HintKeyword hint_keyword)
+{
+	ParallelHint *hint;
+
+	hint = palloc(sizeof(ScanMethodHint));
+	hint->base.hint_str = hint_str;
+	hint->base.keyword = keyword;
+	hint->base.hint_keyword = hint_keyword;
+	hint->base.type = HINT_TYPE_PARALLEL;
+	hint->base.state = HINT_STATE_NOTUSED;
+	hint->base.delete_func = (HintDeleteFunction) ParallelHintDelete;
+	hint->base.desc_func = (HintDescFunction) ParallelHintDesc;
+	hint->base.cmp_func = (HintCmpFunction) ParallelHintCmp;
+	hint->base.parse_func = (HintParseFunction) ParallelHintParse;
+	hint->relname = NULL;
+	hint->nworkers = 0;
+	hint->nworkers_str = "0";
+
+	return (Hint *) hint;
+}
+
+static void
+ParallelHintDelete(ParallelHint *hint)
+{
+	if (!hint)
+		return;
+
+	if (hint->relname)
+		pfree(hint->relname);
+	pfree(hint);
+}
+
+
 static HintState *
 HintStateCreate(void)
 {
@@ -864,6 +960,10 @@ HintStateCreate(void)
 	memset(hstate->num_hints, 0, sizeof(hstate->num_hints));
 	hstate->scan_hints = NULL;
 	hstate->init_scan_mask = 0;
+	hstate->init_nworkers = 0;
+	hstate->init_min_para_size = 0;
+	hstate->init_paratup_cost = 0;
+	hstate->init_parasetup_cost = 0;
 	hstate->parent_relid = 0;
 	hstate->parent_hint = NULL;
 	hstate->parent_index_infos = NIL;
@@ -874,6 +974,7 @@ HintStateCreate(void)
 	hstate->context = superuser() ? PGC_SUSET : PGC_USERSET;
 	hstate->set_hints = NULL;
 	hstate->rows_hints = NULL;
+	hstate->parallel_hints = NULL;
 
 	return hstate;
 }
@@ -1066,6 +1167,27 @@ RowsHintDesc(RowsHint *hint, StringInfo buf, bool nolf)
 		appendStringInfoChar(buf, '\n');
 }
 
+static void
+ParallelHintDesc(ParallelHint *hint, StringInfo buf, bool nolf)
+{
+	appendStringInfo(buf, "%s(", hint->base.keyword);
+	if (hint->relname != NULL)
+	{
+		quote_value(buf, hint->relname);
+
+		/* number of workers  */
+		appendStringInfoCharMacro(buf, ' ');
+		quote_value(buf, hint->nworkers_str);
+		/* application mode of num of workers */
+		appendStringInfoCharMacro(buf, ' ');
+		appendStringInfoString(buf,
+							   (hint->force_parallel ? "hard" : "soft"));
+	}
+	appendStringInfoString(buf, ")");
+	if (!nolf)
+		appendStringInfoChar(buf, '\n');
+}
+
 /*
  * Append string which represents all hints in a given state to buf, with
  * preceding title with them.
@@ -1213,6 +1335,12 @@ RowsHintCmp(const RowsHint *a, const RowsHint *b)
 	}
 
 	return 0;
+}
+
+static int
+ParallelHintCmp(const ParallelHint *a, const ParallelHint *b)
+{
+	return RelnameCmp(&a->relname, &b->relname);
 }
 
 static int
@@ -1755,6 +1883,9 @@ create_hintstate(Query *parse, const char *hints)
 	if (hints == NULL)
 		return NULL;
 
+	/* -1 means that no Parallel hint is specified. */
+	max_hint_nworkers = -1;
+
 	p = hints;
 	hstate = HintStateCreate();
 	hstate->hint_str = (char *) hints;
@@ -1822,6 +1953,8 @@ create_hintstate(Query *parse, const char *hints)
 		hstate->num_hints[HINT_TYPE_LEADING]);
 	hstate->rows_hints = (RowsHint **) (hstate->set_hints +
 		hstate->num_hints[HINT_TYPE_SET]);
+	hstate->parallel_hints = (ParallelHint **) (hstate->set_hints +
+		hstate->num_hints[HINT_TYPE_ROWS]);
 
 	return hstate;
 }
@@ -1843,31 +1976,24 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 
 	/* Parse relation name and index name(s) if given hint accepts. */
 	length = list_length(name_list);
-	if (length > 0)
-	{
-		hint->relname = linitial(name_list);
-		hint->indexnames = list_delete_first(name_list);
 
-		/* check whether the hint accepts index name(s). */
-		if (length != 1 &&
-			hint_keyword != HINT_KEYWORD_INDEXSCAN &&
-			hint_keyword != HINT_KEYWORD_INDEXSCANREGEXP &&
-			hint_keyword != HINT_KEYWORD_INDEXONLYSCAN &&
-			hint_keyword != HINT_KEYWORD_INDEXONLYSCANREGEXP &&
-			hint_keyword != HINT_KEYWORD_BITMAPSCAN &&
-			hint_keyword != HINT_KEYWORD_BITMAPSCANREGEXP)
-		{
-			hint_ereport(str,
-						 ("%s hint accepts only one relation.",
-						  hint->base.keyword));
-			hint->base.state = HINT_STATE_ERROR;
-			return str;
-		}
-	}
-	else
+	/* at least twp parameters required */
+	if (length < 1)
 	{
 		hint_ereport(str,
-					 ("%s hint requires a relation.",
+					 ("%s hint requires a relation.",  hint->base.keyword));
+		hint->base.state = HINT_STATE_ERROR;
+		return str;
+	}
+
+	hint->relname = linitial(name_list);
+	hint->indexnames = list_delete_first(name_list);
+
+	/* check whether the hint accepts index name(s) */
+	if (length > 1 && !SCAN_HINT_ACCEPTS_INDEX_NAMES(hint_keyword))
+	{
+		hint_ereport(str,
+					 ("%s hint accepts only one relation.",
 					  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
 		return str;
@@ -2204,9 +2330,108 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 	return str;
 }
 
+static const char *
+ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
+				  const char *str)
+{
+	HintKeyword		hint_keyword = hint->base.hint_keyword;
+	List		   *name_list = NIL;
+	int				length;
+	char   *end_ptr;
+	int		nworkers;
+	bool	force_parallel = false;
+
+	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
+		return NULL;
+
+	/* Parse relation name and index name(s) if given hint accepts. */
+	length = list_length(name_list);
+
+	if (length < 2 || length > 3)
+	{
+		hint_ereport(str,
+					 ("Wrong number of arguments for %s hint.",
+					  hint->base.keyword));
+		hint->base.state = HINT_STATE_ERROR;
+		return str;
+	}
+
+	hint->relname = linitial(name_list);
+		
+	/* The second parameter is number of workers */
+	hint->nworkers_str = list_nth(name_list, 1);
+	nworkers = strtod(hint->nworkers_str, &end_ptr);
+	if (*end_ptr || nworkers < 0)
+	{
+		hint_ereport(hint->nworkers_str,
+					 ("number of workers must be a positive integer: %s",
+					  hint->base.keyword));
+		hint->base.state = HINT_STATE_ERROR;
+		return str;
+	}
+
+	hint->nworkers = nworkers;
+
+	if (nworkers > max_hint_nworkers)
+		max_hint_nworkers = nworkers;
+
+	/* optional third parameter is specified */
+	if (length == 3)
+	{
+		const char *modeparam = (const char *)list_nth(name_list, 2);
+		if (strcasecmp(modeparam, "hard") == 0)
+			force_parallel = true;
+		else if (strcasecmp(modeparam, "soft") != 0)
+		{
+			hint_ereport(str,
+						 ("The mode of Worker hint must be soft or hard."));
+			hint->base.state = HINT_STATE_ERROR;
+			return str;
+		}
+	}
+	
+	hint->force_parallel = force_parallel;
+
+	return str;
+}
+
 /*
  * set GUC parameter functions
  */
+
+static int
+get_current_scan_mask()
+{
+	int mask = 0;
+
+	if (enable_seqscan)
+		mask |= ENABLE_SEQSCAN;
+	if (enable_indexscan)
+		mask |= ENABLE_INDEXSCAN;
+	if (enable_bitmapscan)
+		mask |= ENABLE_BITMAPSCAN;
+	if (enable_tidscan)
+		mask |= ENABLE_TIDSCAN;
+	if (enable_indexonlyscan)
+		mask |= ENABLE_INDEXONLYSCAN;
+
+	return mask;
+}
+
+static int
+get_current_join_mask()
+{
+	int mask = 0;
+
+	if (enable_nestloop)
+		mask |= ENABLE_NESTLOOP;
+	if (enable_mergejoin)
+		mask |= ENABLE_MERGEJOIN;
+	if (enable_hashjoin)
+		mask |= ENABLE_HASHJOIN;
+
+	return mask;
+}
 
 static int
 set_config_option_wrapper(const char *name, const char *value,
@@ -2269,6 +2494,61 @@ set_config_options(SetHint **options, int noptions, GucContext context)
 	}
 
 	return save_nestlevel;
+}
+
+static void
+set_config_int32_option(const char *name, int32 value, GucContext context)
+{
+	char buf[16];	/* enough for int32 */
+
+	if (snprintf(buf, 16, "%d", value) < 0)
+	{
+		ereport(pg_hint_plan_message_level,
+				(errmsg ("Cannot set integer value: %d: %s",
+						 max_hint_nworkers, strerror(errno))));
+		return;
+	}
+
+	set_config_option_wrapper(name, buf, context,
+							  PGC_S_SESSION, GUC_ACTION_SAVE, true,
+							  pg_hint_plan_message_level);
+}
+
+
+/*
+ * Setup parallel execution environment. If init == true, it is set to the
+ * initial values in state, elsewise set to values in hint.
+ */
+static void
+setup_parallel_scan(ParallelHint *hint, bool init, HintState *state)
+{
+	/* !init requires hint */
+	Assert(init|| hint);
+
+	if (init)
+		set_config_int32_option("max_parallel_workers_per_gather",
+								state->init_nworkers, state->context);
+	else
+		set_config_int32_option("max_parallel_workers_per_gather",
+								hint->nworkers, state->context);
+
+	/* force means that enforce parallel as far as possible */
+	if (!init && hint->force_parallel)
+	{
+		set_config_int32_option("parallel_tuple_cost", 0, state->context);
+		set_config_int32_option("parallel_setup_cost", 0, state->context);
+		set_config_int32_option("min_parallel_relation_size", 0,
+								state->context);
+	}
+	else
+	{
+		set_config_int32_option("parallel_tuple_cost",
+								state->init_paratup_cost, state->context);
+		set_config_int32_option("parallel_setup_cost",
+								state->init_parasetup_cost, state->context);
+		set_config_int32_option("min_parallel_relation_size",
+								state->init_min_para_size, state->context);
+	}
 }
 
 #define SET_CONFIG_OPTION(name, type_bits) \
@@ -2608,22 +2888,22 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 						   current_hint_state->context);
 	
 	/* save current status to current_hint_state */
-	if (enable_seqscan)
-		current_hint_state->init_scan_mask |= ENABLE_SEQSCAN;
-	if (enable_indexscan)
-		current_hint_state->init_scan_mask |= ENABLE_INDEXSCAN;
-	if (enable_bitmapscan)
-		current_hint_state->init_scan_mask |= ENABLE_BITMAPSCAN;
-	if (enable_tidscan)
-		current_hint_state->init_scan_mask |= ENABLE_TIDSCAN;
-	if (enable_indexonlyscan)
-		current_hint_state->init_scan_mask |= ENABLE_INDEXONLYSCAN;
-	if (enable_nestloop)
-		current_hint_state->init_join_mask |= ENABLE_NESTLOOP;
-	if (enable_mergejoin)
-		current_hint_state->init_join_mask |= ENABLE_MERGEJOIN;
-	if (enable_hashjoin)
-		current_hint_state->init_join_mask |= ENABLE_HASHJOIN;
+	current_hint_state->init_scan_mask = get_current_scan_mask();
+	current_hint_state->init_join_mask = get_current_join_mask();
+	current_hint_state->init_min_para_size = min_parallel_relation_size;
+	current_hint_state->init_paratup_cost = parallel_tuple_cost;
+	current_hint_state->init_parasetup_cost = parallel_setup_cost;
+
+	/*
+	 * max_parallel_workers_per_gather should be non-zero here if Workers hint
+	 * is specified.
+	 */
+	if (max_hint_nworkers >= 0)
+	{
+		current_hint_state->init_nworkers = 0;
+		set_config_int32_option("max_parallel_workers_per_gather",
+								1, current_hint_state->context);
+	}
 
 	if (debug_level > 1)
 	{
@@ -2698,11 +2978,50 @@ find_scan_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
 	int				i;
 
 	/*
-	 * We can't apply scan method hint if the relation is:
+	 * We don't apply scan method hint if the relation is:
 	 *   - not a base relation
 	 *   - not an ordinary relation (such as join and subquery)
 	 */
-	if (rel && (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION))
+	if (rel && (rel->reloptkind != RELOPT_BASEREL ||
+				rel->rtekind != RTE_RELATION))
+		return NULL;
+
+	rte = root->simple_rte_array[relid];
+
+	/* We don't force scan method of foreign tables */
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+		return NULL;
+
+	/* Find scan method hint, which matches given names, from the list. */
+	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
+	{
+		ScanMethodHint *hint = current_hint_state->scan_hints[i];
+
+		/* We ignore disabled hints. */
+		if (!hint_state_enabled(hint))
+			continue;
+
+		if (RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
+			return hint;
+	}
+
+	return NULL;
+}
+
+static ParallelHint *
+find_parallel_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
+{
+	RangeTblEntry  *rte;
+	int				i;
+
+	/*
+	 * We don't apply scan method hint if the relation is:
+	 *   - not a base relation and inheritance children
+	 *   - not an ordinary relation (such as join and subquery)
+	 */
+	if (rel && ((rel->reloptkind != RELOPT_BASEREL &&
+				 rel->reloptkind != RELOPT_OTHER_MEMBER_REL) ||
+				rel->rtekind != RTE_RELATION))
 		return NULL;
 
 	rte = root->simple_rte_array[relid];
@@ -2712,9 +3031,9 @@ find_scan_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
 		return NULL;
 
 	/* Find scan method hint, which matches given names, from the list. */
-	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
+	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_PARALLEL]; i++)
 	{
-		ScanMethodHint *hint = current_hint_state->scan_hints[i];
+		ParallelHint *hint = current_hint_state->parallel_hints[i];
 
 		/* We ignore disabled hints. */
 		if (!hint_state_enabled(hint))
@@ -3092,34 +3411,12 @@ get_parent_index_info(Oid indexoid, Oid relid)
 }
 
 static void
-pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
-							   bool inhparent, RelOptInfo *rel)
+process_scanmethod_hints(PlannerInfo *root, Oid relationObjectId,
+						 bool inhparent, RelOptInfo *rel)
 {
-	ScanMethodHint *hint = NULL;
-	ListCell *l;
 	Index new_parent_relid = 0;
-
-	if (prev_get_relation_info)
-		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
-
-	/* 
-	 * Do nothing if we don't have a valid hint in this context or current
-	 * nesting depth is at SPI calls.
-	 */
-	if (!current_hint_state || hint_inhibit_level > 0)
-	{
-		if (debug_level > 1)
-			ereport(pg_hint_plan_message_level,
-					(errhidestmt(true),
-					 errmsg ("pg_hint_plan%s: get_relation_info"
-							 " no hint to apply: relation=%u(%s), inhparent=%d,"
-							 " current_hint=%p, hint_inhibit_level=%d",
-							 qnostr, relationObjectId,
-							 get_rel_name(relationObjectId),
-							 inhparent, current_hint_state,
-							 hint_inhibit_level)));
-		return;
-	}
+	ListCell *l;
+	ScanMethodHint *scanhint = NULL;
 
 	/*
 	 * We could register the parent relation of the following children here
@@ -3165,26 +3462,23 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	if (new_parent_relid > 0)
 	{
 		/*
-		 * Here we found a parent relation different from the remembered one.
-		 * Remember it, apply the scan mask of it and then resolve the index
-		 * restriction in order to be used by its children.
+		 * Here we found a new parent for the current relation. Scan continues
+		 * hint to other childrens of this parent so remember it * to avoid
+		 * hinthintredundant setup cost.
 		 */
-		int scanmask = current_hint_state->init_scan_mask;
-		ScanMethodHint *parent_hint;
+		bool	use_parent_env = false;
+		ScanMethodHint *parent_hint = NULL;
 
 		current_hint_state->parent_relid = new_parent_relid;
 				
-		/*
-		 * Get and apply the hint for the new parent relation. It should be an
-		 * ordinary relation so calling find_scan_hint with rel == NULL is
-		 * safe.
-		 */
+		/* Check if the parent has a hint */
 		current_hint_state->parent_hint = parent_hint = 
 			find_scan_hint(root, current_hint_state->parent_relid, NULL);
 
 		if (parent_hint)
 		{
-			scanmask = current_hint_state->parent_hint->enforce_mask;
+			/* If hint is found for the parent, apply its hint instead. */
+			use_parent_env = true;
 			parent_hint->base.state = HINT_STATE_USED;
 
 			/* Resolve index name mask (if any) using the parent. */
@@ -3221,10 +3515,16 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 				heap_close(parent_rel, NoLock);
 			}
 		}
-			
-		set_scan_config_options(scanmask, current_hint_state->context);
+
+		if (use_parent_env)
+			set_scan_config_options(parent_hint->enforce_mask,
+									current_hint_state->context);
+		else
+			set_scan_config_options(current_hint_state->init_scan_mask,
+									current_hint_state->context);
 	}
 
+	/* Process index restriction hint inheritance */
 	if (current_hint_state->parent_hint != 0)
 	{
 		delete_indexes(current_hint_state->parent_hint, rel,
@@ -3245,13 +3545,13 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	}
 
 	/* This table doesn't have a parent hint. Apply its own hint if any. */
-	if ((hint = find_scan_hint(root, rel->relid, rel)) != NULL)
+	if ((scanhint = find_scan_hint(root, rel->relid, rel)) != NULL)
 	{
-		set_scan_config_options(hint->enforce_mask,
+		set_scan_config_options(scanhint->enforce_mask,
 								current_hint_state->context);
-		hint->base.state = HINT_STATE_USED;
+		scanhint->base.state = HINT_STATE_USED;
 
-		delete_indexes(hint, rel, InvalidOid);
+		delete_indexes(scanhint, rel, InvalidOid);
 
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
@@ -3263,23 +3563,68 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level,
-							 hint->enforce_mask)));
+							 scanhint->enforce_mask)));
+		return;
 	}
-	else
+
+	/* Nothing to apply. Reset the scan mask to intial state */
+	if (debug_level > 1)
+		ereport(pg_hint_plan_message_level,
+				(errhidestmt (true),
+				 errmsg ("pg_hint_plan%s: get_relation_info"
+						 " no hint applied:"
+						 " relation=%u(%s), inhparent=%d, current_hint=%p,"
+						 " hint_inhibit_level=%d, scanmask=0x%x",
+						 qnostr, relationObjectId,
+						 get_rel_name(relationObjectId),
+						 inhparent, current_hint_state, hint_inhibit_level,
+						 current_hint_state->init_scan_mask)));
+	set_scan_config_options(current_hint_state->init_scan_mask,
+							current_hint_state->context);
+}
+
+static void
+pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
+							   bool inhparent, RelOptInfo *rel)
+{
+	ParallelHint   *parallelhint = NULL;
+
+	if (prev_get_relation_info)
+		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
+
+	/* 
+	 * Do nothing if we don't have a valid hint in this context or current
+	 * nesting depth is at SPI calls.
+	 */
+	if (!current_hint_state || hint_inhibit_level > 0)
 	{
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
 					(errhidestmt (true),
 					 errmsg ("pg_hint_plan%s: get_relation_info"
-							 " no hint applied:"
-							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
-							 " hint_inhibit_level=%d, scanmask=0x%x",
+							 " no hint to apply: relation=%u(%s), inhparent=%d,"
+							 " current_hint_state=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint_state, hint_inhibit_level,
-							 current_hint_state->init_scan_mask)));
-		set_scan_config_options(current_hint_state->init_scan_mask,
-								current_hint_state->context);
+							 inhparent, current_hint_state, hint_inhibit_level)));
+		return;
+	}
+
+	process_scanmethod_hints(root, relationObjectId, inhparent, rel);
+
+	/*
+	 * Parallel hint doesn't inherit, process separately from other types of
+	 * hint
+	 */
+	if ((parallelhint = find_parallel_hint(root, rel->relid, rel)) != NULL)
+	{
+		/* Set parallel environment according to the hint */
+		setup_parallel_scan(parallelhint, false, current_hint_state);
+	}
+	else
+	{
+		/* Reset parallel environment */
+		setup_parallel_scan(NULL, true, current_hint_state);
 	}
 	return;
 }
@@ -3750,6 +4095,32 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/* Consider sequential scan */
 	add_path(rel, create_seqscan_path(root, rel, required_outer, 0));
 
+	/* If appropriate, consider parallel sequential scan */
+	if (rel->consider_parallel && required_outer == NULL)
+	{
+		ParallelHint *phint = find_parallel_hint(root, rel->relid, rel);
+
+		/* Consider parallel paths only if not inhibited by hint */
+		if (!phint || phint->nworkers > 0)
+			create_plain_partial_paths(root, rel);
+
+		/*
+		 * Overwirte parallel_workers if requested. partial_pathlist seems to
+		 * have up to one path but looping over all possible paths don't harm.
+		 */
+		if (phint && phint->nworkers > 0 && phint->force_parallel)
+		{
+			ListCell *l;
+			foreach (l, rel->partial_pathlist)
+			{
+				Path *ppath = (Path *) lfirst(l);
+				
+				Assert(ppath->parallel_workers > 0);
+				ppath->parallel_workers	= phint->nworkers;
+			}
+		}			
+	}
+
 	/* Consider index scans */
 	create_index_paths(root, rel);
 
@@ -3771,7 +4142,8 @@ rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 	{
 		RelOptInfo	   *rel = (RelOptInfo *) lfirst(l);
 		RangeTblEntry  *rte;
-		ScanMethodHint *hint;
+		ScanMethodHint *scanhint;
+		ParallelHint   *parallelhint;
 
 		/* Skip relations which we can't choose scan method. */
 		if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
@@ -3788,19 +4160,51 @@ rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 		 * planner if scan method hint is not specified, otherwise use
 		 * specified hints and mark the hint as used.
 		 */
-		if ((hint = find_scan_hint(root, rel->relid, rel)) == NULL)
+		if ((scanhint = find_scan_hint(root, rel->relid, rel)) == NULL)
 			set_scan_config_options(hstate->init_scan_mask,
 									hstate->context);
 		else
 		{
-			set_scan_config_options(hint->enforce_mask, hstate->context);
-			hint->base.state = HINT_STATE_USED;
+			set_scan_config_options(scanhint->enforce_mask, hstate->context);
+			scanhint->base.state = HINT_STATE_USED;
 		}
 
+		if ((parallelhint = find_parallel_hint(root, rel->relid, rel)) != NULL)
+		{
+			/* Set parallel environment according to the hint */
+			setup_parallel_scan(parallelhint, false, current_hint_state);
+		}
+		else
+		{
+			/* Reset parallel environment */
+			setup_parallel_scan(NULL, true, current_hint_state);
+		}
+
+		/* remove existing partial paths from this baserel */
+		list_free_deep(rel->partial_pathlist);
+		rel->partial_pathlist = NIL;
+
+		/* remove existing paths from this baserel */
 		list_free_deep(rel->pathlist);
 		rel->pathlist = NIL;
+
 		if (rte->inh)
 		{
+			ListCell *l;
+
+			/* remove partial paths from all chlidren */
+			foreach (l, root->append_rel_list)
+			{
+				AppendRelInfo  *appinfo = (AppendRelInfo *) lfirst(l);
+				RelOptInfo	   *childrel;
+
+				if (appinfo->parent_relid != rel->relid)
+					continue;
+
+				childrel = root->simple_rel_array[appinfo->child_relid];
+				list_free_deep(childrel->partial_pathlist);
+				childrel->partial_pathlist = NIL;
+			}
 			/* It's an "append relation", process accordingly */
 			set_append_rel_pathlist(root, rel, rel->relid, rte);
 		}
@@ -3809,6 +4213,14 @@ rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 			set_plain_rel_pathlist(root, rel, rte);
 		}
 
+		/*
+		 * If this is a baserel, consider gathering any partial paths we may
+		 * hinthave created for it.
+		 */
+		if (rel->reloptkind == RELOPT_BASEREL)
+			generate_gather_paths(root, rel);
+
+		/* Now find the cheapest of the paths for this rel */
 		set_cheapest(rel);
 	}
 
@@ -4011,6 +4423,65 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 								current_hint_state->context);
 
 	return rel;
+}
+
+/*
+ * Force number of wokers if instructed by hint
+ */
+void
+pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
+							  Index rti, RangeTblEntry *rte)
+{
+	ParallelHint   *phint;
+	List		   *oldpathlist;
+	ListCell	   *l;
+	bool			regenerate = false;
+
+	/* Hint has not been parsed yet, or this is not a parallel'able relation */
+	if (current_hint_state == NULL || rel->partial_pathlist == NIL)
+		return;
+
+	phint = find_parallel_hint(root, rel->relid, rel);
+
+	if (phint == NULL || !phint->force_parallel)
+		return;
+
+	/*
+	 * This relation contains gather paths previously created and they prevent
+	 * adding new gahter path with same cost. Remove them.
+	 */
+	oldpathlist = rel->pathlist;
+	rel->pathlist = NIL;
+	foreach (l, oldpathlist)
+	{
+		Path *path = (Path *) lfirst(l);
+
+		if (IsA(path, GatherPath) &&
+			path->parallel_workers != phint->nworkers)
+		{
+			pfree(path);
+			regenerate = true;
+		}
+		else
+			rel->pathlist = lappend(rel->pathlist, path);
+	}
+	list_free(oldpathlist);
+
+	if (regenerate)
+	{
+		foreach (l, rel->partial_pathlist)
+		{
+			Path *ppath = (Path *) lfirst(l);
+			
+			if (phint && phint->nworkers > 0 && phint->force_parallel)
+			{
+				Assert(ppath->parallel_workers > 0);
+				ppath->parallel_workers	= phint->nworkers;
+			}			
+		}
+		
+		generate_gather_paths(root, rel);
+	}
 }
 
 /*
