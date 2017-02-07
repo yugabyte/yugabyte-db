@@ -9,7 +9,7 @@ export function isDefinedNotNull(obj) {
 export var isValidObject = isDefinedNotNull;
 
 export function isValidArray(arr) {
-  return (isDefinedNotNull(arr) && arr.length && arr.length > 0);
+  return (isDefinedNotNull(arr) && arr.length && arr.length > 0 && Array.isArray(arr));
 }
 
 export function isValidFunction(func) {

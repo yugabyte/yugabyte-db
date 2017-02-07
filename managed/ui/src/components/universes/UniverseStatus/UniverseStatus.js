@@ -5,7 +5,7 @@ import './UniverseStatus.scss';
 
 export default class UniverseStatus extends Component {
   render() {
-    const { universe, universe: {universeDetails}, showLabelText } = this.props;
+    const { universe: {universeDetails}, showLabelText } = this.props;
     var updateInProgress = universeDetails.updateInProgress;
     var updateSucceeded = universeDetails.updateSucceeded;
     var statusIcon = <span/>;

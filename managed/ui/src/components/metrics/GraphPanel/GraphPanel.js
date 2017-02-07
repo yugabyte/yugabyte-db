@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Accordion, Panel, Col, Row } from 'react-bootstrap';
+import { Accordion, Panel, Col } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
