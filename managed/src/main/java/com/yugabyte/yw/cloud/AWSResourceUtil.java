@@ -28,7 +28,7 @@ public class AWSResourceUtil {
     }
     PriceDetails priceDetails = instanceType.getPriceDetails(regionCode, tenancy, azCode);
     universeResourceDetails.addCostPerHour(priceDetails.pricePerUnit);
-    universeResourceDetails.addvolumeSizeGB(instanceType.volumeSizeGB);
+    universeResourceDetails.addvolumeSizeGB(instanceType.volumeSizeGB * instanceType.volumeCount);
     universeResourceDetails.addmemSizeGB(instanceType.memSizeGB);
     universeResourceDetails.addAz(azCode);
     universeResourceDetails.addNumCores(instanceType.numCores);
