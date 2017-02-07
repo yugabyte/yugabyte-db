@@ -550,18 +550,47 @@ set_cmake_build_type_and_compiler_type() {
   cmake_opts+=( "${YB_DEFAULT_CMAKE_OPTS[@]}" )
 }
 
-build_yb_java_code() {
+# utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'
+build_yb_java_code_filter_save_output() {
   # --batch-mode hides download progress.
   # We are filtering out some patterns from Maven output, e.g.:
   # [INFO] META-INF/NOTICE already added, skipping
   # [INFO] Downloaded: https://repo.maven.apache.org/maven2/org/codehaus/plexus/plexus-classworlds/2.4/plexus-classworlds-2.4.jar (46 KB at 148.2 KB/sec)
   # [INFO] Downloading: https://repo.maven.apache.org/maven2/org/apache/maven/doxia/doxia-logging-api/1.1.2/doxia-logging-api-1.1.2.jar
+  local has_local_output=false # default is output path variable is set by calling function
+  if [[ -z ${java_build_output_path:-} ]]; then
+    local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
+    has_local_output=true
+  fi
   set +e -x  # do not fail on grep failure; print the command to stderr.
-  mvn "$@" --batch-mode 2>&1 | \
-    egrep -v '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' | \
-    egrep -v '^Generating .*[.]html[.][.][.]$'
-  local mvn_exit_code=${PIPESTATUS[0]}
+  if mvn "$@" --batch-mode 2>&1 | \
+      egrep -v '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' | \
+      egrep -v '^Generating .*[.]html[.][.][.]$' | \
+      tee "$java_build_output_path"; then
+    set +x # stop printing commands
+    # We are testing for mvn build failure with grep
+    #   since we run mvn with '--fail-never' which always returns success
+    #   '--fail-at-end' is another possibility but that skips dependent modules
+    #   so most tests are often not run -- therefore we resort to grep
+    egrep "BUILD SUCCESS" "$java_build_output_path" &>/dev/null
+    local mvn_exit_code=$?
+    set -e
+    if [[ $has_local_output == "true" ]]; then
+      rm -f "$java_build_output_path" # cleaning up
+    fi
+    log "Java build finished with exit code $mvn_exit_code" # useful for searching in console output
+    return $mvn_exit_code
+  fi
   set -e +x
+  log "ERROR: Java build finished but build command failed so log cannot be processed"
+  return 1
+}
+
+build_yb_java_code() {
+  local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
+  build_yb_java_code_filter_save_output "$@"
+  local mvn_exit_code=$?
+  rm -f "$java_build_output_path"
   return $mvn_exit_code
 }
 
@@ -570,7 +599,7 @@ build_yb_java_code_with_retries() {
   declare -i attempt=1
 
   while [[ $attempt -le $MAX_JAVA_BUILD_ATTEMPTS ]]; do
-    if build_yb_java_code "$@" 2>&1 | tee "$java_build_output_path"; then
+    if build_yb_java_code_filter_save_output "$@"; then
       rm -f "$java_build_output_path"
       return 0
     fi
