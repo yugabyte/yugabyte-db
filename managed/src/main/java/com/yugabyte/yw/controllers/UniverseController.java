@@ -435,45 +435,6 @@ public class UniverseController extends AuthenticatedController {
     }
   }
 
-  public Result metrics(UUID customerUUID, UUID universeUUID) {
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-
-    Universe universe;
-    try {
-      universe = Universe.get(universeUUID);
-    }
-    catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Universe UUID: " + universeUUID);
-    }
-
-    Form<MetricQueryParams> formData = formFactory.form(MetricQueryParams.class).bindFromRequest();
-
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
-
-    Map<String, String> params = formData.data();
-    if (universe.getUniverseDetails().nodePrefix != null) {
-      ObjectNode filterJson = Json.newObject();
-     // filterJson.put("node_prefix", universe.getUniverseDetails().nodePrefix);
-      params.put("filters", Json.stringify(filterJson));
-    }
-
-    try {
-      JsonNode response = metricQueryHelper.query(formData.get().metrics, params);
-      if (response.has("error")) {
-        return ApiResponse.error(BAD_REQUEST, response.get("error"));
-      }
-      return ApiResponse.success(response);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, e.getMessage());
-    }
-  }
-
-
   private UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, CloudType cloudType) throws Exception {
     UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
     for (NodeDetails node : nodes) {
