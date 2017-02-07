@@ -488,11 +488,12 @@ static get_relation_info_hook_type prev_get_relation_info = NULL;
 static join_search_hook_type prev_join_search = NULL;
 
 /* Hold reference to currently active hint */
-static HintState *current_hint = NULL;
+static HintState *current_hint_state = NULL;
 
 /*
  * List of hint contexts.  We treat the head of the list as the Top of the
- * context stack, so current_hint always points the first element of this list.
+ * context stack, so current_hint_state always points the first element of this
+ * list.
  */
 static List *HintStateStack = NIL;
 
@@ -2286,7 +2287,7 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 		)
 		mask = enforce_mask;
 	else
-		mask = enforce_mask & current_hint->init_scan_mask;
+		mask = enforce_mask & current_hint_state->init_scan_mask;
 
 	SET_CONFIG_OPTION("enable_seqscan", ENABLE_SEQSCAN);
 	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
@@ -2304,7 +2305,7 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 		enforce_mask == ENABLE_HASHJOIN)
 		mask = enforce_mask;
 	else
-		mask = enforce_mask & current_hint->init_join_mask;
+		mask = enforce_mask & current_hint_state->init_join_mask;
 
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
@@ -2448,7 +2449,7 @@ push_hint(HintState *hstate)
 	HintStateStack = lcons(hstate, HintStateStack);
 
 	/* Pushed hint is the one which should be used hereafter. */
-	current_hint = hstate;
+	current_hint_state = hstate;
 }
 
 /* Pop a hint from hint stack.  Popped hint is automatically discarded. */
@@ -2460,15 +2461,15 @@ pop_hint(void)
 		elog(ERROR, "hint stack is empty");
 
 	/*
-	 * Take a hint at the head from the list, and free it.  Switch current_hint
-	 * to point new head (NULL if the list is empty).
+	 * Take a hint at the head from the list, and free it.  Switch
+	 * current_hint_state to point new head (NULL if the list is empty).
 	 */
 	HintStateStack = list_delete_first(HintStateStack);
-	HintStateDelete(current_hint);
+	HintStateDelete(current_hint_state);
 	if(HintStateStack == NIL)
-		current_hint = NULL;
+		current_hint_state = NULL;
 	else
-		current_hint = (HintState *) lfirst(list_head(HintStateStack));
+		current_hint_state = (HintState *) lfirst(list_head(HintStateStack));
 }
 
 static PlannedStmt *
@@ -2493,7 +2494,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	/*
 	 * Use standard planner if pg_hint_plan is disabled or current nesting 
 	 * depth is nesting depth of SPI calls. Other hook functions try to change
-	 * plan with current_hint if any, so set it to NULL.
+	 * plan with current_hint_state if any, so set it to NULL.
 	 */
 	if (!pg_hint_plan_enable_hint || hint_inhibit_level > 0)
 	{
@@ -2589,8 +2590,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 	/*
 	 * Use standard planner if the statement has not valid hint.  Other hook
-	 * functions try to change plan with current_hint if any, so set it to
-	 * NULL.
+	 * functions try to change plan with current_hint_state if any, so set it
+	 * to NULL.
 	 */
 	if (!hstate)
 		goto standard_planner_proc;
@@ -2601,26 +2602,28 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	push_hint(hstate);
 
 	/* Set GUC parameters which are specified with Set hint. */
-	save_nestlevel = set_config_options(current_hint->set_hints,
-										current_hint->num_hints[HINT_TYPE_SET],
-										current_hint->context);
-
+	save_nestlevel =
+		set_config_options(current_hint_state->set_hints,
+						   current_hint_state->num_hints[HINT_TYPE_SET],
+						   current_hint_state->context);
+	
+	/* save current status to current_hint_state */
 	if (enable_seqscan)
-		current_hint->init_scan_mask |= ENABLE_SEQSCAN;
+		current_hint_state->init_scan_mask |= ENABLE_SEQSCAN;
 	if (enable_indexscan)
-		current_hint->init_scan_mask |= ENABLE_INDEXSCAN;
+		current_hint_state->init_scan_mask |= ENABLE_INDEXSCAN;
 	if (enable_bitmapscan)
-		current_hint->init_scan_mask |= ENABLE_BITMAPSCAN;
+		current_hint_state->init_scan_mask |= ENABLE_BITMAPSCAN;
 	if (enable_tidscan)
-		current_hint->init_scan_mask |= ENABLE_TIDSCAN;
+		current_hint_state->init_scan_mask |= ENABLE_TIDSCAN;
 	if (enable_indexonlyscan)
-		current_hint->init_scan_mask |= ENABLE_INDEXONLYSCAN;
+		current_hint_state->init_scan_mask |= ENABLE_INDEXONLYSCAN;
 	if (enable_nestloop)
-		current_hint->init_join_mask |= ENABLE_NESTLOOP;
+		current_hint_state->init_join_mask |= ENABLE_NESTLOOP;
 	if (enable_mergejoin)
-		current_hint->init_join_mask |= ENABLE_MERGEJOIN;
+		current_hint_state->init_join_mask |= ENABLE_MERGEJOIN;
 	if (enable_hashjoin)
-		current_hint->init_join_mask |= ENABLE_HASHJOIN;
+		current_hint_state->init_join_mask |= ENABLE_HASHJOIN;
 
 	if (debug_level > 1)
 	{
@@ -2632,8 +2635,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	/*
-	 * Use PG_TRY mechanism to recover GUC parameters and current_hint to the
-	 * state when this planner started when error occurred in planner.
+	 * Use PG_TRY mechanism to recover GUC parameters and current_hint_state to
+	 * the state when this planner started when error occurred in planner.
 	 */
 	PG_TRY();
 	{
@@ -2656,9 +2659,9 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 	/* Print hint in debug mode. */
 	if (debug_level == 1)
-		HintStateDump(current_hint);
+		HintStateDump(current_hint_state);
 	else if (debug_level > 1)
-		HintStateDump2(current_hint);
+		HintStateDump2(current_hint_state);
 
 	/*
 	 * Rollback changes of GUC parameters, and pop current hint context from
@@ -2678,7 +2681,7 @@ standard_planner_proc:
 						qnostr, msgstr)));
 		hidestmt = true;
 	}
-	current_hint = NULL;
+	current_hint_state = NULL;
 	if (prev_planner)
 		return (*prev_planner) (parse, cursorOptions, boundParams);
 	else
@@ -2709,9 +2712,9 @@ find_scan_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
 		return NULL;
 
 	/* Find scan method hint, which matches given names, from the list. */
-	for (i = 0; i < current_hint->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
+	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
 	{
-		ScanMethodHint *hint = current_hint->scan_hints[i];
+		ScanMethodHint *hint = current_hint_state->scan_hints[i];
 
 		/* We ignore disabled hints. */
 		if (!hint_state_enabled(hint))
@@ -2821,11 +2824,11 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 
 		/*
 		 * to make the index a candidate when definition of this index is
-		 * matched with the index's definition of current_hint.
+		 * matched with the index's definition of current_hint_state.
 		 */
 		if (OidIsValid(relationObjectId) && !use_index)
 		{
-			foreach(l, current_hint->parent_index_infos)
+			foreach(l, current_hint_state->parent_index_infos)
 			{
 				int					i;
 				HeapTuple			ht_idx;
@@ -3103,7 +3106,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	 * Do nothing if we don't have a valid hint in this context or current
 	 * nesting depth is at SPI calls.
 	 */
-	if (!current_hint || hint_inhibit_level > 0)
+	if (!current_hint_state || hint_inhibit_level > 0)
 	{
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
@@ -3113,7 +3116,8 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 							 " current_hint=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, hint_inhibit_level)));
+							 inhparent, current_hint_state,
+							 hint_inhibit_level)));
 		return;
 	}
 
@@ -3131,10 +3135,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 					(errhidestmt(true),
 					 errmsg ("pg_hint_plan%s: get_relation_info"
 							 " skipping inh parent: relation=%u(%s), inhparent=%d,"
-							 " current_hint=%p, hint_inhibit_level=%d",
+							 " current_hint_state=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, hint_inhibit_level)));
+							 inhparent, current_hint_state, hint_inhibit_level)));
 		return;
 	}
 
@@ -3145,7 +3149,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		if (appinfo->child_relid == rel->relid)
 		{
-			if (current_hint->parent_relid != appinfo->parent_relid)
+			if (current_hint_state->parent_relid != appinfo->parent_relid)
 				new_parent_relid = appinfo->parent_relid;
 			break;
 		}
@@ -3153,9 +3157,9 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 	if (!l)
 	{
-		/* This relation doesn't have a parent. Cancel current_hint. */
-		current_hint->parent_relid = 0;
-		current_hint->parent_hint = NULL;
+		/* This relation doesn't have a parent. Cancel current_hint_state. */
+		current_hint_state->parent_relid = 0;
+		current_hint_state->parent_hint = NULL;
 	}
 
 	if (new_parent_relid > 0)
@@ -3165,22 +3169,22 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 		 * Remember it, apply the scan mask of it and then resolve the index
 		 * restriction in order to be used by its children.
 		 */
-		int scanmask = current_hint->init_scan_mask;
+		int scanmask = current_hint_state->init_scan_mask;
 		ScanMethodHint *parent_hint;
 
-		current_hint->parent_relid = new_parent_relid;
+		current_hint_state->parent_relid = new_parent_relid;
 				
 		/*
 		 * Get and apply the hint for the new parent relation. It should be an
 		 * ordinary relation so calling find_scan_hint with rel == NULL is
 		 * safe.
 		 */
-		current_hint->parent_hint = parent_hint = 
-			find_scan_hint(root, current_hint->parent_relid, NULL);
+		current_hint_state->parent_hint = parent_hint = 
+			find_scan_hint(root, current_hint_state->parent_relid, NULL);
 
 		if (parent_hint)
 		{
-			scanmask = current_hint->parent_hint->enforce_mask;
+			scanmask = current_hint_state->parent_hint->enforce_mask;
 			parent_hint->base.state = HINT_STATE_USED;
 
 			/* Resolve index name mask (if any) using the parent. */
@@ -3190,7 +3194,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 				Relation	parent_rel;
 
 				parentrel_oid =
-					root->simple_rte_array[current_hint->parent_relid]->relid;
+					root->simple_rte_array[current_hint_state->parent_relid]->relid;
 				parent_rel = heap_open(parentrel_oid, NoLock);
 
 				/* Search the parent relation for indexes match the hint spec */
@@ -3211,19 +3215,19 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 					parent_index_info =
 						get_parent_index_info(indexoid, parentrel_oid);
-					current_hint->parent_index_infos =
-						lappend(current_hint->parent_index_infos, parent_index_info);
+					current_hint_state->parent_index_infos =
+						lappend(current_hint_state->parent_index_infos, parent_index_info);
 				}
 				heap_close(parent_rel, NoLock);
 			}
 		}
 			
-		set_scan_config_options(scanmask, current_hint->context);
+		set_scan_config_options(scanmask, current_hint_state->context);
 	}
 
-	if (current_hint->parent_hint != 0)
+	if (current_hint_state->parent_hint != 0)
 	{
-		delete_indexes(current_hint->parent_hint, rel,
+		delete_indexes(current_hint_state->parent_hint, rel,
 					   relationObjectId);
 
 		/* Scan fixation status is the same to the parent. */
@@ -3232,18 +3236,19 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 					(errhidestmt(true),
 					 errmsg("pg_hint_plan%s: get_relation_info:"
 							" index deletion by parent hint: "
-							"relation=%u(%s), inhparent=%d, current_hint=%p,"
+							"relation=%u(%s), inhparent=%d, current_hint_state=%p,"
 							" hint_inhibit_level=%d",
 							qnostr, relationObjectId,
 							get_rel_name(relationObjectId),
-							inhparent, current_hint, hint_inhibit_level)));
+							inhparent, current_hint_state, hint_inhibit_level)));
 		return;
 	}
 
 	/* This table doesn't have a parent hint. Apply its own hint if any. */
 	if ((hint = find_scan_hint(root, rel->relid, rel)) != NULL)
 	{
-		set_scan_config_options(hint->enforce_mask, current_hint->context);
+		set_scan_config_options(hint->enforce_mask,
+								current_hint_state->context);
 		hint->base.state = HINT_STATE_USED;
 
 		delete_indexes(hint, rel, InvalidOid);
@@ -3257,7 +3262,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, hint_inhibit_level,
+							 inhparent, current_hint_state, hint_inhibit_level,
 							 hint->enforce_mask)));
 	}
 	else
@@ -3271,10 +3276,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, hint_inhibit_level,
-							 current_hint->init_scan_mask)));
-		set_scan_config_options(current_hint->init_scan_mask,
-								current_hint->context);
+							 inhparent, current_hint_state, hint_inhibit_level,
+							 current_hint_state->init_scan_mask)));
+		set_scan_config_options(current_hint_state->init_scan_mask,
+								current_hint_state->context);
 	}
 	return;
 }
@@ -3346,7 +3351,7 @@ find_join_hint(Relids joinrelids)
 	List	   *join_hint;
 	ListCell   *l;
 
-	join_hint = current_hint->join_hint_level[bms_num_members(joinrelids)];
+	join_hint = current_hint_state->join_hint_level[bms_num_members(joinrelids)];
 
 	foreach(l, join_hint)
 	{
@@ -3715,7 +3720,7 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 	if (hint_state_enabled(lhint))
 	{
-		set_join_config_options(DISABLE_ALL_JOIN, current_hint->context);
+		set_join_config_options(DISABLE_ALL_JOIN, current_hint_state->context);
 		return true;
 	}
 	return false;
@@ -3752,6 +3757,10 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	create_tidscan_paths(root, rel);
 }
 
+/*
+ * Clear exiting access paths and create new ones applying hints.
+ * This does the similar to set_rel_pathlist
+ */
 static void
 rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 				  List *initial_rels)
@@ -3834,7 +3843,8 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	{
 		save_nestlevel = NewGUCNestLevel();
 
-		set_join_config_options(hint->enforce_mask, current_hint->context);
+		set_join_config_options(hint->enforce_mask,
+								current_hint_state->context);
 
 		rel = pg_hint_plan_make_join_rel(root, rel1, rel2);
 		hint->base.state = HINT_STATE_USED;
@@ -3869,7 +3879,8 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 
 	if ((scan_hint = find_scan_hint(root, innerrel->relid, innerrel)) != NULL)
 	{
-		set_scan_config_options(scan_hint->enforce_mask, current_hint->context);
+		set_scan_config_options(scan_hint->enforce_mask,
+								current_hint_state->context);
 		scan_hint->base.state = HINT_STATE_USED;
 	}
 
@@ -3885,7 +3896,7 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 		{
 
 			set_join_config_options(join_hint->enforce_mask,
-									current_hint->context);
+									current_hint_state->context);
 
 			add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
 								 sjinfo, restrictlist);
@@ -3893,7 +3904,8 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 		}
 		else
 		{
-			set_join_config_options(DISABLE_ALL_JOIN, current_hint->context);
+			set_join_config_options(DISABLE_ALL_JOIN,
+									current_hint_state->context);
 			add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
 								 sjinfo, restrictlist);
 		}
@@ -3908,8 +3920,8 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 							 sjinfo, restrictlist);
 
 	if (scan_hint != NULL)
-		set_scan_config_options(current_hint->init_scan_mask,
-								current_hint->context);
+		set_scan_config_options(current_hint_state->init_scan_mask,
+								current_hint_state->context);
 }
 
 static int
@@ -3951,7 +3963,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	 * valid hint is supplied or current nesting depth is nesting depth of SPI
 	 * calls.
 	 */
-	if (!current_hint || hint_inhibit_level > 0)
+	if (!current_hint_state || hint_inhibit_level > 0)
 	{
 		if (prev_join_search)
 			return (*prev_join_search) (root, levels_needed, initial_rels);
@@ -3961,8 +3973,8 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 			return standard_join_search(root, levels_needed, initial_rels);
 	}
 
-	/* We apply scan method hint rebuild scan path. */
-	rebuild_scan_path(current_hint, root, levels_needed, initial_rels);
+	/* apply scan method hint rebuild scan path. */
+	rebuild_scan_path(current_hint_state, root, levels_needed, initial_rels);
 
 	/*
 	 * In the case using GEQO, only scan method hints and Set hints have
@@ -3972,29 +3984,31 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 		return geqo(root, levels_needed, initial_rels);
 
 	nbaserel = get_num_baserels(initial_rels);
-	current_hint->join_hint_level = palloc0(sizeof(List *) * (nbaserel + 1));
+	current_hint_state->join_hint_level =
+		palloc0(sizeof(List *) * (nbaserel + 1));
 	join_method_hints = palloc0(sizeof(JoinMethodHint *) * (nbaserel + 1));
 
-	leading_hint_enable = transform_join_hints(current_hint, root, nbaserel,
+	leading_hint_enable = transform_join_hints(current_hint_state,
+											   root, nbaserel,
 											   initial_rels, join_method_hints);
 
 	rel = pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
 
 	for (i = 2; i <= nbaserel; i++)
 	{
-		list_free(current_hint->join_hint_level[i]);
+		list_free(current_hint_state->join_hint_level[i]);
 
 		/* free Leading hint only */
 		if (join_method_hints[i] != NULL &&
 			join_method_hints[i]->enforce_mask == ENABLE_ALL_JOIN)
 			JoinMethodHintDelete(join_method_hints[i]);
 	}
-	pfree(current_hint->join_hint_level);
+	pfree(current_hint_state->join_hint_level);
 	pfree(join_method_hints);
 
 	if (leading_hint_enable)
-		set_join_config_options(current_hint->init_join_mask,
-								current_hint->context);
+		set_join_config_options(current_hint_state->init_join_mask,
+								current_hint_state->context);
 
 	return rel;
 }

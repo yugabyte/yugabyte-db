@@ -127,9 +127,9 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 		RowsHint   *domultiply = NULL;
 
 		/* Search for applicable rows hint for this join node */
-		for (i = 0; i < current_hint->num_hints[HINT_TYPE_ROWS]; i++)
+		for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_ROWS]; i++)
 		{
-			rows_hint = current_hint->rows_hints[i];
+			rows_hint = current_hint_state->rows_hints[i];
 
 			/*
 			 * Skip this rows_hint if it is invalid from the first or it
