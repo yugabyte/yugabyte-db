@@ -5,7 +5,7 @@
 #
 
 MODULES = pg_hint_plan
-HINTPLANVER = 1.1.3
+HINTPLANVER = 1.2.0
 
 REGRESS = init base_plan pg_hint_plan ut-init ut-A ut-S ut-J ut-L ut-G ut-R ut-W ut-fdw ut-fini
 
@@ -14,9 +14,9 @@ REGRESSION_EXPECTED = expected/init.out expected/base_plan.out expected/pg_hint_
 REGRESS_OPTS = --encoding=UTF8
 
 EXTENSION = pg_hint_plan
-DATA = pg_hint_plan--1.1.3.sql
+DATA = pg_hint_plan--1.2.0.sql
 
-EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out
+EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out RPMS
 
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
@@ -30,6 +30,8 @@ TARSOURCES = Makefile *.c  *.h COPYRIGHT* \
 	pg_hint_plan.control \
 	doc/* expected/*.out sql/*.sql sql/maskout.sh \
 	data/data.csv input/*.source output/*.source SPECS/*.spec
+
+LDFLAGS+=-Wl,--build-id
 
 installcheck: $(REGRESSION_EXPECTED)
 
