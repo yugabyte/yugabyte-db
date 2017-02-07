@@ -34,7 +34,6 @@ TEST(TestMonoTime, TestMonotonicity) {
 
   do {
     next = MonoTime::Now(MonoTime::FINE);
-    //LOG(INFO) << " next = " << next.ToString();
   } while (!prev.ComesBefore(next));
   ASSERT_FALSE(next.ComesBefore(prev));
   alarm(0);
@@ -196,6 +195,15 @@ TEST(TestMonoTimePerf, TestMonoTimePerfFine) {
   alarm(360);
   DoTestMonoTimePerf(MonoTime::FINE);
   alarm(0);
+}
+
+TEST(TestMonoTime, TestOverFlow) {
+  EXPECT_EXIT(MonoDelta::FromMilliseconds(std::numeric_limits<int64_t>::max()),
+                                          ::testing::KilledBySignal(SIGABRT), "Check failed.*");
+  EXPECT_EXIT(MonoDelta::FromSeconds(std::numeric_limits<int64_t>::max()),
+              ::testing::KilledBySignal(SIGABRT), "Check failed.*");
+  EXPECT_EXIT(MonoDelta::FromMicroseconds(std::numeric_limits<int64_t>::max()),
+              ::testing::KilledBySignal(SIGABRT), "Check failed.*");
 }
 
 } // namespace yb

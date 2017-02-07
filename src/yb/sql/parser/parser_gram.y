@@ -95,6 +95,7 @@ typedef TreeNode::SharedPtr            PTreeNode;
 typedef PTListNode::SharedPtr          PListNode;
 typedef PTExpr::SharedPtr              PExpr;
 typedef PTExprListNode::SharedPtr      PExprListNode;
+typedef PTConstInt::SharedPtr          PConstInt;
 typedef PTCollection::SharedPtr        PCollection;
 typedef PTValues::SharedPtr            PValues;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
@@ -222,6 +223,9 @@ using namespace yb::sql;
                           target_el in_expr
                           inactive_a_expr inactive_c_expr
 
+%type <PConstInt>         // Const Int.
+                          using_ttl_clause opt_using_ttl_clause
+
 %type <PExprListNode>     // Expression list.
                           ctext_row ctext_expr_list
 
@@ -300,7 +304,6 @@ using namespace yb::sql;
                           for_locking_strength defacl_privilege_target import_qualification_type
                           opt_lock lock_type cast_context vacuum_option_list vacuum_option_elem
                           opt_nowait_or_skip TriggerActionTime add_drop opt_asc_desc opt_nulls_order
-                          using_ttl_clause opt_using_ttl_clause
 
 %type <PType>             GenericType ConstTypename
                           ConstDatetime ConstInterval
@@ -2071,7 +2074,7 @@ opt_on_conflict:
 
 opt_using_ttl_clause:
   /*EMPTY*/ {
-    $$ = TreeNode::kNoTTL;
+    $$ = nullptr;
   }
   | using_ttl_clause {
     $$ = $1;
@@ -2080,7 +2083,7 @@ opt_using_ttl_clause:
 
 using_ttl_clause:
   USING TTL Iconst {
-    $$ = $3;
+    $$ = MAKE_NODE(@3, PTConstInt, $3);
   }
 ;
 

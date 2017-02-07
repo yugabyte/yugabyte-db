@@ -240,5 +240,49 @@ TEST_F(HybridClockTest, TestClockDoesntGoBackwardsWithUpdates) {
   }
 }
 
+TEST_F(HybridClockTest, CompareHybridClocksToDelta) {
+  EXPECT_EQ(1, HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1002, 10),
+      MonoDelta::FromMicroseconds(1)));
+
+  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1002, 10),
+      MonoDelta::FromMicroseconds(5)));
+
+  EXPECT_EQ(0, HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 10),
+      MonoDelta::FromMicroseconds(1)));
+
+  EXPECT_EQ(1, HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 11),
+      MonoDelta::FromMicroseconds(1)));
+
+  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 9),
+      MonoDelta::FromMicroseconds(1)));
+
+  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      MonoDelta::FromNanoseconds(MonoTime::kNanosecondsPerMicrosecond - 1)));
+
+  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 10),
+      MonoDelta::FromNanoseconds(MonoTime::kNanosecondsPerMicrosecond + 1)));
+
+  NO_FATALS(HybridClock::GetPhysicalValueNanos(HybridTime(std::numeric_limits<uint64_t>::max())));
+
+  EXPECT_EXIT(HybridClock::CompareHybridClocksToDelta(
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 9),
+      MonoDelta::FromMicroseconds(1)), ::testing::KilledBySignal(SIGABRT), "Check failed.*");
+}
+
 }  // namespace server
 }  // namespace yb

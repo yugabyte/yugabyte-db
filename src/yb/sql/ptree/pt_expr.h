@@ -177,7 +177,7 @@ class PTExprConst : public PTExprOperator<type_id_, sql_type_, ReturnType> {
     return value_;
   }
 
-  virtual bool is_null() {
+  virtual bool is_null() OVERRIDE {
     return sql_type_ == client::YBColumnSchema::MAX_TYPE_INDEX;
   }
 

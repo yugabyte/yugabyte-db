@@ -8,6 +8,7 @@
 #include "yb/sql/ptree/pt_dml.h"
 
 #include "yb/client/schema-internal.h"
+#include "yb/common/ttl_constants.h"
 
 namespace yb {
 namespace sql {
@@ -20,7 +21,7 @@ using client::YBColumnSchema;
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     int64_t ttl_msec)
+                     PTConstInt::SharedPtr ttl_msec)
   : PTCollection(memctx, loc),
     table_columns_(memctx),
     num_key_columns_(0),
@@ -351,6 +352,21 @@ CHECKED_STATUS PTDmlStmt::AnalyzeColumnExpr(SemContext *sem_context,
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
   return expr->Analyze(sem_context);
+}
+
+CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
+  if (ttl_msec_ == nullptr) {
+    return Status::OK();
+  }
+
+  if (!yb::common::isValidTTLMsec(ttl_msec_->Eval())) {
+    return sem_context->Error(ttl_msec_->loc(),
+                              strings::Substitute("Valid ttl range : [$0, $1]",
+                                                  yb::common::kMinTtlMsec,
+                                                  yb::common::kMaxTtlMsec).c_str(),
+                              ErrorCode::INVALID_ARGUMENTS);
+  }
+  return Status::OK();
 }
 
 } // namespace sql

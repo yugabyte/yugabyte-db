@@ -483,7 +483,7 @@ GramProcessor::symbol_type LexProcessor::process_integer_literal(const char *tok
   // NEIL NEIL NEIL: make sure that value fits "int64" and is smaller than "unsigned int64".
   // NEIL NEIL NEIL: make sure "token" does NOT have the '-' sign.
   // NEIL NEIL NEIL: make sure SQL scanner handles NEGATIVE value.
-  if (*endptr != '\0' || errno == ERANGE || uval >= INT64_MAX) {
+  if (*endptr != '\0' || errno == ERANGE || uval > INT64_MAX) {
     // This is a FCONST.
     // if long > 32 bits, check for overflow of int4.
     // integer too large, treat it as a float.

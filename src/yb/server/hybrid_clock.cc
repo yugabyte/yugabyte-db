@@ -467,6 +467,14 @@ uint64_t HybridClock::GetPhysicalValueMicros(const HybridTime& hybrid_time) {
   return hybrid_time.value() >> kBitsToShift;
 }
 
+uint64_t HybridClock::GetPhysicalValueNanos(const HybridTime& hybrid_time) {
+  // Conversion to nanoseconds here is safe from overflow since 2^kBitsToShift is less than
+  // MonoTime::kNanosecondsPerMicrosecond. Although, we still just check for sanity.
+  uint64_t micros = hybrid_time.value() >> kBitsToShift;
+  CHECK(micros <= std::numeric_limits<uint64_t>::max() / MonoTime::kNanosecondsPerMicrosecond);
+  return micros * MonoTime::kNanosecondsPerMicrosecond;
+}
+
 HybridTime HybridClock::HybridTimeFromMicroseconds(uint64_t micros) {
   return HybridTime(micros << kBitsToShift);
 }
@@ -482,6 +490,31 @@ HybridTime HybridClock::AddPhysicalTimeToHybridTime(const HybridTime& original,
   uint64_t new_physical = GetPhysicalValueMicros(original) + to_add.ToMicroseconds();
   uint64_t old_logical = GetLogicalValue(original);
   return HybridTimeFromMicrosecondsAndLogicalValue(new_physical, old_logical);
+}
+
+int HybridClock::CompareHybridClocksToDelta(const HybridTime& begin,
+                                            const HybridTime& end,
+                                            const MonoDelta& delta) {
+  CHECK_GE(end, begin);
+  // We use nanoseconds since MonoDelta has nanosecond granularity.
+  uint64_t begin_nanos = GetPhysicalValueNanos(begin);
+  uint64_t end_nanos = GetPhysicalValueNanos(end);
+  uint64_t delta_nanos = delta.ToNanoseconds();
+  if (end_nanos - begin_nanos > delta_nanos) {
+    return 1;
+  } else if (end_nanos - begin_nanos == delta_nanos) {
+    uint64_t begin_logical = GetLogicalValue(begin);
+    uint64_t end_logical = GetLogicalValue(end);
+    if (end_logical > begin_logical) {
+      return 1;
+    } else if (end_logical < begin_logical) {
+      return -1;
+    } else {
+      return 0;
+    }
+  } else {
+    return -1;
+  }
 }
 
 string HybridClock::StringifyHybridTime(const HybridTime& hybrid_time) {

@@ -15,6 +15,12 @@ class YbSqlUpdateTable : public YbSqlTestBase {
  public:
   YbSqlUpdateTable() : YbSqlTestBase() {
   }
+
+  std::string GetUpdateStmt(int64_t ttl_msec) {
+    return strings::Substitute(
+        "UPDATE test_table USING TTL $0 SET v1 = 1 WHERE h1 = 0 AND h2 = 'zero' AND r1 = 1 "
+            "AND r2 = 'r2';", ttl_msec);
+  }
 };
 
 TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
@@ -32,6 +38,11 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
                             "v1 int, v2 varchar, "
                             "primary key((h1, h2), r1, r2));";
   CHECK_VALID_STMT(create_stmt);
+
+  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMaxTtlMsec));
+  CHECK_VALID_STMT(GetUpdateStmt(yb::common::kMinTtlMsec));
+  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMaxTtlMsec + 1));
+  CHECK_INVALID_STMT(GetUpdateStmt(yb::common::kMinTtlMsec - 1));
 
   // -----------------------------------------------------------------------------------------------
   // Unknown table.

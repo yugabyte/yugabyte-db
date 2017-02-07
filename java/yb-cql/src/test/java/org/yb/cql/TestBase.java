@@ -4,6 +4,7 @@ package org.yb.cql;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.fail;
 
+import com.datastax.driver.core.exceptions.QueryValidationException;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.QueryValidationException;
@@ -20,7 +21,6 @@ import org.yb.client.MiniYBCluster;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
-import com.datastax.driver.core.exceptions.SyntaxError;
 
 import java.util.Iterator;
 import java.util.Date;
@@ -46,6 +46,9 @@ public class TestBase {
 
   protected static final int DEFAULT_SLEEP = 50000;
 
+  // Long.MAX_VALUE / 1000000 is the max allowed ttl, since internally in docdb we used MonoDelta
+  // to store the ttl, which uses nanoseconds.
+  protected static final long MAX_TTL = Long.MAX_VALUE / 1000000;
 
   protected Cluster cluster;
   protected Session session;
@@ -197,5 +200,4 @@ public class TestBase {
     }
     return ts_values;
   }
-
 }

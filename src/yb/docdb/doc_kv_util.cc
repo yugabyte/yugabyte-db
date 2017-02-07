@@ -142,9 +142,9 @@ CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta&
                              const HybridTime& read_hybrid_time, bool* has_expired) {
   *has_expired = false;
   if (!ttl.Equals(Value::kMaxTtl)) {
-    const HybridTime expiry =
-        server::HybridClock::AddPhysicalTimeToHybridTime(key_hybrid_time, ttl);
-    *has_expired = (read_hybrid_time.CompareTo(expiry) > 0);
+    // We avoid using AddPhysicalTimeToHybridTime, since there might be overflows after addition.
+    *has_expired = server::HybridClock::CompareHybridClocksToDelta(key_hybrid_time,
+                                                                   read_hybrid_time, ttl) > 0;
   }
   return Status::OK();
 }

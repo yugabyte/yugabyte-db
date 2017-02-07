@@ -2,9 +2,9 @@
 
 #include <string>
 
+#include "yb/common/ttl_constants.h"
 #include "yb/docdb/value.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/mathlimits.h"
 
 namespace yb {
 namespace docdb {
@@ -12,7 +12,7 @@ namespace docdb {
 using std::string;
 using strings::Substitute;
 
-const MonoDelta Value::kMaxTtl(MonoDelta::FromNanoseconds(MathLimits<int64_t>::kMax));
+const MonoDelta Value::kMaxTtl = yb::common::kMaxTtl;
 
 Status Value::DecodeTTL(rocksdb::Slice* slice, MonoDelta* ttl) {
 

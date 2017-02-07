@@ -2,7 +2,6 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.exceptions.QueryValidationException;
 import org.junit.Test;
 
 import java.util.Date;
@@ -10,8 +9,6 @@ import java.util.Map;
 
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-
 
 public class TestInsert extends TestBase {
 
@@ -119,11 +116,18 @@ public class TestInsert extends TestBase {
     assertTrue(row.isNull(5));
   }
 
-  private void runInvalidInsertWithTTL(String tableName, String ttl) {
-    String insert_stmt = String.format(
+  private String getInsertStmt(String tableName, String ttl_msec) {
+    return String.format(
       "INSERT INTO %s(h1, h2, r1, r2, v1) VALUES(%d, 'h%d', %d, 'r%d', %d) USING TTL %s;",
-      tableName, 1, 2, 3, 4, 5, ttl);
-    RunInvalidStmt(insert_stmt);
+      tableName, 1, 2, 3, 4, 5, ttl_msec);
+  }
+
+  private void runInvalidInsertWithTTL(String tableName, String ttl_msec) {
+    RunInvalidStmt(getInsertStmt(tableName, ttl_msec));
+  }
+
+  private void runValidInsertWithTTL(String tableName, String ttl_msec) {
+    session.execute(getInsertStmt(tableName, ttl_msec));
   }
 
   @Test
@@ -131,6 +135,11 @@ public class TestInsert extends TestBase {
     String tableName = "test_insert_with_invalid_ttl";
     CreateTable(tableName);
 
+    runValidInsertWithTTL(tableName, String.valueOf(MAX_TTL));
+    runValidInsertWithTTL(tableName, "0");
+
+    runInvalidInsertWithTTL(tableName, String.valueOf(MAX_TTL + 1));
+    runInvalidInsertWithTTL(tableName, String.valueOf(Long.MAX_VALUE));
     runInvalidInsertWithTTL(tableName, "1000.1");
     runInvalidInsertWithTTL(tableName, "abcxyz");
     runInvalidInsertWithTTL(tableName, "-1");

@@ -417,9 +417,10 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
                                                     YBPartialRow *row) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
   // Set the ttl.
-  if (tnode->ttl_msec() != TreeNode::kNoTTL) {
+  if (tnode->has_ttl()) {
     req->set_ttl(tnode->ttl_msec());
   }
+
   for (const ColumnArg& col : column_args) {
     if (!col.IsInitialized()) {
       // This column is not assigned a value, ignore it. We don't support default value yet.

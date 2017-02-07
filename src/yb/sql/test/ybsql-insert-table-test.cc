@@ -2,6 +2,7 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/ttl_constants.h"
 #include "yb/sql/test/ybsql-test-base.h"
 
 namespace yb {
@@ -10,6 +11,12 @@ namespace sql {
 class YbSqlInsertTable : public YbSqlTestBase {
  public:
   YbSqlInsertTable() : YbSqlTestBase() {
+  }
+
+  std::string InsertStmtWithTTL(std::string ttl) {
+    return strings::Substitute(
+        "INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) USING TTL $0;",
+        ttl);
   }
 };
 
@@ -28,28 +35,38 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100);");
 
   // INSERT: Valid statement with column list and ttl.
-  EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
-      "USING TTL 1000;");
+  EXEC_VALID_STMT(InsertStmtWithTTL("1000"));
+
+  // INSERT: Valid statement with ttl at the lower limit.
+  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlMsec)));
+
+  // INSERT: Valid statement with ttl at the upper limit.
+  EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlMsec)));
+
+  // INSERT: Invalid statement with ttl just over limit.
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMaxTtlMsec + 1)));
+
+  // INSERT: Invalid statement with ttl just below lower limit.
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(yb::common::kMinTtlMsec - 1)));
+
+  // INSERT: Invalid statement with ttl too high.
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(std::numeric_limits<int64_t>::max())));
 
   // INSERT: Invalid statement with float ttl.
-  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
-      "USING TTL 1000.1;");
+  EXEC_INVALID_STMT(InsertStmtWithTTL("1000.1"));
 
   // INSERT: Invalid statement with negative ttl.
-  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
-      "USING TTL -1;");
+  EXEC_INVALID_STMT(InsertStmtWithTTL(std::to_string(-1)));
 
   // INSERT: Invalid statement with hex ttl.
-  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
-      "USING TTL 0x100;");
+  EXEC_INVALID_STMT(InsertStmtWithTTL("0x100"));
 
   // INSERT: Statement with invalid TTL syntax.
   EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
       "TTL 1000;");
 
   // INSERT: Statement with invalid TTL value.
-  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
-      "TTL abcxyz;");
+  EXEC_INVALID_STMT(InsertStmtWithTTL("abcxyz"));
 
   // INSERT: Invalid CQL statement though it's a valid SQL statement without column list.
   EXEC_INVALID_STMT("INSERT INTO human_resource VALUES(2, 'Scott Tiger', 100);");

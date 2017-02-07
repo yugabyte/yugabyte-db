@@ -17,13 +17,10 @@
 
 #include "yb/util/monotime.h"
 
-#include <glog/logging.h>
 #include <limits>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/time.h>
-#include <time.h>
+#include <glog/logging.h>
 
+#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
@@ -42,15 +39,18 @@ namespace yb {
 const int64_t MonoDelta::kUninitialized = kint64min;
 
 MonoDelta MonoDelta::FromSeconds(double seconds) {
+  CHECK_LE(seconds, std::numeric_limits<int64_t>::max() / MonoTime::kNanosecondsPerSecond);
   int64_t delta = seconds * MonoTime::kNanosecondsPerSecond;
   return MonoDelta(delta);
 }
 
 MonoDelta MonoDelta::FromMilliseconds(int64_t ms) {
+  CHECK_LE(ms, std::numeric_limits<int64_t>::max() / MonoTime::kNanosecondsPerMillisecond);
   return MonoDelta(ms * MonoTime::kNanosecondsPerMillisecond);
 }
 
 MonoDelta MonoDelta::FromMicroseconds(int64_t us) {
+  CHECK_LE(us, std::numeric_limits<int64_t>::max() / MonoTime::kNanosecondsPerMicrosecond);
   return MonoDelta(us * MonoTime::kNanosecondsPerMicrosecond);
 }
 
@@ -106,7 +106,7 @@ int64_t MonoDelta::ToNanoseconds() const {
 
 int64_t MonoDelta::ToMicroseconds() const {
   DCHECK(Initialized());
- return nano_delta_ / MonoTime::kNanosecondsPerMicrosecond;
+  return nano_delta_ / MonoTime::kNanosecondsPerMicrosecond;
 }
 
 int64_t MonoDelta::ToMilliseconds() const {

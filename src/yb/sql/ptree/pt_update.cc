@@ -58,7 +58,7 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
                            PTAssignListNode::SharedPtr set_clause,
                            PTExpr::SharedPtr where_clause,
                            PTExpr::SharedPtr if_clause,
-                           int64_t ttl_msec)
+                           PTConstInt::SharedPtr ttl_msec)
     : PTDmlStmt(memctx, loc, true, ttl_msec),
       relation_(relation),
       set_clause_(set_clause),
@@ -94,6 +94,9 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
 
   // Run error checking on the IF conditions.
   RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
+
+  // Run error checking on USING clause.
+  RETURN_NOT_OK(AnalyzeUsingClause(sem_context));
 
   return Status::OK();
 }

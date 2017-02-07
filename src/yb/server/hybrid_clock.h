@@ -128,6 +128,9 @@ class HybridClock : public Clock {
   // Returns the physical value embedded in 'hybrid_time', in microseconds.
   static uint64_t GetPhysicalValueMicros(const HybridTime& hybrid_time);
 
+  // Returns the physical value embedded in 'hybrid_time', in nanoseconds.
+  static uint64_t GetPhysicalValueNanos(const HybridTime& hybrid_time);
+
   // Obtains a new HybridTime with the logical value zeroed out.
   static HybridTime HybridTimeFromMicroseconds(uint64_t micros);
 
@@ -138,7 +141,13 @@ class HybridClock : public Clock {
   // Creates a new hybrid_time whose physical time is GetPhysicalValue(original) +
   // 'micros_to_add' and which retains the same logical value.
   static HybridTime AddPhysicalTimeToHybridTime(const HybridTime& original,
-                                              const MonoDelta& to_add);
+                                                const MonoDelta& to_add);
+
+  // Given two hybrid times, determines whether the delta between end and begin them is higher,
+  // lower or equal to the given delta and returns 1, -1 and 0 respectively. Note that the
+  // following condition must hold true: end >= begin
+  static int CompareHybridClocksToDelta(const HybridTime& begin, const HybridTime& end,
+                                        const MonoDelta& delta);
 
   // Outputs a string containing the physical and logical values of the hybrid_time,
   // separated.

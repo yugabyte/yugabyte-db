@@ -39,6 +39,16 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 
+  if ((*iterator).first == kDefaultTimeToLive) {
+    if (!yb::common::isValidTTLMsec(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval())) {
+      return sem_context->Error(loc(),
+                                strings::Substitute("Valid ttl range : [$0, $1]",
+                                                    yb::common::kMinTtlMsec,
+                                                    yb::common::kMaxTtlMsec).c_str(),
+                                ErrorCode::INVALID_ARGUMENTS);
+    }
+  }
+
   return Status::OK();
 }
 

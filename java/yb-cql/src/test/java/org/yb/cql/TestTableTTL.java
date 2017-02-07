@@ -31,9 +31,17 @@ public class TestTableTTL extends TestBase {
     return iter.next();
   }
 
-  private void createTable(String tableName, int ttl) {
-    session.execute(String.format("CREATE TABLE %s (c1 int, c2 int, c3 int, PRIMARY KEY(c1)) " +
-      "WITH default_time_to_live = %d;", tableName, ttl));
+  private String getCreateTableStmt(String tableName, long ttl) {
+    return String.format("CREATE TABLE %s (c1 int, c2 int, c3 int, PRIMARY KEY(c1)) " +
+      "WITH default_time_to_live = %d;", tableName, ttl);
+  }
+
+  private void createTable(String tableName, long ttl) {
+    session.execute(getCreateTableStmt(tableName, ttl));
+  }
+
+  private void createTableInvalid(String tableName, long ttl) {
+    RunInvalidStmt(getCreateTableStmt(tableName, ttl));
   }
 
   @Test
@@ -226,5 +234,19 @@ public class TestTableTTL extends TestBase {
 
     // Row should expire since we don't have a new init marker for the latest insert.
     assertNoRow(tableName, 1);
+  }
+
+  public void testValidInvalidTableTTL() throws Exception {
+    String tableName = "testValidInvalidTableTTL";
+
+    // Valid create tables.
+    createTable(tableName, 0);
+    createTable(tableName + 1, MAX_TTL);
+
+    // Invalid create tables.
+    createTableInvalid(tableName + 1, MAX_TTL + 1);
+    createTableInvalid(tableName + 1, Long.MAX_VALUE);
+    createTableInvalid(tableName + 1, Long.MIN_VALUE);
+    createTableInvalid(tableName + 1, -1);
   }
 }

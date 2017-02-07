@@ -14,6 +14,7 @@
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/pt_expr.h"
 #include "yb/sql/ptree/column_arg.h"
+#include "yb/common/ttl_constants.h"
 
 namespace yb {
 namespace sql {
@@ -52,7 +53,7 @@ class PTDmlStmt : public PTCollection {
   explicit PTDmlStmt(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
                      bool write_only,
-                     int64_t ttl_msec = kNoTTL);
+                     PTConstInt::SharedPtr ttl_msec = nullptr);
   virtual ~PTDmlStmt();
 
   template<typename... TypeArgs>
@@ -100,8 +101,13 @@ class PTDmlStmt : public PTCollection {
     return where_ops_;
   }
 
+  bool has_ttl() const {
+    return ttl_msec_ != nullptr;
+  }
+
   int64_t ttl_msec() const {
-    return ttl_msec_;
+    DCHECK_NOTNULL(ttl_msec_.get());
+    return ttl_msec_->Eval();
   }
 
   // Access for column_args.
@@ -135,6 +141,10 @@ class PTDmlStmt : public PTCollection {
   CHECKED_STATUS AnalyzeColumnExpr(SemContext *sem_context,
                                    PTExpr *expr);
 
+  // Semantic-analyzing the USING TTL clause.
+  CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
+
+
   // The sematic analyzer will decorate this node with the following information.
   std::shared_ptr<client::YBTable> table_;
 
@@ -154,7 +164,7 @@ class PTDmlStmt : public PTCollection {
 
   // Predicate for write operator (UPDATE & DELETE).
   bool write_only_;
-  int64_t ttl_msec_;
+  PTConstInt::SharedPtr ttl_msec_;
 
   // Semantic phase will decorate the following field.
   MCVector<ColumnArg> column_args_;

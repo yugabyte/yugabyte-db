@@ -24,7 +24,7 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
                            PTQualifiedNameListNode::SharedPtr columns,
                            PTCollection::SharedPtr value_clause,
                            PTExpr::SharedPtr if_clause,
-                           int64_t ttl_msec)
+                           PTConstInt::SharedPtr ttl_msec)
     : PTDmlStmt(memctx, loc, false, ttl_msec),
       relation_(relation),
       columns_(columns),
@@ -133,6 +133,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
   // Run error checking on the IF conditions.
   RETURN_NOT_OK(AnalyzeIfClause(sem_context, if_clause_));
+
+  // Run error checking on USING clause.
+  RETURN_NOT_OK(AnalyzeUsingClause(sem_context));
 
   return Status::OK();
 }
