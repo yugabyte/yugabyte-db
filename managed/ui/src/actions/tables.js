@@ -102,7 +102,6 @@ export function createUniverseTableFailure(error) {
 }
 
 export function fetchColumnTypes() {
-  var customerId = localStorage.getItem("customer_id");
   var request = axios.get(`${ROOT_URL}/metadata/column_types`);
   return {
     type: FETCH_COLUMN_TYPES,
