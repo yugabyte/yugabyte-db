@@ -16,16 +16,8 @@ export default class YBRadioButtonBar extends Component {
   }
 
   render() {
-    const { input, options, onValueChanged, onClick } = this.props;
-    var fieldValue = this.props.fieldValue;
-    var onCheckClick = function(event) {
-      input.onChange(event);
-      if (isValidObject(onClick)) {
-        onClick(event);
-      }
-    }
+    const { input, options, onClick } = this.props;
     var component = this;
-
     function radioButtonForOption(option) {
       var value, display;
       if (isValidArray(option)) {
