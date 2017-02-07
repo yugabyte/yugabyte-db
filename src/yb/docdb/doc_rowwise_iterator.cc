@@ -165,6 +165,22 @@ bool DocRowwiseIterator::HasNext() const {
     }
     const auto value_type = top_level_value.value_type();
     if (value_type == ValueType::kObject) {
+      // For now, we hide the init marker if it expires based on table level TTL.
+      // TODO: fix this once we support proper TTL semantics.
+      bool has_expired = false;
+      status_ = HasExpiredTTL(subdoc_key_.hybrid_time(), TableTTL(schema_), hybrid_time_,
+                             &has_expired);
+      if (!status_.ok()) {
+        // Defer error reporting to NextBlock.
+        return true;
+      }
+
+      if (has_expired) {
+        // Skip the row completely and go to the next row.
+        ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfSubDoc().AsSlice());
+        continue;
+      }
+
       // Success: found a valid document at the given hybrid_time.
       return true;
     }

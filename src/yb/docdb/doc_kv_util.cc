@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/server/hybrid_clock.h"
 
@@ -8,7 +9,6 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/doc_key.h"
 
 using std::string;
 
@@ -29,6 +29,11 @@ bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_d
   } else {
     return false;
   }
+}
+
+HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key) {
+  const int pos = key.size() - kBytesPerHybridTime;
+  return DecodeHybridTimeFromKey(key, pos);
 }
 
 HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key, const int pos) {
@@ -124,15 +129,22 @@ std::string ToShortDebugStr(rocksdb::Slice slice) {
   return yb::FormatRocksDBSliceAsStr(slice, kShortDebugStringLength);
 }
 
-Status HasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
-    const HybridTime &hybrid_time, bool *has_expired) {
+CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice& key, const MonoDelta& ttl,
+                             const HybridTime& read_hybrid_time, bool* has_expired) {
   *has_expired = false;
   if (!ttl.Equals(Value::kMaxTtl)) {
-    SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key));
+    RETURN_NOT_OK(HasExpiredTTL(DecodeHybridTimeFromKey(key), ttl, read_hybrid_time, has_expired));
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
+                             const HybridTime& read_hybrid_time, bool* has_expired) {
+  *has_expired = false;
+  if (!ttl.Equals(Value::kMaxTtl)) {
     const HybridTime expiry =
-        server::HybridClock::AddPhysicalTimeToHybridTime(sub_doc_key.hybrid_time(), ttl);
-    *has_expired = (hybrid_time.CompareTo(expiry) > 0);
+        server::HybridClock::AddPhysicalTimeToHybridTime(key_hybrid_time, ttl);
+    *has_expired = (read_hybrid_time.CompareTo(expiry) > 0);
   }
   return Status::OK();
 }

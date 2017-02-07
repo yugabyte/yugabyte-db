@@ -43,6 +43,10 @@ bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const std::string &enco
 // inside keys as big-endian 64-bit integers with all bits inverted for reverse sorting.
 yb::HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key, int pos);
 
+// Decode a hybrid time stored in the given slice assuming it is the last 8 bytes. Hybrid times
+// are stored inside keys as big-endian 64-bit integers with all bits inverted for reverse sorting.
+yb::HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key);
+
 // Consumes hybrid time from the given slice, decreasing the slice size by the hybrid time size.
 // Hybrid time is stored in a "key-appropriate" format (bits inverted for reverse sorting).
 // @param slice The slice holding RocksDB key bytes.
@@ -132,9 +136,14 @@ inline std::string ToShortDebugStr(const std::string& raw_str) {
 }
 
 // Determines whether or not the TTL for a key has expired, given the ttl for the key and the
-// hybrid_time of the key. The result is stored in has_expired.
-CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice &key, const MonoDelta &ttl,
-    const HybridTime &hybrid_time, bool *has_expired);
+// hybrid_time we're reading at. The result is stored in has_expired.
+CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice& key, const MonoDelta& ttl,
+                             const HybridTime& read_hybrid_time, bool* has_expired);
+
+// Determines whether or not the TTL for a key has expired, given the ttl for the key, its hybrid
+// time and the hybrid_time we're reading at. The result is stored in has_expired.
+CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
+                             const HybridTime& read_hybrid_time, bool* has_expired);
 
 // Computes the table level TTL, given a schema.
 const MonoDelta TableTTL(const Schema& schema);

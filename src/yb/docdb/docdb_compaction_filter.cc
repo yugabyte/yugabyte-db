@@ -149,10 +149,15 @@ bool DocDBCompactionFilter::Filter(int level,
 
   bool has_expired = false;
 
-  CHECK_OK(HasExpiredTTL(key, ComputeTTL(ttl, schema_), history_cutoff_, &has_expired));
+  CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, schema_), history_cutoff_,
+                         &has_expired));
 
-  // We don't support TTLs in object markers yet.
-  if (value_type != ValueType::kObject && has_expired) {
+  // Currently, object init markers don't have TTLs. Although, the behavior we want as of
+  // 02/09/2017 is that if the init marker expires based on the table level TTL, we expire it.
+  // Note that if we are looking at an init marker here, the ttl computation above will
+  // automatically revert to the table level ttl since there won't be any ttl in the value
+  // section. As a result, we have the desired behavior for object init markers.
+  if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ts <= history_cutoff_ is implied by has_expired.
     if (is_full_compaction_) {

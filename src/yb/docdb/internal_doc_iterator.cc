@@ -108,7 +108,7 @@ Status InternalDocIterator::SeekToKeyPrefix() {
         }
 
         // TODO: proper error handling using Status.
-        subdoc_ht_ = DecodeHybridTimeFromKey(key, key.size() - kBytesPerHybridTime);
+        subdoc_ht_ = DecodeHybridTimeFromKey(key);
 
         // Cache the results of reading from RocksDB so that we don't have to read again in a later
         // operation in the same DocWriteBatch.
