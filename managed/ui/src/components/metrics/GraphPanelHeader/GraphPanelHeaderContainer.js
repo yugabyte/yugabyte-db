@@ -7,7 +7,7 @@ import { changeGraphQueryPeriod, resetGraphQueryPeriod } from '../../../actions/
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    changeGraphQueryPeriod: (filterParams) => {
+    changeGraphQueryFilters: (filterParams) => {
       dispatch(changeGraphQueryPeriod(filterParams));
     },
     resetGraphQueryPeriod: () => {

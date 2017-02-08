@@ -20,6 +20,10 @@ const panelTypes = {
 }
 
 export default class GraphPanel extends Component {
+  constructor(props) {
+    super(props);
+    this.queryMetricsType = this.queryMetricsType.bind(this);
+  }
   static propTypes = {
     type: PropTypes.oneOf(Object.keys(panelTypes)).isRequired,
     nodePrefixes: PropTypes.array
@@ -29,18 +33,38 @@ export default class GraphPanel extends Component {
     nodePrefixes: []
   }
 
+  componentDidMount() {
+    this.queryMetricsType(this.props.graph.graphFilter);
+  }
+
   componentWillReceiveProps(nextProps) {
     // Perform metric query only if the graph filter has changed.
     // TODO: add the nodePrefixes to the queryParam
     if(nextProps.graph.graphFilter !== this.props.graph.graphFilter) {
-      const { type, graph: {graphFilter: {startDate, endDate}}} = nextProps;
-      var params = {
-        metrics: panelTypes[type].metrics,
-        start: startDate,
-        end: endDate
-      }
-      this.props.queryMetrics(params, type);
+      this.queryMetricsType(nextProps.graph.graphFilter);
     }
+  }
+
+  queryMetricsType(graphFilter) {
+    const {startMoment, endMoment, nodeName, nodePrefix} = graphFilter;
+    const {type} = this.props;
+    var params = {
+      metrics: panelTypes[type].metrics,
+      start: startMoment.format('X'),
+      end: endMoment.format('X')
+    }
+    if (isValidObject(nodePrefix) && nodePrefix !== "all") {
+      params.nodePrefix = nodePrefix;
+    }
+    if (isValidObject(nodeName) && nodeName !== "all") {
+      params.nodeName = nodeName;
+    }
+    // In case of universe metrics , nodePrefix comes from component itself
+    if (isValidArray(this.props.nodePrefixes)) {
+      params.nodePrefix = this.props.nodePrefixes[0];
+    }
+
+    this.props.queryMetrics(params, type);
   }
 
   componentWillUnmount() {
