@@ -1,14 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Dropdown, MenuItem, Row, Col, Grid } from 'react-bootstrap';
+import { Dropdown, MenuItem, Row, Col, Grid , FormControl} from 'react-bootstrap';
 import { DateTimePicker } from 'react-widgets';
-import { YBButton, YBMultiSelect } from '../../common/forms/fields';
-import moment from 'moment';
-import { isValidObject } from '../../../utils/ObjectUtils';
-var momentLocalizer = require('react-widgets/lib/localizers/moment');
+import { YBButton } from '../../common/forms/fields';
 require('react-widgets/dist/css/react-widgets.css');
-import {Field} from 'redux-form';
+var moment = require('moment');
+import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
+var momentLocalizer = require('react-widgets/lib/localizers/moment');
 import './GraphPanelHeader.scss'
 
 // We can define different filter types here, the type parameter should be
@@ -25,36 +24,56 @@ const filterTypes = [
 
 const DEFAULT_FILTER_KEY = 0
 export const DEFAULT_GRAPH_FILTER = {
-  startDate: moment().subtract(
+  startMoment: moment().subtract(
     filterTypes[DEFAULT_FILTER_KEY].value,
     filterTypes[DEFAULT_FILTER_KEY].type),
-  endDate: moment()
+  endMoment: moment(),
+  nodePrefix: "all",
+  nodeName: "all"
 }
 
 
 export default class GraphPanelHeader extends Component {
   constructor(props) {
-    momentLocalizer(moment);
     super(props);
+    momentLocalizer(moment);
     this.handleFilterChange = this.handleFilterChange.bind(this);
     this.handleStartDateChange = this.handleStartDateChange.bind(this);
     this.handleEndDateChange = this.handleEndDateChange.bind(this);
     this.applyCustomFilter = this.applyCustomFilter.bind(this);
     this.updateGraphQueryParams = this.updateGraphQueryParams.bind(this);
     var defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
-
+    this.universeItemChanged = this.universeItemChanged.bind(this);
+    this.nodeItemChanged = this.nodeItemChanged.bind(this);
+    this.submitGraphFilters = this.submitGraphFilters.bind(this);
+    var currentUniverse = "all";
+    var currentUniversePrefix  = "all";
+    if (this.props.origin === "universe") {
+      currentUniverse = this.props.universe.currentUniverse;
+      currentUniversePrefix = currentUniverse.universeDetails.nodePrefix;
+    }
     this.state = {
       showDatePicker: false,
       filterLabel: defaultFilter.label,
       filterType: defaultFilter.type,
-      endMoment: moment(),
-      startMoment: moment().subtract(defaultFilter.value, defaultFilter.type)
+      currentSelectedUniverse: currentUniverse,
+      currentSelectedNode: "all",
+      filterParams: {
+        endMoment: moment(),
+        startMoment: moment().subtract("1", "hours"),
+        nodePrefix: currentUniversePrefix,
+        nodeName: "all"
+      }
     }
   }
 
+  submitGraphFilters(type, val) {
+    var queryObject = this.state.filterParams;
+    queryObject[type] = val;
+    this.props.changeGraphQueryFilters(queryObject);
+  }
   handleFilterChange(eventKey, event) {
     var filterInfo = filterTypes[eventKey] || filterTypes[DEFAULT_FILTER_KEY];
-
     this.setState({
       filterLabel: filterInfo.label,
       filterType: filterInfo.type
@@ -63,34 +82,73 @@ export default class GraphPanelHeader extends Component {
     if (event.target.getAttribute("data-filter-type") !== "custom") {
       var endMoment = moment()
       var startMoment = moment().subtract(filterInfo.value, filterInfo.type);
-      this.setState({startMoment: startMoment, endMoment: endMoment})
-      this.updateGraphQueryParams(startMoment, endMoment)
+      var newParams = this.state.filterParams;
+      newParams.startMoment = startMoment;
+      newParams.endMoment = endMoment;
+      this.setState({filterParams: newParams});
+      this.props.changeGraphQueryFilters(newParams)
     }
+  }
+  universeItemChanged(event) {
+    const {universe: {universeList}} = this.props;
+    var self = this;
+    var universeFound = false;
+    var newParams = this.state.filterParams;
+    for (var counter = 0; counter < universeList.length; counter++) {
+      if (universeList[counter].universeUUID === event.target.value) {
+        self.setState({currentSelectedUniverse: universeList[counter]});
+        universeFound = true;
+        newParams.nodePrefix = universeList[counter].universeDetails.nodePrefix;
+        break;
+      }
+    }
+    if (!universeFound) {
+      newParams.nodePrefix = "all";
+    }
+    this.props.changeGraphQueryFilters(newParams);
+    this.setState({filterParams: newParams, currentSelectedNode: "all"})
+  }
+
+  nodeItemChanged(event) {
+    var newParams = this.state.filterParams;
+    newParams.nodeName = event.target.value;
+    this.props.changeGraphQueryFilters(newParams);
+    this.setState({filterParams: newParams, currentSelectedNode: event.target.value});
   }
 
   componentDidMount() {
-    this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
+    this.updateGraphQueryParams(this.state.filterParams);
   }
+
   handleStartDateChange(dateStr) {
-    this.setState({startMoment: moment(dateStr)})
+    var newParams = this.state.filterParams;
+    newParams.startMoment = dateStr;
+    this.setState({filterParams: newParams})
   }
 
   handleEndDateChange(dateStr) {
-    this.setState({endMoment: moment(dateStr)})
+    var newParams = this.state.filterParams;
+    newParams.endMoment = dateStr;
+    this.setState({filterParams: newParams})
   }
 
   applyCustomFilter() {
-      this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
+    this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
   }
 
   updateGraphQueryParams(startMoment, endMoment) {
-    this.props.changeGraphQueryPeriod({
-      startDate: startMoment.format('X'),
-      endDate: endMoment.format('X')
-    })
+    var newFilterParams = this.state.filterParams;
+    if (isValidObject(startMoment) && isValidObject(endMoment)) {
+      newFilterParams.startMoment = startMoment;
+      newFilterParams.endMoment = endMoment;
+      this.setState({filterParams: newFilterParams})
+      this.props.changeGraphQueryFilters(this.state.filterParams);
+    }
   }
 
+
   render() {
+    const { origin } = this.props;
     var datePicker = null;
     if (this.state.filterType === "custom") {
       datePicker =
@@ -109,20 +167,6 @@ export default class GraphPanelHeader extends Component {
         </span>;
     }
 
-    var universePicker = <span/>;
-    var universeSelectionChanged = function(universeVals) {
-      // TODO Add Universe Filter Logic Here
-    }
-    if (isValidObject(this.props.origin) && this.props.origin === "customer") {
-      var universeItems = this.props.universe.universeList.map(function(item, idx){
-        return {"label": item.name, "value": item.universeDetails.nodePrefix}
-      });
-      universePicker = <Col md={3}><Field name="universeSelect" component={YBMultiSelect}
-                         options={universeItems} selectValChanged={universeSelectionChanged}
-                         multi={true}/>
-                       </Col>
-    }
-
     var self = this;
     var menuItems = filterTypes.map(function(filter, idx) {
       const key = 'graph-filter-' + idx;
@@ -136,16 +180,26 @@ export default class GraphPanelHeader extends Component {
         </MenuItem>)
     });
 
-
+    var universePicker = <span/>;
+    if (origin === "customer") {
+      universePicker = <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}/>
+    }
     return (
       <Grid className="x_panel graph-panel">
         <Row className="x_title">
-          <Col md={6}>
+          <Col md={2}>
             <h2>Metrics</h2>
+          </Col>
+          <Col md={2}>
+            {universePicker}
+          </Col>
+          <Col md={2}>
+            <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
+                        selectedUniverse={this.state.currentSelectedUniverse}
+                        selectedNode={this.state.currentSelectedNode}/>
           </Col>
           <Col md={6}>
             <form name="GraphPanelFilterForm">
-              {universePicker}
               <div id="reportrange" className="pull-right">
                 {datePicker}
                 <Dropdown id="graph-filter-dropdown" pullRight={true} >
@@ -168,5 +222,41 @@ export default class GraphPanelHeader extends Component {
         </Row>
       </Grid>
     );
+  }
+}
+
+class UniversePicker extends Component {
+  render() {
+    const {universeItemChanged, universe: {universeList}} = this.props;
+    var universeItems = universeList.map(function(item, idx){
+      return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>
+    });
+    var universeOptionArray = [<option key={-1} value="all">All</option>].concat(universeItems);
+    return (
+      <FormControl componentClass="select" placeholder="select" onChange={universeItemChanged}>
+        {universeOptionArray}
+      </FormControl>
+    )
+  }
+}
+
+class NodePicker extends Component {
+
+  render() {
+    const {selectedUniverse, nodeItemChanged, selectedNode} = this.props;
+    var nodeItems =[];
+    if (isValidObject(selectedUniverse) && selectedUniverse!== "all") {
+      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.map(function(nodeItem, nodeIdx){
+                    return <option key={nodeIdx} value={nodeItem.nodeName}>
+                             {nodeItem.nodeName}
+                           </option>
+                  })
+    }
+    var nodeOptionArray=[<option key={-1} value="all">All</option>].concat(nodeItems);
+    return (
+      <FormControl componentClass="select" onChange={nodeItemChanged} value={selectedNode}>
+        {nodeOptionArray}
+      </FormControl>
+    )
   }
 }

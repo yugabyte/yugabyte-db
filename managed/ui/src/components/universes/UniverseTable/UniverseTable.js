@@ -18,7 +18,6 @@ export default class UniverseTable extends Component {
   }
 
   componentWillUnmount() {
-    this.props.resetUniverseList();
     this.props.resetUniverseTasks();
     this.props.resetTaskProgress();
   }

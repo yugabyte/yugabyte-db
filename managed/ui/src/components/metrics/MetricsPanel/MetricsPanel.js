@@ -25,7 +25,7 @@ export default class MetricsPanel extends Component {
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
-      if (!isValidArray(metric.data)){
+      if (!isValidArray(metric.data)) {
         metric.layout["annotations"] = [{
           visible: true,
           align: "center",
