@@ -61,11 +61,11 @@ GET     /api/customers/:cUUID/universes/find/:universeName  com.yugabyte.yw.cont
 GET     /api/customers/:cUUID/cost                        com.yugabyte.yw.controllers.UniverseController.universeListCost(cUUID: java.util.UUID)
 
 # Table Management API
-GET     /api/:cUUID/universes/:uniUUID/tables             com.yugabyte.yw.controllers.TablesController.universeList(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-POST    /api/:cUUID/universes/:uniUUID/tables             com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)
-GET     /api/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
-PUT     /api/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte.yw.controllers.TablesController.alter(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
-DELETE  /api/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte.yw.controllers.TablesController.drop(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID/tables             com.yugabyte.yw.controllers.TablesController.universeList(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+POST    /api/customers/:cUUID/universes/:uniUUID/tables             com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
+PUT     /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte.yw.controllers.TablesController.alter(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/universes/:uniUUID/tables/:tableUUID  com.yugabyte.yw.controllers.TablesController.drop(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
 
 # Task History API
 GET    /api/customers/:cUUID/tasks                    com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)
