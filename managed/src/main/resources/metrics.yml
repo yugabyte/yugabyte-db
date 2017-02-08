@@ -27,6 +27,8 @@ cpu_usage:
   group_by: "cpu"
   layout:
     title: "CPU Usage"
+    xaxis:
+      type: "date"
 disk_iops:
   metric: "collectd_yb_system_counter_total"
   function: "rate|avg"

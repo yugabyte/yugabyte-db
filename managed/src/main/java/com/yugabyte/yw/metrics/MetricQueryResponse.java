@@ -47,11 +47,11 @@ public class MetricQueryResponse {
 
       if (objNode.has("values")) {
         for (final JsonNode valueNode: objNode.get("values")) {
-          metricGraphData.x.add(dateFormat.format(valueNode.get(0).asLong() * 1000));
+          metricGraphData.x.add(valueNode.get(0).asLong() * 1000);
           metricGraphData.y.add(valueNode.get(1));
         }
       } else if (objNode.has("value")) {
-        metricGraphData.x.add(dateFormat.format(objNode.get("value").get(0).asLong() * 1000));
+        metricGraphData.x.add(objNode.get("value").get(0).asLong() * 1000);
         metricGraphData.y.add(objNode.get("value").get(1));
       }
       metricGraphData.type = "scatter";
