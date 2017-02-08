@@ -9,6 +9,5 @@ public class AccessKeyFormData {
     @Constraints.Required()
     public String keyCode;
 
-    @Constraints.Required()
     public AccessKey.KeyInfo keyInfo;
 }

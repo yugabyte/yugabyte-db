@@ -12,7 +12,9 @@ import play.libs.Json;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -42,16 +44,20 @@ public class AccessKey extends Model {
     public void setKeyInfo(KeyInfo info) { this.keyInfo = Json.toJson(info); }
     public KeyInfo getKeyInfo() { return Json.fromJson(this.keyInfo, KeyInfo.class); }
 
-    public static AccessKey create(UUID providerUUID, String key_code, KeyInfo key_info) {
+    public static AccessKey create(UUID providerUUID, String keyCode, KeyInfo keyInfo) {
         AccessKey accessKey = new AccessKey();
-        accessKey.idKey = AccessKeyId.create(providerUUID, key_code);
-        accessKey.setKeyInfo(key_info);
+        accessKey.idKey = AccessKeyId.create(providerUUID, keyCode);
+        accessKey.setKeyInfo(keyInfo);
         accessKey.save();
         return accessKey;
     }
 
     private static final Find<AccessKeyId, AccessKey> find =
             new Find<AccessKeyId, AccessKey>() {};
+
+    public static AccessKey get(AccessKeyId accessKeyId) {
+        return find.byId(accessKeyId);
+    }
 
     public static AccessKey get(UUID providerUUID, String keyCode) {
         return find.byId(AccessKeyId.create(providerUUID, keyCode));

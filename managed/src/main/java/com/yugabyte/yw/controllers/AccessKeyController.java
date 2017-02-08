@@ -2,10 +2,13 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
@@ -22,6 +25,9 @@ import java.util.UUID;
 public class AccessKeyController extends AuthenticatedController {
     @Inject
     FormFactory formFactory;
+
+    @Inject
+    AccessManager accessManager;
 
     public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
@@ -65,15 +71,22 @@ public class AccessKeyController extends AuthenticatedController {
             return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
         }
 
+        AccessKey accessKey = AccessKey.get(providerUUID, formData.get().keyCode);
+        if (accessKey != null) {
+            return ApiResponse.error(BAD_REQUEST, "Duplicate keycode: " + formData.get().keyCode);
+        }
+
         try {
-            AccessKey accessKey = AccessKey.create(
-                    providerUUID,
-                    formData.get().keyCode,
-                    formData.get().keyInfo);
+            JsonNode response = accessManager.addKey(providerUUID, formData.get().keyCode);
+            if (response.has("error")) {
+                return ApiResponse.error(INTERNAL_SERVER_ERROR, response.get("error"));
+            }
+
+            AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+            keyInfo.publicKey = response.get("public_key").asText();
+            keyInfo.privateKey = response.get("private_key").asText();
+            accessKey = AccessKey.create(providerUUID, formData.get().keyCode, keyInfo);
             return ApiResponse.success(accessKey);
-        } catch(PersistenceException pe) {
-            return ApiResponse.error(BAD_REQUEST,
-                    "Duplicate keycode: " + formData.get().keyCode);
         } catch(Exception e) {
             return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
         }
