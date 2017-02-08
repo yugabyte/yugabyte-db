@@ -165,7 +165,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     UUID badUUID = UUID.randomUUID();
     String method = "POST";
-    String url = "/api/" + customer.uuid + "/universes/" + badUUID + "/tables";
+    String url = "/api/customers/" + customer.uuid + "/universes/" + badUUID + "/tables";
     ObjectNode emptyJson = Json.newObject();
 
     Result r = FakeApiHelper.doRequestWithAuthTokenAndBody(method, url, authToken, emptyJson);
@@ -184,7 +184,8 @@ public class TablesControllerTest extends FakeDBApplication {
     customer.save();
 
     String method = "POST";
-    String url = "/api/" + customer.uuid + "/universes/" + universe.universeUUID + "/tables";
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables";
     ObjectNode emptyJson = Json.newObject();
     String errorString = "NullPointerException";
 
@@ -207,7 +208,8 @@ public class TablesControllerTest extends FakeDBApplication {
     customer.save();
 
     String method = "POST";
-    String url = "/api/" + customer.uuid + "/universes/" + universe.universeUUID + "/tables";
+    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID +
+        "/tables";
     JsonNode topJson = Json.parse(
         "{" +
           "\"cloud\":\"aws\"," +
