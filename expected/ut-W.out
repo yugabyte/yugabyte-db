@@ -23,8 +23,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(t1 10 soft)
+not used hint:
 duplication hint:
 error hint:
 
@@ -39,8 +39,8 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(t1 10 soft)
+not used hint:
 duplication hint:
 error hint:
 
@@ -55,8 +55,8 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(t1 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
@@ -72,8 +72,8 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM p1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1 10 soft)
+not used hint:
 duplication hint:
 error hint:
 
@@ -97,8 +97,8 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM p1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
@@ -139,8 +139,8 @@ EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
 EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1_c1 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
@@ -165,8 +165,8 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p2_c1 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
@@ -191,9 +191,9 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1_c1 10 hard)
 Parallel(p2_c1 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
@@ -221,8 +221,8 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1 10 soft)
+not used hint:
 duplication hint:
 error hint:
 
@@ -259,8 +259,8 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p2 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
@@ -297,9 +297,9 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1 5 hard)
 Parallel(p2 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
@@ -357,8 +357,8 @@ EXPLAIN (COSTS false) SELECT * FROM p1;
 EXPLAIN (COSTS false) SELECT * FROM p1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1 0 hard)
+not used hint:
 duplication hint:
 error hint:
 

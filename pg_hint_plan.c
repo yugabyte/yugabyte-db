@@ -2531,8 +2531,11 @@ static void
 setup_parallel_plan_enfocement(ParallelHint *hint, HintState *state)
 {
 	if (hint)
+	{
+		hint->base.state = HINT_STATE_USED;
 		set_config_int32_option("max_parallel_workers_per_gather",
 								hint->nworkers, state->context);
+	}
 	else
 		set_config_int32_option("max_parallel_workers_per_gather",
 								state->init_nworkers, state->context);
