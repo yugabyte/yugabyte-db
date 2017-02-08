@@ -4,27 +4,48 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import org.junit.Before;
 import org.junit.Test;
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
+import play.test.Helpers;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 public class AccessKeyControllerTest extends FakeDBApplication {
     Provider defaultProvider;
     Customer defaultCustomer;
+    AccessManager mockAccessManager;
+
+    @Override
+    protected Application provideApplication() {
+        mockAccessManager = mock(AccessManager.class);
+        return new GuiceApplicationBuilder()
+                .configure((Map) Helpers.inMemoryDatabase())
+                .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+                .build();
+    }
+
     @Before
     public void setUp() {
         defaultCustomer = Customer.create("Test Customer", "foo@bar.com", "password");
@@ -132,7 +153,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
         assertEquals(BAD_REQUEST, result.status());
         assertThat(json.get("error").toString(), allOf(notNullValue(), containsString("\"keyCode\":[\"This field is required\"]")));
-        assertThat(json.get("error").toString(), allOf(notNullValue(), containsString("\"keyInfo\":[\"This field is required\"]")));
     }
 
     @Test
@@ -152,20 +172,43 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     }
 
     @Test
-    public void testCreateAccessKeyWithValidParams() {
+    public void testCreateAccessKeyWithoutKeyInfo() {
         ObjectNode bodyJson = Json.newObject();
         bodyJson.put("keyCode", "key-code-1");
-        ObjectNode keyInfoJson = Json.newObject();
-        keyInfoJson.put("publicKey", "public key..");
-        bodyJson.set("keyInfo", keyInfoJson);
+        ObjectNode keyJson = Json.newObject();
+        keyJson.put("public_key", "/path/to/public.key");
+        keyJson.put("private_key", "/path/to/private.key");
+        when(mockAccessManager.addKey(defaultProvider.uuid, "key-code-1")).thenReturn(keyJson);
         String uri = "/api/customers/" + defaultCustomer.uuid +
                 "/providers/" + defaultProvider.uuid + "/access_keys";
         Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
                 defaultCustomer.createAuthToken(), bodyJson);
         JsonNode json = Json.parse(contentAsString(result));
-
         assertEquals(OK, result.status());
         assertNotNull(json);
+        AccessKey accessKey = AccessKey.get(AccessKeyId.create(defaultProvider.uuid, "key-code-1"));
+        assertThat(accessKey.getKeyInfo().publicKey, allOf(notNullValue(),
+                equalTo("/path/to/public.key")));
+        assertThat(accessKey.getKeyInfo().privateKey, allOf(notNullValue(),
+                equalTo("/path/to/private.key")));
+    }
+
+    @Test
+    public void testCreateAccessKeyWithInvalidResponse() {
+        ObjectNode bodyJson = Json.newObject();
+        bodyJson.put("keyCode", "key-code-1");
+        ObjectNode keyJson = Json.newObject();
+        keyJson.put("error", "Unknown Error!!");
+        when(mockAccessManager.addKey(defaultProvider.uuid, "key-code-1")).thenReturn(keyJson);
+        String uri = "/api/customers/" + defaultCustomer.uuid +
+                "/providers/" + defaultProvider.uuid + "/access_keys";
+        Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
+                defaultCustomer.createAuthToken(), bodyJson);
+        JsonNode json = Json.parse(contentAsString(result));
+        assertEquals(INTERNAL_SERVER_ERROR, result.status());
+        assertThat(json.get("error").asText(), allOf(notNullValue(), equalTo("Unknown Error!!")));
+        AccessKey accessKey = AccessKey.get(defaultProvider.uuid, "key-code-1");
+        assertNull(accessKey);
     }
 
     @Test
@@ -173,9 +216,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
         ObjectNode bodyJson = Json.newObject();
         bodyJson.put("keyCode", "key-code-1");
-        ObjectNode keyInfoJson = Json.newObject();
-        keyInfoJson.put("publicKey", "public key..");
-        bodyJson.set("keyInfo", keyInfoJson);
         String uri = "/api/customers/" + defaultCustomer.uuid +
                 "/providers/" + defaultProvider.uuid + "/access_keys";
         Result result = FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
@@ -247,7 +287,6 @@ public class AccessKeyControllerTest extends FakeDBApplication {
 
         assertEquals(BAD_REQUEST, result.status());
         assertThat(json.get("error").toString(), allOf(notNullValue(), containsString("\"keyCode\":[\"This field is required\"]")));
-        assertThat(json.get("error").toString(), allOf(notNullValue(), containsString("\"keyInfo\":[\"This field is required\"]")));
     }
 
     @Test
