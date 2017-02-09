@@ -3,8 +3,8 @@
 @import "_style/colors.scss";
 
 .provider-config-container {
-  margin-left: 2%;
-  padding: 4px;
+  position: relative;
+  height: 590px;
 }
 .provider-config-container .list-group {
   background-color: white;
@@ -38,11 +38,6 @@
 .well {
   font-size: 16px;
   font-weight: 500;
-}
-
-.data-cell-input {
-  width: 60%;
-  float: right;
 }
 
 .provider-config-container button {
