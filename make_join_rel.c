@@ -1,7 +1,8 @@
 /*-------------------------------------------------------------------------
  *
  * make_join_rel.c
- *	  Routines copied from PostgreSQL core distribution.
+ *	  Routines copied from PostgreSQL core distribution with some
+ *	  modifications.
  *
  * src/backend/optimizer/path/joinrels.c
  *     make_join_rel()

@@ -5103,8 +5103,6 @@ error hint:
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
 LOG:  available indexes for IndexScan(p1): p1_pkey
 LOG:  available indexes for IndexScan(p1c1): p1c1_pkey
-LOG:  available indexes for IndexScan(p1c2): p1c2_pkey
-LOG:  available indexes for IndexScan(p1c3): p1c3_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p1 p1_pkey)
@@ -5263,8 +5261,6 @@ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
 /*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
 LOG:  available indexes for IndexScan(p1): p1_parent
 LOG:  available indexes for IndexScan(p1c1): p1c1_c4_expr_idx
-LOG:  available indexes for IndexScan(p1c2): p1c2_c4_expr_idx
-LOG:  available indexes for IndexScan(p1c3): p1c3_c4_expr_idx
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p1 p1_parent)
@@ -5317,14 +5313,7 @@ error hint:
 /*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
 LOG:  available indexes for IndexScan(p2):
 LOG:  available indexes for IndexScan(p2c1): p2c1_pkey
-LOG:  available indexes for IndexScan(p2c2):
-LOG:  available indexes for IndexScan(p2c3):
 LOG:  available indexes for IndexScan(p2c1c1):
-LOG:  available indexes for IndexScan(p2c1c2):
-LOG:  available indexes for IndexScan(p2c2c1):
-LOG:  available indexes for IndexScan(p2c2c2):
-LOG:  available indexes for IndexScan(p2c3c1):
-LOG:  available indexes for IndexScan(p2c3c2):
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p2 p2c1_pkey)
@@ -6056,8 +6045,6 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 LOG:  available indexes for IndexScanRegexp(p1): p1_pkey
 LOG:  available indexes for IndexScanRegexp(p1c1): p1c1_pkey
-LOG:  available indexes for IndexScanRegexp(p1c2): p1c2_pkey
-LOG:  available indexes for IndexScanRegexp(p1c3): p1c3_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScanRegexp(p1 .*pkey)
@@ -6079,8 +6066,6 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 LOG:  available indexes for IndexScanRegexp(p1): p1_i2 p1_i
 LOG:  available indexes for IndexScanRegexp(p1c1): p1c1_i p1c1_c4_expr_idx
-LOG:  available indexes for IndexScanRegexp(p1c2): p1c2_i p1c2_c4_expr_idx
-LOG:  available indexes for IndexScanRegexp(p1c3): p1c3_i p1c3_c4_expr_idx
 LOG:  pg_hint_plan:
 used hint:
 IndexScanRegexp(p1 p1.*i)
@@ -6102,8 +6087,6 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 LOG:  available indexes for IndexScanRegexp(p1):
 LOG:  available indexes for IndexScanRegexp(p1c1):
-LOG:  available indexes for IndexScanRegexp(p1c2):
-LOG:  available indexes for IndexScanRegexp(p1c3):
 LOG:  pg_hint_plan:
 used hint:
 IndexScanRegexp(p1 no.*_exist)

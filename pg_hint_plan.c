@@ -374,9 +374,6 @@ static void pg_hint_plan_ProcessUtility(Node *parsetree,
 							DestReceiver *dest, char *completionTag);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 										 ParamListInfo boundParams);
-static void pg_hint_plan_get_relation_info(PlannerInfo *root,
-										   Oid relationObjectId,
-										   bool inhparent, RelOptInfo *rel);
 static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
 											int levels_needed,
 											List *initial_rels);
@@ -456,6 +453,8 @@ static void make_rels_by_clauseless_joins(PlannerInfo *root,
 										  RelOptInfo *old_rel,
 										  ListCell *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
+static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+								   RangeTblEntry *rte);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 									Index rti, RangeTblEntry *rte);
 static void generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
@@ -537,7 +536,6 @@ static const struct config_enum_entry parse_debug_level_options[] = {
 /* Saved hook values in case of unload */
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static planner_hook_type prev_planner = NULL;
-static get_relation_info_hook_type prev_get_relation_info = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
 
@@ -671,8 +669,6 @@ _PG_init(void)
 	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
 	prev_planner = planner_hook;
 	planner_hook = pg_hint_plan_planner;
-	prev_get_relation_info = get_relation_info_hook;
-	get_relation_info_hook = pg_hint_plan_get_relation_info;
 	prev_join_search = join_search_hook;
 	join_search_hook = pg_hint_plan_join_search;
 	prev_set_rel_pathlist = set_rel_pathlist_hook;
@@ -697,7 +693,6 @@ _PG_fini(void)
 	/* Uninstall hooks. */
 	ProcessUtility_hook = prev_ProcessUtility;
 	planner_hook = prev_planner;
-	get_relation_info_hook = prev_get_relation_info;
 	join_search_hook = prev_join_search;
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
 
@@ -2528,7 +2523,7 @@ setup_guc_enforcement(SetHint **options, int noptions, GucContext context)
  * If hint is not NULL, set up using it, elsewise reset to initial environment.
  */
 static void
-setup_parallel_plan_enfocement(ParallelHint *hint, HintState *state)
+setup_parallel_plan_enforcement(ParallelHint *hint, HintState *state)
 {
 	if (hint)
 	{
@@ -3041,9 +3036,9 @@ find_parallel_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
 	 *   - not a base relation and inheritance children
 	 *   - not an ordinary relation (such as join and subquery)
 	 */
-	if (rel && ((rel->reloptkind != RELOPT_BASEREL &&
-				 rel->reloptkind != RELOPT_OTHER_MEMBER_REL) ||
-				rel->rtekind != RTE_RELATION))
+	if (!rel || rel->rtekind != RTE_RELATION ||
+		(rel->reloptkind != RELOPT_BASEREL &&
+		 rel->reloptkind != RELOPT_OTHER_MEMBER_REL))
 		return NULL;
 
 	rte = root->simple_rte_array[relid];
@@ -3095,13 +3090,18 @@ regexpeq(const char *s1, const char *s2)
 	return DatumGetBool(result);
 }
 
+
+/* Remove indexes instructed not to use by hint. */
 static void
-delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
+restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
+			   bool using_parent_hint)
 {
 	ListCell	   *cell;
 	ListCell	   *prev;
 	ListCell	   *next;
 	StringInfoData	buf;
+	RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
+	Oid				relationObjectId = rte->relid;
 
 	/*
 	 * We delete all the IndexOptInfo list and prevent you from being usable by
@@ -3164,10 +3164,11 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 		}
 
 		/*
-		 * to make the index a candidate when definition of this index is
-		 * matched with the index's definition of current_hint_state.
+		 * Apply index restriction of parent hint to children. Since index
+		 * inheritance is not explicitly described we should search for an
+		 * children's index with the same definition to that of the parent.
 		 */
-		if (OidIsValid(relationObjectId) && !use_index)
+		if (using_parent_hint && !use_index)
 		{
 			foreach(l, current_hint_state->parent_index_infos)
 			{
@@ -3175,71 +3176,61 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 				HeapTuple			ht_idx;
 				ParentIndexInfo	   *p_info = (ParentIndexInfo *)lfirst(l);
 
-				/* check to match the parameter of unique */
-				if (p_info->indisunique != info->unique)
+				/*
+				 * we check the 'same' index by comparing uniqueness, access
+				 * method and index key columns.
+				 */
+				if (p_info->indisunique != info->unique ||
+					p_info->method != info->relam ||
+					list_length(p_info->column_names) != info->ncolumns)
 					continue;
 
-				/* check to match the parameter of index's method */
-				if (p_info->method != info->relam)
-					continue;
-
-				/* to check to match the indexkey's configuration */
-				if ((list_length(p_info->column_names)) !=
-					 info->ncolumns)
-					continue;
-
-				/* check to match the indexkey's configuration */
+				/* Check if index key columns match */
 				for (i = 0; i < info->ncolumns; i++)
 				{
 					char       *c_attname = NULL;
 					char       *p_attname = NULL;
 
-					p_attname =
-						list_nth(p_info->column_names, i);
+					p_attname = list_nth(p_info->column_names, i);
 
-					/* both are expressions */
+					/*
+					 * if both of the key of the same position are expressions,
+					 * ignore them for now and check later.
+					 */
 					if (info->indexkeys[i] == 0 && !p_attname)
 						continue;
 
-					/* one's column is expression, the other is not */
+					/* deny if one is expression while another is not */
 					if (info->indexkeys[i] == 0 || !p_attname)
 						break;
 
 					c_attname = get_attname(relationObjectId,
 												info->indexkeys[i]);
 
-					if (strcmp(p_attname, c_attname) != 0)
+					/* deny if any of column attributes don't match */
+					if (strcmp(p_attname, c_attname) != 0 ||
+						p_info->indcollation[i] != info->indexcollations[i] ||
+						p_info->opclass[i] != info->opcintype[i]||
+						((p_info->indoption[i] & INDOPTION_DESC) != 0)
+						!= info->reverse_sort[i] ||
+						((p_info->indoption[i] & INDOPTION_NULLS_FIRST) != 0)
+						!= info->nulls_first[i])
 						break;
-
-					if (p_info->indcollation[i] != info->indexcollations[i])
-						break;
-
-					if (p_info->opclass[i] != info->opcintype[i])
-						break;
-
-					if (((p_info->indoption[i] & INDOPTION_DESC) != 0) !=
-						info->reverse_sort[i])
-						break;
-
-					if (((p_info->indoption[i] & INDOPTION_NULLS_FIRST) != 0) !=
-						info->nulls_first[i])
-						break;
-
 				}
 
+				/* deny this if any difference found */
 				if (i != info->ncolumns)
 					continue;
 
+				/* check on key expressions  */
 				if ((p_info->expression_str && (info->indexprs != NIL)) ||
 					(p_info->indpred_str && (info->indpred != NIL)))
 				{
-					/*
-					 * Fetch the pg_index tuple by the Oid of the index
-					 */
+					/* fetch the index of this child */
 					ht_idx = SearchSysCache1(INDEXRELID,
 											 ObjectIdGetDatum(info->indexoid));
 
-					/* check to match the expression's parameter of index */
+					/* check expressions if both expressions are available */
 					if (p_info->expression_str &&
 						!heap_attisnull(ht_idx, Anum_pg_index_indexprs))
 					{
@@ -3260,17 +3251,17 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 													 ObjectIdGetDatum(
 														 relationObjectId));
 
+						/* deny if expressions don't match */
 						if (strcmp(p_info->expression_str,
 								   text_to_cstring(DatumGetTextP(result))) != 0)
 						{
 							/* Clean up */
 							ReleaseSysCache(ht_idx);
-
 							continue;
 						}
 					}
 
-					/* Check to match the predicate's parameter of index */
+					/* compare index predicates  */
 					if (p_info->indpred_str &&
 						!heap_attisnull(ht_idx, Anum_pg_index_indpred))
 					{
@@ -3278,10 +3269,6 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 						bool        isnull;
 						Datum       result;
 
-						/*
-						 * to change the predicate's parameter of child's
-						 * index to strings
-						 */
 						predDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
 													 Anum_pg_index_indpred,
 													 &isnull);
@@ -3296,7 +3283,6 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 						{
 							/* Clean up */
 							ReleaseSysCache(ht_idx);
-
 							continue;
 						}
 					}
@@ -3332,16 +3318,21 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 
 	if (debug_level == 1)
 	{
-		char   *relname;
 		StringInfoData  rel_buf;
+		char *disprelname = "";
 
-		if (OidIsValid(relationObjectId))
-			relname = get_rel_name(relationObjectId);
+		/*
+		 * If this hint targetted the parent, use the real name of this
+		 * child. Otherwise use hint specification.
+		 */
+		if (using_parent_hint)
+			disprelname = get_rel_name(rte->relid);
 		else
-			relname = hint->relname;
+			disprelname = hint->relname;
+			
 
 		initStringInfo(&rel_buf);
-		quote_value(&rel_buf, relname);
+		quote_value(&rel_buf, disprelname);
 
 		ereport(LOG,
 				(errmsg("available indexes for %s(%s):%s",
@@ -3433,15 +3424,27 @@ get_parent_index_info(Oid indexoid, Oid relid)
 }
 
 /*
- * Set planner guc parameters according to corresponding scan hints.
+ * cancel hint enforcement
  */
 static void
-setup_hint_enforcement(PlannerInfo *root, Oid relationObjectId,
-					   bool inhparent, RelOptInfo *rel)
+reset_hint_enforcement()
 {
-	Index new_parent_relid = 0;
+	setup_scan_method_enforcement(NULL, current_hint_state);
+	setup_parallel_plan_enforcement(NULL, current_hint_state);
+}
+
+/*
+ * Set planner guc parameters according to corresponding scan hints.
+ */
+static bool
+setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
+{
+	Index	new_parent_relid = 0;
 	ListCell *l;
-	ScanMethodHint *scanhint = NULL;
+	ScanMethodHint *shint = NULL;
+	ParallelHint   *phint = NULL;
+	bool			inhparent = root->simple_rte_array[rel->relid]->inh;
+	Oid		relationObjectId = root->simple_rte_array[rel->relid]->relid;
 
 	/*
 	 * We could register the parent relation of the following children here
@@ -3455,13 +3458,13 @@ setup_hint_enforcement(PlannerInfo *root, Oid relationObjectId,
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
 					(errhidestmt(true),
-					 errmsg ("pg_hint_plan%s: get_relation_info"
+					 errmsg ("pg_hint_plan%s: setup_hint_enforcement"
 							 " skipping inh parent: relation=%u(%s), inhparent=%d,"
 							 " current_hint_state=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level)));
-		return;
+		return false;
 	}
 
 	/* Find the parent for this relation other than the registered parent */
@@ -3492,28 +3495,27 @@ setup_hint_enforcement(PlannerInfo *root, Oid relationObjectId,
 		 * hint to other childrens of this parent so remember it * to avoid
 		 * hinthintredundant setup cost.
 		 */
-		ScanMethodHint *parent_scan_hint = NULL;
-		ParallelHint   *parent_parallel_hint = NULL;
-
 		current_hint_state->parent_relid = new_parent_relid;
 				
 		/* Find hints for the parent */
-		current_hint_state->parent_scan_hint = parent_scan_hint = 
+		current_hint_state->parent_scan_hint =
 			find_scan_hint(root, current_hint_state->parent_relid, NULL);
 
-		current_hint_state->parent_parallel_hint = parent_parallel_hint = 
+		current_hint_state->parent_parallel_hint =
 			find_parallel_hint(root, current_hint_state->parent_relid, NULL);
 
-		if (parent_scan_hint)
+		/*
+		 * If hint is found for the parent, apply it for this child instead
+		 * of its own.
+		 */
+		if (current_hint_state->parent_scan_hint)
 		{
-			/*
-			 * If hint is found for the parent, apply it for this child instead
-			 * of its own.
-			 */
-			parent_scan_hint->base.state = HINT_STATE_USED;
+			ScanMethodHint * pshint = current_hint_state->parent_scan_hint;
+
+			pshint->base.state = HINT_STATE_USED;
 
 			/* Apply index mask in the same manner to the parent. */
-			if (parent_scan_hint->indexnames)
+			if (pshint->indexnames)
 			{
 				Oid			parentrel_oid;
 				Relation	parent_rel;
@@ -3530,7 +3532,7 @@ setup_hint_enforcement(PlannerInfo *root, Oid relationObjectId,
 					ListCell   *lc;
 					ParentIndexInfo *parent_index_info;
 
-					foreach(lc, parent_scan_hint->indexnames)
+					foreach(lc, pshint->indexnames)
 					{
 						if (RelnameCmp(&indexname, &lfirst(lc)) == 0)
 							break;
@@ -3541,106 +3543,82 @@ setup_hint_enforcement(PlannerInfo *root, Oid relationObjectId,
 					parent_index_info =
 						get_parent_index_info(indexoid, parentrel_oid);
 					current_hint_state->parent_index_infos =
-						lappend(current_hint_state->parent_index_infos, parent_index_info);
+						lappend(current_hint_state->parent_index_infos,
+								parent_index_info);
 				}
 				heap_close(parent_rel, NoLock);
 			}
 		}
-
-		/* Setup planner environment */
-		setup_scan_method_enforcement(parent_scan_hint, current_hint_state);
-		setup_parallel_plan_enfocement(
-			find_parallel_hint(root, rel->relid, rel), current_hint_state);
 	}
 
-	/* Process index restriction hint inheritance */
-	if (current_hint_state->parent_scan_hint != 0)
+	if (current_hint_state->parent_scan_hint)
+		shint = current_hint_state->parent_scan_hint;
+	else
+		shint = find_scan_hint(root, rel->relid, rel);
+
+	if (shint)
 	{
-		delete_indexes(current_hint_state->parent_scan_hint, rel,
-					   relationObjectId);
+		bool using_parent_hint =
+			(shint == current_hint_state->parent_scan_hint);
 
-		/* Scan fixation status is the same to the parent. */
-		if (debug_level > 1)
-			ereport(pg_hint_plan_message_level,
-					(errhidestmt(true),
-					 errmsg("pg_hint_plan%s: get_relation_info:"
-							" index deletion by parent hint: "
-							"relation=%u(%s), inhparent=%d, current_hint_state=%p,"
-							" hint_inhibit_level=%d",
-							qnostr, relationObjectId,
-							get_rel_name(relationObjectId),
-							inhparent, current_hint_state, hint_inhibit_level)));
-		return;
-	}
+		/* Setup scan enforcement environment */
+		setup_scan_method_enforcement(shint, current_hint_state);
 
-	/* This table doesn't have a parent hint. Apply its own hint if any. */
-	if ((scanhint = find_scan_hint(root, rel->relid, rel)) != NULL)
-	{
-		setup_scan_method_enforcement(scanhint,	current_hint_state);
-
-		delete_indexes(scanhint, rel, InvalidOid);
+		/* restrict unwanted inexes */
+		restrict_indexes(root, shint, rel, using_parent_hint);
 
 		if (debug_level > 1)
+		{
+			char *additional_message = "";
+
+			if (shint == current_hint_state->parent_scan_hint)
+				additional_message = " by parent hint";
+
 			ereport(pg_hint_plan_message_level,
 					(errhidestmt(true),
-					 errmsg ("pg_hint_plan%s: get_relation_info"
-							 " index deletion:"
-							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
+					 errmsg ("pg_hint_plan%s: setup_hint_enforcement"
+							 " index deletion%s:"
+							 " relation=%u(%s), inhparent=%d, "
+							 "current_hint_state=%p,"
 							 " hint_inhibit_level=%d, scanmask=0x%x",
-							 qnostr, relationObjectId,
+							 qnostr, additional_message,
+							 relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint_state, hint_inhibit_level,
-							 scanhint->enforce_mask)));
-		return;
+							 inhparent, current_hint_state,
+							 hint_inhibit_level,
+							 shint->enforce_mask)));
+		}
 	}
 
 	/* Do the same for parallel plan enforcement */
-	setup_parallel_plan_enfocement(find_parallel_hint(root, rel->relid, rel),
-								   current_hint_state);
+	if (current_hint_state->parent_parallel_hint)
+		phint = current_hint_state->parent_parallel_hint;
+	else
+		phint = find_parallel_hint(root, rel->relid, rel);
+
+	setup_parallel_plan_enforcement(phint, current_hint_state);
 
 	/* Nothing to apply. Reset the scan mask to intial state */
-	if (debug_level > 1)
-		ereport(pg_hint_plan_message_level,
-				(errhidestmt (true),
-				 errmsg ("pg_hint_plan%s: get_relation_info"
-						 " no hint applied:"
-						 " relation=%u(%s), inhparent=%d, current_hint=%p,"
-						 " hint_inhibit_level=%d, scanmask=0x%x",
-						 qnostr, relationObjectId,
-						 get_rel_name(relationObjectId),
-						 inhparent, current_hint_state, hint_inhibit_level,
-						 current_hint_state->init_scan_mask)));
-	setup_scan_method_enforcement(NULL,	current_hint_state);
-}
-
-static void
-pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
-							   bool inhparent, RelOptInfo *rel)
-{
-	if (prev_get_relation_info)
-		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
-
-	/* 
-	 * Do nothing if we don't have a valid hint in this context or current
-	 * nesting depth is at SPI calls.
-	 */
-	if (!current_hint_state || hint_inhibit_level > 0)
+	if (!shint && ! phint)
 	{
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
 					(errhidestmt (true),
 					 errmsg ("pg_hint_plan%s: get_relation_info"
-							 " no hint to apply: relation=%u(%s), inhparent=%d,"
-							 " current_hint_state=%p, hint_inhibit_level=%d",
+							 " no hint applied:"
+							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
+							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint_state, hint_inhibit_level)));
-		return;
+							 inhparent, current_hint_state, hint_inhibit_level,
+							 current_hint_state->init_scan_mask)));
+
+		setup_scan_method_enforcement(NULL,	current_hint_state);
+
+		return false;
 	}
 
-	setup_hint_enforcement(root, relationObjectId, inhparent, rel);
-
-	return;
+	return true;
 }
 
 /*
@@ -4086,150 +4064,6 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 }
 
 /*
- * set_plain_rel_pathlist
- *	  Build access paths for a plain relation (no subquery, no inheritance)
- *
- * This function was copied and edited from set_plain_rel_pathlist() in
- * src/backend/optimizer/path/allpaths.c
- *
- * - removed parallel stuff.
- */
-static void
-set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
-{
-	Relids		required_outer;
-
-	/*
-	 * We don't support pushing join clauses into the quals of a seqscan, but
-	 * it could still have required parameterization due to LATERAL refs in
-	 * its tlist.
-	 */
-	required_outer = rel->lateral_relids;
-
-	/* Consider sequential scan */
-	add_path(rel, create_seqscan_path(root, rel, required_outer, 0));
-
-	/* If appropriate, consider parallel sequential scan */
-	if (rel->consider_parallel && required_outer == NULL)
-	{
-		ParallelHint *phint = find_parallel_hint(root, rel->relid, rel);
-
-		/* Consider parallel paths only if not inhibited by hint */
-		if (!phint || phint->nworkers > 0)
-			create_plain_partial_paths(root, rel);
-
-		/*
-		 * Overwirte parallel_workers if requested. partial_pathlist seems to
-		 * have up to one path but looping over all possible paths don't harm.
-		 */
-		if (phint && phint->nworkers > 0 && phint->force_parallel)
-		{
-			ListCell *l;
-			foreach (l, rel->partial_pathlist)
-			{
-				Path *ppath = (Path *) lfirst(l);
-				
-				Assert(ppath->parallel_workers > 0);
-				ppath->parallel_workers	= phint->nworkers;
-			}
-		}			
-	}
-
-	/* Consider index scans */
-	create_index_paths(root, rel);
-
-	/* Consider TID scans */
-	create_tidscan_paths(root, rel);
-}
-
-/*
- * Clear exiting access paths and create new ones applying hints.
- * This does the similar to set_rel_pathlist
- */
-static void
-rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
-				  List *initial_rels)
-{
-	ListCell   *l;
-
-	foreach(l, initial_rels)
-	{
-		RelOptInfo	   *rel = (RelOptInfo *) lfirst(l);
-		RangeTblEntry  *rte;
-
-		/* Skip relations which we can't choose scan method. */
-		if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
-			continue;
-
-		rte = root->simple_rte_array[rel->relid];
-
-		/* We can't force scan method of foreign tables */
-		if (rte->relkind == RELKIND_FOREIGN_TABLE)
-			continue;
-
-		/*
-		 * Create scan paths with GUC parameters which are at the beginning of
-		 * planner if scan method hint is not specified, otherwise use
-		 * specified hints and mark the hint as used.
-		 */
-		setup_scan_method_enforcement(find_scan_hint(root, rel->relid, rel),
-									  hstate);
-
-		/* Setup parallel environment according to the hint */
-		setup_parallel_plan_enfocement(
-			find_parallel_hint(root, rel->relid, rel), current_hint_state);
-
-		/* remove existing partial paths from this baserel */
-		list_free_deep(rel->partial_pathlist);
-		rel->partial_pathlist = NIL;
-
-		/* remove existing paths from this baserel */
-		list_free_deep(rel->pathlist);
-		rel->pathlist = NIL;
-
-		if (rte->inh)
-		{
-			ListCell *l;
-
-			/* remove partial paths from all chlidren */
-			foreach (l, root->append_rel_list)
-			{
-				AppendRelInfo  *appinfo = (AppendRelInfo *) lfirst(l);
-				RelOptInfo	   *childrel;
-
-				if (appinfo->parent_relid != rel->relid)
-					continue;
-
-				childrel = root->simple_rel_array[appinfo->child_relid];
-				list_free_deep(childrel->partial_pathlist);
-				childrel->partial_pathlist = NIL;
-			}
-			/* It's an "append relation", process accordingly */
-			set_append_rel_pathlist(root, rel, rel->relid, rte);
-		}
-		else
-		{
-			set_plain_rel_pathlist(root, rel, rte);
-		}
-
-		/*
-		 * If this is a baserel, consider gathering any partial paths we may
-		 * hinthave created for it.
-		 */
-		if (rel->reloptkind == RELOPT_BASEREL)
-			generate_gather_paths(root, rel);
-
-		/* Now find the cheapest of the paths for this rel */
-		set_cheapest(rel);
-	}
-
-	/*
-	 * Restore the GUC variables we set above.
-	 */
-	setup_scan_method_enforcement(NULL, hstate);
-}
-
-/*
  * wrapper of make_join_rel()
  *
  * call make_join_rel() after changing enable_* parameters according to given
@@ -4380,9 +4214,6 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 			return standard_join_search(root, levels_needed, initial_rels);
 	}
 
-	/* apply scan method hint rebuild scan path. */
-	rebuild_scan_path(current_hint_state, root, levels_needed, initial_rels);
-
 	/*
 	 * In the case using GEQO, only scan method hints and Set hints have
 	 * effect.  Join method and join order is not controllable by hints.
@@ -4428,55 +4259,94 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 							  Index rti, RangeTblEntry *rte)
 {
 	ParallelHint   *phint;
-	List		   *oldpathlist;
 	ListCell	   *l;
-	bool			regenerate = false;
 
-	/* Hint has not been parsed yet, or this is not a parallel'able relation */
-	if (current_hint_state == NULL || rel->partial_pathlist == NIL)
+	/* call the previous hook */
+	if (prev_set_rel_pathlist)
+		prev_set_rel_pathlist(root, rel, rti, rte);
+
+	/* Nothing to do when hint has not been parsed yet */
+	if (current_hint_state == NULL)
 		return;
 
-	phint = find_parallel_hint(root, rel->relid, rel);
-
-	if (phint == NULL || !phint->force_parallel)
+	/* Don't touch dummy rel */
+	if (IS_DUMMY_REL(rel))
 		return;
+
+	/* We cannot handle if this requires an outer */
+	if (rel->lateral_relids)
+		return;
+
+	if (!setup_hint_enforcement(root, rel))
+	{
+		/*
+		 * No enforcement requested, but we might have to generate gather
+		 * path on this relation
+		 */
+
+		/* If no need of a gather path, just return */
+		if (rel->reloptkind != RELOPT_BASEREL || max_hint_nworkers < 1 ||
+			rel->partial_pathlist == NIL)
+			return;
+
+		/* Lower the priorities of existing paths, then add a new path */
+		foreach (l, rel->pathlist)
+		{
+			Path *path = (Path *) lfirst(l);
+
+			if (path->startup_cost < disable_cost)
+			{
+				path->startup_cost += disable_cost;
+				path->total_cost += disable_cost;
+			}
+		}
+
+		generate_gather_paths(root, rel);
+		return;
+	}
+
+	/* Here, we regenerate paths with the current hint restriction */
+
+	/* Remove prviously paths except dummy rels */
+	list_free_deep(rel->pathlist);
+	rel->pathlist = NIL;
+
+	/* Rebuild access paths */
+	set_plain_rel_pathlist(root, rel, rte);
 
 	/*
-	 * This relation contains gather paths previously created and they prevent
-	 * adding new gahter path with same cost. Remove them.
+	 * create_plain_partial_paths creates partial paths with reasonably
+	 * estimated number of workers. Force the requested number of workers if
+	 * hard mode.
 	 */
-	oldpathlist = rel->pathlist;
-	rel->pathlist = NIL;
-	foreach (l, oldpathlist)
-	{
-		Path *path = (Path *) lfirst(l);
+	phint = find_parallel_hint(root, rel->relid, rel);
 
-		if (IsA(path, GatherPath) &&
-			path->parallel_workers != phint->nworkers)
+	if (phint)
+	{
+		/* if inhibiting parallel, remove existing partial paths  */
+		if (phint->nworkers == 0 && rel->partial_pathlist)
 		{
-			pfree(path);
-			regenerate = true;
+			list_free_deep(rel->partial_pathlist);
+			rel->partial_pathlist = NIL;
 		}
-		else
-			rel->pathlist = lappend(rel->pathlist, path);
-	}
-	list_free(oldpathlist);
 
-	if (regenerate)
-	{
-		foreach (l, rel->partial_pathlist)
+		/* enforce number of workers if requested */
+		if (rel->partial_pathlist && phint->force_parallel)
 		{
-			Path *ppath = (Path *) lfirst(l);
-			
-			if (phint && phint->nworkers > 0 && phint->force_parallel)
+			foreach (l, rel->partial_pathlist)
 			{
-				Assert(ppath->parallel_workers > 0);
+				Path *ppath = (Path *) lfirst(l);
+
 				ppath->parallel_workers	= phint->nworkers;
-			}			
+			}
 		}
-		
-		generate_gather_paths(root, rel);
+
+		/* Generate gather paths for base rels */
+		if (rel->reloptkind == RELOPT_BASEREL)
+			generate_gather_paths(root, rel);
 	}
+
+	reset_hint_enforcement();
 }
 
 /*
@@ -4484,7 +4354,8 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
  *	  Build access paths for a base relation
  *
  * This function was copied and edited from set_rel_pathlist() in
- * src/backend/optimizer/path/allpaths.c
+ * src/backend/optimizer/path/allpaths.c in order not to copy other static
+ * functions not required here.
  */
 static void
 set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,

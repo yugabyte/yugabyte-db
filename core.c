@@ -3,15 +3,37 @@
  * core.c
  *	  Routines copied from PostgreSQL core distribution.
  *
+
+ * The main purpose of this files is having access to static functions in core.
+ * Another purpose is tweaking functions behavior by replacing part of them by
+ * macro definitions. See at the end of pg_hint_plan.c for details. Anyway,
+ * this file *must* contain required functions without making any change.
+ *
+ * This file contains the following functions from corresponding files.
+ *
  * src/backend/optimizer/path/allpaths.c
+ *
+ *	static functions:
+ *	   set_plain_rel_pathlist()
  *     set_append_rel_pathlist()
  *     generate_mergeappend_paths()
  *     get_cheapest_parameterized_child_path()
  *     accumulate_append_subpath()
- *     standard_join_search()
+ *
+ *  public functions:
+ *     standard_join_search(): This funcion is not static. The reason for
+ *        including this function is make_rels_by_clause_joins. In order to
+ *        avoid generating apparently unwanted join combination, we decided to
+ *        change the behavior of make_join_rel, which is called under this
+ *        function.
  *
  * src/backend/optimizer/path/joinrels.c
- *     join_search_one_level()
+ *
+ *	public functions:
+ *     join_search_one_level(): We have to modify this to call my definition of
+ * 		    make_rels_by_clause_joins.
+ *
+ *	static functions:
  *     make_rels_by_clause_joins()
  *     make_rels_by_clauseless_joins()
  *     join_is_legal()
@@ -20,11 +42,43 @@
  *     mark_dummy_rel()
  *     restriction_is_constant_false()
  *
+ *
  * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
  */
+
+
+/*
+ * set_plain_rel_pathlist
+ *	  Build access paths for a plain relation (no subquery, no inheritance)
+ */
+static void
+set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	Relids		required_outer;
+
+	/*
+	 * We don't support pushing join clauses into the quals of a seqscan, but
+	 * it could still have required parameterization due to LATERAL refs in
+	 * its tlist.
+	 */
+	required_outer = rel->lateral_relids;
+
+	/* Consider sequential scan */
+	add_path(rel, create_seqscan_path(root, rel, required_outer, 0));
+
+	/* If appropriate, consider parallel sequential scan */
+	if (rel->consider_parallel && required_outer == NULL)
+		create_plain_partial_paths(root, rel);
+
+	/* Consider index scans */
+	create_index_paths(root, rel);
+
+	/* Consider TID scans */
+	create_tidscan_paths(root, rel);
+}
 
 /*
  * set_append_rel_pathlist
