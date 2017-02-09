@@ -1,36 +1,56 @@
 /* Copyright (c) YugaByte, Inc. */
 
-.graph-filter-custom {
-display: inline-block;
-}
+.graph-panel {
+  h2 {
+    display: inline-block;
+    margin-top: 0;
+  }
 
-.graph-filter-custom .hidden {
-display: none;
-}
-.graph-filter-custom div.rw-datetimepicker {
-  display: inline-block;
-}
+  .universe-picker,
+  .node-picker {
+    float: left;
+    margin-left: 20px;
 
-.graph-filter-custom .btn {
-  margin-bottom: 0px;
-}
+    .form-control {
+      display: inline-block !important;
+      width: auto !important;
+      margin-left: 6px;
+      min-width: 120px;
+    }
+  }
 
-.graph-panel-container {
-  margin-top: 4px;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
-}
+  .graph-filter-custom {
+    display: inline-block;
 
-.graph-panel .js-plotly-plot {
-display: inline-block;
-}
+    .hidden {
+      display: none;
+    }
+    div.rw-datetimepicker {
+      display: inline-block;
+    }
 
-.panel-heading {
-  padding-left: 10px;
-  font-size: 16px;
-  font-weight: 500;
+    .btn {
+      margin-bottom: 0px;
+    }
+  }
 
-  a {
-    cursor: pointer;
+  .graph-panel-container {
+    margin-top: 4px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+  }
+
+  .js-plotly-plot {
+    display: inline-block;
+  }
+
+  .panel-heading {
+    padding-left: 10px;
+    font-size: 16px;
+    font-weight: 500;
+
+    a {
+      cursor: pointer;
+    }
   }
 }

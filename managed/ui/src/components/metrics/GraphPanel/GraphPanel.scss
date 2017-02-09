@@ -1,5 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
 .graph-panel-container {
   margin-top: 4px;
   margin-bottom: 10px;
@@ -12,10 +14,38 @@
 
 .graph-panel .metrics-container {
   margin: 0px;
+  border: none !important;
+  background: none !important;
+  box-shadow: none !important;
+
+  .panel-heading {
+    background: $YB_GRAY_10;
+    padding: 0 !important;
+    border-bottom: 1px solid $YB_GRAY_20;
+
+    a {
+      display: block;
+      padding: 10px;
+
+      &:hover {
+        background: $YB_GRAY_8;
+        text-decoration: none;
+      }
+
+      &:active {
+        background: $YB_GRAY_15;
+      }
+    }
+  }
+
+  .panel-body {
+    border: none !important;
+    padding: 10px 0 !important;
+  }
 }
 
 .graph-panel .js-plotly-plot {
-display: inline-block;
+  display: inline-block;
 }
 
 .graph-panel-grid div.dropdown {

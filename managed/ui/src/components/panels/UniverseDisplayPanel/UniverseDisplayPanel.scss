@@ -1,12 +1,14 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
 .universe-display-item-container {
   float: left;
   height: 200px;
   background-color: white;
   margin: 0 20px 20px 0;
   padding: 12px 14px;
-  border: rgba(84, 84, 84, 0.2) solid 1px;
+  border: $YB_GRAY_20 solid 1px;
 
   .universe-status {
     position: relative;
@@ -64,7 +66,7 @@
     height: 200px;
     margin: 0 20px 20px 0;
     padding: 60px 0 4px 0;
-    border: rgba(84, 84, 84, 0.1) solid 1px;
+    border: $YB_GRAY_20 solid 1px;
     background-color: rgba(84, 84, 84, 0.05);
     text-align: center;
   }

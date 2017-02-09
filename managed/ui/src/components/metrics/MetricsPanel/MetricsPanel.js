@@ -3,6 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 var Plotly = require('plotly.js/lib/core');
 import { removeNullProperties, isValidObject, isValidArray } from '../../../utils/ObjectUtils';
+import './MetricsPanel.scss';
 
 export default class MetricsPanel extends Component {
 
@@ -17,11 +18,18 @@ export default class MetricsPanel extends Component {
       removeNullProperties(metric.layout);
 
       // TODO: send this data from backend.
-      metric.layout["autosize"] = false;
-      metric.layout["width"] = 490;
-      metric.layout["height"] = 400;
-      metric.layout["showlegend"] = false;
-      metric.layout["yaxis"] = {rangemode: "nonnegative"}
+      metric.layout.autosize = false;
+      metric.layout.width = 400;
+      metric.layout.height = 360;
+      metric.layout.showlegend = false;
+      metric.layout.yaxis = {rangemode: "nonnegative"}
+      metric.layout.margin = {
+        l: 45,
+        r: 25,
+        b: 45,
+        t: 70,
+        pad: 4,
+      };
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
@@ -44,7 +52,7 @@ export default class MetricsPanel extends Component {
 
   render() {
     return (
-      <div id={this.props.metricKey} />
+      <div id={this.props.metricKey} className="metrics-panel" />
     );
   }
 }
