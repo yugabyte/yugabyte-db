@@ -11,6 +11,10 @@
   background: rgba(255, 255, 255, 0.55);
 }
 
+.region-map-legend-container h4 {
+  margin-top: 10px;
+}
+
 .region-map-legend-container span {
   margin-bottom: 4px;
 }
