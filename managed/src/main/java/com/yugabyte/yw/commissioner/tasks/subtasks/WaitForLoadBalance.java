@@ -45,12 +45,14 @@ public class WaitForLoadBalance extends AbstractTaskBase {
 
   @Override
   public void run() {
-    String hostPorts = Universe.get(taskParams().universeUUID).getMasterAddresses();
+    Universe universe = Universe.get(taskParams().universeUUID);
+    String hostPorts = universe.getMasterAddresses();
+    int numTservers = universe.getTServers().size();
     boolean ret = false;
     try {
-      LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
+      LOG.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
       YBClient client = ybService.getClient(hostPorts);
-      ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS);
+      ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS, numTservers);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
