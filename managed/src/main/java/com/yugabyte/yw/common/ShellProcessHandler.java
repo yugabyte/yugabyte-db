@@ -63,6 +63,7 @@ public class ShellProcessHandler {
             String line = null;
             while ((line = br.readLine()) != null) {
                 sb.append(line + System.lineSeparator());
+                LOG.info(line);
             }
         } finally {
             br.close();

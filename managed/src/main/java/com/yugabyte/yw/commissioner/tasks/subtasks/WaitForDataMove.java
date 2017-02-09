@@ -49,7 +49,7 @@ public class WaitForDataMove extends AbstractTaskBase {
     try {
       // Get the master addresses.
       String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
-      LOG.info("Running {} on masterAddress = {}", getName(), masterAddresses);
+      LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
       int numErrors = 0;
       double percent = 0;
@@ -71,6 +71,8 @@ public class WaitForDataMove extends AbstractTaskBase {
             errorMsg = getName() + ": hit too many errors during data move completion wait.";
             break;
           }
+          Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+          continue;
         }
 
         percent = response.getPercentCompleted();
