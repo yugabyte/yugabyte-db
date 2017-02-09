@@ -377,3 +377,67 @@ tserver_cache_reader_num_ops:
       alias:
         "log_reader_bytes_read": "Log Bytes Read"
         "log_cache_num_ops": "Num Ops"
+
+#Cassandra Metrics
+cql_server_rpc_per_second:
+  metric: "collectd_yb_cql_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rpc_CQLServerService_Any.num|yb_cqlserver_CQLServerService_ParsingErrors"
+  group_by: "type"
+  layout:
+    title: "CQL Numops/Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_CQLServerService_Any.num": "CQL NumOps/Sec"
+        "yb_cqlserver_CQLServerService_ParsingErrors": "Parsing Errors/Sec"
+
+cql_sql_latency:
+  metric: "collectd_yb_cql_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_CQLServerService_ProcessRequest.avg|rpc_SQLProcessor_ParseRequest.avg|rpc_SQLProcessor_AnalyseRequest.avg|rpc_SQLProcessor_ExecuteRequest.avg"
+  group_by: "type"
+  layout:
+    title: "CQL Latency Breakdown"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_CQLServerService_ProcessRequest.avg": "Process Request"
+        "rpc_SQLProcessor_ParseRequest.avg": "Parse SQL"
+        "rpc_SQLProcessor_AnalyseRequest.avg": "Analyze SQL"
+        "rpc_SQLProcessor_ExecuteRequest.avg": "Execute SQL"
+cql_yb_latency:
+  metric: "collectd_yb_cql_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_write.avg|rpc_read.avg|rpc_time_to_send.avg|rpc_incoming_queue_time.avg"
+  group_by: "type"
+  layout:
+    title: "YBClient Latency Breakdown"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_read.avg": "Read"
+        "rpc_write.avg": "Write"
+        "rpc_time_to_send.avg": "Send"
+        "rpc_incoming_queue_time.avg": "Incoming Queue"
+
+response_sizes:
+  metric: "collectd_yb_cql_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_SQLProcessor_ResponseSize.avg"
+  group_by: "type"
+  layout:
+    title: "Response Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_SQLProcessor_ResponseSize.avg": "Response Size"

@@ -16,7 +16,9 @@ const panelTypes = {
               "tserver_log_bytes_written", "tserver_log_bytes_read", "tserver_log_ops_second", "tserver_tc_malloc_stats",
               "tserver_log_stats", "tserver_cache_reader_num_ops"]},
   redis:   { title: "Redis",
-             metrics: ["redis_ops_latency", "redis_rpcs_per_sec"]}
+             metrics: ["redis_ops_latency", "redis_rpcs_per_sec"]},
+  cql:     { title: "Cassandra",
+             metrics: ["cql_server_rpc_per_second", "cql_sql_latency", "cql_yb_latency", "response_sizes"]}
 }
 
 export default class GraphPanel extends Component {
