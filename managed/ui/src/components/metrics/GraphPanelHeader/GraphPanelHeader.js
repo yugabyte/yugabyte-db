@@ -8,7 +8,7 @@ require('react-widgets/dist/css/react-widgets.css');
 var moment = require('moment');
 import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 var momentLocalizer = require('react-widgets/lib/localizers/moment');
-import './GraphPanelHeader.scss'
+import './GraphPanelHeader.scss';
 
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.
@@ -177,42 +177,40 @@ export default class GraphPanelHeader extends Component {
         <MenuItem onSelect={self.handleFilterChange} data-filter-type={filter.type}
           key={key} eventKey={idx} active={filter.label === self.state.filterLabel}>
           {filter.label}
-        </MenuItem>)
+        </MenuItem>
+      );
     });
 
     var universePicker = <span/>;
     if (origin === "customer") {
-      universePicker = <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}/>
+      universePicker = <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}/>;
     }
     return (
       <Grid className="x_panel graph-panel">
         <Row className="x_title">
-          <Col md={2}>
+          <Col md={12}>
+            <div className="pull-right">
+              <form name="GraphPanelFilterForm">
+                <div id="reportrange" className="pull-right">
+                  {datePicker}
+                  <Dropdown id="graph-filter-dropdown" pullRight={true} >
+                    <Dropdown.Toggle>
+                      <i className="fa fa-clock-o"></i>&nbsp;
+                      {this.state.filterLabel}
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu>
+                      {menuItems}
+                    </Dropdown.Menu>
+                  </Dropdown>
+                </div>
+              </form>
+            </div>
+
             <h2>Metrics</h2>
-          </Col>
-          <Col md={2}>
             {universePicker}
-          </Col>
-          <Col md={2}>
             <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
                         selectedUniverse={this.state.currentSelectedUniverse}
                         selectedNode={this.state.currentSelectedNode}/>
-          </Col>
-          <Col md={6}>
-            <form name="GraphPanelFilterForm">
-              <div id="reportrange" className="pull-right">
-                {datePicker}
-                <Dropdown id="graph-filter-dropdown" pullRight={true} >
-                  <Dropdown.Toggle>
-                    <i className="fa fa-clock-o"></i>&nbsp;
-                    {this.state.filterLabel}
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu>
-                    {menuItems}
-                  </Dropdown.Menu>
-                </Dropdown>
-              </div>
-            </form>
           </Col>
         </Row>
         <Row>
@@ -233,15 +231,17 @@ class UniversePicker extends Component {
     });
     var universeOptionArray = [<option key={-1} value="all">All</option>].concat(universeItems);
     return (
-      <FormControl componentClass="select" placeholder="select" onChange={universeItemChanged}>
-        {universeOptionArray}
-      </FormControl>
-    )
+      <div className="universe-picker">
+        Universe:
+        <FormControl componentClass="select" placeholder="select" onChange={universeItemChanged}>
+          {universeOptionArray}
+        </FormControl>
+      </div>
+    );
   }
 }
 
 class NodePicker extends Component {
-
   render() {
     const {selectedUniverse, nodeItemChanged, selectedNode} = this.props;
     var nodeItems =[];
@@ -254,9 +254,12 @@ class NodePicker extends Component {
     }
     var nodeOptionArray=[<option key={-1} value="all">All</option>].concat(nodeItems);
     return (
-      <FormControl componentClass="select" onChange={nodeItemChanged} value={selectedNode}>
-        {nodeOptionArray}
-      </FormControl>
-    )
+      <div className="node-picker">
+        Node:
+        <FormControl componentClass="select" onChange={nodeItemChanged} value={selectedNode}>
+          {nodeOptionArray}
+        </FormControl>
+      </div>
+    );
   }
 }

@@ -7,15 +7,15 @@ import './GraphPanel.scss';
 import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 
 const panelTypes = {
-  server:  { title: "YB Server Stats",
+  server:  { title: "System",
              metrics: ["memory_usage", "disk_iops", "cpu_usage", "network_bytes", "system_load_over_time",
                        "network_packets", "network_errors", "disk_bytes_per_second_per_node"]},
-  tserver: { title: "TServer Stats",
+  tserver: { title: "Internals",
              metrics: ["tserver_ops_latency", "tserver_rpcs_per_sec", "tserver_cache_ops_per_sec","tserver_threads",
               "tserver_change_config", "tserver_context_switches", "tserver_spinlock_server", "tserver_log_latency",
               "tserver_log_bytes_written", "tserver_log_bytes_read", "tserver_log_ops_second", "tserver_tc_malloc_stats",
               "tserver_log_stats", "tserver_cache_reader_num_ops"]},
-  redis:   { title: "Redis Stats",
+  redis:   { title: "Redis",
              metrics: ["redis_ops_latency", "redis_rpcs_per_sec"]}
 }
 
@@ -81,14 +81,12 @@ export default class GraphPanel extends Component {
        and group metrics by panel type and filter out anything that is empty.
        */
       var panelItem = panelTypes[type].metrics.map(function(metricKey) {
-        if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
-          return <Col lg={4} key={metricKey}>
-            <MetricsPanel metricKey={metricKey} metric={metrics[type][metricKey]}
-                          className={"metrics-panel-container"}/>
-             </Col>
-          } else {
-          return null
-          }
+        // if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
+        return (isValidObject(metrics[type][metricKey])) ?
+          <MetricsPanel metricKey={metricKey}
+                        metric={metrics[type][metricKey]}
+                        className={"metrics-panel-container"}/>
+          : null;
       });
       return (
         <Accordion>
