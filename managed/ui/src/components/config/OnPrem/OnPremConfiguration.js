@@ -37,7 +37,7 @@ export default class OnPremConfiguration extends Component {
         <Row className="form-action-button-container">
           <YBButton btnText={btnText} btnClass={"btn btn-default"} onClick={this.toggleJsonEntry}/>
           <YBButton btnText={"Additional Host Options"} onClick={this.toggleAdditionalOptionsModal}/>
-          <YBButton btnText={"Submit"} btnType={"submit"}/>
+          <YBButton btnClass="pull-right btn btn-default bg-orange" btnText={"Save"} btnType={"submit"}/>
         </Row>
       </div>
     )

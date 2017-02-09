@@ -6,74 +6,126 @@
 .on-prem-provider-container {
   position: relative;
   width: 100%;
-  margin-left: 6%;
+  height: 580px;
+
+  .cell-container {
+    position: relative;
+    height: 40px;
+    padding: 0 8px;
+  }
+
+  .cell-field {
+    position: absolute;
+    top: -5px;
+    left: 5px;
+    right: 65px;
+    float: left;
+  }
+
+  .form-group {
+    width: 100%;
+    display: inline-block;
+
+    label {
+      display: none;
+    }
+
+    .yb-field-group {
+      padding: 0 !important;
+    }
+  }
+
+  .host-list-container .form-group {
+    width: 40%;
+    margin-right: 4px;
+  }
+
+  .form-item-label {
+    margin: 0 !important;
+  }
+
+  .form-control {
+    display: inline;
+    float: left;
+    padding: 2px 5px;
+    height: 30px;
+  }
 }
 
-.on-prem-provider-container .form-group {
-  width: 70%;
-  display: inline;
-}
-
-.on-prem-provider-container .form-control {
+.host-data-cell .form-control {
   display: inline;
   float: left;
-  width: 65%;
-  margin: 0px 0px 10px 5%;
-  padding: 0;
-  height: 36px;
-}
-
-.host-data-cell .form-control{
-  display: inline;
-  float: left;
-  width: 34%;
-  margin: 0px 0px 10px 5%;
+  width: 100%;
+  margin: 0px 0px 10px 0;
   padding: 0;
   height: 36px;
 }
 
 .host-data-cell .delete-btn {
+  position: relative;
+  top: -26px;
   border-radius: 50%;
   background-color: red;
   color: white;
-  width: 26px;
-  height: 26px;
-  padding: 0 0 0 6px;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  border-radius: 12px !important;
+  padding: 0;
   border: none;
-  margin: 6px 16px;
+  margin-left: 10px;
+  text-align: center;
+
+  i {
+    margin: 0 !important;
+  }
 }
 
 .on-prem-provider-container .cell-button-group {
   display: inline;
   float: right;
-  width: 30%;
-  padding-left: 7px;
-  margin: 0px 0px;
-  height: 36px;
+  text-align: right;
+  margin: 0px;
+  margin-top: 8px;
+  height: 28px;
+  overflow: visible;
 }
 
-.on-prem-provider-container .form-action-button-container{
- position: relative;
-  margin-top: 10%;
+.form-action-button-container {
+  position: absolute;
+  left: -5px;
+  right: -5px;
+  bottom: -20px;
+  padding: 14px 12px;
+  border-top: 1px solid #ececea;
+  background-color: #f6f6f5;
+
+  .btn {
+    margin: 0 6px;
+  }
 }
+
 .region-list-container {
   position: relative;
   width: 25%;
   top: 30px;
+  padding-left: 20px;
 }
 
 .zone-list-container {
   position: absolute;
-  width:100%;
-  margin-left: 120%;
+  width: 100%;
+  margin-left: 100%;
   top: 0;
+  padding-left: 20px;
 }
 
 .host-list-container {
   position: absolute;
   width: 100%;
-  margin-left: 120%;
+  margin-left: 100%;
   top: 0;
+  padding-left: 20px;
 }
 
 .column-hidden {
@@ -101,6 +153,8 @@
 }
 
 .add-list-action {
+  padding-top: 4px;
+  font-size: 16px;
   color: $YB_ORANGE;
   float: right;
   cursor: pointer;
@@ -118,18 +172,23 @@
 }
 
 .config-action-btn {
-  width: 35px;
-  height: 100%;
   color: $YB_ORANGE;
-  padding: 0 6px;
+  padding: 4px 1px;
+  line-height: 12px;
+  text-align: center;
+  margin-left: 4px;
+
+  .fa {
+    margin: 0 !important;
+  }
 }
 
 .cell-item {
   font-weight: 600;
   font-size: 16px;
-  margin-left: 10%;
   text-align: center;
   width: 50%;
+  line-height: 38px;
   display: inline;
 }
 
@@ -152,7 +211,7 @@
 }
 
 .sample-config-item .json {
-  height: 60%;
+  height: 450px;
 }
 
 .add-host-item-label {
@@ -160,10 +219,8 @@
 }
 
 .add-host-item-label span {
-  color: $YB_ORANGE;
-}
-
-.add-host-ip-label {
-  margin-left: 25%;
+  display: inline-block;
+  width: 40%;
+  margin-right: 4px;
 }
 

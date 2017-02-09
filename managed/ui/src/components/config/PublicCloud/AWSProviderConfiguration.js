@@ -34,14 +34,14 @@ export default class AWSProviderConfiguration extends ProviderConfiguration {
             </div>
           </ListGroupItem>
           <ListGroupItem>
-            Enter the Role ARN generated in step 2:
+            Enter the Role ARN generated in step 2: &nbsp;
             <input type="text"/>
           </ListGroupItem>
         </ListGroup>
-        <Row>
+        <Row className="form-action-button-container">
           <Col lg={4} lgOffset={8}>
-            <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}/>
             <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}/>
+            <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}/>
           </Col>
         </Row>
       </div>

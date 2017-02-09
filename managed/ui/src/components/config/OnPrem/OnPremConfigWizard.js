@@ -19,13 +19,13 @@ class YBHostDataCell extends Component {
   render() {
     const {item, activeClass} = this.props;
     var dataCellItem =
-      <Row className="cell-container">
+      <div className="cell-container">
         <div className="host-data-cell">
           <Field name={`${item}.machine`} component={YBSelect}/>
           <Field name={`${item}.name`} component={YBInputField} placeHolder={"123.123.123.123"}/>
           <YBButton onClick={this.deleteDataCell} btnIcon={"fa fa-minus"} btnClass="btn btn-default delete-btn"/>
         </div>
-      </Row>
+      </div>
     return (
       <div className={activeClass} onClick={this.setActiveDataCell}>
         {dataCellItem}
@@ -39,10 +39,12 @@ class YBDataLabel extends Component {
     const {label, action} = this.props;
     return (
       <div className={"add-list-item-label"}>
-        <span>{label}</span>
-        <span className={"add-list-action"} onClick={action}>
-          Add {label}<i className="fa fa-plus"></i>
-        </span>
+        <h3>
+          {label}s
+          <span className={"add-list-action"} onClick={action}>
+            <i className="fa fa-plus"></i> Add {label}
+          </span>
+        </h3>
       </div>
     )
   }
@@ -76,31 +78,33 @@ class YBDataCell extends Component {
   }
   render() {
     const {item, fields, idx, editing, activeClass} = this.props;
-    var dataCellItem = <span/>;
+    var dataCellItem;
 
-      if (editing) {
-        dataCellItem =
-          <Row className="cell-container">
+    if (editing) {
+      dataCellItem =
+        <div className="cell-container">
+          <div className="cell-field">
             <Field name={`${item}.name`} component={YBInputField}/>
-            <div className="cell-button-group">
-              <YBButton onClick={this.addDataCell} btnIcon="fa fa-check fa-fw"
-                        btnClass="btn btn-default config-action-btn"/>
-              <YBButton btnIcon="fa fa-close fa-fw" onClick={this.deleteDataCell}
-                        btnClass="btn btn-default config-action-btn"/>
-            </div>
-          </Row>
-      } else {
-        dataCellItem =
-          <Row className="cell-container">
-            <div className="cell-item">{fields.get(idx).name}</div>
-            <div className="cell-button-group">
-              <YBButton onClick={this.editDataCell} btnIcon="fa fa-pencil fa-fw"
-                        btnClass="btn btn-default config-action-btn"/>
-              <YBButton onClick={this.deleteDataCell} btnIcon="fa fa-close fa-fw"
-                        btnClass="btn btn-default config-action-btn"/>
-            </div>
-          </Row>
-      }
+          </div>
+          <div className="cell-button-group">
+            <YBButton onClick={this.addDataCell} btnIcon="fa fa-check fa-fw"
+                      btnClass="btn btn-default config-action-btn"/>
+            <YBButton btnIcon="fa fa-close fa-fw" onClick={this.deleteDataCell}
+                      btnClass="btn btn-default config-action-btn"/>
+          </div>
+        </div>;
+    } else {
+      dataCellItem =
+        <div className="cell-container">
+          <div className="cell-item">{fields.get(idx).name}&nbsp;</div>
+          <div className="cell-button-group">
+            <YBButton onClick={this.editDataCell} btnIcon="fa fa-pencil fa-fw"
+                      btnClass="btn btn-default config-action-btn"/>
+            <YBButton onClick={this.deleteDataCell} btnIcon="fa fa-close fa-fw"
+                      btnClass="btn btn-default config-action-btn"/>
+          </div>
+        </div>;
+    }
 
     return (
       <div className={activeClass} onClick={this.setActiveDataCell}>
@@ -153,7 +157,7 @@ class YBHostDataList extends Component {
       });
     }
     return (
-      <div className={`zone-list-container ${displayClass}`}>
+      <div className={`host-list-container ${displayClass}`}>
         <YBDataLabel label={"Host"} action={this.addHostData}/>
         <div className={"add-host-item-label"}>
           <span>Machine Type</span>

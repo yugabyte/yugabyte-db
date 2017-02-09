@@ -46,7 +46,13 @@ export default class OnPremConfigJSON extends Component {
     }
     return (
       <Row className="form-data-container">
-        <Col lg={5}  id="sample-panel-item">
+        <Col lg={5} className="sample-config-item">
+          <div className="color-light-grey">
+            <ConfigFormTitle text={jsonPretty} titleText={"Sample DataCenter Config"} copyTextToForm={copyTextToForm}/>
+          </div>
+          <Highlight className='json'>{jsonPretty}</Highlight>
+        </Col>
+        <Col lg={5} id="sample-panel-item">
           <YBPanelItem name={configTitle} hideToolBox={true}>
             <AceEditor
               theme="github"
@@ -55,12 +61,6 @@ export default class OnPremConfigJSON extends Component {
               value={self.state.configJsonVal}
             />
           </YBPanelItem>
-        </Col>
-        <Col lg={4} className="sample-config-item">
-          <div className="color-light-grey">
-            <ConfigFormTitle text={jsonPretty} titleText={"Sample DataCenter Config"} copyTextToForm={copyTextToForm}/>
-          </div>
-          <Highlight className='json'>{jsonPretty}</Highlight>
         </Col>
       </Row>
     )

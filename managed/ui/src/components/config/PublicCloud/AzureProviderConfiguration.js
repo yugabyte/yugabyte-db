@@ -10,10 +10,8 @@ class FormDataCell extends Component {
   render() {
     const {cellName, cellLabel} = this.props;
     return (
-      <Col lg={6}>
-        <Field name={cellName} label={cellLabel} component={YBInputField} className="data-cell-input"/>
-      </Col>
-    )
+      <Field name={cellName} label={cellLabel} component={YBInputField} className="data-cell-input"/>
+    );
   }
 }
 
@@ -41,18 +39,20 @@ export default class AzureProviderConfiguration extends ProviderConfiguration {
             Enter the details below:
             <form name="AzureConfigForm">
               <Row>
-                 <FormDataCell cellName={"computeClientId"} cellLabel={"Compute Client ID:"}/>
-                 <FormDataCell cellName={"storageAccessKey"} cellLabel={"Storage Access Key:"}/>
-              </Row>
-              <Row>
-                <FormDataCell cellName={"computeClientSecret"} cellLabel={"Compute Client Secret:"}/>
-                <FormDataCell cellName={"storageAccountName"} cellLabel={"Storage Account Name:"}/>
-              </Row>
-              <Row>
-                <FormDataCell cellName={"computeTenantId"} cellLabel={"Compute Tenant ID:"}/>
-              </Row>
-              <Row>
-                <FormDataCell cellName={"computeSubscriptionId"} cellLabel={"Compute Subscription ID:"}/>
+                <Col lg={6}>
+                  <div className="form-right-aligned-labels">
+                    <FormDataCell cellName={"computeClientId"} cellLabel={"Compute Client ID"}/>
+                    <FormDataCell cellName={"computeClientSecret"} cellLabel={"Compute Client Secret"}/>
+                    <FormDataCell cellName={"computeTenantId"} cellLabel={"Compute Tenant ID"}/>
+                    <FormDataCell cellName={"computeSubscriptionId"} cellLabel={"Compute Subscription ID"}/>
+                  </div>
+                </Col>
+                <Col lg={6}>
+                  <div className="form-right-aligned-labels">
+                    <FormDataCell cellName={"storageAccessKey"} cellLabel={"Storage Access Key"}/>
+                    <FormDataCell cellName={"storageAccountName"} cellLabel={"Storage Account Name"}/>
+                  </div>
+                </Col>
               </Row>
             </form>
           </ListGroupItem>

@@ -25,6 +25,7 @@ class DataCenterConfiguration extends Component {
   render() {
     return (
       <div>
+        <h2>Configuration</h2>
         <YBTabsPanel activeTab={"gcp"} id={"universe-tab-panel"}>
           <Tab eventKey={"aws"} title="AWS" key="aws-tab">
             <AWSProviderConfigurationContainer />
