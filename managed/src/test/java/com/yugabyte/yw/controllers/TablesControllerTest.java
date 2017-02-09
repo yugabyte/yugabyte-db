@@ -106,7 +106,7 @@ public class TablesControllerTest extends FakeDBApplication {
     TableInfo ti2 = TableInfo.newBuilder()
                              .setName("Table2")
                              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
-                             .setTableType(TableType.YSQL_TABLE_TYPE)
+                             .setTableType(TableType.YQL_TABLE_TYPE)
                              .build();
     tableInfoList.add(ti1);
     tableInfoList.add(ti2);
@@ -137,7 +137,7 @@ public class TablesControllerTest extends FakeDBApplication {
       if (tableName.equals("Table1")) {
         assertEquals(TableType.REDIS_TABLE_TYPE.toString(), tableType);
       } else if (tableName.equals("Table2")) {
-        assertEquals(TableType.YSQL_TABLE_TYPE.toString(), tableType);
+        assertEquals(TableType.YQL_TABLE_TYPE.toString(), tableType);
       }
     }
     LOG.info("Processed " + numTables + " tables");
@@ -216,7 +216,7 @@ public class TablesControllerTest extends FakeDBApplication {
           "\"universeUUID\":\"" + universe.universeUUID.toString() + "\"," +
           "\"expectedUniverseVersion\":-1," +
           "\"tableUUID\":null," +
-          "\"tableType\":\"YSQL_TABLE_TYPE\"," +
+          "\"tableType\":\"YQL_TABLE_TYPE\"," +
           "\"tableDetails\":{" +
             "\"tableName\":\"test_table\"," +
             "\"columns\":[" +
@@ -263,7 +263,7 @@ public class TablesControllerTest extends FakeDBApplication {
     Schema schema = new Schema(columnSchemas);
     when(mockSchemaResponse.getSchema()).thenReturn(schema);
     when(mockSchemaResponse.getTableName()).thenReturn("mock_table");
-    when(mockSchemaResponse.getTableType()).thenReturn(TableType.YSQL_TABLE_TYPE);
+    when(mockSchemaResponse.getTableType()).thenReturn(TableType.YQL_TABLE_TYPE);
     when(mockSchemaResponse.getTableId()).thenReturn(tableUUID.toString().replace("-", ""));
 
     // Creating fake authentication
@@ -277,7 +277,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(tableUUID.toString(), json.get("tableUUID").asText());
-    assertEquals("YSQL_TABLE_TYPE", json.get("tableType").asText());
+    assertEquals("YQL_TABLE_TYPE", json.get("tableType").asText());
     assertEquals("mock_table", json.at("/tableDetails/tableName").asText());
     assertEquals("mock_column", json.at("/tableDetails/columns/0/name").asText());
   }

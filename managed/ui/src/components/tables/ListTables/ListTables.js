@@ -59,7 +59,7 @@ export default class ListTables extends Component {
     var self = this;
     const {universe: {currentUniverse}} = this.props;
     var getTableIcon = function(tableType) {
-      if (tableType === "YSQL_TABLE_TYPE") {
+      if (tableType === "YQL_TABLE_TYPE") {
         return <Image src={cassandraLogo} className="table-type-logo"/>;
       } else {
           return <Image src={redisLogo} className="table-type-logo"/>;

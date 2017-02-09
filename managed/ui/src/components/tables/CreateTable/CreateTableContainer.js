@@ -28,7 +28,7 @@ const mapDispatchToProps = (dispatch) => {
       payload.cloud = currentUniverse.universeDetails.cloud;
       payload.universeUUID = currentUniverse.universeUUID;
       payload.tableName = values.tableName;
-      payload.tableType = "YSQL_TABLE_TYPE";
+      payload.tableType = "YQL_TABLE_TYPE";
       payload.tableDetails = {
         "tableName": values.tableName,
         "columns": tableDetails
