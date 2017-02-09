@@ -20,7 +20,7 @@ export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
 export function fetchUniverseTables(universeUUID) {
   var customerId = localStorage.getItem("customer_id");
   const request =
-    axios.get(`${ROOT_URL}/${customerId}/universes/${universeUUID}/tables`);
+    axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
   return {
     type: FETCH_TABLES_LIST,
     payload: request
