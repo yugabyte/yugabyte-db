@@ -25,8 +25,8 @@ export default class UniverseStatus extends Component {
           statusText = 'Pending';
         }
       } else {
-        statusIcon  = <i className="fa fa-times-circle" />;
-        statusClassName = 'error';
+        statusIcon  = <i className="fa fa-warning" />;
+        statusClassName = 'bad';
         if (showLabelText) {
           statusText = 'Error';
         }
