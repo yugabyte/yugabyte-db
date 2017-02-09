@@ -172,6 +172,7 @@ set(UTIL_SRCS
   string_trim.cc
   trilean.cc
   pending_op_counter.cc
+  varint.cc
   )
 
 if(NOT APPLE)
@@ -333,6 +334,7 @@ ADD_YB_TEST(string_packer-test)
 ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(string_trim-test)
 ADD_YB_TEST(shared_lock_manager-test)
+ADD_YB_TEST(varint-test)
 
 #######################################
 # jsonwriter_test_proto
