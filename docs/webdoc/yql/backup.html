@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"; charset=UTF-8>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="YQL - The New Generation Of Database">
+  <meta name="keywords" content="yql, yugabyte, cassandra, redis, distributed storage, key value store, scalability, bigtable, dynamo" />
+  <meta name="robots" content="index,follow">
+  <meta name="language" content="en">  
+
+  <title>YugaDoc</title>
+  <link rel="shortcut icon" type="image/png" href="../style/logo/yugabyte-logo-graphic.png">
+
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../style/style.css">
+  <link rel="stylesheet" href="../style/sphinx.css">
+</head>
+
+<body>
+  <!-- breadcrumbs -->
+  <div class="topnav">
+    <!-- navbar -->
+    <nav class="navbar navbar-default navbar-static-top" role="navigation">
+      <div class="container">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="http://www.yugabyte.com/">
+            <img src="../style/logo/yugabyte-logo-graphic.png" alt="YugaByte Logo" style="width:100px;height:auto;">
+          </a>
+        </div><!-- /.navbar-header -->
+        <h1 style="color:#ffffff">YugaByte Documents</h1>
+      </div>
+    </nav><!-- /.navbar -->
+  </div><!-- /.topnav -->
+
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-2">
+        <div class="doc-navigation">
+          <div class="doc-menu" role="navigation">
+            <div class="navbar-collapse collapse sidebar-navbar-collapse">
+              <ul class="current">
+                <li class="toctree-l1"><a class="reference internal" href="../index.html">Introduction</a></li>
+                <li class="toctree-l1"><a class="reference internal" href="../architecture/index.html">Architecture</a></li>
+                <li class="toctree-l1 current"><a class="current reference internal" href="../yql/index.html">YQL</a>
+                  <ul>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/definitions.html">Definitions</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/types.html">Data Types</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/ddl.html">Data Definition</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/dml.html">Data Manipulation</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/indexes.html">Secondary Indexes</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/mvs.html">Materialized Views</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/security.html">Security</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/functions.html">Functions</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/json.html">JSON Support</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/triggers.html">Triggers</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/appendices.html">Appendices</a></li>
+                    <li class="toctree-l2"><a class="reference internal" href="../yql/changes.html">Changes</a></li>
+                  </ul>
+                </li>
+                <li class="toctree-l1"><a class="reference internal" href="../redis/index.html">Redis</a></li>
+                <li class="toctree-l1"><a class="reference internal" href="../design/index.html">Design</a></li>
+                <li class="toctree-l1"><a class="reference internal" href="../implementation/index.html">Implementation</a></li>
+                <li class="toctree-l1"><a class="reference internal" href="../development/index.html">Development Status</a></li>
+              </ul>
+            </div><!--/.nav-collapse -->
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-8">
+        <div class="content doc-content">
+          <div class="container">
+            <div class="section" id="the-language">
+              <h1>YugaByte Query Language (YQL)</h1>
+              <p></p>
+              <p>CQL offers a model close to SQL in the sense that data is put in <em>tables</em> containing <em>rows</em> of <em>columns</em>. For
+                that reason, when used in this document, these terms (tables, rows and columns) have the same definition than they have
+                in SQL. But please note that as such, they do <strong>not</strong> refer to the concept of rows and columns found in the deprecated
+                thrift API (and earlier version 1 and 2 of CQL).</p>
+              <div class="toctree-wrapper compound">
+                <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html">Definitions</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html#conventions">Conventions</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html#identifiers">Identifiers and keywords</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html#constants">Constants</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html#terms">Terms</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html#comments">Comments</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html#statements">Statements</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/definitions.html#prepared-statements">Prepared Statements</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html">Data Types</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#native-types">Native Types</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#working-with-timestamps">Working with timestamps</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#working-with-dates">Working with dates</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#working-with-times">Working with times</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#collections">Collections</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#user-defined-types">User-Defined Types</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#tuples">Tuples</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/types.html#custom-types">Custom Types</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html">Data Definition</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#common-definitions">Common definitions</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#create-keyspace">CREATE KEYSPACE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#use">USE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#alter-keyspace">ALTER KEYSPACE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#drop-keyspace">DROP KEYSPACE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#create-table">CREATE TABLE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#alter-table">ALTER TABLE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#drop-table">DROP TABLE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/ddl.html#truncate">TRUNCATE</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/dml.html">Data Manipulation</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/dml.html#select">SELECT</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/dml.html#insert">INSERT</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/dml.html#update">UPDATE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/dml.html#delete">DELETE</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/dml.html#batch">BATCH</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/indexes.html">Secondary Indexes</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/indexes.html#create-index">CREATE INDEX</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/indexes.html#drop-index">DROP INDEX</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/mvs.html">Materialized Views</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/mvs.html#create-materialized-view">CREATE MATERIALIZED VIEW</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/mvs.html#alter-materialized-view">ALTER MATERIALIZED VIEW</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/mvs.html#drop-materialized-view">DROP MATERIALIZED VIEW</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/security.html">Security</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/security.html#database-roles">Database Roles</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/security.html#users">Users</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/security.html#data-control">Data Control</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/functions.html">Functions</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/functions.html#scalar-functions">Scalar functions</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/functions.html#aggregate-functions">Aggregate functions</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/json.html">JSON Support</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/json.html#select-json">SELECT JSON</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/json.html#insert-json">INSERT JSON</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/json.html#json-encoding-of-cassandra-data-types">JSON Encoding of Cassandra Data Types</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/json.html#the-fromjson-function">The fromJson() Function</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/json.html#the-tojson-function">The toJson() Function</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/triggers.html">Triggers</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/triggers.html#create-trigger">CREATE TRIGGER</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/triggers.html#drop-trigger">DROP TRIGGER</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/appendices.html">Appendices</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/appendices.html#appendix-a-cql-keywords">Appendix A: CQL Keywords</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/appendices.html#appendix-b-cql-reserved-types">Appendix B: CQL Reserved Types</a></li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html">Changes</a><ul>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id1">3.4.3</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id2">3.4.2</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id3">3.4.1</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id4">3.4.0</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id5">3.3.1</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id6">3.3.0</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id7">3.2.0</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id8">3.1.7</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id9">3.1.6</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id10">3.1.5</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id11">3.1.4</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id12">3.1.3</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id13">3.1.2</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id14">3.1.1</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id15">3.1.0</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id16">3.0.5</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id17">3.0.4</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id18">3.0.3</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id19">3.0.2</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#id20">3.0.1</a></li>
+                      <li class="toctree-l2"><a class="reference internal" href="http://cassandra.apache.org/doc/latest/cql/changes.html#versioning">Versioning</a></li>
+                    </ul>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div class="doc-prev-next-links" role="navigation" aria-label="footer navigation">
+              <a href="../architecture/index.html" class="btn btn-default" role="button" title="Architecture" accesskey="p"><span class="glyphicon glyphicon-circle-arrow-left" aria-hidden="true"></span> Previous</a>
+              <a href="../redis/index.html" class="btn btn-default pull-right " role="button" title="Redis" accesskey="n">Next <span class="glyphicon glyphicon-circle-arrow-right" aria-hidden="true"></span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

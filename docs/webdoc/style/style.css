@@ -1,0 +1,275 @@
+/*
+ * Main website stylesheet
+ */
+/* Navigation bars. */
+.topnav {
+  background-color: #2f3030; }
+  .topnav .breadcrumb {
+    background-color: #2f3030;
+    padding: 8px 0px;
+    margin: auto;
+    color: #f5f5f5; }
+    .topnav .breadcrumb .asf-logo {
+      margin-right: 4px;
+      margin-top: -4px;
+      margin-bottom: -8px;
+      height: 30px; }
+  .topnav a {
+    color: #f5f5f5; }
+    .topnav a:hover, .topnav a:focus {
+      color: #f5d35f;
+      text-decoration: none; }
+  .topnav .navbar {
+    background-color: #000000;
+    min-height: 120px;
+    z-index: 0;
+    margin-bottom: 0px; }
+    .topnav .navbar .navbar-brand {
+      min-height: 120px; }
+      .topnav .navbar .navbar-brand img {
+        float: left; }
+    .topnav .navbar .nav {
+      padding: 30px 0 0 0;
+      color: #fff; }
+      .topnav .navbar .nav li a {
+        text-align: center;
+        font-size: 24px;
+        padding: 5px 0 5px 5px;
+        margin: 0 10px;
+        color: #f5f5f5; }
+        .topnav .navbar .nav li a:hover {
+          color: #f5d35f;
+          background: none; }
+    .topnav .navbar .navbar-header {
+      height: 120px; }
+    .topnav .navbar .navbar-toggle {
+      position: relative;
+      top: 50%;
+      transform: translateY(-50%);
+      margin-top: 0; }
+      .topnav .navbar .navbar-toggle .icon-bar {
+        background-color: #FFF; }
+      .topnav .navbar .navbar-toggle:focus .icon-bar {
+        background-color: #000; }
+    .topnav .navbar .navbar-collapse {
+      border-color: transparent;
+      box-shadow: none; }
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .navbar .nav li a {
+    padding: 8px 0 15px 8px; } }
+/* Jumbotron part. */
+.jumbotron {
+  background: none;
+  max-width: 748px;
+  margin: 30px auto 40px auto;
+  padding: 0px; }
+  .jumbotron h1 {
+    font-size: 40px;
+    font-family: HelveticaNeue-Light,Helvetica,Arial,sans-serif;
+    line-height: 1.2;
+    color: #f5f5f5;
+    text-align: center;
+    padding: 0;
+    margin-bottom: 28px; }
+  .jumbotron .lead {
+    line-height: 1.25;
+    color: white;
+    font-size: 15px;
+    font-weight: 100;
+    letter-spacing: 0.8px;
+    margin-bottom: 48px; }
+  .jumbotron p {
+    text-align: center;
+    margin-bottom: 0px; }
+  .jumbotron .btn.download {
+    border-radius: 8px;
+    font-size: 16px;
+    padding: 11px 28px;
+    margin-bottom: 4px;
+    color: #557826; }
+    .jumbotron .btn.download:hover, .jumbotron .btn.download:focus {
+      color: #f5d35f; }
+  .jumbotron a.changelog {
+    font-size: 15px;
+    display: inline-block;
+    color: #557826; }
+    .jumbotron a.changelog:hover, .jumbotron a.changelog:focus {
+      color: #f5d35f;
+      text-decoration: none; }
+
+/* Features list. */
+.feature-list-group {
+  padding-top: 20px;
+  padding-bottom: 61px; }
+  .feature-list-group .header {
+    text-align: center; }
+    .feature-list-group .header h3 {
+      font-size: 30px;
+      font-weight: 200;
+      text-align: center;
+      margin-bottom: 26px; }
+    .feature-list-group .header .lead {
+      color: #777777;
+      font-size: 14px;
+      font-weight: normal;
+      line-height: 1.42857143;
+      margin-bottom: 55px; }
+  .feature-list-group .feature-list {
+    margin-bottom: 25px; }
+  .feature-list-group .feature-item h4 {
+    color: #90bd50;
+    font-family: HelveticaNeue-Medium,Helvetica,Arial,sans-serif;
+    font-size: 16px;
+    text-transform: uppercase;
+    margin-bottom: 16px; }
+  .feature-list-group .feature-item p {
+    font-family: HelveticaNeue-Light,Helvetica,Arial,sans-serif;
+    font-size: 15px; }
+
+@media (max-width: 767px) {
+  .jumbotron > .lead {
+    font-weight: 200; }
+
+  .feature-list-group {
+    padding: 36px 9px 6px 9px; }
+
+  .feature-list {
+    margin-bottom: 0px; }
+
+  .feature-item {
+    margin-bottom: 48px; } }
+footer {
+  margin-top: 38px;
+  padding-top: 10px;
+  padding-bottom: 20px; }
+
+.social-blk {
+  float: right; }
+
+.nopadding {
+  padding: 0 !important;
+  margin: 0 !important; }
+
+.splash {
+  display: block; }
+
+.author_contact {
+  display: inline-block; }
+
+.author_gravatar {
+  display: inline;
+  padding: 0 20px 20px 5px; }
+
+.share {
+  display: block; }
+
+@media (max-width: 767px) {
+  .social-blk {
+    float: left;
+    width: 100%;
+    margin-bottom: 32px; } }
+pre {
+  overflow: auto;
+  overflow-y: hidden;
+  /* fixes display issues on Chrome browsers */ }
+  pre code {
+    overflow: auto;
+    overflow-y: hidden;
+    /* fixes display issues on Chrome browsers */
+    white-space: nowrap; }
+
+td.linenos pre {
+  padding: 5px 0px;
+  border: 0;
+  background-color: transparent;
+  color: #aaa; }
+
+table.highlighttable {
+  margin-left: 0.5em; }
+
+table.highlighttable td {
+  padding: 0 0.5em 0 0.5em; }
+
+div.code-block-caption {
+  padding: 2px 5px;
+  font-size: small; }
+
+div.code-block-caption code {
+  background-color: transparent; }
+
+div.code-block-caption + div > div.highlight > pre {
+  margin-top: 0; }
+
+div.code-block-caption span.caption-number {
+  padding: 0.1em 0.3em;
+  font-style: italic; }
+
+div.literal-block-wrapper {
+  padding: 1em 1em 0; }
+
+div.literal-block-wrapper div.highlight {
+  margin: 0; }
+
+code.descname {
+  background-color: transparent;
+  font-weight: bold;
+  font-size: 1.2em; }
+
+code.descclassname {
+  background-color: transparent; }
+
+code.xref, a code {
+  background-color: transparent;
+  font-weight: bold; }
+
+h1 code, h2 code, h3 code, h4 code, h5 code, h6 code {
+  background-color: transparent; }
+
+.viewcode-link {
+  float: right; }
+
+.viewcode-back {
+  float: right;
+  font-family: sans-serif; }
+
+div.viewcode-block:target {
+  margin: -1px -10px;
+  padding: 0 10px; }
+
+img {
+  max-width: 100%; }
+
+body {
+  background-color: #fff; }
+
+.content .container {
+  margin-top: 20px; }
+
+#wipwarning {
+  font-size: 14px;
+  border: 1px solid #ebccd1;
+  border-radius: 4px;
+  color: #a94442;
+  background-color: #f2dede;
+  padding: 10px 30px;
+  margin: 30px 20px; }
+
+.biglink {
+  font-size: 120%; }
+
+.linkdescr {
+  font-size: 90%; }
+
+.doc-landing-table {
+  margin: 10px 30px 20px 30px;
+  width: 90%; }
+  .doc-landing-table td {
+    padding-top: 10px; }
+  .doc-landing-table .right-column {
+    padding-left: 100px; }
+
+.doc-landing-metainfos {
+  margin: 10px 30px 0px 30px; }
+  .doc-landing-metainfos p {
+    margin-bottom: 10px; }
