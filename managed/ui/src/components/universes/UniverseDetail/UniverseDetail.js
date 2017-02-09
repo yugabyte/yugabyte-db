@@ -68,11 +68,11 @@ export default class UniverseDetail extends Component {
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         <Row>
           <Col lg={4}>
-            <UniverseInfoPanel universeInfo={currentUniverse} />
+            <UniverseInfoPanel universeInfo={currentUniverse}
+                               customerId={localStorage.getItem("customer_id")} />
           </Col>
           <Col lg={8}>
-            <ConnectStringPanel universeId={currentUniverse.universeUUID}
-                                customerId={localStorage.getItem("customer_id")}
+            <ConnectStringPanel customerId={localStorage.getItem("customer_id")}
                                 universeInfo={currentUniverse} />
           </Col>
         </Row>
