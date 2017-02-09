@@ -114,7 +114,7 @@ public class CreateTable extends AbstractTaskBase {
   @Override
   public void run() {
     try {
-      if (taskParams().tableType == TableType.YSQL_TABLE_TYPE) {
+      if (taskParams().tableType == TableType.YQL_TABLE_TYPE) {
         createCassandraTable();
       } else {
         createRedisTable();
