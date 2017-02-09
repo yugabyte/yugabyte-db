@@ -21,11 +21,11 @@
       text-decoration: none; }
   .topnav .navbar {
     background-color: #000000;
-    min-height: 120px;
+    min-height: 70px;
     z-index: 0;
     margin-bottom: 0px; }
     .topnav .navbar .navbar-brand {
-      min-height: 120px; }
+      min-height: 70px; }
       .topnav .navbar .navbar-brand img {
         float: left; }
     .topnav .navbar .nav {
@@ -41,7 +41,7 @@
           color: #f5d35f;
           background: none; }
     .topnav .navbar .navbar-header {
-      height: 120px; }
+      height: 70px; }
     .topnav .navbar .navbar-toggle {
       position: relative;
       top: 50%;
