@@ -5,7 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 
@@ -16,6 +16,7 @@ import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
+import play.test.WithApplication;
 import play.test.Helpers;
 
 import java.util.Calendar;
@@ -35,7 +36,7 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-public class CustomerTaskControllerTest extends FakeDBApplication {
+public class CustomerTaskControllerTest extends WithApplication {
   private Customer customer;
   private Universe universe;
   private Commissioner mockCommissioner;
@@ -51,7 +52,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    customer = Customer.create("Valid Customer", "foo@bar.com", "password");
+    customer = ModelFactory.testCustomer();
     universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
   }
 

@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 
+import com.yugabyte.yw.models.Customer;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
@@ -310,6 +311,8 @@ public class AWSInitializer extends Controller {
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetAllInstanceTypeDetails();
 
+    UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
+
     for (Map<String, String> productAttrs : ec2AvailableInstances) {
       String providerCode = "aws";
 
@@ -342,7 +345,7 @@ public class AWSInitializer extends Controller {
       VolumeType volumeType = VolumeType.valueOf(parts[3]);
 
       // Fill up all the per-region details.
-      UUID awsUUID = Provider.get("Amazon").uuid;
+      UUID awsUUID = Provider.get(customerUUID, "Amazon").uuid;
       String regionName = productAttrs.get("location");
       Region region =
           Region.find.where().eq("provider_uuid", awsUUID).eq("name", regionName).findUnique();

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -19,7 +20,8 @@ public class AccessKeyTest  extends FakeDBApplication {
 
     @Before
     public void setUp() {
-        defaultProvider = Provider.create("Provider-1", "Sample Provider");
+        Customer customer = ModelFactory.testCustomer();
+        defaultProvider = ModelFactory.awsProvider(customer);
     }
 
     @Test

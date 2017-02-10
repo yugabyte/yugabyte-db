@@ -10,19 +10,20 @@ import static org.junit.Assert.assertThat;
 
 import java.util.List;
 
+import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Provider;
 
 
 public class InstanceTypeTest extends FakeDBApplication {
   private Provider defaultProvider;
+  private Customer defaultCustomer;
   @Before
   public void setUp() {
-    defaultProvider = Provider.create("aws", "Amazon");
+    defaultCustomer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
   }
 
   @Test
@@ -36,7 +37,7 @@ public class InstanceTypeTest extends FakeDBApplication {
 
   @Test
   public void testFindByProvider() {
-    Provider newProvider = Provider.create("gce", "Google");
+    Provider newProvider = ModelFactory.gceProvider(defaultCustomer);
     InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, 1, 100,
                                           InstanceType.VolumeType.EBS, null);
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, 1, 100,

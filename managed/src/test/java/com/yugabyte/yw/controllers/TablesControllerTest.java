@@ -5,7 +5,6 @@ package com.yugabyte.yw.controllers;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -16,12 +15,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -53,7 +50,6 @@ import org.yb.client.shaded.com.google.protobuf.ByteString;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -63,8 +59,9 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
+import play.test.WithApplication;
 
-public class TablesControllerTest extends FakeDBApplication {
+public class TablesControllerTest extends WithApplication {
   public static final Logger LOG = LoggerFactory.getLogger(TablesControllerTest.class);
   private YBClientService mockService;
   private TablesController tablesController;

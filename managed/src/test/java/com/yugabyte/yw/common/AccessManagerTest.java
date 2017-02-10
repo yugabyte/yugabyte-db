@@ -61,7 +61,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
     @Before
     public void beforeTest() {
-        defaultProvider = Provider.create("aws", "Amazon");
+        defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
         when(appConfig.getString("yb.keys.basePath")).thenReturn(TMP_KEYS_PATH);
         ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
         response.message = "{\"foo\": \"bar\"}";

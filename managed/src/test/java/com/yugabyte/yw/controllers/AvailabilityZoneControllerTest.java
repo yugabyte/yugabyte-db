@@ -18,6 +18,8 @@ import static play.test.Helpers.contentAsString;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Customer;
 import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Before;
@@ -34,12 +36,14 @@ import play.libs.Json;
 import play.mvc.Result;
 
 public class AvailabilityZoneControllerTest extends FakeDBApplication {
+  Customer defaultCustomer;
   Provider defaultProvider;
   Region defaultRegion;
 
   @Before
   public void setUp() {
-    defaultProvider = Provider.create("aws", "Amazon");
+    defaultCustomer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider,
                                   "default-region",
                                   "Default PlacementRegion",

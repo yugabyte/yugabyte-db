@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -28,8 +28,8 @@ public class UniverseTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    defaultCustomer = Customer.create("Test", "test@test.com", "foo");
-    defaultProvider = Provider.create("aws", "Amazon");
+    defaultCustomer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
   }
 
   @Test

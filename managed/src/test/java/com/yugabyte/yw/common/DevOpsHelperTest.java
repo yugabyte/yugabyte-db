@@ -43,10 +43,13 @@ public class DevOpsHelperTest extends FakeDBApplication {
   private Region defaultRegion;
   private Provider defaultProvider;
   private String baseCommand;
+  private Customer defaultCustomer;
+
 
   @Before
   public void setUp() {
-    defaultProvider = Provider.create(Common.CloudType.aws.toString(), "Amazon");
+    defaultCustomer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     defaultAZ = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
@@ -376,7 +379,6 @@ public class DevOpsHelperTest extends FakeDBApplication {
     params.azUuid = defaultAZ.uuid;
     params.nodeName = "foo";
     String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
-    System.out.println(command);
     String expectedCommand = "/my/devops/bin/ybcloud.sh " + params.cloud +
             " --zone " + defaultAZ.code +  " --region " + defaultRegion.code +
             " --network yugaware_bridge" +
