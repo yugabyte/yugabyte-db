@@ -27,8 +27,8 @@ public class TokenAuthenticator extends Action.Simple {
         return delegate.call(ctx);
       }
     }
-    // TODO: we need to handle the API route with a JSON response.
-    return CompletableFuture.completedFuture(Results.redirect("/login"));
+    // Send Forbidden Response if Authentication Fails
+    return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate Customer"));
   }
 
   private String getTokenFromHeader(Http.Context ctx) {
