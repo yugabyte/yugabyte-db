@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
@@ -18,6 +19,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
+import play.test.WithApplication;
 
 import java.util.Map;
 import java.util.UUID;
@@ -32,7 +34,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
-public class AccessKeyControllerTest extends FakeDBApplication {
+public class AccessKeyControllerTest extends WithApplication {
     Provider defaultProvider;
     Customer defaultCustomer;
     AccessManager mockAccessManager;
@@ -47,11 +49,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     }
 
     @Before
-    public void setUp() {
-        defaultCustomer = Customer.create("Test Customer", "foo@bar.com", "password");
-        defaultProvider = Provider.create("provider-1", "Sample Provider");
+    public void before() {
+        defaultCustomer = ModelFactory.testCustomer();
+        defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     }
-
     @Test
     public void testGetAccessKeyWithInvalidProviderUUID() {
         UUID invalidProviderUUID = UUID.randomUUID();

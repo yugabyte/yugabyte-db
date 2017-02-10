@@ -1,6 +1,10 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.forms.CloudProviderFormData;
+import com.yugabyte.yw.models.Customer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +25,10 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
@@ -34,7 +41,8 @@ public class CloudProviderController extends AuthenticatedController {
    * @return JSON response with provider's
    */
   public Result list() {
-    List<Provider> providerList = Provider.find.all();
+    UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
+    List<Provider> providerList = Provider.getAll(customerUUID);
     return ok(Json.toJson(providerList));
   }
 
@@ -43,21 +51,26 @@ public class CloudProviderController extends AuthenticatedController {
    * @return JSON response of newly created provider
    */
   public Result create() {
-    Form<Provider> formData = formFactory.form(Provider.class).bindFromRequest();
-    ObjectNode responseJson = Json.newObject();
+    Form<CloudProviderFormData> formData = formFactory.form(CloudProviderFormData.class).bindFromRequest();
 
     if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
+    UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
+    // Since the Map<String, String> doesn't get parsed, so for now we would just
+    // parse it from the requestBody
+    JsonNode requestBody = request().body().asJson();
+    Map<String, String> config = new HashMap<>();
+    if (requestBody.has("config")) {
+      config = Json.fromJson(requestBody.get("config"), Map.class);
+    }
     try {
-      Provider p = Provider.create(formData.get().code, formData.get().name);
-      return ok(Json.toJson(p));
+      Provider p = Provider.create(customerUUID, formData.get().code, formData.get().name, config);
+      return ApiResponse.success(p);
     } catch (Exception e) {
       // TODO: Handle exception and print user friendly message
-      responseJson.put("error", e.getMessage());
-      return internalServerError(responseJson);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }
 
@@ -70,28 +83,28 @@ public class CloudProviderController extends AuthenticatedController {
     ObjectNode responseJson = Json.newObject();
 
     if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
+      ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
     }
 
     // Get provider data or create a new provider.
     OnPremFormData.IdData identification = formData.get().identification;
-    if (identification == null) {
-      responseJson.put("error", "Field <identification> cannot be empty!");
-      return badRequest(responseJson);
-    }
 
     Provider p = null;
     if (identification.uuid == null) {
       if (identification.type == null || identification.name == null) {
-        responseJson.put(
-            "error", "Field <identification> must have either <uuid> or <name> and <type>");
-        return badRequest(responseJson);
+        ApiResponse.error(BAD_REQUEST, "Field <identification> must have either " +
+                "<uuid> or <name> and <type>");
       }
 
-      p = Provider.get(identification.name);
+      p = Provider.get(customer.uuid, identification.name);
       if (p == null) {
-        p = Provider.create(identification.type, identification.name);
+        p = Provider.create(customer.uuid, identification.type, identification.name);
         LOG.info("Created provider " + p);
       }
     } else {
@@ -107,7 +120,7 @@ public class CloudProviderController extends AuthenticatedController {
             // TODO: instance type metadata?
             InstanceTypeDetails details = new InstanceTypeDetails();
             details.volumeDetailsList = i.volumeDetailsList;
-            it = InstanceType.upsert(
+            InstanceType.upsert(
                 p.code,
                 i.code,
                 0, // numCores
@@ -116,7 +129,7 @@ public class CloudProviderController extends AuthenticatedController {
                 0, // volumeSizeGB
                 InstanceType.VolumeType.SSD,
                 details
-                );
+            );
           }
         }
       }
@@ -137,12 +150,12 @@ public class CloudProviderController extends AuthenticatedController {
               AvailabilityZone zone = AvailabilityZone.getByCode(z.code);
               if (zone == null) {
                 // TODO: zone name vs node?
-                zone = AvailabilityZone.create(
+                AvailabilityZone.create(
                     region,
                     z.code, // code
                     z.code, // name
                     "" // subnet
-                    );
+                );
               }
               if (z.nodes != null) {
                 for (OnPremFormData.NodeData n : z.nodes) {
@@ -161,6 +174,6 @@ public class CloudProviderController extends AuthenticatedController {
       responseJson.set("access", Json.toJson(access));
     }
 
-    return ok(responseJson);
+    return ApiResponse.success(responseJson);
   }
 }

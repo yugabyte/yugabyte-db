@@ -13,8 +13,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -27,17 +25,14 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -46,7 +41,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -65,12 +59,13 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
+import play.test.WithApplication;
 
-public class UniverseControllerTest extends FakeDBApplication {
+public class UniverseControllerTest extends WithApplication {
   private Customer customer;
-  private Commissioner mockCommissioner;
+  private static Commissioner mockCommissioner;
   private Http.Cookie validCookie;
-  private MetricQueryHelper mockMetricQueryHelper;
+  private static MetricQueryHelper mockMetricQueryHelper;
 
   @Override
   protected Application provideApplication() {
@@ -188,7 +183,7 @@ public class UniverseControllerTest extends FakeDBApplication {
 
   @Test
   public void testUniverseCreateWithoutAvailabilityZone() {
-    Provider p = Provider.create("aws", "Amazon");
+    Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
 
     ObjectNode topJson = Json.newObject();
@@ -217,7 +212,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
-    Provider p = Provider.create("aws", "Amazon");
+    Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -271,7 +266,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
-    Provider p = Provider.create("aws", "Amazon");
+    Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
@@ -319,7 +314,7 @@ public class UniverseControllerTest extends FakeDBApplication {
     when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
       .thenReturn(fakeTaskUUID);
 
-    Provider p = Provider.create("aws", "Amazon");
+    Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");

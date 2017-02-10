@@ -2,16 +2,15 @@
 
 package com.yugabyte.yw.controllers;
 
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.containsString;
-import static org.hamcrest.CoreMatchers.notNullValue;
+import static com.yugabyte.yw.common.AssertHelper.*;
+import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static play.mvc.Http.Status.OK;
+import static org.junit.Assert.assertFalse;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
 
+import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -22,85 +21,123 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 
 import play.libs.Json;
-import play.mvc.Http;
 import play.mvc.Result;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public class ProviderControllerTest extends FakeDBApplication {
   Customer customer;
 
   @Before
   public void setUp() {
-    customer = Customer.create("Valid Customer", "foo@bar.com", "password");
+    customer = ModelFactory.testCustomer();
+  }
+
+  private Result listProviders() {
+    return FakeApiHelper.doRequestWithAuthToken("GET", "/api/providers",
+            customer.createAuthToken());
+  }
+
+  private Result createProvider(JsonNode bodyJson) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", "/api/providers",
+            customer.createAuthToken(), bodyJson);
   }
 
   @Test
   public void testListEmptyProviders() {
-    String authToken = customer.createAuthToken();
-    Http.RequestBuilder fr = play.test.Helpers.fakeRequest("GET", "/api/providers")
-                                              .header("X-AUTH-TOKEN", authToken);
-    Result result = route(fr);
+    Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
 
-    assertEquals(OK, result.status());
-    assertEquals("[]", json.toString());
+    assertOk(result);
+    assertTrue(json.isArray());
     assertEquals(0, json.size());
   }
 
   @Test
   public void testListProviders() {
-    String authToken = customer.createAuthToken();
-    Provider p1 = Provider.create("aws", "Amazon");
-    Provider p2 = Provider.create("gce", "Google");
-
-    Http.RequestBuilder request = play.test.Helpers.fakeRequest("GET", "/api/providers")
-                                                   .header("X-AUTH-TOKEN", authToken);
-    Result result = route(request);
+    Provider p1 = Provider.create(customer.uuid, "aws", "Amazon");
+    Provider p2 = Provider.create(customer.uuid, "gce", "Google");
+    Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
 
-    assertEquals(OK, result.status());
+    assertOk(result);
     assertEquals(2, json.size());
-    assertEquals(json.get(0).path("uuid").asText(), p1.uuid.toString());
-    assertEquals(json.get(0).path("name").asText(), p1.name.toString());
-    assertEquals(json.get(1).path("uuid").asText(), p2.uuid.toString());
-    assertEquals(json.get(1).path("name").asText(), p2.name.toString());
+    assertValues(json, "uuid", (List) ImmutableList.of(p1.uuid.toString(), p2.uuid.toString()));
+    assertValues(json, "name", (List) ImmutableList.of(p1.name, p2.name));
+  }
+  @Test
+  public void testListProvidersWithValidCustomer() {
+    Provider.create(UUID.randomUUID(), "aws", "Amazon");
+    Provider p = Provider.create(customer.uuid, "gce", "Google");
+    Result result = listProviders();
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertOk(result);
+    assertEquals(1, json.size());
+    assertValues(json, "uuid", (List) ImmutableList.of(p.uuid.toString()));
+    assertValues(json, "name", (List) ImmutableList.of(p.name.toString()));
   }
 
   @Test
   public void testCreateProvider() {
-    String authToken = customer.createAuthToken();
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "azu");
     bodyJson.put("name", "Microsoft");
-
-
-    Http.RequestBuilder request = play.test.Helpers.fakeRequest("POST", "/api/providers")
-                                                    .header("X-AUTH-TOKEN", authToken)
-                                                    .bodyJson(bodyJson);
-    Result result = route(request);
+    Result result = createProvider(bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(OK, result.status());
-    assertEquals(1, json.findValues("name").size());
-    assertEquals(json.path("name").asText(), "Microsoft");
+    assertOk(result);
+    assertValue(json, "name", "Microsoft");
+    assertValue(json, "customerUUID", customer.uuid.toString());
   }
 
   @Test
   public void testCreateDuplicateProvider() {
-    String authToken = customer.createAuthToken();
-
-    Provider.create("aws", "Amazon");
-
+    Provider.create(customer.uuid, "aws", "Amazon");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
+    Result result = createProvider(bodyJson);
+    assertInternalServerError(result, "Unique index or primary key violation:");
+  }
 
-    Http.RequestBuilder request = play.test.Helpers.fakeRequest("POST", "/api/providers")
-                                                   .header("X-AUTH-TOKEN", authToken)
-                                                   .bodyJson(bodyJson);
-    Result result = route(request);
+  @Test
+  public void testCreateProviderWithDifferentCustomer() {
+    Provider.create(UUID.randomUUID(), "aws", "Amazon");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "Amazon");
+    Result result = createProvider(bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", "Amazon");
+  }
 
-    assertEquals(INTERNAL_SERVER_ERROR, result.status());
-    assertThat(json.get("error").toString(),
-               allOf(notNullValue(), containsString("Unique index or primary key violation:")));
+  @Test
+  public void testCreateWithInvalidParams() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    Result result = createProvider(bodyJson);
+    assertBadRequest(result, "\"name\":[\"This field is required\"]}");
+  }
+
+  @Test
+  public void testCreateProviderWithConfig() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "aws");
+    bodyJson.put("name", "Amazon");
+    ObjectNode configJson = Json.newObject();
+    configJson.put("config-1", "Configuration 1");
+    configJson.put("config-2", "Configuration 2");
+    bodyJson.set("config", configJson);
+    Result result = createProvider(bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", "Amazon");
+    Provider provider = Provider.get(customer.uuid, UUID.fromString(json.path("uuid").asText()));
+    Map<String, String> config = provider.getConfig();
+    assertFalse(config.isEmpty());
+    assertEquals(configJson, Json.toJson(config));
   }
 }

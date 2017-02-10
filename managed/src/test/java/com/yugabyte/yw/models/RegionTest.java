@@ -11,21 +11,21 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.Set;
 
-import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 
 
 public class RegionTest extends FakeDBApplication {
   Provider defaultProvider;
+  Customer defaultCustomer;
 
   @Before
   public void setUp() {
-    defaultProvider = Provider.create("aws", "Amazon");
+    defaultCustomer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(defaultCustomer);
   }
 
   @Test
@@ -70,7 +70,7 @@ public class RegionTest extends FakeDBApplication {
     Region.create(defaultProvider, "region-1", "region 1", "default-image");
     Region.create(defaultProvider, "region-2", "region 2", "default-image");
 
-    Provider provider2 = Provider.create("gce", "Google");
+    Provider provider2 = ModelFactory.gceProvider(defaultCustomer);
     Region.create(provider2, "region-3", "region 3", "default-image");
 
     Set<Region> regions = Region.find.where().eq("provider_uuid", defaultProvider.uuid).findSet();

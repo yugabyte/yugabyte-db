@@ -17,6 +17,8 @@ import static play.test.Helpers.contentAsString;
 
 import java.util.UUID;
 
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Customer;
 import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Before;
@@ -37,7 +39,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    provider = Provider.create("aws", "Amazon");
+    Customer customer = ModelFactory.testCustomer();
+    provider = ModelFactory.awsProvider(customer);
   }
 
 
