@@ -39,7 +39,7 @@ SET min_parallel_relation_size to DEFAULT;
 /*+Parallel(p1 10 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
--- hinting on children don't work
+-- hinting on children don't work but enables parallel
 /*+Parallel(p1_c1 10 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
@@ -95,6 +95,7 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
+SET max_parallel_workers_per_gather to 0;
 /*+Parallel(p1 10) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
@@ -104,16 +105,26 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
 SET min_parallel_relation_size to DEFAULT;
+SET max_parallel_workers_per_gather to DEFAULT;
 
 /*+Parallel(p1 10 hard)Parallel(p2 10 hard) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
 
--- Negative hint
-SET max_parallel_workers_per_gather to 5;
+-- num of workers of non-hinted relations should be default value
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
+SET max_parallel_workers_per_gather to 3;
+
+/*+Parallel(p1 10 hard) */
+EXPLAIN (COSTS false) SELECT * FROM p1 join t1 on p1.id = t1.id;
+
+-- Negative hint
+SET parallel_setup_cost to 0;
+SET parallel_tuple_cost to 0;
+SET min_parallel_relation_size to 0;
+SET max_parallel_workers_per_gather to 5;
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
 /*+Parallel(p1 0 hard)*/

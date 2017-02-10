@@ -2915,12 +2915,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * max_parallel_workers_per_gather should be non-zero here if Workers hint
 	 * is specified.
 	 */
-	if (max_hint_nworkers >= 0)
-	{
-		current_hint_state->init_nworkers = 0;
+	if (max_hint_nworkers > 0 && max_parallel_workers_per_gather < 1)
 		set_config_int32_option("max_parallel_workers_per_gather",
 								1, current_hint_state->context);
-	}
+	current_hint_state->init_nworkers = max_parallel_workers_per_gather;
 
 	if (debug_level > 1)
 	{
