@@ -107,13 +107,7 @@ public class TestInsert extends TestBase {
 
     // Now verify v2 expires.
     Thread.sleep(1000);
-    row = RunSelect(tableName, select_stmt).next();
-    assertEquals(1, row.getInt(0));
-    assertEquals("h2", row.getString(1));
-    assertEquals(3, row.getInt(2));
-    assertEquals("r4", row.getString(3));
-    assertTrue(row.isNull(4));
-    assertTrue(row.isNull(5));
+    assertNoRow(tableName, select_stmt);
   }
 
   private String getInsertStmt(String tableName, String ttlSeconds) {
@@ -181,18 +175,12 @@ public class TestInsert extends TestBase {
     Thread.sleep(1100);
 
     // Verify row has expired.
-    Row row = RunSelect(tableName, select_stmt).next();
-    assertEquals(1, row.getInt(0));
-    assertEquals("h2", row.getString(1));
-    assertEquals(3, row.getInt(2));
-    assertEquals("r4", row.getString(3));
-    assertTrue(row.isNull(4));
-    assertTrue(row.isNull(5));
+    assertNoRow(tableName, select_stmt);
 
     // Verify row with TTL reset survives.
     select_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
       + "  WHERE h1 = 10 AND h2 = 'h20';", tableName);
-    row = RunSelect(tableName, select_stmt).next();
+    Row row = RunSelect(tableName, select_stmt).next();
     assertEquals(10, row.getInt(0));
     assertEquals("h20", row.getString(1));
     assertEquals(30, row.getInt(2));

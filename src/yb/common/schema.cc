@@ -208,7 +208,7 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
 }
 
 Status Schema::CreateProjectionByNames(const std::vector<StringPiece>& col_names,
-                                       Schema* out) const {
+                                       Schema* out, size_t num_key_columns) const {
   vector<ColumnId> ids;
   vector<ColumnSchema> cols;
   for (const StringPiece& name : col_names) {
@@ -221,7 +221,7 @@ Status Schema::CreateProjectionByNames(const std::vector<StringPiece>& col_names
     }
     cols.push_back(column(idx));
   }
-  return out->Reset(cols, ids, 0);
+  return out->Reset(cols, ids, num_key_columns);
 }
 
 Status Schema::CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,

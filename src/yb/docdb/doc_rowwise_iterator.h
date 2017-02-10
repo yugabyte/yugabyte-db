@@ -69,6 +69,31 @@ class DocRowwiseIterator : public RowwiseIterator {
   // Get the non-key column values of a YQL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<PrimitiveValue>* values);
 
+  // Processes a value for a column(subdoc_key) and determines if the value is valid or not based on
+  // the hybrid time of subdoc_key. If valid, it is added to the values vector and is_null is set
+  // to false. Otherwise, is_null is set to true.
+  CHECKED_STATUS ProcessValues(const Value& value, const SubDocKey& subdoc_key,
+                               vector<PrimitiveValue>* values,
+                               bool *is_null) const;
+
+  // Figures out whether the current sub_doc_key with the given top_level_value is a valid column
+  // that has not expired. Sets column_found to true if this is a valid column, false otherwise.
+  CHECKED_STATUS FindValidColumn(bool* column_found) const;
+
+  // Figures out whether we have a valid column present indicating the existence of the row.
+  // Sets column_found to true if a valid column is found, false otherwise.
+  CHECKED_STATUS ProcessColumnsForHasNext(bool* column_found) const;
+
+  // Verifies whether or not the column pointed to by subdoc_key is deleted by the current
+  // row_delete_marker_key_.
+  bool IsDeletedByRowDeletion(const SubDocKey& subdoc_key) const;
+
+  // Given a subdoc_key pointing to a column and its associated value, determine whether or not
+  // the column is valid based on TTL expiry, row level delete markers and column delete markers
+  CHECKED_STATUS CheckColumnValidity(const SubDocKey& subdoc_key,
+                                     const Value& value,
+                                     bool* is_valid) const;
+
   const Schema& projection_;
 
   // The schema for all columns, not just the columns we're scanning.
@@ -92,9 +117,17 @@ class DocRowwiseIterator : public RowwiseIterator {
   // Indicates whether we've already finished iterating.
   mutable bool done_;
 
-  // HasNext sets this to the the subdocument key corresponding to the top of the document
+  // HasNext sets this to the subdocument key corresponding to the top of the document
   // (document key and a generation hybrid time).
   mutable SubDocKey subdoc_key_;
+
+  // HasNext sets this to the value of the first valid column found for a given row.
+  mutable Value top_level_value_;
+
+  // While iterating within a row we keep the delete timestamp for the row, to determine which
+  // columns are valid.
+  mutable HybridTime row_delete_marker_time_;
+  mutable DocKey row_delete_marker_key_;
 
   // Used for keeping track of errors that happen in HasNext. Returned
   mutable Status status_;

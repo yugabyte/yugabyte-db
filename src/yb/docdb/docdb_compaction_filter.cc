@@ -62,12 +62,6 @@ bool DocDBCompactionFilter::Filter(int level,
   CHECK_OK(subdoc_key.FullyDecodeFrom(key));
 
   if (is_first_key_value_) {
-    // This assumption won't be true if when we enable optional object init markers at the top
-    // level, e.g. for CQL/SQL tables.
-    CHECK_EQ(0, subdoc_key.num_subkeys())
-        << "First key in compaction is expected to only have the DocKey component: "
-        << subdoc_key.ToString()
-        << ", is_full_compaction: " << this->is_full_compaction_;
     CHECK_EQ(0, overwrite_ht_.size());
     is_first_key_value_ = false;
   }
@@ -152,11 +146,10 @@ bool DocDBCompactionFilter::Filter(int level,
   CHECK_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(ttl, schema_), history_cutoff_,
                          &has_expired));
 
-  // Currently, object init markers don't have TTLs. Although, the behavior we want as of
-  // 02/09/2017 is that if the init marker expires based on the table level TTL, we expire it.
-  // Note that if we are looking at an init marker here, the ttl computation above will
-  // automatically revert to the table level ttl since there won't be any ttl in the value
-  // section. As a result, we have the desired behavior for object init markers.
+  // As of 02/2017, we don't have init markers for top level documents in YQL. As a result, we can
+  // compact away each column if it has expired, including the liveness system column. The init
+  // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
+  // the ttl would default to kMaxTtl which would make has_expired false.
   if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ts <= history_cutoff_ is implied by has_expired.

@@ -296,6 +296,13 @@ class RowBlockRow {
   template<DataType data_type>
   typename TypeTraits<data_type>::cpp_type get_field(size_t col_idx) const {
     assert(!is_null(col_idx));
+    return get_field_no_nullcheck<data_type>(col_idx);
+  }
+
+  // Same as the function above, except that it doesn't check for nulls allowing to query for
+  // primary keys.
+  template<DataType data_type>
+  typename TypeTraits<data_type>::cpp_type get_field_no_nullcheck(size_t col_idx) const {
     assert(row_block_->schema().column(col_idx).type_info()->type() == data_type);
     return *reinterpret_cast<const typename TypeTraits<data_type>::cpp_type*>(cell(col_idx).ptr());
   }

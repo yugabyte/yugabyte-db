@@ -186,6 +186,11 @@ class PrimitiveValue {
     return timestamp_val_;
   }
 
+  ColumnId GetColumnId() const {
+    DCHECK(type_ == ValueType::kColumnId || type_ == ValueType::kSystemColumnId);
+    return column_id_val_;
+  }
+
   bool operator <(const PrimitiveValue& other) const {
     return CompareTo(other) < 0;
   }

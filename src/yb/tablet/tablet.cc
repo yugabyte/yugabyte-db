@@ -1108,11 +1108,6 @@ Status Tablet::CreateWriteBatchFromKuduRowOps(const vector<DecodedRowOperation> 
         break;
       }
       case RowOperationsPB_Type_INSERT: {
-        // Insert a top-level overwrite of the entire object.
-        // TODO: for Cassandra-style inserts, which are really upserts, we probably should not
-        //       overwrite/nullify columns that are not explicitly mentioned in the SQL statement.
-        doc_ops.emplace_back(new KuduWriteOperation(
-            DocPath(encoded_doc_key), PrimitiveValue(ValueType::kObject)));
         for (int i = schema()->num_key_columns(); i < schema()->num_columns(); i++) {
           const ColumnSchema &col_schema = schema()->column(i);
           const DataType data_type = col_schema.type_info()->type();

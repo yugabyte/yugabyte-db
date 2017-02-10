@@ -110,60 +110,44 @@ DocWriteBatch::DocWriteBatch(rocksdb::DB* rocksdb)
     : rocksdb_(rocksdb),
       num_rocksdb_seeks_(0) {
 }
-
-// This codepath is used to handle both primitive upserts and deletions.
-Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
-                                   const Value& value,
-                                   HybridTime hybrid_time) {
-  DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, hybrid_time=$2",
-                  doc_path.ToString(), value.ToString(), hybrid_time.ToDebugString());
-  const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
-  const int num_subkeys = doc_path.num_subkeys();
-  const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
-
-  InternalDocIterator doc_iter(rocksdb_, &cache_, &num_rocksdb_seeks_);
-
-  if (num_subkeys > 0 || is_deletion) {
-    // Navigate to the root of the document. We don't yet know whether the document exists or when
-    // it was last updated.
-    RETURN_NOT_OK(doc_iter.SeekToDocument(encoded_doc_key));
-    DOCDB_DEBUG_LOG("Top-level document exists: $0", doc_iter.subdoc_exists());
-    if (!doc_iter.subdoc_exists() & is_deletion) {
-      DOCDB_DEBUG_LOG("We're performing a deletion, and the document is not present. "
-                      "Nothing to do.");
-      return Status::OK();
-    }
-  } else {
-    // If we are overwriting an entire document with a primitive value (not deleting it), we don't
-    // need to perform any reads from RocksDB at all.
-    //
-    // Even if we are deleting a document, but we don't need to get any feedback on whether the
-    // deletion was performed or the document was not there to begin with, we could also skip the
-    // read as an optimization.
-    doc_iter.SetDocumentKey(encoded_doc_key);
-  }
-
+CHECKED_STATUS DocWriteBatch::SetPrimitiveInternal(const DocPath& doc_path, const Value& value,
+                                                   InternalDocIterator *doc_iter,
+                                                   const HybridTime hybrid_time,
+                                                   const bool is_deletion, const int num_subkeys,
+                                                   InitMarkerBehavior use_init_marker) {
   for (int subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
     const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
     if (subkey.value_type() == ValueType::kArrayIndex) {
       return STATUS(NotSupported, "Setting values at a given array index is not supported yet");
     }
-    if (doc_iter.subdoc_exists()) {
-      if (doc_iter.subdoc_type() != ValueType::kObject) {
+    // We don't need to check if intermediate documents should exist if we never use init markers.
+    if (use_init_marker == InitMarkerBehavior::kNeverUse || doc_iter->subdoc_exists()) {
+      if (use_init_marker == InitMarkerBehavior::kAlwaysUse &&
+          doc_iter->subdoc_type() != ValueType::kObject) {
+        // We raise this error only if init markers are mandatory.
         return STATUS_SUBSTITUTE(IllegalState,
-            "Cannot set values inside a subdocument of type $0",
-            ValueTypeToStr(doc_iter.subdoc_type()));
+                                 "Cannot set values inside a subdocument of type $0",
+                                 ValueTypeToStr(doc_iter->subdoc_type()));
       }
-      if (subkey_index == num_subkeys - 1 && !is_deletion) {
+      if ((subkey_index == num_subkeys - 1 && !is_deletion) ||
+          use_init_marker == InitMarkerBehavior::kNeverUse) {
         // We don't need to perform a RocksDB read at the last level for upserts, we just
         // overwrite the value within the last subdocument with what we're trying to write.
         // We still perform the read for deletions, because we try to avoid writing a new tombstone
         // if the data is not there anyway.
-        doc_iter.AppendSubkeyInExistingSubDoc(subkey);
+        // Apart from the above case, if we are never using init markers there is no point in
+        // seeking to intermediate document levels to verify their existence.
+        if (use_init_marker == InitMarkerBehavior::kNeverUse) {
+          // In the case where we don't have init markers, we don't need to check existence of
+          // the current subdoc.
+          doc_iter->AppendToPrefix(subkey);
+        } else {
+          doc_iter->AppendSubkeyInExistingSubDoc(subkey);
+        }
       } else {
         // We need to check if the subdocument at this subkey exists.
-        RETURN_NOT_OK(doc_iter.SeekToSubDocument(subkey));
-        if (is_deletion && !doc_iter.subdoc_exists()) {
+        RETURN_NOT_OK(doc_iter->SeekToSubDocument(subkey));
+        if (is_deletion && !doc_iter->subdoc_exists()) {
           // A parent subdocument of the value we're trying to delete, or that value itself,
           // does not exist, nothing to do.
           //
@@ -183,7 +167,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
       }
 
       // The document/subdocument that this subkey is supposed to live in does not exist, create it.
-      KeyBytes parent_key(doc_iter.key_prefix());
+      KeyBytes parent_key(doc_iter->key_prefix());
       parent_key.AppendValueType(ValueType::kHybridTime);
       parent_key.AppendHybridTime(hybrid_time);
       // TODO: std::move from parent_key's string buffer into put_batch_.
@@ -191,27 +175,74 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
 
       // Update our local cache to record the fact that we're adding this subdocument, so that
       // future operations in this DocWriteBatch don't have to add it or look for it in RocksDB.
-      cache_.Put(KeyBytes(doc_iter.key_prefix().AsSlice()), hybrid_time, ValueType::kObject);
+      cache_.Put(KeyBytes(doc_iter->key_prefix().AsSlice()), hybrid_time, ValueType::kObject);
 
-      doc_iter.AppendToPrefix(subkey);
+      doc_iter->AppendToPrefix(subkey);
     }
   }
 
   // The key we use in the DocWriteBatchCache does not have a final hybrid_time, because that's the
   // key we expect to look up.
-  cache_.Put(doc_iter.key_prefix(), hybrid_time, value.primitive_value().value_type());
+  cache_.Put(doc_iter->key_prefix(), hybrid_time, value.primitive_value().value_type());
 
   // Close the group of subkeys of the SubDocKey, and append the hybrid_time as the final component.
-  doc_iter.mutable_key_prefix()->AppendValueType(ValueType::kHybridTime);
-  doc_iter.AppendHybridTimeToPrefix(hybrid_time);
+  doc_iter->mutable_key_prefix()->AppendValueType(ValueType::kHybridTime);
+  doc_iter->AppendHybridTimeToPrefix(hybrid_time);
 
-  put_batch_.emplace_back(doc_iter.key_prefix().AsStringRef(), value.Encode());
+  put_batch_.emplace_back(doc_iter->key_prefix().AsStringRef(), value.Encode());
 
   return Status::OK();
 }
 
-Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const HybridTime hybrid_time) {
-  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), hybrid_time);
+Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
+                                   const Value& value,
+                                   HybridTime hybrid_time,
+                                   InitMarkerBehavior use_init_marker) {
+  DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1, hybrid_time=$2",
+                  doc_path.ToString(), value.ToString(), hybrid_time.ToDebugString());
+  const KeyBytes& encoded_doc_key = doc_path.encoded_doc_key();
+  const int num_subkeys = doc_path.num_subkeys();
+  const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
+
+  InternalDocIterator doc_iter(rocksdb_, &cache_, &num_rocksdb_seeks_);
+
+  if (value.value_type() == ValueType::kObject &&
+      use_init_marker == InitMarkerBehavior::kNeverUse) {
+    return STATUS(InvalidArgument, "Init marker cannot be specified as a value if use_init_marker"
+        " is set to kNeverUse");
+  }
+
+  if (num_subkeys > 0 || is_deletion) {
+    doc_iter.SetDocumentKey(encoded_doc_key);
+    if (use_init_marker == InitMarkerBehavior::kAlwaysUse) {
+      // Navigate to the root of the document. We don't yet know whether the document exists or when
+      // it was last updated.
+      RETURN_NOT_OK(doc_iter.SeekToKeyPrefix());
+      DOCDB_DEBUG_LOG("Top-level document exists: $0", doc_iter.subdoc_exists());
+      if (!doc_iter.subdoc_exists() && is_deletion) {
+        DOCDB_DEBUG_LOG("We're performing a deletion, and the document is not present. "
+                            "Nothing to do.");
+        return Status::OK();
+      }
+    }
+  } else {
+    // If we are overwriting an entire document with a primitive value (not deleting it), we don't
+    // need to perform any reads from RocksDB at all.
+    //
+    // Even if we are deleting a document, but we don't need to get any feedback on whether the
+    // deletion was performed or the document was not there to begin with, we could also skip the
+    // read as an optimization.
+    doc_iter.SetDocumentKey(encoded_doc_key);
+  }
+
+  return SetPrimitiveInternal(doc_path, value, &doc_iter, hybrid_time, is_deletion, num_subkeys,
+                              use_init_marker);
+}
+
+Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const HybridTime hybrid_time,
+                                   InitMarkerBehavior use_init_marker) {
+  return SetPrimitive(doc_path, PrimitiveValue(ValueType::kTombstone), hybrid_time,
+                      use_init_marker);
 }
 
 string DocWriteBatch::ToDebugString() {

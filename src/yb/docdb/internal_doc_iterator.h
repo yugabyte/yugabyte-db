@@ -74,13 +74,13 @@ class InternalDocIterator {
   }
 
   // @return Whether the subdocument pointed to by this iterator exists.
-  bool subdoc_exists() {
+  bool subdoc_exists() const {
     CHECK_NE(subdoc_exists_, Trilean::kUnknown);
     return static_cast<bool>(subdoc_exists_);
   }
 
   // @return The type of subdocument pointed to by this iterator, if it exists.
-  ValueType subdoc_type() {
+  ValueType subdoc_type() const {
     CHECK(subdoc_exists());
     return subdoc_type_;
   }
@@ -105,12 +105,12 @@ class InternalDocIterator {
     return iter_->Valid();
   }
 
- private:
-  // An internal helper method that seeks the RocksDB iterator to the current document/subdocument
+  // A helper method that seeks the RocksDB iterator to the current document/subdocument
   // key prefix (which is assumed not to end with a generation hybrid_time), and checks whether or
   // not that document/subdocument actually exists.
   CHECKED_STATUS SeekToKeyPrefix();
 
+ private:
   DocWriteBatchCache* doc_write_batch_cache_;
 
   std::unique_ptr<rocksdb::Iterator> iter_;

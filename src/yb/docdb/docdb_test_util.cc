@@ -307,10 +307,9 @@ void DocDBRocksDBFixture::DestroyRocksDB() {
   CHECK_OK(rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_));
 }
 
-rocksdb::Status DocDBRocksDBFixture::WriteToRocksDB(const DocWriteBatch& doc_write_batch) {
-  // We specify HybridTime::kMax to disable hybrid_time substitution before we write to RocksDB, as
-  // we typically already specify the hybrid_time while constructing DocWriteBatch.
-  rocksdb::Status status = doc_write_batch.WriteToRocksDBInTest(HybridTime::kMax, write_options_);
+rocksdb::Status DocDBRocksDBFixture::WriteToRocksDB(const DocWriteBatch& doc_write_batch,
+                                                    const HybridTime& hybrid_time) {
+  rocksdb::Status status = doc_write_batch.WriteToRocksDBInTest(hybrid_time, write_options_);
   if (!status.ok()) {
     LOG(ERROR) << "Failed writing to RocksDB: " << status.ToString();
   }
@@ -352,16 +351,16 @@ string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
 void DocDBRocksDBFixture::SetPrimitive(const DocPath& doc_path,
                                        const Value& value,
                                        const HybridTime hybrid_time,
-                                       DocWriteBatch* doc_write_batch) {
+                                       DocWriteBatch* doc_write_batch,
+                                       InitMarkerBehavior use_init_marker) {
   DocWriteBatch local_doc_write_batch(rocksdb_.get());
   if (doc_write_batch == nullptr) {
     doc_write_batch = &local_doc_write_batch;
   } else {
     doc_write_batch->CheckBelongsToSameRocksDB(rocksdb_.get());
   }
-
   doc_write_batch->Clear();
-  ASSERT_OK(doc_write_batch->SetPrimitive(doc_path, value, hybrid_time));
+  ASSERT_OK(doc_write_batch->SetPrimitive(doc_path, value, hybrid_time, use_init_marker));
   ASSERT_OK(WriteToRocksDB(*doc_write_batch));
 }
 

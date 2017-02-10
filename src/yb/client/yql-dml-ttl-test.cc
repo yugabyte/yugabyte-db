@@ -128,15 +128,7 @@ TEST_F(YqlDmlTTLTest, TestInsertWithTTL) {
     // Expect all 4 columns (c1, c2, c3, c4) to be null.
     EXPECT_EQ(op->response().status(), YQLResponsePB::YQL_STATUS_OK);
     unique_ptr<YQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
-    EXPECT_EQ(rowblock->row_count(), 1);
-    // TODO: need to revisit this since cassandra semantics might be a little different when all
-    // non primary key columns are null.
-    const auto& row = rowblock->row(0);
-    EXPECT_EQ(row.column(0).int32_value(), 1);
-    EXPECT_TRUE(row.column(1).IsNull());
-    EXPECT_TRUE(row.column(2).IsNull());
-    EXPECT_TRUE(row.column(3).IsNull());
-    EXPECT_TRUE(row.column(4).IsNull());
+    EXPECT_EQ(rowblock->row_count(), 0);
   }
 
 }

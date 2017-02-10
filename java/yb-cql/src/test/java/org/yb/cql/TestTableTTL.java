@@ -3,12 +3,10 @@ package org.yb.cql;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.Iterator;
 
-import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 
@@ -21,8 +19,9 @@ public class TestTableTTL extends TestBase {
   }
 
   private void assertNoRow(String tableName, int primaryKey) {
-    Iterator<Row> iter = execQuery(tableName, primaryKey);
-    assertFalse(iter.hasNext());
+    String select_stmt = String.format("SELECT c1, c2, c3 FROM %s WHERE c1 = %d;",
+      tableName, primaryKey);
+    assertNoRow(tableName, select_stmt);
   }
 
   private Row getFirstRow(String tableName, int primaryKey) {
@@ -67,8 +66,7 @@ public class TestTableTTL extends TestBase {
     assertNoRow(tableName, 1);
   }
 
-  // Will enable this test once we support table ttl being overridden.
-  @Ignore @Test
+  @Test
   public void testTableTTLOverride() throws Exception {
     String tableName = "testTableTTLOverride";
 
@@ -83,13 +81,10 @@ public class TestTableTTL extends TestBase {
     Thread.sleep(1050);
 
     // c1=1 should have expired.
-    Row row = getFirstRow(tableName, 1);
-    assertEquals(1, row.getInt(0));
-    assertTrue(row.isNull(1));
-    assertTrue(row.isNull(2));
+    assertNoRow(tableName, 1);
 
     // c1=2 is still alive.
-    row = getFirstRow(tableName, 2);
+    Row row = getFirstRow(tableName, 2);
     assertEquals(2, row.getInt(0));
     assertEquals(3, row.getInt(1));
     assertEquals(4, row.getInt(2));
@@ -97,23 +92,16 @@ public class TestTableTTL extends TestBase {
     Thread.sleep(1000);
 
     // c1 = 2 should have expired.
-    row = getFirstRow(tableName, 2);
-    assertEquals(2, row.getInt(0));
-    assertTrue(row.isNull(1));
-    assertTrue(row.isNull(2));
+    assertNoRow(tableName, 2);
 
     session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (3, 4, 5) USING TTL 1;",
       tableName));
     Thread.sleep(1050);
     // c1 = 3 should have expired.
-    row = getFirstRow(tableName, 3);
-    assertEquals(3, row.getInt(0));
-    assertTrue(row.isNull(1));
-    assertTrue(row.isNull(2));
+    assertNoRow(tableName, 3);
   }
 
-  // Will enable this test once we support table ttl being overriden.
-  @Ignore @Test
+  @Test
   public void testTableTTLWithTTLZero() throws Exception {
     String tableName = "testTableTTLWithTTLZero";
 
@@ -145,13 +133,10 @@ public class TestTableTTL extends TestBase {
     Thread.sleep(1050);
 
     // TTL 1 should have expired.
-    Row row = getFirstRow(tableName, 1);
-    assertEquals(1, row.getInt(0));
-    assertTrue(row.isNull(1));
-    assertTrue(row.isNull(2));
+    assertNoRow(tableName, 1);
 
     // Row with no TTL should survive
-    row = getFirstRow(tableName, 2);
+    Row row = getFirstRow(tableName, 2);
     assertEquals(2, row.getInt(0));
     assertEquals(2, row.getInt(1));
     assertEquals(3, row.getInt(2));
@@ -171,13 +156,10 @@ public class TestTableTTL extends TestBase {
     Thread.sleep(1050);
 
     // c1 = 1 should have expired.
-    Row row = getFirstRow(tableName, 1);
-    assertEquals(1, row.getInt(0));
-    assertTrue(row.isNull(1));
-    assertTrue(row.isNull(2));
+    assertNoRow(tableName, 1);
 
     // Row with no TTL should survive
-    row = getFirstRow(tableName, 2);
+    Row row = getFirstRow(tableName, 2);
     assertEquals(2, row.getInt(0));
     assertEquals(2, row.getInt(1));
     assertEquals(3, row.getInt(2));
@@ -232,8 +214,11 @@ public class TestTableTTL extends TestBase {
 
     Thread.sleep(1000);
 
-    // Row should expire since we don't have a new init marker for the latest insert.
-    assertNoRow(tableName, 1);
+    // Row shouldn't expire since a new liveness column is written.
+    Row row = getFirstRow(tableName, 1);
+    assertEquals(1, row.getInt(0));
+    assertEquals(2, row.getInt(1));
+    assertEquals(4, row.getInt(2));
   }
 
   @Test
@@ -249,5 +234,28 @@ public class TestTableTTL extends TestBase {
     createTableInvalid(tableName + 1, Long.MAX_VALUE);
     createTableInvalid(tableName + 1, Long.MIN_VALUE);
     createTableInvalid(tableName + 1, -1);
+  }
+
+  @Test
+  public void testTableTTLWithSingleColumnSurvival() throws Exception {
+    String tableName = "testTableTTLWithSingleColumnSurvival";
+
+    // Create table with TTL.
+    createTable(tableName, 1);
+
+    // Insert a row.
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3) values (1, 2, 3);",
+      tableName));
+
+    // Update a single column.
+    session.execute(String.format("UPDATE %s USING TTL 60 SET c2 = 20 WHERE c1 = 1", tableName));
+
+    Thread.sleep(1050);
+
+    // Verify primary key and one column survive.
+    Row row = getFirstRow(tableName, 1);
+    assertEquals(1, row.getInt(0));
+    assertEquals(20, row.getInt(1));
+    assertTrue(row.isNull(2));
   }
 }

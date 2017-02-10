@@ -20,23 +20,17 @@ class YbSqlQuery : public YbSqlTestBase {
   YbSqlQuery() : YbSqlTestBase() {
   }
 
-  std::shared_ptr<YQLRowBlock> ExecSelect(SqlProcessor *processor) {
+  std::shared_ptr<YQLRowBlock> ExecSelect(SqlProcessor *processor, int expected_rows = 1) {
     auto select = "SELECT c1, c2, c3 FROM test_table WHERE c1 = 1";
     Status s = processor->Run(select);
     CHECK(s.ok());
     auto row_block = processor->row_block();
-    EXPECT_EQ(1, row_block->row_count());
+    EXPECT_EQ(expected_rows, row_block->row_count());
     return row_block;
   }
 
   void VerifyExpiry(SqlProcessor *processor) {
-    auto row_block_expired = ExecSelect(processor);
-    YQLRow& row = row_block_expired->row(0);
-    // TODO: need to revisit this since cassandra semantics might be a little different when all
-    // non primary key columns are null.
-    EXPECT_EQ(1, row.column(0).int32_value());
-    EXPECT_TRUE(row.column(1).IsNull());
-    EXPECT_TRUE(row.column(2).IsNull());
+    ExecSelect(processor, 0);
   }
 
   void CreateTableAndInsertRow(SqlProcessor *processor, bool with_ttl = true) {
@@ -221,7 +215,13 @@ TEST_F(YbSqlQuery, TestUpdateWithTTL) {
   // Sleep for 1.1 seconds and verify ttl has expired.
   std::this_thread::sleep_for(std::chrono::milliseconds(1100));
 
-  VerifyExpiry(processor);
+  // c1 = 1 should still exist.
+  auto row_block = ExecSelect(processor);
+  YQLRow& row = row_block->row(0);
+
+  EXPECT_EQ(1, row.column(0).int32_value());
+  EXPECT_TRUE(row.column(1).IsNull());
+  EXPECT_TRUE(row.column(2).IsNull());
 
   // Try an update by setting the primary key, which should fail since set clause can't have
   // primary keys.

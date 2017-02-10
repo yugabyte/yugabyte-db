@@ -59,17 +59,18 @@ using std::unordered_set;
 typedef int32_t ColumnIdRep;
 struct ColumnId {
   explicit ColumnId(ColumnIdRep t_) {
-    CHECK_GE(t_, 0);
+    DCHECK_GE(t_, 0);
     t = t_;
   }
   ColumnId() : t() {}
   ColumnId(const ColumnId& t_) : t(t_.t) {}
   ColumnId& operator=(const ColumnId& rhs) { t = rhs.t; return *this; }
-  ColumnId& operator=(const ColumnIdRep& rhs) { CHECK_GE(rhs, 0); t = rhs; return *this; }
+  ColumnId& operator=(const ColumnIdRep& rhs) { DCHECK_GE(rhs, 0); t = rhs; return *this; }
   operator const ColumnIdRep() const { return t; }
   operator const strings::internal::SubstituteArg() const { return t; }
   operator const AlphaNum() const { return t; }
   bool operator==(const ColumnId & rhs) const { return t == rhs.t; }
+  bool operator!=(const ColumnId & rhs) const { return t != rhs.t; }
   bool operator<(const ColumnId & rhs) const { return t < rhs.t; }
   bool operator>(const ColumnId & rhs) const { return t > rhs.t; }
   friend std::ostream& operator<<(std::ostream& os, ColumnId column_id) {
@@ -99,6 +100,7 @@ struct ColumnId {
  private:
   ColumnIdRep t;
 };
+static const ColumnId kInvalidColumnId = ColumnId(std::numeric_limits<ColumnIdRep>::max());
 
 // Class for storing column attributes such as compression and
 // encoding.  Column attributes describe the physical storage and
@@ -532,6 +534,14 @@ class Schema {
     return cols_;
   }
 
+  const std::vector<string> column_names() const {
+    vector<string> column_names;
+    for (const std::pair<const StringPiece, size_t>& entry : name_to_index_) {
+      column_names.push_back(entry.first.ToString());
+    }
+    return column_names;
+  }
+
   const TableProperties& table_properties() const {
     return table_properties_;
   }
@@ -721,7 +731,7 @@ class Schema {
   // The resulting schema will have no key columns defined.
   // If this schema has IDs, the resulting schema will as well.
   CHECKED_STATUS CreateProjectionByNames(const std::vector<StringPiece>& col_names,
-                                 Schema* out) const;
+                                         Schema* out, size_t num_key_columns = 0) const;
 
   // Create a new schema containing only the selected column IDs.
   //
@@ -730,7 +740,7 @@ class Schema {
   //
   // The resulting schema will have no key columns defined.
   CHECKED_STATUS CreateProjectionByIdsIgnoreMissing(const std::vector<ColumnId>& col_ids,
-                                            Schema* out) const;
+                                                    Schema* out) const;
 
   // Encode the key portion of the given row into a buffer
   // such that the buffer's lexicographic comparison represents

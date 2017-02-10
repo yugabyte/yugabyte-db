@@ -18,6 +18,7 @@
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/internal_doc_iterator.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value.h"
 #include "yb/tablet/mvcc.h"
@@ -60,6 +61,11 @@
 namespace yb {
 namespace docdb {
 
+enum class InitMarkerBehavior {
+  kAlwaysUse = 0,
+  kNeverUse = 1
+};
+
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
 // that may include a mix or write (set) or delete operations. It may read from RocksDB while
 // writing, and builds up an internal rocksdb::WriteBatch while handling the operations.
@@ -72,13 +78,18 @@ class DocWriteBatch {
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path, const Value& value, HybridTime hybrid_time = HybridTime::kMax);
+      const DocPath& doc_path, const Value& value, HybridTime hybrid_time = HybridTime::kMax,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse);
+
   CHECKED_STATUS SetPrimitive(const DocPath& doc_path,
                               const PrimitiveValue& value,
-                              HybridTime hybrid_time = HybridTime::kMax) {
-    return SetPrimitive(doc_path, Value(value), hybrid_time);
+                              HybridTime hybrid_time = HybridTime::kMax,
+                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse) {
+    return SetPrimitive(doc_path, Value(value), hybrid_time, use_init_marker);
   }
-  CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, HybridTime hybrid_time = HybridTime::kMax);
+
+  CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, HybridTime hybrid_time = HybridTime::kMax,
+                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse);
 
   std::string ToDebugString();
   void Clear();
@@ -104,6 +115,14 @@ class DocWriteBatch {
   rocksdb::DB* rocksdb() { return rocksdb_; }
 
  private:
+  // This method performs the necessary operations to set a primitive value for a given docpath
+  // assuming the appropriate operations have been taken care of for subkeys with index <
+  // subkey_index. This method assumes responsibility of ensuring the proper docdb structure
+  // (e.g: init markers) is maintained for subdocuments starting at the given subkey_index.
+  CHECKED_STATUS SetPrimitiveInternal(const DocPath& doc_path, const Value& value,
+                                      InternalDocIterator *doc_iter,
+                                      const HybridTime hybrid_time, const bool is_deletion,
+                                      const int num_subkeys, InitMarkerBehavior use_init_marker);
   DocWriteBatchCache cache_;
 
   rocksdb::DB* rocksdb_;

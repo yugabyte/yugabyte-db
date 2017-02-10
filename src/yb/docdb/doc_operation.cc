@@ -23,7 +23,8 @@ DocPath KuduWriteOperation::DocPathToLock() const {
 
 Status KuduWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
-  return doc_write_batch->SetPrimitive(doc_path_, value_, HybridTime::kMax);
+  return doc_write_batch->SetPrimitive(doc_path_, value_, HybridTime::kMax,
+                                       InitMarkerBehavior::kNeverUse);
 }
 
 DocPath RedisWriteOperation::DocPathToLock() const {
@@ -551,11 +552,14 @@ Status YQLWriteOperation::Apply(
       case YQLWriteRequestPB::YQL_STMT_INSERT:
       case YQLWriteRequestPB::YQL_STMT_UPDATE: {
         // Add the appropriate liveness column only for inserts.
+        // We never use init markers for YQL to ensure we perform writes without any reads to
+        // ensure our write path is fast while complicating the read path a bit.
         if (request_.type() == YQLWriteRequestPB::YQL_STMT_INSERT) {
           const DocPath sub_path(doc_key_.Encode(),
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
           const auto value = Value(PrimitiveValue(), ttl);
-          RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value));
+          RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value, HybridTime::kMax,
+                                                      InitMarkerBehavior::kNeverUse));
         }
         if (request_.column_values_size() > 0) {
           for (const auto& column_value : request_.column_values()) {
@@ -566,11 +570,9 @@ Status YQLWriteOperation::Apply(
             const DocPath sub_path(doc_key_.Encode(),
                                    PrimitiveValue(ColumnId(column_value.column_id())));
             const auto value = Value(PrimitiveValue::FromYQLValuePB(column_value.value()), ttl);
-            RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value));
+            RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value, HybridTime::kMax,
+                                                        InitMarkerBehavior::kNeverUse));
           }
-        } else {
-          const auto value = Value(PrimitiveValue(ValueType::kObject), ttl);
-          RETURN_NOT_OK(doc_write_batch->SetPrimitive(doc_path_, value));
         }
         break;
       }
@@ -583,10 +585,12 @@ Status YQLWriteOperation::Apply(
                 << "column id missing: " << column_value.DebugString();
             const DocPath sub_path(doc_key_.Encode(),
                                    PrimitiveValue(ColumnId(column_value.column_id())));
-            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path));
+            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, HybridTime::kMax,
+                                                        InitMarkerBehavior::kNeverUse));
           }
         } else {
-          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_));
+          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_, HybridTime::kMax,
+                                                      InitMarkerBehavior::kNeverUse));
         }
         break;
       }
@@ -627,7 +631,7 @@ Status YQLReadOperation::Execute(
 
   // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
   // When DocRowwiseIterator::NextBlock() populates a YQLRowBlock, it uses this projection only to
-  // scan sub-documents. YQLRowBlock's own projection schema is used to pupulate the row block,
+  // scan sub-documents. YQLRowBlock's own projection schema is used to populate the row block,
   // including key columns if any. Keep the non-key columns to fetch in sorted order for more
   // efficient scan in the iterator.
   set<ColumnId> non_key_columns;
@@ -637,6 +641,7 @@ Status YQLReadOperation::Execute(
       non_key_columns.insert(column_id);
     }
   }
+
   if (request_.has_where_condition()) {
     RETURN_NOT_OK(GetNonKeyColumns(schema, request_.where_condition(), &non_key_columns));
   }

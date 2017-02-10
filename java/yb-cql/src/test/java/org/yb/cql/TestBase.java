@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -21,7 +22,6 @@ import org.yb.client.MiniYBCluster;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
-
 import java.util.Iterator;
 import java.util.Date;
 import java.util.Calendar;
@@ -29,6 +29,7 @@ import java.util.GregorianCalendar;
 import java.util.TimeZone;
 import java.util.Map;
 import java.util.HashMap;
+
 
 public class TestBase {
   protected static final Logger LOG = LoggerFactory.getLogger(TestBase.class);
@@ -206,5 +207,11 @@ public class TestBase {
       }
     }
     return ts_values;
+  }
+
+  protected void assertNoRow(String tableName, String select_stmt) {
+    ResultSet rs = session.execute(select_stmt);
+    Iterator<Row> iter = rs.iterator();
+    assertFalse(iter.hasNext());
   }
 }

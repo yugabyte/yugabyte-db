@@ -110,10 +110,9 @@ class DocDBRocksDBFixture {
   void OpenRocksDB();
   void DestroyRocksDB();
 
-  // Writes the given DocWriteBatch to RocksDB. Unlike the production codepath, here we assume it
-  // already contains valid hybrid_times in its keys, and do not substitue a new hybrid_time for
-  // HybridTime::kMax.
-  rocksdb::Status WriteToRocksDB(const DocWriteBatch& write_batch);
+  // Writes the given DocWriteBatch to RocksDB. We substitue the hybrid time, if provided.
+  rocksdb::Status WriteToRocksDB(const DocWriteBatch& write_batch,
+                                 const HybridTime& hybrid_time = HybridTime::kMax);
 
   void SetHistoryCutoffHybridTime(HybridTime history_cutoff);
   void CompactHistoryBefore(HybridTime history_cutoff);
@@ -132,13 +131,15 @@ class DocDBRocksDBFixture {
   void SetPrimitive(const DocPath& doc_path,
                     const Value& value,
                     HybridTime hybrid_time,
-                    DocWriteBatch* doc_write_batch = nullptr);
+                    DocWriteBatch* doc_write_batch = nullptr,
+                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse);
 
   void SetPrimitive(const DocPath& doc_path,
                     const PrimitiveValue& value,
                     HybridTime hybrid_time,
-                    DocWriteBatch* doc_write_batch = nullptr) {
-    SetPrimitive(doc_path, Value(value), hybrid_time, doc_write_batch);
+                    DocWriteBatch* doc_write_batch = nullptr,
+                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse) {
+    SetPrimitive(doc_path, Value(value), hybrid_time, doc_write_batch, use_init_marker);
   }
 
   void DocDBDebugDumpToConsole();
