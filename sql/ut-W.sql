@@ -130,5 +130,10 @@ EXPLAIN (COSTS false) SELECT * FROM p1;
 /*+Parallel(p1 0 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
+-- Errors
+/*+Parallel(p1 100x hard)Parallel(p1 -1000 hard)Parallel(p1 1000000 hard)
+   Parallel(p1 10 hoge)Parallel(p1)Parallel(p1 100 soft x)*/
+EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
+
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
 SELECT pg_reload_conf();

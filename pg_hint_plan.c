@@ -2345,9 +2345,9 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 
 	if (length < 2 || length > 3)
 	{
-		hint_ereport(str,
-					 ("Wrong number of arguments for %s hint.",
-					  hint->base.keyword));
+		hint_ereport(")",
+					 ("wrong number of arguments (%d): %s",
+					  length,  hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
 		return str;
 	}
@@ -2357,11 +2357,21 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 	/* The second parameter is number of workers */
 	hint->nworkers_str = list_nth(name_list, 1);
 	nworkers = strtod(hint->nworkers_str, &end_ptr);
-	if (*end_ptr || nworkers < 0)
+	if (*end_ptr || nworkers < 0 || nworkers > max_worker_processes)
 	{
-		hint_ereport(hint->nworkers_str,
-					 ("number of workers must be a positive integer: %s",
-					  hint->base.keyword));
+		if (*end_ptr)
+			hint_ereport(hint->nworkers_str,
+						 ("number of workers must be a number: %s",
+						  hint->base.keyword));
+		else if (nworkers < 0)
+			hint_ereport(hint->nworkers_str,
+						 ("number of workers must be positive: %s",
+						  hint->base.keyword));
+		if ( nworkers > max_worker_processes)
+			hint_ereport(hint->nworkers_str,
+						 ("number of workers = %d is larger than max_worker_processes(%d): %s",
+						  nworkers, max_worker_processes, hint->base.keyword));
+
 		hint->base.state = HINT_STATE_ERROR;
 		return str;
 	}
@@ -2379,8 +2389,9 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 			force_parallel = true;
 		else if (strcasecmp(modeparam, "soft") != 0)
 		{
-			hint_ereport(str,
-						 ("The mode of Worker hint must be soft or hard."));
+			hint_ereport(modeparam,
+						 ("enforcement must be soft or hard: %s",
+							 hint->base.keyword));
 			hint->base.state = HINT_STATE_ERROR;
 			return str;
 		}

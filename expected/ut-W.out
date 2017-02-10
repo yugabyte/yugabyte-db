@@ -726,6 +726,59 @@ error hint:
    ->  Seq Scan on p1_c3_c2
 (10 rows)
 
+-- Errors
+/*+Parallel(p1 100x hard)Parallel(p1 -1000 hard)Parallel(p1 1000000 hard)
+   Parallel(p1 10 hoge)Parallel(p1)Parallel(p1 100 soft x)*/
+EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
+INFO:  pg_hint_plan: hint syntax error at or near "100x"
+DETAIL:  number of workers must be a number: Parallel
+INFO:  pg_hint_plan: hint syntax error at or near "-1000"
+DETAIL:  number of workers must be positive: Parallel
+INFO:  pg_hint_plan: hint syntax error at or near "1000000"
+DETAIL:  number of workers = 1000000 is larger than max_worker_processes(100): Parallel
+INFO:  pg_hint_plan: hint syntax error at or near "hoge"
+DETAIL:  enforcement must be soft or hard: Parallel
+INFO:  pg_hint_plan: hint syntax error at or near ")"
+DETAIL:  wrong number of arguments (1): Parallel
+INFO:  pg_hint_plan: hint syntax error at or near ")"
+DETAIL:  wrong number of arguments (4): Parallel
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Parallel(p1 100x hard)
+Parallel(p1 -1000 hard)
+Parallel(p1 1000000 hard)
+Parallel(p1 10 hard)
+Parallel()
+Parallel()
+
+                QUERY PLAN                 
+-------------------------------------------
+ Gather
+   Workers Planned: 1
+   ->  Append
+         ->  Parallel Seq Scan on p1
+         ->  Parallel Seq Scan on p1_c1
+         ->  Parallel Seq Scan on p1_c2
+         ->  Parallel Seq Scan on p1_c3
+         ->  Parallel Seq Scan on p1_c4
+         ->  Parallel Seq Scan on p1_c1_c1
+         ->  Parallel Seq Scan on p1_c1_c2
+         ->  Parallel Seq Scan on p1_c3_c1
+         ->  Parallel Seq Scan on p1_c3_c2
+         ->  Parallel Seq Scan on p2
+         ->  Parallel Seq Scan on p2_c1
+         ->  Parallel Seq Scan on p2_c2
+         ->  Parallel Seq Scan on p2_c3
+         ->  Parallel Seq Scan on p2_c4
+         ->  Parallel Seq Scan on p2_c1_c1
+         ->  Parallel Seq Scan on p2_c1_c2
+         ->  Parallel Seq Scan on p2_c3_c1
+         ->  Parallel Seq Scan on p2_c3_c2
+(21 rows)
+
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
 SELECT pg_reload_conf();
  pg_reload_conf 
