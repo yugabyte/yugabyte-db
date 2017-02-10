@@ -8,20 +8,19 @@ SET client_min_messages TO LOG;
 CREATE TABLE s1.tl (a int);
 INSERT INTO s1.tl (SELECT a FROM generate_series(0, 100000) a);
 
--- Queries on ordinary tables
+-- Queries on ordinary tables with default setting
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
+SET max_parallel_workers_per_gather to DEFAULT;
+
 /*+Parallel(t1 10)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 
 /*+Parallel(t1 10 soft)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
-SET parallel_setup_cost to DEFAULT;
-SET parallel_tuple_cost to DEFAULT;
-SET min_parallel_relation_size to DEFAULT;
 
 /*+Parallel(t1 10 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
@@ -39,22 +38,29 @@ SET min_parallel_relation_size to DEFAULT;
 /*+Parallel(p1 10 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
--- hinting on children don't work but enables parallel
+-- hinting on children makes the whole inheritance parallel
 /*+Parallel(p1_c1 10 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 
 
 -- Joins
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
 
-/*+Parallel(p1_c1 10 hard)*/
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
+/*+Parallel(p1_c1_c1 10 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
 
-/*+Parallel(p2_c1 10 hard)*/
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
+SET parallel_setup_cost to 0;
+SET parallel_tuple_cost to 0;
+SET min_parallel_relation_size to 0;
 
-/*+Parallel(p1_c1 10 hard) Parallel(p2_c1 10 hard)*/
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
+/*+Parallel(p1_c1_c1 10 soft) Parallel(p2_c1_c1 0)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
+
+/*+Parallel(p1_c1_c1 10 hard) Parallel(p2_c1_c1 0)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
+
+/*+Parallel(p1_c1_c1 10 hard) Parallel(p2_c1_c1 10 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
 
 
 -- Joins on inheritance tables
@@ -63,6 +69,10 @@ SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
 /*+Parallel(p1 10)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+
+/*+Parallel(p1 10)Parallel(p2 0)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
 SET min_parallel_relation_size to DEFAULT;
@@ -83,31 +93,35 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 /*+Parallel(p1 10 hard) SeqScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
--- parallelism is not available for the case
+-- parallel overrides index scan
 /*+Parallel(p1 10 hard) IndexScan(p1) */
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+/*+Parallel(p1 0 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
 
 -- Parallel on UNION
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
--- some of the scans are not parallel, so this cannot be parallel
+-- parallel hinting on any relation enables parallel
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
 SET max_parallel_workers_per_gather to 0;
+
 /*+Parallel(p1 10) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
--- all children are parallel, so this can be parallel
-/*+Parallel(p1 10) Parallel(p2 10) */
+-- set hint also does
+/*+Set(max_parallel_workers_per_gather 1)*/
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
+
+-- applies largest number of workers on merged parallel paths
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
 SET min_parallel_relation_size to DEFAULT;
-SET max_parallel_workers_per_gather to DEFAULT;
-
-/*+Parallel(p1 10 hard)Parallel(p2 10 hard) */
+SET max_parallel_workers_per_gather to 10;
+/*+Parallel(p1 5 hard)Parallel(p2 6 hard) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
 

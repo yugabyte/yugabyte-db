@@ -5227,18 +5227,18 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 IndexScan(p2c1)
+not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN        
---------------------------
+              QUERY PLAN               
+---------------------------------------
  Append
    ->  Seq Scan on p2
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1
-         Filter: (c1 = 1)
+   ->  Index Scan using p2c1_i on p2c1
+         Index Cond: (c1 = 1)
    ->  Seq Scan on p2c1c1
          Filter: (c1 = 1)
 (7 rows)

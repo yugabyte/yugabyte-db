@@ -2996,26 +2996,43 @@ standard_planner_proc:
 
 /*
  * Find scan method hint to be applied to the given relation
+ *
  */
 static ScanMethodHint *
-find_scan_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
+find_scan_hint(PlannerInfo *root, Index relid)
 {
+	RelOptInfo	   *rel;
 	RangeTblEntry  *rte;
+	ScanMethodHint	*real_name_hint = NULL;
+	ScanMethodHint	*alias_hint = NULL;
 	int				i;
 
+	/* This should not be a join rel */
+	Assert(relid > 0);
+	rel = root->simple_rel_array[relid];
+
 	/*
-	 * We don't apply scan method hint if the relation is:
-	 *   - not a base relation
-	 *   - not an ordinary relation (such as join and subquery)
+	 * This function is called for any RelOptInfo or its inheritance parent if
+	 * any. If we are called from inheritance planner, the RelOptInfo for the
+	 * parent of target child relation is not set in the planner info.
+	 *
+	 * Otherwise we should check that the reloptinfo is base relation or
+	 * inheritance children.
 	 */
-	if (rel && (rel->reloptkind != RELOPT_BASEREL ||
-				rel->rtekind != RTE_RELATION))
+	if (rel &&
+		rel->reloptkind != RELOPT_BASEREL &&
+		rel->reloptkind != RELOPT_OTHER_MEMBER_REL)
 		return NULL;
 
+	/*
+	 * This is baserel or appendrel children. We can refer to RangeTblEntry.
+	 */
 	rte = root->simple_rte_array[relid];
+	Assert(rte);
 
-	/* We don't force scan method of foreign tables */
-	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+	/* We don't hint on other than relation and foreign tables */
+	if (rte->rtekind != RTE_RELATION ||
+		rte->relkind == RELKIND_FOREIGN_TABLE)
 		return NULL;
 
 	/* Find scan method hint, which matches given names, from the list. */
@@ -3027,36 +3044,70 @@ find_scan_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
 		if (!hint_state_enabled(hint))
 			continue;
 
-		if (RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
-			return hint;
+		if (!alias_hint &&
+			RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
+			alias_hint = hint;
+
+		/* check the real name for appendrel children */
+		if (!real_name_hint &&
+			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
+		{
+			char *realname = get_rel_name(rte->relid);
+
+			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
+				real_name_hint = hint;
+		}
+
+		/* No more match expected, break  */
+		if(alias_hint && real_name_hint)
+			break;
 	}
 
-	return NULL;
+	/* real name match precedes alias match */
+	if (real_name_hint)
+		return real_name_hint;
+
+	return alias_hint;
 }
 
 static ParallelHint *
-find_parallel_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
+find_parallel_hint(PlannerInfo *root, Index relid)
 {
+	RelOptInfo	   *rel;
 	RangeTblEntry  *rte;
+	ParallelHint	*real_name_hint = NULL;
+	ParallelHint	*alias_hint = NULL;
 	int				i;
 
+	/* This should not be a join rel */
+	Assert(relid > 0);
+	rel = root->simple_rel_array[relid];
+
 	/*
-	 * We don't apply scan method hint if the relation is:
-	 *   - not a base relation and inheritance children
-	 *   - not an ordinary relation (such as join and subquery)
+	 * This function is called for any RelOptInfo or its inheritance parent if
+	 * any. If we are called from inheritance planner, the RelOptInfo for the
+	 * parent of target child relation is not set in the planner info.
+	 *
+	 * Otherwise we should check that the reloptinfo is base relation or
+	 * inheritance children.
 	 */
-	if (!rel || rel->rtekind != RTE_RELATION ||
-		(rel->reloptkind != RELOPT_BASEREL &&
-		 rel->reloptkind != RELOPT_OTHER_MEMBER_REL))
+	if (rel &&
+		rel->reloptkind != RELOPT_BASEREL &&
+		rel->reloptkind != RELOPT_OTHER_MEMBER_REL)
 		return NULL;
 
+	/*
+	 * This is baserel or appendrel children. We can refer to RangeTblEntry.
+	 */
 	rte = root->simple_rte_array[relid];
+	Assert(rte);
 
-	/* We can't force scan method of foreign tables */
-	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+	/* We don't hint on other than relation and foreign tables */
+	if (rte->rtekind != RTE_RELATION ||
+		rte->relkind == RELKIND_FOREIGN_TABLE)
 		return NULL;
 
-	/* Find scan method hint, which matches given names, from the list. */
+	/* Find parallel method hint, which matches given names, from the list. */
 	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_PARALLEL]; i++)
 	{
 		ParallelHint *hint = current_hint_state->parallel_hints[i];
@@ -3065,11 +3116,30 @@ find_parallel_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
 		if (!hint_state_enabled(hint))
 			continue;
 
-		if (RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
-			return hint;
+		if (!alias_hint &&
+			RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
+			alias_hint = hint;
+
+		/* check the real name for appendrel children */
+		if (!real_name_hint &&
+			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
+		{
+			char *realname = get_rel_name(rte->relid);
+
+			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
+				real_name_hint = hint;
+		}
+
+		/* No more match expected, break  */
+		if(alias_hint && real_name_hint)
+			break;
 	}
 
-	return NULL;
+	/* real name match precedes alias match */
+	if (real_name_hint)
+		return real_name_hint;
+
+	return alias_hint;
 }
 
 /*
@@ -3508,10 +3578,10 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 				
 		/* Find hints for the parent */
 		current_hint_state->parent_scan_hint =
-			find_scan_hint(root, current_hint_state->parent_relid, NULL);
+			find_scan_hint(root, current_hint_state->parent_relid);
 
 		current_hint_state->parent_parallel_hint =
-			find_parallel_hint(root, current_hint_state->parent_relid, NULL);
+			find_parallel_hint(root, current_hint_state->parent_relid);
 
 		/*
 		 * If hint is found for the parent, apply it for this child instead
@@ -3560,10 +3630,9 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 		}
 	}
 
-	if (current_hint_state->parent_scan_hint)
+	shint = find_scan_hint(root, rel->relid);
+	if (!shint)
 		shint = current_hint_state->parent_scan_hint;
-	else
-		shint = find_scan_hint(root, rel->relid, rel);
 
 	if (shint)
 	{
@@ -3600,10 +3669,9 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 	}
 
 	/* Do the same for parallel plan enforcement */
-	if (current_hint_state->parent_parallel_hint)
+	phint = find_parallel_hint(root, rel->relid);
+	if (!phint)
 		phint = current_hint_state->parent_parallel_hint;
-	else
-		phint = find_parallel_hint(root, rel->relid, rel);
 
 	setup_parallel_plan_enforcement(phint, current_hint_state);
 
@@ -3613,7 +3681,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
 					(errhidestmt (true),
-					 errmsg ("pg_hint_plan%s: get_relation_info"
+					 errmsg ("pg_hint_plan%s: setup_hint_enforcement"
 							 " no hint applied:"
 							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
 							 " hint_inhibit_level=%d, scanmask=0x%x",
@@ -4126,13 +4194,9 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 							 SpecialJoinInfo *sjinfo,
 							 List *restrictlist)
 {
-	ScanMethodHint *scan_hint = NULL;
 	Relids			joinrelids;
 	JoinMethodHint *join_hint;
 	int				save_nestlevel;
-
-	if ((scan_hint = find_scan_hint(root, innerrel->relid, innerrel)) != NULL)
-		setup_scan_method_enforcement(scan_hint, current_hint_state);
 
 	joinrelids = bms_union(outerrel->relids, innerrel->relids);
 	join_hint = find_join_hint(joinrelids);
@@ -4168,10 +4232,6 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 	else
 		add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype,
 							 sjinfo, restrictlist);
-
-	/* Reset the environment if changed */
-	if (scan_hint != NULL)
-		setup_scan_method_enforcement(NULL, current_hint_state);
 }
 
 static int
@@ -4316,7 +4376,7 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 
 	/* Here, we regenerate paths with the current hint restriction */
 
-	/* Remove prviously paths except dummy rels */
+	/* Remove prviously generated paths */
 	list_free_deep(rel->pathlist);
 	rel->pathlist = NIL;
 
@@ -4328,7 +4388,7 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 	 * estimated number of workers. Force the requested number of workers if
 	 * hard mode.
 	 */
-	phint = find_parallel_hint(root, rel->relid, rel);
+	phint = find_parallel_hint(root, rel->relid);
 
 	if (phint)
 	{

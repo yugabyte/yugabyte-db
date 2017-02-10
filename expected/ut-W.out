@@ -5,7 +5,7 @@ SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 CREATE TABLE s1.tl (a int);
 INSERT INTO s1.tl (SELECT a FROM generate_series(0, 100000) a);
--- Queries on ordinary tables
+-- Queries on ordinary tables with default setting
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
    QUERY PLAN   
 ----------------
@@ -15,6 +15,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
+SET max_parallel_workers_per_gather to DEFAULT;
 /*+Parallel(t1 10)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 LOG:  pg_hint_plan:
@@ -47,9 +48,6 @@ error hint:
    ->  Parallel Seq Scan on t1
 (3 rows)
 
-SET parallel_setup_cost to DEFAULT;
-SET parallel_tuple_cost to DEFAULT;
-SET min_parallel_relation_size to DEFAULT;
 /*+Parallel(t1 10 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1;
 LOG:  pg_hint_plan:
@@ -123,20 +121,20 @@ error hint:
          ->  Parallel Seq Scan on p1_c3_c2
 (12 rows)
 
--- hinting on children don't work but enables parallel
+-- hinting on children makes the whole inheritance parallel
 /*+Parallel(p1_c1 10 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Parallel(p1_c1 10 hard)
+not used hint:
 duplication hint:
 error hint:
 
                 QUERY PLAN                 
 -------------------------------------------
  Gather
-   Workers Planned: 1
+   Workers Planned: 10
    ->  Append
          ->  Parallel Seq Scan on p1
          ->  Parallel Seq Scan on p1_c1
@@ -150,106 +148,103 @@ error hint:
 (12 rows)
 
 -- Joins
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
-               QUERY PLAN               
-----------------------------------------
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
+                QUERY PLAN                
+------------------------------------------
  Hash Join
-   Hash Cond: (p1_c1.id = p2_c1.id)
-   ->  Append
-         ->  Seq Scan on p1_c1
-         ->  Seq Scan on p1_c1_c1
-         ->  Seq Scan on p1_c1_c2
+   Hash Cond: (p1_c1_c1.id = p2_c1_c1.id)
+   ->  Seq Scan on p1_c1_c1
    ->  Hash
-         ->  Append
-               ->  Seq Scan on p2_c1
+         ->  Seq Scan on p2_c1_c1
+(5 rows)
+
+/*+Parallel(p1_c1_c1 10 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
+LOG:  pg_hint_plan:
+used hint:
+Parallel(p1_c1_c1 10 hard)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
+ Hash Join
+   Hash Cond: (p2_c1_c1.id = p1_c1_c1.id)
+   ->  Seq Scan on p2_c1_c1
+   ->  Hash
+         ->  Gather
+               Workers Planned: 10
+               ->  Parallel Seq Scan on p1_c1_c1
+(7 rows)
+
+SET parallel_setup_cost to 0;
+SET parallel_tuple_cost to 0;
+SET min_parallel_relation_size to 0;
+/*+Parallel(p1_c1_c1 10 soft) Parallel(p2_c1_c1 0)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
+LOG:  pg_hint_plan:
+used hint:
+Parallel(p1_c1_c1 10 soft)
+Parallel(p2_c1_c1 0 soft)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                   
+------------------------------------------------
+ Gather
+   Workers Planned: 1
+   ->  Hash Join
+         Hash Cond: (p1_c1_c1.id = p2_c1_c1.id)
+         ->  Parallel Seq Scan on p1_c1_c1
+         ->  Hash
                ->  Seq Scan on p2_c1_c1
-               ->  Seq Scan on p2_c1_c2
-(11 rows)
+(7 rows)
 
-/*+Parallel(p1_c1 10 hard)*/
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
+/*+Parallel(p1_c1_c1 10 hard) Parallel(p2_c1_c1 0)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
 LOG:  pg_hint_plan:
 used hint:
-Parallel(p1_c1 10 hard)
+Parallel(p1_c1_c1 10 hard)
+Parallel(p2_c1_c1 0 soft)
 not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                       
--------------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
+ Gather
+   Workers Planned: 10
+   ->  Hash Join
+         Hash Cond: (p1_c1_c1.id = p2_c1_c1.id)
+         ->  Parallel Seq Scan on p1_c1_c1
+         ->  Hash
+               ->  Seq Scan on p2_c1_c1
+(7 rows)
+
+/*+Parallel(p1_c1_c1 10 hard) Parallel(p2_c1_c1 10 hard)*/
+EXPLAIN (COSTS false) SELECT * FROM p1_c1_c1 join p2_c1_c1 on p1_c1_c1.id = p2_c1_c1.id;
+LOG:  pg_hint_plan:
+used hint:
+Parallel(p1_c1_c1 10 hard)
+Parallel(p2_c1_c1 10 hard)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
  Hash Join
-   Hash Cond: (p1_c1.id = p2_c1.id)
+   Hash Cond: (p1_c1_c1.id = p2_c1_c1.id)
    ->  Gather
          Workers Planned: 10
-         ->  Append
-               ->  Parallel Seq Scan on p1_c1
-               ->  Parallel Seq Scan on p1_c1_c1
-               ->  Parallel Seq Scan on p1_c1_c2
-   ->  Hash
-         ->  Gather
-               Workers Planned: 1
-               ->  Append
-                     ->  Parallel Seq Scan on p2_c1
-                     ->  Parallel Seq Scan on p2_c1_c1
-                     ->  Parallel Seq Scan on p2_c1_c2
-(15 rows)
-
-/*+Parallel(p2_c1 10 hard)*/
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
-LOG:  pg_hint_plan:
-used hint:
-Parallel(p2_c1 10 hard)
-not used hint:
-duplication hint:
-error hint:
-
-                      QUERY PLAN                       
--------------------------------------------------------
- Hash Join
-   Hash Cond: (p1_c1.id = p2_c1.id)
-   ->  Gather
-         Workers Planned: 1
-         ->  Append
-               ->  Parallel Seq Scan on p1_c1
-               ->  Parallel Seq Scan on p1_c1_c1
-               ->  Parallel Seq Scan on p1_c1_c2
+         ->  Parallel Seq Scan on p1_c1_c1
    ->  Hash
          ->  Gather
                Workers Planned: 10
-               ->  Append
-                     ->  Parallel Seq Scan on p2_c1
-                     ->  Parallel Seq Scan on p2_c1_c1
-                     ->  Parallel Seq Scan on p2_c1_c2
-(15 rows)
-
-/*+Parallel(p1_c1 10 hard) Parallel(p2_c1 10 hard)*/
-EXPLAIN (COSTS false) SELECT * FROM p1_c1 join p2_c1 on p1_c1.id = p2_c1.id;
-LOG:  pg_hint_plan:
-used hint:
-Parallel(p1_c1 10 hard)
-Parallel(p2_c1 10 hard)
-not used hint:
-duplication hint:
-error hint:
-
-                      QUERY PLAN                       
--------------------------------------------------------
- Hash Join
-   Hash Cond: (p1_c1.id = p2_c1.id)
-   ->  Gather
-         Workers Planned: 10
-         ->  Append
-               ->  Parallel Seq Scan on p1_c1
-               ->  Parallel Seq Scan on p1_c1_c1
-               ->  Parallel Seq Scan on p1_c1_c2
-   ->  Hash
-         ->  Gather
-               Workers Planned: 10
-               ->  Append
-                     ->  Parallel Seq Scan on p2_c1
-                     ->  Parallel Seq Scan on p2_c1_c1
-                     ->  Parallel Seq Scan on p2_c1_c2
-(15 rows)
+               ->  Parallel Seq Scan on p2_c1_c1
+(9 rows)
 
 -- Joins on inheritance tables
 SET parallel_setup_cost to 0;
@@ -294,6 +289,45 @@ error hint:
                      ->  Parallel Seq Scan on p2_c3_c1
                      ->  Parallel Seq Scan on p2_c3_c2
 (27 rows)
+
+/*+Parallel(p1 10)Parallel(p2 0)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+LOG:  pg_hint_plan:
+used hint:
+Parallel(p1 10 soft)
+Parallel(p2 0 soft)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
+ Gather
+   Workers Planned: 1
+   ->  Hash Join
+         Hash Cond: (p1.id = p2.id)
+         ->  Append
+               ->  Parallel Seq Scan on p1
+               ->  Parallel Seq Scan on p1_c1
+               ->  Parallel Seq Scan on p1_c2
+               ->  Parallel Seq Scan on p1_c3
+               ->  Parallel Seq Scan on p1_c4
+               ->  Parallel Seq Scan on p1_c1_c1
+               ->  Parallel Seq Scan on p1_c1_c2
+               ->  Parallel Seq Scan on p1_c3_c1
+               ->  Parallel Seq Scan on p1_c3_c2
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on p2
+                     ->  Seq Scan on p2_c1
+                     ->  Seq Scan on p2_c2
+                     ->  Seq Scan on p2_c3
+                     ->  Seq Scan on p2_c4
+                     ->  Seq Scan on p2_c1_c1
+                     ->  Seq Scan on p2_c1_c2
+                     ->  Seq Scan on p2_c3_c1
+                     ->  Seq Scan on p2_c3_c2
+(25 rows)
 
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
@@ -464,7 +498,7 @@ error hint:
                      ->  Parallel Seq Scan on p2_c3_c2
 (27 rows)
 
--- parallelism is not available for the case
+-- parallel overrides index scan
 /*+Parallel(p1 10 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 LOG:  pg_hint_plan:
@@ -506,6 +540,43 @@ error hint:
                      ->  Parallel Seq Scan on p2_c3_c2
 (27 rows)
 
+/*+Parallel(p1 0 hard) IndexScan(p1) */
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+Parallel(p1 0 hard)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (p1.id = p2.id)
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+         ->  Index Scan using p1_c1_pkey on p1_c1
+         ->  Index Scan using p1_c2_pkey on p1_c2
+         ->  Index Scan using p1_c3_pkey on p1_c3
+         ->  Index Scan using p1_c4_pkey on p1_c4
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2
+         ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1
+         ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2
+   ->  Hash
+         ->  Append
+               ->  Seq Scan on p2
+               ->  Seq Scan on p2_c1
+               ->  Seq Scan on p2_c2
+               ->  Seq Scan on p2_c3
+               ->  Seq Scan on p2_c4
+               ->  Seq Scan on p2_c1_c1
+               ->  Seq Scan on p2_c1_c2
+               ->  Seq Scan on p2_c3_c1
+               ->  Seq Scan on p2_c3_c2
+(23 rows)
+
 -- Parallel on UNION
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
          QUERY PLAN         
@@ -531,7 +602,7 @@ EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
    ->  Seq Scan on p2_c3_c2
 (19 rows)
 
--- some of the scans are not parallel, so this cannot be parallel
+-- parallel hinting on any relation enables parallel
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
@@ -570,13 +641,12 @@ error hint:
          ->  Parallel Seq Scan on p2_c3_c2
 (21 rows)
 
--- all children are parallel, so this can be parallel
-/*+Parallel(p1 10) Parallel(p2 10) */
+-- set hint also does
+/*+Set(max_parallel_workers_per_gather 1)*/
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 LOG:  pg_hint_plan:
 used hint:
-Parallel(p1 10 soft)
-Parallel(p2 10 soft)
+Set(max_parallel_workers_per_gather 1)
 not used hint:
 duplication hint:
 error hint:
@@ -606,16 +676,17 @@ error hint:
          ->  Parallel Seq Scan on p2_c3_c2
 (21 rows)
 
+-- applies largest number of workers on merged parallel paths
 SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
 SET min_parallel_relation_size to DEFAULT;
-SET max_parallel_workers_per_gather to DEFAULT;
-/*+Parallel(p1 10 hard)Parallel(p2 10 hard) */
+SET max_parallel_workers_per_gather to 10;
+/*+Parallel(p1 5 hard)Parallel(p2 6 hard) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 LOG:  pg_hint_plan:
 used hint:
-Parallel(p1 10 hard)
-Parallel(p2 10 hard)
+Parallel(p1 5 hard)
+Parallel(p2 6 hard)
 not used hint:
 duplication hint:
 error hint:
@@ -623,7 +694,7 @@ error hint:
                 QUERY PLAN                 
 -------------------------------------------
  Gather
-   Workers Planned: 10
+   Workers Planned: 6
    ->  Append
          ->  Parallel Seq Scan on p1
          ->  Parallel Seq Scan on p1_c1
