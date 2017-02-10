@@ -37,8 +37,6 @@
 #include <vector>
 
 #include "yb/client/value.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/schema.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/status.h"
 
@@ -48,6 +46,7 @@ class ColumnSchema;
 class YBPartialRow;
 class Schema;
 class TestWorkload;
+class TableProperties;
 
 namespace tools {
 class TsAdminClient;

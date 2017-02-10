@@ -30,6 +30,7 @@
 namespace yb {
 
 class ConstContiguousRow;
+struct ColumnId;
 class ColumnSchema;
 class faststring;
 class HostPort;
@@ -92,7 +93,7 @@ Status ColumnPBsToSchema(
 // Returns the required information from column pbs to build the column part of SchemaPB.
 CHECKED_STATUS ColumnPBsToColumnTuple(
     const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
-    vector<ColumnSchema>* columns , vector<ColumnId>* column_ids, int* num_key_columns);
+    std::vector<ColumnSchema>* columns , std::vector<ColumnId>* column_ids, int* num_key_columns);
 
 // Extract the columns of the given Schema into protobuf objects.
 //
