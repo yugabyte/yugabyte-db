@@ -274,9 +274,6 @@ Status RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
     RETURN_NOT_OK(client_builder.Build(&client_));
 
     const string table_name(kRedisTableName);
-    // Ensure that the table has already been created.
-    YBSchema existing_schema;
-    RETURN_NOT_OK(client_->GetTableSchema(table_name, &existing_schema));
     RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
     yb_client_initialized_.store(true);
   }

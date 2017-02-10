@@ -276,14 +276,16 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   // 'exists' is set only on success.
   CHECKED_STATUS TableExists(const std::string& table_name, bool* exists);
 
-  // Open the table with the given name. If the table has not been opened before
-  // in this client, this will do an RPC to ensure that the table exists and
-  // look up its schema.
+  // Open the table with the given name. If the table has been opened before,
+  // and force_refresh is false, then it returns the previously opened table
+  // from cached_tables_. If the table has not been opened before
+  // in this client, or if force_refresh is true, this will do an RPC to ensure
+  // that the table exists and look up its schema.
   //
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
-  CHECKED_STATUS OpenTable(const std::string& table_name,
-                   std::shared_ptr<YBTable>* table);
+  CHECKED_STATUS OpenTable(
+      const std::string& table_name, std::shared_ptr<YBTable>* table, bool force_refresh = true);
 
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
@@ -376,6 +378,10 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
 
   // Owned.
   Data* data_;
+
+  // Map from table-name to YBTable instances.
+  std::map<string, std::shared_ptr<YBTable> > cached_tables_;
+  std::mutex cached_tables_mutex_;
 
   // Unique identifier for this client. This will be constant for the lifetime of this client
   // instance and is used in cases such as the load tester, for binding reads and writes from the

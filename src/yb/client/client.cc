@@ -630,7 +630,17 @@ Status YBClient::TableExists(const string& table_name, bool* exists) {
   return Status::OK();
 }
 
-Status YBClient::OpenTable(const string& table_name, shared_ptr<YBTable>* table) {
+Status YBClient::OpenTable(
+    const string& table_name, shared_ptr<YBTable>* table, bool force_refresh) {
+  if (!force_refresh) {
+    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+    auto itr = cached_tables_.find(table_name);
+    if (itr != cached_tables_.end()) {
+      *table = itr->second;
+      return Status::OK();
+    }
+  }
+
   YBSchema schema;
   string table_id;
   PartitionSchema partition_schema;
@@ -649,7 +659,10 @@ Status YBClient::OpenTable(const string& table_name, shared_ptr<YBTable>* table)
     partition_schema));
   RETURN_NOT_OK(ret->data_->Open());
   table->swap(ret);
-
+  {
+    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+    cached_tables_[table_name] = *table;
+  }
   return Status::OK();
 }
 

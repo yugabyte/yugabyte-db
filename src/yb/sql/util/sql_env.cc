@@ -74,7 +74,8 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const char *table_name, bool refresh_me
   // to decide whether or not the cached version should be used.
   // At the moment, we read the table descriptor every time we need it.
   shared_ptr<YBTable> yb_table;
-  Status s = client_->OpenTable(table_name, &yb_table);
+  Status s = client_->OpenTable(table_name, &yb_table, refresh_metadata);
+
   if (s.IsNotFound()) {
     return nullptr;
   }
