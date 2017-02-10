@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React from 'react';
-import { Route, IndexRoute } from 'react-router';
+import { Route, IndexRoute, browserHistory } from 'react-router';
 import { validateToken, validateTokenSuccess, validateTokenFailure } from './actions/customers';
 import App from './pages/App';
 import Login from './pages/Login';
@@ -31,7 +31,7 @@ function validateSession(store, replacePath, callback) {
           store.dispatch(validateTokenSuccess(response.payload));
         } else {
           localStorage.clear();
-          replacePath('/login');
+          browserHistory.push('/login');
           callback();
           store.dispatch(validateTokenFailure(response.payload));
         }

@@ -12,7 +12,7 @@ export default class AuthenticatedComponent extends Component {
   componentWillUnmount() {
     this.props.resetUniverseList();
   }
-  
+
   render() {
     return (
       <div>
