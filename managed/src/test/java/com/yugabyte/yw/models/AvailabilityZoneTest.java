@@ -10,13 +10,11 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.Set;
 
+import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
 
 
 public class AvailabilityZoneTest extends FakeDBApplication {
@@ -24,7 +22,8 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    Provider provider = Provider.create("aws", "Amazon");
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
     defaultRegion = Region.create(provider, "region-1", "test region", "default-image");
   }
 

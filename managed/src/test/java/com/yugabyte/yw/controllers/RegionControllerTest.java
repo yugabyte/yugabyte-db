@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.Customer;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,7 +36,8 @@ public class RegionControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    provider = Provider.create("aws", "Amazon");
+    Customer customer = ModelFactory.testCustomer();
+    provider = ModelFactory.awsProvider(customer);
   }
 
   @Test

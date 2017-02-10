@@ -8,7 +8,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 
@@ -22,6 +22,7 @@ import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
+import play.test.WithApplication;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,7 +41,7 @@ import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.fakeRequest;
 
-public class CustomerControllerTest extends FakeDBApplication {
+public class CustomerControllerTest extends WithApplication {
   MetricQueryHelper mockMetricQueryHelper;
 
   @Override
@@ -59,7 +60,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    customer = Customer.create("Valid Customer", "foo@bar.com", "password");
+    customer = ModelFactory.testCustomer();
   }
 
   @Test

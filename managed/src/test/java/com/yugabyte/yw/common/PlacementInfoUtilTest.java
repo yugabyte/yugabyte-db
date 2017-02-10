@@ -2,45 +2,22 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Matchers;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import play.libs.Json;
-import play.libs.ws.WSClient;
-import play.libs.ws.WSRequest;
-import play.libs.ws.WSResponse;
 
-import java.util.Collection;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.when;
 
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -68,7 +45,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     customer = Customer.create("Valid Customer", "foo@bar.com", "password");
     Universe.create(univName, univUuid, customer.getCustomerId());
 
-    Provider p = Provider.create("aws", "Amazon");
+    Provider p = Provider.create(customer.uuid, "aws", "Amazon");
     Region r1 = Region.create(p, "region-1", "Region 1", "yb-image-1");
     Region r2 = Region.create(p, "region-2", "Region 2", "yb-image-1");
     az1 = AvailabilityZone.create(r1, "PlacementAZ 1", "az-1", "subnet-1");
@@ -205,7 +182,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testEditPlacement() {
     UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
     ud.universeUUID = univUuid;
-    Provider p = Provider.get("Amazon");
+    Provider p = Provider.get(customer.uuid, "Amazon");
     Region r3 = Region.create(p, "region-3", "Region 3", "yb-image-3");
     AvailabilityZone.create(r3, "az-4", "PlacementAZ 4", "subnet-4");
     ud.userIntent.regionList.add(r3.uuid);
