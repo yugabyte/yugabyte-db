@@ -2,23 +2,21 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.data.FormFactory;
-import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
-import javax.persistence.PersistenceException;
+import java.io.File;
 import java.util.List;
 import java.util.UUID;
 
@@ -61,35 +59,42 @@ public class AccessKeyController extends AuthenticatedController {
 
 
     public Result create(UUID customerUUID, UUID providerUUID) {
-        Form<AccessKeyFormData> formData = formFactory.form(AccessKeyFormData.class).bindFromRequest();
-        String validationError = validateUUIDs(customerUUID, providerUUID);
-        if (validationError != null) {
-            return ApiResponse.error(BAD_REQUEST, validationError);
-        }
+      Form<AccessKeyFormData> formData = formFactory.form(AccessKeyFormData.class).bindFromRequest();
+      if (formData.hasErrors()) {
+        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+      }
+      String validationError = validateUUIDs(customerUUID, providerUUID);
+      if (validationError != null) {
+          return ApiResponse.error(BAD_REQUEST, validationError);
+      }
 
-        if (formData.hasErrors()) {
-            return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-        }
+      String keyCode = formData.get().keyCode;
+      AccessManager.KeyType keyType = formData.get().keyType;
 
-        AccessKey accessKey = AccessKey.get(providerUUID, formData.get().keyCode);
-        if (accessKey != null) {
-            return ApiResponse.error(BAD_REQUEST, "Duplicate keycode: " + formData.get().keyCode);
-        }
+      AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
+      if (accessKey != null) {
+          return ApiResponse.error(BAD_REQUEST, "Duplicate keycode: " + keyCode);
+      }
 
-        try {
-            JsonNode response = accessManager.addKey(providerUUID, formData.get().keyCode);
-            if (response.has("error")) {
-                return ApiResponse.error(INTERNAL_SERVER_ERROR, response.get("error"));
-            }
-
-            AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-            keyInfo.publicKey = response.get("public_key").asText();
-            keyInfo.privateKey = response.get("private_key").asText();
-            accessKey = AccessKey.create(providerUUID, formData.get().keyCode, keyInfo);
-            return ApiResponse.success(accessKey);
-        } catch(Exception e) {
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      // Check if a public/private key was uploaded as part of the request
+      Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
+      try {
+        AccessKey.KeyInfo keyInfo;
+        if (multiPartBody != null) {
+          Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
+          File uploadedFile = (File) filePart.getFile();
+          if (keyType == null || uploadedFile == null) {
+            return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
+          }
+          keyInfo = accessManager.uploadKeyFile(providerUUID, uploadedFile, keyCode, keyType);
+        } else {
+          keyInfo = accessManager.addKey(providerUUID, keyCode);
         }
+        accessKey = AccessKey.create(providerUUID, keyCode, keyInfo);
+      } catch(RuntimeException re) {
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());
+      }
+      return ApiResponse.success(accessKey);
     }
 
     public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
@@ -110,37 +115,14 @@ public class AccessKeyController extends AuthenticatedController {
         }
     }
 
-    public Result update(UUID customerUUID, UUID providerUUID, String keyCode) {
-        String validationError = validateUUIDs(customerUUID, providerUUID);
-        if (validationError != null) {
-            return ApiResponse.error(BAD_REQUEST, validationError);
-        }
-
-        Form<AccessKeyFormData> formData = formFactory.form(AccessKeyFormData.class).bindFromRequest();
-        if (formData.hasErrors()) {
-            return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-        }
-
-        AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-        if (accessKey == null) {
-            return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
-        }
-
-        try {
-            accessKey.setKeyInfo(formData.get().keyInfo);
-            accessKey.update();
-            return ApiResponse.success("Updated KeyCode: " + keyCode);
-        } catch (Exception e) {
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-        }
-    }
-
     private String validateUUIDs(UUID customerUUID, UUID providerUUID) {
         Customer customer = Customer.get(customerUUID);
         if (customer == null) {
             return "Invalid Customer UUID: " + customerUUID;
         }
-        Provider provider = Provider.find.byId(providerUUID);
+        Provider provider = Provider.find.where()
+            .eq("customer_uuid", customerUUID)
+            .idEq(providerUUID).findUnique();
         if (provider == null) {
             return "Invalid Provider UUID: " + providerUUID;
         }

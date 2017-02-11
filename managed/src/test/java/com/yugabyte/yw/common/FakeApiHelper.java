@@ -3,11 +3,17 @@
 package com.yugabyte.yw.common;
 
 
+import akka.stream.Materializer;
+import akka.stream.javadsl.Source;
+import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.Customer;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
+
+import java.util.List;
+import java.util.Map;
 
 public class FakeApiHelper {
   private static String getAuthToken() {
@@ -33,6 +39,22 @@ public class FakeApiHelper {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url)
             .header("X-AUTH-TOKEN", authToken)
             .bodyJson(body);
+    return Helpers.route(request);
+  }
+
+  public static Result doRequestWithMultipartData(String method, String url,
+                                                  List<Http.MultipartFormData.Part<Source<ByteString, ?>>> data,
+                                                  Materializer mat) {
+    return doRequestWithAuthTokenAndMultipartData(method, url, getAuthToken(), data, mat);
+  }
+
+  public static Result doRequestWithAuthTokenAndMultipartData(
+      String method, String url, String authToken,
+      List<Http.MultipartFormData.Part<Source<ByteString, ?>>> data,
+      Materializer mat) {
+    Http.RequestBuilder request = Helpers.fakeRequest(method, url)
+        .header("X-AUTH-TOKEN", authToken)
+        .bodyMultipart(data, mat);
     return Helpers.route(request);
   }
 }

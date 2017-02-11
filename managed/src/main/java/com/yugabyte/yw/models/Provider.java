@@ -72,8 +72,7 @@ public class Provider extends Model {
    * @param name, name of cloud provider
    * @return instance of cloud provider
    */
-  public static Provider create(UUID customerUUID, String code, String name)
-  {
+  public static Provider create(UUID customerUUID, String code, String name) {
     return create(customerUUID, code, name, new HashMap<String, String>());
   }
 
@@ -85,11 +84,9 @@ public class Provider extends Model {
    * @param config, Map of cloud provider configuration
    * @return instance of cloud provider
    */
-  public static Provider create(UUID customerUUID, String code, String name, Map<String, String> config)
-  {
+  public static Provider create(UUID customerUUID, String code, String name, Map<String, String> config) {
     Provider provider = new Provider();
     provider.customerUUID = customerUUID;
-    provider.uuid = UUID.randomUUID();
     provider.code = code;
     provider.name = name;
     provider.setConfig(config);
