@@ -15,82 +15,75 @@ import java.util.UUID;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 
-public class AccessKeyTest  extends FakeDBApplication {
-    Provider defaultProvider;
+public class AccessKeyTest extends FakeDBApplication {
+  Provider defaultProvider;
 
-    @Before
-    public void setUp() {
-        Customer customer = ModelFactory.testCustomer();
-        defaultProvider = ModelFactory.awsProvider(customer);
-    }
+  @Before
+  public void setUp() {
+    Customer customer = ModelFactory.testCustomer();
+    defaultProvider = ModelFactory.awsProvider(customer);
+  }
 
-    @Test
-    public void testValidCreate() {
-        AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-        keyInfo.publicKey = "sample public key";
-        keyInfo.privateKey = "sample private key";
-        keyInfo.accessSecret = "sample access secret";
-        keyInfo.accessKey = "sample access key";
+  @Test
+  public void testValidCreate() {
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.publicKey = "sample public key";
+    keyInfo.privateKey = "sample private key";
 
-        AccessKey ak = AccessKey.create(defaultProvider.uuid, "access-code1", keyInfo);
-        assertNotNull(ak);
-        assertThat(ak.getKeyCode(), allOf(notNullValue(), equalTo("access-code1")));
-        assertThat(ak.getProviderUUID(), allOf(notNullValue(), equalTo(defaultProvider.uuid)));
-        keyInfo = ak.getKeyInfo();
-        assertThat(keyInfo.publicKey, allOf(notNullValue(), equalTo("sample public key")));
-        assertThat(keyInfo.privateKey, allOf(notNullValue(), equalTo("sample private key")));
-        assertThat(keyInfo.accessSecret, allOf(notNullValue(), equalTo("sample access secret")));
-        assertThat(keyInfo.accessKey, allOf(notNullValue(), equalTo("sample access key")));
-    }
+    AccessKey ak = AccessKey.create(defaultProvider.uuid, "access-code1", keyInfo);
+    assertNotNull(ak);
+    assertThat(ak.getKeyCode(), allOf(notNullValue(), equalTo("access-code1")));
+    assertThat(ak.getProviderUUID(), allOf(notNullValue(), equalTo(defaultProvider.uuid)));
+    keyInfo = ak.getKeyInfo();
+    assertThat(keyInfo.publicKey, allOf(notNullValue(), equalTo("sample public key")));
+    assertThat(keyInfo.privateKey, allOf(notNullValue(), equalTo("sample private key")));
+  }
 
-    @Test
-    public void testCreateWithInvalidDetails() {
-        AccessKey ak = AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
-        assertNotNull(ak);
-        assertThat(ak.getKeyCode(), allOf(notNullValue(), equalTo("access-code1")));
-        assertThat(ak.getProviderUUID(), allOf(notNullValue(), equalTo(defaultProvider.uuid)));
-        AccessKey.KeyInfo keyInfo = ak.getKeyInfo();
+  @Test
+  public void testCreateWithInvalidDetails() {
+    AccessKey ak = AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
+    assertNotNull(ak);
+    assertThat(ak.getKeyCode(), allOf(notNullValue(), equalTo("access-code1")));
+    assertThat(ak.getProviderUUID(), allOf(notNullValue(), equalTo(defaultProvider.uuid)));
+    AccessKey.KeyInfo keyInfo = ak.getKeyInfo();
 
-        assertNull(keyInfo.publicKey);
-        assertNull(keyInfo.privateKey);
-        assertNull(keyInfo.accessSecret);
-        assertNull(keyInfo.accessKey);
-    }
+    assertNull(keyInfo.publicKey);
+    assertNull(keyInfo.privateKey);
+  }
 
-    @Test(expected = PersistenceException.class)
-    public void testCreateWithDuplicateCode() {
-        AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
-        AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
-    }
+  @Test(expected = PersistenceException.class)
+  public void testCreateWithDuplicateCode() {
+    AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
+    AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
+  }
 
+  @Test
+  public void testGetValidKeyCode() {
+    AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
+    AccessKey ak = AccessKey.get(defaultProvider.uuid, "access-code1");
+    assertNotNull(ak);
+    assertThat(ak.getKeyCode(), allOf(notNullValue(), equalTo("access-code1")));
+  }
 
-    @Test
-    public void testGetValidKeyCode() {
-        AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
-        AccessKey ak = AccessKey.get(defaultProvider.uuid, "access-code1");
-        assertNotNull(ak);
-        assertThat(ak.getKeyCode(), allOf(notNullValue(), equalTo("access-code1")));
-    }
+  @Test
+  public void testGetInvalidKeyCode() {
+    AccessKey ak = AccessKey.get(defaultProvider.uuid, "access-code1");
+    assertNull(ak);
+  }
 
-    @Test
-    public void testGetInvalidKeyCode() {
-        AccessKey ak = AccessKey.get(defaultProvider.uuid, "access-code1");
-        assertNull(ak);
-    }
+  @Test
+  public void testGetAllWithValidKeyCodes() {
+    AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
+    AccessKey.create(defaultProvider.uuid, "access-code2", new AccessKey.KeyInfo());
+    AccessKey.create(UUID.randomUUID(), "access-code3", new AccessKey.KeyInfo());
+    List<AccessKey> accessKeys = AccessKey.getAll(defaultProvider.uuid);
+    assertEquals(2, accessKeys.size());
+  }
 
-    @Test
-    public void testGetAllWithValidKeyCodes() {
-        AccessKey.create(defaultProvider.uuid, "access-code1", new AccessKey.KeyInfo());
-        AccessKey.create(defaultProvider.uuid, "access-code2", new AccessKey.KeyInfo());
-        AccessKey.create(UUID.randomUUID(), "access-code3", new AccessKey.KeyInfo());
-        List<AccessKey> accessKeys = AccessKey.getAll(defaultProvider.uuid);
-        assertEquals(2, accessKeys.size());
-    }
-
-    @Test
-    public void testGetAllWithNoKeyCodes() {
-        AccessKey.create(UUID.randomUUID(), "access-code3", new AccessKey.KeyInfo());
-        List<AccessKey> accessKeys = AccessKey.getAll(defaultProvider.uuid);
-        assertEquals(0, accessKeys.size());
-    }
+  @Test
+  public void testGetAllWithNoKeyCodes() {
+    AccessKey.create(UUID.randomUUID(), "access-code3", new AccessKey.KeyInfo());
+    List<AccessKey> accessKeys = AccessKey.getAll(defaultProvider.uuid);
+    assertEquals(0, accessKeys.size());
+  }
 }
