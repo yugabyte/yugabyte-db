@@ -12,9 +12,7 @@ import play.libs.Json;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -22,8 +20,6 @@ public class AccessKey extends Model {
     public static class KeyInfo {
         public String publicKey;
         public String privateKey;
-        public String accessSecret;
-        public String accessKey;
     }
 
     @EmbeddedId
