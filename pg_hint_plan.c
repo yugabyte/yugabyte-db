@@ -4348,8 +4348,9 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 	if (!setup_hint_enforcement(root, rel))
 	{
 		/*
-		 * No enforcement requested, but we might have to generate gather
-		 * path on this relation
+		 * No enforcement requested, but we might have to generate gather path
+		 * on this relation. We could regenerate gather for relations not
+		 * getting enforcement or even relations other than ordinary ones.
 		 */
 
 		/* If no need of a gather path, just return */
@@ -4372,6 +4373,10 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 		generate_gather_paths(root, rel);
 		return;
 	}
+
+	/* Don't touch other than ordinary relation hereafter */
+	if (rte->rtekind != RTE_RELATION)
+		return;
 
 	/* Here, we regenerate paths with the current hint restriction */
 
