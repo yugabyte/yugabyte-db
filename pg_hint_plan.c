@@ -2367,19 +2367,15 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 			hint_ereport(hint->nworkers_str,
 						 ("number of workers must be positive: %s",
 						  hint->base.keyword));
-		if ( nworkers > max_worker_processes)
+		else if (nworkers > max_worker_processes)
 			hint_ereport(hint->nworkers_str,
 						 ("number of workers = %d is larger than max_worker_processes(%d): %s",
 						  nworkers, max_worker_processes, hint->base.keyword));
 
 		hint->base.state = HINT_STATE_ERROR;
-		return str;
 	}
 
 	hint->nworkers = nworkers;
-
-	if (nworkers > max_hint_nworkers)
-		max_hint_nworkers = nworkers;
 
 	/* optional third parameter is specified */
 	if (length == 3)
@@ -2393,11 +2389,14 @@ ParallelHintParse(ParallelHint *hint, HintState *hstate, Query *parse,
 						 ("enforcement must be soft or hard: %s",
 							 hint->base.keyword));
 			hint->base.state = HINT_STATE_ERROR;
-			return str;
 		}
 	}
-	
+
 	hint->force_parallel = force_parallel;
+
+	if (hint->base.state != HINT_STATE_ERROR &&
+		nworkers > max_hint_nworkers)
+		max_hint_nworkers = nworkers;
 
 	return str;
 }
