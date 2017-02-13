@@ -76,6 +76,9 @@ Options:
     any changes to the code.
   --num-repetitions, --num-reps, -n
     Repeat a C++ test this number of times. This delegates to the repeat_unit_test.sh script.
+  --write-build-descriptor <build_descriptor_path>
+    Write a "build descriptor" file. A "build descriptor" is a YAML file that provides information
+    about the build root, compiler used, etc.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -106,6 +109,7 @@ object_files_to_delete=()
 run_ctest=false
 ctest_args=""
 num_test_repetitions=1
+build_descriptor_path=""
 
 unset YB_GTEST_REGEX
 
@@ -232,6 +236,10 @@ while [ $# -gt 0 ]; do
         fatal "Invalid number of test repetitions: $num_test_repetitions"
       fi
     ;;
+    --write-build-descriptor)
+      build_descriptor_path=$2
+      shift
+    ;;
     rocksdb_*)
       # Assume this is a CMake target we've created for RocksDB tests.
       make_opts+=( "$1" )
@@ -266,8 +274,6 @@ fi
 if [[ $num_test_repetitions -lt 1 ]]; then
   fatal "Invalid number of test repetitions: $num_test_repetitions. Must be 1 or more."
 fi
-
-log "num_test_repetitions=$num_test_repetitions"
 
 if "$save_log"; then
   log_dir="$HOME/logs"
@@ -455,8 +461,7 @@ if "$run_ctest"; then
   )
 fi
 
-# Check if the java build is needed. And skip java unit test runs if specified - time taken
-# for tests is around two minutes currently.
+# Check if the Java build is needed. And skip Java unit test runs if requested.
 if "$build_java"; then
   cd "$YB_SRC_ROOT"/java
   if "$run_java_tests"; then
@@ -465,4 +470,15 @@ if "$build_java"; then
     time ( build_yb_java_code install -DskipTests )
   fi
   log "Java build finished, total time information above."
+fi
+
+if [[ -n $build_descriptor_path ]]; then
+  # The format of this file is YAML.
+  cat >"$build_descriptor_path" <<-EOT
+build_type: "$build_type"
+cmake_build_type: "$cmake_build_type"
+build_root: "$BUILD_ROOT"
+compiler_type: "$YB_COMPILER_TYPE"
+EOT
+  log "Created a build descriptor file at '$build_descriptor_path'"
 fi

@@ -308,6 +308,21 @@ if [[ $BUILD_CPP == "1" ]]; then
     unlink "$LATEST_BUILD_LINK"
   fi
 
+  # -----------------------------------------------------------------------------------------------
+  # Test package creation (i.e. relocating all the necessary libraries) right after the build.
+  # This only works on Linux builds using Linuxbrew.
+
+  if using_linuxbrew; then
+    packaged_dest_dir=${BUILD_ROOT}__packaged
+    rm -rf "$packaged_dest_dir"
+    log "Testing creating a distribution in '$packaged_dest_dir'"
+    python/yb/library_packager.py \
+      --build-dir "$BUILD_ROOT" \
+      --dest-dir "$packaged_dest_dir"
+  fi
+
+  # -----------------------------------------------------------------------------------------------
+
   # If compilation succeeds, try to run all remaining steps despite any failures.
   set +e
 
@@ -340,6 +355,7 @@ if [[ $BUILD_CPP == "1" ]]; then
       FAILURES="$FAILURES"$'Coverage report failed\n'
     fi
   fi
+
 fi
 
 if [[ $BUILD_JAVA == "1" ]]; then

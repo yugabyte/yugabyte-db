@@ -111,11 +111,16 @@ should_skip_error_checking_by_input_file_pattern() {
   fi
   local input_file
   for input_file in "${input_files[@]}"; do
-    local input_file_abs_path=$input_file
-    if [[ $input_file_abs_path =~ / ]]; then
-      input_file_abs_path=$( cd "${input_file_abs_path%/*}" && pwd )/${input_file_abs_path##*/}
+    if [[ $input_file =~ / ]]; then
+      local input_file_dir=${input_file%/*}
+      local input_file_basename=${input_file##*/}
+      if [[ -d $input_file_dir ]]; then
+        input_file_abs_path=$( cd "$input_file_dir" && pwd )/$input_file_basename
+      else
+        input_file_abs_path=$input_file
+      fi
     else
-      input_file_abs_path=$PWD/$input_file_abs_path
+      input_file_abs_path=$PWD/$input_file
     fi
     if [[ ! $input_file_abs_path =~ $pattern ]]; then
       return 1  # false
