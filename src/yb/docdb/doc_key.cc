@@ -214,9 +214,11 @@ DocKey DocKey::FromKuduEncodedKey(const EncodedKey &encoded_key, const Schema &s
   return new_doc_key;
 }
 
-DocKey DocKey::FromRedisStringKey(const string& key) {
+DocKey DocKey::FromRedisKey(uint16_t hash, const string &key) {
   DocKey new_doc_key;
-  new_doc_key.range_group_.emplace_back(key);
+  new_doc_key.hash_present_ = true;
+  new_doc_key.hash_ = hash;
+  new_doc_key.hashed_group_.emplace_back(key);
   return new_doc_key;
 }
 

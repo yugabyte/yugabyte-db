@@ -86,13 +86,15 @@ void PerformRocksDBSeek(
   VLOG(4) << Substitute(
       "RocksDB seek:\n"
       "RocksDB seek at $0:$1:\n"
-      "    Seek key:       $2\n"
-      "    Seek key (raw): $3\n"
-      "    Actual key:     $4\n"
-      "    Actual value:   $5",
+      "    Seek key:         $2\n"
+      "    Seek key (raw):   $3\n"
+      "    Actual key:       $4\n"
+      "    Actual key (raw): $5\n"
+      "    Actual value:     $6",
       file_name, line,
       BestEffortDocDBKeyToStr(KeyBytes(key)), FormatRocksDBSliceAsStr(key),
       iter->Valid() ? BestEffortDocDBKeyToStr(KeyBytes(iter->key())) : "N/A",
+      iter->Valid() ? FormatRocksDBSliceAsStr(iter->key()) : "N/A",
       iter->Valid() ? FormatRocksDBSliceAsStr(iter->value()) : "N/A");
 }
 

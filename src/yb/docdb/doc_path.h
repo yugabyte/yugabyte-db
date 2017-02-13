@@ -73,8 +73,11 @@ class DocPath {
     return prefix_list;
   }
 
-  static DocPath DocPathFromRedisKey(const string& key, const string& subkey = "") {
-    DocPath doc_path = DocPath(DocKey::FromRedisStringKey(key).Encode());
+  // Note: the hash is supposed to be uint16_t, but protobuf only supports uint32.
+  // So this function takes in uint32_t.
+  // TODO (akashnil): Add uint16 data type in docdb.
+  static DocPath DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey = "") {
+    DocPath doc_path = DocPath(DocKey::FromRedisKey(hash, key).Encode());
     if (!subkey.empty()) {
       doc_path.AddSubKey(PrimitiveValue(subkey));
     }

@@ -239,6 +239,12 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
       yb_op->type() == YBOperation::Type::YQL_WRITE) {
     down_cast<YBqlOp*>(yb_op.get())->SetHashCode(
         PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+  } else if (yb_op->type() == YBOperation::Type::REDIS_READ) {
+    down_cast<YBRedisReadOp*>(yb_op.get())->SetHashCode(
+        PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+  } else if (yb_op->type() == YBOperation::Type::REDIS_WRITE) {
+    down_cast<YBRedisWriteOp*>(yb_op.get())->SetHashCode(
+        PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
   }
 
   AddInFlightOp(in_flight_op.get());

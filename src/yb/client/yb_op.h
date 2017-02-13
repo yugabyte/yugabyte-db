@@ -80,6 +80,8 @@ class YB_EXPORT YBOperation {
   virtual Type type() const = 0;
   virtual bool read_only() = 0;
 
+  virtual void SetHashCode(uint16_t hash_code) = 0;
+
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
 
@@ -109,6 +111,10 @@ class YB_EXPORT YBInsert : public YBOperation {
 
   virtual bool read_only() OVERRIDE { return false; };
 
+  // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
+  // when YBInsert / YBUpdate / YBDelete are deprecated.
+  void SetHashCode(uint16_t hash_code) OVERRIDE {};
+
  protected:
   virtual Type type() const OVERRIDE {
     return INSERT;
@@ -132,6 +138,10 @@ class YB_EXPORT YBUpdate : public YBOperation {
 
   virtual bool read_only() OVERRIDE { return false; };
 
+  // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
+  // when YBInsert / YBUpdate / YBDelete are deprecated.
+  void SetHashCode(uint16_t hash_code) OVERRIDE {};
+
  protected:
   virtual Type type() const OVERRIDE {
     return UPDATE;
@@ -154,6 +164,10 @@ class YB_EXPORT YBDelete : public YBOperation {
   virtual std::string ToString() const OVERRIDE { return "DELETE " + row_.ToString(); }
 
   virtual bool read_only() OVERRIDE { return false; };
+
+  // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
+  // when YBInsert / YBUpdate / YBDelete are deprecated.
+  void SetHashCode(uint16_t hash_code) OVERRIDE {};
 
  protected:
   virtual Type type() const OVERRIDE {
@@ -180,6 +194,9 @@ class YB_EXPORT YBRedisWriteOp : public YBOperation {
   virtual std::string ToString() const OVERRIDE;
 
   virtual bool read_only() OVERRIDE { return false; };
+
+  // Set the hash key in the WriteRequestPB.
+  void SetHashCode(uint16_t hash_code) OVERRIDE;
 
  protected:
   virtual Type type() const OVERRIDE {
@@ -211,6 +228,9 @@ class YB_EXPORT YBRedisReadOp : public YBOperation {
   virtual std::string ToString() const OVERRIDE;
 
   virtual bool read_only() OVERRIDE { return true; };
+
+  // Set the hash key in the ReadRequestPB.
+  void SetHashCode(uint16_t hash_code) OVERRIDE;
 
  protected:
   virtual Type type() const OVERRIDE { return REDIS_READ; }

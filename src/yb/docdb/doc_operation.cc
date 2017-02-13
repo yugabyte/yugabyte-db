@@ -26,7 +26,7 @@ Status KuduWriteOperation::Apply(
 }
 
 DocPath RedisWriteOperation::DocPathToLock() const {
-  return DocPath::DocPathFromRedisKey(request_.key_value().key());
+  return DocPath::DocPathFromRedisKey(request_.key_value().hash_code(), request_.key_value().key());
 }
 
 Status GetRedisValue(
@@ -38,7 +38,7 @@ Status GetRedisValue(
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
-  KeyBytes doc_key = DocKey::FromRedisStringKey(key_value_pb.key()).Encode();
+  KeyBytes doc_key = DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()).Encode();
 
   if (!key_value_pb.subkey().empty()) {
     if (key_value_pb.subkey().size() != 1) {
@@ -125,7 +125,8 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
       MonoDelta::FromMilliseconds(request_.set_request().ttl()) : Value::kMaxTtl;
   RETURN_NOT_OK(
       doc_write_batch->SetPrimitive(
-          DocPath::DocPathFromRedisKey(kv.key(), kv.subkey_size() > 0 ? kv.subkey(0) : ""),
+          DocPath::DocPathFromRedisKey(
+              kv.hash_code(), kv.key(), kv.subkey_size() > 0 ? kv.subkey(0) : ""),
           Value(PrimitiveValue(kv.value(0)), ttl), HybridTime::kMax));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
@@ -150,7 +151,7 @@ Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
   response_.set_string_response(value);
 
   return doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.key()),
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
       Value(PrimitiveValue(kv.value(0))), HybridTime::kMax);
 }
 
@@ -176,7 +177,7 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
   response_.set_int_response(new_value.length());
 
   return doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.key()),
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
       Value(PrimitiveValue(new_value)), HybridTime::kMax);
 }
 
@@ -185,7 +186,7 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
 Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
   RETURN_NOT_OK(doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.key()),
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
       Value(PrimitiveValue(ValueType::kTombstone)), HybridTime::kMax));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   // Currently we only support deleting one key
@@ -213,7 +214,7 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
   value.replace(request_.set_range_request().offset(), kv.value(0).length(), kv.value(0));
 
   return doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.key()),
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
       Value(PrimitiveValue(value)), HybridTime::kMax);
 }
 
@@ -251,7 +252,7 @@ Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t in
   response_.set_int_response(new_value);
 
   return doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.key()),
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
       Value(PrimitiveValue(std::to_string(new_value))), HybridTime::kMax);
 }
 

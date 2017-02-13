@@ -123,6 +123,10 @@ RedisResponsePB* YBRedisWriteOp::mutable_response() {
   return redis_response_.get();
 }
 
+void YBRedisWriteOp::SetHashCode(uint16_t hash_code) {
+  redis_write_request_->mutable_key_value()->set_hash_code(hash_code);
+}
+
 // YBRedisReadOp -----------------------------------------------------------------
 
 YBRedisReadOp::YBRedisReadOp(const shared_ptr<YBTable>& table)
@@ -148,9 +152,13 @@ RedisResponsePB* YBRedisReadOp::mutable_response() {
   return redis_response_.get();
 }
 
+void YBRedisReadOp::SetHashCode(uint16_t hash_code) {
+  redis_read_request_->mutable_key_value()->set_hash_code(hash_code);
+}
+
 // YBqlOp -----------------------------------------------------------------
-YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
-    : YBOperation(table) , yql_response_(new YQLResponsePB()) {
+  YBqlOp::YBqlOp(const shared_ptr<YBTable>& table)
+      : YBOperation(table) , yql_response_(new YQLResponsePB()) {
 }
 
 YBqlOp::~YBqlOp() {

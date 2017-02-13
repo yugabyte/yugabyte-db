@@ -29,6 +29,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   auto set_request_pb = redis_write_operation_pb.mutable_set_request();
   set_request_pb->set_ttl(2000);
   redis_write_operation_pb.mutable_key_value()->set_key("abc");
+  redis_write_operation_pb.mutable_key_value()->set_hash_code(123);
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
   RedisWriteOperation redis_write_operation(redis_write_operation_pb, HybridTime::kMax);
   DocWriteBatch doc_write_batch(db);
@@ -37,7 +38,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   WriteToRocksDB(doc_write_batch, db);
 
   // Read key from rocksdb.
-  const KeyBytes doc_key = DocKey::FromRedisStringKey("abc").Encode();
+  const KeyBytes doc_key = DocKey::FromRedisKey(123, "abc").Encode();
   rocksdb::ReadOptions read_opts;
   auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
   ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());

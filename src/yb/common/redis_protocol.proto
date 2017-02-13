@@ -83,11 +83,15 @@ enum RedisWriteMode {
 // - Value is not present in case of an append, get, exists, etc. For multiple inserts into
 //   a container, the subkey and value fields have one or more items.
 message RedisKeyValuePB {
-  optional bytes key = 1;                   // Required
-  optional RedisDataType type = 2 [ default = REDIS_TYPE_NONE ];
-  repeated bytes subkey = 3;
-  optional int32 index = 4;
-  repeated bytes value = 5;
+  // Note: the hash_code is the hash of the 'key' below. Technically, this can be
+  // recomputed by tserver also, but since the client already calculates this to look up the
+  // correct tablet server, it is passed in.
+  optional uint32 hash_code = 1;
+  optional bytes key = 2;                   // Required
+  optional RedisDataType type = 3 [ default = REDIS_TYPE_NONE ];
+  repeated bytes subkey = 4;
+  optional int32 index = 5;
+  repeated bytes value = 6;
 }
 
 // SET, SETNX, SETXX, HSET, HSETNX, LSET, MSET, HMSET, MSETNX
@@ -151,7 +155,7 @@ message RedisInsertRequestPB {
 // LPOP, RPOP, SPOP; blocking versions BLPOP etc. currently not supported.
 message RedisPopRequestPB {
   optional RedisSide side = 2 [ default = REDIS_SIDE_RIGHT ];
-  optional int32 count = 3;                // Count is allowed only when popping from a set.
+  optional int32 count = 3;                  // Count is allowed only when popping from a set.
 }
 
 // SADD, ZADD
