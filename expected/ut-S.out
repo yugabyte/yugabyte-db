@@ -4696,7 +4696,7 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
                              QUERY PLAN                              
 ---------------------------------------------------------------------
- Result
+ Aggregate
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
@@ -4709,11 +4709,9 @@ SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
              ->  Limit
                    ->  Index Only Scan using t1_i1 on t1 b4t1
                          Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-   InitPlan 5 (returns $4)
-     ->  Limit
-           ->  Index Only Scan using t1_i1 on t1 b3t1
-                 Index Cond: ((c1 IS NOT NULL) AND (c1 = $3))
-(17 rows)
+   ->  Index Only Scan using t1_i1 on t1 b3t1
+         Index Cond: (c1 = $3)
+(15 rows)
 
 /*+SeqScan(b1t1)IndexScan(b2t1 t1_pkey)BitmapScan(b3t1 t1_pkey)TidScan(b4t1)
 */
@@ -4727,7 +4725,6 @@ SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
 LOG:  available indexes for IndexScan(b2t1): t1_pkey
 LOG:  available indexes for IndexScan(b2t1): t1_pkey
 LOG:  available indexes for BitmapScan(b3t1): t1_pkey
-LOG:  available indexes for BitmapScan(b3t1): t1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(b2t1 t1_pkey)
@@ -4740,7 +4737,7 @@ error hint:
 
                              QUERY PLAN                              
 ---------------------------------------------------------------------
- Result
+ Aggregate
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
@@ -4753,13 +4750,11 @@ error hint:
              ->  Limit
                    ->  Seq Scan on t1 b4t1
                          Filter: ((c1 IS NOT NULL) AND (c1 = 1))
-   InitPlan 5 (returns $4)
-     ->  Limit
-           ->  Bitmap Heap Scan on t1 b3t1
-                 Recheck Cond: ((c1 IS NOT NULL) AND (c1 = $3))
-                 ->  Bitmap Index Scan on t1_pkey
-                       Index Cond: ((c1 IS NOT NULL) AND (c1 = $3))
-(19 rows)
+   ->  Bitmap Heap Scan on t1 b3t1
+         Recheck Cond: (c1 = $3)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (c1 = $3)
+(17 rows)
 
 -- No. S-3-7-2
 EXPLAIN (COSTS false) 
