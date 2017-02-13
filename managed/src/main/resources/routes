@@ -17,6 +17,10 @@ POST    /api/register                                 com.yugabyte.yw.controller
 # Cloud provider API
 GET     /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.list()
 POST    /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.create()
+
+# Initialize cloud information.
+GET     /api/providers/:pUUID/initialize              com.yugabyte.yw.cloud.AWSInitializer.run(pUUID: java.util.UUID)
+
 # TODO: need to revamp all provider calls to take a customerUuid parameter!
 POST    /api/customers/:cUUID/providers/onprem        com.yugabyte.yw.controllers.CloudProviderController.setupOnPrem(cUUID: java.util.UUID)
 GET     /api/regions                                  com.yugabyte.yw.controllers.RegionController.listAllRegions()
@@ -77,8 +81,6 @@ GET    /api/customers/:cUUID/nodes/:nodeUUID/list                      com.yugab
 GET    /api/customers/:cUUID/zones/:azUUID/nodes/list                  com.yugabyte.yw.controllers.NodeInstanceController.listByZone(cUUID: java.util.UUID, azUUID: java.util.UUID)
 POST   /api/customers/:cUUID/zones/:azUUID/nodes                       com.yugabyte.yw.controllers.NodeInstanceController.create(cUUID: java.util.UUID, azUUID: java.util.UUID)
 
-# Initialize cloud information.
-GET    /clouds/aws/initialize                         com.yugabyte.yw.cloud.AWSInitializer.run()
 
 # Metadata API
 GET    /api/metadata/column_types                     com.yugabyte.yw.controllers.TablesController.getColumnTypes()

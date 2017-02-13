@@ -49,10 +49,6 @@ public class AppInit {
         // Enter all the configuration data. This is the first thing that should be done as the other
         // init steps may depend on this data.
         com.yugabyte.yw.common.Configuration.initializeDB();
-        // Initialize the cloud engine.
-        // Commenting this for now, will followup with a correct way to initiate AWS initializer.
-        // AWSInitializer aws = new AWSInitializer();
-        // aws.run();
       }
 
       // Load metrics configurations.

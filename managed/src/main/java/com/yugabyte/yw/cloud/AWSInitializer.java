@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.cloud;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -11,15 +10,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 
-import com.yugabyte.yw.models.Customer;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.ResponseHandler;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.util.EntityUtils;
+import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.controllers.AuthenticatedController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,10 +27,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 
 import play.libs.Json;
-import play.mvc.Controller;
 import play.mvc.Result;
 
-public class AWSInitializer extends Controller {
+public class AWSInitializer extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AWSInitializer.class);
 
   public static final boolean enableVerboseLogging = false;
@@ -56,12 +47,17 @@ public class AWSInitializer extends Controller {
 
   List<Map<String, String>> ec2AvailableInstances = new ArrayList<Map<String, String>>();
 
-  public Result run() {
+  public Result run(UUID providerUUID) {
     try {
+      UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
+      Provider provider = Provider.get(customerUUID, providerUUID);
+      if (provider == null) {
+        ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+      }
       LOG.info("Initializing AWS instance type and pricing info from {}", awsEc2PriceUrl);
       LOG.info("This operation may take a few minutes...");
       // Get the price Json object from the aws price url.
-      JsonNode ec2PriceResponseJson = doGetRequestAsJson(awsEc2PriceUrl);
+      JsonNode ec2PriceResponseJson = apiHelper.getRequest(awsEc2PriceUrl);
 
       // The products sub-document has the list of EC2 products along with the SKU, its format is:
       //    {
@@ -84,7 +80,7 @@ public class AWSInitializer extends Controller {
       parseProductDetailsList(productDetailsListJson);
 
       // Create the instance types.
-      storeInstanceTypeInfoToDB();
+      storeInstanceTypeInfoToDB(provider.uuid);
       LOG.info("Successfully finished parsing info from {}", awsEc2PriceUrl);
     } catch (Exception e) {
       LOG.error("AWS initialize failed", e);
@@ -92,45 +88,6 @@ public class AWSInitializer extends Controller {
     }
 
     return ok();
-  }
-
-  public static JsonNode doGetRequestAsJson(String url) {
-    LOG.info("Fetching response from url {}", url);
-    CloseableHttpClient httpclient = HttpClientBuilder.create().build();
-    String responseBody = null;
-    try {
-      // Fetch data from the AWS EC2 url.
-      HttpGet httpget = new HttpGet(url);
-
-      // Create a custom response handler.
-      ResponseHandler<String> responseHandler = new ResponseHandler<String>() {
-        @Override
-        public String handleResponse(final HttpResponse response)
-            throws ClientProtocolException, IOException {
-          int status = response.getStatusLine().getStatusCode();
-          if (status >= 200 && status < 300) {
-            HttpEntity entity = response.getEntity();
-            return entity != null ? EntityUtils.toString(entity) : null;
-          } else {
-            throw new ClientProtocolException("Unexpected response status: " + status);
-          }
-        }
-      };
-      responseBody = httpclient.execute(httpget, responseHandler);
-    } catch (IOException e) {
-      LOG.error("Error fetching GET request from " + url, e);
-      throw new RuntimeException(e);
-    } finally {
-      try {
-        httpclient.close();
-      } catch (IOException e) {
-        LOG.error("Error closing the http client", e);
-      }
-    }
-    LOG.info("Got {} bytes of response, parsing Json object", responseBody.length());
-    // Parse the response into a Json object.
-    JsonNode jsonObject = Json.parse(responseBody);
-    return jsonObject;
   }
 
   /**
@@ -306,12 +263,10 @@ public class AWSInitializer extends Controller {
    * Store information about the various instance types to the database. Uses UPSERT semantics if
    * the row for the instance type already exists.
    */
-  private void storeInstanceTypeInfoToDB() {
+  private void storeInstanceTypeInfoToDB(UUID awsUUID) {
     LOG.info("Storing AWS instance type and pricing info in Yugaware DB");
     // First reset all the JSON details of all entries in the table, as we are about to refresh it.
     InstanceType.resetAllInstanceTypeDetails();
-
-    UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
 
     for (Map<String, String> productAttrs : ec2AvailableInstances) {
       String providerCode = "aws";
@@ -345,7 +300,6 @@ public class AWSInitializer extends Controller {
       VolumeType volumeType = VolumeType.valueOf(parts[3]);
 
       // Fill up all the per-region details.
-      UUID awsUUID = Provider.get(customerUUID, "Amazon").uuid;
       String regionName = productAttrs.get("location");
       Region region =
           Region.find.where().eq("provider_uuid", awsUUID).eq("name", regionName).findUnique();
