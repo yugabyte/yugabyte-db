@@ -135,6 +135,16 @@ public class Configuration {
     LOG.info("Num keys to read: " + Workload.workloadConfig.numKeysToRead);
   }
 
+  public void initializeTableProperties(CommandLine cmd) {
+    // Initialize the TTL.
+    if (cmd.hasOption("table_ttl_seconds")) {
+      Workload.workloadConfig.tableTTLSeconds =
+          Long.parseLong(cmd.getOptionValue("table_ttl_seconds"));
+    }
+
+    LOG.info("Table TTL (secs): " + Workload.workloadConfig.tableTTLSeconds);
+  }
+
   public static Configuration createFromArgs(String[] args) throws Exception {
     Options options = new Options();
     options.addOption("h", "help", false, "show help.");
@@ -195,6 +205,13 @@ public class Configuration {
     numUniqueKeys.setArgs(1);
     options.addOption(numUniqueKeys);
 
+    Option tableLevelTTLSecs = OptionBuilder.create("table_ttl_seconds");
+    tableLevelTTLSecs.setDescription("The table level TTL in seconds to create the table with.");
+    tableLevelTTLSecs.setRequired(false);
+    tableLevelTTLSecs.setLongOpt("table_ttl_seconds");
+    tableLevelTTLSecs.setArgs(1);
+    options.addOption(tableLevelTTLSecs);
+
     Option verbose = OptionBuilder.create("verbose");
     verbose.setDescription("Enable debug level logging.");
     verbose.setRequired(false);
@@ -230,6 +247,8 @@ public class Configuration {
     configuration.initializeThreadCount(cmd);
     // Initialize num keys.
     configuration.initializeNumKeys(cmd);
+    // Initialize table properties.
+    configuration.initializeTableProperties(cmd);
 
     return configuration;
   }

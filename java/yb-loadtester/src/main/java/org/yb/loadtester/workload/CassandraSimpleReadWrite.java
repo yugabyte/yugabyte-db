@@ -41,10 +41,14 @@ public class CassandraSimpleReadWrite extends Workload {
   public void createTableIfNeeded() {
     try {
       String create_stmt =
-          String.format("CREATE TABLE %s (k varchar, v varchar, primary key (k));",
+          String.format("CREATE TABLE %s (k varchar, v varchar, primary key (k))",
                         tableName);
+      if (workloadConfig.tableTTLSeconds > 0) {
+        create_stmt += " WITH default_time_to_live = " + workloadConfig.tableTTLSeconds;
+      }
+      create_stmt += ";";
       getCassandraClient().execute(create_stmt);
-      LOG.info("Created a Cassandra table + " + tableName + " using query: [" + create_stmt + "]");
+      LOG.info("Created a Cassandra table " + tableName + " using query: [" + create_stmt + "]");
     } catch (Exception e) {
       LOG.info("Ignoring exception creating table: " + e.getMessage());
     }
@@ -63,7 +67,11 @@ public class CassandraSimpleReadWrite extends Workload {
     ResultSet rs = getCassandraClient().execute(select_stmt);
     List<Row> rows = rs.all();
     if (rows.size() != 1) {
-      LOG.fatal("Read [" + select_stmt + "], expected 1 row in result, got " + rows.size());
+      // If TTL is enabled, turn off correctness validation.
+      if (workloadConfig.tableTTLSeconds <= 0) {
+        LOG.fatal("Read [" + select_stmt + "], expected 1 row in result, got " + rows.size());
+      }
+      return 1;
     }
     String value = rows.get(0).getString(1);
     key.verify(value);

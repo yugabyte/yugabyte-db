@@ -22,4 +22,7 @@ public class WorkloadConfig {
   // The number of unique keys to write, once these are written, the subsequent writes will be
   // updates to existing keys.
   public long numUniqueKeysToWrite;
+
+  // The table level TTL in seconds. No TTL is applied if this value is set to -1.
+  public long tableTTLSeconds = -1;
 }

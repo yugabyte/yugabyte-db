@@ -84,7 +84,11 @@ public class CassandraTimeseries extends Workload {
                          ", node_id varchar" +
                          ", ts bigint" +
                          ", value varchar" +
-                         ", primary key ((controller_id, metric_id), node_id, ts));";
+                         ", primary key ((controller_id, metric_id), node_id, ts))";
+    if (workloadConfig.tableTTLSeconds > 0) {
+      create_stmt += " WITH default_time_to_live = " + workloadConfig.tableTTLSeconds;
+    }
+    create_stmt += ";";
     getCassandraClient().execute(create_stmt);
     LOG.info("Created a Cassandra table " + metricsTable + " using query: [" + create_stmt + "]");
   }
@@ -109,9 +113,9 @@ public class CassandraTimeseries extends Workload {
     ResultSet rs = getCassandraClient().execute(select_stmt);
     List<Row> rows = rs.all();
     if (rows.size() != dataSource.getExpectedNumDataPoints(startTs, endTs)) {
-      LOG.fatal("Read " + rows.size() + " data points, expected rows: " +
-                dataSource.getExpectedNumDataPoints(startTs, endTs) +
-                ", query [" + select_stmt + "]");
+      LOG.warn("Read " + rows.size() + " data points, expected rows: " +
+               dataSource.getExpectedNumDataPoints(startTs, endTs) +
+               ", query [" + select_stmt + "]");
     }
     LOG.debug("Read " + rows.size() + " data points, expected rows: " +
              dataSource.getExpectedNumDataPoints(startTs, endTs) +
@@ -240,6 +244,10 @@ public class CassandraTimeseries extends Workload {
 
     public int getExpectedNumDataPoints(long startTime, long endTime) {
       long effectiveStartTime = (startTime < dataEmitStartTs)?dataEmitStartTs:startTime;
+      // TODO: enable this when the TTL in cassandra is interpreted in secs instead of millis.
+//      if (endTime - effectiveStartTime > workloadConfig.tableTTLSeconds * 1000L) {
+//        effectiveStartTime = endTime - workloadConfig.tableTTLSeconds * 1000L;
+//      }
       int expectedRows = (int)((endTime - effectiveStartTime) / dataEmitRateMs) + 1;
       return expectedRows;
     }
