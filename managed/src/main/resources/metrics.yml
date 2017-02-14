@@ -44,6 +44,21 @@ disk_iops:
       alias:
         "iostat_write_count": "Writes"
         "iostat_read_count": "Reads"
+disk_iops_by_universe:
+  metric: "collectd_yb_system_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "iostat_write_count|iostat_read_count"
+  group_by: "type, node_prefix, exported_instance"
+  layout:
+    title: "Disk IOPS"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "iostat_write_count": "Writes"
+        "iostat_read_count": "Reads"
 
 memory_usage:
   metric: "collectd_memory"

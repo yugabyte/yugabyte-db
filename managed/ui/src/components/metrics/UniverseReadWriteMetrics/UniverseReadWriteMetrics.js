@@ -6,13 +6,13 @@ import {isValidObject} from '../../../utils/ObjectUtils';
 
 export default class UniverseReadWriteMetrics extends Component {
   componentWillReceiveProps(nextProps) {
-    const {graph: {universeMetricList: {disk_iops}}, graphIndex, type} = nextProps;
+    const {universe: {iostat_read_count, iostat_write_count}, graphIndex, type} = nextProps;
     var metricData = [];
-    if (isValidObject(disk_iops)) {
+    if (isValidObject(iostat_read_count)) {
       if (type === "read") {
-        metricData = disk_iops.data[0];
+        metricData = iostat_read_count;
       } else {
-        metricData = disk_iops.data[1];
+        metricData = iostat_write_count;
       }
       if (isValidObject(metricData)) {
         var layout = {

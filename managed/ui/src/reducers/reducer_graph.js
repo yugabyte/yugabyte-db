@@ -2,7 +2,7 @@
 
 import { CHANGE_GRAPH_QUERY_PERIOD, RESET_GRAPH_QUERY_PERIOD,
 QUERY_METRICS, QUERY_METRICS_SUCCESS, QUERY_METRICS_FAILURE,
-RESET_METRICS, SET_UNIVERSE_LIST_METRICS_FAILURE, SET_UNIVERSE_LIST_METRICS_SUCCESS } from '../actions/graph';
+RESET_METRICS } from '../actions/graph';
 import { DEFAULT_GRAPH_FILTER } from '../components/metrics'
 
 const INITIAL_STATE = {graphFilter: DEFAULT_GRAPH_FILTER, metrics: {},
@@ -31,10 +31,6 @@ export default function(state = INITIAL_STATE, action) {
         loading: false};
     case RESET_METRICS:
       return { ...state, metrics: [], loading: false, panelType: null};
-    case SET_UNIVERSE_LIST_METRICS_SUCCESS:
-      return {...state, universeMetricList: action.payload.data};
-    case SET_UNIVERSE_LIST_METRICS_FAILURE:
-      return {...state, universeMetricList: []};
     default:
       return state;
   }

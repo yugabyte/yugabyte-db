@@ -10,7 +10,7 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
          OPEN_DIALOG, CLOSE_DIALOG, CONFIGURE_UNIVERSE_TEMPLATE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
          CONFIGURE_UNIVERSE_TEMPLATE_FAILURE, CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
          CONFIGURE_UNIVERSE_RESOURCES_FAILURE, ROLLING_UPGRADE, ROLLING_UPGRADE_SUCCESS, ROLLING_UPGRADE_FAILURE,
-         RESET_ROLLING_UPGRADE }
+         RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS }
         from '../actions/universe';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], error: null, showModal: false, visibleModal: "",
@@ -87,6 +87,17 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, error: action.payload.data.error, formSubmitSuccess: false};
     case RESET_ROLLING_UPGRADE:
       return { ...state, error: null};
+    case SET_UNIVERSE_METRICS:
+      var currentUniverseList = state.universeList;
+      var universeReadWriteMetricList = action.payload.data.disk_iops_by_universe.data;
+      universeReadWriteMetricList.forEach(function(metricData, metricIdx){
+        for(var counter =0; counter < currentUniverseList.length; counter++) {
+          if (currentUniverseList[counter].universeDetails.nodePrefix === metricData.name) {
+            currentUniverseList[counter][metricData.labels["type"]] = metricData;
+          }
+        }
+      });
+      return {...state, universeList: currentUniverseList}
     default:
       return state;
   }
