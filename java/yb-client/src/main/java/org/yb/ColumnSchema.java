@@ -262,7 +262,9 @@ public class ColumnSchema {
      */
     public ColumnSchemaBuilder hashKey(boolean hashKey) {
       this.hashKey = hashKey;
-      this.key = hashKey;
+      if (hashKey) {
+        this.key = true;
+      }
       return this;
     }
 
