@@ -82,7 +82,7 @@ public class CassandraTimeseries extends Workload {
                          "  controller_id varchar" +
                          ", metric_id varchar" +
                          ", node_id varchar" +
-                         ", ts bigint" +
+                         ", ts timestamp" +
                          ", value varchar" +
                          ", primary key ((controller_id, metric_id), node_id, ts))";
     if (workloadConfig.tableTTLSeconds > 0) {
