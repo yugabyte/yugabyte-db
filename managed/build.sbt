@@ -23,7 +23,8 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "3.0.1",
-  "com.datastax.cassandra" % "cassandra-driver-core" % "3.1.2"
+  "com.datastax.cassandra" % "cassandra-driver-core" % "3.1.2",
+  "org.yaml" % "snakeyaml" % "1.17"
 )
 resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"
 // resolvers += Resolver.mavenLocal

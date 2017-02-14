@@ -3,17 +3,21 @@
     name: Test Customer
     email: test@yugabyte.com
     passwordHash: $2a$10$My7o2os/P/Eek6pM6T0Kn.cTUM0eQj1XeL8wMxjIyIUR8.US0r8B.
+    uuid: f33e3c9b-75ab-4c30-80ad-cba85646ea39
 
 # Provider
 - &provider_aws !!com.yugabyte.yw.models.Provider
     code: aws
     name: Amazon
+    customerUuid: f33e3c9b-75ab-4c30-80ad-cba85646ea39
 - &provider_gcp !!com.yugabyte.yw.models.Provider
     code: gcp
     name: Google
+    customerUuid: f33e3c9b-75ab-4c30-80ad-cba85646ea39
 - &provider_dockerlocal !!com.yugabyte.yw.models.Provider
     code: docker
     name: Docker Localhost
+    customerUuid: f33e3c9b-75ab-4c30-80ad-cba85646ea39
 
 # Region
 - &gcp-asia-east1 !!com.yugabyte.yw.models.Region
@@ -356,8 +360,6 @@
     name: sa-east-1c
     region: *aws-sa-east-1
     subnet: subnet-78f2d121
-
-
 
 # InstanceType
 - &gcp-n1-standard-1 !!com.yugabyte.yw.models.InstanceType
