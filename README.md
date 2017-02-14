@@ -14,7 +14,7 @@ WARNING: The pg_partman background worker is currently incompatible with Postgre
 
 INSTALLATION
 ------------
-Requirement: PostgreSQL 9.4 & 9.5 (currently incompatible with 9.6) 
+Requirement: PostgreSQL 9.4 & 9.5
 
 Recommended: pg_jobmon (>=v1.3.2). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
