@@ -6,10 +6,10 @@ import UniverseTable from './UniverseTable';
 import { fetchUniverseList, fetchUniverseListSuccess,
   fetchUniverseListFailure, resetUniverseList, fetchUniverseTasks,
   fetchUniverseTasksSuccess, fetchUniverseTasksFailure,
-  resetUniverseTasks} from '../../../actions/universe';
+  resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
 import { fetchTaskProgress, fetchCurrentTaskListSuccess,
   fetchCurrentTaskListFailure, resetTaskProgress } from '../../../actions/tasks';
-import { queryMetrics, setUniverseListMetricsSuccess, setUniverseListMetricsFailure} from '../../../actions/graph';
+import { queryMetrics } from '../../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -60,17 +60,15 @@ const mapDispatchToProps = (dispatch) => {
       var startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
       var endTime = Math.floor(Date.now() / 1000);
       var queryParams = {
-        metrics: ["disk_iops"],
+        metrics: ["disk_iops_by_universe"],
         start: startTime,
         end: endTime
       }
       dispatch(queryMetrics(queryParams))
         .then((response) => {
           if (response.payload.status === 200) {
-            dispatch(setUniverseListMetricsSuccess(response.payload));
-          } else {
-            dispatch(setUniverseListMetricsFailure(response.payload));
-          }
+            dispatch(setUniverseMetrics(response.payload));
+          } 
         });
 
     },

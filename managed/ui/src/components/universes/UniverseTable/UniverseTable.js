@@ -154,18 +154,25 @@ class CellLocationPanel extends Component {
 class CellResourcesPanel extends Component {
 
   render() {
-    const {universe: {pricePerHour, universeUUID}, graph: {universeMetricList}} = this.props;
+    const {universe: {universeUUID, pricePerHour, iostat_read_count, iostat_write_count}} = this.props;
     var averageReadRate = 0;
     var averageWriteRate = 0;
-    var disk_iops =universeMetricList.disk_iops;
-    if (isValidObject(disk_iops) && isValidArray(disk_iops.data)) {
-      var readMetricArray = disk_iops.data[0].y;
-      var sum = readMetricArray.reduce(function(a, b) { return a + b; });
+
+    if (isValidObject(iostat_read_count)) {
+      var readMetricArray = iostat_read_count.y;
+      var sum = readMetricArray.reduce(function (a, b) {
+        return parseFloat(a) + parseFloat(b);
+      });
       averageReadRate = (sum / readMetricArray.length).toFixed(2);
-      var writeMetricArray = disk_iops.data[1].y;
-      sum = writeMetricArray.reduce(function(a, b) { return parseFloat(a) + parseFloat(b); });
+    }
+    if (isValidObject(iostat_write_count)) {
+      var writeMetricArray = iostat_write_count.y;
+      sum = writeMetricArray.reduce(function (a, b) {
+        return parseFloat(a) + parseFloat(b);
+      });
       averageWriteRate = (sum / writeMetricArray.length).toFixed(2);
     }
+
     return (
       <div>
         <Col lg={4}>
@@ -182,7 +189,7 @@ class CellResourcesPanel extends Component {
                 Read <span className="cell-bold-letters">{averageReadRate}</span>
               </Col>
               <Col lg={6} className={"cell-chart-container"}>
-                <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-read`} type={"read"}/>
+                <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-read`} type={"read"} />
               </Col>
             </Row>
             <Row >
