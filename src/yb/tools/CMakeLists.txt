@@ -70,6 +70,7 @@ add_library(ysck
     ysck_remote.cc
 )
 target_link_libraries(ysck
+  yb_client
   master_proto
   server_base_proto
   tserver_proto

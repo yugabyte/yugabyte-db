@@ -32,6 +32,7 @@ namespace tools {
 
 using client::YBClient;
 using client::YBClientBuilder;
+using client::YBTableName;
 using std::shared_ptr;
 using itest::TabletServerMap;
 using itest::TServerDetails;
@@ -95,7 +96,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
                                   tablet_id_, 1));
 
   TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTableId);
+  workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(10000);
   workload.set_num_replicas(FLAGS_num_replicas);
@@ -140,7 +141,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   ClusterVerifier cluster_verifier(cluster_.get());
   NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(kTableId, ClusterVerifier::AT_LEAST, rows_inserted));
+  NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::AT_LEAST, rows_inserted));
 
   // Now remove the server once again.
   LOG(INFO) << "Removing tserver with uuid " << new_node->uuid() << " from the config...";
@@ -181,7 +182,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
 
   ASSERT_OK(Subprocess::Call(arg_str));
 
-  vector<string> tables;
+  vector<YBTableName> tables;
   ASSERT_OK(client->ListTables(&tables));
   ASSERT_TRUE(tables.empty());
 }

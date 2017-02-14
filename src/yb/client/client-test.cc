@@ -159,14 +159,14 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
 
  protected:
 
-  static const char *kTableName;
-  static const char *kTable2Name;
+  static const YBTableName kTableName;
+  static const YBTableName kTable2Name;
   static const int32_t kNoBound;
 
   string GetFirstTabletId(YBTable* table) {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
-    req.mutable_table()->set_table_name(table->name());
+    table->name().SetIntoTableIdentifierPB(req.mutable_table());
     CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(
         &req, &resp));
     CHECK_GT(resp.tablet_locations_size(), 0);
@@ -367,7 +367,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
 
   // Creates a table with 'num_replicas', split into tablets based on 'split_rows'
   // (or single tablet if 'split_rows' is empty).
-  void CreateTable(const string& table_name,
+  void CreateTable(const YBTableName& table_name,
                    int num_replicas,
                    const vector<const YBPartialRow*>& split_rows,
                    shared_ptr<YBTable>* table) {
@@ -452,20 +452,23 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
   shared_ptr<YBTable> client_table2_;
 };
 
-const char *ClientTest::kTableName = "client-testtb";
-const char *ClientTest::kTable2Name = "client-testtb2";
+const YBTableName ClientTest::kTableName("client-testtb");
+const YBTableName ClientTest::kTable2Name("client-testtb2");
 const int32_t ClientTest::kNoBound = kint32max;
 
 TEST_F(ClientTest, TestListTables) {
-  vector<string> tables;
+  vector<YBTableName> tables;
   ASSERT_OK(client_->ListTables(&tables));
-  std::sort(tables.begin(), tables.end());
-  ASSERT_EQ(string(kTableName), tables[0]);
-  ASSERT_EQ(string(kTable2Name), tables[1]);
+  std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
+    return n1.ToString() < n2.ToString();
+  });
+  ASSERT_EQ(2, tables.size());
+  ASSERT_EQ(kTableName, tables[0]);
+  ASSERT_EQ(kTable2Name, tables[1]);
   tables.clear();
   ASSERT_OK(client_->ListTables(&tables, "testtb2"));
   ASSERT_EQ(1, tables.size());
-  ASSERT_EQ(string(kTable2Name), tables[0]);
+  ASSERT_EQ(kTable2Name, tables[0]);
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
@@ -481,7 +484,7 @@ TEST_F(ClientTest, TestListTabletServers) {
 
 TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
-  Status s = client_->OpenTable("xxx-does-not-exist", &t);
+  Status s = client_->OpenTable(YBTableName("xxx-does-not-exist"), &t);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "Not found: The table does not exist");
 }
@@ -493,7 +496,7 @@ TEST_F(ClientTest, TestMasterDown) {
   cluster_->mini_master()->Shutdown();
   shared_ptr<YBTable> t;
   client_->data_->default_admin_operation_timeout_ = MonoDelta::FromSeconds(1);
-  Status s = client_->OpenTable("other-tablet", &t);
+  Status s = client_->OpenTable(YBTableName("other-tablet"), &t);
   ASSERT_TRUE(s.IsNetworkError());
 }
 
@@ -605,7 +608,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   }
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable("TestScanMultiTablet", 1, rows, &table));
+  ASSERT_NO_FATAL_FAILURE(CreateTable(YBTableName("TestScanMultiTablet"), 1, rows, &table));
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
   // tablet, except the first which is empty.
@@ -867,7 +870,7 @@ TEST_F(ClientTest, TestInvalidPredicates) {
 
 // Check that the tserver proxy is reset on close, even for empty tables.
 TEST_F(ClientTest, TestScanCloseProxy) {
-  const string kEmptyTable = "TestScanCloseProxy";
+  const YBTableName kEmptyTable("TestScanCloseProxy");
   shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable(kEmptyTable, 3, GenerateSplitRows(), &table));
 
@@ -953,7 +956,7 @@ static void DoScanWithCallback(
 // Test that ordered snapshot scans can be resumed in the case of different tablet server failures.
 TEST_F(ClientTest, TestScanFaultTolerance) {
   // Create test table and insert test rows.
-  const string kScanTable = "TestScanFaultTolerance";
+  const YBTableName kScanTable("TestScanFaultTolerance");
   shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable(kScanTable, 3, vector<const YBPartialRow*>(), &table));
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(), FLAGS_test_scan_num_rows));
@@ -1015,7 +1018,7 @@ TEST_F(ClientTest, TestScanFaultTolerance) {
 
 TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable("blacklist",
+  ASSERT_NO_FATAL_FAILURE(CreateTable(YBTableName("blacklist"),
                                       3,
                                       GenerateSplitRows(),
                                       &table));
@@ -1094,7 +1097,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
 
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable("split-table",
+  ASSERT_NO_FATAL_FAILURE(CreateTable(YBTableName("split-table"),
                                       1, /* replicas */
                                       GenerateSplitRows(),
                                       &table));
@@ -1462,8 +1465,8 @@ TEST_F(ClientTest, TestWriteTimeout) {
     gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(),
-                        "GetTableLocations(client-testtb, int32 key=1, 1) "
-                        "failed: timed out after deadline expired");
+        strings::Substitute("GetTableLocations($0, int32 key=1, 1) failed: "
+            "timed out after deadline expired", client_table_->name().ToString()));
   }
 
   // Next time out the actual write on the tablet server.
@@ -1932,17 +1935,17 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   }
 
   {
-    const char *kRenamedTableName = "RenamedTable";
+    const YBTableName kRenamedTableName("RenamedTable");
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
     ASSERT_EQ(3, tablet_peer->tablet()->metadata()->schema_version());
-    ASSERT_EQ(kRenamedTableName, tablet_peer->tablet()->metadata()->table_name());
+    ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 
     CatalogManager *catalog_manager = cluster_->mini_master()->master()->catalog_manager();
-    ASSERT_TRUE(catalog_manager->TableNameExists(kRenamedTableName));
-    ASSERT_FALSE(catalog_manager->TableNameExists(kTableName));
+    ASSERT_TRUE(catalog_manager->TableNameExists(kRenamedTableName.table_name()));
+    ASSERT_FALSE(catalog_manager->TableNameExists(kTableName.table_name()));
   }
 }
 
@@ -1961,7 +1964,7 @@ TEST_F(ClientTest, TestDeleteTable) {
   string tablet_id = GetFirstTabletId(client_table_.get());
   ASSERT_OK(client_->DeleteTable(kTableName));
   CatalogManager *catalog_manager = cluster_->mini_master()->master()->catalog_manager();
-  ASSERT_FALSE(catalog_manager->TableNameExists(kTableName));
+  ASSERT_FALSE(catalog_manager->TableNameExists(kTableName.table_name()));
 
   // Wait until the table is removed from the TS
   int wait_time = 1000;
@@ -1996,7 +1999,7 @@ TEST_F(ClientTest, TestGetTableSchema) {
   ASSERT_TRUE(schema_.Equals(schema));
 
   // Verify that a get schema request for a missing table throws not found
-  Status s = client_->GetTableSchema("MissingTableName", &schema);
+  Status s = client_->GetTableSchema(YBTableName("MissingTableName"), &schema);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "The table does not exist");
 }
@@ -2046,7 +2049,7 @@ TEST_F(ClientTest, TestStaleLocations) {
 // in this file. However, some things like alter table are not yet
 // working on replicated tables - see KUDU-304
 TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
-  const string kReplicatedTable = "replicated";
+  const YBTableName kReplicatedTable("replicated");
   const int kNumRowsToWrite = 100;
   const int kNumReplicas = 3;
 
@@ -2070,7 +2073,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
 }
 
 TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
-  const string kReplicatedTable = "replicated_failover_on_reads";
+  const YBTableName kReplicatedTable("replicated_failover_on_reads");
   const int kNumRowsToWrite = 100;
   const int kNumReplicas = 3;
   const int kNumTries = 100;
@@ -2122,7 +2125,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
 // TODO Remove the leader promotion part when we have automated
 // leader election.
 TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
-  const string kReplicatedTable = "replicated_failover_on_writes";
+  const YBTableName kReplicatedTable("replicated_failover_on_writes");
   const int kNumRowsToWrite = 100;
   const int kNumReplicas = 3;
 
@@ -2557,7 +2560,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   ASSERT_OK(split2->SetInt32("key", 2));
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name("foobar")
+  Status s = table_creator->table_name(YBTableName("foobar"))
       .schema(&schema_)
       .split_rows({ split1, split2 })
       .num_replicas(3)
@@ -2575,7 +2578,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
   ASSERT_OK(split2->SetInt32("key", 2));
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name("foobar")
+  Status s = table_creator->table_name(YBTableName("foobar"))
       .schema(&schema_)
       .split_rows({ split1, split2 })
       .num_replicas(3)

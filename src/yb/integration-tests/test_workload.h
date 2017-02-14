@@ -39,7 +39,7 @@ class Thread;
 // to verify that replicas do not diverge.
 class TestWorkload {
  public:
-  static const char* const kDefaultTableName;
+  static const client::YBTableName kDefaultTableName;
 
   explicit TestWorkload(ExternalMiniCluster* cluster);
   ~TestWorkload();
@@ -89,11 +89,11 @@ class TestWorkload {
     num_tablets_ = tablets;
   }
 
-  void set_table_name(const std::string& table_name) {
+  void set_table_name(const client::YBTableName& table_name) {
     table_name_ = table_name;
   }
 
-  const std::string& table_name() const {
+  const client::YBTableName& table_name() const {
     return table_name_;
   }
 
@@ -140,7 +140,7 @@ class TestWorkload {
 
   int num_replicas_;
   int num_tablets_;
-  std::string table_name_;
+  client::YBTableName table_name_;
 
   CountDownLatch start_latch_;
   AtomicBool should_run_;

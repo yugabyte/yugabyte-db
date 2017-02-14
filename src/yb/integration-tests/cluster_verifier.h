@@ -26,6 +26,10 @@
 
 namespace yb {
 
+namespace client {
+class YBTableName;
+}
+
 using tools::ChecksumOptions;
 
 class MiniClusterBase;
@@ -66,12 +70,12 @@ class ClusterVerifier {
   // NOTE: this does not perform any retries. If it's possible that the replicas are
   // still converging, it's best to use CheckCluster() first, which will wait for
   // convergence.
-  void CheckRowCount(const std::string& table_name,
+  void CheckRowCount(const client::YBTableName& table_name,
                      ComparisonMode mode,
                      int expected_row_count);
 
   // The same as above, but retries until a timeout elapses.
-  void CheckRowCountWithRetries(const std::string& table_name,
+  void CheckRowCountWithRetries(const client::YBTableName& table_name,
                                 ComparisonMode mode,
                                 int expected_row_count,
                                 const MonoDelta& timeout);
@@ -81,9 +85,9 @@ class ClusterVerifier {
 
   // Implementation for CheckRowCount -- returns a Status instead of firing
   // gtest assertions.
-  CHECKED_STATUS DoCheckRowCount(const std::string& table_name,
-                         ComparisonMode mode,
-                         int expected_row_count);
+  CHECKED_STATUS DoCheckRowCount(const client::YBTableName& table_name,
+                                 ComparisonMode mode,
+                                 int expected_row_count);
 
 
   MiniClusterBase* cluster_;

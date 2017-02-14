@@ -19,6 +19,7 @@ using client::YBSession;
 using client::YBTable;
 using client::YBTableCache;
 using client::YBTableCreator;
+using client::YBTableName;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
@@ -37,7 +38,7 @@ YBTableCreator *SqlEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }
 
-CHECKED_STATUS SqlEnv::DeleteTable(const string& name) {
+CHECKED_STATUS SqlEnv::DeleteTable(const YBTableName& name) {
   return client_->DeleteTable(name);
 }
 
@@ -95,7 +96,7 @@ CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBqlReadOp> yb_op) {
   return Status::OK();
 }
 
-shared_ptr<YBTable> SqlEnv::GetTableDesc(const char *table_name, bool refresh_metadata) {
+shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool refresh_metadata) {
   // TODO(neil) Once we decide where to cache the descriptor, the refresh_metadata should be used
   // to decide whether or not the cached version should be used.
   // At the moment, we read the table descriptor every time we need it.

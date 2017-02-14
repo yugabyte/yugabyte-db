@@ -90,13 +90,14 @@ class SemContext : public ProcessContext {
   }
 
   // Find table descriptor from metadata server.
-  std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name) {
+  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name) {
     // If "retry_count_" is greater than 0, we want to reload metadata from master server.
     return sql_env_->GetTableDesc(table_name, retry_count_ > 0);
   }
 
   // Find table descriptor from metadata server.
-  std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name, bool refresh_metadata) {
+  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
+                                                bool refresh_metadata) {
     return sql_env_->GetTableDesc(table_name, refresh_metadata);
   }
 
@@ -114,6 +115,10 @@ class SemContext : public ProcessContext {
 
   bool IsComparable(client::YBColumnSchema::DataType lhs_type,
                     client::YBColumnSchema::DataType rhs_type) const;
+
+  const std::string& CurrentKeyspace() const {
+    return sql_env_->CurrentKeyspace();
+  }
 
   // Access function to retry counter.
   int retry_count() {

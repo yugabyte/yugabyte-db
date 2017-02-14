@@ -14,7 +14,7 @@ namespace integration_tests {
 
 class RedisTableTestBase : public YBTableTestBase {
  protected:
-  std::string table_name() override;
+  client::YBTableName table_name() override;
 
   void CreateTable() override;
   void PutKeyValue(std::string key, std::string value) override;

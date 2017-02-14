@@ -32,13 +32,13 @@ class SqlEnv {
 
   virtual client::YBTableCreator *NewTableCreator();
 
-  virtual CHECKED_STATUS DeleteTable(const string& name);
+  virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
 
   virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op);
 
   virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op);
 
-  virtual std::shared_ptr<client::YBTable> GetTableDesc(const char *table_name,
+  virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
                                                         bool refresh_metadata);
 
   // Access function for rows_result. If the statement executed is a regular DML or there's an
@@ -62,7 +62,7 @@ class SqlEnv {
   // Use keyspace with the given name.
   virtual CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
 
-  virtual std::string CurrentKeyspace() const {
+  virtual const std::string& CurrentKeyspace() const {
       return current_keyspace_;
   }
 

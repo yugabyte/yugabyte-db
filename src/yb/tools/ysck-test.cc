@@ -33,6 +33,7 @@ using std::static_pointer_cast;
 using std::string;
 using std::unordered_map;
 using std::vector;
+using client::YBTableName;
 
 class MockYsckTabletServer : public YsckTabletServer {
  public:
@@ -131,7 +132,7 @@ class YsckTest : public YBTest {
     shared_ptr<YsckTablet> tablet(new YsckTablet("1"));
     CreateAndFillTablet(tablet, 1, true);
 
-    CreateAndAddTable({ tablet }, "test", 1);
+    CreateAndAddTable({ tablet }, YBTableName("test"), 1);
   }
 
   void CreateOneSmallReplicatedTable() {
@@ -145,7 +146,7 @@ class YsckTest : public YBTest {
       tablets.push_back(tablet);
     }
 
-    CreateAndAddTable(tablets, "test", num_replicas);
+    CreateAndAddTable(tablets, YBTableName("test"), num_replicas);
   }
 
   void CreateOneOneTabletReplicatedBrokenTable() {
@@ -155,11 +156,11 @@ class YsckTest : public YBTest {
     shared_ptr<YsckTablet> tablet(new YsckTablet("1"));
     CreateAndFillTablet(tablet, 2, false);
 
-    CreateAndAddTable({ tablet }, "test", 3);
+    CreateAndAddTable({ tablet }, YBTableName("test"), 3);
   }
 
   void CreateAndAddTable(vector<shared_ptr<YsckTablet>> tablets,
-                         const string& name, int num_replicas) {
+                         const YBTableName& name, int num_replicas) {
     shared_ptr<YsckTable> table(new YsckTable(name, Schema(), num_replicas,
         TableType::YQL_TABLE_TYPE));
     table->set_tablets(tablets);
@@ -168,23 +169,25 @@ class YsckTest : public YBTest {
     master_->tables_.assign(tables.begin(), tables.end());
   }
 
-  void CreateAndFillTablet(shared_ptr<YsckTablet>& tablet, int num_replicas, bool has_leader) {
+  void CreateAndFillTablet(const shared_ptr<YsckTablet>& tablet,
+                           int num_replicas,
+                           bool has_leader) {
     vector<shared_ptr<YsckTabletReplica>> replicas;
     if (has_leader) {
-      CreateReplicaAndAdd(replicas, true);
+      CreateReplicaAndAdd(&replicas, true);
       num_replicas--;
     }
     for (int i = 0; i < num_replicas; i++) {
-      CreateReplicaAndAdd(replicas, false);
+      CreateReplicaAndAdd(&replicas, false);
     }
     tablet->set_replicas(replicas);
   }
 
-  void CreateReplicaAndAdd(vector<shared_ptr<YsckTabletReplica>>& replicas, bool is_leader) {
+  void CreateReplicaAndAdd(vector<shared_ptr<YsckTabletReplica>>* replicas, bool is_leader) {
     shared_ptr<YsckTabletReplica> replica(new YsckTabletReplica(assignment_plan_.back(),
                                                                 is_leader, !is_leader));
     assignment_plan_.pop_back();
-    replicas.push_back(replica);
+    replicas->push_back(replica);
   }
 
   shared_ptr<MockYsckMaster> master_;

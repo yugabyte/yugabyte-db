@@ -41,6 +41,7 @@ using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSchemaFromSchema;
 using yb::client::YBTableCreator;
+using yb::client::YBTableName;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadataPB;
 using yb::consensus::ConsensusStatePB;
@@ -107,7 +108,7 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
 
   // Delete the given table. If the operation times out, dumps the master stacks
   // to help debug master-side deadlocks.
-  void DeleteTable(const string& table_name);
+  void DeleteTable(const YBTableName& table_name);
 
   // Repeatedly try to delete the tablet, retrying on failure up to the
   // specified timeout. Deletion can fail when other operations, such as
@@ -208,7 +209,7 @@ void DeleteTableTest::WaitUntilTabletRunning(int index, const std::string& table
                                           tablet_id, MonoDelta::FromSeconds(30)));
 }
 
-void DeleteTableTest::DeleteTable(const string& table_name) {
+void DeleteTableTest::DeleteTable(const YBTableName& table_name) {
   Status s = client_->DeleteTable(table_name);
   if (s.IsTimedOut()) {
     WARN_NOT_OK(PstackWatcher::DumpPidStacks(cluster_->master()->pid()),
@@ -266,7 +267,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   // Check that the master no longer exposes the table in any way:
 
   // 1) Should not list it in ListTables.
-  vector<string> table_names;
+  vector<YBTableName> table_names;
   ASSERT_OK(client_->ListTables(&table_names));
   ASSERT_TRUE(table_names.empty()) << "table still exposed in ListTables";
 
@@ -391,7 +392,7 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   int n_iters = AllowSlowTests() ? 20 : 1;
   for (int i = 0; i < n_iters; i++) {
     TestWorkload workload(cluster_.get());
-    workload.set_table_name(Substitute("table-$0", i));
+    workload.set_table_name(YBTableName(Substitute("table-$0", i)));
 
     // We'll delete the table underneath the writers, so we expcted
     // a NotFound error during the writes.

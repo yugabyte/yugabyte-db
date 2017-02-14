@@ -43,10 +43,11 @@ using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableName;
 using std::shared_ptr;
 
-const char * const kTableId1 = "testMasterReplication-1";
-const char * const kTableId2 = "testMasterReplication-2";
+const YBTableName kTableName1("testMasterReplication-1");
+const YBTableName kTableName2("testMasterReplication-2");
 
 const int kNumTabletServerReplicas = 3;
 
@@ -104,7 +105,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
 
 
   Status CreateTable(const shared_ptr<YBClient>& client,
-                     const std::string& table_name) {
+                     const YBTableName& table_name) {
     YBSchema schema;
     YBSchemaBuilder b;
     b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
@@ -117,10 +118,10 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
         .Create();
   }
 
-  void VerifyTableExists(const std::string& table_id) {
-    LOG(INFO) << "Verifying that " << table_id << " exists on leader..";
+  void VerifyTableExists(const YBTableName& table_name) {
+    LOG(INFO) << "Verifying that " << table_name.ToString() << " exists on leader..";
     ASSERT_TRUE(cluster_->leader_mini_master()->master()
-                ->catalog_manager()->TableNameExists(table_id));
+                ->catalog_manager()->TableNameExists(table_name.table_name()));
   }
 
   void VerifyMasterRestart() {
@@ -170,7 +171,7 @@ TEST_F(MasterReplicationTest, TestSysTablesReplication) {
 
   // Create the first table.
   ASSERT_OK(CreateClient(&client));
-  ASSERT_OK(CreateTable(client, kTableId1));
+  ASSERT_OK(CreateTable(client, kTableName1));
 
   // TODO: once fault tolerant DDL is in, remove the line below.
   ASSERT_OK(CreateClient(&client));
@@ -178,8 +179,8 @@ TEST_F(MasterReplicationTest, TestSysTablesReplication) {
   ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
 
   // Repeat the same for the second table.
-  ASSERT_OK(CreateTable(client, kTableId2));
-  ASSERT_NO_FATAL_FAILURE(VerifyTableExists(kTableId2));
+  ASSERT_OK(CreateTable(client, kTableName2));
+  ASSERT_NO_FATAL_FAILURE(VerifyTableExists(kTableName2));
 }
 
 // When all masters are down, test that we can timeout the connection

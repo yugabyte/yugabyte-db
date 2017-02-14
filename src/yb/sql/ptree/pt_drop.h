@@ -63,6 +63,11 @@ class PTDropStmt : public TreeNode {
     return names_->element(0)->last_name().c_str();
   }
 
+  client::YBTableName yb_table_name() const {
+    DCHECK_EQ(drop_type_, OBJECT_TABLE);
+    return names_->element(0)->ToTableName();
+  }
+
   // Returns location of droppping object name.
   const YBLocation& name_loc() const {
     return names_->loc();

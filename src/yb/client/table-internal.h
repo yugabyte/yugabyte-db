@@ -29,7 +29,7 @@ namespace client {
 class YBTable::Data {
  public:
   Data(std::shared_ptr<YBClient> client,
-       std::string name,
+       YBTableName name,
        std::string table_id,
        const YBSchema& schema,
        PartitionSchema partition_schema);
@@ -39,7 +39,7 @@ class YBTable::Data {
 
   std::shared_ptr<YBClient> client_;
 
-  std::string name_;
+  YBTableName name_;
   YBTableType table_type_;
   const std::string id_;
 
@@ -49,10 +49,11 @@ class YBTable::Data {
   const YBSchema schema_;
   const PartitionSchema partition_schema_;
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
 }  // namespace client
 }  // namespace yb
 
-#endif
+#endif  // YB_CLIENT_TABLE_INTERNAL_H_

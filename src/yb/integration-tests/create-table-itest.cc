@@ -35,6 +35,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 using yb::client::YBTableType;
+using yb::client::YBTableName;
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
@@ -42,7 +43,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_Del
 
 namespace yb {
 
-const char* const kTableName = "test-table";
+static const YBTableName kTableName("test-table");
 
 class CreateTableITest : public ExternalMiniClusterITestBase {
  public:
@@ -54,7 +55,8 @@ class CreateTableITest : public ExternalMiniClusterITestBase {
     if (table_type != YBTableType::REDIS_TABLE_TYPE) {
       table_creator->schema(&client_schema);
     }
-    return table_creator->table_name(Substitute("$0:$1", kTableName, table_suffix))
+    return table_creator->table_name(
+            YBTableName(Substitute("$0:$1", kTableName.table_name(), table_suffix)))
         .replication_info(replication_info)
         .table_type(table_type)
         .wait(true)

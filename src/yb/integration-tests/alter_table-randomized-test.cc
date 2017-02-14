@@ -43,6 +43,7 @@ using client::YBSession;
 using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
+using client::YBTableName;
 using client::YBValue;
 using client::YBOperation;
 using std::shared_ptr;
@@ -52,8 +53,8 @@ using std::pair;
 using std::vector;
 using strings::SubstituteAndAppend;
 
-const char* kTableName = "test-table";
-const int kMaxColumns = 30;
+static const YBTableName kTableName("test-table");
+static const int kMaxColumns = 30;
 
 class AlterTableRandomized : public YBTest {
  public:

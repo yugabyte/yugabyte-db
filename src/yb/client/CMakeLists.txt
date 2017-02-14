@@ -35,7 +35,8 @@ set(CLIENT_SRCS
   table_creator-internal.cc
   tablet_server-internal.cc
   value.cc
-        yb_op.cc
+  yb_op.cc
+  yb_table_name.cc
 )
 
 set(CLIENT_LIBS
@@ -163,7 +164,8 @@ install(FILES
   schema.h
   stubs.h
   value.h
-        yb_op.h
+  yb_op.h
+  yb_table_name.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/yb/client)
 
 # Headers: common

@@ -36,6 +36,7 @@ namespace yb {
 
 using client::YBRowResult;
 using client::YBSchema;
+using client::YBTableName;
 using std::string;
 using std::vector;
 using namespace std::placeholders;
@@ -52,7 +53,7 @@ class RpcLineItemDAOTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
 
-    const char *kTableName = "tpch1";
+    YBTableName kTableName("tpch1");
 
     // Create the table and Connect to it.
     string master_address(cluster_->mini_master()->bound_rpc_addr_str());

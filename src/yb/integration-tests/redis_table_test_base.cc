@@ -24,12 +24,15 @@ using client::YBTableCreator;
 using client::YBSchemaBuilder;
 using client::YBColumnSchema;
 using client::YBTableType;
+using client::YBTableName;
 using client::YBSession;
 
 using redisserver::ParseSet;
 using redisserver::ParseGet;
 
-std::string RedisTableTestBase::table_name() { return kRedisTableName; }
+YBTableName RedisTableTestBase::table_name() {
+  return YBTableName(kRedisTableName);
+}
 
 void RedisTableTestBase::CreateTable() {
   if (!table_exists_) {

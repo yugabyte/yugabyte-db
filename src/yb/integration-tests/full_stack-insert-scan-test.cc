@@ -91,6 +91,7 @@ using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
+using client::YBTableName;
 using strings::Split;
 using strings::Substitute;
 
@@ -196,7 +197,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
   vector<string> Int32ColumnNames() const;
   vector<string> Int64ColumnNames() const;
 
-  static const char* const kTableName;
+  static const YBTableName kTableName;
   static const int kSessionTimeoutMs = 60000;
   static const int kRandomStrMinLength = 16;
   static const int kRandomStrMaxLength = 31;
@@ -270,7 +271,7 @@ void ReportAllDone(int id, int numids) {
 
 } // anonymous namespace
 
-const char* const FullStackInsertScanTest::kTableName = "full-stack-mrs-test-tbl";
+const YBTableName FullStackInsertScanTest::kTableName("full-stack-mrs-test-tbl");
 
 TEST_F(FullStackInsertScanTest, MRSOnlyStressTest) {
   FLAGS_enable_maintenance_manager = false;

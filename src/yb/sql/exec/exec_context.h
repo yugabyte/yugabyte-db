@@ -34,7 +34,7 @@ class ExecContext : public ProcessContext {
     return sql_env_->NewTableCreator();
   }
 
-  CHECKED_STATUS DeleteTable(const string& name) {
+  CHECKED_STATUS DeleteTable(const client::YBTableName& name) {
     return sql_env_->DeleteTable(name);
   }
 
@@ -53,6 +53,10 @@ class ExecContext : public ProcessContext {
   // Use keyspace with the given name.
   CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
     return sql_env_->UseKeyspace(keyspace_name);
+  }
+
+  const std::string& CurrentKeyspace() const {
+    return sql_env_->CurrentKeyspace();
   }
 
   // Apply YBClient write operator.

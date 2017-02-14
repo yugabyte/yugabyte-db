@@ -213,8 +213,8 @@ class PTCreateTable : public TreeNode {
   CHECKED_STATUS CheckPrimaryType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
 
   // Table name.
-  const char *yb_table_name() const {
-    return relation_->last_name().c_str();
+  client::YBTableName yb_table_name() const {
+    return relation_->ToTableName();
   }
 
   // Returns location of table name.

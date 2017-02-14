@@ -73,6 +73,7 @@ using google::protobuf::RepeatedPtrField;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBTabletServer;
+using client::YBTableName;
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
@@ -153,13 +154,13 @@ class ClusterAdminClient {
   Status ListTables();
 
   // List all tablets of this table
-  Status ListTablets(const string& table_name, const int max_tablets);
+  Status ListTablets(const YBTableName& table_name, const int max_tablets);
 
   // Per Tablet list of all tablet servers
   Status ListPerTabletTabletServers(const std::string& tablet_id);
 
   // Delete a single table by name.
-  Status DeleteTable(const string& table_name);
+  Status DeleteTable(const YBTableName& table_name);
 
   // List all tablet servers known to master
   Status ListAllTabletServers();
@@ -177,7 +178,7 @@ class ClusterAdminClient {
 
   Status GetLoadMoveCompletion();
 
-  Status ListLeaderCounts(const string& table_name);
+  Status ListLeaderCounts(const YBTableName& table_name);
 
  private:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -472,7 +473,7 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListLeaderCounts(const string& table_name) {
+Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   vector<string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
   rpc::RpcController rpc;
@@ -805,15 +806,15 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
 }
 
 Status ClusterAdminClient::ListTables() {
-  vector<string> tables;
+  vector<YBTableName> tables;
   RETURN_NOT_OK(yb_client_->ListTables(&tables));
-  for (const string& table : tables) {
-    std::cout << table << std::endl;
+  for (const YBTableName& table : tables) {
+    std::cout << table.ToString() << std::endl;
   }
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListTablets(const string& table_name, const int max_tablets) {
+Status ClusterAdminClient::ListTablets(const YBTableName& table_name, const int max_tablets) {
   vector<string> tablet_uuids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, max_tablets, &tablet_uuids, &ranges));
   const string header = "Tablet UUID\t\t\t\tRange";
@@ -866,9 +867,9 @@ Status ClusterAdminClient::ListPerTabletTabletServers(const string& tablet_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::DeleteTable(const string& table_name) {
+Status ClusterAdminClient::DeleteTable(const YBTableName& table_name) {
   RETURN_NOT_OK(yb_client_->DeleteTable(table_name));
-  std::cout << "Deleted table " << table_name << std::endl;
+  std::cout << "Deleted table " << table_name.ToString() << std::endl;
   return Status::OK();
 }
 
@@ -1051,15 +1052,15 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     if (argc < 3) {
       UsageAndExit(argv[0]);
     }
-    string table_name = argv[2];
+    const YBTableName table_name(argv[2]); // Default namespace.
     int max = -1;
     if (argc > 3) {
       max = std::stoi(argv[3]);
     }
     Status s = client.ListTablets(table_name, max);
     if (!s.ok()) {
-      std::cerr << "Unable to list tablets of table " << table_name << ": " << s.ToString() <<
-        std::endl;
+      std::cerr << "Unable to list tablets of table " << table_name.ToString()
+                << ": " << s.ToString() << std::endl;
       return 1;
     }
   } else if (op == kListTabletServersOp) {
@@ -1077,10 +1078,11 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     if (argc < 3) {
       UsageAndExit(argv[0]);
     }
-    string table_name = argv[2];
+    const YBTableName table_name(argv[2]); // Default namespace.
     Status s = client.DeleteTable(table_name);
     if (!s.ok()) {
-      std::cerr << "Unable to delete table " << table_name << ": " << s.ToString() << std::endl;
+      std::cerr << "Unable to delete table " << table_name.ToString()
+                << ": " << s.ToString() << std::endl;
       return 1;
     }
   } else if (op == kChangeMasterConfigOp) {
@@ -1147,7 +1149,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     if (argc != 3) {
       UsageAndExit(argv[0]);
     }
-    const string table_name = argv[2];
+    const YBTableName table_name(argv[2]); // Default namespace.
     Status s = client.ListLeaderCounts(table_name);
     if (!s.ok()) {
       std::cerr << "Unable to get leader counts: " << s.ToString() << std::endl;

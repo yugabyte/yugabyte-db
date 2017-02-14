@@ -240,12 +240,12 @@ class AllTypesItest : public YBTest {
       split_rows_.push_back(*row);
     }
 
-    RETURN_NOT_OK(table_creator->table_name("all-types-table")
+    RETURN_NOT_OK(table_creator->table_name(YBTableName("all-types-table"))
                   .schema(&schema_)
                   .split_rows(split_rows)
                   .num_replicas(kNumTabletServers)
                   .Create());
-    return client_->OpenTable("all-types-table", &table_);
+    return client_->OpenTable(YBTableName("all-types-table"), &table_);
   }
 
   Status GenerateRow(YBSession* session, int split_idx, int row_idx) {

@@ -56,6 +56,7 @@ class MasterPathHandlers;
 
 class Master : public server::RpcAndWebServerBase {
  public:
+  // TODO: Move it to master_defaults.h
   static const uint16_t kDefaultPort = 7051;
   static const uint16_t kDefaultWebPort = 8051;
 
@@ -175,4 +176,4 @@ class Master : public server::RpcAndWebServerBase {
 
 } // namespace master
 } // namespace yb
-#endif
+#endif // YB_MASTER_MASTER_H

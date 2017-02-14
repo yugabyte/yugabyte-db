@@ -18,6 +18,7 @@ using client::YBSchemaBuilder;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
+using client::YBTableName;
 using client::YBqlWriteOp;
 using client::YBqlReadOp;
 
@@ -120,7 +121,11 @@ CHECKED_STATUS Executor::ExecPTNode(const PTListNode *lnode) {
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
-  const char *table_name = tnode->yb_table_name();
+  YBTableName table_name = tnode->yb_table_name();
+
+  if (!table_name.has_namespace()) {
+    table_name.set_namespace_name(exec_context_->CurrentKeyspace());
+  }
 
   // Setting up columns.
   Status exec_status;
@@ -165,8 +170,8 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   // Create table.
   shared_ptr<YBTableCreator> table_creator(exec_context_->NewTableCreator());
   exec_status = table_creator->table_name(table_name).table_type(YBTableType::YQL_TABLE_TYPE)
-                                                     .schema(&schema)
-                                                     .Create();
+                              .schema(&schema)
+                              .Create();
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::EXEC_ERROR;
     if (exec_status.IsAlreadyPresent()) {
@@ -194,11 +199,17 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDropStmt *tnode) {
   ErrorCode error_not_found = ErrorCode::EXEC_ERROR;
 
   switch (tnode->drop_type()) {
-    case OBJECT_TABLE:
+    case OBJECT_TABLE: {
+      YBTableName table_name = tnode->yb_table_name();
+
+      if (!table_name.has_namespace()) {
+        table_name.set_namespace_name(exec_context_->CurrentKeyspace());
+      }
       // Drop the table.
-      exec_status = exec_context_->DeleteTable(tnode->name());
+      exec_status = exec_context_->DeleteTable(table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
       break;
+    }
 
     case OBJECT_SCHEMA:
       // Drop the keyspace.

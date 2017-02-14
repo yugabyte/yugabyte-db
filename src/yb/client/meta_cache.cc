@@ -15,11 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/client/meta_cache.h"
+#include <mutex>
 
 #include <boost/bind.hpp>
 #include <glog/logging.h>
-#include <mutex>
+
+#include "yb/client/meta_cache.h"
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
@@ -324,7 +325,7 @@ class LookupRpc : public Rpc {
   virtual string ToString() const OVERRIDE;
 
   const GetTableLocationsResponsePB& resp() const { return resp_; }
-  const string& table_name() const { return table_->name(); }
+  const YBTableName& table_name() const { return table_->name(); }
   const string& table_id() const { return table_->id(); }
 
  private:
@@ -400,7 +401,7 @@ void LookupRpc::SendRpc() {
     VLOG(3) << "Fast lookup: found tablet " << result->tablet_id()
             << " for " << table_->partition_schema()
                                  .PartitionKeyDebugString(partition_key_, *table_->schema().schema_)
-            << " of " << table_->name();
+            << " of " << table_->name().ToString();
     if (remote_tablet_) {
       *remote_tablet_ = result;
     }
@@ -413,7 +414,7 @@ void LookupRpc::SendRpc() {
   VLOG(3) << "Fast lookup: no known tablet"
           << " for " << table_->partition_schema()
                                .PartitionKeyDebugString(partition_key_, *table_->schema().schema_)
-          << " of " << table_->name()
+          << " of " << table_->name().ToString()
           << ": refreshing our metadata from the Master";
 
   if (!has_permit_) {
@@ -451,7 +452,7 @@ void LookupRpc::SendRpc() {
 
 string LookupRpc::ToString() const {
   return Substitute("GetTableLocations($0, $1, $2)",
-                    table_->name(),
+                    table_->name().ToString(),
                     table_->partition_schema()
                            .PartitionKeyDebugString(partition_key_, *table_->schema().schema_),
                     num_attempts());
@@ -570,7 +571,7 @@ const scoped_refptr<RemoteTablet>& MetaCache::ProcessLookupResponse(const Lookup
       continue;
     }
 
-    VLOG(3) << "Caching tablet " << tablet_id << " for (" << rpc.table_name()
+    VLOG(3) << "Caching tablet " << tablet_id << " for (" << rpc.table_name().ToString()
             << "): " << loc.ShortDebugString();
 
     Partition partition;

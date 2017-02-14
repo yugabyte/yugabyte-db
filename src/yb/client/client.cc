@@ -77,6 +77,7 @@ using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListTablesRequestPB;
 using yb::master::ListTablesResponsePB;
+using yb::master::ListTablesResponsePB_TableInfo;
 using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
@@ -295,32 +296,32 @@ YBTableCreator* YBClient::NewTableCreator() {
   return new YBTableCreator(this);
 }
 
-Status YBClient::IsCreateTableInProgress(const string& table_name,
-                                           bool *create_in_progress) {
+Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
+                                         bool *create_in_progress) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->IsCreateTableInProgress(this, table_name, deadline, create_in_progress);
 }
 
-Status YBClient::DeleteTable(const string& table_name) {
+Status YBClient::DeleteTable(const YBTableName& table_name) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->DeleteTable(this, table_name, deadline);
 }
 
-YBTableAlterer* YBClient::NewTableAlterer(const string& name) {
+YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {
   return new YBTableAlterer(this, name);
 }
 
-Status YBClient::IsAlterTableInProgress(const string& table_name,
-                                          bool *alter_in_progress) {
+Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
+                                        bool *alter_in_progress) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->IsAlterTableInProgress(this, table_name, deadline, alter_in_progress);
 }
 
-Status YBClient::GetTableSchema(const string& table_name,
-                                  YBSchema* schema) {
+Status YBClient::GetTableSchema(const YBTableName& table_name,
+                                YBSchema* schema) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   string table_id_ignored;
@@ -461,13 +462,13 @@ Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
   return Status::OK();
 }
 
-Status YBClient::GetTablets(const string& table_name,
+Status YBClient::GetTablets(const YBTableName& table_name,
                             const int max_tablets,
                             vector<string>* tablet_uuids,
                             vector<string>* ranges) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
-  req.mutable_table()->set_table_name(table_name);
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
   if (max_tablets == 0) {
     req.set_max_returned_locations(std::numeric_limits<int>::max());
@@ -588,8 +589,8 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
   return data_->SetReplicationInfo(this, replication_info, deadline);
 }
 
-Status YBClient::ListTables(vector<string>* tables,
-                              const string& filter) {
+Status YBClient::ListTables(vector<YBTableName>* tables,
+                            const string& filter) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -612,15 +613,18 @@ Status YBClient::ListTables(vector<string>* tables,
     return StatusFromPB(resp.error().status());
   }
   for (int i = 0; i < resp.tables_size(); i++) {
-    tables->push_back(resp.tables(i).name());
+    const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
+    DCHECK(table_info.has_namespace_());
+    DCHECK(table_info.namespace_().has_name());
+    tables->push_back(YBTableName(table_info.namespace_().name(), table_info.name()));
   }
   return Status::OK();
 }
 
-Status YBClient::TableExists(const string& table_name, bool* exists) {
-  std::vector<std::string> tables;
-  RETURN_NOT_OK(ListTables(&tables, table_name));
-  for (const string& table : tables) {
+Status YBClient::TableExists(const YBTableName& table_name, bool* exists) {
+  vector<YBTableName> tables;
+  RETURN_NOT_OK(ListTables(&tables, table_name.table_name()));
+  for (const YBTableName& table : tables) {
     if (table == table_name) {
       *exists = true;
       return Status::OK();
@@ -631,10 +635,10 @@ Status YBClient::TableExists(const string& table_name, bool* exists) {
 }
 
 Status YBTableCache::GetTable(
-    const string& table_name, shared_ptr<YBTable>* table, bool force_refresh) {
+    const YBTableName& table_name, shared_ptr<YBTable>* table, bool force_refresh) {
   if (!force_refresh) {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    auto itr = cached_tables_.find(table_name);
+    auto itr = cached_tables_.find(table_name.ToString());
     if (itr != cached_tables_.end()) {
       *table = itr->second;
       return Status::OK();
@@ -643,12 +647,12 @@ Status YBTableCache::GetTable(
   RETURN_NOT_OK(client_->OpenTable(table_name, table));
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    cached_tables_[table_name] = *table;
+    cached_tables_[table_name.ToString()] = *table;
   }
   return Status::OK();
 }
 
-Status YBClient::OpenTable(const string& table_name, shared_ptr<YBTable>* table) {
+Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* table) {
   YBSchema schema;
   string table_id;
   PartitionSchema partition_schema;
@@ -720,7 +724,7 @@ YBTableCreator::~YBTableCreator() {
   delete data_;
 }
 
-YBTableCreator& YBTableCreator::table_name(const string& name) {
+YBTableCreator& YBTableCreator::table_name(const YBTableName& name) {
   data_->table_name_ = name;
   return *this;
 }
@@ -801,7 +805,7 @@ YBTableCreator& YBTableCreator::wait(bool wait) {
 }
 
 Status YBTableCreator::Create() {
-  if (!data_->table_name_.length()) {
+  if (data_->table_name_.table_name().empty()) {
     return STATUS(InvalidArgument, "Missing table name");
   }
   // For a redis table, no external schema is passed to TableCreator, we make a unique schema
@@ -821,7 +825,8 @@ Status YBTableCreator::Create() {
 
   // Build request.
   CreateTableRequestPB req;
-  req.set_name(data_->table_name_);
+  req.set_name(data_->table_name_.table_name());
+  req.mutable_namespace_()->set_name(data_->table_name_.resolved_namespace_name());
   req.set_table_type(data_->table_type_);
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or
@@ -890,7 +895,7 @@ Status YBTableCreator::Create() {
                                                            *data_->schema_,
                                                            deadline),
                         strings::Substitute("Error creating table $0 on the master",
-                                            data_->table_name_));
+                                            data_->table_name_.ToString()));
 
   // Spin until the table is fully created, if requested.
   if (data_->wait_) {
@@ -899,7 +904,8 @@ Status YBTableCreator::Create() {
                                                                     deadline));
   }
 
-  LOG(INFO) << "Created table of type " << TableType_Name(data_->table_type_);
+  LOG(INFO) << "Created table " << data_->table_name_.ToString()
+            << " of type " << TableType_Name(data_->table_type_);
   if (redis_schema) {
     delete redis_schema;
   }
@@ -912,7 +918,7 @@ Status YBTableCreator::Create() {
 
 YBTable::YBTable(
     const shared_ptr<YBClient>& client,
-    const string& name,
+    const YBTableName& name,
     const string& table_id,
     const YBSchema& schema,
     const PartitionSchema& partition_schema)
@@ -923,7 +929,7 @@ YBTable::~YBTable() {
   delete data_;
 }
 
-const string& YBTable::name() const {
+const YBTableName& YBTable::name() const {
   return data_->name_;
 }
 
@@ -1192,7 +1198,7 @@ YBClient* YBSession::client() const {
 ////////////////////////////////////////////////////////////
 // YBTableAlterer
 ////////////////////////////////////////////////////////////
-YBTableAlterer::YBTableAlterer(YBClient* client, const string& name)
+YBTableAlterer::YBTableAlterer(YBClient* client, const YBTableName& name)
   : data_(new Data(client, name)) {
 }
 
@@ -1200,7 +1206,7 @@ YBTableAlterer::~YBTableAlterer() {
   delete data_;
 }
 
-YBTableAlterer* YBTableAlterer::RenameTo(const string& new_name) {
+YBTableAlterer* YBTableAlterer::RenameTo(const YBTableName& new_name) {
   data_->rename_to_ = new_name;
   return this;
 }
@@ -1247,7 +1253,7 @@ Status YBTableAlterer::Alter() {
   deadline.AddDelta(timeout);
   RETURN_NOT_OK(data_->client_->data_->AlterTable(data_->client_, req, deadline));
   if (data_->wait_) {
-    string alter_name = data_->rename_to_.get_value_or(data_->table_name_);
+    YBTableName alter_name = data_->rename_to_.get_value_or(data_->table_name_);
     RETURN_NOT_OK(data_->client_->data_->WaitForAlterTableToFinish(
         data_->client_, alter_name, deadline));
   }
@@ -1575,7 +1581,7 @@ string YBScanner::ToString() const {
     data_->spec_.lower_bound_key()->encoded_key() : Slice("INF");
   Slice end_key = data_->spec_.exclusive_upper_bound_key() ?
     data_->spec_.exclusive_upper_bound_key()->encoded_key() : Slice("INF");
-  return strings::Substitute("$0: [$1,$2)", data_->table_->name(),
+  return strings::Substitute("$0: [$1,$2)", data_->table_->name().ToString(),
                              start_key.ToDebugString(), end_key.ToDebugString());
 }
 

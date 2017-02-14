@@ -101,6 +101,7 @@ using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 using yb::client::YBTable;
 using yb::client::YBTableCreator;
+using yb::client::YBTableName;
 using std::shared_ptr;
 using yb::Status;
 using yb::ThreadPool;
@@ -130,9 +131,9 @@ using yb::load_generator::FormatHexForLoadTestKey;
 
 // ------------------------------------------------------------------------------------------------
 
-void CreateTable(const string &table_name, const shared_ptr<YBClient> &client);
-void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &client);
-void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client);
+void CreateTable(const YBTableName &table_name, const shared_ptr<YBClient> &client);
+void CreateRedisTable(const YBTableName &table_name, const shared_ptr<YBClient> &client);
+void CreateYBTable(const YBTableName &table_name, const shared_ptr<YBClient> &client);
 
 void LaunchYBLoadTest(SessionFactory *session_factory);
 
@@ -140,9 +141,9 @@ shared_ptr<YBClient> CreateYBClient();
 
 void SetupYBTable(const shared_ptr<YBClient> &client);
 
-bool DropTableIfNecessary(const shared_ptr<YBClient> &client, const string &table_name);
+bool DropTableIfNecessary(const shared_ptr<YBClient> &client, const YBTableName &table_name);
 
-bool YBTableExistsAlready(const shared_ptr<YBClient> &client, const string &table_name);
+bool YBTableExistsAlready(const shared_ptr<YBClient> &client, const YBTableName &table_name);
 
 int main(int argc, char *argv[]) {
   gflags::SetUsageMessage(
@@ -168,7 +169,7 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < FLAGS_num_iter; ++i) {
     if (!use_redis_table) {
-      const string table_name(FLAGS_table_name);
+      const YBTableName table_name(FLAGS_table_name);
       shared_ptr<YBClient> client = CreateYBClient();
       SetupYBTable(client);
 
@@ -226,7 +227,7 @@ void SetupYBTable(const shared_ptr<YBClient> &client) {
     LOG(INFO) << "Ignoring FLAGS_table_name. Redis proxy expects table name to be .redis";
     FLAGS_table_name = ".redis";
   }
-  const string table_name(FLAGS_table_name);
+  const YBTableName table_name(FLAGS_table_name);
 
   if (!YBTableExistsAlready(client, table_name) || DropTableIfNecessary(client, table_name)) {
     CreateTable(table_name, client);
@@ -247,7 +248,7 @@ vector<const YBPartialRow *> GetSplitsForTable(const YBSchema *schema) {
   return splits;
 }
 
-void CreateTable(const string &table_name, const shared_ptr<YBClient> &client) {
+void CreateTable(const YBTableName &table_name, const shared_ptr<YBClient> &client) {
   if (!FLAGS_target_redis_server_addresses.empty()) {
     CreateRedisTable(table_name, client);
   } else {
@@ -260,7 +261,7 @@ void CreateTable(const string &table_name, const shared_ptr<YBClient> &client) {
   sleep(10);
 }
 
-void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &client) {
+void CreateRedisTable(const YBTableName &table_name, const shared_ptr<YBClient> &client) {
   LOG(INFO) << "Creating table with " << FLAGS_num_tablets << " hash based partitions.";
   gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status = table_creator->table_name(table_name)
@@ -277,7 +278,7 @@ void CreateRedisTable(const string &table_name, const shared_ptr<YBClient> &clie
   }
 }
 
-void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client) {
+void CreateYBTable(const YBTableName &table_name, const shared_ptr<YBClient> &client) {
   LOG(INFO) << "Building schema";
   YBSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
@@ -307,23 +308,23 @@ void CreateYBTable(const string &table_name, const shared_ptr<YBClient> &client)
   }
 }
 
-bool YBTableExistsAlready(const shared_ptr<YBClient> &client, const string &table_name) {
-  LOG(INFO) << "Checking if table '" << table_name << "' already exists";
+bool YBTableExistsAlready(const shared_ptr<YBClient> &client, const YBTableName &table_name) {
+  LOG(INFO) << "Checking if table '" << table_name.ToString() << "' already exists";
   {
     YBSchema existing_schema;
     if (client->GetTableSchema(table_name, &existing_schema).ok()) {
-      LOG(INFO) << "Table '" << table_name << "' already exists";
+      LOG(INFO) << "Table '" << table_name.ToString() << "' already exists";
       return true;
     } else {
-      LOG(INFO) << "Table '" << table_name << "' does not exist yet";
+      LOG(INFO) << "Table '" << table_name.ToString() << "' does not exist yet";
       return false;
     }
   }
 }
 
-bool DropTableIfNecessary(const shared_ptr<YBClient> &client, const string &table_name) {
+bool DropTableIfNecessary(const shared_ptr<YBClient> &client, const YBTableName &table_name) {
   if (FLAGS_drop_table) {
-    LOG(INFO) << "Table '" << table_name << "' already exists, deleting";
+    LOG(INFO) << "Table '" << table_name.ToString() << "' already exists, deleting";
     // Table with the same name already exists, drop it.
     CHECK_OK(client->DeleteTable(table_name));
     return true;

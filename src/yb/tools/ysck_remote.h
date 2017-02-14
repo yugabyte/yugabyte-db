@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_TOOLS_KSCK_REMOTE_H
-#define YB_TOOLS_KSCK_REMOTE_H
+#ifndef YB_TOOLS_YSCK_REMOTE_H
+#define YB_TOOLS_YSCK_REMOTE_H
 
 #include <memory>
 #include <string>
@@ -85,7 +85,8 @@ class RemoteYsckMaster : public YsckMaster {
 
   virtual CHECKED_STATUS RetrieveTabletServers(TSMap* tablet_servers) OVERRIDE;
 
-  virtual CHECKED_STATUS RetrieveTablesList(std::vector<std::shared_ptr<YsckTable> >* tables) OVERRIDE;
+  virtual CHECKED_STATUS RetrieveTablesList(
+      std::vector<std::shared_ptr<YsckTable> >* tables) OVERRIDE;
 
   virtual CHECKED_STATUS RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) OVERRIDE;
 
@@ -96,14 +97,16 @@ class RemoteYsckMaster : public YsckMaster {
         generic_proxy_(new server::GenericServiceProxy(messenger, address)),
         proxy_(new master::MasterServiceProxy(messenger, address)) {}
 
-  CHECKED_STATUS GetTableInfo(const std::string& table_name, Schema* schema, int* num_replicas);
+  CHECKED_STATUS GetTableInfo(
+      const client::YBTableName& table_name, Schema* schema, int* num_replicas);
 
   // Used to get a batch of tablets from the master, passing a pointer to the
   // seen last key that will be used as the new start key. The
   // last_partition_key is updated to point at the new last key that came in
   // the batch.
-  CHECKED_STATUS GetTabletsBatch(const std::string& table_name, std::string* last_partition_key,
-    std::vector<std::shared_ptr<YsckTablet> >& tablets, bool* more_tablets);
+  CHECKED_STATUS GetTabletsBatch(const client::YBTableName& table_name,
+      std::string* last_partition_key, std::vector<std::shared_ptr<YsckTablet> >* tablets,
+      bool* more_tablets);
 
   std::shared_ptr<rpc::Messenger> messenger_;
   const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
@@ -113,4 +116,4 @@ class RemoteYsckMaster : public YsckMaster {
 } // namespace tools
 } // namespace yb
 
-#endif // YB_TOOLS_KSCK_REMOTE_H
+#endif // YB_TOOLS_YSCK_REMOTE_H

@@ -48,6 +48,7 @@ using master::MiniMaster;
 using master::TSDescriptor;
 using master::TabletLocationsPB;
 using tserver::MiniTabletServer;
+using client::YBTableName;
 
 // Tests for the Tablet Server registering with the Master,
 // and the master maintaining the tablet descriptor.
@@ -138,7 +139,8 @@ TEST_F(RegistrationTest, TestTabletReports) {
   string ts_root = cluster_->GetTabletServerFsRoot(0);
 
   // Add a tablet, make sure it reports itself.
-  CreateTabletForTesting(cluster_->mini_master(), "fake-table", schema_, &tablet_id_1);
+  CreateTabletForTesting(cluster_->mini_master(), YBTableName("fake-table"),
+      schema_, &tablet_id_1);
 
   TabletLocationsPB locs;
   ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
@@ -146,7 +148,8 @@ TEST_F(RegistrationTest, TestTabletReports) {
   LOG(INFO) << "Tablet successfully reported on " << locs.replicas(0).ts_info().permanent_uuid();
 
   // Add another tablet, make sure it is reported via incremental.
-  CreateTabletForTesting(cluster_->mini_master(), "fake-table2", schema_, &tablet_id_2);
+  CreateTabletForTesting(cluster_->mini_master(), YBTableName("fake-table2"),
+      schema_, &tablet_id_2);
   ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 
   // Shut down the whole system, bring it back up, and make sure the tablets

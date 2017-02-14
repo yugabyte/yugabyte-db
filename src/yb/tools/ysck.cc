@@ -291,8 +291,8 @@ Status Ysck::ChecksumData(const vector<string>& tables,
 
   int num_tablet_replicas = 0;
   for (const shared_ptr<YsckTable>& table : cluster_->tables()) {
-    VLOG(1) << "Table: " << table->name();
-    if (!tables_filter.empty() && !ContainsKey(tables_filter, table->name())) continue;
+    VLOG(1) << "Table: " << table->name().ToString();
+    if (!tables_filter.empty() && !ContainsKey(tables_filter, table->name().table_name())) continue;
     // TODO: remove once we have scan implemented for Redis.
     if (table->table_type() == REDIS_TABLE_TYPE) continue;
     for (const shared_ptr<YsckTablet>& tablet : table->tablets()) {
@@ -382,7 +382,7 @@ Status Ysck::ChecksumData(const vector<string>& tables,
         if (!printed_table_name) {
           printed_table_name = true;
           cout << "-----------------------" << endl;
-          cout << table->name() << endl;
+          cout << table->name().ToString() << endl;
           cout << "-----------------------" << endl;
         }
         bool seen_first_replica = false;
@@ -407,7 +407,7 @@ Status Ysck::ChecksumData(const vector<string>& tables,
             first_checksum = checksum;
           } else if (checksum != first_checksum) {
             num_mismatches++;
-            Error() << ">> Mismatch found in table " << table->name()
+            Error() << ">> Mismatch found in table " << table->name().ToString()
                     << " tablet " << tablet->id() << endl;
           }
           num_results++;
@@ -439,12 +439,12 @@ bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
   vector<shared_ptr<YsckTablet> > tablets = table->tablets();
   int tablets_count = tablets.size();
   if (tablets_count == 0) {
-    Warn() << Substitute("Table $0 has 0 tablets", table->name()) << endl;
+    Warn() << Substitute("Table $0 has 0 tablets", table->name().ToString()) << endl;
     return false;
   }
   int table_num_replicas = table->num_replicas();
   VLOG(1) << Substitute("Verifying $0 tablets for table $1 configured with num_replicas = $2",
-                        tablets_count, table->name(), table_num_replicas);
+                        tablets_count, table->name().ToString(), table_num_replicas);
   int bad_tablets_count = 0;
   // TODO check if the tablets are contiguous and in order.
   for (const shared_ptr<YsckTablet> &tablet : tablets) {
@@ -453,9 +453,10 @@ bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
     }
   }
   if (bad_tablets_count == 0) {
-    Info() << Substitute("Table $0 is HEALTHY", table->name()) << endl;
+    Info() << Substitute("Table $0 is HEALTHY", table->name().ToString()) << endl;
   } else {
-    Warn() << Substitute("Table $0 has $1 bad tablets", table->name(), bad_tablets_count) << endl;
+    Warn() << Substitute(
+        "Table $0 has $1 bad tablets", table->name().ToString(), bad_tablets_count) << endl;
     good_table = false;
   }
   return good_table;

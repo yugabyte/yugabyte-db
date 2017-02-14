@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TPCH_RPC_LINE_ITEM_DAO_H_
-#define YB_TPCH_RPC_LINE_ITEM_DAO_H_
+#ifndef YB_BENCHMARKS_TPCH_RPC_LINE_ITEM_DAO_H
+#define YB_BENCHMARKS_TPCH_RPC_LINE_ITEM_DAO_H
 
 #include <set>
 #include <string>
@@ -36,7 +36,7 @@ class RpcLineItemDAO {
   class Scanner;
 
   RpcLineItemDAO(std::string master_address,
-                 std::string table_name,
+                 client::YBTableName table_name,
                  int batch_size,
                  int mstimeout = 5000,
                  std::vector<const YBPartialRow*> tablet_splits = {});
@@ -91,7 +91,7 @@ class RpcLineItemDAO {
   std::shared_ptr<client::YBSession> session_;
   std::shared_ptr<client::YBTable> client_table_;
   const std::string master_address_;
-  const std::string table_name_;
+  const client::YBTableName table_name_;
   const MonoDelta timeout_;
   const int batch_max_;
   const std::vector<const YBPartialRow*> tablet_splits_;
@@ -101,5 +101,5 @@ class RpcLineItemDAO {
   Semaphore semaphore_;
 };
 
-} //namespace yb
-#endif
+} // namespace yb
+#endif // YB_BENCHMARKS_TPCH_RPC_LINE_ITEM_DAO_H

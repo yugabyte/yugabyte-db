@@ -68,6 +68,7 @@ namespace yb {
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
+using yb::client::YBTableName;
 using std::shared_ptr;
 using yb::itest::TServerDetails;
 
@@ -119,7 +120,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   void ResetClientAndTester() {
     YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(&builder, &client_));
-    tester_.reset(new LinkedListTester(client_, kTableId,
+    tester_.reset(new LinkedListTester(client_, kTableName,
                                        FLAGS_num_chains,
                                        FLAGS_num_tablets,
                                        FLAGS_num_replicas,

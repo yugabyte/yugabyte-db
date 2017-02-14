@@ -120,9 +120,8 @@ class PTTableRef : public TreeNode {
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
-  // Returns last component in qualified name because we don't yet supported namespace.
-  const MCString& table_name() {
-    return name_->last_name();
+  client::YBTableName table_name() const {
+    return name_->ToTableName();
   }
 
   bool is_system() const {
@@ -188,9 +187,9 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
   // Returns table name.
-  virtual const char *table_name() const OVERRIDE {
+  virtual client::YBTableName table_name() const OVERRIDE {
     // CQL only allows one table at a time.
-    return from_clause_->element(0)->table_name().c_str();
+    return from_clause_->element(0)->table_name();
   }
 
   // Returns location of table name.

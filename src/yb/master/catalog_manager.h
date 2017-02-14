@@ -32,6 +32,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
 #include "yb/server/monitored_task.h"
@@ -70,8 +71,6 @@ class TSDescriptor;
 struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
-static const char* const kDefaultNamespaceName = "default";
-static const char* const kDefaultNamespaceId = "11111111111111111111111111111111";
 
 using TableId = std::string;
 using TableName = std::string;

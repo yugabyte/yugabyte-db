@@ -643,8 +643,8 @@ class ResultResponse : public CQLResponse {
     int32_t col_count;
     std::vector<ColSpec> col_specs;
 
-    explicit RowsMetadata(
-        const std::string& table_name, const std::vector<ColumnSchema>& columns, bool no_metadata);
+    explicit RowsMetadata(const client::YBTableName& table_name,
+        const std::vector<ColumnSchema>& columns, bool no_metadata);
   };
 
   ResultResponse(const CQLRequest& request, Kind kind);

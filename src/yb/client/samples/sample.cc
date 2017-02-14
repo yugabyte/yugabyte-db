@@ -41,6 +41,7 @@ using yb::client::YBStatusFunctionCallback;
 using yb::client::YBTable;
 using yb::client::YBTableAlterer;
 using yb::client::YBTableCreator;
+using yb::client::YBTableName;
 using yb::client::YBValue;
 using std::shared_ptr;
 using yb::YBPartialRow;
@@ -72,7 +73,7 @@ static YBSchema CreateSchema() {
 }
 
 static Status DoesTableExist(const shared_ptr<YBClient>& client,
-                             const string& table_name,
+                             const YBTableName& table_name,
                              bool *exists) {
   shared_ptr<YBTable> table;
   Status s = client->OpenTable(table_name, &table);
@@ -86,7 +87,7 @@ static Status DoesTableExist(const shared_ptr<YBClient>& client,
 }
 
 static Status CreateTable(const shared_ptr<YBClient>& client,
-                          const string& table_name,
+                          const YBTableName& table_name,
                           const YBSchema& schema,
                           int num_tablets) {
   // Generate the split keys for the table.
@@ -109,7 +110,7 @@ static Status CreateTable(const shared_ptr<YBClient>& client,
 }
 
 static Status AlterTable(const shared_ptr<YBClient>& client,
-                         const string& table_name) {
+                         const YBTableName& table_name) {
   YBTableAlterer* table_alterer = client->NewTableAlterer(table_name);
   table_alterer->AlterColumn("int_val")->RenameTo("integer_val");
   table_alterer->AddColumn("another_val")->Type(YBColumnSchema::BOOL);
@@ -240,7 +241,7 @@ int main(int argc, char* argv[]) {
   }
   const string master_host = argv[1];
 
-  const string kTableName = "test_table";
+  const YBTableName kTableName("test_table");
 
   // Enable verbose debugging for the client library.
   yb::client::SetVerboseLogLevel(2);

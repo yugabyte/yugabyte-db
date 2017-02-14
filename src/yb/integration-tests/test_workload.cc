@@ -46,10 +46,11 @@ using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
+using client::YBTableName;
 using client::YBUpdate;
 using std::shared_ptr;
 
-const char* const TestWorkload::kDefaultTableName = "test-workload";
+const YBTableName TestWorkload::kDefaultTableName("test-workload");
 
 TestWorkload::TestWorkload(ExternalMiniCluster* cluster)
   : cluster_(cluster),
@@ -202,7 +203,7 @@ void TestWorkload::Setup(YBTableType table_type) {
              .Create());
   } else {
     LOG(INFO) << "TestWorkload: Skipping table creation because table "
-              << table_name_ << " already exists";
+              << table_name_.ToString() << " already exists";
   }
 
 

@@ -19,11 +19,11 @@
 // First column is in ascending order, the rest are random data.
 // Helps make things like availability demos a little easier.
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <iostream>
 #include <memory>
 #include <vector>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/gutil/stl_util.h"
@@ -51,6 +51,7 @@ using client::YBInsert;
 using client::YBSchema;
 using client::YBSession;
 using client::YBTable;
+using client::YBTableName;
 using std::shared_ptr;
 
 void PrintUsage(char** argv) {
@@ -67,7 +68,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   InitGoogleLoggingSafe(argv[0]);
   FLAGS_logtostderr = true;
 
-  string table_name = argv[1];
+  YBTableName table_name(argv[1]); // Default namespace.
 
   vector<string> addrs = strings::Split(FLAGS_master_address, ",");
   CHECK(!addrs.empty()) << "At least one master address must be specified!";

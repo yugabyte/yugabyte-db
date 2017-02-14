@@ -52,6 +52,7 @@ using client::YBSession;
 using client::YBStatusCallback;
 using client::YBStatusMemberCallback;
 using client::YBTableCreator;
+using client::YBTableName;
 using client::YBUpdate;
 using client::YBValue;
 using std::vector;
@@ -223,7 +224,7 @@ RpcLineItemDAO::~RpcLineItemDAO() {
   FinishWriting();
 }
 
-RpcLineItemDAO::RpcLineItemDAO(string master_address, string table_name,
+RpcLineItemDAO::RpcLineItemDAO(string master_address, YBTableName table_name,
                                int batch_size, int mstimeout,
                                vector<const YBPartialRow*> tablet_splits)
     : master_address_(std::move(master_address)),

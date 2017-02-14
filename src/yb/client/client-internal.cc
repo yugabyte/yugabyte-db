@@ -391,23 +391,25 @@ Status YBClient::Data::CreateTable(
       YBSchema actual_schema;
       string table_id;
       PartitionSchema actual_partition_schema;
+      const YBTableName table_name(req.has_namespace_()
+          ? YBTableName(req.namespace_().name(), req.name()) : YBTableName(req.name()));
 
       // A fix for https://yugabyte.atlassian.net/browse/ENG-529:
       // If we've been retrying table creation, and the table is now in the process is being
       // created, we can sometimes see an empty schema. Wait until the table is fully created
       // before we compare the schema.
       RETURN_NOT_OK_PREPEND(
-          WaitForCreateTableToFinish(client, req.name(), deadline),
-          Substitute("Failed waiting for table $0 to finish being created", req.name()));
+          WaitForCreateTableToFinish(client, table_name, deadline),
+          Substitute("Failed waiting for table $0 to finish being created", table_name.ToString()));
 
       RETURN_NOT_OK_PREPEND(
-          GetTableSchema(client, req.name(), deadline, &actual_schema,
+          GetTableSchema(client, table_name, deadline, &actual_schema,
                          &actual_partition_schema, &table_id),
-          Substitute("Unable to check the schema of table $0", req.name()));
+          Substitute("Unable to check the schema of table $0", table_name.ToString()));
       if (!schema.Equals(actual_schema)) {
         string msg = Substitute("Table $0 already exists with a different "
             "schema. Requested schema was: $1, actual schema is: $2",
-            req.name(), schema.schema_->ToString(), actual_schema.schema_->ToString());
+            table_name.ToString(), schema.schema_->ToString(), actual_schema.schema_->ToString());
         LOG(ERROR) << msg;
         return STATUS(AlreadyPresent, msg);
       } else {
@@ -419,7 +421,7 @@ Status YBClient::Data::CreateTable(
         if (!partition_schema.Equals(actual_partition_schema)) {
           string msg = Substitute("Table $0 already exists with a different partition schema. "
               "Requested partition schema was: $1, actual partition schema is: $2",
-              req.name(), partition_schema.DebugString(*schema.schema_),
+              table_name.ToString(), partition_schema.DebugString(*schema.schema_),
               actual_partition_schema.DebugString(*actual_schema.schema_));
           LOG(ERROR) << msg;
           return STATUS(AlreadyPresent, msg);
@@ -434,12 +436,12 @@ Status YBClient::Data::CreateTable(
 }
 
 Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
-                                                 const string& table_name,
-                                                 const MonoTime& deadline,
-                                                 bool *create_in_progress) {
+                                               const YBTableName& table_name,
+                                               const MonoTime& deadline,
+                                               bool *create_in_progress) {
   IsCreateTableDoneRequestPB req;
   IsCreateTableDoneResponsePB resp;
-  req.mutable_table()->set_table_name(table_name);
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
   // TODO: Add client rpc timeout and use 'default_admin_operation_timeout_' as
   // the default timeout for all admin operations.
@@ -465,21 +467,21 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 }
 
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
-                                                    const string& table_name,
-                                                    const MonoTime& deadline) {
+                                                  const YBTableName& table_name,
+                                                  const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(&YBClient::Data::IsCreateTableInProgress, this, client, table_name, _1, _2));
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
-                                     const string& table_name,
-                                     const MonoTime& deadline) {
+                                   const YBTableName& table_name,
+                                   const MonoTime& deadline) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
 
-  req.mutable_table()->set_table_name(table_name);
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
   Status s = SyncLeaderMasterRpc<DeleteTableRequestPB, DeleteTableResponsePB>(
       deadline, client, req, &resp,
       &attempts, "DeleteTable", &MasterServiceProxy::DeleteTable);
@@ -522,13 +524,13 @@ Status YBClient::Data::AlterTable(YBClient* client,
 }
 
 Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
-                                                const string& table_name,
-                                                const MonoTime& deadline,
-                                                bool *alter_in_progress) {
+                                              const YBTableName& table_name,
+                                              const MonoTime& deadline,
+                                              bool *alter_in_progress) {
   IsAlterTableDoneRequestPB req;
   IsAlterTableDoneResponsePB resp;
 
-  req.mutable_table()->set_table_name(table_name);
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
   Status s =
       SyncLeaderMasterRpc<IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB>(
           deadline,
@@ -548,8 +550,8 @@ Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
 }
 
 Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
-                                                   const string& alter_name,
-                                                   const MonoTime& deadline) {
+                                                 const YBTableName& alter_name,
+                                                 const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
       std::bind(&YBClient::Data::IsAlterTableInProgress, this, client, alter_name, _1, _2));
@@ -611,7 +613,7 @@ class GetTableSchemaRpc : public Rpc {
  public:
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
-                    string table_name,
+                    YBTableName table_name,
                     YBSchema* out_schema,
                     PartitionSchema* out_partition_schema,
                     string* out_id,
@@ -633,7 +635,7 @@ class GetTableSchemaRpc : public Rpc {
 
   YBClient* client_;
   StatusCallback user_cb_;
-  const string table_name_;
+  const YBTableName table_name_;
   YBSchema* out_schema_;
   PartitionSchema* out_partition_schema_;
   string* out_id_;
@@ -642,7 +644,7 @@ class GetTableSchemaRpc : public Rpc {
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
-                                     string table_name,
+                                     YBTableName table_name,
                                      YBSchema* out_schema,
                                      PartitionSchema* out_partition_schema,
                                      string* out_id,
@@ -674,7 +676,7 @@ void GetTableSchemaRpc::SendRpc() {
       MonoTime::Earliest(rpc_deadline, retrier().deadline()));
 
   GetTableSchemaRequestPB req;
-  req.mutable_table()->set_table_name(table_name_);
+  table_name_.SetIntoTableIdentifierPB(req.mutable_table());
   client_->data_->master_proxy()->GetTableSchemaAsync(
       req, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&GetTableSchemaRpc::SendRpcCb, this, Status::OK()));
@@ -682,7 +684,7 @@ void GetTableSchemaRpc::SendRpc() {
 
 string GetTableSchemaRpc::ToString() const {
   return Substitute("GetTableSchemaRpc(table_name: $0, num_attempts: $1)",
-                    table_name_, num_attempts());
+                    table_name_.ToString(), num_attempts());
 }
 
 void GetTableSchemaRpc::ResetLeaderMasterAndRetry() {
@@ -772,11 +774,11 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
-                                        const string& table_name,
-                                        const MonoTime& deadline,
-                                        YBSchema* schema,
-                                        PartitionSchema* partition_schema,
-                                        string* table_id) {
+                                      const YBTableName& table_name,
+                                      const MonoTime& deadline,
+                                      YBSchema* schema,
+                                      PartitionSchema* partition_schema,
+                                      string* table_id) {
   Synchronizer sync;
   GetTableSchemaRpc rpc(client,
                         sync.AsStatusCallback(),

@@ -28,6 +28,7 @@
 
 using yb::client::CountTableRows;
 using yb::client::YBTable;
+using yb::client::YBTableName;
 using std::shared_ptr;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_TOMBSTONED;

@@ -35,7 +35,7 @@ class YBTableCreator::Data {
 
   YBClient* client_;
 
-  std::string table_name_;
+  YBTableName table_name_; // Required.
 
   TableType table_type_ = TableType::DEFAULT_TABLE_TYPE;
 

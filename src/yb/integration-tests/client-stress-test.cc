@@ -43,6 +43,7 @@ using client::YBClient;
 using client::YBClientBuilder;
 using client::YBScanner;
 using client::YBTable;
+using client::YBTableName;
 
 class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
  public:

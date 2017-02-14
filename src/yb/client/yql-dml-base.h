@@ -28,7 +28,7 @@ using std::vector;
 using std::shared_ptr;
 using std::unique_ptr;
 
-static const char kTableName[] = "yql_client_test_table";
+static const client::YBTableName kTableName("yql_client_test_table");
 
 class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
  public:

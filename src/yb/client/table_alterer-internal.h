@@ -17,9 +17,9 @@
 #ifndef YB_CLIENT_TABLE_ALTERER_INTERNAL_H
 #define YB_CLIENT_TABLE_ALTERER_INTERNAL_H
 
-#include <boost/optional.hpp>
 #include <string>
 #include <vector>
+#include <boost/optional.hpp>
 
 #include "yb/client/client.h"
 #include "yb/master/master.pb.h"
@@ -35,13 +35,13 @@ class YBColumnSpec;
 
 class YBTableAlterer::Data {
  public:
-  Data(YBClient* client, std::string name);
+  Data(YBClient* client, YBTableName name);
   ~Data();
   CHECKED_STATUS ToRequest(master::AlterTableRequestPB* req);
 
 
   YBClient* const client_;
-  const std::string table_name_;
+  const YBTableName table_name_;
 
   Status status_;
 
@@ -57,7 +57,7 @@ class YBTableAlterer::Data {
 
   bool wait_;
 
-  boost::optional<std::string> rename_to_;
+  boost::optional<YBTableName> rename_to_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);
@@ -66,4 +66,4 @@ class YBTableAlterer::Data {
 } // namespace client
 } // namespace yb
 
-#endif
+#endif // YB_CLIENT_TABLE_ALTERER_INTERNAL_H

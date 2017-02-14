@@ -71,7 +71,7 @@ class PTDmlStmt : public PTCollection {
   CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context, const PTExpr::SharedPtr& if_clause);
 
   // Table name.
-  virtual const char *table_name() const = 0;
+  virtual client::YBTableName table_name() const = 0;
 
   // Returns location of table name.
   virtual const YBLocation& table_loc() const = 0;

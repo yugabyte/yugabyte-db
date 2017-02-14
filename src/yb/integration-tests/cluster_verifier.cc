@@ -40,6 +40,7 @@ using tools::Ysck;
 using tools::YsckCluster;
 using tools::YsckMaster;
 using tools::RemoteYsckMaster;
+using client::YBTableName;
 
 ClusterVerifier::ClusterVerifier(MiniClusterBase* cluster)
   : cluster_(cluster),
@@ -98,13 +99,13 @@ Status ClusterVerifier::DoYsck() {
   return Status::OK();
 }
 
-void ClusterVerifier::CheckRowCount(const std::string& table_name,
+void ClusterVerifier::CheckRowCount(const YBTableName& table_name,
                                     ComparisonMode mode,
                                     int expected_row_count) {
   ASSERT_OK(DoCheckRowCount(table_name, mode, expected_row_count));
 }
 
-Status ClusterVerifier::DoCheckRowCount(const std::string& table_name,
+Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
                                         ComparisonMode mode,
                                         int expected_row_count) {
   std::shared_ptr<client::YBClient> client;
@@ -135,7 +136,7 @@ Status ClusterVerifier::DoCheckRowCount(const std::string& table_name,
   return Status::OK();
 }
 
-void ClusterVerifier::CheckRowCountWithRetries(const std::string& table_name,
+void ClusterVerifier::CheckRowCountWithRetries(const YBTableName& table_name,
                                                ComparisonMode mode,
                                                int expected_row_count,
                                                const MonoDelta& timeout) {

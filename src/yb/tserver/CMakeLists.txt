@@ -167,6 +167,7 @@ target_link_libraries(tserver_test_util
 set(YB_TEST_LINK_LIBS
   tserver
   tserver_test_util
+  yb_client # yb::client::YBTableName
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(remote_bootstrap_kudu_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)

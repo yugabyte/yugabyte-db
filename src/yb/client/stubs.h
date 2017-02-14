@@ -134,6 +134,19 @@ struct StubsCompileAssert {
 #define YB_DCHECK_STRNE(str1, str2) while (false) yb::internal_logging::NullLog()
 #define YB_DCHECK_STRCASENE(str1, str2) while (false) yb::internal_logging::NullLog()
 
+#define DCHECK(condition)            YB_DCHECK(condition)
+#define DCHECK_EQ(val1, val2)        YB_DCHECK_EQ(val1, val2)
+#define DCHECK_NE(val1, val2)        YB_DCHECK_NE(val1, val2)
+#define DCHECK_LE(val1, val2)        YB_DCHECK_LE(val1, val2)
+#define DCHECK_LT(val1, val2)        YB_DCHECK_LT(val1, val2)
+#define DCHECK_GE(val1, val2)        YB_DCHECK_GE(val1, val2)
+#define DCHECK_GT(val1, val2)        YB_DCHECK_GT(val1, val2)
+#define DCHECK_NOTNULL(val)          YB_DCHECK_NOTNULL(val)
+#define DCHECK_STREQ(str1, str2)     YB_DCHECK_STREQ(str1, str2)
+#define DCHECK_STRCASEEQ(str1, str2) YB_DCHECK_STRCASEEQ(str1, str2)
+#define DCHECK_STRNE(str1, str2)     YB_DCHECK_STRNE(str1, str2)
+#define DCHECK_STRCASENE(str1, str2) YB_DCHECK_STRCASENE(str1, str2)
+
 // Log levels. LOG ignores them, so their values are abitrary.
 
 #define YB_INFO 0
@@ -196,4 +209,4 @@ class CerrLog {
 } // namespace internal_logging
 } // namespace yb
 
-#endif
+#endif // YB_CLIENT_STUBS_H

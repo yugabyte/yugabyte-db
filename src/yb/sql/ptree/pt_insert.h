@@ -54,8 +54,8 @@ class PTInsertStmt : public PTDmlStmt {
   }
 
   // Table name.
-  const char *table_name() const OVERRIDE {
-    return relation_->last_name().c_str();
+  client::YBTableName table_name() const OVERRIDE {
+    return relation_->ToTableName();
   }
 
   // Returns location of table name.

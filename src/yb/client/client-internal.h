@@ -74,37 +74,37 @@ class YBClient::Data {
                      const MonoTime& deadline);
 
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
-                                 const std::string& table_name,
-                                 const MonoTime& deadline,
-                                 bool *create_in_progress);
+                                         const YBTableName& table_name,
+                                         const MonoTime& deadline,
+                                         bool *create_in_progress);
 
   CHECKED_STATUS WaitForCreateTableToFinish(YBClient* client,
-                                    const std::string& table_name,
-                                    const MonoTime& deadline);
+                                            const YBTableName& table_name,
+                                            const MonoTime& deadline);
 
   CHECKED_STATUS DeleteTable(YBClient* client,
-                     const std::string& table_name,
-                     const MonoTime& deadline);
+                             const YBTableName& table_name,
+                             const MonoTime& deadline);
 
   CHECKED_STATUS AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,
                     const MonoTime& deadline);
 
   CHECKED_STATUS IsAlterTableInProgress(YBClient* client,
-                                const std::string& table_name,
-                                const MonoTime& deadline,
-                                bool *alter_in_progress);
+                                        const YBTableName& table_name,
+                                        const MonoTime& deadline,
+                                        bool *alter_in_progress);
 
   CHECKED_STATUS WaitForAlterTableToFinish(YBClient* client,
-                                   const std::string& alter_name,
-                                   const MonoTime& deadline);
+                                           const YBTableName& alter_name,
+                                           const MonoTime& deadline);
 
   CHECKED_STATUS GetTableSchema(YBClient* client,
-                        const std::string& table_name,
-                        const MonoTime& deadline,
-                        YBSchema* schema,
-                        PartitionSchema* partition_schema,
-                        std::string* table_id);
+                                const YBTableName& table_name,
+                                const MonoTime& deadline,
+                                YBSchema* schema,
+                                PartitionSchema* partition_schema,
+                                std::string* table_id);
 
   CHECKED_STATUS InitLocalHostNames();
 
@@ -246,7 +246,8 @@ class YBClient::Data {
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-// Retry helper, takes a function like: CHECKED_STATUS funcName(const MonoTime& deadline, bool *retry, ...)
+// Retry helper, takes a function like:
+//     CHECKED_STATUS funcName(const MonoTime& deadline, bool *retry, ...)
 // The function should set the retry flag (default true) if the function should
 // be retried again. On retry == false the return status of the function will be
 // returned to the caller, otherwise a Status::Timeout() will be returned.

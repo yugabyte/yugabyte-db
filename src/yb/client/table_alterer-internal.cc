@@ -15,12 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/client/table_alterer-internal.h"
-
 #include <string>
+
+#include "yb/client/table_alterer-internal.h"
 
 #include "yb/client/schema.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/client-internal.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master.pb.h"
 
@@ -32,7 +33,7 @@ namespace client {
 using master::AlterTableRequestPB;
 using master::AlterTableRequestPB_AlterColumn;
 
-YBTableAlterer::Data::Data(YBClient* client, string name)
+YBTableAlterer::Data::Data(YBClient* client, YBTableName name)
     : client_(client),
       table_name_(std::move(name)),
       wait_(true) {
@@ -55,9 +56,13 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
   }
 
   req->Clear();
-  req->mutable_table()->set_table_name(table_name_);
+  table_name_.SetIntoTableIdentifierPB(req->mutable_table());
   if (rename_to_.is_initialized()) {
-    req->set_new_table_name(rename_to_.get());
+    req->set_new_table_name(rename_to_.get().table_name());
+
+    if (rename_to_.get().has_namespace()) {
+      req->mutable_new_namespace()->set_name(rename_to_.get().namespace_name());
+    }
   }
 
   for (const Step& s : steps_) {

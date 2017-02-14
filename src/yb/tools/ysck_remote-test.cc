@@ -38,13 +38,14 @@ using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableName;
 using std::shared_ptr;
 using std::static_pointer_cast;
 using std::string;
 using std::vector;
 using strings::Substitute;
 
-static const char *kTableName = "ysck-test-table";
+static const YBTableName kTableName("ysck-test-table");
 
 class RemoteYsckTest : public YBTest {
  public:

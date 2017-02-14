@@ -129,7 +129,7 @@ CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
 
 void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
   MCString sem_output(sem_context->PTempMem(), "\tTable ");
-  sem_output += yb_table_name();
+  sem_output += yb_table_name().ToString().c_str();
   sem_output += "(";
 
   bool is_first = true;

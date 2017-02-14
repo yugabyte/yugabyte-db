@@ -53,9 +53,9 @@ class YBTableTestBase : public YBTest {
   virtual int num_masters();
   virtual int num_tablet_servers();
   virtual int client_rpc_timeout_ms();
-  virtual string table_name();
+  virtual client::YBTableName table_name();
 
-  void CreateRedisTable(shared_ptr<yb::client::YBClient> client, string table_name);
+  void CreateRedisTable(shared_ptr<yb::client::YBClient> client, client::YBTableName table_name);
   void CreateDefaultTables();
   virtual void CreateTable();
   void OpenTable();
@@ -100,7 +100,7 @@ class YBTableTestBase : public YBTest {
   static constexpr int kDefaultSessionTimeoutMs = 60000;
   static constexpr int kDefaultClientRpcTimeoutMs = 30000;
   static constexpr bool kDefaultUsingExternalMiniCluster = false;
-  static const char* const kDefaultTableName;
+  static const client::YBTableName kDefaultTableName;
 
   vector<uint16_t> master_rpc_ports();
   // Calls CreateYBClient and assigns it to local class field

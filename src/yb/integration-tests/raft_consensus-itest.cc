@@ -62,6 +62,7 @@ namespace tserver {
 using client::YBInsert;
 using client::YBSession;
 using client::YBTable;
+using client::YBTableName;
 using std::shared_ptr;
 using consensus::ConsensusRequestPB;
 using consensus::ConsensusResponsePB;
@@ -203,7 +204,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
                                   uint64_t num_batches,
                                   const vector<CountDownLatch*>& latches) {
     shared_ptr<YBTable> table;
-    CHECK_OK(client_->OpenTable(kTableId, &table));
+    CHECK_OK(client_->OpenTable(kTableName, &table));
 
     shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(60000);
@@ -690,7 +691,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   int leader_index = cluster_->tablet_server_index_by_uuid(*leader_uuid);
 
   TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTableId);
+  workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_payload_bytes(128 * 1024);  // Write ops of size 128KB.
   workload.set_write_batch_size(1);
@@ -2363,7 +2364,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
                                   tablet_id_, 1));
 
   TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTableId);
+  workload.set_table_name(kTableName);
   workload.set_num_replicas(FLAGS_num_replicas);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(100);
@@ -2439,7 +2440,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   // leader. To prevent memory usage from skyrocketing, the leader will
   // eventually reject new transactions. That's what we're testing for here.
   TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTableId);
+  workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(50);
   workload.Setup();
@@ -2490,7 +2491,7 @@ TEST_F(RaftConsensusITest, TestSlowLeader) {
   NO_FATALS(EnableLogLatency(leader->generic_proxy.get()));
 
   TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTableId);
+  workload.set_table_name(kTableName);
   workload.Setup();
   workload.Start();
   SleepFor(MonoDelta::FromSeconds(60));
@@ -2518,7 +2519,7 @@ TEST_F(RaftConsensusITest, TestSlowFollower) {
   ASSERT_EQ(1, num_reconfigured);
 
   TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTableId);
+  workload.set_table_name(kTableName);
   workload.Setup();
   workload.Start();
   SleepFor(MonoDelta::FromSeconds(60));
@@ -2539,7 +2540,7 @@ TEST_F(RaftConsensusITest, TestHammerOneRow) {
   }
 
   TestWorkload workload(cluster_.get());
-  workload.set_table_name(kTableId);
+  workload.set_table_name(kTableName);
   workload.set_pathological_one_row_enabled(true);
   workload.set_num_write_threads(20);
   workload.Setup();
@@ -2591,7 +2592,7 @@ TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
 
   ClusterVerifier cluster_verifier(cluster_.get());
   NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(kTableId, ClusterVerifier::AT_LEAST, 1));
+  NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::AT_LEAST, 1));
 }
 
 // Test that a ChangeConfig() request is rejected unless the leader has

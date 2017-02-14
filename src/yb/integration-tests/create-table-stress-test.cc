@@ -44,6 +44,7 @@ using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 using yb::client::YBTableCreator;
+using yb::client::YBTableName;
 using yb::itest::CreateTabletServerMap;
 using yb::itest::TabletServerMap;
 using yb::master::MasterServiceProxy;
@@ -63,8 +64,6 @@ using std::unique_ptr;
 using strings::Substitute;
 
 namespace yb {
-
-const char* kTableName = "test_table";
 
 class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -116,7 +115,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     STLDeleteValues(&ts_map_);
   }
 
-  void CreateBigTable(const string& table_name, int num_tablets);
+  void CreateBigTable(const YBTableName& table_name, int num_tablets);
 
  protected:
   std::shared_ptr<YBClient> client_;
@@ -126,7 +125,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
   TabletServerMap ts_map_;
 };
 
-void CreateTableStressTest::CreateBigTable(const string& table_name, int num_tablets) {
+void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int num_tablets) {
   vector<const YBPartialRow*> split_rows;
   int num_splits = num_tablets - 1; // 4 tablets == 3 splits.
   // Let the "\x8\0\0\0" keys end up in the first split; start splitting at 1.
@@ -151,7 +150,7 @@ TEST_F(CreateTableStressTest, CreateAndDeleteBigTable) {
     LOG(INFO) << "Skipping slow test";
     return;
   }
-  string table_name = "test_table";
+  YBTableName table_name("test_table");
   ASSERT_NO_FATAL_FAILURE(CreateBigTable(table_name, FLAGS_num_test_tablets));
   master::GetTableLocationsResponsePB resp;
   ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
@@ -187,7 +186,7 @@ TEST_F(CreateTableStressTest, RestartMasterDuringCreation) {
     return;
   }
 
-  string table_name = "test_table";
+  YBTableName table_name("test_table");
   ASSERT_NO_FATAL_FAILURE(CreateBigTable(table_name, FLAGS_num_test_tablets));
 
   for (int i = 0; i < 3; i++) {
@@ -215,8 +214,9 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
     return;
   }
 
-  string table_name = "test_table";
-  LOG(INFO) << CURRENT_TEST_NAME() << ": Step 1. Creating big table " << table_name << " ...";
+  YBTableName table_name("test_table");
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Step 1. Creating big table "
+            << table_name.ToString() << " ...";
   LOG_TIMING(INFO, "creating big table") {
     ASSERT_NO_FATAL_FAILURE(CreateBigTable(table_name, FLAGS_num_test_tablets));
   }
@@ -226,7 +226,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
 
   // Make sure the table is completely created before we start poking.
   LOG(INFO) << CURRENT_TEST_NAME() << ": Step 2. Waiting for creation of big table "
-            << table_name << " to complete...";
+            << table_name.ToString() << " to complete...";
   LOG_TIMING(INFO, "waiting for creation of big table") {
     ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
                                        FLAGS_num_test_tablets, &resp));
@@ -237,7 +237,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
   LOG_TIMING(INFO, "asking for zero tablets") {
     req.Clear();
     resp.Clear();
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(0);
     Status s = cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp);
     ASSERT_STR_CONTAINS(s.ToString(), "must be greater than 0");
@@ -248,7 +248,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
   LOG_TIMING(INFO, "asking for one tablet") {
     req.Clear();
     resp.Clear();
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(1);
     ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
     ASSERT_EQ(resp.tablet_locations_size(), 1);
@@ -263,7 +263,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
   LOG_TIMING(INFO, "asking for half the tablets") {
     req.Clear();
     resp.Clear();
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(half_tablets);
     ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
     ASSERT_EQ(half_tablets, resp.tablet_locations_size());
@@ -274,7 +274,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
   LOG_TIMING(INFO, "asking for all the tablets") {
     req.Clear();
     resp.Clear();
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(FLAGS_num_test_tablets);
     ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
     ASSERT_EQ(FLAGS_num_test_tablets, resp.tablet_locations_size());
@@ -317,7 +317,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
   LOG_TIMING(INFO, "asking for single middle tablet") {
     req.Clear();
     resp.Clear();
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(1);
     req.set_partition_key_start(start_key_middle);
     ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
@@ -347,8 +347,8 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     }
     });
   for (int num_tables_created = 0; num_tables_created < 20;) {
-    string table_name = Substitute("test-$0", num_tables_created);
-    LOG(INFO) << "Creating table " << table_name;
+    YBTableName table_name(Substitute("test-$0", num_tables_created));
+    LOG(INFO) << "Creating table " << table_name.ToString();
     unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     Status s = table_creator->table_name(table_name)
         .schema(&schema_)

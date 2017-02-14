@@ -133,7 +133,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
                                           &tablet_servers_));
   }
 
-  // Waits that all replicas for a all tablets of 'kTableId' table are online
+  // Waits that all replicas for a all tablets of 'kTableName' table are online
   // and creates the tablet_replicas_ map.
   void WaitForReplicasAndUpdateLocations() {
     int num_retries = 0;
@@ -144,7 +144,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
       GetTableLocationsRequestPB req;
       GetTableLocationsResponsePB resp;
       RpcController controller;
-      req.mutable_table()->set_table_name(kTableId);
+      kTableName.SetIntoTableIdentifierPB(req.mutable_table());
       controller.set_timeout(MonoDelta::FromSeconds(1));
       CHECK_OK(cluster_->master_proxy()->GetTableLocations(req, &resp, &controller));
       CHECK_OK(controller.status());
@@ -231,7 +231,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     GetTableLocationsResponsePB resp;
     RpcController controller;
     controller.set_timeout(MonoDelta::FromMilliseconds(100));
-    req.mutable_table()->set_table_name(kTableId);
+    kTableName.SetIntoTableIdentifierPB(req.mutable_table());
 
     RETURN_NOT_OK(cluster_->master_proxy()->GetTableLocations(req, &resp, &controller));
     for (const TabletLocationsPB& loc : resp.tablet_locations()) {
@@ -416,7 +416,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     // a client schema to create the table.
     client::YBSchema client_schema(YBSchemaFromSchema(schema_));
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
-    ASSERT_OK(table_creator->table_name(kTableId)
+    ASSERT_OK(table_creator->table_name(kTableName)
              .schema(&client_schema)
              .num_replicas(FLAGS_num_replicas)
              // NOTE: this is quite high as a timeout, but the default (5 sec) does not
@@ -424,7 +424,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
              // this once that ticket is addressed.
              .timeout(MonoDelta::FromSeconds(20))
              .Create());
-    ASSERT_OK(client_->OpenTable(kTableId, &table_));
+    ASSERT_OK(client_->OpenTable(kTableName, &table_));
   }
 
   // Starts an external cluster with a single tablet and a number of replicas equal
@@ -443,7 +443,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void AssertAllReplicasAgree(int expected_result_count) {
     ClusterVerifier cluster_verifier(cluster_.get());
     NO_FATALS(cluster_verifier.CheckCluster());
-    NO_FATALS(cluster_verifier.CheckRowCount(kTableId, ClusterVerifier::EXACTLY,
+    NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY,
         expected_result_count));
   }
 

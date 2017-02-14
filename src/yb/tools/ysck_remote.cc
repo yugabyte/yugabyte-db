@@ -40,6 +40,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using strings::Substitute;
+using client::YBTableName;
 
 MonoDelta GetDefaultTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_timeout_ms);
@@ -263,10 +264,12 @@ Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tabl
   vector<shared_ptr<YsckTable> > tables_temp;
   for (const master::ListTablesResponsePB_TableInfo& info : resp.tables()) {
     Schema schema;
-    int num_replicas;
-    RETURN_NOT_OK(GetTableInfo(info.name(), &schema, &num_replicas));
-    shared_ptr<YsckTable> table(new YsckTable(info.name(), schema, num_replicas,
-        info.table_type()));
+    int num_replicas = 0;
+    DCHECK(info.has_namespace_());
+    DCHECK(info.namespace_().has_name());
+    YBTableName name(info.namespace_().name(), info.name());
+    RETURN_NOT_OK(GetTableInfo(name, &schema, &num_replicas));
+    shared_ptr<YsckTable> table(new YsckTable(name, schema, num_replicas, info.table_type()));
     tables_temp.push_back(table);
   }
   tables->assign(tables_temp.begin(), tables_temp.end());
@@ -278,22 +281,22 @@ Status RemoteYsckMaster::RetrieveTabletsList(const shared_ptr<YsckTable>& table)
   bool more_tablets = true;
   string last_key;
   while (more_tablets) {
-    RETURN_NOT_OK(GetTabletsBatch(table->name(), &last_key, tablets, &more_tablets));
+    RETURN_NOT_OK(GetTabletsBatch(table->name(), &last_key, &tablets, &more_tablets));
   }
 
   table->set_tablets(tablets);
   return Status::OK();
 }
 
-Status RemoteYsckMaster::GetTabletsBatch(const string& table_name,
+Status RemoteYsckMaster::GetTabletsBatch(const YBTableName& table_name,
                                          string* last_partition_key,
-                                         vector<shared_ptr<YsckTablet> >& tablets,
+                                         vector<shared_ptr<YsckTablet> >* tablets,
                                          bool* more_tablets) {
   master::GetTableLocationsRequestPB req;
   master::GetTableLocationsResponsePB resp;
   RpcController rpc;
 
-  req.mutable_table()->set_table_name(table_name);
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
   req.set_max_returned_locations(FLAGS_tablets_batch_size_max);
   req.set_partition_key_start(*last_partition_key);
 
@@ -309,14 +312,14 @@ Status RemoteYsckMaster::GetTabletsBatch(const string& table_name,
           new YsckTabletReplica(replica.ts_info().permanent_uuid(), is_leader, is_follower)));
     }
     tablet->set_replicas(replicas);
-    tablets.push_back(tablet);
+    tablets->push_back(tablet);
   }
   if (resp.tablet_locations_size() != 0) {
     *last_partition_key = (resp.tablet_locations().end() - 1)->partition().partition_key_end();
   } else {
     return STATUS(NotFound, Substitute(
       "The Master returned 0 tablets for GetTableLocations of table $0 at start key $1",
-      table_name, *(last_partition_key)));
+      table_name.ToString(), *(last_partition_key)));
   }
   if (last_partition_key->empty()) {
     *more_tablets = false;
@@ -324,12 +327,14 @@ Status RemoteYsckMaster::GetTabletsBatch(const string& table_name,
   return Status::OK();
 }
 
-Status RemoteYsckMaster::GetTableInfo(const string& table_name, Schema* schema, int* num_replicas) {
+Status RemoteYsckMaster::GetTableInfo(const YBTableName& table_name,
+                                      Schema* schema,
+                                      int* num_replicas) {
   master::GetTableSchemaRequestPB req;
   master::GetTableSchemaResponsePB resp;
   RpcController rpc;
 
-  req.mutable_table()->set_table_name(table_name);
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
   rpc.set_timeout(GetDefaultTimeout());
   RETURN_NOT_OK(proxy_->GetTableSchema(req, &resp, &rpc));

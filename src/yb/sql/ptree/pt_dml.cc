@@ -16,6 +16,7 @@ namespace sql {
 using client::YBSchema;
 using client::YBTable;
 using client::YBTableType;
+using client::YBTableName;
 using client::YBColumnSchema;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
@@ -37,8 +38,13 @@ PTDmlStmt::~PTDmlStmt() {
 }
 
 CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
-  const char *name = table_name();
-  VLOG(3) << "Loading table descriptor for " << name;
+  YBTableName name = table_name();
+
+  if (!name.has_namespace()) {
+    name.set_namespace_name(sem_context->CurrentKeyspace());
+  }
+
+  VLOG(3) << "Loading table descriptor for " << name.ToString();
   table_ = sem_context->GetTableDesc(name);
   if (table_ == nullptr) {
     return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);

@@ -7,6 +7,7 @@
 #ifndef YB_SQL_PTREE_PT_NAME_H_
 #define YB_SQL_PTREE_PT_NAME_H_
 
+#include "yb/client/yb_table_name.h"
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/list_node.h"
 
@@ -95,12 +96,23 @@ class PTQualifiedName : public PTName {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
+  const MCString& first_name() const {
+    return ptnames_.front()->name();
+  }
+
   const MCString& last_name() const {
     return ptnames_.back()->name();
   }
 
   bool is_system() const {
     return is_system_;
+  }
+
+  client::YBTableName ToTableName() const {
+    // We support only names with 1 or 2 sub-names.
+    // See Analyze() implementation.
+    return (ptnames_.size() >= 2 ? client::YBTableName(first_name().c_str(), last_name().c_str())
+        : client::YBTableName(last_name().c_str(), client::YBTableName::UNKNOWN_NAMESPACE));
   }
 
  private:

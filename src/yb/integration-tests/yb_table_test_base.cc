@@ -20,11 +20,12 @@ using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTableCreator;
 using client::YBTableType;
+using client::YBTableName;
 using strings::Substitute;
 
 namespace integration_tests {
 
-const char* const YBTableTestBase::kDefaultTableName = "kv-table-test";
+const YBTableName YBTableTestBase::kDefaultTableName("kv-table-test");
 
 int YBTableTestBase::num_masters() {
   return kDefaultNumMasters;
@@ -38,7 +39,7 @@ int YBTableTestBase::session_timeout_ms() {
   return kDefaultSessionTimeoutMs;
 }
 
-string YBTableTestBase::table_name() {
+YBTableName YBTableTestBase::table_name() {
   return kDefaultTableName;
 }
 
@@ -122,7 +123,8 @@ void YBTableTestBase::OpenTable() {
   session_ = NewSession();
 }
 
-void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client, string table_name) {
+void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client,
+                                       YBTableName table_name) {
   unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
                 .table_type(YBTableType::REDIS_TABLE_TYPE)
@@ -132,12 +134,13 @@ void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client, 
 
 void YBTableTestBase::CreateDefaultTables() {
   // Redis Proxy requires ".redis" to be present
-  CreateRedisTable(client_, kRedisTableName);
-  default_tables_created_.push_back(string(kRedisTableName));
+  YBTableName name(kRedisTableName);
+  CreateRedisTable(client_, name);
+  default_tables_created_.push_back(name.ToString());
   // If the desired table for the test -- table_name() has already been created, ensure that
   // CreateTable() does not try to create it again.
-  if (std::find(default_tables_created_.begin(), default_tables_created_.end(), table_name()) !=
-      default_tables_created_.end()) {
+  if (std::find(default_tables_created_.begin(), default_tables_created_.end(),
+                table_name().ToString()) != default_tables_created_.end()) {
     table_exists_ = true;
   }
 }

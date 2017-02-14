@@ -30,6 +30,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
+#include "yb/client/yb_table_name.h"
 
 namespace yb {
 class MonoDelta;
@@ -104,7 +105,7 @@ class YsckTablet {
     return replicas_;
   }
 
-  void set_replicas(std::vector<std::shared_ptr<YsckTabletReplica> >& replicas) {
+  void set_replicas(const std::vector<std::shared_ptr<YsckTabletReplica> >& replicas) {
     replicas_.assign(replicas.begin(), replicas.end());
   }
  private:
@@ -116,11 +117,11 @@ class YsckTablet {
 // Representation of a table. Composed of tablets.
 class YsckTable {
  public:
-  YsckTable(std::string name, const Schema& schema, int num_replicas, TableType table_type)
+  YsckTable(client::YBTableName name, const Schema& schema, int num_replicas, TableType table_type)
       : name_(std::move(name)), schema_(schema), num_replicas_(num_replicas),
       table_type_(table_type) {}
 
-  const std::string& name() const {
+  const client::YBTableName& name() const {
     return name_;
   }
 
@@ -136,7 +137,7 @@ class YsckTable {
     return table_type_;
   }
 
-  void set_tablets(std::vector<std::shared_ptr<YsckTablet>>& tablets) {
+  void set_tablets(const std::vector<std::shared_ptr<YsckTablet>>& tablets) {
     tablets_.assign(tablets.begin(), tablets.end());
   }
 
@@ -145,7 +146,7 @@ class YsckTable {
   }
 
  private:
-  const std::string name_;
+  const client::YBTableName name_;
   const Schema schema_;
   const int num_replicas_;
   const TableType table_type_;

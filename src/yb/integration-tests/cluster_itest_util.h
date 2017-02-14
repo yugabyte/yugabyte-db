@@ -268,7 +268,7 @@ Status GetTabletLocations(const std::shared_ptr<master::MasterServiceProxy>& mas
 
 // Get the list of tablet locations for all tablets in the specified table from the Master.
 Status GetTableLocations(const std::shared_ptr<master::MasterServiceProxy>& master_proxy,
-                         const std::string& table_name,
+                         const client::YBTableName& table_name,
                          const MonoDelta& timeout,
                          master::GetTableLocationsResponsePB* table_locations);
 

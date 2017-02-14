@@ -59,6 +59,7 @@ using client::YBStatusCallback;
 using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableName;
 using client::YBUpdate;
 using std::shared_ptr;
 
@@ -110,7 +111,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
     kStrCol,
     kInt64Col
   };
-  static const char* const kTableName;
+  static const YBTableName kTableName;
 
   void InitCluster() {
     // Start mini-cluster with 1 tserver.
@@ -155,7 +156,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   shared_ptr<YBClient> client_;
 };
 
-const char* const UpdateScanDeltaCompactionTest::kTableName = "update-scan-delta-compact-tbl";
+const YBTableName UpdateScanDeltaCompactionTest::kTableName("update-scan-delta-compact-tbl");
 const int kSessionBatchSize = 1000;
 
 TEST_F(UpdateScanDeltaCompactionTest, TestAll) {

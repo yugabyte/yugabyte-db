@@ -46,8 +46,8 @@ class PTDeleteStmt : public PTDmlStmt {
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Table name.
-  const char *table_name() const OVERRIDE {
-    return relation_->table_name().c_str();
+  client::YBTableName table_name() const OVERRIDE {
+    return relation_->table_name();
   }
 
   // Returns location of table name.

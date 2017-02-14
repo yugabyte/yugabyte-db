@@ -8,6 +8,7 @@
 #define YB_SQL_UTIL_ROWS_RESULT_H_
 
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/common/schema.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/common/yql_rowblock.h"
@@ -20,7 +21,7 @@ class RowsResult {
   explicit RowsResult(client::YBqlReadOp* op);
   explicit RowsResult(client::YBqlWriteOp* op);
 
-  const std::string& table_name() const { return table_name_; }
+  const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
   const std::string& rows_data() const { return rows_data_; }
   YQLClient client() const { return client_; }
@@ -30,7 +31,7 @@ class RowsResult {
   YQLRowBlock* GetRowBlock() const;
 
  private:
-  const std::string table_name_;
+  const client::YBTableName table_name_;
   const std::vector<ColumnSchema> column_schemas_;
   const std::string rows_data_;
   const YQLClient client_;

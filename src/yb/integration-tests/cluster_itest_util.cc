@@ -47,6 +47,7 @@ using client::YBClient;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBTable;
+using client::YBTableName;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::ChangeConfigRequestPB;
@@ -656,11 +657,11 @@ Status GetTabletLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
 }
 
 Status GetTableLocations(const shared_ptr<MasterServiceProxy>& master_proxy,
-                         const string& table_name,
+                         const YBTableName& table_name,
                          const MonoDelta& timeout,
                          master::GetTableLocationsResponsePB* table_locations) {
   master::GetTableLocationsRequestPB req;
-  req.mutable_table()->set_table_name(table_name);
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
   req.set_max_returned_locations(1000);
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);

@@ -61,7 +61,7 @@ static Status PBToClientTableType(
 
 YBTable::Data::Data(
     shared_ptr<YBClient> client,
-    string name,
+    YBTableName name,
     string id,
     const YBSchema& schema,
     PartitionSchema partition_schema)
@@ -169,9 +169,10 @@ Status YBTable::Data::Open() {
 
 
   RETURN_NOT_OK_PREPEND(PBToClientTableType(resp.table_type(), &table_type_),
-    strings::Substitute("Invalid table type for table '$0'", name_));
+    strings::Substitute("Invalid table type for table '$0'", name_.ToString()));
 
-  VLOG(1) << "Open Table " << name_ << ", found " << resp.tablet_locations_size() << " tablets";
+  VLOG(1) << "Open Table " << name_.ToString() << ", found "
+          << resp.tablet_locations_size() << " tablets";
   return Status::OK();
 }
 

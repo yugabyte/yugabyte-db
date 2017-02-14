@@ -68,6 +68,7 @@ using client::YBSession;
 using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
+using client::YBTableName;
 using client::YBUpdate;
 using client::YBValue;
 using std::shared_ptr;
@@ -166,7 +167,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
-  Status WaitAlterTableCompletion(const std::string& table_name, int attempts) {
+  Status WaitAlterTableCompletion(const YBTableName& table_name, int attempts) {
     int wait_time = 1000;
     for (int i = 0; i < attempts; ++i) {
       bool in_progress;
@@ -182,14 +183,14 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     return STATUS(TimedOut, "AlterTable not completed within the timeout");
   }
 
-  Status AddNewI32Column(const string& table_name,
+  Status AddNewI32Column(const YBTableName& table_name,
                          const string& column_name,
                          int32_t default_value) {
     return AddNewI32Column(table_name, column_name, default_value,
                            MonoDelta::FromSeconds(60));
   }
 
-  Status AddNewI32Column(const string& table_name,
+  Status AddNewI32Column(const YBTableName& table_name,
                          const string& column_name,
                          int32_t default_value,
                          const MonoDelta& timeout) {
@@ -217,7 +218,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   void UpdaterThread();
   void ScannerThread();
 
-  Status CreateSplitTable(const string& table_name) {
+  Status CreateSplitTable(const YBTableName& table_name) {
     vector<const YBPartialRow*> split_rows;
     for (int32_t i = 1; i < 10; i++) {
       YBPartialRow* row = schema_.NewRow();
@@ -235,7 +236,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   virtual int num_replicas() const { return 1; }
 
-  static const char *kTableName;
+  static const YBTableName kTableName;
 
   shared_ptr<YBClient> client_;
 
@@ -257,7 +258,7 @@ class ReplicatedAlterTableTest : public AlterTableTest {
   virtual int num_replicas() const OVERRIDE { return 3; }
 };
 
-const char *AlterTableTest::kTableName = "fake-table";
+const YBTableName AlterTableTest::kTableName("fake-table");
 
 // Simple test to verify that the "alter table" command sent and executed
 // on the TS handling the tablet of the altered table.
@@ -291,7 +292,7 @@ TEST_F(AlterTableTest, TestAddNotNullableColumnWithoutDefaults) {
 
   {
     AlterTableRequestPB req;
-    req.mutable_table()->set_table_name(kTableName);
+    kTableName.SetIntoTableIdentifierPB(req.mutable_table());
 
     AlterTableRequestPB::Step *step = req.add_alter_schema_steps();
     step->set_type(AlterTableRequestPB::ADD_COLUMN);
@@ -539,7 +540,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
 // over column ids after a table rename.
 TEST_F(AlterTableTest, TestRenameTableAndAdd) {
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  string new_name = "someothername";
+  YBTableName new_name("someothername");
   ASSERT_OK(table_alterer->RenameTo(new_name)
             ->Alter());
 
@@ -914,7 +915,7 @@ TEST_F(AlterTableTest, TestAlterUnderWriteLoad) {
 }
 
 TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
-  const char *kSplitTableName = "split-table";
+  YBTableName kSplitTableName("split-table");
 
   // Create a new table with 10 tablets.
   //
@@ -952,7 +953,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
 // seen in an earlier implementation of "alter table" where these could
 // conflict with each other.
 TEST_F(AlterTableTest, TestMultipleAlters) {
-  const char *kSplitTableName = "split-table";
+  YBTableName kSplitTableName("split-table");
   const size_t kNumNewCols = 10;
   const int32_t kDefaultValue = 10;
 

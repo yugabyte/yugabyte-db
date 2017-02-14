@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
 #include <memory>
 #include <string>
+#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -54,6 +54,7 @@ using client::YBClient;
 using client::YBSchema;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableName;
 using consensus::GetConsensusRole;
 using consensus::RaftPeerPB;
 using itest::SimpleIntKeyYBSchema;
@@ -67,7 +68,7 @@ using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 using tserver::TSTabletManager;
 
-static const char* const kTableName = "test-table";
+static const YBTableName kTableName("test-table");
 static const int kNumReplicas = 2;
 
 class TsTabletManagerITest : public YBTest {

@@ -98,6 +98,7 @@ namespace yb {
 using client::YBColumnSchema;
 using client::YBRowResult;
 using client::YBSchema;
+using client::YBTableName;
 
 using std::unordered_map;
 
@@ -257,8 +258,9 @@ int main(int argc, char **argv) {
     master_address = FLAGS_master_address;
   }
 
-  gscoped_ptr<yb::RpcLineItemDAO> dao(new yb::RpcLineItemDAO(master_address, FLAGS_table_name,
-                                                                 FLAGS_tpch_max_batch_size));
+  gscoped_ptr<yb::RpcLineItemDAO> dao(
+      new yb::RpcLineItemDAO(master_address, yb::YBTableName(FLAGS_table_name),
+          FLAGS_tpch_max_batch_size));
   dao->Init();
 
   yb::WarmupScanCache(dao.get());

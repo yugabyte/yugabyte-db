@@ -1002,10 +1002,11 @@ ResultResponse::RowsMetadata::Type::~Type() {
 }
 
 
-ResultResponse::RowsMetadata::RowsMetadata(
-    const string& table_name, const vector<ColumnSchema>& columns, bool no_metadata)
+ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name,
+    const vector<ColumnSchema>& columns, bool no_metadata)
     : flags(no_metadata ? kNoMetadata : kHasGlobalTableSpec), paging_state(""),
-      global_table_spec(GlobalTableSpec("" /* keyspace */, no_metadata ? "" : table_name)),
+      global_table_spec(GlobalTableSpec(no_metadata ? "" : table_name.resolved_namespace_name(),
+                                        no_metadata ? "" : table_name.table_name())),
       col_count(columns.size()) {
   if (!no_metadata) {
     col_specs.reserve(col_count);

@@ -41,6 +41,7 @@ const int kNumTabletServerReplicas = 3;
 using std::shared_ptr;
 using std::string;
 using std::vector;
+using client::YBTableName;
 
 class MasterFailoverTest : public YBTest {
  public:
@@ -93,7 +94,7 @@ class MasterFailoverTest : public YBTest {
     ASSERT_OK(cluster_->CreateClient(&builder, &client_));
   }
 
-  Status CreateTable(const std::string& table_name, CreateTableMode mode) {
+  Status CreateTable(const YBTableName& table_name, CreateTableMode mode) {
     YBSchema schema;
     YBSchemaBuilder b;
     b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
@@ -108,7 +109,7 @@ class MasterFailoverTest : public YBTest {
         .Create();
   }
 
-  Status RenameTable(const std::string& table_name_orig, const std::string& table_name_new) {
+  Status RenameTable(const YBTableName& table_name_orig, const YBTableName& table_name_new) {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
     return table_alterer
       ->RenameTo(table_name_new)
@@ -122,15 +123,15 @@ class MasterFailoverTest : public YBTest {
   // sending RPCs to both the master and the tablet servers and
   // requires that the table and tablet exist both on the masters and
   // the tablet servers.
-  Status OpenTableAndScanner(const std::string& table_name) {
+  Status OpenTableAndScanner(const YBTableName& table_name) {
     shared_ptr<YBTable> table;
     RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name, &table),
-                          "Unable to open table " + table_name);
+                          "Unable to open table " + table_name.ToString());
     YBScanner scanner(table.get());
     RETURN_NOT_OK_PREPEND(scanner.SetProjectedColumns(vector<string>()),
-                          "Unable to open an empty projection on " + table_name);
+                          "Unable to open an empty projection on " + table_name.ToString());
     RETURN_NOT_OK_PREPEND(scanner.Open(),
-                          "Unable to open scanner on " + table_name);
+                          "Unable to open scanner on " + table_name.ToString());
     return Status::OK();
   }
 
@@ -162,7 +163,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestCreateTableSync) {
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-  string table_name = "testCreateTableSync";
+  YBTableName table_name("testCreateTableSync");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
   ASSERT_OK(OpenTableAndScanner(table_name));
 }
@@ -182,9 +183,9 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
   int leader_idx;
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  string table_id = "testPauseAfterCreateTableIssued";
-  LOG(INFO) << "Issuing CreateTable for " << table_id;
-  ASSERT_OK(CreateTable(table_id, kNoWaitForCreate));
+  YBTableName table_name("testPauseAfterCreateTableIssued");
+  LOG(INFO) << "Issuing CreateTable for " << table_name.ToString();
+  ASSERT_OK(CreateTable(table_name, kNoWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
@@ -192,10 +193,9 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
 
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(MonoDelta::FromSeconds(90));
-  ASSERT_OK(client_->data_->WaitForCreateTableToFinish(client_.get(),
-                                                       table_id, deadline));
+  ASSERT_OK(client_->data_->WaitForCreateTableToFinish(client_.get(), table_name, deadline));
 
-  ASSERT_OK(OpenTableAndScanner(table_id));
+  ASSERT_OK(OpenTableAndScanner(table_name));
 }
 
 // Test the scenario where we create a table, pause the leader master,
@@ -211,7 +211,7 @@ TEST_F(MasterFailoverTest, TestDeleteTableSync) {
 
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  string table_name = "testDeleteTableSync";
+  YBTableName table_name("testDeleteTableSync");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
@@ -241,14 +241,14 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
 
   ASSERT_OK(cluster_->GetLeaderMasterIndex(&leader_idx));
 
-  string table_name_orig = "testAlterTableSync";
+  YBTableName table_name_orig("testAlterTableSync");
   ASSERT_OK(CreateTable(table_name_orig, kWaitForCreate));
 
   LOG(INFO) << "Pausing leader master";
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-  string table_name_new = "testAlterTableSyncRenamed";
+  YBTableName table_name_new("testAlterTableSyncRenamed");
   ASSERT_OK(RenameTable(table_name_orig, table_name_new));
   shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(table_name_new, &table));

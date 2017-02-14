@@ -52,13 +52,14 @@ using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
+using client::YBTableName;
 using client::YBValue;
 using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
-static const char* const kTableName = "test-table";
+static const YBTableName kTableName("test-table");
 static const int kNumRows = 1000;
 
 class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> {

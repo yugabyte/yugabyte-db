@@ -38,6 +38,7 @@
 #include "yb/client/stubs.h"
 #endif
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -218,20 +219,20 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   YBTableCreator* NewTableCreator();
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress
-  CHECKED_STATUS IsCreateTableInProgress(const std::string& table_name,
-                                 bool *create_in_progress);
+  CHECKED_STATUS IsCreateTableInProgress(const YBTableName& table_name,
+                                         bool *create_in_progress);
 
-  CHECKED_STATUS DeleteTable(const std::string& table_name);
+  CHECKED_STATUS DeleteTable(const YBTableName& table_name);
 
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
-  YBTableAlterer* NewTableAlterer(const std::string& table_name);
+  YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
 
   // set 'alter_in_progress' to true if an AlterTable operation is in-progress
-  CHECKED_STATUS IsAlterTableInProgress(const std::string& table_name,
-                                bool *alter_in_progress);
+  CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
+                                        bool *alter_in_progress);
 
-  CHECKED_STATUS GetTableSchema(const std::string& table_name,
-                        YBSchema* schema);
+  CHECKED_STATUS GetTableSchema(const YBTableName& table_name,
+                                YBSchema* schema);
 
   // Namespace related methods.
 
@@ -258,15 +259,15 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
-  CHECKED_STATUS ListTables(std::vector<std::string>* tables,
-                    const std::string& filter = "");
+  CHECKED_STATUS ListTables(std::vector<YBTableName>* tables,
+                            const std::string& filter = "");
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
-  CHECKED_STATUS GetTablets(const std::string& table_name,
-                    const int max_tablets,
-                    std::vector<std::string>* tablet_uuids,
-                    std::vector<std::string>* ranges);
+  CHECKED_STATUS GetTablets(const YBTableName& table_name,
+                            const int max_tablets,
+                            std::vector<std::string>* tablet_uuids,
+                            std::vector<std::string>* ranges);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   CHECKED_STATUS ListMasters(
@@ -276,14 +277,14 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   // Check if the table given by 'table_name' exists.
   //
   // 'exists' is set only on success.
-  CHECKED_STATUS TableExists(const std::string& table_name, bool* exists);
+  CHECKED_STATUS TableExists(const YBTableName& table_name, bool* exists);
 
   // Open the table with the given name. This will do an RPC to ensure that
   // the table exists and look up its schema.
   //
   // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
-  CHECKED_STATUS OpenTable(const std::string& table_name,
+  CHECKED_STATUS OpenTable(const YBTableName& table_name,
                            std::shared_ptr<YBTable>* table);
 
   // Create a new session for interacting with the cluster.
@@ -396,7 +397,7 @@ class YBTableCache {
   // in this client, or if force_refresh is true, this will do an RPC to ensure
   // that the table exists and look up its schema.
   CHECKED_STATUS GetTable(
-      const std::string& table_name, std::shared_ptr<YBTable>* table, bool force_refresh);
+      const YBTableName& table_name, std::shared_ptr<YBTable>* table, bool force_refresh);
 
  private:
   std::shared_ptr<YBClient> client_;
@@ -412,7 +413,7 @@ class YB_EXPORT YBTableCreator {
   ~YBTableCreator();
 
   // Sets the name to give the table. It is copied. Required.
-  YBTableCreator& table_name(const std::string& name);
+  YBTableCreator& table_name(const YBTableName& name);
 
   // Sets the type of the table.
   YBTableCreator& table_type(YBTableType table_type);
@@ -520,7 +521,7 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
  public:
   ~YBTable();
 
-  const std::string& name() const;
+  const YBTableName& name() const;
 
   YBTableType table_type() const;
 
@@ -567,8 +568,8 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
   // is still returned. The error will be returned when attempting to add this
   // predicate to a YBScanner.
   YBPredicate* NewComparisonPredicate(const Slice& col_name,
-                                        YBPredicate::ComparisonOp op,
-                                        YBValue* value);
+                                      YBPredicate::ComparisonOp op,
+                                      YBValue* value);
 
   YBClient* client() const;
 
@@ -580,7 +581,7 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
   friend class YBClient;
 
   YBTable(const std::shared_ptr<YBClient>& client,
-          const std::string& name,
+          const YBTableName& name,
           const std::string& table_id,
           const YBSchema& schema,
           const PartitionSchema& partition_schema);
@@ -604,7 +605,9 @@ class YB_EXPORT YBTableAlterer {
   ~YBTableAlterer();
 
   // Renames the table.
-  YBTableAlterer* RenameTo(const std::string& new_name);
+  // If there is no new namespace (only the new table name provided), that means that the table
+  // namespace must not be changed (changing the table name only in the same namespace).
+  YBTableAlterer* RenameTo(const YBTableName& new_name);
 
   // Adds a new column to the table.
   //
@@ -640,8 +643,7 @@ class YB_EXPORT YBTableAlterer {
   class YB_NO_EXPORT Data;
   friend class YBClient;
 
-  YBTableAlterer(YBClient* client,
-                   const std::string& name);
+  YBTableAlterer(YBClient* client, const YBTableName& name);
 
   // Owned.
   Data* data_;

@@ -67,7 +67,7 @@ typedef vector<pair<uint64_t, int64_t> > SnapsAndCounts;
 class LinkedListTester {
  public:
   LinkedListTester(std::shared_ptr<client::YBClient> client,
-                   std::string table_name, int num_chains, int num_tablets,
+                   client::YBTableName table_name, int num_chains, int num_tablets,
                    int num_replicas, bool enable_mutation)
       : verify_projection_(
             {kKeyColumnName, kLinkColumnName, kUpdatedColumnName}),
@@ -171,7 +171,7 @@ class LinkedListTester {
  protected:
   client::YBSchema schema_;
   const std::vector<std::string> verify_projection_;
-  const std::string table_name_;
+  const client::YBTableName table_name_;
   const int num_chains_;
   const int num_tablets_;
   const int num_replicas_;
@@ -448,7 +448,7 @@ Status LinkedListTester::LoadLinkedList(
   sampled_hybrid_times_and_counts_.clear();
   std::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name_, &table),
-                        "Could not open table " + table_name_);
+                        "Could not open table " + table_name_.ToString());
 
   // Instantiate a hybrid clock so that we can collect hybrid_times since we're running the
   // tablet servers in an external mini cluster.

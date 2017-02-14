@@ -98,6 +98,7 @@ namespace yb {
 
 using client::YBRowResult;
 using client::YBSchema;
+using client::YBTableName;
 using strings::Substitute;
 
 using namespace std::placeholders;
@@ -255,7 +256,7 @@ gscoped_ptr<RpcLineItemDAO> TpchRealWorld::GetInittedDAO() {
   }
 
   gscoped_ptr<RpcLineItemDAO> dao(new RpcLineItemDAO(master_addresses_,
-                                                     FLAGS_tpch_table_name,
+                                                     YBTableName(FLAGS_tpch_table_name),
                                                      FLAGS_tpch_max_batch_size,
                                                      FLAGS_tpch_test_client_timeout_msec,
                                                      split_rows));

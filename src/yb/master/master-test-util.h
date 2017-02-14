@@ -30,12 +30,13 @@
 #include "yb/master/master.pb.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/client/yb_table_name.h"
 
 namespace yb {
 namespace master {
 
 Status WaitForRunningTabletCount(MiniMaster* mini_master,
-                                 const string& table_name,
+                                 const client::YBTableName& table_name,
                                  int expected_count,
                                  GetTableLocationsResponsePB* resp) {
   int wait_time = 1000;
@@ -44,7 +45,7 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
   while (true) {
     GetTableLocationsRequestPB req;
     resp->Clear();
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(expected_count);
     RETURN_NOT_OK(mini_master->master()->catalog_manager()->GetTableLocations(&req, resp));
     if (resp->tablet_locations_size() >= expected_count) {
@@ -59,7 +60,7 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
     }
 
     LOG(INFO) << "Waiting for " << expected_count << " tablets for table "
-              << table_name << ". So far we have " << resp->tablet_locations_size();
+              << table_name.ToString() << ". So far we have " << resp->tablet_locations_size();
 
     SleepFor(MonoDelta::FromMicroseconds(wait_time));
     wait_time = std::min(wait_time * 5 / 4, 1000000);
@@ -71,14 +72,16 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
 }
 
 void CreateTabletForTesting(MiniMaster* mini_master,
-                            const string& table_name,
+                            const client::YBTableName& table_name,
                             const Schema& schema,
                             string *tablet_id) {
   {
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
 
-    req.set_name(table_name);
+    req.set_name(table_name.table_name());
+    req.mutable_namespace_()->set_name(table_name.resolved_namespace_name());
+
     req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
     ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
     ASSERT_OK(mini_master->master()->catalog_manager()->CreateTable(&req, &resp, NULL));
@@ -90,14 +93,14 @@ void CreateTabletForTesting(MiniMaster* mini_master,
     IsCreateTableDoneRequestPB req;
     IsCreateTableDoneResponsePB resp;
 
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     ASSERT_OK(mini_master->master()->catalog_manager()->IsCreateTableDone(&req, &resp));
     if (resp.done()) {
       is_table_created = true;
       break;
     }
 
-    VLOG(1) << "Waiting for table '" << table_name << "'to be created";
+    VLOG(1) << "Waiting for table '" << table_name.ToString() << "'to be created";
 
     SleepFor(MonoDelta::FromMicroseconds(wait_time));
     wait_time = std::min(wait_time * 5 / 4, 1000000);
@@ -107,7 +110,7 @@ void CreateTabletForTesting(MiniMaster* mini_master,
   {
     GetTableSchemaRequestPB req;
     GetTableSchemaResponsePB resp;
-    req.mutable_table()->set_table_name(table_name);
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
     ASSERT_OK(mini_master->master()->catalog_manager()->GetTableSchema(&req, &resp));
     ASSERT_TRUE(resp.create_table_done());
   }
@@ -115,7 +118,7 @@ void CreateTabletForTesting(MiniMaster* mini_master,
   GetTableLocationsResponsePB resp;
   ASSERT_OK(WaitForRunningTabletCount(mini_master, table_name, 1, &resp));
   *tablet_id = resp.tablet_locations(0).tablet_id();
-  LOG(INFO) << "Got tablet " << *tablet_id << " for table " << table_name;
+  LOG(INFO) << "Got tablet " << *tablet_id << " for table " << table_name.ToString();
 }
 
 } // namespace master

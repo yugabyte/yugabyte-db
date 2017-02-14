@@ -97,8 +97,8 @@ class PTUpdateStmt : public PTDmlStmt {
   CHECKED_STATUS AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
 
   // Table name.
-  const char *table_name() const OVERRIDE {
-    return relation_->table_name().c_str();
+  client::YBTableName table_name() const OVERRIDE {
+    return relation_->table_name();
   }
 
   // Returns location of table name.

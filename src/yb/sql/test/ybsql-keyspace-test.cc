@@ -14,7 +14,7 @@ do {                                                                            
   if (!std::string(expected_error_msg).empty()) {                                                  \
     EXPECT_FALSE(s.ToString().find(expected_error_msg) == string::npos);                           \
   }                                                                                                \
-} while (false);
+} while (false)
 
 namespace yb {
 namespace sql {
@@ -64,6 +64,10 @@ class YbSqlKeyspace : public YbSqlTestBase {
 
   inline const string UseStmt(string params) {
     return "USE " + params;
+  }
+
+  inline const string CreateTableStmt(string params) {
+    return "CREATE TABLE " + params;
   }
 };
 
@@ -279,6 +283,75 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceSimple) {
   LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(UseStmt(keyspace1), "Keyspace Not Found",
       "Cannot use unknown keyspace");
+}
+
+TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  const string keyspace1 = "test;";
+  const string keyspace2 = "test2;";
+  const string table1 = "table1(id int, primary key(id));";
+  const string system_table2 = "system.table2(id int, primary key(id));";
+  const string test_table3 = "test.table3(id int, primary key(id));";
+  const string table3 = "table3(id int, primary key(id));";
+  const string test_any_table4 = "test.subname.table4(id int, primary key(id));";
+
+  // No keyspace.
+  LOG(INFO) << "Exec SQL: " << CreateTableStmt(table1);
+  EXEC_VALID_STMT(CreateTableStmt(table1));
+
+  // 'system' keyspace (not supported yet)
+  LOG(INFO) << "Exec SQL: " << CreateTableStmt(system_table2);
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(system_table2), "Invalid Table Definition",
+      "Invalid namespace id or namespace name");
+
+  // 'default' keyspace is always available.
+  // TODO: It's failed now because 'DEFAULT' is a reserved keyword. Discuss & fix the case.
+  // LOG(INFO) << "Exec SQL: " << CreateTableStmt(default_table5);
+  // EXEC_VALID_STMT(CreateTableStmt(default_table5));
+
+  // The keyspace (keyspace1) has not been created yet.
+  LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_table3);
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_table3), "Invalid Table Definition",
+      "Invalid namespace id or namespace name");
+
+  // Invalid name 'keyspace.SOMETHING.table'.
+  LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_any_table4);
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_any_table4), "Feature Not Supported", "");
+
+  // Create the keyspace1.
+  LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace1);
+  EXEC_VALID_STMT(CreateKeyspaceStmt(keyspace1));
+
+  // Create table in the new keyspace.
+  LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_table3);
+  EXEC_VALID_STMT(CreateTableStmt(test_table3));
+
+  // Use the keyspace1.
+  LOG(INFO) << "Exec SQL: " << UseStmt(keyspace1);
+  EXEC_VALID_STMT(UseStmt(keyspace1));
+
+  // Use current keyspace. The table has been already created.
+  LOG(INFO) << "Exec SQL: " << CreateTableStmt(table3);
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(table3), "Duplicate Table",
+      "Table already exists");
+
+  // Create the keyspace2.
+  LOG(INFO) << "Exec SQL: " << CreateKeyspaceStmt(keyspace2);
+  EXEC_VALID_STMT(CreateKeyspaceStmt(keyspace2));
+
+  // Use the keyspace2.
+  LOG(INFO) << "Exec SQL: " << UseStmt(keyspace2);
+  EXEC_VALID_STMT(UseStmt(keyspace2));
+
+  // Table3 can be created in other (keyspace2) keyspace.
+  LOG(INFO) << "Exec SQL: " << CreateTableStmt(table3);
+  EXEC_VALID_STMT(CreateTableStmt(table3));
+
 }
 
 } // namespace sql

@@ -18,18 +18,19 @@
 #ifndef YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
 #define YB_TSERVER_TABLET_SERVER_TEST_BASE_H_
 
-#include <algorithm>
 #include <assert.h>
-#include <gtest/gtest.h>
-#include <iostream>
-#include <memory>
 #include <signal.h>
 #include <stdint.h>
-#include <string>
 #include <sys/mman.h>
 #include <sys/types.h>
+
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
+#include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -65,6 +66,9 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 METRIC_DEFINE_entity(test);
 
 namespace yb {
+namespace client {
+class YBTableName;
+}
 namespace tserver {
 
 class TabletServerTestBase : public YBTest {
@@ -114,7 +118,7 @@ class TabletServerTestBase : public YBTest {
     CHECK_OK(mini_server_->Start());
 
     // Set up a tablet inside the server.
-    CHECK_OK(mini_server_->AddTestTablet(kTableId, kTabletId, schema_, table_type_));
+    CHECK_OK(mini_server_->AddTestTablet(kTableName.table_name(), kTabletId, schema_, table_type_));
     CHECK(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet_peer_));
 
     // Creating a tablet is async, we wait here instead of having to handle errors later.
@@ -314,17 +318,17 @@ class TabletServerTestBase : public YBTest {
 
   void StringifyRowsFromResponse(const Schema& projection,
                                  const rpc::RpcController& rpc,
-                                 ScanResponsePB& resp,
+                                 const ScanResponsePB& resp,
                                  vector<string>* results) {
-    RowwiseRowBlockPB* rrpb = resp.mutable_data();
+    const RowwiseRowBlockPB& rrpb = resp.data();
     Slice direct, indirect; // sidecar data buffers
-    ASSERT_OK(rpc.GetSidecar(rrpb->rows_sidecar(), &direct));
-    if (rrpb->has_indirect_data_sidecar()) {
-      ASSERT_OK(rpc.GetSidecar(rrpb->indirect_data_sidecar(),
+    ASSERT_OK(rpc.GetSidecar(rrpb.rows_sidecar(), &direct));
+    if (rrpb.has_indirect_data_sidecar()) {
+      ASSERT_OK(rpc.GetSidecar(rrpb.indirect_data_sidecar(),
                                &indirect));
     }
     vector<const uint8_t*> rows;
-    ASSERT_OK(ExtractRowsFromRowBlockPB(projection, *rrpb,
+    ASSERT_OK(ExtractRowsFromRowBlockPB(projection, rrpb,
                                         indirect, &direct, &rows));
     VLOG(1) << "Round trip got " << rows.size() << " rows";
     for (const uint8_t* row_ptr : rows) {
@@ -446,7 +450,7 @@ class TabletServerTestBase : public YBTest {
   }
 
  protected:
-  static const char* kTableId;
+  static const client::YBTableName kTableName;
   static const char* kTabletId;
 
   const Schema schema_;
@@ -469,7 +473,7 @@ class TabletServerTestBase : public YBTest {
   void* shared_region_;
 };
 
-const char* TabletServerTestBase::kTableId = "TestTable";
+const client::YBTableName TabletServerTestBase::kTableName("TestTable");
 const char* TabletServerTestBase::kTabletId = "TestTablet";
 
 } // namespace tserver

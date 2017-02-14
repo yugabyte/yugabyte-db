@@ -93,15 +93,13 @@ void PTQualifiedName::Prepend(const PTName::SharedPtr& ptname) {
 }
 
 CHECKED_STATUS PTQualifiedName::Analyze(SemContext *sem_context) {
-  // We don't support qualified name yet except for "system" namespace.
-  if (ptnames_.size() > 1) {
-    const MCString& first_name = ptnames_.front()->name();
-    if (first_name == "system") {
-      is_system_ = true;
-    } else {
-      return sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
-    }
+  // We don't support qualified name yet except for a keyspace.
+  // Support only the names like: '<keyspace_name>.<table_name>'.
+  if (ptnames_.size() >= 3) {
+    return sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
   }
+
+  is_system_ = (ptnames_.size() >= 2 && first_name() == "system");
   return Status::OK();
 }
 
