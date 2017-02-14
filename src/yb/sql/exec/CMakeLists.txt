@@ -9,3 +9,4 @@ target_link_libraries(ybsql_exec
                       ybsql_parser
                       yb_client
                       yb_util)
+add_dependencies(ybsql_exec ybsql_parser)

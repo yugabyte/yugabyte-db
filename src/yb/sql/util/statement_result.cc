@@ -10,6 +10,7 @@
 #include "yb/client/schema-internal.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/util/pb_util.h"
+#include "yb/sql/ptree/pt_select.h"
 
 namespace yb {
 namespace sql {

@@ -58,6 +58,7 @@ enum class ErrorCode : int64_t {
   DUPLICATE_TABLE_PROPERTY = -211,
   INVALID_DATATYPE = -212,
   SYSTEM_NAMESPACE_READONLY = -213,
+  INVALID_FUNCTION_CALL = -214,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

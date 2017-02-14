@@ -7,10 +7,12 @@
 #define YB_CQLSERVER_CQL_SERVICE_H_
 
 #include <vector>
+#include <list>
 
 #include "yb/cqlserver/cql_message.h"
 #include "yb/cqlserver/cql_service.service.h"
 #include "yb/util/string_case.h"
+#include "yb/client/client.h"
 
 namespace yb {
 

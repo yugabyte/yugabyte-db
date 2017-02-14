@@ -99,7 +99,6 @@ class YB_EXPORT YBColumnStorageAttributes {
 
 class YB_EXPORT YBColumnSchema {
  public:
-
   static InternalType ToInternalDataType(YQLType yql_type) {
     switch (yql_type.main()) {
       case INT8:
@@ -128,6 +127,8 @@ class YB_EXPORT YBColumnSchema {
         return InternalType::kSetValue;
       case LIST:
         return InternalType::kListValue;
+      case UNKNOWN_DATA:
+        return InternalType::VALUE_NOT_SET;
 
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case BINARY: FALLTHROUGH_INTENDED;
@@ -141,8 +142,7 @@ class YB_EXPORT YBColumnSchema {
       case UINT8: FALLTHROUGH_INTENDED;
       case UINT16: FALLTHROUGH_INTENDED;
       case UINT32: FALLTHROUGH_INTENDED;
-      case UINT64: FALLTHROUGH_INTENDED;
-      case UNKNOWN_DATA:
+      case UINT64:
         break;
     }
     LOG(FATAL) << "Internal error: unsupported type " << yql_type.ToString();

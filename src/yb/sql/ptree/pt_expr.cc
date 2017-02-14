@@ -174,6 +174,7 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
     case ExprOperator::kCollection: FALLTHROUGH_INTENDED;
     case ExprOperator::kUMinus: FALLTHROUGH_INTENDED;
     case ExprOperator::kBindVar:
+    case ExprOperator::kBfunc:
       break;
     default:
       return sem_context->Error(loc(), "Only literal value and bind marker are allowed for "

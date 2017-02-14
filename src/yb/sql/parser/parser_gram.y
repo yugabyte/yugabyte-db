@@ -135,6 +135,8 @@ typedef FunctionParameterMode          fun_param_mode;
 #include <stdio.h>
 #include <string.h>
 
+#include <gflags/gflags.h>
+
 #include "yb/sql/parser/parser.h"
 #include "yb/sql/parser/scanner_util.h"
 
@@ -160,6 +162,8 @@ using namespace yb::sql;
 
 #define PARSER_CQL_INVALID(loc) parser_->Error(loc, ErrorCode::CQL_STATEMENT_INVALID)
 #define PARSER_CQL_INVALID_MSG(loc, msg) parser_->Error(loc, msg, ErrorCode::CQL_STATEMENT_INVALID)
+
+DECLARE_bool(yql_experiment_support_expression);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -224,6 +228,7 @@ using namespace yb::sql;
 %type <PExpr>             // Expressions.
                           a_expr b_expr ctext_expr c_expr AexprConst columnref bindvar
                           collection_expr target_el in_expr
+                          func_expr func_application func_arg_expr
                           inactive_a_expr inactive_c_expr
 
 %type <PConstInt>         // Const Int.
@@ -239,7 +244,7 @@ using namespace yb::sql;
                           list_elems list_expr
 
 %type <PExprListNode>     // A list of expressions.
-                          ctext_row ctext_expr_list
+                          ctext_row ctext_expr_list func_arg_list
 
 %type <PType>             // Datatype nodes.
                           Typename SimpleTypename ParametricTypename Numeric
@@ -295,7 +300,7 @@ using namespace yb::sql;
                           database_name access_method_clause access_method attr_name name
                           cursor_name file_name index_name opt_index_name
                           cluster_index_specification generic_option_name opt_charset
-                          Sconst comment_text notify_payload ColLabel var_name
+                          Sconst comment_text notify_payload ColLabel var_name func_name
                           type_function_name param_name NonReservedWord NonReservedWord_or_Sconst
                           ExistingIndex OptTableSpace OptConsTableSpace opt_provider
                           security_label opt_existing_window_name property_name
@@ -403,7 +408,6 @@ using namespace yb::sql;
                           def_arg
                           func_table
                           ExclusionWhereClause
-                          func_arg_expr
                           case_expr case_arg when_clause case_default
                           NumericOnly
                           index_elem
@@ -422,8 +426,8 @@ using namespace yb::sql;
                           xml_attribute_el
                           xml_root_version opt_xml_root_standalone
                           xmlexists_argument
-                          func_application func_expr_common_subexpr
-                          func_expr func_expr_windowless
+                          func_expr_common_subexpr
+                          func_expr_windowless
                           filter_clause
                           window_definition over_clause window_specification
                           opt_frame_clause frame_extent frame_bound
@@ -432,7 +436,7 @@ using namespace yb::sql;
                           copy_opt_list transaction_mode_list create_extension_opt_list
                           alter_extension_opt_list OptRoleList AlterOptRoleList OptSchemaEltList
                           TriggerEvents TriggerOneEvent event_trigger_when_list
-                          event_trigger_value_list func_name handler_name qual_Op qual_all_Op
+                          event_trigger_value_list handler_name qual_Op qual_all_Op
                           subquery_Op opt_inline_handler opt_validator validator_clause
                           RowSecurityDefaultToRole RowSecurityOptionalToRole
                           grantee_list privileges privilege_list function_with_argtypes_list
@@ -459,7 +463,7 @@ using namespace yb::sql;
                           locked_rels_list extract_list overlay_list position_list substr_list
                           trim_list opt_interval interval_second OptSeqOptList SeqOptList
                           rowsfrom_item rowsfrom_list opt_col_def_list ExclusionConstraintList
-                          ExclusionConstraintElem func_arg_list row explicit_row implicit_row
+                          ExclusionConstraintElem row explicit_row implicit_row
                           type_list when_clause_list NumericOnly_list
                           func_alias_clause generic_option_list alter_generic_option_list
                           explain_option_list copy_generic_opt_list copy_generic_opt_arg_list
@@ -545,7 +549,7 @@ using namespace yb::sql;
                           STRICT_P STRIP_P SUBSTRING SYMMETRIC SYSID SYSTEM_P
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
-                          THEN TIME TIMESTAMP TINYINT TO TRAILING TRANSACTION TRANSFORM TREAT
+                          THEN TIME TIMESTAMP TINYINT TO TOKEN TRAILING TRANSACTION TRANSFORM TREAT
                           TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
@@ -2688,6 +2692,16 @@ a_expr:
   | collection_expr {
     $$ = $1;
   }
+  // Experimental or not supported.
+  | a_expr '+' a_expr {
+    if (!FLAGS_yql_experiment_support_expression) {
+      PARSER_CQL_INVALID(@2);
+    }
+    PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode, $1);
+    args->Append($3);
+    MCString::SharedPtr name = parser_->MakeString("+");
+    $$ = MAKE_NODE(@2, PTBfunc, name, args);
+  }
   | inactive_a_expr {
     PARSER_CQL_INVALID(@1);
   }
@@ -2707,9 +2721,6 @@ inactive_a_expr:
   //
   // If you add more explicitly-known operators, be sure to add them
   // also to b_expr and to the MathOp list below.
-  | a_expr '+' a_expr {
-    PARSER_CQL_INVALID(@2);
-  }
   | a_expr '-' a_expr {
     PARSER_CQL_INVALID(@2);
   }
@@ -2865,6 +2876,9 @@ c_expr:
       $$ = $2;
     }
   }
+  | func_expr {
+    $$ = $1;
+  }
   | inactive_c_expr {
     PARSER_UNSUPPORTED(@1);
   }
@@ -2874,8 +2888,6 @@ inactive_c_expr:
   PARAM opt_indirection {
   }
   | case_expr {
-  }
-  | func_expr {
   }
   | select_with_parens      %prec UMINUS {
   }
@@ -2897,23 +2909,6 @@ inactive_c_expr:
   }
 ;
 
-func_application:
-  func_name '(' ')' {
-  }
-  | func_name '(' func_arg_list opt_sort_clause ')' {
-  }
-  | func_name '(' VARIADIC func_arg_expr opt_sort_clause ')' {
-  }
-  | func_name '(' func_arg_list ',' VARIADIC func_arg_expr opt_sort_clause ')' {
-  }
-  | func_name '(' ALL func_arg_list opt_sort_clause ')' {
-  }
-  | func_name '(' DISTINCT func_arg_list opt_sort_clause ')' {
-  }
-  | func_name '(' '*' ')' {
-  }
-;
-
 // func_expr and its cousin func_expr_windowless are split out from c_expr just
 // so that we have classifications for "everything that is a function call or
 // looks like one".  This isn't very important, but it saves us having to
@@ -2923,21 +2918,40 @@ func_application:
 // sense as functional index entries, but we ignore that consideration here.)
 func_expr:
   func_application within_group_clause filter_clause over_clause {
+    // All optional clause are not used, for which we raise error at their definitions.
+    $$ = $1;
   }
   | func_expr_common_subexpr {
+    PARSER_UNSUPPORTED(@1);
+    $$ = nullptr;
   }
 ;
 
-// As func_expr but does not accept WINDOW functions directly
-// (but they can still be contained in arguments for functions etc).
-// Use this when window expressions are not allowed, where needed to
-// disambiguate the grammar (e.g. in CREATE INDEX).
-func_expr_windowless:
-  func_application {
-    $$ = $1;
+func_application:
+  func_name '(' ')' {
+    PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
+    $$ = MAKE_NODE(@1, PTBfunc, $1, args);
   }
-  | func_expr_common_subexpr {
-    $$ = $1;
+  | func_name '(' func_arg_list opt_sort_clause ')' {
+    if ($4 != nullptr) {
+      PARSER_UNSUPPORTED(@1);
+    }
+    $$ = MAKE_NODE(@1, PTBfunc, $1, $3);
+  }
+  | func_name '(' VARIADIC func_arg_expr opt_sort_clause ')' {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | func_name '(' func_arg_list ',' VARIADIC func_arg_expr opt_sort_clause ')' {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | func_name '(' ALL func_arg_list opt_sort_clause ')' {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | func_name '(' DISTINCT func_arg_list opt_sort_clause ')' {
+    PARSER_UNSUPPORTED(@1);
+  }
+  | func_name '(' '*' ')' {
+    PARSER_UNSUPPORTED(@1);
   }
 ;
 
@@ -3029,6 +3043,19 @@ func_expr_common_subexpr:
   }
 ;
 
+// As func_expr but does not accept WINDOW functions directly
+// (but they can still be contained in arguments for functions etc).
+// Use this when window expressions are not allowed, where needed to
+// disambiguate the grammar (e.g. in CREATE INDEX).
+func_expr_windowless:
+  func_application {
+    $$ = nullptr;
+  }
+  | func_expr_common_subexpr {
+    $$ = nullptr;
+  }
+;
+
 // SQL/XML support
 xml_root_version:
   VERSION_P a_expr {
@@ -3078,7 +3105,7 @@ xml_whitespace_option:
   PRESERVE WHITESPACE_P     { $$ = true; }
   | STRIP_P WHITESPACE_P    { $$ = false; }
   | /*EMPTY*/               { $$ = false; }
-    ;
+;
 
 // We allow several variants for SQL and other compatibility.
 xmlexists_argument:
@@ -3099,18 +3126,21 @@ xmlexists_argument:
 
 // Aggregate decoration clauses
 within_group_clause:
-  WITHIN GROUP_P '(' sort_clause ')' {
+  /*EMPTY*/ {
     $$ = nullptr;
   }
-  | /*EMPTY*/ {
+  | WITHIN GROUP_P '(' sort_clause ')' {
+    PARSER_UNSUPPORTED(@1);
+    $$ = nullptr;
   }
 ;
 
 filter_clause:
-  FILTER '(' WHERE a_expr ')' {
+  /*EMPTY*/ {
     $$ = nullptr;
   }
-  | /*EMPTY*/ {
+  | FILTER '(' WHERE a_expr ')' {
+    PARSER_UNSUPPORTED(@1);
     $$ = nullptr;
   }
 ;
@@ -3139,6 +3169,7 @@ window_definition:
 
 over_clause:
   /*EMPTY*/ {
+    $$ = nullptr;
   }
   | OVER window_specification {
     PARSER_UNSUPPORTED(@1);
@@ -3319,17 +3350,23 @@ expr_list:
 // function arguments can have names.
 func_arg_list:
   func_arg_expr {
+    $$ = MAKE_NODE(@1, PTExprListNode, $1);
   }
   | func_arg_list ',' func_arg_expr {
+    $1->Append($3);
+    $$ = $1;
   }
 ;
 
 func_arg_expr:
   a_expr {
+    $$ = $1;
   }
   | param_name COLON_EQUALS a_expr {
+    PARSER_UNSUPPORTED(@2);
   }
   | param_name EQUALS_GREATER a_expr {
+    PARSER_UNSUPPORTED(@2);
   }
 ;
 
@@ -3653,8 +3690,15 @@ property_name: name             { $$ = $1; };
 // ever implement SQL99-like methods, such syntax may actually become legal!)
 func_name:
   type_function_name {
+    $$ = $1;
+  }
+  // Although we implement TOKEN as builtin function, apache CQL defines it as KEYWORD. For
+  // compatibility reason, keep it as keyword here.
+  | TOKEN {
+    $$ = parser_->MakeString($1);
   }
   | ColId indirection {
+    PARSER_UNSUPPORTED(@1);
   }
 ;
 
@@ -4662,6 +4706,7 @@ reserved_keyword:
   | TABLE { $$ = $1; }
   | THEN { $$ = $1; }
   | TO { $$ = $1; }
+  | TOKEN { $$ = $1; }
   | TRAILING { $$ = $1; }
   | TRUE_P { $$ = $1; }
   | UNION { $$ = $1; }

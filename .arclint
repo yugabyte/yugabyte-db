@@ -14,6 +14,7 @@
     },
     "googleccplint": {
       "type": "googlecpplint",
+      "exclude": "(src/yb/sql/kwlist.h)",
       "include": [
         "(\\.cpp$)",
         "(\\.cc$)",

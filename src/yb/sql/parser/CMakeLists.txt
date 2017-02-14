@@ -61,3 +61,4 @@ target_link_libraries(ybsql_parser
                       ybsql_ptree
                       ybsql_util
                       yb_util)
+add_dependencies(ybsql_parser ybsql_ptree)

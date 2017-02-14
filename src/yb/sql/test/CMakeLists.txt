@@ -6,6 +6,7 @@ target_link_libraries(ybsql_test
                       yb_client
                       yb_client_test_util
                       integration-tests)
+add_dependencies(ybsql_test ybsql_api)
 
 set(YB_TEST_LINK_LIBS ybsql_test ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ybsql-type-test)

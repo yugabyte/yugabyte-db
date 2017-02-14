@@ -36,6 +36,8 @@
     } \
   } while (0)
 
+#define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
+
 #define ASSERT_OK_PREPEND(status, msg) do { \
   const auto _s = (status); \
   if (_s.ok()) { \

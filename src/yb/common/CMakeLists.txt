@@ -82,6 +82,7 @@ set(COMMON_SRCS
   types.cc
   wire_protocol.cc
   yql_value.cc
+  yql_bfunc.cc
   yql_rowblock.cc)
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
@@ -97,11 +98,13 @@ set(COMMON_LIBS
   redis_protocol_proto
   yql_protocol_proto
   yb_util
+  yb_bfyql
   gutil)
 
 ADD_EXPORTABLE_LIBRARY(yb_common
   SRCS ${COMMON_SRCS}
   DEPS ${COMMON_LIBS})
+add_dependencies(yb_common yb_bfyql)
 
 set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(encoded_key-test)

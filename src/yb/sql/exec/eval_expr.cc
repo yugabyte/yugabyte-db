@@ -8,6 +8,8 @@
 #include "yb/client/callbacks.h"
 #include "yb/util/date_time.h"
 
+DECLARE_bool(yql_experiment_support_expression);
+
 namespace yb {
 namespace sql {
 
@@ -83,6 +85,13 @@ Status Executor::EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result
 
   const PTExpr *e = expr.get();
   switch (expr->expr_op()) {
+    case ExprOperator::kBfunc:
+      if (FLAGS_yql_experiment_support_expression) {
+        e = static_cast<const PTBfunc*>(e)->result().get();
+      } else {
+        return exec_context_->Error(expr->loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+      }
+      FALLTHROUGH_INTENDED;
     case ExprOperator::kConst:
       result->value_ = static_cast<const PTConstInt*>(e)->Eval();
       break;
@@ -128,6 +137,13 @@ Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *
 
   const PTExpr *e = expr.get();
   switch (expr->expr_op()) {
+    case ExprOperator::kBfunc:
+      if (FLAGS_yql_experiment_support_expression) {
+        e = static_cast<const PTBfunc*>(e)->result().get();
+      } else {
+        return exec_context_->Error(expr->loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+      }
+      FALLTHROUGH_INTENDED;
     case ExprOperator::kConst:
       result->value_ = static_cast<const PTConstDouble*>(e)->Eval();
       break;
@@ -167,6 +183,13 @@ Status Executor::EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *
 
   const PTExpr *e = expr.get();
   switch (expr->expr_op()) {
+    case ExprOperator::kBfunc:
+      if (FLAGS_yql_experiment_support_expression) {
+        e = static_cast<const PTBfunc*>(e)->result().get();
+      } else {
+        return exec_context_->Error(expr->loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+      }
+      FALLTHROUGH_INTENDED;
     case ExprOperator::kConst:
       result->value_ = static_cast<const PTConstText*>(e)->Eval();
       break;

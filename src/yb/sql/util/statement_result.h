@@ -12,10 +12,13 @@
 #include "yb/common/schema.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/common/yql_rowblock.h"
-#include "yb/sql/ptree/pt_select.h"
 
 namespace yb {
 namespace sql {
+
+// This module is included by a few outside classes, so we cannot include ptree header files here.
+// Use forward declaration.
+class PTDmlStmt;
 
 //------------------------------------------------------------------------------------------------
 // Result of preparing a statement. Only DML statement will return a prepared result that describes

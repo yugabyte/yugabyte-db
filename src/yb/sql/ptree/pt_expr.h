@@ -12,6 +12,9 @@
 #include "yb/sql/ptree/pt_type.h"
 #include "yb/sql/ptree/pt_name.h"
 
+#include "yb/common/yql_value.h"
+#include "yb/util/bfyql/bfyql.h"
+
 namespace yb {
 namespace sql {
 
@@ -28,6 +31,7 @@ enum class ExprOperator : int {
   kAlias,
   kRef,
   kBindVar,
+  kBfunc,
 
   // Operators that take no operand.
   kExists,
@@ -110,6 +114,10 @@ class PTExpr : public TreeNode {
     return yql_type_id_ != DataType::UNKNOWN_DATA;
   }
 
+  virtual void set_yql_type_id(DataType t) {
+    yql_type_id_ = t;
+  }
+
   // Node type.
   virtual TreeNodeOpcode opcode() const OVERRIDE {
     return TreeNodeOpcode::kPTExpr;
@@ -167,6 +175,9 @@ class PTExpr : public TreeNode {
 
   // Analyze RHS expression.
   virtual CHECKED_STATUS CheckRhsExpr(SemContext *sem_context);
+
+  // Experimental: Convert current treenode to YQLValue.
+  virtual std::shared_ptr<YQLValue> ToYqlValue(yb::bfyql::BFOpcode cast_opcode);
 
  protected:
   // Set the name of unnamed bind marker to the column it is associated with.
@@ -453,6 +464,10 @@ class PTExprConst : public PTExpr0<itype, ytype> {
   // Constant value.
   ReturnType value_;
 };
+
+using PTConstArg = PTExprConst<InternalType::VALUE_NOT_SET,
+                               DataType::UNKNOWN_DATA,
+                               void*>;
 
 using PTNull = PTExprConst<InternalType::VALUE_NOT_SET,
                            DataType::NULL_VALUE_TYPE,
@@ -827,6 +842,59 @@ class PTBindVar : public PTExpr {
 
   // Fields that should be resolved by semantic analysis.
   const ColumnDesc *desc_;
+};
+
+//--------------------------------------------------------------------------------------------------
+class PTBfunc : public PTExpr {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTBfunc> SharedPtr;
+  typedef MCSharedPtr<const PTBfunc> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTBfunc(MemoryContext *memctx,
+          YBLocation::SharedPtr loc,
+          const MCString::SharedPtr& name,
+          PTExprListNode::SharedPtr args);
+  virtual ~PTBfunc();
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTBfunc::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTBfunc>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+
+  // Experimental: Convert current treenode to YQLValue.
+  virtual std::shared_ptr<YQLValue> ToYqlValue(yb::bfyql::BFOpcode cast_opcode) OVERRIDE;
+
+  // Return the result of evaluation.
+  PTExpr::SharedPtr result() const {
+    return result_;
+  }
+
+ private:
+  // Find opcode to convert actual to formal yql_type_id.
+  Status FindCastOpcode(DataType source, DataType target, yb::bfyql::BFOpcode *opcode);
+
+  // Builtin function name.
+  MCString::SharedPtr name_;
+
+  // Arguments to builtin call.
+  PTExprListNode::SharedPtr args_;
+
+  // Builtin opcode.
+  bfyql::BFOpcode opcode_;
+
+  // Casting arguments to correct datatype before calling the builtin-function.
+  MCVector<yb::bfyql::BFOpcode> cast_ops_;
+
+  // Initialize result to null value.
+  PTExpr::SharedPtr result_;
 };
 
 }  // namespace sql
