@@ -59,6 +59,9 @@ export const CONFIGURE_UNIVERSE_RESOURCES_FAILURE = 'CONFIGURE_UNIVERSE_RESOURCE
 //Validation Tasks
 export const CHECK_IF_UNIVERSE_EXISTS = 'CHECK_IF_UNIVERSE_EXISTS';
 
+// Set Universe Read Write Metrics
+export const SET_UNIVERSE_METRICS = 'SET_UNIVERSE_METRICS';
+
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -318,5 +321,12 @@ export function checkIfUniverseExists(universeName) {
 export function resetRollingUpgrade() {
   return {
     type: RESET_ROLLING_UPGRADE
+  }
+}
+
+export function setUniverseMetrics(values) {
+  return {
+    type: SET_UNIVERSE_METRICS,
+    payload: values
   }
 }

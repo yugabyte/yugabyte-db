@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.models.MetricConfig;
 import play.libs.Json;
-
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Iterator;
 
 public class MetricQueryResponse {
   public static class MetricsData {
@@ -43,6 +45,13 @@ public class MetricQueryResponse {
         if (layout.yaxis != null && layout.yaxis.alias.containsKey(metricGraphData.name)) {
           metricGraphData.name = layout.yaxis.alias.get(metricGraphData.name);
         }
+      }
+
+      if (metricInfo.size() > 1) {
+        metricGraphData.labels = new HashMap<String, String>();
+        metricInfo.fields().forEachRemaining(handler -> {
+          metricGraphData.labels.put(handler.getKey(), handler.getValue().asText());
+        });
       }
 
       if (objNode.has("values")) {

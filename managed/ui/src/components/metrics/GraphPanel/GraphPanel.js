@@ -82,10 +82,10 @@ export default class GraphPanel extends Component {
        loop through all the possible panel types in the metric data fetched
        and group metrics by panel type and filter out anything that is empty.
        */
-      var panelItem = panelTypes[type].metrics.map(function(metricKey) {
+      var panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
         // if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
         return (isValidObject(metrics[type][metricKey])) ?
-          <MetricsPanel metricKey={metricKey}
+          <MetricsPanel metricKey={metricKey} key={idx}
                         metric={metrics[type][metricKey]}
                         className={"metrics-panel-container"}/>
           : null;
