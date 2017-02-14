@@ -33,6 +33,7 @@ public class Customer extends Model {
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
   public UUID uuid = UUID.randomUUID();
+  public void setUuid(UUID uuid) { this.uuid = uuid;}
 
   // An auto incrementing, user-friendly id for the customer. Used to compose a db prefix. Currently
   // it is assumed that there is a single instance of the db. The id space for this field may have

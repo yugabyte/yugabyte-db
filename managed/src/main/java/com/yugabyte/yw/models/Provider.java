@@ -49,6 +49,10 @@ public class Provider extends Model {
   @Column(nullable = false)
   public UUID customerUUID;
 
+  public void setCustomerUuid(UUID id) {
+    this.customerUUID = id;
+  }
+
   @Constraints.Required
   @Column(nullable = false)
   @DbJson
