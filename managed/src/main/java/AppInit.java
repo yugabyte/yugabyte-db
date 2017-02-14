@@ -8,11 +8,11 @@ import java.util.Map;
 import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 
 import play.Application;
+import play.Configuration;
 import play.Environment;
 import play.Logger;
 import play.libs.Yaml;
@@ -29,15 +29,17 @@ public class AppInit {
   public AppInit(Environment environment, Application application) {
     Logger.info("Yugaware Application has started");
 
+    Configuration appConfig = application.configuration();
+    String devopsHome = appConfig.getString("yb.devops.home");
     if (!environment.isTest()) {
-      if (application.configuration().getString("yb.devops.home") == null ||
-        application.configuration().getString("yb.devops.home").length() == 0) {
+      if (devopsHome == null || devopsHome.length() == 0) {
         throw new RuntimeException("yb.devops.home is not set in application.conf");
       }
 
       // Check if we have provider data, if not, we need to see the database
-      if (Provider.find.where().findRowCount() == 0) {
+      if (Provider.find.where().findRowCount() == 0 && appConfig.getBoolean("yb.seedData")) {
         Logger.debug("Seed the Yugaware DB");
+
         List<?> all = (ArrayList<?>) Yaml.load(
             application.resourceAsStream("db_seed.yml"),
             application.classloader()
@@ -48,8 +50,9 @@ public class AppInit {
         // init steps may depend on this data.
         com.yugabyte.yw.common.Configuration.initializeDB();
         // Initialize the cloud engine.
-        AWSInitializer aws = new AWSInitializer();
-        aws.run();
+        // Commenting this for now, will followup with a correct way to initiate AWS initializer.
+        // AWSInitializer aws = new AWSInitializer();
+        // aws.run();
       }
 
       // Load metrics configurations.
