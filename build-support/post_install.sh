@@ -21,6 +21,7 @@ if [[ ! -x $ld_path ]]; then
   exit 1
 fi
 
+cd "$bin_dir"
 for f in *; do
   if [[ -x $f && \
         $f != *.sh && \
