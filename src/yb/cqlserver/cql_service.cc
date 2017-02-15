@@ -29,6 +29,7 @@ using std::vector;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSession;
+using yb::client::YBTableCache;
 using yb::rpc::InboundCall;
 using yb::rpc::CQLInboundCall;
 using yb::rpc::RpcContext;
@@ -47,7 +48,7 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const string& yb_tier_master_a
   // Setup processors.
   processors_.reserve(FLAGS_cql_service_num_threads);
   for (CQLProcessor::UniPtr& processor : processors_) {
-    processor.reset(new CQLProcessor(client_, cql_metrics_));
+    processor.reset(new CQLProcessor(client_, table_cache_, cql_metrics_));
   }
 }
 
@@ -58,6 +59,7 @@ void CQLServiceImpl::SetUpYBClient(
   client_builder.add_master_server_addr(yb_tier_master_addresses);
   client_builder.set_metric_entity(metric_entity);
   CHECK_OK(client_builder.Build(&client_));
+  table_cache_ = std::make_shared<YBTableCache>(client_);
 }
 
 void CQLServiceImpl::Handle(InboundCall* inbound_call) {
@@ -104,7 +106,7 @@ CQLProcessor *CQLServiceImpl::GetProcessor() {
   // Create a new processor if needed.
   if (cql_processor == nullptr) {
     const int size = processors_.size();
-    cql_processor = new CQLProcessor(client_, cql_metrics_);
+    cql_processor = new CQLProcessor(client_, table_cache_, cql_metrics_);
     processors_.reserve(std::max<int>(size * 2, size + 10));
     processors_.emplace_back(cql_processor);
   }

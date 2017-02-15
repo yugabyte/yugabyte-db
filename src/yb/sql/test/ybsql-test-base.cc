@@ -32,6 +32,7 @@ void YbSqlTestBase::CreateSimulatedCluster() {
   builder.add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str());
   builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
   ASSERT_OK(builder.Build(&client_));
+  table_cache_ = std::make_shared<client::YBTableCache>(client_);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -45,7 +46,7 @@ SqlEnv *YbSqlTestBase::CreateSqlEnv(shared_ptr<YBSession> write_session,
     sql_envs_.reserve(max_id + 10);
   }
 
-  SqlEnv *sql_env = new SqlEnv(client_, write_session, read_session);
+  SqlEnv *sql_env = new SqlEnv(client_, table_cache_, write_session, read_session);
   sql_envs_.emplace_back(sql_env);
   return sql_env;
 }
@@ -88,7 +89,7 @@ SqlProcessor *YbSqlTestBase::GetSqlProcessor() {
 
   const int size = sql_processors_.size();
   sql_processors_.reserve(std::max<int>(size * 2, size + 10));
-  sql_processors_.emplace_back(new SqlProcessor(client_));
+  sql_processors_.emplace_back(new SqlProcessor(client_, table_cache_));
   return sql_processors_.back().get();
 }
 

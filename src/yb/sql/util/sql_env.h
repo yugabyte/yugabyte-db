@@ -26,6 +26,7 @@ class SqlEnv {
   //------------------------------------------------------------------------------------------------
   // Constructor & desructor.
   SqlEnv(std::shared_ptr<client::YBClient> client,
+         std::shared_ptr<client::YBTableCache> cache,
          std::shared_ptr<client::YBSession> write_session,
          std::shared_ptr<client::YBSession> read_session);
 
@@ -83,6 +84,9 @@ class SqlEnv {
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;
 
+  // YBTableCache, a cache to avoid creating a new table for each call.
+  std::shared_ptr<client::YBTableCache> table_cache_;
+
   // A specific session (within YBClient) to execute a statement.
   std::shared_ptr<client::YBSession> write_session_;
 
@@ -100,7 +104,7 @@ class SqlEnv {
   std::string current_keyspace_;
 };
 
-} // namespace sql
-} // namespace yb
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_UTIL_SQL_ENV_H_

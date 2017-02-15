@@ -37,7 +37,9 @@ class CQLProcessor : public sql::SqlProcessor {
   typedef std::unique_ptr<const CQLProcessor> UniPtrConst;
 
   // Constructor and destructor.
-  CQLProcessor(std::shared_ptr<client::YBClient> client, std::shared_ptr<CQLMetrics> metrics);
+  CQLProcessor(std::shared_ptr<client::YBClient> client,
+               std::shared_ptr<client::YBTableCache> cache,
+               std::shared_ptr<CQLMetrics> metrics);
   ~CQLProcessor();
 
   // Processing an inbound call.

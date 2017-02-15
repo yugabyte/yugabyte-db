@@ -39,6 +39,7 @@ using std::unique_ptr;
 
 using client::YBClient;
 using client::YBSession;
+using client::YBTableCache;
 using sql::SqlProcessor;
 
 CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
@@ -59,8 +60,9 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
       METRIC_yb_cqlserver_CQLServerService_ParsingErrors.Instantiate(metric_entity);
 }
 
-CQLProcessor::CQLProcessor(shared_ptr<YBClient> client, shared_ptr<CQLMetrics> cql_metrics)
-    : SqlProcessor(client), cql_metrics_(cql_metrics) {}
+CQLProcessor::CQLProcessor(
+    shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache, shared_ptr<CQLMetrics> cql_metrics)
+    : SqlProcessor(client, cache), cql_metrics_(cql_metrics) {}
 
 CQLProcessor::~CQLProcessor() {
 }

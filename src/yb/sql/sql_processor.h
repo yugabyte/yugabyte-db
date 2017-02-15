@@ -36,7 +36,8 @@ class SqlProcessor {
   static const int kSessionTimeoutMs = 60000;
 
   // Constructors.
-  explicit SqlProcessor(std::shared_ptr<client::YBClient> client);
+  explicit SqlProcessor(
+      std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache);
   virtual ~SqlProcessor();
 
   // Execute the given statement.

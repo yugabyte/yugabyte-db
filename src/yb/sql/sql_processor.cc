@@ -11,15 +11,15 @@ using std::shared_ptr;
 using std::string;
 using client::YBClient;
 using client::YBSession;
+using client::YBTableCache;
 
-SqlProcessor::SqlProcessor(shared_ptr<YBClient> client)
+SqlProcessor::SqlProcessor(shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache)
     : ybsql_(new YbSql()),
       client_(client),
       write_session_(client->NewSession(false)),
       read_session_(client->NewSession(true)),
-      sql_env_(new SqlEnv(client_, write_session_, read_session_)),
+      sql_env_(new SqlEnv(client_, cache, write_session_, read_session_)),
       is_used_(false) {
-
   write_session_->SetTimeoutMillis(kSessionTimeoutMs);
   CHECK_OK(write_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 

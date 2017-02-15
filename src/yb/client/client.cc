@@ -50,7 +50,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.h" // TODO: remove this include - just needed for default port
+#include "yb/master/master.h"  // TODO: remove this include - just needed for default port
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_util.h"
@@ -630,7 +630,7 @@ Status YBClient::TableExists(const string& table_name, bool* exists) {
   return Status::OK();
 }
 
-Status YBClient::OpenTable(
+Status YBTableCache::GetTable(
     const string& table_name, shared_ptr<YBTable>* table, bool force_refresh) {
   if (!force_refresh) {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
@@ -640,7 +640,15 @@ Status YBClient::OpenTable(
       return Status::OK();
     }
   }
+  RETURN_NOT_OK(client_->OpenTable(table_name, table));
+  {
+    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+    cached_tables_[table_name] = *table;
+  }
+  return Status::OK();
+}
 
+Status YBClient::OpenTable(const string& table_name, shared_ptr<YBTable>* table) {
   YBSchema schema;
   string table_id;
   PartitionSchema partition_schema;
@@ -659,10 +667,6 @@ Status YBClient::OpenTable(
     partition_schema));
   RETURN_NOT_OK(ret->data_->Open());
   table->swap(ret);
-  {
-    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    cached_tables_[table_name] = *table;
-  }
   return Status::OK();
 }
 
@@ -1002,7 +1006,7 @@ YBPredicate* YBTable::NewComparisonPredicate(const Slice& col_name,
     // predicate that just returns the errors when we add it to the scanner.
     //
     // This makes the API more "fluent".
-    delete value; // we always take ownership of 'value'.
+    delete value;  // we always take ownership of 'value'.
     return new YBPredicate(new ErrorPredicateData(
                                  STATUS(NotFound, "column not found", col_name)));
   }
@@ -1283,7 +1287,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
 
     RemoteTabletServer *ts = nullptr;
     vector<RemoteTabletServer*> candidates;
-    set<string> blacklist; // TODO: empty set for now.
+    set<string> blacklist;  // TODO: empty set for now.
     Status lookup_status = table_->client()->data_->GetTabletServer(
        table_->client(),
        remote_,
@@ -1564,7 +1568,7 @@ struct CloseCallback {
     delete this;
   }
 };
-} // anonymous namespace
+}  // anonymous namespace
 
 string YBScanner::ToString() const {
   Slice start_key = data_->spec_.lower_bound_key() ?
@@ -1665,9 +1669,9 @@ void YBScanner::Close() {
 
 bool YBScanner::HasMoreRows() const {
   CHECK(data_->open_);
-  return data_->data_in_open_ || // more data in hand
-      data_->last_response_.has_more_results() || // more data in this tablet
-      data_->MoreTablets(); // more tablets to scan, possibly with more data
+  return data_->data_in_open_ ||  // more data in hand
+      data_->last_response_.has_more_results() ||  // more data in this tablet
+      data_->MoreTablets();  // more tablets to scan, possibly with more data
 }
 
 Status YBScanner::NextBatch(vector<YBRowResult>* rows) {

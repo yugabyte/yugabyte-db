@@ -127,6 +127,7 @@ class YbSqlTestBase : public YBTest {
 
   // Simulated YB client.
   std::shared_ptr<client::YBClient> client_;
+  std::shared_ptr<client::YBTableCache> table_cache_;
 
   // Contexts to be passed to SQL engine.
   std::vector<SqlEnv::UniPtr> sql_envs_;

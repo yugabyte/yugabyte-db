@@ -50,6 +50,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // YBClient is to communicate with either master or tserver.
   std::shared_ptr<client::YBClient> client_;
+  // A cache to reduce opening tables again and again.
+  std::shared_ptr<client::YBTableCache> table_cache_;
 
   // Processors.
   vector<CQLProcessor::UniPtr> processors_;

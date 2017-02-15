@@ -16,14 +16,17 @@ using client::YBClient;
 using client::YBOperation;
 using client::YBSession;
 using client::YBTable;
+using client::YBTableCache;
 using client::YBTableCreator;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
 SqlEnv::SqlEnv(shared_ptr<YBClient> client,
+               shared_ptr<YBTableCache> cache,
                shared_ptr<YBSession> write_session,
                shared_ptr<YBSession> read_session)
     : client_(client),
+      table_cache_(cache),
       write_session_(write_session),
       read_session_(read_session),
       current_keyspace_(yb::master::kDefaultNamespaceName) {
@@ -74,7 +77,7 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const char *table_name, bool refresh_me
   // to decide whether or not the cached version should be used.
   // At the moment, we read the table descriptor every time we need it.
   shared_ptr<YBTable> yb_table;
-  Status s = client_->OpenTable(table_name, &yb_table, refresh_metadata);
+  Status s = table_cache_->GetTable(table_name, &yb_table, refresh_metadata);
 
   if (s.IsNotFound()) {
     return nullptr;
@@ -104,5 +107,5 @@ CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
   return Status::OK();
 }
 
-} // namespace sql
-} // namespace yb
+}  // namespace sql
+}  // namespace yb
