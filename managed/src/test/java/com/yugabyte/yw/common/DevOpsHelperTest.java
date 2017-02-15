@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
@@ -30,6 +31,8 @@ import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 
@@ -38,6 +41,9 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
   @Mock
   play.Configuration mockAppConfig;
+
+  @Mock
+  ShellProcessHandler shellProcessHandler;
 
   @InjectMocks
   DevOpsHelper devOpsHelper;
@@ -51,7 +57,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     public Region region;
     public AvailabilityZone zone;
     public NodeInstance node;
-    public String baseCommand;
+    public List<String> baseCommand = new ArrayList<>();
 
     public TestData(Customer customer, Common.CloudType cloud) {
       cloudType = cloud;
@@ -69,15 +75,21 @@ public class DevOpsHelperTest extends FakeDBApplication {
       node.setNodeName("fake_name:" + provider.code);
       node.save();
 
-      baseCommand = "/my/devops/bin/ybcloud.sh " + provider.code +
-        " --zone " + zone.code +  " --region " + region.code;
+      baseCommand.add("bin/ybcloud.sh");
+      baseCommand.add(provider.code);
+      baseCommand.add("--zone");
+      baseCommand.add(zone.code);
+      baseCommand.add("--region");
+      baseCommand.add(region.code);
 
       if (cloudType == Common.CloudType.docker) {
-        baseCommand += " --network " + DOCKER_NETWORK;
+        baseCommand.add("--network");
+        baseCommand.add(DOCKER_NETWORK);
       }
 
       if (cloudType == Common.CloudType.onprem) {
-        baseCommand += " --node_metadata " + node.getDetailsJson();
+        baseCommand.add("--node_metadata");
+        baseCommand.add(node.getDetailsJson());
       }
     }
   }
@@ -114,6 +126,75 @@ public class DevOpsHelperTest extends FakeDBApplication {
     }
   }
 
+  private List<String> nodeCommand(DevOpsHelper.NodeCommandType type, NodeTaskParams params) {
+    List<String> expectedCommand = new ArrayList<>();
+
+    expectedCommand.add("instance");
+    expectedCommand.add(type.toString().toLowerCase());
+    switch(type) {
+      case List:
+        expectedCommand.add("--as_json");
+        break;
+      case Control:
+        AnsibleClusterServerCtl.Params ctlParams = (AnsibleClusterServerCtl.Params) params;
+        expectedCommand.add(ctlParams.process);
+        expectedCommand.add(ctlParams.command);
+        break;
+      case Provision:
+        AnsibleSetupServer.Params setupParams = (AnsibleSetupServer.Params) params;
+        expectedCommand.add("--instance_type");
+        expectedCommand.add(setupParams.instanceType);
+
+        if (params.cloud != Common.CloudType.onprem) {
+          expectedCommand.add("--cloud_subnet");
+          expectedCommand.add(setupParams.subnetId );
+          expectedCommand.add("--machine_image");
+          expectedCommand.add(setupParams.getRegion().ybImage);
+          expectedCommand.add("--assign_public_ip");
+        }
+        break;
+      case Configure:
+        AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
+
+        expectedCommand.add("--master_addresses_for_tserver");
+        expectedCommand.add(MASTER_ADDRESSES);
+        if (!configureParams.isMasterInShellMode) {
+          expectedCommand.add("--master_addresses_for_master");
+          expectedCommand.add(MASTER_ADDRESSES);
+        }
+        if (configureParams.ybServerPackage != null) {
+          expectedCommand.add("--package");
+          expectedCommand.add(configureParams.ybServerPackage);
+        }
+
+        if (configureParams.getProperty("taskSubType") != null) {
+          UpgradeUniverse.UpgradeTaskSubType taskSubType =
+              UpgradeUniverse.UpgradeTaskSubType.valueOf(configureParams.getProperty("taskSubType"));
+          switch(taskSubType) {
+            case Download:
+              expectedCommand.add("--tags");
+              expectedCommand.add("download-software");
+              break;
+            case Install:
+              expectedCommand.add("--tags");
+              expectedCommand.add("install-software");
+              break;
+          }
+        }
+
+        if (!configureParams.gflags.isEmpty()) {
+          String gflagsJson =  Json.stringify(Json.toJson(configureParams.gflags));
+          expectedCommand.add("--replace_gflags");
+          expectedCommand.add("--gflags");
+          expectedCommand.add(gflagsJson);
+        }
+        break;
+    }
+
+    expectedCommand.add(params.nodeName);
+    return expectedCommand;
+  }
+
   @Test
   public void testProvisionNodeCommand() {
     for (TestData t : testData) {
@@ -123,17 +204,11 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
       params.instanceType = t.node.instanceTypeCode;
       params.nodeName = t.node.getNodeName();
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Provision, params));
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, params);
-      String expectedCommand = t.baseCommand + " instance provision" +
-        " --instance_type " + params.instanceType;
-      if (params.cloud != Common.CloudType.onprem) {
-        expectedCommand += " --cloud_subnet " + params.subnetId +
-          " --machine_image " + t.region.ybImage + " --assign_public_ip";
-      }
-      expectedCommand += " " + params.nodeName;
-
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -167,14 +242,11 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.isMasterInShellMode = true;
       params.ybServerPackage = "yb-server-pkg";
       params.universeUUID = u.universeUUID;
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
-
-      String expectedCommand = t.baseCommand + " instance configure" +
-        " --master_addresses_for_tserver " + MASTER_ADDRESSES +
-        " --package " + params.ybServerPackage + " " + params.nodeName;
-
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -190,15 +262,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.isMasterInShellMode = false;
       params.ybServerPackage = "yb-server-pkg";
       params.universeUUID = u.universeUUID;
-
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
-
-      String expectedCommand = t.baseCommand + " instance configure" +
-        " --master_addresses_for_tserver " + MASTER_ADDRESSES +
-        " --master_addresses_for_master " + MASTER_ADDRESSES +
-        " --package " + params.ybServerPackage + " " + params.nodeName;
-
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -240,13 +307,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.setProperty("taskSubType", Download.toString());
       params.universeUUID = u.universeUUID;
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
-
-      String expectedCommand = t.baseCommand + " instance configure" +
-        " --master_addresses_for_tserver " + MASTER_ADDRESSES +
-        " --package " + params.ybServerPackage + " --tags download-software " + params.nodeName;
-
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -265,13 +329,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.setProperty("taskSubType", Install.toString());
       params.universeUUID = u.universeUUID;
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
-
-      String expectedCommand = t.baseCommand + " instance configure" +
-        " --master_addresses_for_tserver " + MASTER_ADDRESSES +
-        " --package " + params.ybServerPackage + " --tags install-software " + params.nodeName;
-
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -339,14 +400,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.setProperty("processType", UniverseDefinitionTaskBase.ServerType.MASTER.toString());
       params.universeUUID = u.universeUUID;
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
-      String gflagsJson =  Json.stringify(Json.toJson(gflags));
-
-      String expectedCommand = t.baseCommand + " instance configure" +
-        " --master_addresses_for_tserver " + MASTER_ADDRESSES +
-        " --replace_gflags --gflags " + gflagsJson + " " + params.nodeName;
-
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -374,9 +431,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Destroy, params);
-      String expectedCommand = t.baseCommand + " instance destroy " + params.nodeName;
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Destroy, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Destroy, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -404,9 +462,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
-      String expectedCommand = t.baseCommand + " instance list --as_json " +  params.nodeName;
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.List, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -436,10 +495,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.process = "master";
       params.command = "create";
 
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Control, params);
-      String expectedCommand = t.baseCommand + " instance control " +
-        params.process + " " + params.command + " " +  params.nodeName;
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Control, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Control, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 
@@ -470,10 +529,10 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
-      String command = devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
-      System.out.println(command);
-      String expectedCommand = t.baseCommand + " instance list --as_json " + params.nodeName;
-      assertThat(command, allOf(notNullValue(), equalTo(expectedCommand)));
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.List, params));
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
 }

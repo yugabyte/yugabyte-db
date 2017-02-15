@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +12,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
 
 public class AnsibleDestroyServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
@@ -42,11 +44,10 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   public void run() {
     // Update the node state as being decommissioned.
     setNodeState(NodeDetails.NodeState.BeingDecommissioned);
-
-    String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.Destroy, taskParams());
-
     // Execute the ansible command.
-    execCommand(command);
+    ShellProcessHandler.ShellResponse response = getDevOpsHelper().nodeCommand(
+        DevOpsHelper.NodeCommandType.Destroy, taskParams());
+    logShellResponse(response);
 
     // Update the node state to destroyed. Even though we remove the node below, this will
     // help tracking state for any nodes stuck in limbo.

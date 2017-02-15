@@ -3,10 +3,12 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+
 
 public class AnsibleSetupServer extends NodeTaskBase {
 
@@ -28,8 +30,9 @@ public class AnsibleSetupServer extends NodeTaskBase {
 
   @Override
   public void run() {
-    String command = getDevOpsHelper().nodeCommand(DevOpsHelper.NodeCommandType.Provision, taskParams());
     // Execute the ansible command.
-    execCommand(command);
+    ShellProcessHandler.ShellResponse response = getDevOpsHelper().nodeCommand(
+        DevOpsHelper.NodeCommandType.Provision, taskParams());
+    logShellResponse(response);
   }
 }
