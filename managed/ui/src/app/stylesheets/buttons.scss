@@ -1,0 +1,39 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+button, .btn {
+  &.bg-orange {
+    background: $YB_ORANGE;
+    border: 1px solid $YB_ORANGE;
+    color: white;
+    font-weight: 600;
+  }
+
+  .fa {
+    margin-right: 8px;
+  }
+}
+
+.btn-center {
+  width: 33%;
+  margin-left: 33%;
+}
+
+.page-action-buttons {
+  padding-top: 20px;
+  text-align: right;
+
+  .btn-group {
+  text-align: right;
+  }
+
+  .fa {
+  margin: 0 4px;
+  }
+}
+
+.header-row .btn-group div {
+  display: inline-block;
+  float: left;
+}
