@@ -20,8 +20,8 @@ public class ShellProcessHandler {
     public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
     public static class ShellResponse {
-        int code;
-        String message;
+        public int code;
+        public String message;
     }
 
     @Inject

@@ -62,7 +62,13 @@ public class Provider extends Model {
   public void setConfig(Map<String, String> configMap) { this.config = Json.toJson(configMap); }
 
   @JsonBackReference
-  public Map<String, String> getConfig() { return Json.fromJson(this.config, Map.class); }
+  public Map<String, String> getConfig() {
+    if (this.config == null) {
+      return new HashMap();
+    } else {
+      return Json.fromJson(this.config, Map.class);
+    }
+  }
 
   /**
    * Query Helper for Provider with uuid

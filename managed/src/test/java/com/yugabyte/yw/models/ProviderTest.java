@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
@@ -28,6 +29,21 @@ public class ProviderTest extends FakeDBApplication {
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
     assertTrue(provider.isActive());
+  }
+
+  @Test
+  public void testNullConfig() {
+    Provider provider = Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+    assertNotNull(provider.uuid);
+    assertTrue(provider.getConfig().isEmpty());
+  }
+
+  @Test
+  public void testNotNullConfig() {
+    Provider provider = Provider.create(defaultCustomer.uuid, "aws",
+        "Amazon", ImmutableMap.of("Foo", "Bar"));
+    assertNotNull(provider.uuid);
+    assertNotNull(provider.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 
   @Test

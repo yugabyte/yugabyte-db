@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,5 +65,17 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
     };
 
     Universe.saveDetails(taskParams().universeUUID, updater);
+  }
+
+  /**
+   * Log the output of shellResponse to STDOUT or STDERR
+   * @param response : ShellResponse object
+   */
+  public void logShellResponse(ShellProcessHandler.ShellResponse response) {
+    if (response.code == 0) {
+      LOG.info("[" + getName() + "] STDOUT: " + response.message);
+    } else {
+      LOG.warn("[" + getName() + "] STDERR: " + response.message);
+    }
   }
 }
