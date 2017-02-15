@@ -1,0 +1,15 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.modal-body {
+  max-height: calc(100% - 120px);
+  overflow: auto;
+}
+
+.modal-footer {
+  background-color: #f5f4f0;
+
+  .btn {
+  min-width: 110px;
+  margin-left: 14px !important;
+  }
+}

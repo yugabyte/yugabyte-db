@@ -1,0 +1,32 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.container {
+  width: 100%;
+  padding: 0
+}
+
+.container-body {
+  margin: 70px 15px 0 105px;
+  padding-top: 25px;
+  overflow-x: hidden;
+}
+
+ul {
+  list-style: none;
+}
+
+legend {
+  padding-bottom: 7px;
+}
+
+.float-right {
+  float: right;
+}
+
+.inline-display {
+  display: inline;
+}
+
+.no-border {
+  border: none !important;
+}
