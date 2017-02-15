@@ -26,6 +26,6 @@ for f in *; do
         $f != *.sh && \
         $f != patchelf && \
         $f != pprof ]]; then
-    ( set -x; patchelf --set-interpreter "$ld_path" "$f" )
+    ( set -x; "$patchelf_path" --set-interpreter "$ld_path" "$f" )
   fi
 done
