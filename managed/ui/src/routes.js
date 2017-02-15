@@ -3,7 +3,7 @@
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import { validateToken, validateTokenSuccess, validateTokenFailure } from './actions/customers';
-import App from './pages/App';
+import App from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AuthenticatedComponent from './pages/AuthenticatedComponent';

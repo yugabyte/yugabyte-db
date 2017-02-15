@@ -1,0 +1,29 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.react-bs-table {
+  margin: 0 !important;
+  border: none !important;
+
+  .universe-item-cell {
+    white-space: normal;
+  }
+
+  table {
+    th, td {
+      border: none !important;
+    }
+    th {
+      border-bottom: 1px solid #ccc !important;
+    }
+    td {
+      border-bottom: 1px solid #ddd !important;
+    }
+  }
+}
+
+// TODO: Does this class name only appear inside .react-bs-table elements?
+.data-table-row {
+  background-color: #f8f8f8 !important;
+  border: 10px solid white !important;
+  border-top:20px solid white !important;
+}

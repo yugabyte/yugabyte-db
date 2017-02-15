@@ -63,28 +63,28 @@ export default class TasksList extends Component {
                           pagination={true}>
             <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
             <TableHeaderColumn dataField="title"
-                               columnClassName="no-border-cell name-column" className="no-border-cell">
+                               columnClassName="no-border name-column" className="no-border">
                Title
             </TableHeaderColumn>
             <TableHeaderColumn dataField="percentComplete" dataFormat={percentFormatter}
-                               columnClassName="no-border-cell name-column-sm" className="no-border-cell name-column-sm">
+                               columnClassName="no-border name-column-sm" className="no-border name-column-sm">
               Progress
             </TableHeaderColumn>
             <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter}
-                               columnClassName="no-border-cell " className="no-border-cell"
+                               columnClassName="no-border " className="no-border"
                                dataAlign="left">
               Start Time
             </TableHeaderColumn>
             <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter}
-                               columnClassName="no-border-cell name-column" className="no-border-cell">
+                               columnClassName="no-border name-column" className="no-border">
                End Time
             </TableHeaderColumn>
             <TableHeaderColumn dataField="type"
-                               columnClassName="no-border-cell name-column" className="no-border-cell">
+                               columnClassName="no-border name-column" className="no-border">
                Type
             </TableHeaderColumn>
             <TableHeaderColumn dataField="success"
-                               columnClassName="no-border-cell name-column" className="no-border-cell"
+                               columnClassName="no-border name-column" className="no-border"
                                dataFormat={successStringFormatter}>
                Status
             </TableHeaderColumn>
