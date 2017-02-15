@@ -13,12 +13,16 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Singleton
 public class DevOpsHelper {
@@ -30,16 +34,24 @@ public class DevOpsHelper {
     List,
     Control
   }
+  public static final Logger LOG = LoggerFactory.getLogger(DevOpsHelper.class);
 
-  public static final String YBCLOUD_SCRIPT = "/bin/ybcloud.sh";
+  public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
 
   @Inject
   play.Configuration appConfig;
 
-  private String cloudBaseCommand(NodeTaskParams nodeTaskParam) {
-    String command = appConfig.getString("yb.devops.home") + YBCLOUD_SCRIPT + " " + nodeTaskParam.cloud;
-    command += " --zone " + nodeTaskParam.getAZ().code;
-    command += " --region " + nodeTaskParam.getRegion().code;
+  @Inject
+  ShellProcessHandler shellProcessHandler;
+
+  private List<String> cloudBaseCommand(NodeTaskParams nodeTaskParam) {
+    List<String> command = new ArrayList<String>();
+    command.add(YBCLOUD_SCRIPT);
+    command.add(nodeTaskParam.cloud.toString());
+    command.add("--zone");
+    command.add(nodeTaskParam.getAZ().code);
+    command.add("--region");
+    command.add(nodeTaskParam.getRegion().code);
 
     // Right now for docker we grab the network from application conf.
     if (nodeTaskParam.cloud == Common.CloudType.docker) {
@@ -47,40 +59,48 @@ public class DevOpsHelper {
       if (networkName == null) {
         throw new RuntimeException("yb.docker.network is not set in application.conf");
       }
-      command += " --network " + networkName;
+      command.add("--network");
+      command.add(networkName);
     }
 
     if (nodeTaskParam.cloud == Common.CloudType.onprem) {
       NodeInstance node = NodeInstance.getByName(nodeTaskParam.nodeName);
-      command += " --node_metadata " + node.getDetailsJson();
+      command.add("--node_metadata");
+      command.add(node.getDetailsJson());
     }
     return command;
   }
 
-  private String getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
-    String subcommand = "";
+  private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
+    List<String> subcommand = new ArrayList<String>();
 
     String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses(false);
-    subcommand += " --master_addresses_for_tserver " + masterAddresses;
+    subcommand.add("--master_addresses_for_tserver");
+    subcommand.add(masterAddresses);
 
     if (!taskParam.isMasterInShellMode) {
-      subcommand += " --master_addresses_for_master " + masterAddresses;
+      subcommand.add("--master_addresses_for_master");
+      subcommand.add(masterAddresses);
     }
 
     switch(taskParam.type) {
       case Everything:
-        subcommand += " --package " + taskParam.ybServerPackage;
+        subcommand.add("--package");
+        subcommand.add(taskParam.ybServerPackage);
         break;
       case Software:
         {
-          subcommand += " --package " + taskParam.ybServerPackage;
+          subcommand.add("--package");
+          subcommand.add(taskParam.ybServerPackage);
           String taskSubType = taskParam.getProperty("taskSubType");
           if (taskSubType == null) {
             throw new RuntimeException("Invalid taskSubType property: " + taskSubType);
           } else if (taskSubType.equals(UpgradeUniverse.UpgradeTaskSubType.Download.toString())) {
-            subcommand += " --tags download-software";
+            subcommand.add("--tags");
+            subcommand.add("download-software");
           } else if (taskSubType.equals(UpgradeUniverse.UpgradeTaskSubType.Install.toString())) {
-            subcommand += " --tags install-software";
+            subcommand.add("--tags");
+            subcommand.add("install-software");
           }
         }
         break;
@@ -95,21 +115,26 @@ public class DevOpsHelper {
           if (processType == null) {
             throw new RuntimeException("Invalid processType property: " + processType);
           } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER)) {
-            subcommand += " --tags master-gflags";
+            subcommand.add("--tags");
+            subcommand.add("master-gflags");
           } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER)) {
-            subcommand += " --tags tserver-gflags";
+            subcommand.add("--tags");
+            subcommand.add("tserver-gflags");
           }
-          subcommand += " --replace_gflags --gflags " + Json.stringify(Json.toJson(taskParam.gflags));
+          subcommand.add("--replace_gflags");
+          subcommand.add("--gflags");
+          subcommand.add(Json.stringify(Json.toJson(taskParam.gflags)));
         }
         break;
     }
     return subcommand;
   }
 
-  public String nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) throws RuntimeException {
-    String command = cloudBaseCommand(nodeTaskParam);
-
-    command += " instance " + type.toString().toLowerCase();
+  public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
+                                                       NodeTaskParams nodeTaskParam) throws RuntimeException {
+    List<String> command = cloudBaseCommand(nodeTaskParam);
+    command.add("instance");
+    command.add(type.toString().toLowerCase());
 
     switch (type) {
       case Provision:
@@ -118,11 +143,14 @@ public class DevOpsHelper {
           throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
         }
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
-        command += " --instance_type " + taskParam.instanceType;
+        command.add("--instance_type");
+        command.add(taskParam.instanceType);
         if (nodeTaskParam.cloud != Common.CloudType.onprem) {
-          command += " --cloud_subnet " + taskParam.subnetId +
-            " --machine_image " + taskParam.getRegion().ybImage +
-            " --assign_public_ip";
+          command.add("--cloud_subnet");
+          command.add(taskParam.subnetId);
+          command.add("--machine_image");
+          command.add(taskParam.getRegion().ybImage);
+          command.add("--assign_public_ip");
         }
         break;
       }
@@ -132,7 +160,7 @@ public class DevOpsHelper {
           throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
         }
         AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params)nodeTaskParam;
-        command += getConfigureSubCommand(taskParam);
+        command.addAll(getConfigureSubCommand(taskParam));
         break;
       }
       case List:
@@ -140,7 +168,7 @@ public class DevOpsHelper {
         if (!(nodeTaskParam instanceof AnsibleUpdateNodeInfo.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleUpdateNodeInfo.Params");
         }
-        command += " --as_json";
+        command.add("--as_json");
         break;
       }
       case Destroy:
@@ -156,12 +184,16 @@ public class DevOpsHelper {
           throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
         }
         AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params)nodeTaskParam;
-        command += " " + taskParam.process + " " + taskParam.command;
+        command.add(taskParam.process);
+        command.add(taskParam.command);
         break;
       }
     }
 
-    command += " " + nodeTaskParam.nodeName;
-    return command;
+    command.add(nodeTaskParam.nodeName);
+
+    Provider provider = nodeTaskParam.getRegion().provider;
+    LOG.info("Command to run: [" + String.join(" ", command) + "]");
+    return shellProcessHandler.run(command, provider.getConfig());
   }
 }

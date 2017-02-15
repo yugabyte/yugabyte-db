@@ -2,6 +2,7 @@
 
 import com.google.inject.AbstractModule;
 import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
@@ -27,5 +28,6 @@ public class Module extends AbstractModule {
 
     bind(DevOpsHelper.class).asEagerSingleton();
     bind(MetricQueryHelper.class).asEagerSingleton();
+    bind(ShellProcessHandler.class).asEagerSingleton();
   }
 }

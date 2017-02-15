@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -78,39 +75,5 @@ public abstract class AbstractTaskBase implements ITask {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
     executor = Executors.newFixedThreadPool(numThreads, namedThreadFactory);
-  }
-
-  /**
-   * Execute a system command, and output its STDERR to the process log.
-   * @param command : the command to execute.
-   */
-  public void execCommand(String command) {
-    LOG.info("Command to run: [" + command + "]");
-    try {
-      Process p = Runtime.getRuntime().exec(command);
-
-      // Log the stderr output of the process.
-      BufferedReader berr = new BufferedReader(new InputStreamReader(p.getErrorStream()));
-      String line = null;
-      while ((line = berr.readLine()) != null) {
-        LOG.warn("[" + getName() + "] STDERR: " + line);
-      }
-      BufferedReader bout = new BufferedReader(new InputStreamReader(p.getInputStream()));
-      while ((line = bout.readLine()) != null) {
-        LOG.info("[" + getName() + "] STDOUT: " + line);
-      }
-      int exitValue = p.waitFor();
-      String message = "Command [" + command + "] finished with exit code " + exitValue;
-      LOG.info(message);
-      if (exitValue != 0) {
-        throw new RuntimeException(message);
-      }
-    } catch (IOException e) {
-      LOG.error("Command [" + command + "] threw IOException: {}", e);
-      throw new RuntimeException(e);
-    } catch (InterruptedException e) {
-      LOG.error("Command [" + command + "] threw InterruptedException: {}", e);
-      throw new RuntimeException(e);
-    }
   }
 }
