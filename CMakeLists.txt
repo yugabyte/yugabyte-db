@@ -425,6 +425,11 @@ if(USING_LINUXBREW AND IS_CLANG)
   ADD_COMMON_COMPILER_LINKER_FLAGS("-Wno-gnu-designator")
 endif()
 
+if(USING_LINUXBREW)
+  # This is needed for finding correct versions of Flex, Bison, and other tools.
+  set(CMAKE_PREFIX_PATH "${LINUXBREW_DIR}" ${CMAKE_PREFIX_PATH})
+endif()
+
 # For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)

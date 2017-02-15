@@ -11,6 +11,11 @@ SET(PARSER_GRAM_Y_CC "${CMAKE_CURRENT_BINARY_DIR}/parser_gram.y.cc")
 SET(PARSER_GRAM_FINAL_Y_CC "${CMAKE_CURRENT_BINARY_DIR}/parser_gram_final.y.cc")
 SET(SCANNER_LEX_L_CC "${CMAKE_CURRENT_BINARY_DIR}/scanner_lex.l.cc")
 
+# FLEX_LIBRARIES points to libfl, causing an "undefined reference to yylex" error, and it looks like
+# linking against libfl is not the right thing to do in recent versions of Flex.
+# https://github.com/brianb/mdbtools/issues/47
+set(FLEX_LIBRARIES "")
+
 # Run BISON and FLEX
 BISON_TARGET(YbSqlParser parser_gram.y ${PARSER_GRAM_Y_CC})
 FLEX_TARGET(YbSqlScanner scanner_lex.l ${SCANNER_LEX_L_CC})

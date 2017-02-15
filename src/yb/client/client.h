@@ -18,9 +18,11 @@
 #define YB_CLIENT_CLIENT_H_
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 #include <vector>
+#include <mutex>
 
 // --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
 // --- client_samples-test.sh depends on this --- //
@@ -380,7 +382,7 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   Data* data_;
 
   // Map from table-name to YBTable instances.
-  std::map<string, std::shared_ptr<YBTable> > cached_tables_;
+  std::map<std::string, std::shared_ptr<YBTable> > cached_tables_;
   std::mutex cached_tables_mutex_;
 
   // Unique identifier for this client. This will be constant for the lifetime of this client
