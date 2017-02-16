@@ -127,6 +127,16 @@ def normalize_path_for_metadata(path):
     return path
 
 
+def should_keep_system_dependency(file_path):
+    """
+    Determines whether we should keep a dependency on a system library. Some libraries cannot be
+    safely relocated to another directory, e.g. because they have hidden depedencies loaded at
+    runtime.
+    """
+    name = path_basename(file_path)
+    return name.startswith('libsasl2.')
+
+
 def find_elf_dependencies(elf_file_path):
     """
     Run ldd on the given ELF file and find libraries that it depends on. Also run patchelf and get
@@ -150,7 +160,10 @@ def find_elf_dependencies(elf_file_path):
         if m:
             lib_name = m.group(1)
             lib_resolved_path = realpath(m.group(2))
-            dependencies.add(Dependency(lib_name, lib_resolved_path))
+            if should_keep_system_dependency(lib_resolved_path):
+                logging.debug("Not packaging system library: {}".format(lib_resolved_path))
+            else:
+                dependencies.add(Dependency(lib_name, lib_resolved_path))
 
         tokens = ldd_output_line.split()
         if len(tokens) >= 4 and tokens[1:4] == ['=>', 'not', 'found']:
@@ -429,6 +442,9 @@ class LibraryPackager:
                 if target_dir_rel_path.startswith('./'):
                     target_dir_rel_path = target_dir_rel_path[2:]
                 new_rpath += '/' + target_dir_rel_path
+            # We also need to add /usr/lib64 so that the system version of libsasl could be found at
+            # runtime.
+            new_rpath += ':/usr/lib64'
 
             logging.debug("Setting RPATH of '{}' to '{}'".format(node.target_path, new_rpath))
 
