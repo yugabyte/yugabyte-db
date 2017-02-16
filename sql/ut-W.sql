@@ -77,6 +77,9 @@ SET parallel_setup_cost to DEFAULT;
 SET parallel_tuple_cost to DEFAULT;
 SET min_parallel_relation_size to DEFAULT;
 
+/*+Parallel(p2 8 soft)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+
 /*+Parallel(p2 8 hard)*/
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
@@ -93,7 +96,7 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 /*+Parallel(p1 8 hard) SeqScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 
--- parallel overrides index scan
+-- we don't have parallel over index scans so far
 /*+Parallel(p1 8 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 /*+Parallel(p1 0 hard) IndexScan(p1) */
@@ -112,7 +115,7 @@ SET max_parallel_workers_per_gather to 0;
 /*+Parallel(p1 8) */
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
--- set hint also does
+-- set hint does the same thing
 /*+Set(max_parallel_workers_per_gather 1)*/
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
 
@@ -130,11 +133,13 @@ SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
 SET max_parallel_workers_per_gather to 3;
+SET enable_indexscan to false;
 
 /*+Parallel(p1 8 hard) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join t1 on p1.id = t1.id;
 
 -- Negative hint
+SET enable_indexscan to DEFAULT;
 SET parallel_setup_cost to 0;
 SET parallel_tuple_cost to 0;
 SET min_parallel_relation_size to 0;
@@ -148,6 +153,20 @@ EXPLAIN (COSTS false) SELECT * FROM p1;
 /*+Parallel(p1 100x hard)Parallel(p1 -1000 hard)Parallel(p1 1000000 hard)
    Parallel(p1 8 hoge)Parallel(p1)Parallel(p1 100 soft x)*/
 EXPLAIN (COSTS false) SELECT id FROM p1 UNION ALL SELECT id FROM p2;
+
+-- Hints on unhintable relations are just ignored
+/*+Parallel(p1 5 hard) Parallel(s1 3 hard) IndexScan(ft1) SeqScan(cte1)
+  TidScan(fs1) IndexScan(t) IndexScan(*VALUES*) */
+EXPLAIN (COSTS false) SELECT id FROM p1_c1_c1 as s1 TABLESAMPLE SYSTEM(10)
+ UNION ALL
+SELECT id FROM ft1
+ UNION ALL
+(WITH cte1 AS (SELECT id FROM p1 WHERE id % 2 = 0) SELECT id FROM cte1)
+ UNION ALL
+SELECT userid FROM pg_stat_statements fs1
+ UNION ALL
+SELECT x FROM (VALUES (1), (2), (3)) t(x);
+
 
 ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
 SELECT pg_reload_conf();

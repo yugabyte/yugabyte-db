@@ -184,6 +184,12 @@ typedef enum HintType
 	HINT_TYPE_PARALLEL
 } HintType;
 
+typedef enum HintTypeBitmap
+{
+	HINT_BM_SCAN_METHOD = 1,
+	HINT_BM_PARALLEL = 2
+} HintTypeBitmap;
+
 static const char *HintTypeName[] = {
 	"scan method",
 	"join method",
@@ -3512,10 +3518,13 @@ reset_hint_enforcement()
 }
 
 /*
- * Set planner guc parameters according to corresponding scan hints.
+ * Set planner guc parameters according to corresponding scan hints.  Returns
+ * bitmap of HintTypeBitmap. If shint or phint is not NULL, set used hint
+ * there respectively.
  */
 static bool
-setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
+setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
+					   ScanMethodHint **rshint, ParallelHint **rphint)
 {
 	Index	new_parent_relid = 0;
 	ListCell *l;
@@ -3523,6 +3532,11 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 	ParallelHint   *phint = NULL;
 	bool			inhparent = root->simple_rte_array[rel->relid]->inh;
 	Oid		relationObjectId = root->simple_rte_array[rel->relid]->relid;
+	int				ret = 0;
+
+	/* reset returns if requested  */
+	if (rshint != NULL) *rshint = NULL;
+	if (rphint != NULL) *rphint = NULL;
 
 	/*
 	 * We could register the parent relation of the following children here
@@ -3542,7 +3556,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level)));
-		return false;
+		return 0;
 	}
 
 	/* Find the parent for this relation other than the registered parent */
@@ -3638,6 +3652,8 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 		bool using_parent_hint =
 			(shint == current_hint_state->parent_scan_hint);
 
+		ret |= HINT_BM_SCAN_METHOD;
+
 		/* Setup scan enforcement environment */
 		setup_scan_method_enforcement(shint, current_hint_state);
 
@@ -3674,6 +3690,9 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 
 	setup_parallel_plan_enforcement(phint, current_hint_state);
 
+	if (phint)
+		ret |= HINT_BM_PARALLEL;
+
 	/* Nothing to apply. Reset the scan mask to intial state */
 	if (!shint && ! phint)
 	{
@@ -3691,10 +3710,13 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel)
 
 		setup_scan_method_enforcement(NULL,	current_hint_state);
 
-		return false;
+		return ret;
 	}
 
-	return true;
+	if (rshint != NULL) *rshint = shint;
+	if (rphint != NULL) *rphint = phint;
+
+	return ret;
 }
 
 /*
@@ -4328,95 +4350,118 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 {
 	ParallelHint   *phint;
 	ListCell	   *l;
+	int				found_hints;
 
 	/* call the previous hook */
 	if (prev_set_rel_pathlist)
 		prev_set_rel_pathlist(root, rel, rti, rte);
 
-	/* Nothing to do when hint has not been parsed yet */
+	/* Nothing to do if no hint available */
 	if (current_hint_state == NULL)
 		return;
 
-	/* Don't touch dummy rel */
+	/* Don't touch dummy rels. */
 	if (IS_DUMMY_REL(rel))
+		return;
+
+	/*
+	 * We can accept only plain relations, foreign tables and table saples are
+	 * also unacceptable. See set_rel_pathlist.
+	 */
+	if (rel->rtekind != RTE_RELATION ||
+		rte->relkind == RELKIND_FOREIGN_TABLE ||
+		rte->tablesample != NULL)
 		return;
 
 	/* We cannot handle if this requires an outer */
 	if (rel->lateral_relids)
 		return;
 
-	if (!setup_hint_enforcement(root, rel))
-	{
-		/*
-		 * No enforcement requested, but we might have to generate gather path
-		 * on this relation. We could regenerate gather for relations not
-		 * getting enforcement or even relations other than ordinary ones.
-		 */
-
-		/* If no need of a gather path, just return */
-		if (rel->reloptkind != RELOPT_BASEREL || max_hint_nworkers < 1 ||
-			rel->partial_pathlist == NIL)
-			return;
-
-		/* Lower the priorities of existing paths, then add a new path */
-		foreach (l, rel->pathlist)
-		{
-			Path *path = (Path *) lfirst(l);
-
-			if (path->startup_cost < disable_cost)
-			{
-				path->startup_cost += disable_cost;
-				path->total_cost += disable_cost;
-			}
-		}
-
-		generate_gather_paths(root, rel);
-		return;
-	}
-
-	/* Don't touch other than ordinary relation hereafter */
-	if (rte->rtekind != RTE_RELATION)
+	/* Return if this relation gets no enfocement */
+	if ((found_hints = setup_hint_enforcement(root, rel, NULL, &phint)) == 0)
 		return;
 
 	/* Here, we regenerate paths with the current hint restriction */
 
-	/* Remove prviously generated paths */
-	list_free_deep(rel->pathlist);
-	rel->pathlist = NIL;
-
-	/* Rebuild access paths */
-	set_plain_rel_pathlist(root, rel, rte);
-
-	/*
-	 * create_plain_partial_paths creates partial paths with reasonably
-	 * estimated number of workers. Force the requested number of workers if
-	 * hard mode.
-	 */
-	phint = find_parallel_hint(root, rel->relid);
-
-	if (phint)
+	if (found_hints & HINT_BM_SCAN_METHOD)
 	{
-		/* if inhibiting parallel, remove existing partial paths  */
-		if (phint->nworkers == 0 && rel->partial_pathlist)
+		/*
+		 * With scan hints, we regenerate paths for this relation from the
+		 * first under the restricion.
+		 */
+		list_free_deep(rel->pathlist);
+		rel->pathlist = NIL;
+
+		set_plain_rel_pathlist(root, rel, rte);
+	}
+
+	if (found_hints & HINT_BM_PARALLEL)
+	{
+		Assert (phint);
+
+		/* the partial_pathlist may be for different parameters, discard it */
+		if (rel->partial_pathlist)
 		{
 			list_free_deep(rel->partial_pathlist);
 			rel->partial_pathlist = NIL;
 		}
 
-		/* enforce number of workers if requested */
-		if (rel->partial_pathlist && phint->force_parallel)
+		/* also remove gather path */
+		if (rel->pathlist)
 		{
-			foreach (l, rel->partial_pathlist)
-			{
-				Path *ppath = (Path *) lfirst(l);
+			ListCell *cell, *prev = NULL;
 
-				ppath->parallel_workers	= phint->nworkers;
+			foreach (cell, rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(cell);
+				
+				if (IsA(path, GatherPath))
+					rel->pathlist = list_delete_cell(rel->pathlist,
+													 cell, prev);
+				else
+					prev = cell;
 			}
 		}
 
-		/* Generate gather paths for base rels */
-		if (rel->reloptkind == RELOPT_BASEREL)
-			generate_gather_paths(root, rel);
+		/* then generate new paths if needed */
+		if (phint->nworkers > 0)
+		{
+			/* Lower the priorities of non-parallel paths */
+			foreach (l, rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(l);
+
+				if (path->startup_cost < disable_cost)
+				{
+					path->startup_cost += disable_cost;
+					path->total_cost += disable_cost;
+				}
+			}
+
+			/*
+			 * generate partial paths with enforcement, this is affected by
+			 * scan method enforcement. Specifically, the cost of this partial
+			 * seqscan path will be disabled_cost if seqscan is inhibited by
+			 * hint or GUC parameters.
+			 */
+			Assert (rel->partial_pathlist == NIL);
+			create_plain_partial_paths(root, rel);
+
+			/* enforce number of workers if requested */
+			if (phint->force_parallel)
+			{
+				foreach (l, rel->partial_pathlist)
+				{
+					Path *ppath = (Path *) lfirst(l);
+
+					ppath->parallel_workers	= phint->nworkers;
+				}
+			}
+
+			/* Generate gather paths for base rels */
+			if (rel->reloptkind == RELOPT_BASEREL)
+				generate_gather_paths(root, rel);
+		}
 	}
 
 	reset_hint_enforcement();

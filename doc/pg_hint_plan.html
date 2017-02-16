@@ -437,14 +437,16 @@ IN (SELECT ... {<b>LIMIT | OFFSET</b> ...} ...)
 <dd>NoIndexScan hint involes NoIndexOnlyScan.</dd>
 
 <h3>Parallel vs Scan hints</h3>
-<dd>Although any kind of scan method hint is allowed to be specified with parallel hint on the same object, parallel-unsafe scan methods beat parallel.</dd>
+<dd>Scan hints also affect building partial paths. Since parallel
+paths are currently consists of partial sequential scans, inhibiting
+seqscan beats parallel hint on the same relation.</dd>
 
 <h3>Parallel hint and UNION</h3>
-<dd>Parallel hint affects on both plain and inheritance tables. While
-UNION gets parallel only if all underlying subqueries are
-parallel-safe. So a UNION becomes parallel only when the all
-underlying subqueries are parallel-safe. There's no means to tell
-UNION itself to be parallel.</dd>
+<dd>A UNION can run in parallel only when all underlying subqueries
+are parallel-safe. Conversely enforcing parallel on any of
+the subqueries let a parallel-executable UNION run in
+parallel. Meanwhile, a parallel hint with zero workers makes a scan
+parallel-inexecutable.</dd>
 
 <h3>Setting pg_hint_plan parameters by Set hints</h3>
 <dd><p>pg_hint_plan paramters change the behavior of itself so some parameters doesn't work as expected.</p>
