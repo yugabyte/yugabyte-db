@@ -136,6 +136,27 @@ Status HostPort::ParseString(const string& str, uint16_t default_port) {
   return Status::OK();
 }
 
+namespace {
+const string getaddrinfo_rc_to_string(int rc) {
+  const char* s = nullptr;
+  switch (rc) {
+    case EAI_ADDRFAMILY: s = "EAI_ADDRFAMILY"; break;
+    case EAI_AGAIN: s = "EAI_AGAIN"; break;
+    case EAI_BADFLAGS: s = "EAI_BADFLAGS"; break;
+    case EAI_FAIL: s = "EAI_FAIL"; break;
+    case EAI_FAMILY: s = "EAI_FAMILY"; break;
+    case EAI_MEMORY: s = "EAI_MEMORY"; break;
+    case EAI_NODATA: s = "EAI_NODATA"; break;
+    case EAI_NONAME: s = "EAI_NONAME"; break;
+    case EAI_SERVICE: s = "EAI_SERVICE"; break;
+    case EAI_SOCKTYPE: s = "EAI_SOCKTYPE"; break;
+    case EAI_SYSTEM: s = "EAI_SYSTEM"; break;
+    default: s = "UNKNOWN";
+  }
+  return Substitute("$0 ($1)", rc, s);
+}
+}  // namespace
+
 Status HostPort::ResolveAddresses(vector<Sockaddr>* addresses) const {
   TRACE_EVENT1("net", "HostPort::ResolveAddresses",
                "host", host_);
@@ -151,7 +172,9 @@ Status HostPort::ResolveAddresses(vector<Sockaddr>* addresses) const {
   }
   if (rc != 0) {
     return STATUS(NetworkError,
-      StringPrintf("Unable to resolve address '%s'", host_.c_str()),
+      StringPrintf("Unable to resolve address '%s', getaddrinfo returned %s",
+                   host_.c_str(),
+                   getaddrinfo_rc_to_string(rc).c_str()),
       gai_strerror(rc));
   }
   gscoped_ptr<addrinfo, AddrinfoDeleter> scoped_res(res);
@@ -253,7 +276,10 @@ Status GetFQDN(string* hostname) {
     TRACE_EVENT0("net", "getaddrinfo");
     int rc = getaddrinfo(hostname->c_str(), nullptr, &hints, &result);
     if (rc != 0) {
-      return STATUS(NetworkError, "Unable to lookup FQDN", ErrnoToString(errno), errno);
+      return STATUS(NetworkError,
+                    Substitute("Unable to lookup FQDN, getaddrinfo returned $0",
+                               getaddrinfo_rc_to_string(rc)),
+                    ErrnoToString(errno), errno);
     }
   }
 
