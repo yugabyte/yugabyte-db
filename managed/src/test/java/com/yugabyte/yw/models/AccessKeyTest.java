@@ -2,16 +2,19 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
+import play.libs.Json;
 
 import javax.persistence.PersistenceException;
 
 import java.util.List;
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 
@@ -27,16 +30,20 @@ public class AccessKeyTest extends FakeDBApplication {
   @Test
   public void testValidCreate() {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    keyInfo.publicKey = "sample public key";
-    keyInfo.privateKey = "sample private key";
+    keyInfo.publicKey = "/path/to/public.key";
+    keyInfo.privateKey = "/path/to/private.key";
+    keyInfo.vaultFile = "/path/to/vault_file";
+    keyInfo.vaultPassword = "/path/to/vault_password";
 
     AccessKey ak = AccessKey.create(defaultProvider.uuid, "access-code1", keyInfo);
     assertNotNull(ak);
     assertThat(ak.getKeyCode(), allOf(notNullValue(), equalTo("access-code1")));
     assertThat(ak.getProviderUUID(), allOf(notNullValue(), equalTo(defaultProvider.uuid)));
-    keyInfo = ak.getKeyInfo();
-    assertThat(keyInfo.publicKey, allOf(notNullValue(), equalTo("sample public key")));
-    assertThat(keyInfo.privateKey, allOf(notNullValue(), equalTo("sample private key")));
+    JsonNode keyInfoJson = Json.toJson(ak.getKeyInfo());
+    assertValue(keyInfoJson, "publicKey", "/path/to/public.key");
+    assertValue(keyInfoJson, "privateKey", "/path/to/private.key");
+    assertValue(keyInfoJson, "vaultPassword", "/path/to/vault_password");
+    assertValue(keyInfoJson, "vaultFile", "/path/to/vault_file");
   }
 
   @Test

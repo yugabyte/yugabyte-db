@@ -25,9 +25,7 @@ import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -53,7 +51,8 @@ public class AccessManagerTest extends FakeDBApplication {
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> cloudCredentials;
 
-  static String TMP_KEYS_PATH = "/tmp/yugaware_tests";
+  static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
+  static String TMP_KEYS_PATH = TMP_STORAGE_PATH + "/keys";
 
   @BeforeClass
   public static void setUp() {
@@ -69,7 +68,7 @@ public class AccessManagerTest extends FakeDBApplication {
   @Before
   public void beforeTest() {
     defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
-    when(appConfig.getString("yb.keys.basePath")).thenReturn(TMP_KEYS_PATH);
+    when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
     command = ArgumentCaptor.forClass(ArrayList.class);
     cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
   }
@@ -90,22 +89,42 @@ public class AccessManagerTest extends FakeDBApplication {
     if (mimicError) {
       response.message = "{\"error\": \"Unknown Error\"}";
       response.code = 99;
+      when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
     } else {
-      if (commandType.equals("add-key")) {
-        response.message = "{\"public_key\": \"/path/to/public.key\"," +
-            "\"private_key\": \"/path/to/private.key\"}";
-      } else {
-        response.message = "{\"foo\": \"bar\"}";
-      }
       response.code = 0;
+      if (commandType.equals("add-key")) {
+        String tmpPrivateFile = TMP_KEYS_PATH + "/private.key";
+        createTempFile(tmpPrivateFile, "PRIVATE_KEY_FILE");
+        String tmpPublicFile = TMP_KEYS_PATH + "/public.key";
+        response.message = "{\"public_key\":\""+ tmpPublicFile + "\" ," +
+            "\"private_key\": \"" + tmpPrivateFile + "\"}";
+        // In case of add-key we make two calls via shellProcessHandler one to add the key,
+        // and other call to create a vault file for the keys generated.
+        ShellProcessHandler.ShellResponse response2 = new ShellProcessHandler.ShellResponse();
+        response2.code = 0;
+        response2.message = "{\"vault_file\": \"/path/to/vault_file\"," +
+            "\"vault_password\": \"/path/to/vault_password\"}";
+        when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response).thenReturn(response2);
+      } else {
+        if (commandType.equals("create-vault")) {
+          response.message = "{\"vault_file\": \"/path/to/vault_file\"," +
+              "\"vault_password\": \"/path/to/vault_password\"}";
+        } else {
+          response.message = "{\"foo\": \"bar\"}";
+        }
+        when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
+      }
     }
-    when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
+
     if (commandType.equals("add-key")) {
       return Json.toJson(accessManager.addKey(providerUUID, "foo"));
     } else if (commandType.equals("list-keys")) {
       return accessManager.listKeys(providerUUID);
     } else if (commandType.equals("list-regions")) {
       return accessManager.listRegions(providerUUID);
+    } else if (commandType.equals("create-vault")) {
+      String tmpPrivateFile = TMP_KEYS_PATH + "/vault-private.key";
+      return accessManager.createVault(providerUUID, tmpPrivateFile);
     }
     return null;
   }
@@ -117,16 +136,27 @@ public class AccessManagerTest extends FakeDBApplication {
   @Test
   public void testManageAddKeyCommandWithoutProviderConfig() {
     JsonNode json = runCommand(defaultProvider.uuid, "add-key", false);
-    Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
+    Mockito.verify(shellProcessHandler, times(2)).run((List<String>) command.capture(),
         (Map<String, String>) cloudCredentials.capture());
 
-    String commandStr = String.join(" ", command.getValue());
-    String expectedCmd = getBaseCommand(defaultProvider, "add-key") +
-        " --key_pair_name foo --key_file_path /tmp/yugaware_tests/" + defaultProvider.uuid;
-    assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertTrue(cloudCredentials.getValue().isEmpty());
-    assertValue(json, "publicKey", "/path/to/public.key");
-    assertValue(json, "privateKey", "/path/to/private.key");
+    List<String> expectedCommands = new ArrayList<>();
+    expectedCommands.add(getBaseCommand(defaultProvider, "add-key") +
+        " --key_pair_name foo --key_file_path " +  TMP_KEYS_PATH + "/" + defaultProvider.uuid);
+    expectedCommands.add(getBaseCommand(defaultProvider, "create-vault") +
+        " --private_key_file " + TMP_KEYS_PATH + "/private.key");
+
+    List<ArrayList> executedCommands = command.getAllValues();
+    for (int idx=0; idx < executedCommands.size(); idx++) {
+      String executedCommand = String.join(" ", executedCommands.get(idx));
+      assertThat(expectedCommands.get(idx), allOf(notNullValue(), equalTo(executedCommand)));
+    }
+    cloudCredentials.getAllValues().forEach((cloudCredential) -> {
+      assertTrue(cloudCredential.isEmpty());
+    });
+    assertValue(json, "publicKey", TMP_KEYS_PATH + "/public.key");
+    assertValue(json, "privateKey", TMP_KEYS_PATH + "/private.key");
+    assertValue(json, "vaultFile", "/path/to/vault_file");
+    assertValue(json, "vaultPassword", "/path/to/vault_password");
   }
 
   @Test
@@ -138,17 +168,26 @@ public class AccessManagerTest extends FakeDBApplication {
     defaultProvider.save();
 
     JsonNode json = runCommand(defaultProvider.uuid, "add-key", false);
-    Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
+    Mockito.verify(shellProcessHandler, times(2)).run((List<String>) command.capture(),
         (Map<String, String>) cloudCredentials.capture());
+    List<String> expectedCommands = new ArrayList<>();
+    expectedCommands.add(getBaseCommand(defaultProvider, "add-key") +
+        " --key_pair_name foo --key_file_path " + TMP_KEYS_PATH + "/" + defaultProvider.uuid);
+    expectedCommands.add(getBaseCommand(defaultProvider, "create-vault") +
+        " --private_key_file " + TMP_KEYS_PATH + "/private.key");
 
-    String commandStr = String.join(" ", command.getValue());
-    String expectedCmd = getBaseCommand(defaultProvider, "add-key") +
-        " --key_pair_name foo --key_file_path /tmp/yugaware_tests/" + defaultProvider.uuid;
-
-    assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertEquals(config, cloudCredentials.getValue());
-    assertValue(json, "publicKey", "/path/to/public.key");
-    assertValue(json, "privateKey", "/path/to/private.key");
+    List<ArrayList> executedCommands = command.getAllValues();
+    for (int idx=0; idx < executedCommands.size(); idx++) {
+      String executedCommand = String.join(" ", executedCommands.get(idx));
+      assertThat(expectedCommands.get(idx), allOf(notNullValue(), equalTo(executedCommand)));
+    }
+    cloudCredentials.getAllValues().forEach((cloudCredential) -> {
+      assertEquals(config, cloudCredential);
+    });
+    assertValue(json, "publicKey", TMP_KEYS_PATH + "/public.key");
+    assertValue(json, "privateKey", TMP_KEYS_PATH + "/private.key");
+    assertValue(json, "vaultFile", "/path/to/vault_file");
+    assertValue(json, "vaultPassword", "/path/to/vault_password");
   }
 
   @Test
@@ -214,7 +253,7 @@ public class AccessManagerTest extends FakeDBApplication {
   @Test
   public void testManageUploadKeyFile() {
     JsonNode result = uploadKeyCommand(defaultProvider.uuid, false);
-    System.out.println(result);
+    assertValue(result, "privateKey", "test-key.pem");
   }
 
   @Test
@@ -227,17 +266,32 @@ public class AccessManagerTest extends FakeDBApplication {
     }
   }
 
-
   @Test
-  public void testInvalidKeysBasePath() {
-    when(appConfig.getString("yb.keys.basePath")).thenReturn(null);
-    Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
+  public void testCreateVaultWithInvalidFile() {
+    File file = new File(TMP_KEYS_PATH + "/vault-private.key");
+    file.delete();
     try {
-      runCommand(defaultProvider.uuid, "add-key", false);
+      runCommand(defaultProvider.uuid, "create-vault", false);
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(),
-          equalTo("yb.keys.basePath is null or doesn't exist.")));
+          equalTo("File " + TMP_KEYS_PATH + "/vault-private.key doesn't exists.")));
     }
+  }
+
+  @Test
+  public void testCreateVaultWithValidFile() {
+    createTempFile(TMP_KEYS_PATH + "/vault-private.key", "PRIVATE_KEY_FILE");
+    JsonNode result = runCommand(defaultProvider.uuid, "create-vault", false);
+    Mockito.verify(shellProcessHandler, times(1)).run(command.capture(),
+        cloudCredentials.capture());
+
+    String commandStr = String.join(" ", command.getValue());
+    String expectedCmd = getBaseCommand(defaultProvider, "create-vault") +
+        " --private_key_file " + TMP_KEYS_PATH + "/vault-private.key";
+    assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
+    assertTrue(cloudCredentials.getValue().isEmpty());
+    assertValue(result, "vault_file", "/path/to/vault_file");
+    assertValue(result, "vault_password", "/path/to/vault_password");
   }
 
   @Test
@@ -251,6 +305,17 @@ public class AccessManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(),
           equalTo("Unable to create key file path " + tmpFilePath)));
+    }
+  }
+
+  @Test
+  public void testInvalidKeysBasePath() {
+    when(appConfig.getString("yb.storage.path")).thenReturn("/foo");
+    Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
+    try {
+      runCommand(defaultProvider.uuid, "add-key", false);
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Key path /foo/keys doesn't exists.")));
     }
   }
 }
