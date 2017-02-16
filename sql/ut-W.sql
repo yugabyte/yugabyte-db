@@ -99,6 +99,9 @@ EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 -- we don't have parallel over index scans so far
 /*+Parallel(p1 8 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
+
+-- This hint doesn't turn on parallel, so the Parallel hint is ignored
+show max_parallel_workers_per_gather;
 /*+Parallel(p1 0 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 

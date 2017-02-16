@@ -3089,16 +3089,17 @@ find_parallel_hint(PlannerInfo *root, Index relid)
 	rel = root->simple_rel_array[relid];
 
 	/*
-	 * This function is called for any RelOptInfo or its inheritance parent if
-	 * any. If we are called from inheritance planner, the RelOptInfo for the
-	 * parent of target child relation is not set in the planner info.
-	 *
-	 * Otherwise we should check that the reloptinfo is base relation or
-	 * inheritance children.
+	 * Parallel planning is appliable only on base relation, which has
+	 * RelOptInfo. 
 	 */
-	if (rel &&
-		rel->reloptkind != RELOPT_BASEREL &&
-		rel->reloptkind != RELOPT_OTHER_MEMBER_REL)
+	if (!rel)
+		return NULL;
+
+	/*
+	 * We have set root->glob->parallelModeOK if needed. What we should do here
+	 * is just following the decision of planner.
+	 */
+	if (!rel->consider_parallel)
 		return NULL;
 
 	/*
@@ -3106,11 +3107,6 @@ find_parallel_hint(PlannerInfo *root, Index relid)
 	 */
 	rte = root->simple_rte_array[relid];
 	Assert(rte);
-
-	/* We don't hint on other than relation and foreign tables */
-	if (rte->rtekind != RTE_RELATION ||
-		rte->relkind == RELKIND_FOREIGN_TABLE)
-		return NULL;
 
 	/* Find parallel method hint, which matches given names, from the list. */
 	for (i = 0; i < current_hint_state->num_hints[HINT_TYPE_PARALLEL]; i++)

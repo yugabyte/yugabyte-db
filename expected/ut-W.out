@@ -568,13 +568,20 @@ error hint:
                ->  Seq Scan on p2_c3_c2
 (23 rows)
 
+-- This hint doesn't turn on parallel, so the Parallel hint is ignored
+show max_parallel_workers_per_gather;
+ max_parallel_workers_per_gather 
+---------------------------------
+ 0
+(1 row)
+
 /*+Parallel(p1 0 hard) IndexScan(p1) */
 EXPLAIN (COSTS false) SELECT * FROM p1 join p2 on p1.id = p2.id;
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p1)
-Parallel(p1 0 hard)
 not used hint:
+Parallel(p1 0 hard)
 duplication hint:
 error hint:
 
