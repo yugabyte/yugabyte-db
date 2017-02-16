@@ -114,6 +114,7 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     OnPremFormData.CloudData description = formData.get().description;
+    LOG.info(Json.stringify(Json.toJson(formData.get())));
     if (description != null) {
       if (description.instanceTypes != null) {
         for (OnPremFormData.InstanceTypeData i : description.instanceTypes) {
@@ -152,7 +153,7 @@ public class CloudProviderController extends AuthenticatedController {
               AvailabilityZone zone = AvailabilityZone.getByCode(z.code);
               if (zone == null) {
                 // TODO: zone name vs node?
-                AvailabilityZone.create(
+                zone = AvailabilityZone.create(
                     region,
                     z.code, // code
                     z.code, // name
