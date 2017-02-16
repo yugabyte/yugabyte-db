@@ -48,7 +48,7 @@ READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
 HOME_DIR = os.path.expanduser('~')
 LINUXBREW_HOME = os.path.join(HOME_DIR, '.linuxbrew-yb-build')
 PATCHELF_PATH = path_join(LINUXBREW_HOME, 'bin', 'patchelf')
-LDD_PATH = path_join(LINUXBREW_HOME, 'bin', 'ldd')
+LINUXBREW_LDD_PATH = path_join(LINUXBREW_HOME, 'bin', 'ldd')
 
 PATCHELF_NOT_AN_ELF_EXECUTABLE = 'not an ELF executable'
 
@@ -73,12 +73,6 @@ class Dependency:
 
     def __str__(self):
         return "Dependency({}, {})".format(repr(self.name), repr(self.target))
-
-    def is_system(self):
-        for d in ['/usr/lib', '/usr/lib64', '/lib', '/lib64']:
-            if self.target.startswith(d + '/'):
-                return True
-        return False
 
     def as_metadata(self):
         """
@@ -127,16 +121,6 @@ def normalize_path_for_metadata(path):
     return path
 
 
-def should_keep_system_dependency(file_path):
-    """
-    Determines whether we should keep a dependency on a system library. Some libraries cannot be
-    safely relocated to another directory, e.g. because they have hidden depedencies loaded at
-    runtime.
-    """
-    name = path_basename(file_path)
-    return name.startswith('libsasl2.')
-
-
 def find_elf_dependencies(elf_file_path):
     """
     Run ldd on the given ELF file and find libraries that it depends on. Also run patchelf and get
@@ -145,7 +129,11 @@ def find_elf_dependencies(elf_file_path):
     @param elf_file_path: ELF file (executable/library) path
     """
 
-    ldd_result = run_program([LDD_PATH, elf_file_path], error_ok=True)
+    if elf_file_path.startswith('/usr/') or elf_file_path.startswith('/lib64/'):
+        ldd_path = '/usr/bin/ldd'
+    else:
+        ldd_path = LINUXBREW_LDD_PATH
+    ldd_result = run_program([ldd_path, elf_file_path], error_ok=True)
     dependencies = set()
     if ldd_result.returncode != 0:
         # Interestingly, the below error message is printed to stdout, not stderr.
@@ -160,10 +148,7 @@ def find_elf_dependencies(elf_file_path):
         if m:
             lib_name = m.group(1)
             lib_resolved_path = realpath(m.group(2))
-            if should_keep_system_dependency(lib_resolved_path):
-                logging.debug("Not packaging system library: {}".format(lib_resolved_path))
-            else:
-                dependencies.add(Dependency(lib_name, lib_resolved_path))
+            dependencies.add(Dependency(lib_name, lib_resolved_path))
 
         tokens = ldd_output_line.split()
         if len(tokens) >= 4 and tokens[1:4] == ['=>', 'not', 'found']:
@@ -174,6 +159,16 @@ def find_elf_dependencies(elf_file_path):
         # If we matched neither RESOLVED_DEP_RE or the "not found" case, that is still fine,
         # e.g. there could be a line of the following form in the ldd output:
         #   linux-vdso.so.1 =>  (0x00007ffc0f9d2000)
+
+    if path_basename(elf_file_path).startswith('libsasl2.so'):
+        dependencies.add(Dependency('libdb.so',
+                                    path_join(path_dirname(elf_file_path), 'libdb.so')))
+        sasl_plugin_dir = '/usr/lib64/sasl2'
+        for sasl_lib_name in os.listdir(sasl_plugin_dir):
+            if sasl_lib_name.endswith('.so'):
+                dependencies.add(
+                        Dependency(sasl_lib_name,
+                                   realpath(path_join(sasl_plugin_dir, sasl_lib_name))))
 
     return dependencies
 
@@ -240,6 +235,9 @@ class GraphNode:
             self.needed_by.append(needed_by)
             self.needed_by_digests.add(needed_by.digest)
 
+    def basename(self):
+        return path_basename(self.path)
+
     def lib_link_dir_name_prefix(self):
         """
         Get a prefix to be used for the directory name in "lib" that would countain symlinks to
@@ -299,6 +297,8 @@ class LibraryPackager:
 
     def __init__(self, build_dir, seed_executable_patterns, dest_dir):
         self.build_dir = build_dir
+        if not os.path.exists(build_dir):
+            raise IOError("Build directory '{}' does not exist".format(build_dir))
         self.seed_executable_patterns = seed_executable_patterns
         self.dest_dir = dest_dir
         logging.debug(
@@ -389,6 +389,7 @@ class LibraryPackager:
 
         mkpath(path_join(self.dest_dir, 'bin'))
         dest_lib_dir = path_join(self.dest_dir, 'lib')
+        dest_bin_dir = path_join(self.dest_dir, 'bin')
         for node in nodes:
             target_dir_basename = node.lib_link_dir_name_prefix()
             if need_short_digest:
@@ -400,7 +401,7 @@ class LibraryPackager:
             node.target_dir = path_join(dest_lib_dir, target_dir_basename)
             node_basename = path_basename(node.path)
             if node.is_executable:
-                node.target_path = path_join(self.dest_dir, 'bin', node_basename)
+                node.target_path = path_join(dest_bin_dir, node_basename)
             else:
                 node.target_path = path_join(node.target_dir, node_basename)
             mkpath(node.target_dir)
@@ -413,7 +414,7 @@ class LibraryPackager:
 
         # Symlink the dynamic linker into an easy-to-find location inside lib.
         ld_node = self.find_existing_node_by_path(ld_path)
-        ld_symlink_path = path_join(self.dest_dir, 'lib', 'ld.so')
+        ld_symlink_path = path_join(dest_lib_dir, 'ld.so')
         create_rel_symlink(ld_node.target_path, ld_symlink_path)
 
         patchelf_node = self.find_existing_node_by_path(PATCHELF_PATH)
@@ -442,9 +443,6 @@ class LibraryPackager:
                 if target_dir_rel_path.startswith('./'):
                     target_dir_rel_path = target_dir_rel_path[2:]
                 new_rpath += '/' + target_dir_rel_path
-            # We also need to add /usr/lib64 so that the system version of libsasl could be found at
-            # runtime.
-            new_rpath += ':/usr/lib64'
 
             logging.debug("Setting RPATH of '{}' to '{}'".format(node.target_path, new_rpath))
 
@@ -468,6 +466,12 @@ class LibraryPackager:
             # Use the Linuxbrew dynamic linker for all files.
             run_patchelf('--set-interpreter', ld_symlink_path, node.target_path)
 
+        # Create symlinks from the "lib" directory to the "libdb" library. We add the "lib"
+        # directory to LD_LIBRARY_PATH, and this makes sure dlopen finds correct library
+        # dependencies when it is invoked by libsasl2.
+        for node in nodes:
+            if node.basename().startswith('libdb-'):
+                create_rel_symlink(node.target_path, path_join(dest_lib_dir, node.basename()))
         logging.info("Successfully generated a YB distribution at {}".format(self.dest_dir))
 
 
