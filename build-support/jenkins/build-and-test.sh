@@ -203,7 +203,7 @@ if [ -d "$TOOLCHAIN_DIR" ]; then
 fi
 
 log "Starting third-party dependency build"
-time thirdparty/build-if-necessary.sh
+time thirdparty/build-thirdparty.sh
 log "Third-party dependency build finished (see timing information above)"
 
 THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin

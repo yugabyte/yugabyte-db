@@ -821,6 +821,28 @@ detect_num_cpus() {
   fi
 }
 
+run_sha256sum_on_mac() {
+  shasum --portable --algorithm 256 "$@"
+}
+
+verify_sha256sum() {
+  if [[ $OSTYPE =~ darwin ]]; then
+    run_sha256sum_on_mac "$@"
+  else
+    sha256sum --quiet "$@"
+  fi
+}
+
+compute_sha256sum() {
+  (
+    if [[ $OSTYPE =~ darwin ]]; then
+      run_sha256sum_on_mac "$@"
+    else
+      sha256sum "$@"
+    fi
+  ) | awk '{print $1}'
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

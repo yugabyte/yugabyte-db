@@ -58,7 +58,6 @@ target_link_libraries(master
   tserver_service_proto
   master_proto
   rpc_header_proto
-  dl
   master_util)
 
 set(MASTER_RPC_SRCS

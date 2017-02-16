@@ -1,7 +1,9 @@
 # Copyright (c) YugaByte, Inc.
 
-set(CMAKE_PREFIX_PATH "/usr/local/opt/flex" ${CMAKE_PREFIX_PATH})
-set(CMAKE_PREFIX_PATH "/usr/local/opt/bison" ${CMAKE_PREFIX_PATH})
+if (APPLE)
+  set(CMAKE_PREFIX_PATH "/usr/local/opt/flex" ${CMAKE_PREFIX_PATH})
+  set(CMAKE_PREFIX_PATH "/usr/local/opt/bison" ${CMAKE_PREFIX_PATH})
+endif()
 
 find_package(BISON)
 find_package(FLEX)

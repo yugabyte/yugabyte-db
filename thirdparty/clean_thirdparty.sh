@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-. "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
+. "${BASH_SOURCE%/*}/thirdparty-common.sh"
 
 cd "$YB_THIRDPARTY_DIR"
 

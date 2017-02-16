@@ -99,7 +99,7 @@ if [ -f "$TOOLCHAIN" ]; then
 fi
 
 # Build thirdparty
-$ROOT/build-support/enable_devtoolset.sh $ROOT/thirdparty/build-if-necessary.sh
+$ROOT/build-support/enable_devtoolset.sh $ROOT/thirdparty/build-thirdparty.sh
 
 # PATH=<thirdparty_stuff>:<toolchain_stuff>:$PATH
 THIRDPARTY_BIN=$(pwd)/thirdparty/installed/bin

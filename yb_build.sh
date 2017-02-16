@@ -31,7 +31,7 @@ Options:
     Do not use ccache. Useful when debugging build scripts or compiler/linker options.
   --clang
     Use the clang C/C++ compiler.
-  --skip-java-build, --skip-java, --sj
+  --skip-java-build, --skip-java, --sjb, --sj
     Do not package and install java source code.
   --run-java-tests
     Run the java unit tests when build is enabled.
@@ -79,6 +79,8 @@ Options:
   --write-build-descriptor <build_descriptor_path>
     Write a "build descriptor" file. A "build descriptor" is a YAML file that provides information
     about the build root, compiler used, etc.
+  --force, -f, -y
+    Run a clean build without asking for confirmation even if a clean build was recently done.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -145,7 +147,7 @@ while [ $# -gt 0 ]; do
     --clean-thirdparty)
       clean_thirdparty=true
     ;;
-    -f|--force)
+    -f|--force|-y)
       force=true
     ;;
     --rocksdb-only)
@@ -160,7 +162,7 @@ while [ $# -gt 0 ]; do
     --clang)
       YB_COMPILER_TYPE="clang"
     ;;
-    --skip-java-build|--skip-java|--sj)
+    --skip-java-build|--skip-java|--sjb|--sj)
       build_java=false
     ;;
     --run-java-tests)

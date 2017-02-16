@@ -54,7 +54,6 @@ target_link_libraries(yb-redis
 add_executable(yb-redisserver redis_server_main.cc)
 target_link_libraries(yb-redisserver
   yb-redis
-  dl
   ${YB_BASE_LIBS})
 
 # Tests

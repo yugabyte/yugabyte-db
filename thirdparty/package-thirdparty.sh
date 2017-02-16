@@ -8,7 +8,7 @@
 # TODO: also enable "set -u" to disallow using undefined variables.
 set -eo pipefail
 
-. "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
+. "${BASH_SOURCE%/*}/thirdparty-common.sh"
 
 DEFAULT_DEST_DIR=/tmp/package-thirdparty
 

@@ -339,11 +339,14 @@ set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
 # Make sure thirdparty stuff is up-to-date.
 if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
   execute_process(
-    COMMAND ${YB_THIRDPARTY_DIR}/build-if-necessary.sh
+    COMMAND ${YB_THIRDPARTY_DIR}/build-thirdparty.sh
     RESULT_VARIABLE THIRDPARTY_SCRIPT_RESULT)
   if (NOT (${THIRDPARTY_SCRIPT_RESULT} EQUAL 0))
     message(FATAL_ERROR "Thirdparty was built unsuccessfully, terminating.")
   endif()
+else()
+  message("The NO_REBUILD_THIRDPARTY environment variable is non-empty, skipping the third-party"
+          "build")
 endif()
 
 # Generate a Clang compile_commands.json "compilation database" file for use

@@ -244,8 +244,7 @@ target_link_libraries(yb_test_main
   glog
   gmock
   yb_util
-  yb_test_util
-  dl)
+  yb_test_util)
 
 if(NOT APPLE)
   target_link_libraries(yb_test_main

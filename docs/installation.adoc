@@ -241,11 +241,11 @@ $ git clone https://github.com/cloudera/kudu
 $ cd kudu
 ----
 
-. Build any missing third-party requirements using the `build-if-necessary.sh` script.
+. Build any missing third-party requirements using the `build-thirdparty.sh` script.
 +
 [source,bash]
 ----
-$ build-support/enable_devtoolset.sh thirdparty/build-if-necessary.sh
+$ build-support/enable_devtoolset.sh thirdparty/build-thirdparty.sh
 ----
 
 . Build Kudu, using the utilities installed in the previous step. Choose a build
@@ -298,7 +298,7 @@ wget ${DTLS_RPM_URL} -O ${DTLS_RPM}
 sudo yum install -y scl-utils ${DTLS_RPM}
 sudo yum install -y devtoolset-3-toolchain
 cd kudu
-build-support/enable_devtoolset.sh thirdparty/build-if-necessary.sh
+build-support/enable_devtoolset.sh thirdparty/build-thirdparty.sh
 mkdir -p build/release
 cd build/release
 ../../build-support/enable_devtoolset.sh \
@@ -334,11 +334,11 @@ $ git clone https://github.com/cloudera/kudu
 $ cd kudu
 ----
 
-. Build any missing third-party requirements using the `build-if-necessary.sh` script.
+. Build any missing third-party requirements using the `build-thirdparty.sh` script.
 +
 [source,bash]
 ----
-$ thirdparty/build-if-necessary.sh
+$ thirdparty/build-thirdparty.sh
 ----
 
 . Build Kudu, using the utilities installed in the previous step. Choose a build
@@ -384,7 +384,7 @@ sudo apt-get -y install git autoconf automake libboost-thread-dev \
   libtool ntp patch pkg-config make rsync unzip vim-common gdb python
 git clone https://github.com/cloudera/kudu
 cd kudu
-thirdparty/build-if-necessary.sh
+thirdparty/build-thirdparty.sh
 mkdir -p build/release
 cd build/release
 ../../thirdparty/installed/bin/cmake \
@@ -429,11 +429,11 @@ $ git clone https://github.com/cloudera/kudu
 $ cd kudu
 ----
 
-. Build any missing third-party requirements using the `build-if-necessary.sh` script.
+. Build any missing third-party requirements using the `build-thirdparty.sh` script.
 +
 [source,bash]
 ----
-$ thirdparty/build-if-necessary.sh
+$ thirdparty/build-thirdparty.sh
 ----
 
 . Build Kudu, using the utilities installed in the previous step. Choose a build
@@ -480,7 +480,7 @@ pushd boost_1_59_0
 popd
 git clone https://github.com/cloudera/kudu
 cd kudu
-thirdparty/build-if-necessary.sh
+thirdparty/build-thirdparty.sh
 mkdir -p build/release
 cd build/release
 BOOST_ROOT=../../boost_1_59_0 \
@@ -520,11 +520,11 @@ $ git clone https://github.com/cloudera/kudu
 $ cd kudu
 ----
 
-. Build any missing third-party requirements using the `build-if-necessary.sh` script.
+. Build any missing third-party requirements using the `build-thirdparty.sh` script.
 +
 [source,bash]
 ----
-$ thirdparty/build-if-necessary.sh
+$ thirdparty/build-thirdparty.sh
 ----
 
 . Build Kudu. Choose a build directory for the intermediate output, which can be
@@ -550,7 +550,7 @@ are installed.
 brew install autoconf automake cmake libtool pkg-config boost pstree
 git clone https://github.com/cloudera/kudu
 cd kudu
-thirdparty/build-if-necessary.sh
+thirdparty/build-thirdparty.sh
 mkdir -p build/release
 cd build/release
 ../../thirdparty/installed/bin/cmake -DCMAKE_BUILD_TYPE=release ../..

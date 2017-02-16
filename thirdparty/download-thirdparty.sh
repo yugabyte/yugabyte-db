@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-. "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
+. "${BASH_SOURCE%/*}/thirdparty-common.sh"
 
 EXPECTED_CHECKSUM_FILE=$YB_THIRDPARTY_DIR/thirdparty_src_checksums.txt
 
@@ -55,14 +55,6 @@ delete_if_wrong_patchlevel() {
   fi
 }
 
-run_checksum() {
-  if [[ $OSTYPE =~ darwin ]]; then
-    shasum --portable --algorithm 256 "$@"
-  else
-    sha256sum --quiet "$@"
-  fi
-}
-
 fetch_and_expand() {
   local FILENAME=$1
   if [ -z "$FILENAME" ]; then
@@ -79,7 +71,7 @@ fetch_and_expand() {
   mkdir -p "$TP_DOWNLOAD_DIR"
   pushd "$TP_DOWNLOAD_DIR"
   if [[ -f $FILENAME ]] && \
-     run_checksum --check <( echo "$expected_checksum  $FILENAME" ); then
+    run_sha256sum --check <( echo "$expected_checksum  $FILENAME" ); then
     log "No need to re-download $FILENAME: checksum already correct"
   else
     log "Fetching $FILENAME"
@@ -168,8 +160,6 @@ fi
 
 cd "$TP_DIR"
 
-. "$SCRIPT_DIR/vars.sh"
-
 GLOG_PATCHLEVEL=1
 delete_if_wrong_patchlevel "$GLOG_DIR" "$GLOG_PATCHLEVEL"
 
@@ -221,10 +211,6 @@ if [ ! -d "$PROTOBUF_DIR" ]; then
     run_autoreconf -fvi
     popd
   fi
-fi
-
-if [ ! -d "$CMAKE_DIR" ]; then
-  fetch_and_expand cmake-${CMAKE_VERSION}.tar.gz
 fi
 
 SNAPPY_PATCHLEVEL=1

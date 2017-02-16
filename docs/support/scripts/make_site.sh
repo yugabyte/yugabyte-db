@@ -33,7 +33,7 @@ set -x
 cd "$SOURCE_ROOT"
 
 # Build Kudu thirdparty
-$SOURCE_ROOT/build-support/enable_devtoolset.sh $SOURCE_ROOT/thirdparty/build-if-necessary.sh
+$SOURCE_ROOT/build-support/enable_devtoolset.sh $SOURCE_ROOT/thirdparty/build-thirdparty.sh
 echo "Successfully built third-party dependencies."
 
 # Build the binaries so we can auto-generate the command-line references

@@ -57,7 +57,7 @@
 
 set -euo pipefail
 
-. "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
+. "${BASH_SOURCE%/*}/thirdparty-common.sh"
 
 set_install_prefix_type() {
   install_prefix_type=$1
@@ -82,29 +82,40 @@ set_install_prefix_type() {
 # Runs the given command while printing the "[<function_name>] " prefix before every line of output.
 # This way we know that we're building a particular component by seeing e.g. "[build_protobuf]" in
 # or "[build_protobuf TSAN]" at the beginning of each line.
-wrap_build_output() {
+do_build_if_necessary() {
   if [[ -z ${install_prefix_type:-} ]]; then
     fatal "install_prefix_type unset"
   fi
 
-  local args=( "$@" )
-  local build_func=${args[0]}
+  local component_name=$1
+  shift
+  local build_func=build_$component_name
+  local cmd_line=( "$build_func" "$@" )
+
+  local should_rebuild_component_rv
+  should_rebuild_component "$component_name"
+  if "$should_rebuild_component_rv"; then
+    log_empty_line
+    echo >&2 -e "$YELLOW_COLOR$HORIZONTAL_LINE$NO_COLOR"
+    echo >&2 -e "$YELLOW_COLOR" "Running $build_func ($install_prefix_type)$NO_COLOR"
+    echo >&2 -e "$YELLOW_COLOR$HORIZONTAL_LINE$NO_COLOR"
+    log_empty_line
+    log "CC=${CC:-unset}"
+    log "CXX=${CXX:-unset}"
+    export CC
+    export CXX
+    # output_line does not need to be declared as local because it only exists in
+    # a subshell.
+    time (
+      "${cmd_line[@]}" 2>&1 | while read output_line; do
+        echo -e "$CYAN_COLOR[$build_func ($install_prefix_type)]$NO_COLOR $output_line"
+      done
+    )
+    save_build_stamp_for_component "$component_name"
+  fi
   log_empty_line
-  echo >&2 -e "$YELLOW_COLOR$HORIZONTAL_LINE$NO_COLOR"
-  echo >&2 -e "$YELLOW_COLOR" "Running $build_func ($install_prefix_type)$NO_COLOR"
-  echo >&2 -e "$YELLOW_COLOR$HORIZONTAL_LINE$NO_COLOR"
+  log "Finished building (or checking whether to build) $component_name ($install_prefix_type)"
   log_empty_line
-  log "CC=${CC:-unset}"
-  log "CXX=${CXX:-unset}"
-  export CC
-  export CXX
-  # output_line does not need to be declared as local because it only exists in
-  # a subshell.
-  time (
-    "${args[@]}" 2>&1 | while read output_line; do
-      echo -e "$CYAN_COLOR[$build_func ($install_prefix_type)]$NO_COLOR $output_line"
-    done
-  )
 }
 
 set_compiler_on_mac() {
@@ -252,8 +263,6 @@ fi
 
 TP_DIR=$(cd "$( dirname "$BASH_SOURCE" )" && pwd)
 
-source "$TP_DIR/vars.sh"
-source "$TP_DIR/build-definitions.sh"
 source "$TP_DIR/thirdparty-packaging-common.sh"
 
 set_compiler gcc
@@ -454,8 +463,8 @@ export PATH=$PREFIX/bin:$PATH
 # Allow building TSAN libraries only when debugging issues with thirdparty build.
 if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
   if is_linux; then
-    if [[ -n "$F_ALL" || -n "$F_LLVM" ]]; then
-      wrap_build_output build_llvm normal
+    if [[ -n "$F_ALL" || -n "$F_LLVM" ]] && [ -z ${YB_NO_BUILD_LLVM:-} ]; then
+      do_build_if_necessary llvm normal
     fi
   fi
 
@@ -467,53 +476,53 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
   EXTRA_CXXFLAGS="-g $EXTRA_CXXFLAGS"
 
   if is_linux && [ -n "$F_ALL" -o -n "$F_LIBUNWIND" ]; then
-    wrap_build_output build_libunwind
+    do_build_if_necessary libunwind
   fi
 
   if [ -n "$F_ALL" -o -n "$F_ZLIB" ]; then
-    wrap_build_output build_zlib
+    do_build_if_necessary zlib
   fi
 
   if [ -n "$F_ALL" -o -n "$F_LZ4" ]; then
-    wrap_build_output build_lz4
+    do_build_if_necessary lz4
   fi
 
   if [ -n "$F_ALL" -o -n "$F_BITSHUFFLE" ]; then
-    wrap_build_output build_bitshuffle
+    do_build_if_necessary bitshuffle
   fi
 
   if [ -n "$F_ALL" -o -n "$F_LIBEV" ]; then
-    wrap_build_output build_libev
+    do_build_if_necessary libev
   fi
 
   if [ -n "$F_ALL" -o -n "$F_RAPIDJSON" ]; then
-    wrap_build_output build_rapidjson
+    do_build_if_necessary rapidjson
   fi
 
   if [ -n "$F_ALL" -o -n "$F_SQUEASEL" ]; then
-    wrap_build_output build_squeasel
+    do_build_if_necessary squeasel
   fi
 
   if [ -n "$F_ALL" -o -n "$F_CURL" ]; then
-    wrap_build_output build_curl
+    do_build_if_necessary curl
   fi
 
   build_boost_uuid
 
   if [ -n "$F_ALL" -o -n "$F_GSG" ]; then
-    wrap_build_output build_cpplint
+    do_build_if_necessary cpplint
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GCOVR" ]; then
-    wrap_build_output build_gcovr
+    do_build_if_necessary gcovr
   fi
 
   if [ -n "$F_ALL" -o -n "$F_TRACE_VIEWER" ]; then
-    wrap_build_output build_trace_viewer
+    do_build_if_necessary trace_viewer
   fi
 
   if is_linux && [ -n "$F_ALL" -o -n "$F_NVML" ]; then
-    wrap_build_output build_nvml
+    do_build_if_necessary nvml
   fi
 
   ### Build C++ dependencies
@@ -521,27 +530,27 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
   set_install_prefix_type uninstrumented
 
   if [ -n "$F_ALL" -o -n "$F_GFLAGS" ]; then
-    wrap_build_output build_gflags
+    do_build_if_necessary gflags
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GLOG" ]; then
-    wrap_build_output build_glog
+    do_build_if_necessary glog
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GPERFTOOLS" ]; then
-    wrap_build_output build_gperftools
+    do_build_if_necessary gperftools
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GMOCK" ]; then
-    wrap_build_output build_gmock
+    do_build_if_necessary gmock
   fi
 
   if [ -n "$F_ALL" -o -n "$F_PROTOBUF" ]; then
-    wrap_build_output build_protobuf
+    do_build_if_necessary protobuf
   fi
 
   if [ -n "$F_ALL" -o -n "$F_SNAPPY" ]; then
-    wrap_build_output build_snappy
+    do_build_if_necessary snappy
   fi
 
   if [ -n "$F_ALL" -o -n "$F_CRCUTIL" ]; then
@@ -550,7 +559,7 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
       EXTRA_CFLAGS+=" -mcrc32"
       EXTRA_CXXFLAGS+=" -mcrc32"
     fi
-    wrap_build_output build_crcutil
+    do_build_if_necessary crcutil
     restore_env
   fi
 
@@ -588,7 +597,7 @@ if [ -n "$F_TSAN" ]; then
     EXTRA_CFLAGS=
     EXTRA_CXXFLAGS=
     add_linuxbrew_flags
-    wrap_build_output build_libstdcxx
+    do_build_if_necessary libstdcxx
 
     # Build instrumented libstdxx
     set_install_prefix_type tsan
@@ -596,7 +605,7 @@ if [ -n "$F_TSAN" ]; then
     EXTRA_CFLAGS="-fsanitize=thread"
     EXTRA_CXXFLAGS="-fsanitize=thread"
     add_linuxbrew_flags
-    wrap_build_output build_libstdcxx
+    do_build_if_necessary libstdcxx
 
     restore_env
   fi
@@ -608,7 +617,7 @@ if [ -n "$F_TSAN" ]; then
   set_tsan_build_flags instrumented
 
   if [ -n "$F_ALL" -o -n "$F_PROTOBUF" ]; then
-    wrap_build_output build_protobuf
+    do_build_if_necessary protobuf
   fi
   restore_env
 
@@ -619,27 +628,27 @@ if [ -n "$F_TSAN" ]; then
   set_tsan_build_flags uninstrumented
 
   if [ -n "$F_ALL" -o -n "$F_GFLAGS" ]; then
-    wrap_build_output build_gflags
+    do_build_if_necessary gflags
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GLOG" ]; then
-    wrap_build_output build_glog
+    do_build_if_necessary glog
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GPERFTOOLS" ]; then
-    wrap_build_output build_gperftools
+    do_build_if_necessary gperftools
   fi
 
   if [ -n "$F_ALL" -o -n "$F_GMOCK" ]; then
-    wrap_build_output build_gmock
+    do_build_if_necessary gmock
   fi
 
   if [ -n "$F_ALL" -o -n "$F_SNAPPY" ]; then
-    wrap_build_output build_snappy
+    do_build_if_necessary snappy
   fi
 
   if [ -n "$F_ALL" -o -n "$F_CRCUTIL" ]; then
-    wrap_build_output build_crcutil
+    do_build_if_necessary crcutil
   fi
 
   heading "Finished building dependencies with TSAN"

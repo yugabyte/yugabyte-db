@@ -24,19 +24,25 @@ treat_warning_pattern_as_error() {
   fi
 }
 
+# The return value is assigned to the determine_compiler_cmdline_rv variable, which should be made
+# local by the caller.
 determine_compiler_cmdline() {
   local compiler_cmdline
+  determine_compiler_cmdline_rv=""
   if [[ -f ${stderr_path:-} ]]; then
     compiler_cmdline=$( head -1 "$stderr_path" | sed 's/^[+] //; s/\n$//' )
   else
-    echo "echo 'Failed to determine compiler command line: file $stderr_path does not exist.'"
-    return
+    log "Failed to determine compiler command line: file '$stderr_path' does not exist."
+    return 1
   fi
   # Create a command line that can be copied and pasted.
   # As part of that, replace the ccache invocation with the actual compiler executable.
+  if using_linuxbrew; then
+    compiler_cmdline="PATH=$YB_LINUXBREW_DIR/bin:\$PATH $compiler_cmdline"
+  fi
   compiler_cmdline="&& $compiler_cmdline"
-  compiler_cmdline=${compiler_cmdline//&& ccache compiler/&& $compiler_executable}
-  echo "cd \"$PWD\" $compiler_cmdline"
+  compiler_cmdline=${compiler_cmdline// ccache compiler/ $compiler_executable}
+  determine_compiler_cmdline_rv="cd \"$PWD\" $compiler_cmdline"
 }
 
 show_compiler_command_line() {
@@ -53,7 +59,10 @@ show_compiler_command_line() {
     return
   fi
 
-  local compiler_cmdline=$( determine_compiler_cmdline )
+  local determine_compiler_cmdline_rv
+  determine_compiler_cmdline
+  local compiler_cmdline=$determine_compiler_cmdline_rv
+
   local prefix=$1
   local suffix=${2:-}
 
@@ -273,6 +282,7 @@ if [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
   exit
 fi
 
+compiler_exit_code=UNKNOWN
 trap exit_handler EXIT
 
 set +e
@@ -313,7 +323,8 @@ if [[ $compiler_exit_code -ne 0 ]]; then
   if egrep 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
        "$stderr_path" >/dev/null || \
      egrep 'error: ld returned' "$stderr_path" >/dev/null; then
-    generate_build_debug_script rerun_failed_link_step "$( determine_compiler_cmdline ) -v"
+    determine_compiler_cmdline
+    generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
   fi
 
   if egrep ': undefined reference to ' "$stderr_path" >/dev/null; then

@@ -73,6 +73,8 @@ BASE_DIR=""
 LOGDIR=""
 OUTDIR=""
 
+TAB_LITERAL=$'\t'
+
 ################################################################
 # Functions
 ################################################################
@@ -101,7 +103,7 @@ record_result() {
   else
     local STATS_FILE="$OUTDIR/$LOCAL_STATS_BASE-$TEST_NAME.tsv"
     # Note: literal tabs in below string.
-    echo "${TEST_NAME}	${VALUE}	${BUILD_IDENTIFIER}" >> "$STATS_FILE"
+    echo "${TEST_NAME}${TAB_LITERAL}${VALUE}${TAB_LITERAL}${BUILD_IDENTIFIER}" >> "$STATS_FILE"
   fi
 }
 
@@ -115,7 +117,7 @@ load_stats() {
     local TEST_NAME=$(echo $TEST_NAME | perl -pe 's/%/*/g')
     local STATS_FILES=$(ls $OUTDIR/$LOCAL_STATS_BASE-$TEST_NAME.tsv)
     # Note: literal tabs in below string.
-    echo "workload	runtime	build_number"
+    echo "workload${TAB_LITERAL}runtime${TAB_LITERAL}build_number"
     for f in $STATS_FILES; do
       cat $f
     done
@@ -145,7 +147,7 @@ build_yb() {
   fi
 
   # Build thirdparty
-  $BASE_DIR/build-support/enable_devtoolset.sh thirdparty/build-if-necessary.sh
+  $BASE_DIR/build-support/enable_devtoolset.sh thirdparty/build-thirdparty.sh
 
   # PATH=<thirdparty_stuff>:<toolchain_stuff>:$PATH
   THIRDPARTY_BIN=$BASE_DIR/thirdparty/installed/bin
