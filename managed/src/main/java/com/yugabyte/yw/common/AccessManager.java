@@ -18,10 +18,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
-import java.util.Map;
 
 @Singleton
 public class AccessManager {
@@ -53,13 +51,13 @@ public class AccessManager {
     }
 
     private String getKeyFilePath(UUID providerUUID) {
-        String keyBasePathName = appConfig.getString("yb.keys.basePath");
-
-        if (keyBasePathName == null || ! new File(keyBasePathName).exists()) {
-            throw new RuntimeException("yb.keys.basePath is null or doesn't exist.");
+        File keyBasePathName = new File(appConfig.getString("yb.storage.path"), "/keys");
+        if (!keyBasePathName.exists() && !keyBasePathName.mkdirs()) {
+            throw new RuntimeException("Key path " +
+                keyBasePathName.getAbsolutePath() + " doesn't exists.");
         }
 
-        File keyFilePath = new File(keyBasePathName, providerUUID.toString());
+        File keyFilePath = new File(keyBasePathName.getAbsoluteFile(), providerUUID.toString());
         if (keyFilePath.isDirectory() || keyFilePath.mkdirs()) {
             return keyFilePath.getAbsolutePath();
         }
@@ -110,7 +108,7 @@ public class AccessManager {
 
     // This method would create a public/private key file and upload that to
     // the provider cloud account. And store the credentials file in the keyFilePath
-    // and return the file names.
+    // and return the file names. It will also create the vault file
     public AccessKey.KeyInfo addKey(UUID providerUUID, String keyCode) {
         List<String> command = new ArrayList<String>();
         String keyFilePath = getKeyFilePath(providerUUID);
@@ -128,13 +126,33 @@ public class AccessManager {
         AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
         keyInfo.publicKey = response.get("public_key").asText();
         keyInfo.privateKey = response.get("private_key").asText();
+
+        JsonNode vaultResponse = createVault(providerUUID, keyInfo.privateKey);
+        if (response.has("error")) {
+            throw new RuntimeException(response.get("error").asText());
+        }
+        keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
+        keyInfo.vaultPassword = vaultResponse.get("vault_password").asText();
         return keyInfo;
+    }
+
+    public JsonNode createVault(UUID providerUUID, String privateKeyFile) {
+        List<String> command = new ArrayList<String>();
+
+        if (!new File(privateKeyFile).exists()) {
+            throw new RuntimeException("File " + privateKeyFile + " doesn't exists.");
+        }
+        command.add("create-vault");
+        command.add("--private_key_file");
+        command.add(privateKeyFile);
+        return executeCommand(providerUUID, command);
     }
 
     public JsonNode listKeys(UUID providerUUID) {
         return executeCommand(providerUUID, ImmutableList.of("list-keys"));
     }
 
+    // TODO: Move this out of here..
     public JsonNode listRegions(UUID providerUUID) {
         return executeCommand(providerUUID, ImmutableList.of("list-regions"));
     }

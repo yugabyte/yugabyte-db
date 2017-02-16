@@ -31,9 +31,15 @@ public class AppInit {
 
     Configuration appConfig = application.configuration();
     String devopsHome = appConfig.getString("yb.devops.home");
+    String storagePath = appConfig.getString("yb.storage.path");
+
     if (!environment.isTest()) {
       if (devopsHome == null || devopsHome.length() == 0) {
         throw new RuntimeException("yb.devops.home is not set in application.conf");
+      }
+
+      if (storagePath == null || storagePath.length() == 0) {
+        throw new RuntimeException(("yb.storage.path is not set in application.conf"));
       }
 
       // Check if we have provider data, if not, we need to see the database
