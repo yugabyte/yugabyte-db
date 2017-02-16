@@ -90,7 +90,8 @@ class ReactorTask : public boost::intrusive::list_base_hook<> {
 //    receives a Status as its first argument.
 class DelayedTask : public ReactorTask {
  public:
-  DelayedTask(std::function<void(const Status&)> func, MonoDelta when);
+  DelayedTask(std::function<void(const Status&)> func, MonoDelta when, int64_t id,
+              const std::shared_ptr<Messenger> messenger);
 
   // Schedules the task for running later but doesn't actually run it yet.
   virtual void Run(ReactorThread* reactor) OVERRIDE;
@@ -98,7 +99,12 @@ class DelayedTask : public ReactorTask {
   // Behaves like ReactorTask::Abort.
   virtual void Abort(const Status& abort_status) OVERRIDE;
 
+  void AbortTask(const Status& abort_status);
+
  private:
+  // Set done_ to true if not set and return true. If done_ is already set, return false;
+  bool MarkAsDoneUnlocked();
+
   // libev callback for when the registered timer fires.
   void TimerHandler(ev::timer& watcher, int revents);
 
@@ -113,6 +119,18 @@ class DelayedTask : public ReactorTask {
 
   // libev timer. Set when Run() is invoked.
   ev::timer timer_;
+
+  // This task's id.
+  const int64_t id_;
+
+  std::shared_ptr<Messenger> messenger_;
+
+  // Set to true whenever a Run or Abort methods are called.
+  // Guarded by lock_.
+  bool done_;
+
+  typedef simple_spinlock LockType;
+  mutable LockType lock_;
 };
 
 // A ReactorThread is a libev event handler thread which manages I/O

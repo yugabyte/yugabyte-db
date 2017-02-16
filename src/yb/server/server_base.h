@@ -122,7 +122,6 @@ class RpcServerBase {
   CHECKED_STATUS StartMetricsLogging();
   void MetricsLoggingThread();
 
-
   scoped_refptr<Thread> metrics_logging_thread_;
   CountDownLatch stop_metrics_logging_latch_;
 

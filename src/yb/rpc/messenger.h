@@ -17,6 +17,7 @@
 #ifndef YB_RPC_MESSENGER_H_
 #define YB_RPC_MESSENGER_H_
 
+#include <atomic>
 #include <memory>
 #include <stdint.h>
 #include <unordered_map>
@@ -30,6 +31,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/connection.h"
+#include "yb/rpc/reactor.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
@@ -170,11 +172,19 @@ class Messenger {
   CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                          DumpRunningRpcsResponsePB* resp);
 
+  void RemoveScheduledTask(int64_t task_id);
+
+  // This method will run 'func' with an ABORT status argument. It's not guaranteed that the task
+  // will cancel because TimerHandler could run before this method.
+  void AbortOnReactor(int64_t task_id);
+
   // Run 'func' on a reactor thread after 'when' time elapses.
   //
   // The status argument conveys whether 'func' was run correctly (i.e.
   // after the elapsed time) or not.
-  void ScheduleOnReactor(const std::function<void(const Status&)>& func, MonoDelta when);
+  int64_t ScheduleOnReactor(const std::function<void(const Status&)>& func,
+                            MonoDelta when,
+                            const std::shared_ptr<Messenger>& msgr = nullptr);
 
   ThreadPool* negotiation_pool() const { return negotiation_pool_.get(); }
 
@@ -195,6 +205,7 @@ class Messenger {
 
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
+  friend class DelayedTask;
 
   explicit Messenger(const MessengerBuilder &bld);
 
@@ -274,6 +285,14 @@ class Messenger {
   // destructor to Join() the reactor threads, which causes a problem if the user
   // tries to destruct the Messenger from within a Reactor thread itself.
   std::shared_ptr<Messenger> retain_self_;
+
+  // Id that will be assigned to the next task that is scheduled on the reactor.
+  std::atomic<uint64_t> next_task_id_;
+
+  std::mutex mutex_scheduled_tasks_;
+
+  std::unordered_map<int64_t, DelayedTask*> scheduled_tasks_;
+
 
   DISALLOW_COPY_AND_ASSIGN(Messenger);
 };

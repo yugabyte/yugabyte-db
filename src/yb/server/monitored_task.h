@@ -35,20 +35,23 @@ class MonitoredTask : public RefCountedThreadSafe<MonitoredTask> {
     kStateComplete,
     kStateFailed,
     kStateAborted,
+    kStateScheduling,
   };
 
   static string state(State state) {
     switch (state) {
-    case MonitoredTask::kStateWaiting:
-      return "Waiting";
-    case MonitoredTask::kStateRunning:
-      return "Running";
-    case MonitoredTask::kStateComplete:
-      return "Complete";
-    case MonitoredTask::kStateFailed:
-      return "Failed";
-    case MonitoredTask::kStateAborted:
-      return "Aborted";
+      case MonitoredTask::kStateWaiting:
+        return "Waiting";
+      case MonitoredTask::kStateRunning:
+        return "Running";
+      case MonitoredTask::kStateComplete:
+        return "Complete";
+      case MonitoredTask::kStateFailed:
+        return "Failed";
+      case MonitoredTask::kStateAborted:
+        return "Aborted";
+      case MonitoredTask::kStateScheduling:
+        return "Scheduling";
     }
     return "UNKNOWN_STATE";
   }

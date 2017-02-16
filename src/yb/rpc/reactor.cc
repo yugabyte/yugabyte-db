@@ -494,8 +494,10 @@ void ReactorThread::DestroyConnection(Connection *conn,
   }
 }
 
-DelayedTask::DelayedTask(std::function<void(const Status&)> func, MonoDelta when)
-    : func_(std::move(func)), when_(std::move(when)), thread_(nullptr) {}
+DelayedTask::DelayedTask(std::function<void(const Status&)> func, MonoDelta when, int64_t id,
+                         const shared_ptr<Messenger> messenger)
+    : func_(std::move(func)), when_(std::move(when)), thread_(nullptr), id_(id),
+      messenger_(messenger), done_(false) {}
 
 void DelayedTask::Run(ReactorThread* thread) {
   DCHECK(thread_ == nullptr) << "Task has already been scheduled";
@@ -510,14 +512,41 @@ void DelayedTask::Run(ReactorThread* thread) {
   thread_->scheduled_tasks_.insert(this);
 }
 
+bool DelayedTask::MarkAsDoneUnlocked() {
+  if (done_) {
+    return false;
+  }
+  done_ = true;
+  return true;
+}
+
+void DelayedTask::AbortTask(const Status& abort_status) {
+  std::lock_guard<LockType> l(lock_);
+  if (MarkAsDoneUnlocked()) {
+    // We let TimerHandler delete this task.
+    func_(abort_status);
+  }
+}
+
 void DelayedTask::Abort(const Status& abort_status) {
   func_(abort_status);
   delete this;
 }
 
 void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
+  lock_.lock();
+  if (!MarkAsDoneUnlocked()) {
+    // The task has been marked as done by another method.
+    delete this;
+    return;
+  }
+  lock_.unlock();
+
   // We will free this task's memory.
   thread_->scheduled_tasks_.erase(this);
+  if (messenger_ != nullptr) {
+    messenger_->RemoveScheduledTask(id_);
+  }
 
   if (EV_ERROR & revents) {
     string msg = "Delayed task got an error in its timer handler";

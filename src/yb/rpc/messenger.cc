@@ -36,7 +36,6 @@
 #include "yb/rpc/acceptor_pool.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/sasl_common.h"
@@ -239,7 +238,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
     connection_type_(bld.connection_type_),
     closing_(false),
     metric_entity_(bld.metric_entity_),
-    retain_self_(this) {
+    retain_self_(this),
+    next_task_id_(0) {
   for (int i = 0; i < bld.num_reactors_; i++) {
     reactors_.push_back(new Reactor(retain_self_, i, bld));
   }
@@ -262,7 +262,6 @@ Reactor* Messenger::RemoteToReactor(const Sockaddr &remote) {
   return reactors_[reactor_idx];
 }
 
-
 Status Messenger::Init() {
   Status status;
   for (Reactor* r : reactors_) {
@@ -281,7 +280,28 @@ Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
   return Status::OK();
 }
 
-void Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& func, MonoDelta when) {
+void Messenger::RemoveScheduledTask(int64_t id) {
+  CHECK_NE(id, -1);
+  std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
+  scheduled_tasks_.erase(id);
+}
+
+void Messenger::AbortOnReactor(int64_t task_id) {
+  DCHECK(!reactors_.empty());
+  CHECK_NE(task_id, -1);
+
+  std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
+  auto iter = scheduled_tasks_.find(task_id);
+  if (iter != scheduled_tasks_.end()) {
+    const auto& task = iter->second;
+    task->AbortTask(STATUS(Aborted, "Task aborted by messenger"));
+    scheduled_tasks_.erase(iter);
+  }
+}
+
+int64_t Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& func,
+                                     MonoDelta when,
+                                     const shared_ptr<Messenger>& msgr) {
   DCHECK(!reactors_.empty());
 
   // If we're already running on a reactor thread, reuse it.
@@ -296,8 +316,17 @@ void Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& func
     chosen = reactors_[rand() % reactors_.size()];
   }
 
-  DelayedTask* task = new DelayedTask(func, when);
+  int64_t task_id = 0;
+  if (msgr != nullptr) {
+    task_id = next_task_id_.fetch_add(1);
+  }
+  DelayedTask *task = new DelayedTask(func, when, task_id, msgr);
+  if (msgr != nullptr) {
+    std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
+    scheduled_tasks_[task_id] = task;
+  }
   chosen->ScheduleReactorTask(task);
+  return task_id;
 }
 
 const scoped_refptr<RpcService> Messenger::rpc_service(const string& service_name) const {

@@ -2542,6 +2542,7 @@ class RetryingTSRpcTask : public MonitoredTask {
       table_(table),
       start_ts_(MonoTime::Now(MonoTime::FINE)),
       attempt_(0),
+      reactor_task_id_(-1),
       state_(kStateWaiting) {
     deadline_ = start_ts_;
     deadline_.AddDelta(MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms));
@@ -2549,13 +2550,16 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Send the subclass RPC request.
   Status Run() {
-    VLOG(1) << "Start Running " << description() << " " << state();
+    VLOG_WITH_PREFIX(1) << "Start Running";
     CHECK_EQ(state(), kStateWaiting);
     Status s = ResetTSProxy();
     if (!s.ok()) {
-      MarkWaitingFailed();
-      UnregisterAsyncTask();  // May delete this.
-      return s.CloneAndPrepend("Failed to reset TS proxy");
+      if (PerformStateTransition(kStateWaiting, kStateFailed)) {
+        UnregisterAsyncTask();  // May delete this.
+        return s.CloneAndPrepend("Failed to reset TS proxy");
+      } else {
+        LOG_WITH_PREFIX(FATAL) << "Failed to change task to kStateFailed state";
+      }
     }
 
     // Calculate and set the timeout deadline.
@@ -2564,7 +2568,9 @@ class RetryingTSRpcTask : public MonitoredTask {
     const MonoTime& deadline = MonoTime::Earliest(timeout, deadline_);
     rpc_.set_deadline(deadline);
 
-    MarkRunning();
+    if (!PerformStateTransition(kStateWaiting, kStateRunning)) {
+      LOG_WITH_PREFIX(FATAL) << "Task transition kStateWaiting -> kStateRunning failed";
+    }
     if (!SendRequest(++attempt_)) {
       if (!RescheduleWithBackoffDelay()) {
         UnregisterAsyncTask();  // May call 'delete this'.
@@ -2581,6 +2587,7 @@ class RetryingTSRpcTask : public MonitoredTask {
            prev_state == MonitoredTask::kStateWaiting) {
       auto expected = prev_state;
       if (state_.compare_exchange_strong(expected, kStateAborted)) {
+        master_->messenger()->AbortOnReactor(reactor_task_id_);
         return prev_state;
       }
       prev_state = state();
@@ -2612,43 +2619,18 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Overridable log prefix with reasonable default.
   virtual string LogPrefix() const {
-    return Substitute("$0: ", description());
+    return Substitute("$0 (task=$1, state=$2): ",
+                      description(), this, MonitoredTask::state(state()));
   }
 
-  // Transition from waiting -> running.
-  bool MarkRunning() {
-    auto expected = kStateWaiting;
-    return state_.compare_exchange_strong(expected, kStateRunning);
+  bool PerformStateTransition(State expected, State new_state) {
+    return state_.compare_exchange_strong(expected, new_state);
   }
 
-  // Transition from running -> waiting.
-  bool MarkWaiting() {
-    auto expected = kStateRunning;
-    return state_.compare_exchange_strong(expected, kStateWaiting);
-  }
-
-  // Transition from running -> complete.
-  bool MarkComplete() {
-    auto expected = kStateRunning;
-    return state_.compare_exchange_strong(expected, kStateComplete);
-  }
-
-  // Transition from running -> aborted.
-  bool MarkAborted() {
-    auto expected = kStateRunning;
-    return state_.compare_exchange_strong(expected, kStateAborted);
-  }
-
-  // Transition from running -> failed.
-  bool MarkFailed() {
-    auto expected = kStateRunning;
-    return state_.compare_exchange_strong(expected, kStateFailed);
-  }
-
-  // Transition from waiting -> failed.
-  bool MarkWaitingFailed() {
-    auto expected = kStateWaiting;
-    return state_.compare_exchange_strong(expected, kStateFailed);
+  void AbortTask() {
+    if (PerformStateTransition(kStateRunning, kStateAborted)) {
+      master_->messenger()->AbortOnReactor(reactor_task_id_);
+    }
   }
 
   // Callback meant to be invoked from asynchronous RPC service proxy calls.
@@ -2695,6 +2677,8 @@ class RetryingTSRpcTask : public MonitoredTask {
   shared_ptr<tserver::TabletServerAdminServiceProxy> ts_proxy_;
   shared_ptr<consensus::ConsensusServiceProxy> consensus_proxy_;
 
+  atomic<int64_t> reactor_task_id_;
+
  private:
   // Reschedules the current task after a backoff delay.
   // Returns false if the task was not rescheduled due to reaching the maximum
@@ -2702,16 +2686,15 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Returns true if rescheduling the task was successful.
   bool RescheduleWithBackoffDelay() {
     if (state() != kStateRunning) {
-      LOG(INFO) << "No reschedule for " << description() << ", state="
-                << MonitoredTask::state(state());
+      LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
       return false;
     }
 
     if (attempt_ > FLAGS_unresponsive_ts_rpc_retry_limit) {
       LOG(WARNING) << "Reached maximum number of retries ("
                    << FLAGS_unresponsive_ts_rpc_retry_limit << ") for request " << description()
-                   << ", state=" << MonitoredTask::state(state());
-      MarkFailed();
+                   << ", task=" << this << " state=" << MonitoredTask::state(state());
+      PerformStateTransition(kStateRunning, kStateFailed);
       return false;
     }
 
@@ -2732,18 +2715,26 @@ class RetryingTSRpcTask : public MonitoredTask {
     int64_t delay_millis = std::min<int64_t>(base_delay_ms + jitter_ms, millis_remaining);
 
     if (delay_millis <= 0) {
-      LOG(WARNING) << "Request timed out: " << description();
-      MarkFailed();
+      LOG_WITH_PREFIX(WARNING) << "Request timed out";
+      PerformStateTransition(kStateRunning, kStateFailed);
     } else {
       MonoTime new_start_time = now;
       new_start_time.AddDelta(MonoDelta::FromMilliseconds(delay_millis));
       LOG(INFO) << "Scheduling retry of " << description() << ", state="
                 << MonitoredTask::state(state()) << " with a delay of " << delay_millis
                 << "ms (attempt = " << attempt_ << ")...";
-      MarkWaiting();
-      master_->messenger()->ScheduleOnReactor(
+
+      if (!PerformStateTransition(kStateRunning, kStateScheduling)) {
+        LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as kStateScheduling";
+        return false;
+      }
+      reactor_task_id_ = master_->messenger()->ScheduleOnReactor(
           std::bind(&RetryingTSRpcTask::RunDelayedTask, this, _1),
-          MonoDelta::FromMilliseconds(delay_millis));
+          MonoDelta::FromMilliseconds(delay_millis), master_->messenger());
+
+      if (!PerformStateTransition(kStateScheduling, kStateWaiting)) {
+        LOG_WITH_PREFIX(FATAL) << "Unable to mark task as kStateWaiting";
+      }
       return true;
     }
     return false;
@@ -2754,14 +2745,14 @@ class RetryingTSRpcTask : public MonitoredTask {
   // is cancelled, i.e. when the scheduling timer is shut down (status != OK).
   void RunDelayedTask(const Status& status) {
     if (state() == kStateAborted) {
-      LOG(INFO) << "Async tablet task " << description() << " was aborted";
+      LOG_WITH_PREFIX(INFO) << "Async tablet task was aborted";
       UnregisterAsyncTask();   // May delete this.
       return;
     }
 
     if (!status.ok()) {
-      LOG(WARNING) << "Async tablet task " << description() << " failed or was cancelled: "
-                   << status.ToString();
+      LOG_WITH_PREFIX(WARNING) << "Async tablet task failed or was cancelled: "
+                               << status.ToString();
       UnregisterAsyncTask();   // May delete this.
       return;
     }
@@ -2769,12 +2760,16 @@ class RetryingTSRpcTask : public MonitoredTask {
     string desc = description();  // Save in case we need to log after deletion.
     Status s = Run();             // May delete this.
     if (!s.ok()) {
-      LOG(WARNING) << "Async tablet task " << desc << " failed: " << s.ToString();
+      LOG_WITH_PREFIX(WARNING) << "Async tablet task failed: " << s.ToString();
     }
   }
 
   // Clean up request and release resources. May call 'delete this'.
   void UnregisterAsyncTask() {
+    auto s = state();
+    if (s != kStateAborted && s != kStateComplete && s != kStateFailed) {
+      LOG_WITH_PREFIX(FATAL) << "Invalid task state " << MonitoredTask::state(s);
+    }
     end_ts_ = MonoTime::Now(MonoTime::FINE);
     if (table_ != nullptr) {
       table_->RemoveTask(this);
@@ -2803,7 +2798,6 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Use state() and MarkX() accessors.
   atomic<State> state_;
-
 };
 
 // RetryingTSRpcTask subclass which always retries the same tablet server,
@@ -2864,14 +2858,14 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
 
   virtual void HandleResponse(int attempt) OVERRIDE {
     if (!resp_.has_error()) {
-      MarkComplete();
+      PerformStateTransition(kStateRunning, kStateComplete);
     } else {
       Status s = StatusFromPB(resp_.error().status());
       if (s.IsAlreadyPresent()) {
         LOG(INFO) << "CreateTablet RPC for tablet " << tablet_id_
                   << " on TS " << permanent_uuid_ << " returned already present: "
                   << s.ToString();
-        MarkComplete();
+        PerformStateTransition(kStateRunning, kStateComplete);
       } else {
         LOG(WARNING) << "CreateTablet RPC for tablet " << tablet_id_
                      << " on TS " << permanent_uuid_ << " failed: " << s.ToString();
@@ -2931,13 +2925,13 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
           LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
                        << " because the tablet was not found. No further retry: "
                        << status.ToString();
-          MarkComplete();
+          PerformStateTransition(kStateRunning, kStateComplete);
           delete_done = true;
           break;
         case TabletServerErrorPB::CAS_FAILED:
           LOG(WARNING) << "TS " << permanent_uuid_ << ": delete failed for tablet " << tablet_id_
                        << " due to a CAS failure. No further retry: " << status.ToString();
-          MarkComplete();
+          PerformStateTransition(kStateRunning, kStateComplete);
           delete_done = true;
           break;
         default:
@@ -2954,7 +2948,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
         LOG(WARNING) << "TS " << permanent_uuid_ << ": tablet " << tablet_id_
                      << " did not belong to a known table, but was successfully deleted";
       }
-      MarkComplete();
+      PerformStateTransition(kStateRunning, kStateComplete);
       delete_done = true;
       VLOG(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
     }
@@ -3034,7 +3028,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
         case TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA:
           LOG(WARNING) << "TS " << permanent_uuid() << ": alter failed for tablet "
                        << tablet_->ToString() << " no further retry: " << status.ToString();
-          MarkComplete();
+          PerformStateTransition(kStateRunning, kStateComplete);
           break;
         default:
           LOG(WARNING) << "TS " << permanent_uuid() << ": alter failed for tablet "
@@ -3042,7 +3036,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
           break;
       }
     } else {
-      MarkComplete();
+      PerformStateTransition(kStateRunning, kStateComplete);
       VLOG(1) << "TS " << permanent_uuid() << ": alter complete on tablet " << tablet_->ToString();
     }
 
@@ -3150,13 +3144,13 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
     LOG_WITH_PREFIX(INFO) << "Latest config for has opid_index of " << latest_index
                           << " while this task has opid_index of "
                           << cstate_.config().opid_index() << ". Aborting task.";
-    MarkAborted();
+    AbortTask();
     return false;
   }
 
   // Logging should be covered inside based on failure reasons.
   if (!PrepareRequest(attempt)) {
-    MarkAborted();
+    AbortTask();
     return false;
   }
 
@@ -3168,7 +3162,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
 
 void AsyncChangeConfigTask::HandleResponse(int attempt) {
   if (!resp_.has_error()) {
-    MarkComplete();
+    PerformStateTransition(kStateRunning, kStateComplete);
     LOG_WITH_PREFIX(INFO) << Substitute(
         "Change config succeeded on leader TS $0 for tablet $1 with type $2 for replica $3",
         permanent_uuid(), tablet_->tablet_id(), type_name(), change_config_ts_uuid_);
@@ -3185,7 +3179,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
     case TabletServerErrorPB::NOT_THE_LEADER:
       LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed on leader " << permanent_uuid()
                                << ". No further retry: " << status.ToString();
-      MarkFailed();
+      PerformStateTransition(kStateRunning, kStateFailed);
       break;
     default:
       LOG_WITH_PREFIX(INFO) << "ChangeConfig() failed on leader " << permanent_uuid()
@@ -3345,7 +3339,7 @@ bool AsyncTryStepDown::PrepareRequest(int attempt) {
 
 bool AsyncTryStepDown::SendRequest(int attempt) {
   if (!PrepareRequest(attempt)) {
-    MarkAborted();
+    AbortTask();
     return false;
   }
 
@@ -3360,7 +3354,7 @@ bool AsyncTryStepDown::SendRequest(int attempt) {
 
 void AsyncTryStepDown::HandleResponse(int attempt) {
   if (!rpc_.status().ok()) {
-    MarkAborted();
+    AbortTask();
     LOG(WARNING) << Substitute(
         "Got error on stepdown for tablet $0 with leader $1, attempt $2 and error $3",
         tablet_->tablet_id(), permanent_uuid(), attempt, rpc_.status().ToString());
@@ -3368,7 +3362,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
     return;
   }
 
-  MarkComplete();
+  PerformStateTransition(kStateRunning, kStateComplete);
   LOG(INFO) << Substitute("Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
                           "resp=$3, should_remove=$4.",
                           attempt, permanent_uuid(), change_config_ts_uuid_,
@@ -4864,19 +4858,18 @@ void TableInfo::RemoveTask(MonitoredTask* task) {
 // Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
 // from the pending list.
 void TableInfo::AbortTasks() {
-  std::unordered_set<MonitoredTask *> erase_tasks;
-  std::lock_guard<simple_spinlock> l(lock_);
-  for (MonitoredTask* task : pending_tasks_) {
-    auto prev_state = task->AbortAndReturnPrevState();
-    if (prev_state == MonitoredTask::kStateWaiting) {
-      erase_tasks.insert(task);
+  std::vector<MonitoredTask *> abort_tasks;
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    for (MonitoredTask *task : pending_tasks_) {
+      task->AddRef();
+      abort_tasks.push_back(task);
     }
   }
-
-  LOG(INFO) << "Aborted " << pending_tasks_.size() - erase_tasks.size()
-            << " tasks and erased " << erase_tasks.size() << " tasks.";
-  for (MonitoredTask* task : erase_tasks) {
-    pending_tasks_.erase(task);
+  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
+  // to acquire the same lock to remove itself from pending_tasks_.
+  for(auto* task : abort_tasks) {
+    task->AbortAndReturnPrevState();
   }
 }
 
