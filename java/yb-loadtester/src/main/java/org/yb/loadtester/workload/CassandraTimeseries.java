@@ -40,15 +40,15 @@ public class CassandraTimeseries extends Workload {
   }
 
   // The number of users.
-  private static final int NUM_USERS = 2;
+  private static final int NUM_USERS = 100;
   // The min nodes per user.
-  private static final int MIN_NODES_PER_USER = 1;
+  private static final int MIN_NODES_PER_USER = 4;
   // The max nodes per user.
-  private static final int MAX_NODES_PER_USER = 4;
+  private static final int MAX_NODES_PER_USER = 20;
   // The min metrics per user.
   private static final int MIN_METRICS_PER_USER = 5;
   // The max metrics per user.
-  private static final int MAX_METRICS_PER_USER = 10;
+  private static final int MAX_METRICS_PER_USER = 100;
   // The rate at which each metric is generated in millis.
   private static final long DATA_EMIT_RATE_MILLIS = 1 * 1000;
   static Random random = new Random();
@@ -67,7 +67,6 @@ public class CassandraTimeseries extends Workload {
       for (int metric_idx = 0; metric_idx < num_metrics; metric_idx++) {
         DataSource dataSource = new DataSource(customer_idx, metric_idx);
         dataSources.add(dataSource);
-        LOG.info("Created data source: " + dataSource.toString());
       }
     }
   }
@@ -130,6 +129,12 @@ public class CassandraTimeseries extends Workload {
     // Enter as many data points as are needed.
     long ts = dataSource.getDataEmitTs();
     long numKeysWritten = 0;
+    if (ts == -1) {
+      try {
+        Thread.sleep(100 /* millisecs */);
+      } catch (Exception e) {}
+      return 0; /* numKeysWritten */
+    }
     while (ts > -1) {
       String value = String.format("value-%s", ts);
       for (String node : dataSource.getNodes()) {
