@@ -63,9 +63,8 @@ public class Region extends Model {
   @JsonBackReference
   public Provider provider;
 
-  @JsonBackReference
   @OneToMany
-  private Set<AvailabilityZone> zones;
+  public Set<AvailabilityZone> zones;
 
   @Column(nullable = false, columnDefinition = "boolean default true")
   public Boolean active = true;
