@@ -338,8 +338,16 @@ set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)
 
 # Make sure thirdparty stuff is up-to-date.
 if ("$ENV{NO_REBUILD_THIRDPARTY}" STREQUAL "")
+  set(BUILD_THIRDPARTY_ARGS "")
+  if (NOT YB_USE_TSAN)
+    set(BUILD_THIRDPARTY_ARGS ${BUILD_THIRDPARTY_ARGS} --skip-tsan)
+  endif()
+  if (NOT YB_USE_TSAN AND NOT YB_USE_ASAN)
+    set(BUILD_THIRDPARTY_ARGS ${BUILD_THIRDPARTY_ARGS} --skip-llvm)
+  endif()
+  message("Invoking build-thirdparty.sh with these arguments: ${BUILD_THIRDPARTY_ARGS}")
   execute_process(
-    COMMAND ${YB_THIRDPARTY_DIR}/build-thirdparty.sh
+    COMMAND ${YB_THIRDPARTY_DIR}/build-thirdparty.sh ${BUILD_THIRDPARTY_ARGS}
     RESULT_VARIABLE THIRDPARTY_SCRIPT_RESULT)
   if (NOT (${THIRDPARTY_SCRIPT_RESULT} EQUAL 0))
     message(FATAL_ERROR "Thirdparty was built unsuccessfully, terminating.")

@@ -410,6 +410,14 @@ is_gcc() {
   fi
 }
 
+build_compiler_if_necessary() {
+  # Sometimes we have to build the compiler before we can run CMake.
+  if is_clang && is_linux; then
+    log "Building clang before we can run CMake with compiler pointing to clang"
+    $YB_THIRDPARTY_DIR/build-thirdparty.sh llvm
+  fi
+}
+
 set_compiler_type_based_on_jenkins_job_name() {
   if [[ -n "${YB_COMPILER_TYPE:-}" ]]; then
     if [[ -n "${JOB_NAME:-}" ]]; then

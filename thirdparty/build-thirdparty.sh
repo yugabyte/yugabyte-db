@@ -292,7 +292,13 @@ F_SNAPPY=""
 F_SQUEASEL=""
 F_TRACE=""
 F_TRACE_VIEWER=""
-F_TSAN=""
+
+if is_linux; then
+  F_TSAN=1
+else
+  F_TSAN=""
+fi
+
 F_VERSION=""
 F_ZLIB=""
 
@@ -309,6 +315,13 @@ while [[ $# -gt 0 ]]; do
 
     --skip-llvm)
       YB_NO_BUILD_LLVM=1
+    ;;
+
+    --skip-tsan)
+      if [[ -n $F_TSAN ]]; then
+        log "--skip-tsan specified, not building third-party dependencies required for TSAN"
+      fi
+      F_TSAN=""
     ;;
 
     "cmake")        F_ALL=""; F_CMAKE=1 ;;
@@ -433,9 +446,6 @@ if is_linux; then
   # 2. https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html
   add_cxx_flags "-D_GLIBCXX_USE_CXX11_ABI=0"
   DYLIB_SUFFIX="so"
-
-  # Enable TSAN builds on Linux.
-  F_TSAN=1
 elif is_mac; then
   DYLIB_SUFFIX="dylib"
 
@@ -460,7 +470,8 @@ set_install_prefix_type common
 # Add tools to path
 export PATH=$PREFIX/bin:$PATH
 
-# Allow building TSAN libraries only when debugging issues with thirdparty build.
+# Skip building non-TSAN libraries if YB_THIRDPARTY_TSAN_ONLY_BUILD is specified. This allows
+# building TSAN libraries only when debugging issues with the thirdparty build.
 if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
   if is_linux; then
     if [[ -n "$F_ALL" || -n "$F_LLVM" ]] && [ -z ${YB_NO_BUILD_LLVM:-} ]; then
@@ -569,7 +580,7 @@ fi
 # End of non-TSAN builds.
 
 ## Build C++ dependencies with TSAN instrumentation
-if [ -n "$F_TSAN" ]; then
+if [[ -n $F_TSAN  ]]; then
 
   # Achieving good results with TSAN requires that the C++ standard library be instrumented with
   # TSAN. Additionally, dependencies which internally use threads or synchronization should be

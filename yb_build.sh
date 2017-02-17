@@ -4,9 +4,7 @@ set -euo pipefail
 script_name=${0##*/}
 script_name=${script_name%.*}
 
-# Source the common-build-env.sh script in the build-support subdirectory of the directory of this
-# script.
-. "${0%/*}"/build-support/common-test-env.sh
+. "${BASH_SOURCE%/*}"/build-support/common-test-env.sh
 
 show_help() {
   cat >&2 <<-EOT
@@ -379,6 +377,7 @@ set_build_env_vars
 if "$build_cxx"; then
   if ( "$force_run_cmake" || [[ ! -f Makefile ]] ) && \
      ! "$force_no_run_cmake"; then
+    build_compiler_if_necessary
     log "Using cmake binary: $( which cmake )"
     log "Running cmake in $PWD"
     ( set -x; cmake "${cmake_opts[@]}" "$YB_SRC_ROOT" )
