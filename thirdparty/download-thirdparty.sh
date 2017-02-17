@@ -71,7 +71,7 @@ fetch_and_expand() {
   mkdir -p "$TP_DOWNLOAD_DIR"
   pushd "$TP_DOWNLOAD_DIR"
   if [[ -f $FILENAME ]] && \
-    run_sha256sum --check <( echo "$expected_checksum  $FILENAME" ); then
+    verify_sha256sum <( echo "$expected_checksum  $FILENAME" ); then
     log "No need to re-download $FILENAME: checksum already correct"
   else
     log "Fetching $FILENAME"

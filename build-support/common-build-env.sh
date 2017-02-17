@@ -863,10 +863,11 @@ run_sha256sum_on_mac() {
 }
 
 verify_sha256sum() {
+  local common_args="--check"
   if [[ $OSTYPE =~ darwin ]]; then
-    run_sha256sum_on_mac "$@"
+    run_sha256sum_on_mac $common_args "$@"
   else
-    sha256sum --quiet "$@"
+    sha256sum --quiet $common_args "$@"
   fi
 }
 
