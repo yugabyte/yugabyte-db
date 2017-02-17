@@ -1,6 +1,7 @@
 // Copyright (c) Yugabyte, Inc.
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
@@ -14,6 +15,7 @@ import static play.test.Helpers.contentAsString;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
@@ -66,13 +68,21 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testListAllRegionsWithValidRegion() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
-    AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
+    AvailabilityZone az = AvailabilityZone.create(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
     Result result = FakeApiHelper.doRequest("GET", "/api/regions");
     JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(json.get(0).path("uuid").asText(), r.uuid.toString());
-    assertEquals(json.get(0).path("provider").get("uuid").asText(), provider.uuid.toString());
     assertEquals(OK, result.status());
     assertEquals(1, json.size());
+    JsonNode regionJson = json.get(0);
+    JsonNode providerJson = regionJson.get("provider");
+    JsonNode zonesJson = regionJson.get("zones");
+    assertNotNull(provider);
+    assertEquals(1, zonesJson.size());
+    assertValue(regionJson, "uuid", r.uuid.toString());
+    assertValue(providerJson, "uuid", provider.uuid.toString());
+    assertValue(zonesJson.get(0), "uuid", az.uuid.toString());
+    assertValue(zonesJson.get(0), "code", az.code);
+    assertValue(zonesJson.get(0), "subnet", az.subnet);
   }
 
   @Test
@@ -110,6 +120,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(json.get(0).path("uuid").asText(), r.uuid.toString());
     assertEquals(json.get(0).path("code").asText(), r.code);
     assertEquals(json.get(0).path("name").asText(), r.name);
+    assertThat(json.get(0).path("zones"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
   }
 
   @Test
@@ -131,6 +142,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(json.get(0).path("uuid").asText(), r1.uuid.toString());
     assertEquals(json.get(0).path("code").asText(), r1.code);
     assertEquals(json.get(0).path("name").asText(), r1.name);
+    assertEquals(3, json.get(0).path("zones").size());
   }
 
   @Test
