@@ -653,7 +653,9 @@ class ResultResponse : public CQLResponse {
     std::vector<ColSpec> col_specs;
 
     explicit RowsMetadata(const client::YBTableName& table_name,
-        const std::vector<ColumnSchema>& columns, bool no_metadata);
+                          const std::vector<ColumnSchema>& columns,
+                          const std::string& paging_state,
+                          bool no_metadata);
   };
 
   ResultResponse(const CQLRequest& request, Kind kind);

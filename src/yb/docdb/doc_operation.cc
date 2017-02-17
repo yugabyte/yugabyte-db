@@ -624,14 +624,24 @@ Status YQLReadOperation::Execute(
   docdb::DocKeyHash hash_code = static_cast<docdb::DocKeyHash>(request_.hash_code());
   vector<PrimitiveValue> hashed_components;
   YQLColumnValuesToPrimitiveValues(
-      request_.hashed_column_values(), schema, 0,
-      schema.num_hash_key_columns(), &hashed_components);
+    request_.hashed_column_values(), schema, 0,
+    schema.num_hash_key_columns(), &hashed_components);
+
+  HybridTime req_hybrid_time(hybrid_time);
+  SubDocKey start_sub_doc_key;
+  // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
+  if (request_.has_next_read_key() && !request_.next_read_key().empty()) {
+    KeyBytes start_key_bytes(request_.next_read_key());
+    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
+    req_hybrid_time = start_sub_doc_key.hybrid_time();
+  }
 
   // Construct the scan spec basing on the WHERE condition.
   YQLScanSpec spec(
       schema, hash_code, hashed_components,
       request_.has_where_condition() ? &request_.where_condition() : nullptr,
-      request_.has_limit() ? request_.limit() : std::numeric_limits<std::size_t>::max());
+      request_.has_limit() ? request_.limit() : std::numeric_limits<std::size_t>::max(),
+      start_sub_doc_key.doc_key());
 
   // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
   // When DocRowwiseIterator::NextBlock() populates a YQLRowBlock, it uses this projection only to
@@ -656,12 +666,20 @@ Status YQLReadOperation::Execute(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
   // Scan docdb for the rows.
-  DocRowwiseIterator iterator(projection, schema, rocksdb, hybrid_time);
-  RETURN_NOT_OK(iterator.Init(spec));
-  while (iterator.HasNext()) {
-    RETURN_NOT_OK(iterator.NextBlock(spec, rowblock));
+  DocRowwiseIterator iter(projection, schema, rocksdb, req_hybrid_time);
+  RETURN_NOT_OK(iter.Init(spec));
+  while (iter.HasNext()) {
+    RETURN_NOT_OK(iter.NextBlock(&spec, rowblock));
+    // If the limit has been reached as specified, retrieve no more rows.
+    if (rowblock->row_count() >= spec.row_count_limit()) {
+      break;
+    }
   }
-
+  SubDocKey next_key;
+  RETURN_NOT_OK(iter.GetNextReadSubDocKey(&next_key));
+  if (!next_key.doc_key().empty() && next_key.has_hybrid_time()) {
+    response_.set_next_read_key(next_key.Encode(true /* include_hybrid_time */).data());
+  }
   return Status::OK();
 }
 

@@ -126,6 +126,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4
     yql_writereq_pb.set_type(stmt_type);
 
     // Add primary key column.
+    yql_writereq_pb.set_hash_code(0);
     AddPrimaryKeyColumn(&yql_writereq_pb, column_values[0]);
     AddColumnValues(&yql_writereq_pb, vector<int32_t>(column_values.begin() + 1,
                                                       column_values.end()));
@@ -432,6 +433,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 3; ttl: 1.000s
   yql_writereq_pb.set_type(
       YQLWriteRequestPB_YQLStmtType::YQLWriteRequestPB_YQLStmtType_YQL_STMT_UPDATE);
 
+  yql_writereq_pb.set_hash_code(0);
   AddPrimaryKeyColumn(&yql_writereq_pb, 1);
   AddColumnValues(&yql_writereq_pb, vector<int32_t>({10, 20, 30}));
   yql_writereq_pb.set_ttl(2000);

@@ -79,16 +79,20 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
 
 Status DocRowwiseIterator::Init(const YQLScanSpec& spec) {
   // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
-  const bool is_fixed_point_get = spec.lower_bound() == spec.upper_bound();
+  DocKey lower_doc_key;
+  DocKey upper_doc_key;
+  RETURN_NOT_OK(spec.lower_bound(&lower_doc_key));
+  RETURN_NOT_OK(spec.upper_bound(&upper_doc_key));
+  const bool is_fixed_point_get = upper_doc_key == lower_doc_key;
   db_iter_ = CreateRocksDBIterator(db_, is_fixed_point_get /* use_bloom_on_scan */);
 
   // Start scan with the lower bound doc key.
-  const DocKey& lower_bound = spec.lower_bound();
+  const DocKey& lower_bound = lower_doc_key;
   ROCKSDB_SEEK(db_iter_.get(), SubDocKey(lower_bound, hybrid_time_).Encode().AsSlice());
 
   // End scan with the upper bound key bytes.
   has_upper_bound_key_ = true;
-  exclusive_upper_bound_key_ = SubDocKey(spec.upper_bound()).AdvanceOutOfDocKeyPrefix();
+  exclusive_upper_bound_key_ = SubDocKey(upper_doc_key).AdvanceOutOfDocKeyPrefix();
 
   return Status::OK();
 }
@@ -171,8 +175,8 @@ bool DocRowwiseIterator::HasNext() const {
   string prev_rocksdb_key;
 
   while (true) {
-    if (!db_iter_->Valid() ||
-        has_upper_bound_key_ && exclusive_upper_bound_key_.CompareTo(db_iter_->key()) <= 0) {
+    if (db_iter_ == nullptr || !db_iter_->Valid() ||
+        (has_upper_bound_key_ && exclusive_upper_bound_key_.CompareTo(db_iter_->key()) <= 0)) {
       done_ = true;
       return false;
     }
@@ -574,13 +578,13 @@ Status DocRowwiseIterator::NextRow(const YQLScanSpec& spec, YQLValueMap* value_m
   return Status::OK();
 }
 
-Status DocRowwiseIterator::NextBlock(const YQLScanSpec& spec, YQLRowBlock* rowblock) {
+Status DocRowwiseIterator::NextBlock(YQLScanSpec* spec, YQLRowBlock* rowblock) {
   YQLValueMap value_map;
-  RETURN_NOT_OK(NextRow(spec, &value_map));
+  RETURN_NOT_OK(NextRow(*spec, &value_map));
 
   // Match the row with the where condition before adding to the row block.
   bool match = false;
-  RETURN_NOT_OK(spec.Match(value_map, &match));
+  RETURN_NOT_OK(spec->Match(value_map, &match));
   if (match) {
     auto& row = rowblock->Extend();
     for (size_t i = 0; i < row.schema().num_columns(); i++) {
@@ -590,14 +594,6 @@ Status DocRowwiseIterator::NextBlock(const YQLScanSpec& spec, YQLRowBlock* rowbl
       *row.mutable_column(i) = std::move(it->second);
     }
   }
-
-  // Done if we have hit the row count limit. Since we are read one row in each NextBlock() call
-  // above, it shouldn't be possible for the row count to jump pass the limit suddenly. But just
-  // to play safe in case we read more than 1 row above and didn't
-  if (rowblock->row_count() == spec.row_count_limit()) {
-    done_ = true;
-  }
-
   return Status::OK();
 }
 
@@ -607,6 +603,23 @@ void DocRowwiseIterator::GetIteratorStats(std::vector<IteratorStats>* stats) con
   for (int i = 0; i < projection_.num_columns(); i++) {
     stats->emplace_back();
   }
+}
+
+CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
+  if (db_iter_ == nullptr) {
+    return STATUS(Corruption, "Iterator not initialized.");
+  }
+  // There are no more rows to fetch, so no next SubDocKey to read.
+  if (!HasNext()) {
+    DVLOG(3) << "No Next SubDocKey";
+    return Status::OK();
+  }
+  DocKey doc_key;
+  rocksdb::Slice slice(db_iter_->key());
+  RETURN_NOT_OK(doc_key.DecodeFrom(&slice));
+  *sub_doc_key = SubDocKey(doc_key, hybrid_time_);
+  DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
+  return Status::OK();
 }
 
 }  // namespace docdb

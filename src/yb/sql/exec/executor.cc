@@ -43,7 +43,6 @@ CHECKED_STATUS Executor::Execute(const string& sql_stmt,
                                                       move(parse_tree),
                                                       sql_env));
   params_ = &params;
-
   // Execute the parse tree.
   if (!ExecPTree(ptree).ok()) {
     // Before leaving the execution step, collect all errors and place them in return status.
@@ -734,6 +733,16 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
   // Specify selected columns.
   for (const ColumnDesc *col_desc : tnode->selected_columns()) {
     req->add_column_ids(col_desc->id());
+  }
+
+  // Set the paging state and the limit from the statement parameters.
+  int64_t limit = params_->rows_limit();
+  if (limit > 0) {
+    req->set_limit(limit);
+  }
+  string next_read_key = params_->next_read_key();
+  if (!next_read_key.empty()) {
+    req->set_next_read_key(next_read_key);
   }
 
   // Apply the operator always even when select_op is "null" so that the last read_op saved in

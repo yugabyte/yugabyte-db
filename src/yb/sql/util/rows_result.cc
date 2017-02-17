@@ -48,7 +48,8 @@ RowsResult::RowsResult(YBqlReadOp* op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromReadOp(*op)),
       rows_data_(op->rows_data()),
-      client_(op->request().client()) {
+      client_(op->request().client()),
+      next_read_key_(op->response().next_read_key()) {
 }
 
 RowsResult::RowsResult(YBqlWriteOp* op)

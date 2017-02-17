@@ -52,11 +52,17 @@ class YQLScanSpec {
   YQLScanSpec(
       const Schema& schema, uint32_t hash_code,
       const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
-      size_t row_count_limit);
+      size_t row_count_limit,
+      const DocKey& start_doc_key = DocKey());
 
   // Return the inclusive lower and upper bounds of the scan.
-  DocKey lower_bound() const { return range_doc_key(true /* lower_bound */); }
-  DocKey upper_bound() const { return range_doc_key(false /* lower_bound */); }
+  CHECKED_STATUS lower_bound(DocKey* key) const {
+    return GetBoundKey(true /* lower_bound */, key);
+  }
+
+  CHECKED_STATUS upper_bound(DocKey* key) const  {
+    return GetBoundKey(false /* upper_bound */, key);
+  }
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   CHECKED_STATUS Match(const YQLValueMap& row, bool* match) const;
@@ -65,14 +71,20 @@ class YQLScanSpec {
   size_t row_count_limit() const { return row_count_limit_; }
 
  private:
-  // Return inclusive lower/upper range doc key
-  DocKey range_doc_key(bool lower_bound) const;
+  // Return inclusive lower/upper range doc key considering the start_doc_key.
+  CHECKED_STATUS GetBoundKey(const bool lower_bound, DocKey* key) const;
+
+  // Returns the lower/upper doc key based on the range components.
+  DocKey bound_key(const bool lower_bound) const;
 
   // Schema of the columns to scan.
   const Schema& schema_;
 
   // Specific doc key to scan. The doc key is owned by the caller of YQLScanSpec.
   const DocKey* doc_key_;
+
+  // Starting doc key when requested by the client.
+  const DocKey start_doc_key_;
 
   // Hash code, hashed components and optional WHERE condition clause to scan.
   // The hashed_components and condition are owned by the caller of YQLScanSpec.
@@ -85,6 +97,9 @@ class YQLScanSpec {
 
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const YQLScanRange> range_;
+
+  const DocKey lower_doc_key_;
+  const DocKey upper_doc_key_;
 };
 
 } // namespace docdb

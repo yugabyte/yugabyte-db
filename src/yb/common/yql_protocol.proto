@@ -157,6 +157,9 @@ message YQLReadRequestPB {
 
   // Limit number of rows to return
   optional uint32 limit = 8;
+
+  // Binary SubDocKey to start read from.
+  optional bytes next_read_key = 9;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------
@@ -180,4 +183,7 @@ message YQLResponsePB {
 
   // Sidecar of rows data returned
   optional int32 rows_data_sidecar = 4;
+
+  // Paging state for the read response. Contains the next SubDocKey to read.
+  optional bytes next_read_key = 5;
 }

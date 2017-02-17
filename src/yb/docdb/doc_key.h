@@ -87,6 +87,11 @@ class DocKey {
   // Converts the document key to a human-readable representation.
   std::string ToString() const;
 
+  // Check if it is a fully hashed DocKey.
+  bool empty() const {
+    return !hash_present_;
+  }
+
   bool operator ==(const DocKey& other) const;
 
   bool operator !=(const DocKey& other) const {

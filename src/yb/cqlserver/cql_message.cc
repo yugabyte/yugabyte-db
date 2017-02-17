@@ -1003,8 +1003,12 @@ ResultResponse::RowsMetadata::Type::~Type() {
 
 
 ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name,
-    const vector<ColumnSchema>& columns, bool no_metadata)
-    : flags(no_metadata ? kNoMetadata : kHasGlobalTableSpec), paging_state(""),
+                                           const vector<ColumnSchema>& columns,
+                                           const string& paging_state,
+                                           bool no_metadata)
+    : flags((no_metadata ? kNoMetadata : kHasGlobalTableSpec) |
+            (!paging_state.empty() ? kHasMorePages : 0)),
+      paging_state(paging_state),
       global_table_spec(GlobalTableSpec(no_metadata ? "" : table_name.resolved_namespace_name(),
                                         no_metadata ? "" : table_name.table_name())),
       col_count(columns.size()) {
@@ -1133,7 +1137,8 @@ RowsResultResponse::~RowsResultResponse() {
 
 void RowsResultResponse::SerializeResultBody(faststring* mesg) {
   SerializeRowsMetadata(
-      RowsMetadata(rows_result_.table_name(), rows_result_.column_schemas(), skip_metadata_), mesg);
+      RowsMetadata(rows_result_.table_name(), rows_result_.column_schemas(),
+                   rows_result_.next_read_key(), skip_metadata_), mesg);
   mesg->append(rows_result_.rows_data());
 }
 

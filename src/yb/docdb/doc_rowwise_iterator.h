@@ -59,7 +59,10 @@ class DocRowwiseIterator : public RowwiseIterator {
   CHECKED_STATUS NextRow(const YQLScanSpec& spec, YQLValueMap* value_map);
 
   // Read next set of rows into YQL row block (note: we are reading just 1 row per call for now).
-  CHECKED_STATUS NextBlock(const YQLScanSpec& spec, YQLRowBlock* rowblock);
+  CHECKED_STATUS NextBlock(YQLScanSpec* spec, YQLRowBlock* rowblock);
+
+  // Retrieves the next key to read after the iterator finishes for the given page.
+  CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
 
  private:
   DocKey KuduToDocKey(const EncodedKey &encoded_key) {
