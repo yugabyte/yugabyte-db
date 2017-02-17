@@ -3,7 +3,6 @@ EXTVERSION   = $(shell grep default_version $(EXTENSION).control | sed -e "s/def
 TESTS        = $(wildcard test/sql/*.sql)
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test
-DOCS         = $(wildcard README.md)
 
 PG_CONFIG = pg_config
 
