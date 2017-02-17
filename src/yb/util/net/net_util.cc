@@ -274,11 +274,11 @@ Status GetFQDN(string* hostname) {
   LOG_SLOW_EXECUTION(WARNING, 200,
                      Substitute("looking up canonical hostname for localhost $0", hostname)) {
     TRACE_EVENT0("net", "getaddrinfo");
-    int rc = getaddrinfo(hostname->c_str(), nullptr, &hints, &result);
+    const int rc = getaddrinfo(hostname->c_str(), nullptr, &hints, &result);
     if (rc != 0) {
       return STATUS(NetworkError,
-                    Substitute("Unable to lookup FQDN, getaddrinfo returned $0",
-                               getaddrinfo_rc_to_string(rc)),
+                    Substitute("Unable to lookup FQDN ($0), getaddrinfo returned $1",
+                               *hostname, getaddrinfo_rc_to_string(rc)),
                     ErrnoToString(errno), errno);
     }
   }

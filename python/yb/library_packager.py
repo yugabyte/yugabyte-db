@@ -60,19 +60,31 @@ YB_SRC_ROOT = realpath(path_join(MODULE_DIR, '..', '..'))
 class Dependency:
     """
     Describes a dependency of an executable or a shared library on another shared library.
+    @param name: the name of the library as requested by the dependee
+    @param target: target file pointed to by the dependency
+    @param via_dlopen: dependencies loaded via dlopen have to be explicitly linked into each
+                       library/executable's directory that is added to RPATH.
     """
-    def __init__(self, name, target):
+    def __init__(self, name, target, via_dlopen=False):
         self.name = name
         self.target = target
+        self.via_dlopen = via_dlopen
 
     def __hash__(self):
-        return hash(self.name) ^ hash(self.target)
+        return hash(self.name) ^ hash(self.target) ^ hash(self.via_dlopen)
 
     def __eq__(self, other):
-        return self.name == other.name and self.target == other.target
+        return self.name == other.name and \
+               self.target == other.target and \
+               self.via_dlopen == other.via_dlopen
 
     def __str__(self):
-        return "Dependency({}, {})".format(repr(self.name), repr(self.target))
+        return "Dependency({}, {}, via_dlopen={})".format(
+                repr(self.name), repr(self.target), self.via_dlopen)
+
+    def __cmp__(self, other):
+        return (self.name, self.target, self.via_dlopen) < \
+               (other.name, other.target, other.via_dlopen)
 
     def as_metadata(self):
         """
@@ -80,7 +92,9 @@ class Dependency:
                 metadata files that we provide for ease of debugging along with each executable
                 and shared library.
         """
-        return dict(name=self.name, original_location=normalize_path_for_metadata(self.target))
+        return dict(name=self.name,
+                    original_location=normalize_path_for_metadata(self.target),
+                    via_dlopen=self.via_dlopen)
 
 
 ProgramResult = namedtuple('ProgramResult', ['returncode', 'stdout', 'stderr', 'error_msg'])
@@ -129,10 +143,12 @@ def find_elf_dependencies(elf_file_path):
     @param elf_file_path: ELF file (executable/library) path
     """
 
+    elf_file_path = realpath(elf_file_path)
     if elf_file_path.startswith('/usr/') or elf_file_path.startswith('/lib64/'):
         ldd_path = '/usr/bin/ldd'
     else:
         ldd_path = LINUXBREW_LDD_PATH
+
     ldd_result = run_program([ldd_path, elf_file_path], error_ok=True)
     dependencies = set()
     if ldd_result.returncode != 0:
@@ -160,15 +176,27 @@ def find_elf_dependencies(elf_file_path):
         # e.g. there could be a line of the following form in the ldd output:
         #   linux-vdso.so.1 =>  (0x00007ffc0f9d2000)
 
-    if path_basename(elf_file_path).startswith('libsasl2.so'):
-        dependencies.add(Dependency('libdb.so',
-                                    path_join(path_dirname(elf_file_path), 'libdb.so')))
+    elf_basename = path_basename(elf_file_path)
+    elf_dirname = path_dirname(elf_file_path)
+    if elf_basename.startswith('libsasl2.'):
+        # TODO: don't package Berkeley DB with the product -- it has an AGPL license.
+        for libdb_so_name in ['libdb.so', 'libdb-5.so']:
+            libdb_so_path = path_join(path_dirname(elf_file_path), 'libdb.so')
+            if os.path.exists(libdb_so_path):
+                dependencies.add(Dependency('libdb.so', libdb_so_path, via_dlopen=True))
         sasl_plugin_dir = '/usr/lib64/sasl2'
         for sasl_lib_name in os.listdir(sasl_plugin_dir):
             if sasl_lib_name.endswith('.so'):
                 dependencies.add(
                         Dependency(sasl_lib_name,
                                    realpath(path_join(sasl_plugin_dir, sasl_lib_name))))
+
+    if elf_basename.startswith('libc-'):
+        # glibc loads a lot of libns_... libraries using dlopen.
+        for libnss_lib in glob.glob(os.path.join(elf_dirname, 'libnss_*')):
+            if re.search(r'([.]so|\d+)$', libnss_lib):
+                dependencies.add(Dependency(path_basename(libnss_lib),
+                                            libnss_lib, via_dlopen=True))
 
     return dependencies
 
@@ -230,6 +258,9 @@ class GraphNode:
     def __str__(self):
         return 'GraphNode({}, {})'.format(repr(self.path), repr(self.digest))
 
+    def __repr__(self):
+        return str(self)
+
     def add_reverse_dependency(self, needed_by):
         if needed_by.digest not in self.needed_by_digests:
             self.needed_by.append(needed_by)
@@ -244,6 +275,25 @@ class GraphNode:
                 all the libraries this binary needs.
         """
         return remove_so_extension_from_lib_name(path_basename(self.path))
+
+    def indirect_dependencies_via_dlopen(self):
+        """
+        Recursively collect all dependencies this node depends on indirectly that are loaded via
+        dlopen. These dependencies have to be symlinked directly this node's RPATH directory.
+        """
+        already_visited = set()
+        dlopen_deps = set()
+
+        def depth_first_search(node):
+            already_visited.add(node)
+            for d in node.deps:
+                if d.via_dlopen:
+                    dlopen_deps.add(d)
+                if d.target_node not in already_visited:
+                    depth_first_search(d.target_node)
+
+        depth_first_search(self)
+        return dlopen_deps
 
 
 def find_canonical_library_path(p):
@@ -284,7 +334,16 @@ def find_canonical_library_path(p):
 
 
 def create_rel_symlink(existing_file_path, link_path):
-    os.symlink(os.path.relpath(existing_file_path, path_dirname(link_path)), link_path)
+    if os.path.islink(link_path) and \
+            realpath(os.path.readlink(link_path)) == realpath(existing_file_path):
+        return  # Nothing to do.
+
+    try:
+        os.symlink(os.path.relpath(existing_file_path, path_dirname(link_path)), link_path)
+    except OSError, e:
+        logging.warning("Error while trying to create a symlink {} -> {}".format(
+            link_path, existing_file_path))
+        raise e
 
 
 class LibraryPackager:
@@ -424,12 +483,13 @@ class LibraryPackager:
                 continue
 
             # Create symlinks in each node's directory that point to all of its dependencies.
-            for dep in node.deps:
+            for dep in sorted(set(node.deps).union(set(node.indirect_dependencies_via_dlopen()))):
                 existing_file_path = dep.target_node.target_path
                 link_path = path_join(node.target_dir, os.path.basename(dep.name))
                 if os.path.islink(link_path):
                     os.unlink(link_path)
-                create_rel_symlink(existing_file_path, link_path)
+                if realpath(existing_file_path) != realpath(link_path):
+                    create_rel_symlink(existing_file_path, link_path)
 
             # Update RPATH of this binary to point to the directory that has symlinks to all the
             # right versions libraries it needs.

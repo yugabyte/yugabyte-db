@@ -37,8 +37,8 @@ Options:
     Run the java unit tests when build is enabled.
   --static
     Force a static build.
-  --target
-    Pass the given target to make.
+  --target, --targets
+    Pass the given target or set of targets to make.
   --cxx-test <test_name>
     Build and run the given C++ test. We run the test using ctest.
   --no-tcmalloc
@@ -176,6 +176,10 @@ while [ $# -gt 0 ]; do
     ;;
     --target)
       make_targets+=( "$2" )
+      shift
+    ;;
+    --targets)
+      make_targets+=( $2 )
       shift
     ;;
     --no-tcmalloc)
