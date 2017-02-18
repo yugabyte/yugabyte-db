@@ -14,6 +14,7 @@ using strings::Substitute;
 namespace yb {
 namespace docdb {
 
+using std::set;
 using strings::Substitute;
 
 DocPath KuduWriteOperation::DocPathToLock() const {
@@ -423,19 +424,19 @@ DocKey DocKeyFromYQLKey(
 
 CHECKED_STATUS GetNonKeyColumns(
     const Schema& schema, const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB>& operands,
-    unordered_set<ColumnId>* non_key_columns);
+    set<ColumnId>* non_key_columns);
 
 // Get all non-key columns referenced in a condition.
 CHECKED_STATUS GetNonKeyColumns(
     const Schema& schema, const YQLConditionPB& condition,
-    unordered_set<ColumnId>* non_key_columns) {
+    set<ColumnId>* non_key_columns) {
   return GetNonKeyColumns(schema, condition.operands(), non_key_columns);
 }
 
 // Get all non-key columns referenced in a list of operands.
 CHECKED_STATUS GetNonKeyColumns(
     const Schema& schema, const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB>& operands,
-    unordered_set<ColumnId>* non_key_columns) {
+    set<ColumnId>* non_key_columns) {
   for (const auto& operand : operands) {
     switch (operand.expr_case()) {
       case YQLExpressionPB::ExprCase::kValue:
@@ -486,8 +487,9 @@ DocPath YQLWriteOperation::DocPathToLock() const {
 Status YQLWriteOperation::IsConditionSatisfied(
     const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
     bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock) {
-  // Prepare the projection schema to scan the docdb for the row.
-  unordered_set<ColumnId> non_key_columns;
+  // Prepare the projection schema to scan the docdb for the row. Keep the non-key columns to fetch
+  // in sorted order for more efficient scan in the iterator.
+  set<ColumnId> non_key_columns;
   RETURN_NOT_OK(GetNonKeyColumns(schema_, condition, &non_key_columns));
   Schema projection;
   RETURN_NOT_OK(
@@ -617,8 +619,9 @@ Status YQLReadOperation::Execute(
   // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
   // When DocRowwiseIterator::NextBlock() populates a YQLRowBlock, it uses this projection only to
   // scan sub-documents. YQLRowBlock's own projection schema is used to pupulate the row block,
-  // including key columns if any.
-  unordered_set<ColumnId> non_key_columns;
+  // including key columns if any. Keep the non-key columns to fetch in sorted order for more
+  // efficient scan in the iterator.
+  set<ColumnId> non_key_columns;
   for (size_t idx = 0; idx < rowblock->schema().num_columns(); idx++) {
     const auto column_id = rowblock->schema().column_id(idx);
     if (!schema.is_key_column(column_id)) {
