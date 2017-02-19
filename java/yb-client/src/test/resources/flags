@@ -1,5 +1,4 @@
 --log_dir=target/testdata
 --max_message_size=67108864
 --minloglevel=0
---v=2
 --webserver_port=0
