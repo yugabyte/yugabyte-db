@@ -13,6 +13,7 @@ namespace sql {
 using std::shared_ptr;
 
 using client::YBClient;
+using client::YBError;
 using client::YBOperation;
 using client::YBSession;
 using client::YBTable;
@@ -40,13 +41,34 @@ CHECKED_STATUS SqlEnv::DeleteTable(const string& name) {
   return client_->DeleteTable(name);
 }
 
+CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
+                                       const Status s,
+                                       YBSession* session) const {
+  // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
+  // returns IOError. When it happens, retrieves the error that corresponds to this op and return.
+  // Ignore overflow since there is nothing we can do but we will still search for the error for
+  // the given op.
+  if (s.IsIOError()) {
+    vector<client::YBError*> errors;
+    bool overflowed;
+    session->GetPendingErrors(&errors, &overflowed);
+    for (const auto* error : errors) {
+      if (&error->failed_op() == op) {
+        return error->status();
+      }
+    }
+  }
+  return s;
+}
+
 CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> yb_op) {
   // The previous result must have been cleared.
   DCHECK(rows_result_ == nullptr);
 
   // Execute the write.
   RETURN_NOT_OK(write_session_->Apply(yb_op));
-  RETURN_NOT_OK(write_session_->Flush());
+  Status s = write_session_->Flush();
+  RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, write_session_.get()));
 
   // Read the processing result.
   if (!yb_op->rows_data().empty()) {
@@ -63,7 +85,8 @@ CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBqlReadOp> yb_op) {
   if (yb_op.get() != nullptr) {
     // Execute the read.
     RETURN_NOT_OK(read_session_->Apply(yb_op));
-    RETURN_NOT_OK(read_session_->Flush());
+    Status s = read_session_->Flush();
+    RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, read_session_.get()));
 
     // Read the processing result.
     rows_result_.reset(new RowsResult(yb_op.get()));

@@ -79,6 +79,11 @@ class SqlEnv {
   void Reset();
 
  private:
+  // Process YBOperation status.
+  CHECKED_STATUS ProcessOpStatus(const client::YBOperation* op,
+                                 const Status s,
+                                 client::YBSession* session) const;
+
   // Persistent attributes.
 
   // YBClient, an API that SQL engine uses to communicate with all servers.

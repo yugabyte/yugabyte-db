@@ -22,7 +22,9 @@ CHECKED_STATUS ExecContext::ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_o
                                        const TreeNode *tnode) {
   Status s = sql_env_->ApplyWrite(yb_op);
   if (!s.ok()) {
-    return Error(tnode->loc(), s.ToString().c_str(), ErrorCode::SQL_STATEMENT_INVALID);
+    // YBOperation returns not-found error when the tablet is not found.
+    return Error(tnode->loc(), s.ToString().c_str(),
+                 s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::SQL_STATEMENT_INVALID);
   }
   return s;
 }
@@ -32,7 +34,9 @@ CHECKED_STATUS ExecContext::ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op,
   Status s = sql_env_->ApplyRead(yb_op);
   // NOTE: Unlike other SQL storages, when query is empty, YB server does not use NOTFOUND status.
   if (!s.ok()) {
-    return Error(tnode->loc(), s.ToString().c_str(), ErrorCode::SQL_STATEMENT_INVALID);
+    // YBOperation returns not-found error when the tablet is not found.
+    return Error(tnode->loc(), s.ToString().c_str(),
+                 s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::SQL_STATEMENT_INVALID);
   }
   return s;
 }

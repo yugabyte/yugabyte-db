@@ -26,11 +26,9 @@ METRIC_DEFINE_histogram(
     "Size of the returned response blob (in bytes)", yb::MetricUnit::kBytes,
     "Size of the returned response blob (in bytes)", 60000000LU, 2);
 
-// Currently, the default is set to 0 because we don't cache the metadata. There's no need to
-// refresh and clear the stale metadata.
-DEFINE_int32(YB_SQL_EXEC_MAX_METADATA_REFRESH_COUNT, 0,
-             "The maximum number of times YbSql engine can refresh metadata cache due to schema "
-             "version mismatch error when executing a SQL statement");
+DEFINE_int32(YB_SQL_EXEC_MAX_METADATA_REFRESH_COUNT, 1,
+             "The maximum number of times YQL engine can refresh metadata cache due to stale "
+             "metadata error when executing a SQL statement");
 
 namespace yb {
 namespace sql {
@@ -133,7 +131,11 @@ CHECKED_STATUS YbSql::Process(SqlEnv *sql_env, const string &sql_stmt, YbSqlMetr
     CHECK(parse_tree.get() != nullptr) << "Exec tree is null";
 
     // If the failure occurs because of stale metadata cache, rerun with latest metadata.
-    if (exec_errcode != ErrorCode::WRONG_METADATA_VERSION) {
+    // Symptoms of stale metadata can be TABLET_NOT_FOUND when the tserver fails to execute
+    // the YBSqlOp because the tablet is not found (ENG-945), or WRONG_METADATA_VERSION when the
+    // schema version the tablet holds is different from the one used by the semantic analyzer.
+    if (exec_errcode != ErrorCode::TABLET_NOT_FOUND &&
+        exec_errcode != ErrorCode::WRONG_METADATA_VERSION) {
       if (sql_metrics != nullptr) {
         sql_metrics->num_rounds_to_analyse_sql_->Increment(refresh_count);
       }
