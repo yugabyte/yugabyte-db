@@ -162,5 +162,34 @@ TEST_F(DocOperationTest, TestYQLInsertWithoutTTL) {
 TEST_F(DocOperationTest, TestYQLUpdateWithoutTTL) {
   RunTestYQLInsertUpdate(YQLWriteRequestPB_YQLStmtType_YQL_STMT_UPDATE);
 }
+
+TEST_F(DocOperationTest, TestYQLWriteNulls) {
+  yb::YQLWriteRequestPB yql_writereq_pb;
+  yb::YQLResponsePB yql_writeresp_pb;
+
+  // Define the schema.
+  Schema schema = CreateSchema();
+  yql_writereq_pb.set_type(
+      YQLWriteRequestPB_YQLStmtType::YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT);
+
+  // Add primary key column.
+  AddPrimaryKeyColumn(&yql_writereq_pb, 1);
+
+  // Add null columns.
+  for (int i = 0; i < 3; i++) {
+    auto column = yql_writereq_pb.add_column_values();
+    column->set_column_id(i + 1);
+    column->mutable_value()->set_datatype(INT32);
+  }
+
+  // Write to docdb.
+  Write(yql_writereq_pb, schema, &yql_writeresp_pb);
+
+  // Null columns are converted to tombstones.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT(Max)]) -> {}
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(Max)]) -> null
+      )#");
+}
 }  // namespace docdb
 }  // namespace yb

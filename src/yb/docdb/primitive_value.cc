@@ -484,32 +484,33 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value) {
   switch (value.datatype()) {
     case INT8:
       return value.has_int8_value() ?
-          PrimitiveValue(value.int8_value()) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue(value.int8_value()) : PrimitiveValue(ValueType::kTombstone);
     case INT16:
       return value.has_int16_value() ?
-          PrimitiveValue(value.int16_value()) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue(value.int16_value()) : PrimitiveValue(ValueType::kTombstone);
     case INT32:
       return value.has_int32_value() ?
-          PrimitiveValue(value.int32_value()) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue(value.int32_value()) : PrimitiveValue(ValueType::kTombstone);
     case INT64:
       return value.has_int64_value() ?
-          PrimitiveValue(value.int64_value()) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue(value.int64_value()) : PrimitiveValue(ValueType::kTombstone);
     case FLOAT:
       return value.has_float_value() ?
-          PrimitiveValue::Double(value.float_value()) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue::Double(value.float_value()) : PrimitiveValue(ValueType::kTombstone);
     case DOUBLE:
       return value.has_double_value() ?
-          PrimitiveValue::Double(value.double_value()) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue::Double(value.double_value()) : PrimitiveValue(ValueType::kTombstone);
     case STRING:
       return value.has_string_value() ?
-          PrimitiveValue(value.string_value()) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue(value.string_value()) : PrimitiveValue(ValueType::kTombstone);
     case BOOL:
       return value.has_bool_value() ?
           PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse) :
-          PrimitiveValue(ValueType::kNull);
+          PrimitiveValue(ValueType::kTombstone);
     case TIMESTAMP:
       return value.has_timestamp_value() ?
-          PrimitiveValue(Timestamp(value.timestamp_value())) : PrimitiveValue(ValueType::kNull);
+          PrimitiveValue(Timestamp(value.timestamp_value())) : PrimitiveValue(
+              ValueType::kTombstone);
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
