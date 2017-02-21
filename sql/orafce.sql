@@ -474,10 +474,6 @@ select decode(1, 1, 'one', 2, 'two', 1, 'one-again') = 'one';
 select decode('2012-01-01', '2012-01-01'::date,'result-1','2012-01-02', 'result-2');
 select decode('2012-01-01', '2012-01-01', 'result-1', '2012-02-01'::date, 'result-2');
 
--- 2) fails and throws error: 'ERROR:  could not determine polymorphic type 
--- because input has type "unknown"'
-select decode('2012-01-01', '2012-01-01', 23, '2012-01-02', 24);
-
 select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 9) = 'hsalF kcaJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 4, 6) = 'nip';

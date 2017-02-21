@@ -8,7 +8,7 @@ if (N) \
 (Current) = (Rhs)[1]; \
 else \
 (Current) = (Rhs)[0]; \
-} while (0)                      
+} while (0)
 
 #include "postgres.h"
 #include "orafce.h"
@@ -35,8 +35,6 @@ static orafce_lexnode *__node;
     __node->classname = #type, \
     FILL_NODE(src,__node), \
     __node)
-    
-    
 
 
 extern int yylex(void);      /* defined as fdate_yylex in fdatescan.l */
@@ -52,6 +50,13 @@ void orafce_sql_yyerror(List **result, const char *message);
 #define YYFREE		free	/* XXX: should use pfree? */
 
 %}
+
+%code requires {
+
+#include "nodes/pg_list.h"
+
+}
+
 %name-prefix="orafce_sql_yy" 
 %locations
 %parse-param {List **result}
@@ -72,7 +77,7 @@ void orafce_sql_yyerror(List **result, const char *message);
 
 
 }
-    
+
 /* BISON Declarations */
 %token <val>    X_IDENT X_NCONST X_SCONST X_OP X_PARAM X_COMMENT X_WHITESPACE X_KEYWORD X_OTHERS X_TYPECAST
 

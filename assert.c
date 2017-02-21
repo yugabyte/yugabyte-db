@@ -11,6 +11,13 @@
 #include "orafce.h"
 #include "builtins.h"
 
+#if PG_VERSION_NUM >=  100000
+
+#include "utils/regproc.h"
+
+#endif
+
+
 PG_FUNCTION_INFO_V1(dbms_assert_enquote_literal);
 PG_FUNCTION_INFO_V1(dbms_assert_enquote_name);
 PG_FUNCTION_INFO_V1(dbms_assert_noop);

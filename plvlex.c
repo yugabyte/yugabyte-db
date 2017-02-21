@@ -11,19 +11,19 @@
     1.0. first public version 13. March 2006
 */
 
+#include <sys/time.h>
+#include <stdlib.h>
+
 #include "postgres.h"
+#include "catalog/pg_type.h"
+#include "lib/stringinfo.h"
+#include "nodes/pg_list.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
 #include "utils/nabstime.h"
-#include <sys/time.h>
-#include <stdlib.h>
-#include "lib/stringinfo.h"
-
 #include "plvlex.h"
 #include "sqlparse.h"
-#include "nodes/pg_list.h"
 #include "funcapi.h"
-#include "catalog/pg_type.h"
 #include "orafce.h"
 #include "builtins.h"
 
@@ -295,4 +295,3 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 	SRF_RETURN_DONE (funcctx);
 #endif
 }
-

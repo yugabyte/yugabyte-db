@@ -2289,10 +2289,6 @@ select decode('2012-01-01', '2012-01-01', 'result-1', '2012-02-01'::date, 'resul
  result-1
 (1 row)
 
--- 2) fails and throws error: 'ERROR:  could not determine polymorphic type 
--- because input has type "unknown"'
-select decode('2012-01-01', '2012-01-01', 23, '2012-01-02', 24);
-ERROR:  could not determine polymorphic type because input has type "unknown"
 select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
  ?column? 
 ----------
