@@ -92,6 +92,8 @@ public class TestBase {
 
   @After
   public void TearDownAfter() throws Exception {
+    // Clean up all tables before end of each test to lower high-water-mark disk usage.
+    DropTables();
     session.close();
     cluster.close();
   }
@@ -127,10 +129,15 @@ public class TestBase {
     }
   }
 
-  public void TearDownTable(String test_table) throws Exception {
-    LOG.info("DROP TABLE " + test_table);
+  protected void DropTable(String test_table) throws Exception {
     String drop_stmt = String.format("DROP TABLE %s;", test_table);
     session.execute(drop_stmt);
+  }
+
+  protected void DropTables() throws Exception {
+    for (String table : miniCluster.getClient().getTablesList().getTablesList()) {
+      DropTable(table);
+    }
   }
 
   protected Iterator<Row> RunSelect(String tableName, String select_stmt) {

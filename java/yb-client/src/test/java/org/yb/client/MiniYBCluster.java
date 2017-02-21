@@ -456,6 +456,14 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Returns a client to this YB cluster.
+   * @return YBClient
+   */
+  public YBClient getClient() {
+    return syncClient;
+  }
+
+  /**
    * Helper runnable that can log what the processes are sending on their stdout and stderr that
    * we'd otherwise miss.
    */

@@ -104,7 +104,7 @@ public class TestConditionalDml extends TestBase {
     }
 
     // Tear down table
-    TearDownTable("t");
+    DropTable("t");
 
     LOG.info("TEST SIMPLE DELETE - End");
   }
@@ -174,7 +174,7 @@ public class TestConditionalDml extends TestBase {
     }
 
     // Tear down table
-    TearDownTable("t");
+    DropTable("t");
 
     LOG.info("TEST SIMPLE INSERT - End");
   }
@@ -265,7 +265,7 @@ public class TestConditionalDml extends TestBase {
     }
 
     // Tear down table
-    TearDownTable("t");
+    DropTable("t");
 
     LOG.info("TEST SIMPLE UPDATE - End");
   }
