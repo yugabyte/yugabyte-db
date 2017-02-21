@@ -5,10 +5,12 @@ package com.yugabyte.yw.controllers;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.yugabyte.yw.models.AccessKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,8 +138,13 @@ public class UniverseController extends AuthenticatedController {
     }
     try {
       // Set the provider code.
-      String providerCode =
-        Provider.find.byId(UUID.fromString(taskParams.userIntent.provider)).code;
+      Provider provider = Provider.find.byId(UUID.fromString(taskParams.userIntent.provider));
+      String providerCode = provider.code;
+      // TODO: the accesskey code should be sent from the UI.
+      List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
+      if (accessKeys.size() > 0) {
+        taskParams.userIntent.accessKeyCode = accessKeys.get(0).getKeyCode();
+      }
       taskParams.userIntent.providerType = CloudType.valueOf(providerCode);
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.

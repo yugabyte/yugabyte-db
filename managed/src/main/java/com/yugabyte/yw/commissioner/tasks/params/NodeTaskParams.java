@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 
 public class NodeTaskParams extends UniverseTaskParams {
@@ -28,6 +29,8 @@ public class NodeTaskParams extends UniverseTaskParams {
   public Region getRegion() {
     return getAZ().region;
   }
+
+  public Provider getProvider() { return getAZ().getProvider(); }
 
   // Less prominent params can be added to properties variable
   private Map<String, String> properties = new HashMap<>();
