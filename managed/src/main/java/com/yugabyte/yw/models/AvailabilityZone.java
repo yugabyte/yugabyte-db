@@ -67,4 +67,6 @@ public class AvailabilityZone extends Model {
   public static AvailabilityZone get(UUID zoneUuid) {
     return find.byId(zoneUuid);
   }
+
+  public Provider getProvider() { return region.provider; }
 }

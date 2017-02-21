@@ -98,6 +98,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Constraints.Required()
     public String ybServerPackage;
 
+    // TODO: make this required at some point, when we have this coming from UI.
+    public String accessKeyCode;
+
     @Override
     public String toString() {
       return "UserIntent " + "for universe=" + universeName + ", isMultiAZ=" + isMultiAZ + " type=" +

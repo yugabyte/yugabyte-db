@@ -33,7 +33,7 @@ public class AccessKeyTest extends FakeDBApplication {
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
     keyInfo.vaultFile = "/path/to/vault_file";
-    keyInfo.vaultPassword = "/path/to/vault_password";
+    keyInfo.vaultPasswordFile = "/path/to/vault_password";
 
     AccessKey ak = AccessKey.create(defaultProvider.uuid, "access-code1", keyInfo);
     assertNotNull(ak);
@@ -42,7 +42,7 @@ public class AccessKeyTest extends FakeDBApplication {
     JsonNode keyInfoJson = Json.toJson(ak.getKeyInfo());
     assertValue(keyInfoJson, "publicKey", "/path/to/public.key");
     assertValue(keyInfoJson, "privateKey", "/path/to/private.key");
-    assertValue(keyInfoJson, "vaultPassword", "/path/to/vault_password");
+    assertValue(keyInfoJson, "vaultPasswordFile", "/path/to/vault_password");
     assertValue(keyInfoJson, "vaultFile", "/path/to/vault_file");
   }
 

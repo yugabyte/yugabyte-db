@@ -20,7 +20,7 @@ public class AccessKey extends Model {
     public static class KeyInfo {
         public String publicKey;
         public String privateKey;
-        public String vaultPassword;
+        public String vaultPasswordFile;
         public String vaultFile;
     }
 

@@ -156,7 +156,7 @@ public class AccessManagerTest extends FakeDBApplication {
     assertValue(json, "publicKey", TMP_KEYS_PATH + "/public.key");
     assertValue(json, "privateKey", TMP_KEYS_PATH + "/private.key");
     assertValue(json, "vaultFile", "/path/to/vault_file");
-    assertValue(json, "vaultPassword", "/path/to/vault_password");
+    assertValue(json, "vaultPasswordFile", "/path/to/vault_password");
   }
 
   @Test
@@ -187,7 +187,7 @@ public class AccessManagerTest extends FakeDBApplication {
     assertValue(json, "publicKey", TMP_KEYS_PATH + "/public.key");
     assertValue(json, "privateKey", TMP_KEYS_PATH + "/private.key");
     assertValue(json, "vaultFile", "/path/to/vault_file");
-    assertValue(json, "vaultPassword", "/path/to/vault_password");
+    assertValue(json, "vaultPasswordFile", "/path/to/vault_password");
   }
 
   @Test
