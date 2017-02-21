@@ -11,3 +11,4 @@ export { default as HighlightedStatsPanelContainer } from './HighlightedStatsPan
 export { default as UniverseDisplayPanelContainer } from './UniverseDisplayPanel/UniverseDisplayPanelContainer';
 export { default as UniverseRegionLocationPanelContainer } from './UniverseRegionLocationPanel/UniverseRegionLocationPanelContainer';
 export { default as YBPanelItemContainer } from './YBPanelItem/YBPanelItemContainer';
+export { default as TableInfoPanel } from './TableInfoPanel/TableInfoPanel';

@@ -1,13 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Row, Col, Image, ButtonGroup } from 'react-bootstrap';
-import { YBInputField, YBRadioButton, YBButton, YBSelect } from '../../common/forms/fields';
+import { Row, Col } from 'react-bootstrap';
+import { YBInputField, YBButton, YBSelect } from '../../common/forms/fields';
 import { Field, FieldArray } from 'redux-form';
 import { YBPanelItem } from '../../panels';
 import './CreateTables.scss';
-import cassandraLogo from '../images/cassandra.png';
-import redisLogo from '../images/redis.png';
 import { DescriptionItem } from '../../common/descriptors';
 import {isValidArray} from '../../../utils/ObjectUtils';
 
@@ -155,7 +153,6 @@ class CassandraColumnSpecification extends Component {
 export default class CreateTable extends Component {
   constructor(props) {
     super(props);
-    this.state = {  'activeTable': 'cassandra' }
     this.createTable = this.createTable.bind(this);
     this.radioClicked = this.radioClicked.bind(this);
   }
@@ -175,20 +172,6 @@ export default class CreateTable extends Component {
 
   render() {
     const {handleSubmit} = this.props;
-    var self = this;
-    var cassandraRadioButtonChecked = "";
-    var redisRadioButtonChecked = "";
-    if (self.state.activeTable === "cassandra") {
-      cassandraRadioButtonChecked = "active";
-      redisRadioButtonChecked = 'inactive';
-    } else {
-      cassandraRadioButtonChecked = "inactive";
-      redisRadioButtonChecked = 'active';
-    }
-    var tableColumnSpecification = <span/>;
-    if (self.state.activeTable === "cassandra") {
-      tableColumnSpecification = <CassandraColumnSpecification {...this.props} />;
-    }
     var onFormSubmit = handleSubmit(this.createTable);
     return (
       <YBPanelItem name="Create Table">
@@ -198,24 +181,8 @@ export default class CreateTable extends Component {
               <Field name="tableName" component={YBInputField} className={`table-name-cell`}
                      label="Name" placeHolder={"Table Name"}/>
             </Col>
-            <Col lg={6}>
-              <ButtonGroup>
-                <div className={`btn table-selector-container ${cassandraRadioButtonChecked}`}>
-                  <Field name="tableType" component={YBRadioButton} fieldValue={"cassandra"}
-                    label={<span><Image src={cassandraLogo} className="table-type-logo"/> Cassandra</span>}
-                    checkState={true} onClick={this.radioClicked}
-                  />
-                </div>
-                <div className={`btn table-selector-container ${redisRadioButtonChecked}`}>
-                  <Field name="tableType" component={YBRadioButton} fieldValue={"redis"}
-                    label={<span><Image src={redisLogo} className="table-type-logo"  /> Redis</span>}
-                    checkState={true} onClick={this.radioClicked}
-                  />
-                </div>
-              </ButtonGroup>
-            </Col>
           </Row>
-          {tableColumnSpecification}
+          <CassandraColumnSpecification {...this.props} />
           <Row>
             <Col lg={2} lgOffset={10}>
               <YBButton btnText="Cancel" btnClass={`btn bg-grey table-btn`} onClick={this.props.showListTables}/>

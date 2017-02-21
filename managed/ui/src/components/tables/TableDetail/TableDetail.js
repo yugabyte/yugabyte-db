@@ -1,10 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { Grid, Row, Col, Tab } from 'react-bootstrap';
+import { Grid, Row, Col, Tab, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { YBLabelWithIcon } from '../../common/descriptors';
-import { YBTabsPanel } from '../../panels';
+import { TableInfoPanel, YBTabsPanel } from '../../panels';
+import { RegionMap, YBMapLegend } from '../../maps';
+import { isValidObject } from '../../../utils/ObjectUtils';
+import './TableDetail.scss';
+import {ItemStatus} from '../../common/indicators';
+import {TableSchema} from '../../tables';
 
 export default class TableDetail extends Component {
   static propTypes = {
@@ -15,6 +20,7 @@ export default class TableDetail extends Component {
   componentWillMount() {
     var universeUUID = this.props.universeUUID;
     var tableUUID = this.props.tableUUID;
+    this.props.fetchUniverseDetail(universeUUID);
     this.props.fetchTableDetail(universeUUID, tableUUID);
   }
 
@@ -22,12 +28,43 @@ export default class TableDetail extends Component {
     this.props.resetTableDetail();
   }
   render() {
+    var tableInfoContent = <span/>;
+    const {universe: {currentUniverse}, tables: {currentTableDetail}} = this.props;
+    if (isValidObject(currentUniverse)) {
+      tableInfoContent =
+        <div>
+          <Row className={"table-detail-row"}>
+            <Col lg={4}>
+              <TableInfoPanel tableInfo={currentTableDetail}/>
+            </Col>
+            <Col lg={8}>
+            </Col>
+          </Row>
+          <Row>
+            <Col lg={12}>
+              <RegionMap regions={currentUniverse.regions} type={"Root"} />
+              <YBMapLegend title="Placement Policy" regions={currentUniverse.regions}/>
+            </Col>
+          </Row>
+        </div>
+    }
+    var tableSchemaContent = <span/>;
+    if (isValidObject(currentTableDetail)) {
+      tableSchemaContent = <TableSchema tableInfo={currentTableDetail}/>
+    }
     var tabElements = [
-      <Tab eventKey={"overview"} title="Overview" key="overview-tab"/>,
-      <Tab eventKey={"tables"} title="Schema" key="tables-tab"/>,
-      <Tab eventKey={"nodes"} title="Query" key="nodes-tab"/>,
+      <Tab eventKey={"overview"} title="Overview" key="overview-tab">
+        {tableInfoContent}
+      </Tab>,
+      <Tab eventKey={"schema"} title="Schema" key="tables-tab">
+        {tableSchemaContent}
+      </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab"/>
-      ];
+    ];
+    var tableName = "";
+    if (isValidObject(currentTableDetail.tableDetails)) {
+      tableName = currentTableDetail.tableDetails.tableName;
+    }
     var universeUUID = this.props.universeUUID;
     return (
       <Grid id="page-wrapper" fluid={true}>
@@ -35,20 +72,37 @@ export default class TableDetail extends Component {
           <Col lg={10}>
             <div className="detail-label-small">
               <Link to="/universes">
-                <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
+                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
                   Universes
                 </YBLabelWithIcon>
               </Link>
-              <Link to={`universes/${universeUUID}?tab=tables`}>
-                <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
+              <Link to={`/universes/${universeUUID}?tab=tables`}>
+                <YBLabelWithIcon icon="fa fa-chevron-right fa-fw">
                   Tables
                 </YBLabelWithIcon>
               </Link>
             </div>
+            <div>
+              <h2>
+                { tableName }
+                <ItemStatus showLabelText={true} />
+              </h2>
+            </div>
+          </Col>
+          <Col lg={2} className="page-action-buttons">
+            <ButtonGroup className="universe-detail-btn-group">
+              <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+                <MenuItem eventKey="1">
+                  <YBLabelWithIcon icon="fa fa-trash">
+                    Drop Table
+                  </YBLabelWithIcon>
+                </MenuItem>
+              </DropdownButton>
+            </ButtonGroup>
           </Col>
         </Row>
         <Row>
-          <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"}>
+          <YBTabsPanel activeTab={"schema"} id={"universe-tab-panel"}>
             { tabElements }
           </YBTabsPanel>
         </Row>

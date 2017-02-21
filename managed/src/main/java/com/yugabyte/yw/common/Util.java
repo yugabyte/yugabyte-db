@@ -14,10 +14,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.MiniYBCluster;
+
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -65,18 +65,18 @@ public class Util {
   }
 
   public static MiniYBCluster getMiniCluster(int numMasters) {
-    MiniYBCluster ret = null; 
+    MiniYBCluster ret = null;
     try {
       ret = new MiniYBCluster
-               .MiniYBClusterBuilder()
-               .numMasters(numMasters)
-               .numTservers(1)
-               .defaultTimeoutMs(60)
-               .build();
+        .MiniYBClusterBuilder()
+        .numMasters(numMasters)
+        .numTservers(1)
+        .defaultTimeoutMs(60)
+        .build();
       LOG.info("Created new mini cluster with {} masters.", numMasters);
     } catch (Exception e) {
       String errMsg = "Could not start mini cluster with " + numMasters + " masters. " +
-                      "Error: " + e.getMessage();
+        "Error: " + e.getMessage();
       LOG.error(errMsg);
       throw new RuntimeException(errMsg);
     }
@@ -104,11 +104,11 @@ public class Util {
 
   // Convert node details to list of host/ports.
   public static List<HostAndPort> getHostPortList(Collection<NodeDetails> nodes) {
-     List<HostAndPort> curServers = new ArrayList<HostAndPort>();
-     for (NodeDetails node : nodes) {
-       curServers.add(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
-     }
-     return curServers;
+    List<HostAndPort> curServers = new ArrayList<HostAndPort>();
+    for (NodeDetails node : nodes) {
+      curServers.add(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
+    }
+    return curServers;
   }
 
   /**
@@ -124,5 +124,21 @@ public class Util {
       inetAddrs.add(new InetSocketAddress(privateIp, yqlRPCPort));
     }
     return inetAddrs;
+  }
+
+  /**
+   * Returns UUID representation of ID string without dashes
+   * For eg. 87d2d6473b3645f7ba56d9e3f7dae239 becomes 87d2d647-3b36-45f7-ba56-d9e3f7dae239
+   */
+  public static UUID getUUIDRepresentation(String id) {
+    if (id.length() != 32 || id.contains("-")) {
+      return null;
+    } else {
+      String uuidWithHyphens = id.replaceAll(
+        "(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})",
+        "$1-$2-$3-$4-$5");
+      System.out.println(uuidWithHyphens);
+      return UUID.fromString(uuidWithHyphens);
+    }
   }
 }
