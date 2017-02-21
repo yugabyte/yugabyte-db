@@ -4,7 +4,7 @@ import { connect } from 'react-redux';
 import { CreateTable } from '../../tables';
 import { reduxForm } from 'redux-form';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
-         fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure } from '../../../actions/tables';
+         fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure, toggleTableView } from '../../../actions/tables';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -40,6 +40,7 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(createUniverseTableFailure(response.payload));
         } else {
           dispatch(createUniverseTableSuccess(response.payload));
+          dispatch(toggleTableView("list"));
         }
       });
     },
@@ -51,6 +52,9 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchColumnTypesSuccess(response.payload));
         }
       });
+    },
+    showListTables: () => {
+      dispatch(toggleTableView("list"));
     }
   }
 }

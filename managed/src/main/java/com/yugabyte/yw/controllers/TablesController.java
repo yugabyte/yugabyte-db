@@ -31,6 +31,7 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
+import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 
 public class TablesController extends AuthenticatedController {
@@ -62,23 +63,23 @@ public class TablesController extends AuthenticatedController {
       Universe universe = Universe.get(universeUUID);
 
       Form<TableDefinitionTaskParams> formData = formFactory.form(TableDefinitionTaskParams.class)
-          .bindFromRequest();
+        .bindFromRequest();
       TableDefinitionTaskParams taskParams = formData.get();
 
       // Submit the task to create the table.
       UUID taskUUID = commissioner.submit(TaskInfo.Type.CreateCassandraTable, taskParams);
       LOG.info("Submitted create table for {}:{}, task uuid = {}.",
-          taskParams.tableUUID, taskParams.tableDetails.tableName, taskUUID);
+        taskParams.tableUUID, taskParams.tableDetails.tableName, taskUUID);
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-          universe,
-          taskUUID,
-          CustomerTask.TargetType.Table,
-          CustomerTask.TaskType.Create,
-          taskParams.tableDetails.tableName);
+        universe,
+        taskUUID,
+        CustomerTask.TargetType.Table,
+        CustomerTask.TaskType.Create,
+        taskParams.tableDetails.tableName);
       LOG.info("Saved task uuid {} in customer tasks table for table {}:{}",
-          taskUUID, taskParams.tableUUID, taskParams.tableDetails.tableName);
+        taskUUID, taskParams.tableUUID, taskParams.tableDetails.tableName);
 
       ObjectNode resultNode = Json.newObject();
       resultNode.put("taskUUID", taskUUID.toString());
@@ -133,7 +134,8 @@ public class TablesController extends AuthenticatedController {
         ObjectNode node = Json.newObject();
         node.put("tableType", table.getTableType().toString());
         node.put("tableName", table.getName());
-        node.put("tableUUID", table.getId().toStringUtf8());
+        String tableUUID =  table.getId().toStringUtf8();
+        node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
         resultNode.add(node);
       }
       return ok(resultNode);
@@ -173,7 +175,7 @@ public class TablesController extends AuthenticatedController {
       }
       YBClient client = ybService.getClient(masterAddresses);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
-          tableUUID.toString().replace("-", ""));
+        tableUUID.toString().replace("-", ""));
 
       return ok(Json.toJson(createFromResponse(universe, tableUUID, response)));
     } catch (IllegalArgumentException e) {

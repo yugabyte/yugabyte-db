@@ -16,6 +16,7 @@ export const CREATE_UNIVERSE_TABLE_FAILURE = 'CREATE_UNIVERSE_TABLE_FAILURE';
 export const FETCH_COLUMN_TYPES = 'FETCH_COLUMN_TYPES';
 export const FETCH_COLUMN_TYPES_SUCCESS = 'FETCH_COLUMN_TYPES_SUCCESS';
 export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
+export const TOGGLE_TABLE_VIEW = 'TOGGLE_TABLE_VIEW';
 
 export function fetchUniverseTables(universeUUID) {
   var customerId = localStorage.getItem("customer_id");
@@ -44,11 +45,8 @@ export function fetchUniverseTablesFailure(error) {
 
 export function fetchTableDetail(universeUUID, tableUUID) {
   var customerId = localStorage.getItem("customer_id");
-  //  Replacing tableUUID with random UUID string for now.
-  //  Eventually this will be fetched from server.
-  tableUUID = "0b0dbb83-2999-4c3e-9679-0cf30943d322";
   const request =
-    axios.get(`${ROOT_URL}/${customerId}/universes/${universeUUID}/tables/${tableUUID}`);
+    axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}`);
   return {
     type: FETCH_TABLE_DETAIL,
     payload: request
@@ -64,7 +62,7 @@ export function resetTableDetail() {
 export function createUniverseTable(universeUUID, formValues) {
   var customerId = localStorage.getItem("customer_id");
   const request =
-    axios.post(`${ROOT_URL}/${customerId}/universes/${universeUUID}/tables`, formValues);
+    axios.post(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`, formValues);
   return {
     type: CREATE_UNIVERSE_TABLE,
     payload: request
@@ -120,5 +118,12 @@ export function fetchColumnTypesFailure(error) {
   return {
     type: FETCH_COLUMN_TYPES_FAILURE,
     payload: error
+  }
+}
+
+export function toggleTableView(currentView) {
+  return {
+    type: TOGGLE_TABLE_VIEW,
+    payload: currentView
   }
 }
