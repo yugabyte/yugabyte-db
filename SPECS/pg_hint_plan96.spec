@@ -58,6 +58,7 @@ install -d %{buildroot}%{_libdir}
 install pg_hint_plan.so %{buildroot}%{_libdir}/pg_hint_plan.so
 install -d %{buildroot}%{_datadir}/extension
 install -m 644 pg_hint_plan--1.2.0.sql %{buildroot}%{_datadir}/extension/pg_hint_plan--1.2.0.sql
+install -m 644 pg_hint_plan--1.1.3--1.2.0.sql %{buildroot}%{_datadir}/extension/pg_hint_plan--1.1.3--1.2.0.sql
 install -m 644 pg_hint_plan.control %{buildroot}%{_datadir}/extension/pg_hint_plan.control
 
 %clean
@@ -68,6 +69,7 @@ rm -rf %{buildroot}
 %{_libdir}/pg_hint_plan.so
 %defattr(0644,root,root)
 %{_datadir}/extension/pg_hint_plan--1.2.0.sql
+%{_datadir}/extension/pg_hint_plan--1.1.3--1.2.0.sql
 %{_datadir}/extension/pg_hint_plan.control
 
 # History of pg_hint_plan.
