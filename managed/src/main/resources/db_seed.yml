@@ -61,14 +61,14 @@
     provider: *provider_dockerlocal
     latitude: 36.778261
     longitude: -119.417932
-    ybImage: local/yugabyte-server
+    ybImage: yugabyte:latest
 - &docker-local-region-2 !!com.yugabyte.yw.models.Region
     code: docker-localhost-region-2
     name: Localhost Region US-East
     provider: *provider_dockerlocal
     latitude: 37.478397
     longitude: -76.453077
-    ybImage: local/yugabyte-server
+    ybImage: yugabyte:latest
 - &aws-us-west-1 !!com.yugabyte.yw.models.Region
     code: us-west-1
     name: US West (N. California)
