@@ -2,9 +2,9 @@
 import { FETCH_TABLES_LIST, FETCH_TABLES_LIST_SUCCESS,
   FETCH_TABLES_LIST_FAILURE, RESET_TABLES_LIST, FETCH_TABLE_DETAIL,
   FETCH_TABLE_DETAIL_SUCCESS, FETCH_TABLE_DETAIL_FAILURE, RESET_TABLE_DETAIL,
-  FETCH_COLUMN_TYPES, FETCH_COLUMN_TYPES_SUCCESS, FETCH_COLUMN_TYPES_FAILURE } from '../actions/tables';
+  FETCH_COLUMN_TYPES, FETCH_COLUMN_TYPES_SUCCESS, FETCH_COLUMN_TYPES_FAILURE, TOGGLE_TABLE_VIEW } from '../actions/tables';
 
-const INITIAL_STATE = {universeTablesList: [], currentTableDetail: {}, columnDataTypes: {}};
+const INITIAL_STATE = {universeTablesList: [], currentTableDetail: {}, columnDataTypes: {}, currentTableView: 'list'};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -32,6 +32,8 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, columnDataTypes: action.payload.data}
     case FETCH_COLUMN_TYPES_FAILURE:
       return {...state}
+    case TOGGLE_TABLE_VIEW:
+      return {...state, currentTableView: action.payload}
     default:
       return state;
   }

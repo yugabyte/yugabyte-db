@@ -11,7 +11,6 @@ import { CreateTableContainer } from '../../tables';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
-
 class TableTitle extends Component {
   render() {
     const {onCreateButtonClick, numCassandraTables, numRedisTables} = this.props;
@@ -42,13 +41,8 @@ export default class ListTables extends Component {
     this.showListTables = this.showListTables.bind(this);
   }
 
-  componentWillMount() {
-    var universeUUID = this.props.universe.currentUniverse.universeUUID;
-    this.props.fetchUniverseTables(universeUUID);
-  }
-
   showCreateTable() {
-    this.setState({'currentView': 'createTable'});
+    this.props.showCreateTable();
   }
 
   showListTables() {
@@ -57,22 +51,62 @@ export default class ListTables extends Component {
 
   render() {
     var self = this;
+    const {tables} = this.props;
+
+    var numCassandraTables = 0;
+    var numRedisTables = 0;
+
+    if (isValidArray(self.props.tables.universeTablesList)) {
+      self.props.tables.universeTablesList.forEach(function (item, idx) {
+        if (item.tableType === "REDIS_TABLE_TYPE") {
+          numRedisTables++;
+        } else {
+          numCassandraTables++;
+        }
+      });
+    }
+
+    if (tables.currentTableView === "list") {
+      return (
+        <div>
+          <TableTitle numRedisTables={numRedisTables} numCassandraTables={numCassandraTables}
+                      onCreateButtonClick={this.showCreateTable}/>
+          <ListTableGrid {...this.props}/>
+        </div>
+      )
+    } else if (tables.currentTableView === "create") {
+      return (
+        <div>
+          <CreateTableContainer showListTables={this.showListTables}/>
+        </div>
+      )
+    } else {
+      return <span/>
+    }
+  }
+}
+
+class ListTableGrid extends Component {
+  componentWillMount() {
+    var universeUUID = this.props.universe.currentUniverse.universeUUID;
+    this.props.fetchUniverseTables(universeUUID);
+  }
+  render(){
+    var self = this;
     const {universe: {currentUniverse}} = this.props;
     var getTableIcon = function(tableType) {
       if (tableType === "YQL_TABLE_TYPE") {
         return <Image src={cassandraLogo} className="table-type-logo"/>;
       } else {
-          return <Image src={redisLogo} className="table-type-logo"/>;
-        }
+        return <Image src={redisLogo} className="table-type-logo"/>;
+      }
     }
 
     var getTableName = function (tableName, data) {
       return <Link to={`/universes/${currentUniverse.universeUUID}/tables/${data.tableID}`}>{tableName}</Link>;
     }
 
-    const tablePlacementDummyData = { "asyncReplica": ["-"],
-                                      "remoteCache": ["-"],
-                                      "read": "-", "write": "-"};
+    const tablePlacementDummyData = {"read": "-", "write": "-"};
 
     var isTableMultiAZ = function(item) {
       if (item === true) {
@@ -82,23 +116,14 @@ export default class ListTables extends Component {
       }
     }
 
-    var numCassandraTables = 0;
-    var numRedisTables = 0;
     var listItems = [];
     if (isValidArray(self.props.tables.universeTablesList)) {
       listItems = self.props.tables.universeTablesList.map(function (item, idx) {
-        if (item.tableType === "redis") {
-          numRedisTables++;
-        } else {
-          numCassandraTables++;
-        }
         return {
           "tableID": item.tableUUID,
           "tableType": item.tableType,
           "tableName": item.tableName,
           "isMultiAZ": JSON.parse(self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ),
-          "asyncReplica": tablePlacementDummyData.asyncReplica,
-          "remoteCache": tablePlacementDummyData.remoteCache,
           "read": tablePlacementDummyData.read,
           "write": tablePlacementDummyData.write
         }
@@ -116,12 +141,6 @@ export default class ListTables extends Component {
         <TableHeaderColumn dataField={"isMultiAZ"}
                            columnClassName={"yb-table-cell"} dataFormat={isTableMultiAZ}>
           Multi AZ</TableHeaderColumn>
-        <TableHeaderColumn dataField={"asyncReplica"}
-                           columnClassName={"yb-table-cell"} >
-          Async Replica</TableHeaderColumn>
-        <TableHeaderColumn dataField={"remoteCache"}
-                           columnClassName={"yb-table-cell"} >
-          Remote Cache</TableHeaderColumn>
         <TableHeaderColumn dataField={"read"}
                            columnClassName={"yb-table-cell"} >
           Read</TableHeaderColumn>
@@ -130,22 +149,6 @@ export default class ListTables extends Component {
           Write</TableHeaderColumn>
       </BootstrapTable>
 
-    if (self.state.currentView === "listTables") {
-      return (
-        <div>
-          <TableTitle numRedisTables={numRedisTables} numCassandraTables={numCassandraTables}
-                      onCreateButtonClick={this.showCreateTable}/>
-          {tableListDisplay}
-        </div>
-      )
-    } else if (self.state.currentView === "createTable") {
-      return (
-        <div>
-          <CreateTableContainer showListTables={this.showListTables}/>
-        </div>
-      )
-    } else {
-      return <span/>
-    }
+    return (<div>{tableListDisplay}</div>)
   }
 }
