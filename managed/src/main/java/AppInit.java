@@ -43,7 +43,8 @@ public class AppInit {
       }
 
       // Check if we have provider data, if not, we need to see the database
-      if (Provider.find.where().findRowCount() == 0 && appConfig.getBoolean("yb.seedData")) {
+      if (Provider.find.where().findRowCount() == 0 &&
+          appConfig.getBoolean("yb.seedData", false)) {
         Logger.debug("Seed the Yugaware DB");
 
         List<?> all = (ArrayList<?>) Yaml.load(
