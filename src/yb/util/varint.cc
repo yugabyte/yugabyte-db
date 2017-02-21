@@ -55,6 +55,7 @@ string VarInt::ToString() const {
   return output;
 }
 
+const VarInt k_uint_64_max = VarInt({255, 255, 255, 255, 255, 255, 255, 255}, 256, true);
 const VarInt k_int_64_max = VarInt({255, 255, 255, 255, 255, 255, 255, 127}, 256, true);
 const VarInt k_int_64_min = VarInt({0, 0, 0, 0, 0, 0, 0, 128}, 256, false);
 
@@ -101,6 +102,14 @@ Status VarInt::FromString(const Slice &slice) {
   return Status::OK();
 }
 
+Status VarInt::ExtractDigits(uint64_t val, int radix) {
+  while (val > 0) {
+    digits_.push_back(static_cast<uint8_t> (val % radix));
+    val /= radix;
+  }
+  return Status::OK();
+}
+
 Status VarInt::FromInt64(std::int64_t int64_val, int radix) {
   DCHECK(radix > 0) << "Radix of VarInt found to be non-positive";
   radix_ = radix;
@@ -111,11 +120,7 @@ Status VarInt::FromInt64(std::int64_t int64_val, int radix) {
   } else {
     val = is_positive_ ? static_cast<uint64_t> (int64_val) : static_cast<uint64_t> (-int64_val);
   }
-  while (val > 0) {
-    digits_.push_back(static_cast<uint8_t> (val % radix));
-    val /= radix;
-  }
-  return Status::OK();
+  return ExtractDigits(val, radix);
 }
 
 VarInt VarInt::add(const vector<VarInt> &inputs) {

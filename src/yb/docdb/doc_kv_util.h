@@ -15,6 +15,7 @@
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/varint.h"
 
 namespace yb {
 namespace docdb {
@@ -90,7 +91,9 @@ inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
 }
 
 inline void AppendColumnIdToKey(ColumnId val, std::string* dest) {
-  PutMemcmpableVarint64(dest, val.ToUint64());
+  std::string encoded_varint = yb::util::VarInt(
+      static_cast<int64_t>(val)).EncodeToComparable();
+  dest->append(encoded_varint);
 }
 
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given

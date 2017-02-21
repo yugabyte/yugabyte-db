@@ -215,6 +215,10 @@ class VarInt {
 
  private:
 
+  // Given a uint64_t and a radix, populates digits_ with the appropriate digits for the given
+  // radix.
+  CHECKED_STATUS ExtractDigits(uint64_t val, int radix);
+
   // Remove all trailing zeros from the digits vector (most significant end).
   // VarInt should be trimmed by default, most of the input VarInts in the API are
   // assumed to be trimmed already.

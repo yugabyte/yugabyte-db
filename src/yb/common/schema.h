@@ -65,7 +65,7 @@ struct ColumnId {
   ColumnId() : t() {}
   ColumnId(const ColumnId& t_) : t(t_.t) {}
   ColumnId& operator=(const ColumnId& rhs) { t = rhs.t; return *this; }
-  ColumnId& operator=(const ColumnIdRep& rhs) { t = rhs; return *this; }
+  ColumnId& operator=(const ColumnIdRep& rhs) { CHECK_GE(rhs, 0); t = rhs; return *this; }
   operator const ColumnIdRep() const { return t; }
   operator const strings::internal::SubstituteArg() const { return t; }
   operator const AlphaNum() const { return t; }
@@ -87,9 +87,9 @@ struct ColumnId {
     return static_cast<uint64_t>(t);
   }
 
-  static CHECKED_STATUS FromUint64(uint64_t value, ColumnId *column_id) {
-    if (value > std::numeric_limits<ColumnIdRep>::max()) {
-      return STATUS(Corruption, strings::Substitute("$0 overflows for column id representation",
+  static CHECKED_STATUS FromInt64(int64_t value, ColumnId *column_id) {
+    if (value > std::numeric_limits<ColumnIdRep>::max() || value < 0) {
+      return STATUS(Corruption, strings::Substitute("$0 not valid for column id representation",
                                                     value));
     }
     column_id->t = static_cast<ColumnIdRep>(value);

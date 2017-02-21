@@ -252,18 +252,24 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       return Status::OK();
 
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kSystemColumnId:
-      // ColumnId is stored as a varint (needs to be atleast 1 byte).
-      if (slice->size() < sizeof(uint8_t)) {
-        return STATUS(Corruption, Substitute("Need at least $0 bytes to decode a varint, found: $1",
-                                             static_cast<int>(sizeof(uint8_t)), slice->size()));
-      }
-      uint64_t varint;
-      RETURN_NOT_OK(GetMemcmpableVarint64(slice, &varint));
+    case ValueType::kSystemColumnId: {
+      // Decode varint.
+      yb::util::VarInt column_id_varint;
+      size_t num_bytes_varint = 0;
 
-      RETURN_NOT_OK(ColumnId::FromUint64(varint, &column_id_val_));
+      // Need to use a non-rocksdb slice for varint.
+      Slice slice_temp(slice->data(), slice->size());
+      RETURN_NOT_OK(column_id_varint.DecodeFromComparable(slice_temp, &num_bytes_varint));
+
+      // Convert to column id.
+      int64_t column_id = 0;
+      RETURN_NOT_OK(column_id_varint.ToInt64(&column_id));
+      RETURN_NOT_OK(ColumnId::FromInt64(column_id, &column_id_val_));
+
+      slice->remove_prefix(num_bytes_varint);
       type_ = value_type;
       return Status::OK();
+    }
 
     case ValueType::kHybridTime:
       if (slice->size() < kBytesPerHybridTime) {

@@ -88,6 +88,10 @@ TEST(PrimitiveValueTest, TestToString) {
 
   // Negative column ids are not allowed.
   EXPECT_EXIT(ColumnId(-1), ::testing::KilledBySignal(SIGABRT), "Check failed.*");
+
+  ColumnId col;
+  EXPECT_EXIT({col = static_cast<ColumnIdRep>(-1);}, ::testing::KilledBySignal(SIGABRT),
+              "Check failed.*");
 }
 
 TEST(PrimitiveValueTest, TestRoundTrip) {
@@ -96,9 +100,9 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
       PrimitiveValue(string("foo\0bar\x01", 8)),
       PrimitiveValue(123L),
       PrimitiveValue(HybridTime(1000L)),
-      PrimitiveValue(ColumnId(numeric_limits<int32_t>::max())),
+      PrimitiveValue(ColumnId(numeric_limits<ColumnIdRep>::max())),
       PrimitiveValue(ColumnId(0)),
-      PrimitiveValue::SystemColumnId(ColumnId(numeric_limits<int32_t>::max())),
+      PrimitiveValue::SystemColumnId(ColumnId(numeric_limits<ColumnIdRep>::max())),
       PrimitiveValue::SystemColumnId(ColumnId(0)),
   }) {
     EncodeAndDecode(primitive_value);
@@ -164,12 +168,41 @@ TEST(PrimitiveValueTest, TestCorruption) {
 TEST(PrimitiveValueTest, TestVarintStorage) {
   // Verify varint occupies the appropriate amount of bytes.
   KeyBytes key_bytes;
-  key_bytes.AppendColumnId(ColumnId(240));
+  key_bytes.AppendColumnId(ColumnId(63));
   ASSERT_EQ(1, key_bytes.AsSlice().size());
+
+  // 2 bytes for > 63
+  key_bytes.AppendColumnId(ColumnId(64));
+  ASSERT_EQ(3, key_bytes.AsSlice().size());
 
   key_bytes.Clear();
   key_bytes.AppendColumnId(ColumnId(std::numeric_limits<int32_t>::max()));
   ASSERT_EQ(5, key_bytes.AsSlice().size());
+}
+
+TEST(PrimitiveValueTest, TestRandomComparableColumnId) {
+  // Seed with current time.
+  std::srand(std::time(0));
+  for (int i = 0; i < 1000; i++) {
+    ColumnIdRep column_id1 = std::rand() % (std::numeric_limits<ColumnIdRep>::max());
+    ColumnIdRep column_id2 = std::rand() % (std::numeric_limits<ColumnIdRep>::max());
+    KeyBytes key_bytes1;
+    KeyBytes key_bytes2;
+    key_bytes1.AppendColumnId(ColumnId(column_id1));
+    key_bytes2.AppendColumnId(ColumnId(column_id2));
+    rocksdb::Slice slice1 = key_bytes1.AsSlice();
+    rocksdb::Slice slice2 = key_bytes2.AsSlice();
+    if (column_id1 > column_id2) {
+      ASSERT_LT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+                                                                  column_id1, column_id2);
+    } else if (column_id1 < column_id2) {
+      ASSERT_GT(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+                                                                  column_id1, column_id2);
+    } else {
+      ASSERT_EQ(0, slice1.compare(slice2)) << strings::Substitute("Failed for values $0, $1",
+                                                                  column_id1, column_id2);
+    }
+  }
 }
 
 }  // namespace docdb
