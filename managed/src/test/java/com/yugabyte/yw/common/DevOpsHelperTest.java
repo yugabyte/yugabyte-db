@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UpgradeUniverse;
@@ -11,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
 import org.junit.Before;
 import org.junit.Test;
@@ -110,22 +112,6 @@ public class DevOpsHelperTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
   }
 
-  @Test
-  public void testProvisionNodeCommandWithInvalidParam() {
-    for (TestData t : testData) {
-      NodeTaskParams params = new NodeTaskParams();
-      params.cloud = t.cloudType;
-      params.azUuid = t.zone.uuid;
-      params.nodeName = t.node.getNodeName();
-
-      try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, params);
-      } catch (RuntimeException re) {
-        assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleSetupServer.Params"));
-      }
-    }
-  }
-
   private List<String> nodeCommand(DevOpsHelper.NodeCommandType type, NodeTaskParams params) {
     List<String> expectedCommand = new ArrayList<>();
 
@@ -199,16 +185,37 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testProvisionNodeCommand() {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      Universe u = createUniverse();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.subnetId = t.zone.subnet;
       params.instanceType = t.node.instanceTypeCode;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
+
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Provision, params));
 
       devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testProvisionNodeCommandWithInvalidParam() {
+    for (TestData t : testData) {
+      Universe u = createUniverse();
+      NodeTaskParams params = new NodeTaskParams();
+      params.cloud = t.cloudType;
+      params.azUuid = t.zone.uuid;
+      params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
+
+      try {
+        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, params);
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleSetupServer.Params"));
+      }
     }
   }
 
@@ -251,6 +258,39 @@ public class DevOpsHelperTest extends FakeDBApplication {
   }
 
   @Test
+  public void testConfigureNodeCommandWithAccessKey() {
+    for (TestData t : testData) {
+      Universe u = createUniverse();
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          new UniverseDefinitionTaskParams.UserIntent();
+      userIntent.numNodes = 3;
+      userIntent.accessKeyCode = "demo-access";
+      u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.privateKey = "/path/to/private.key";
+      keyInfo.publicKey = "/path/to/public.key";
+      keyInfo.vaultFile = "/path/to/vault_file";
+      keyInfo.vaultPasswordFile = "/path/to/vault_password";
+      AccessKey.create(t.provider.uuid, "demo-access", keyInfo);
+      params.cloud = t.cloudType;
+      params.azUuid = t.zone.uuid;
+      params.nodeName = t.node.getNodeName();
+      params.isMasterInShellMode = true;
+      params.ybServerPackage = "yb-server-pkg";
+      params.universeUUID = u.universeUUID;
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
+      List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
+          "--vault_password_file", "/path/to/vault_password", "--private_key_file",
+          "/path/to/private.key");
+      expectedCommand.addAll(expectedCommand.size() - 1, accessKeyCommand);
+      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  @Test
   public void testConfigureNodeCommandInShellMode() {
     for (TestData t : testData) {
       Universe u = createUniverse();
@@ -268,7 +308,6 @@ public class DevOpsHelperTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
-
 
   @Test
   public void testSoftwareUpgradeWithoutRequiredProperties() {
@@ -410,10 +449,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   @Test
   public void testDestroyNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
+      Universe u = createUniverse();
       NodeTaskParams params = new NodeTaskParams();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
 
       try {
         devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Destroy, params);
@@ -426,10 +467,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   @Test
   public void testDestroyNodeCommand() {
     for (TestData t : testData) {
+      Universe u = createUniverse();
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Destroy, params));
@@ -441,10 +484,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   @Test
   public void testListNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
+      Universe u = createUniverse();
       NodeTaskParams params = new NodeTaskParams();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
 
       try {
         devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
@@ -457,10 +502,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   @Test
   public void testListNodeCommand() {
     for (TestData t : testData) {
+      Universe u = createUniverse();
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.List, params));
@@ -472,10 +519,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
   @Test
   public void testControlNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
+      Universe u = createUniverse();
       NodeTaskParams params = new NodeTaskParams();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
 
       try {
         devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Control, params);
@@ -488,12 +537,14 @@ public class DevOpsHelperTest extends FakeDBApplication {
   @Test
   public void testControlNodeCommand() {
     for (TestData t : testData) {
+      Universe u = createUniverse();
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
       params.process = "master";
       params.command = "create";
+      params.universeUUID = u.universeUUID;
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Control, params));
@@ -505,10 +556,13 @@ public class DevOpsHelperTest extends FakeDBApplication {
   @Test
   public void testDockerNodeCommandWithoutDockerNetwork() {
     for (TestData t : testData) {
+      Universe u = createUniverse();
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
+
       try {
         devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
       } catch (RuntimeException re) {
@@ -525,10 +579,12 @@ public class DevOpsHelperTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.docker.network")).thenReturn(DOCKER_NETWORK);
 
     for (TestData t : testData) {
+      Universe u = createUniverse();
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       params.cloud = t.cloudType;
       params.azUuid = t.zone.uuid;
       params.nodeName = t.node.getNodeName();
+      params.universeUUID = u.universeUUID;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.List, params));
       devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);

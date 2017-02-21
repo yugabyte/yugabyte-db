@@ -13,6 +13,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -69,6 +71,38 @@ public class DevOpsHelper {
       command.add(node.getDetailsJson());
     }
     return command;
+  }
+
+  private List<String> getAccessKeySpecificCommand(NodeTaskParams params) {
+    List<String> subCommand = new ArrayList<>();
+    if (params.universeUUID == null) {
+      throw new RuntimeException("NodeTaskParams missing Universe UUID.");
+    }
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        Universe.get(params.universeUUID).getUniverseDetails().userIntent;
+
+    if (userIntent != null && userIntent.accessKeyCode != null) {
+      AccessKey accessKey = AccessKey.get(params.getProvider().uuid, userIntent.accessKeyCode);
+      AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+      if (keyInfo.vaultFile != null) {
+        subCommand.add("--vars_file");
+        subCommand.add(keyInfo.vaultFile);
+        subCommand.add("--vault_password_file");
+        subCommand.add(keyInfo.vaultPasswordFile);
+      }
+      if (keyInfo.privateKey != null) {
+        subCommand.add("--private_key_file");
+        subCommand.add(keyInfo.privateKey);
+
+        // We only need to include keyPair name for setup server call.
+        if (params instanceof AnsibleSetupServer.Params) {
+          subCommand.add("--key_pair_name");
+          subCommand.add(userIntent.accessKeyCode);
+        }
+      }
+    }
+
+    return subCommand;
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
@@ -152,6 +186,7 @@ public class DevOpsHelper {
           command.add(taskParam.getRegion().ybImage);
           command.add("--assign_public_ip");
         }
+        command.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
       case Configure:
@@ -161,6 +196,7 @@ public class DevOpsHelper {
         }
         AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params)nodeTaskParam;
         command.addAll(getConfigureSubCommand(taskParam));
+        command.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
       case List:
@@ -186,6 +222,7 @@ public class DevOpsHelper {
         AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params)nodeTaskParam;
         command.add(taskParam.process);
         command.add(taskParam.command);
+        command.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
     }

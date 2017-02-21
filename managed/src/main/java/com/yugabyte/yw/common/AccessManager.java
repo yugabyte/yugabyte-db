@@ -132,7 +132,7 @@ public class AccessManager {
             throw new RuntimeException(response.get("error").asText());
         }
         keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
-        keyInfo.vaultPassword = vaultResponse.get("vault_password").asText();
+        keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
         return keyInfo;
     }
 
