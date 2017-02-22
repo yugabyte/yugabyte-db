@@ -36,7 +36,7 @@ try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
     log_message(logging.INFO, "Building/Packaging UI code")
-    check_output(["rm", "-rf", "node_modules"], cwd=os.path.join(script_dir, 'ui'))
+    shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
     check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
     check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
 
