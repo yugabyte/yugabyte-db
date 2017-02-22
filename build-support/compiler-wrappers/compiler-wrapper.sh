@@ -68,7 +68,7 @@ show_compiler_command_line() {
 
   local command_line_filter=cat
   if [[ -n ${YB_SPLIT_LONG_COMPILER_CMD_LINES:-} ]]; then
-    command_line_filter=$YB_SRC_DIR/build-support/split_long_command_line.py
+    command_line_filter=$YB_SRC_ROOT/build-support/split_long_command_line.py
   fi
 
   # Split the failed compilation command over multiple lines for easier reading.
@@ -140,24 +140,66 @@ should_skip_error_checking_by_input_file_pattern() {
   return 0
 }
 
-YB_SRC_DIR=$( cd "$( dirname "$0" )"/../.. && pwd )
-
 # We currently assume a specific location of the precompiled header file (used in the RocksDB
 # codebase). If we add more precompiled header files, we will need to change related error handling
 # here.
 PCH_NAME=precompiled_header.h.gch
 
-. "$YB_SRC_DIR"/build-support/common-build-env.sh
-# The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type.
+. "${0%/*}/../common-build-env.sh"
+# The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type. Also sets
+# YB_SRC_ROOT.
 
-thirdparty_install_dir=$YB_SRC_DIR/thirdparty/installed/bin
+thirdparty_install_dir=$YB_SRC_ROOT/thirdparty/installed/bin
 
 # This script is invoked through symlinks called "cc" or "c++".
 cc_or_cxx=${0##*/}
 
 stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 
+# Returns absolute real path to specified path (also resolves symlinks).
+# If specified parameter is a subdirectory inside $YB_SRC_ROOT/.../rocksdb-build - resolves it to
+# a corresponding $YB_SRC_DIR_SRC/rocksdb subdirectory
+resolve_path() {
+  expect_num_args 1 "$@"
+  local path=$1
+  if [[ -f "$path.gch" ]]; then
+    # Don't replace path to precompiled headers, so ccache/compiler can find corresponding .gch.
+    resolve_path_rv=$path
+  else
+    resolve_path_rv=$(realpath "$path")
+    if [[ $resolve_path_rv == "$YB_SRC_ROOT/"*"/rocksdb-build"@(/*|) ]]; then
+      local subpath=${resolve_path_rv#$YB_SRC_ROOT/*/rocksdb-build}
+      resolve_path_rv=$YB_SRC/rocksdb/$subpath
+      resolve_path_rv=$(realpath "$resolve_path_rv")
+    fi
+  fi
+}
+
 compiler_args=( "$@" )
+
+# Solution for https://yugabyte.atlassian.net/browse/ENG-850: Improve RocksDB code debugging.
+# For each compiler argument which is a link to file, we are replacing it with absolute real source
+# file path.
+# For include directory argument (-I), which is located inside $YB_SRC_ROOT/.../rocksdb-build,
+# we are replacing it with corresponding $YB_SRC/rocksdb subdirectory. Such subdirectories
+# require special handling, because they are not symlinks, but just copies the same directory
+# hierarchy from $YB_SRC/rocksdb and symlinks are created under that copied hierarchy.
+#
+# We can remove that after we start building RocksDB from src folder instead of sym-linked sources
+# in rocksdb-build directory.
+YB_SRC="$YB_SRC_ROOT/src"
+for i in "${!compiler_args[@]}"
+do
+  arg="${compiler_args[$i]}"
+  if [[ -L "$arg" ]]; then
+    resolve_path "$arg"
+    compiler_args[$i]=$resolve_path_rv
+  elif [[ "$arg" == "-I"* ]]; then
+    resolve_path "${arg#-I}"
+    compiler_args[$i]="-I$resolve_path_rv"
+  fi
+done
+
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is
 # treated as such.
@@ -207,6 +249,7 @@ using_ccache=false
 if which ccache >/dev/null && [[ -z ${YB_NO_CCACHE:-} ]]; then
   using_ccache=true
   export CCACHE_CC="$compiler_executable"
+  export CCACHE_SLOPPINESS="pch_defines,time_macros"
   cmd=( ccache compiler )
 else
   cmd=( "$compiler_executable" )
