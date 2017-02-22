@@ -20,7 +20,7 @@ public class Metric {
     synchronized(lock) {
       curOpCount += numOps;
       curOpLatencyNanos += totalLatencyNanos;
-      totalOpCount++;
+      totalOpCount += numOps;
     }
   }
 

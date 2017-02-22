@@ -16,8 +16,10 @@ import com.datastax.driver.core.Session;
 
 import redis.clients.jedis.Jedis;
 
-public abstract class Workload {
+public abstract class Workload implements MetricsTracker.StatusMessageAppender {
   private static final Logger LOG = Logger.getLogger(Workload.class);
+  // Variable to track start time of the workload.
+  private long workloadStartTime = -1;
   // Instance of the workload configuration.
   public static WorkloadConfig workloadConfig = new WorkloadConfig();
   // The configuration of the load tester.
@@ -45,10 +47,12 @@ public abstract class Workload {
    * @param configuration configuration of the load tester framework.
    */
   public void workloadInit(Configuration configuration) {
+    workloadStartTime = System.currentTimeMillis();
     this.configuration = configuration;
-    initialize(null);
+    initialize(configuration);
     metricsTracker.createMetric(MetricName.Read);
     metricsTracker.createMetric(MetricName.Write);
+    metricsTracker.registerStatusMessageAppender(this);
     metricsTracker.start();
   }
 
@@ -121,12 +125,17 @@ public abstract class Workload {
   /**
    * Initialize the plugin with various params.
    */
-  public abstract void initialize(String args);
+  public void initialize(Configuration configuration) {}
+
+  /**
+   * Call to tell the plugin to drop tables.
+   */
+  public void dropTable() {}
 
   /**
    * Call to tell the plugin to create tables as needed.
    */
-  public abstract void createTableIfNeeded();
+  public void createTableIfNeeded() {}
 
   /**
    * As a part of this call, the plugin should perform a single read operation.
@@ -139,6 +148,23 @@ public abstract class Workload {
    * @return Number of writes done, a value <= 0 indicates no ops were done.
    */
   public abstract long doWrite();
+
+  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
+    return "Not implemented";
+  }
+
+  /**
+   * Default implementation of the status message appender.
+   */
+  @Override
+  public void appendMessage(StringBuilder sb) {
+    sb.append("Runtime: " + (System.currentTimeMillis() - workloadStartTime) + " ms | ");
+  }
+
+  @Override
+  public String appenderName() {
+    return this.getClass().getSimpleName();
+  }
 
   /**
    * Terminate the workload (tear down connections if needed, etc).

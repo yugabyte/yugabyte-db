@@ -35,7 +35,25 @@ public class CassandraSimpleReadWrite extends Workload {
   private String tableName = CassandraSimpleReadWrite.class.getSimpleName();
 
   @Override
-  public void initialize(String args) {}
+  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
+    return optsPrefix + "--num_threads_read 32" + optsSuffix +
+           optsPrefix + "--num_threads_write 4" + optsSuffix +
+           optsPrefix + "--num_reads 100000000" + optsSuffix +
+           optsPrefix + "--num_writes 100000000" + optsSuffix +
+           optsPrefix + "--num_unique_keys 10000000 " + optsSuffix +
+           optsPrefix + "[--table_ttl_seconds 86400]";
+  }
+
+  @Override
+  public void dropTable() {
+    try {
+      String drop_stmt = String.format("DROP TABLE %s;", tableName);
+      getCassandraClient().execute(drop_stmt);
+      LOG.info("Dropped Cassandra table " + tableName + " using query: [" + drop_stmt + "]");
+    } catch (Exception e) {
+      LOG.info("Ignoring exception dropping table: " + e.getMessage());
+    }
+  }
 
   @Override
   public void createTableIfNeeded() {

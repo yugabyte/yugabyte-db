@@ -24,14 +24,12 @@ public class Configuration {
   private static final Logger LOG = Logger.getLogger(Configuration.class);
 
   public static final UUID loadTesterUUID = UUID.randomUUID();
-  static {
-    LOG.info("Load tester UUID: " + loadTesterUUID);
-  }
 
   // The types of workloads currently registered.
   public static enum WorkLoadType {
-    CassandraRetail,
+//    CassandraRetail,
     CassandraSimpleReadWrite,
+    CassandraStockTicker,
     CassandraTimeseries,
     RedisSimpleReadWrite,
   }
@@ -42,17 +40,31 @@ public class Configuration {
   Random random = new Random();
   int numReaderThreads;
   int numWriterThreads;
+  boolean reuseExistingTable = false;
+  CommandLine commandLine;
 
-  public Configuration(WorkLoadType workloadType, List<String> hostPortList)
-      throws ClassNotFoundException {
+  public void initialize(CommandLine commandLine) throws ClassNotFoundException {
+    this.commandLine = commandLine;
+    // Get the workload.
+    WorkLoadType workloadType = WorkLoadType.valueOf(commandLine.getOptionValue("workload"));
+    // Get the proxy nodes.
+    List<String> hostPortList = Arrays.asList(commandLine.getOptionValue("nodes").split(","));
     // Get the workload class.
-    workloadClass = Class.forName("org.yb.loadtester.workload." + workloadType.toString())
-                         .asSubclass(Workload.class);
+    workloadClass = getWorkloadClass(workloadType);
     LOG.info("Workload: " + workloadClass.getSimpleName());
-
     for (String hostPort : hostPortList) {
       LOG.info("Adding node: " + hostPort);
       this.nodes.add(Node.fromHostPort(hostPort));
+    }
+    // Set the number of threads.
+    initializeThreadCount(commandLine);
+    // Initialize num keys.
+    initializeNumKeys(commandLine);
+    // Initialize table properties.
+    initializeTableProperties(commandLine);
+    // Check if we should drop existing tables.
+    if (commandLine.hasOption("reuse_table")) {
+      reuseExistingTable = true;
     }
   }
 
@@ -67,6 +79,10 @@ public class Configuration {
       LOG.error("Could not create instance of " + workloadClass.getName(), e);
     }
     return workload;
+  }
+
+  public CommandLine getCommandLine() {
+    return commandLine;
   }
 
   public List<Node> getNodes() {
@@ -87,7 +103,18 @@ public class Configuration {
     return numWriterThreads;
   }
 
-  public void initializeThreadCount(CommandLine cmd) {
+  public boolean getReuseExistingTable() {
+    return reuseExistingTable;
+  }
+
+  private static Class<? extends Workload> getWorkloadClass(WorkLoadType workloadType)
+      throws ClassNotFoundException{
+    // Get the workload class.
+    return Class.forName("org.yb.loadtester.workload." + workloadType.toString())
+                         .asSubclass(Workload.class);
+  }
+
+  private void initializeThreadCount(CommandLine cmd) {
     // Check if there are a fixed number of threads or variable.
     String numThreadsStr = cmd.getOptionValue("num_threads");
     if (Workload.workloadConfig.readIOPSPercentage == -1) {
@@ -118,7 +145,7 @@ public class Configuration {
              ", num writer threads: " + numWriterThreads);
   }
 
-  public void initializeNumKeys(CommandLine cmd) {
+  private void initializeNumKeys(CommandLine cmd) {
     if (cmd.hasOption("num_writes")) {
       Workload.workloadConfig.numKeysToWrite = Long.parseLong(cmd.getOptionValue("num_writes"));
     }
@@ -135,7 +162,7 @@ public class Configuration {
     LOG.info("Num keys to read: " + Workload.workloadConfig.numKeysToRead);
   }
 
-  public void initializeTableProperties(CommandLine cmd) {
+  private void initializeTableProperties(CommandLine cmd) {
     // Initialize the TTL.
     if (cmd.hasOption("table_ttl_seconds")) {
       Workload.workloadConfig.tableTTLSeconds =
@@ -147,7 +174,6 @@ public class Configuration {
 
   public static Configuration createFromArgs(String[] args) throws Exception {
     Options options = new Options();
-    options.addOption("h", "help", false, "show help.");
 
     Option appType = OptionBuilder.create("workload");
     appType.setDescription("The workload to run.");
@@ -163,106 +189,95 @@ public class Configuration {
     proxyAddrs.setArgs(1);
     options.addOption(proxyAddrs);
 
-    Option numThreads = OptionBuilder.create("num_threads");
-    numThreads.setDescription("The total number of threads.");
-    numThreads.setRequired(false);
-    numThreads.setLongOpt("num_threads");
-    numThreads.setArgs(1);
-    options.addOption(numThreads);
+    options.addOption("help", false, "Show help message.");
+    options.addOption("verbose", false, "Enable debug level logging.");
 
-    Option numReadThreads = OptionBuilder.create("num_threads_read");
-    numReadThreads.setDescription("The total number of threads that perform reads.");
-    numReadThreads.setRequired(false);
-    numReadThreads.setLongOpt("num_threads_read");
-    numReadThreads.setArgs(1);
-    options.addOption(numReadThreads);
+    options.addOption("reuse_table", false, "Reuse table if it already exists.");
+    options.addOption("num_threads", true, "The total number of threads.");
+    options.addOption("num_threads_read", true, "The number of threads that perform reads.");
+    options.addOption("num_threads_write", true, "The number of threads that perform writes.");
+    options.addOption("num_writes", true, "The total number of writes to perform.");
+    options.addOption("num_reads", true, "The total number of reads to perform.");
+    options.addOption("table_ttl_seconds", true, "The TTL in seconds to create the table with.");
 
-    Option numWriteThreads = OptionBuilder.create("num_threads_write");
-    numWriteThreads.setDescription("The total number of threads that perform writes.");
-    numWriteThreads.setRequired(false);
-    numWriteThreads.setLongOpt("num_threads_write");
-    numWriteThreads.setArgs(1);
-    options.addOption(numWriteThreads);
+    // Options for CassandraTimeseries workload.
+    options.addOption("num_users", true, "[CassandraTimeseries] The total number of users.");
+    options.addOption("min_nodes_per_user", true,
+                      "[CassandraTimeseries] The min number of nodes per user.");
+    options.addOption("min_nodes_per_user", true,
+                      "[CassandraTimeseries] The min number of nodes per user.");
+    options.addOption("max_nodes_per_user", true,
+                      "[CassandraTimeseries] The max number of nodes per user.");
+    options.addOption("min_metrics_count", true,
+                      "[CassandraTimeseries] The min number of metrics for all nodes of user.");
+    options.addOption("max_metrics_count", true,
+                      "[CassandraTimeseries] The max number of metrics for all nodes of user.");
+    options.addOption("data_emit_rate_millis", true,
+                      "[CassandraTimeseries] The rate at which each node emits all metrics.");
 
-    Option numWrites = OptionBuilder.create("num_writes");
-    numWrites.setDescription("The total number of writes to perform.");
-    numWrites.setRequired(false);
-    numWrites.setLongOpt("num_writes");
-    numWrites.setArgs(1);
-    options.addOption(numWrites);
+    // Options for CassandraStockTicker workload.
+    options.addOption("num_ticker_symbols", true,
+                      "[CassandraStockTicker] The total number of stock ticker symbols.");
 
-    Option numReads = OptionBuilder.create("num_reads");
-    numReads.setDescription("The total number of reads to perform.");
-    numReads.setRequired(false);
-    numReads.setLongOpt("num_reads");
-    numReads.setArgs(1);
-    options.addOption(numReads);
-
-    Option numUniqueKeys = OptionBuilder.create("num_unique_keys");
-    numUniqueKeys.setDescription("The total number of unique keys to write into the DB.");
-    numUniqueKeys.setRequired(false);
-    numUniqueKeys.setLongOpt("num_unique_keys");
-    numUniqueKeys.setArgs(1);
-    options.addOption(numUniqueKeys);
-
-    Option tableLevelTTLSecs = OptionBuilder.create("table_ttl_seconds");
-    tableLevelTTLSecs.setDescription("The table level TTL in seconds to create the table with.");
-    tableLevelTTLSecs.setRequired(false);
-    tableLevelTTLSecs.setLongOpt("table_ttl_seconds");
-    tableLevelTTLSecs.setArgs(1);
-    options.addOption(tableLevelTTLSecs);
-
-    Option verbose = OptionBuilder.create("verbose");
-    verbose.setDescription("Enable debug level logging.");
-    verbose.setRequired(false);
-    verbose.setLongOpt("verbose");
-    verbose.setArgs(0);
-    options.addOption(verbose);
+    // Options for the key-value workloads.
+    options.addOption("num_unique_keys", true,
+                      "[KV workloads only] Number of unique keys to write into the DB.");
 
     CommandLineParser parser = new BasicParser();
-    CommandLine cmd = null;
+    CommandLine commandLine = null;
 
     try {
-      cmd = parser.parse(options, args);
+      commandLine = parser.parse(options, args);
     } catch (ParseException e) {
-      printUsage(options, e.getMessage());
+      try {
+        printUsage(options, e.getMessage());
+      } catch (Exception e1) {
+        LOG.error("Hit error parsing command line", e1);
+      }
       System.exit(0);
     }
 
     // Set the appropriate log level.
-    Logger.getRootLogger().setLevel(cmd.hasOption("verbose") ? Level.DEBUG : Level.INFO);
+    Logger.getRootLogger().setLevel(commandLine.hasOption("verbose") ? Level.DEBUG : Level.INFO);
 
-    if (cmd.hasOption("h")) {
-      printUsage(options, "Usage:");
+    if (commandLine.hasOption("help")) {
+      try {
+        printUsage(options, "Usage:");
+      } catch (Exception e) {
+        LOG.error("Hit error parsing command line", e);
+      }
       System.exit(0);
     }
 
-    // Get the workload.
-    WorkLoadType workloadType = WorkLoadType.valueOf(cmd.getOptionValue("workload"));
-    // Get the proxy nodes.
-    List<String> hostPortList = Arrays.asList(cmd.getOptionValue("nodes").split(","));
-    // Create the configuration.
-    Configuration configuration = new Configuration(workloadType, hostPortList);
-    // Set the number of threads.
-    configuration.initializeThreadCount(cmd);
-    // Initialize num keys.
-    configuration.initializeNumKeys(cmd);
-    // Initialize table properties.
-    configuration.initializeTableProperties(cmd);
-
+    Configuration configuration = new Configuration();
+    configuration.initialize(commandLine);
     return configuration;
   }
 
-  private static void printUsage(Options options, String header) {
+  private static void printUsage(Options options, String header) throws Exception {
+    HelpFormatter formater = new HelpFormatter();
+    formater.setWidth(120);
+    formater.printHelp("LoadTester", header, options, "");
+
     StringBuilder footer = new StringBuilder();
-    footer.append("Valid values for 'workload' are: ");
+    footer.append("\nValid values for 'workload' are: ");
+    String optsPrefix = "\t\t\t";
+    String optsSuffix = " \\\n";
     for (WorkLoadType workloadType : WorkLoadType.values()) {
-      footer.append(workloadType.toString() + " ");
+      int port = 0;
+      if (workloadType.toString().startsWith("Cassandra")) port = 9042;
+      else if (workloadType.toString().startsWith("Redis")) port = 6379;
+      Workload workload = getWorkloadClass(workloadType).newInstance();
+
+      footer.append("\n - " + workloadType.toString() + " :\n");
+      footer.append("\t\tjava -jar yb-loadtester-0.8.0-SNAPSHOT-jar-with-dependencies.jar"
+                    + optsSuffix);
+      footer.append(optsPrefix + "--workload " + workloadType.toString() + optsSuffix);
+      footer.append(optsPrefix + "--nodes 127.0.0.1:" + port + optsSuffix);
+      footer.append(workload.getExampleUsageOptions(optsPrefix, optsSuffix));
     }
     footer.append("\n");
-
-    HelpFormatter formater = new HelpFormatter();
-    formater.printHelp("LoadTester", header, options, footer.toString());
+    System.out.println(footer.toString());
     System.exit(0);
   }
 

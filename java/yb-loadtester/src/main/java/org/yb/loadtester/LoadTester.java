@@ -73,6 +73,9 @@ public class LoadTester {
   public void run() {
     try {
       // Create the table if needed.
+      if (!configuration.getReuseExistingTable()) {
+        workload.dropTable();
+      }
       workload.createTableIfNeeded();
 
       // Create the reader and writer threads.

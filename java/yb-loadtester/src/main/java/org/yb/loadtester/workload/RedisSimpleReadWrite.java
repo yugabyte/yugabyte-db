@@ -28,11 +28,9 @@ public class RedisSimpleReadWrite extends Workload {
   }
 
   @Override
-  public void initialize(String args) {}
-
-  @Override
-  public void createTableIfNeeded() {
-    LOG.info("Using the default .redis table, no need to create a table.");
+  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
+    return optsPrefix+ "--num_threads_read 32" + optsSuffix +
+           optsPrefix + "--num_threads_write 2";
   }
 
   @Override

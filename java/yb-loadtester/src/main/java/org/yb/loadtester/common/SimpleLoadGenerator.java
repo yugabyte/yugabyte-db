@@ -73,7 +73,6 @@ public class SimpleLoadGenerator {
   Random random = new Random();
 
   public SimpleLoadGenerator(long startKey, long endKey) {
-    LOG.info("Creating a load generator in key range (" + startKey + ", " + endKey + ")");
     this.startKey = startKey;
     this.endKey = endKey;
     maxWrittenKey = new AtomicLong(-1);

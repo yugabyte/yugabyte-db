@@ -51,9 +51,6 @@ public class CassandraRetail extends Workload {
   static Random random = new Random();
 
   @Override
-  public void initialize(String args) {}
-
-  @Override
   public void createTableIfNeeded() {
     String create_stmt =
         "CREATE TABLE " + pricingTable + " (" +
