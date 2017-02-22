@@ -26,7 +26,7 @@ CHECKED_STATUS ExecContext::ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_o
     return Error(tnode->loc(), s.ToString().c_str(),
                  s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::SQL_STATEMENT_INVALID);
   }
-  return s;
+  return ProcessResponseStatus(*yb_op.get(), tnode);
 }
 
 CHECKED_STATUS ExecContext::ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op,
@@ -38,8 +38,25 @@ CHECKED_STATUS ExecContext::ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op,
     return Error(tnode->loc(), s.ToString().c_str(),
                  s.IsNotFound() ? ErrorCode::TABLET_NOT_FOUND : ErrorCode::SQL_STATEMENT_INVALID);
   }
-  return s;
+  return ProcessResponseStatus(*yb_op.get(), tnode);
 }
+
+CHECKED_STATUS ExecContext::ProcessResponseStatus(const client::YBqlOp& yb_op,
+                                                  const TreeNode *tnode) {
+  const YQLResponsePB& resp = yb_op.response();
+  CHECK(resp.has_status()) << "YQLResponsePB status missing";
+  switch (resp.status()) {
+    case YQLResponsePB::YQL_STATUS_OK:
+      return Status::OK();
+    case YQLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH:
+      return Error(tnode->loc(), resp.error_message().c_str(), ErrorCode::WRONG_METADATA_VERSION);
+    case YQLResponsePB::YQL_STATUS_RUNTIME_ERROR:
+      return Error(tnode->loc(), resp.error_message().c_str(), ErrorCode::EXEC_ERROR);
+    // default: fall-through to below
+  }
+  LOG(FATAL) << "Unknown status: " << resp.DebugString();
+}
+
 
 }  // namespace sql
 }  // namespace yb

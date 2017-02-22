@@ -229,13 +229,14 @@ void AsyncRpc::SendRpcCb(const Status& status) {
     } else {
       current_ts_string = "(no tablet server available)";
     }
+    const string error_message = new_status.message().ToString();
     new_status = new_status.CloneAndPrepend(
         Substitute("Failed to write batch of $0 ops to tablet $1 "
                        "$2 after $3 attempt(s)",
                    ops_.size(), tablet_->tablet_id(),
                    current_ts_string, num_attempts()));
     LOG(WARNING) << new_status.ToString();
-    MarkOpsAsFailed();
+    MarkOpsAsFailed(error_message);
   }
   ProcessResponseFromTserver(new_status);
   batcher_->RemoveInFlightOps(ops_);
@@ -258,6 +259,43 @@ void AsyncRpc::InitTSProxyCb(const Status& status) {
   if (async_rpc_metrics_)
     async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   SendRpcToTserver();
+}
+
+void AsyncRpc::MarkOpsAsFailed(const string& error_message) {
+  for (auto op : ops_) {
+    YBOperation* yb_op = op->yb_op.get();
+    switch (yb_op->type()) {
+      case YBOperation::Type::REDIS_READ: {
+        RedisResponsePB* resp = down_cast<YBRedisReadOp*>(yb_op)->mutable_response();
+        resp->Clear();
+        resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+        resp->set_error_message(error_message);
+        break;
+      }
+      case YBOperation::Type::REDIS_WRITE: {
+        RedisResponsePB* resp = down_cast<YBRedisWriteOp *>(yb_op)->mutable_response();
+        resp->Clear();
+        resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
+        resp->set_error_message(error_message);
+        break;
+      }
+      case YBOperation::Type::YQL_READ: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::YQL_WRITE: {
+        YQLResponsePB* resp = down_cast<YBqlOp*>(yb_op)->mutable_response();
+        resp->Clear();
+        resp->set_status(YQLResponsePB::YQL_STATUS_RUNTIME_ERROR);
+        resp->set_error_message(error_message);
+        break;
+      }
+      case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
+      case YBOperation::Type::DELETE:
+        break;
+      default:
+        LOG(FATAL) << "Unsupported operation " << yb_op->type();
+        break;
+    }
+  }
 }
 
 WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
@@ -378,7 +416,7 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
     // If there is an error at the Rpc itself,
     // there should be no individual responses. All of them need to be
     // marked as failed.
-    MarkOpsAsFailed();
+    MarkOpsAsFailed(resp_.error().status().message());
     return;
   }
   size_t redis_idx = 0;
@@ -430,23 +468,13 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
 
   if (redis_idx != resp_.redis_response_batch().size() ||
       yql_idx != resp_.yql_response_batch().size()) {
-    LOG(ERROR) << Substitute("Write responses count mismatch: "
+    LOG(ERROR) << Substitute("Write response count mismatch: "
                              "$0 Redis requests sent, $1 responses received. "
                              "$2 YQL requests sent, $3 responses received.",
                              redis_idx, resp_.redis_response_batch().size(),
                              yql_idx, resp_.yql_response_batch().size());
     batcher_->AddOpCountMismatchError();
-    return;
-  }
-}
-
-void WriteRpc::MarkOpsAsFailed() {
-  for (int i = 0; i < ops_.size(); i++) {
-    if (ops_[i]->yb_op->type() == YBOperation::Type::REDIS_WRITE) {
-      RedisResponsePB r = RedisResponsePB();
-      r.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
-      *(down_cast<YBRedisWriteOp *>(ops_[i]->yb_op.get())->mutable_response()) = std::move(r);
-    }
+    MarkOpsAsFailed("Write response count mismatch");
   }
 }
 
@@ -505,7 +533,10 @@ void ReadRpc::SendRpcToTserver() {
       std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
 }
 
-Status ReadRpc::response_error_status() { return Status::OK(); }
+Status ReadRpc::response_error_status() {
+  if (!resp_.has_error()) return Status::OK();
+  return StatusFromPB(resp_.error().status());
+}
 
 void ReadRpc::ProcessResponseFromTserver(Status status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver(%s)", status.ToString(false));
@@ -516,7 +547,7 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
     // If there is an error at the Rpc itself,
     // there should be no individual responses. All of them need to be
     // marked as failed.
-    MarkOpsAsFailed();
+    MarkOpsAsFailed(resp_.error().status().message());
     return;
   }
   // Retrieve Redis and YQL responses and make sure we received all the responses back.
@@ -565,21 +596,13 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
 
   if (redis_idx != resp_.redis_batch().size() ||
       yql_idx != resp_.yql_batch().size()) {
-    LOG(ERROR) << Substitute("Read responses count mismatch: "
+    LOG(ERROR) << Substitute("Read response count mismatch: "
                              "$0 Redis requests sent, $1 responses received. "
                              "$2 YQL requests sent, $3 responses received.",
                              redis_idx, resp_.redis_batch().size(),
                              yql_idx, resp_.yql_batch().size());
     batcher_->AddOpCountMismatchError();
-    MarkOpsAsFailed();
-  }
-}
-
-void ReadRpc::MarkOpsAsFailed() {
-  for (int i = 0; i < ops_.size(); i++) {
-    RedisResponsePB r = RedisResponsePB();
-    r.set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
-    *(down_cast<YBRedisReadOp*>(ops_[i]->yb_op.get())->mutable_response()) = std::move(r);
+    MarkOpsAsFailed("Read response count mismatch");
   }
 }
 

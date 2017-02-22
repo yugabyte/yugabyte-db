@@ -64,6 +64,9 @@ class ExecContext : public ProcessContext {
                            const TreeNode *tnode);
 
  private:
+  // Check and return read/write response status.
+  CHECKED_STATUS ProcessResponseStatus(const client::YBqlOp& yb_op, const TreeNode *tnode);
+
   SqlEnv *sql_env_;
 };
 

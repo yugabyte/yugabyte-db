@@ -77,7 +77,7 @@ class AsyncRpc : public rpc::Rpc {
   // stored in batcher. If there's a callback from the user, it is done in this step.
   virtual void ProcessResponseFromTserver(Status status) = 0;
 
-  virtual void MarkOpsAsFailed() = 0;
+  virtual void MarkOpsAsFailed(const std::string& error_message);
 
   // Pointer back to the batcher. Processes the write response when it
   // completes, regardless of success or failure.
@@ -124,8 +124,6 @@ class WriteRpc : public AsyncRpc {
 
   void ProcessResponseFromTserver(Status status) OVERRIDE;
 
-  void MarkOpsAsFailed() OVERRIDE;
-
  private:
   // Request body.
   tserver::WriteRequestPB req_;
@@ -151,8 +149,6 @@ class ReadRpc : public AsyncRpc {
   void ProcessResponseFromTserver(Status status) OVERRIDE;
 
   CHECKED_STATUS response_error_status() OVERRIDE;
-
-  void MarkOpsAsFailed() OVERRIDE;
 
  private:
   // Request body.
