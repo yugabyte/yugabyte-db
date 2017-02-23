@@ -7,8 +7,10 @@ import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -38,6 +40,13 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     };
 
     Universe.saveDetails(taskParams().universeUUID, updater);
+
+    if (taskParams().cloud == Common.CloudType.onprem) {
+      // Free up the node.
+      NodeInstance node = NodeInstance.getByName(nodeName);
+      node.inUse = false;
+      node.save();
+    }
   }
 
   @Override
