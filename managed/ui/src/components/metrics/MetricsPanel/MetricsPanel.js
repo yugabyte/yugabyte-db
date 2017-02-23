@@ -21,8 +21,10 @@ export default class MetricsPanel extends Component {
       metric.layout.autosize = false;
       metric.layout.width = 400;
       metric.layout.height = 360;
-      metric.layout.showlegend = false;
+      metric.layout.showlegend = true;
       metric.layout.yaxis = {rangemode: "nonnegative"}
+      metric.layout.legend = {xanchor:"center", yanchor:"top",
+                              y:-0.3, x:0.5, orientation: "h"}
       metric.layout.margin = {
         l: 45,
         r: 25,

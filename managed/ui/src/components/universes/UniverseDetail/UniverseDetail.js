@@ -84,7 +84,9 @@ export default class UniverseDetail extends Component {
           <GraphPanelContainer
             type={"redis"}
             nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
-
+          <GraphPanelContainer
+            type={"cql"}
+            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
         </GraphPanelHeaderContainer>
       </Tab>]
 
