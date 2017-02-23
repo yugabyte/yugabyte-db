@@ -150,8 +150,6 @@ public class NodeInstance extends Model {
 
   public static NodeInstance create(UUID zoneUuid, NodeInstanceFormData formData) {
     NodeInstance node = new NodeInstance();
-    // TODO: figure out if needed.
-    // node.nodeUuid = UUID.randomUUID();
     node.zoneUuid = zoneUuid;
     node.inUse = false;
     node.instanceTypeCode = formData.instanceType;
