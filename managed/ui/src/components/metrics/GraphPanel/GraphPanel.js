@@ -8,8 +8,8 @@ import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 
 const panelTypes = {
   server:  { title: "System",
-             metrics: ["memory_usage", "disk_iops", "cpu_usage", "network_bytes", "system_load_over_time",
-                       "network_packets", "network_errors", "disk_bytes_per_second_per_node"]},
+             metrics: ["cpu_usage", "memory_usage", "disk_iops", "disk_bytes_per_second_per_node",
+                       "network_bytes", "network_packets", "network_errors", "system_load_over_time"]},
   tserver: { title: "Internals",
              metrics: ["tserver_ops_latency", "tserver_rpcs_per_sec", "tserver_cache_ops_per_sec","tserver_threads",
               "tserver_change_config", "tserver_context_switches", "tserver_spinlock_server", "tserver_log_latency",

@@ -18,6 +18,8 @@ const filterTypes = [
   {label: "Last 1 hr", type: "hours", value: "1"},
   {label: "Last 6 hrs", type: "hours", value: "6"},
   {label: "Last 12 hrs", type: "hours", value: "12"},
+  {label: "Last 24 hrs", type: "hours", value: "24"},
+  {label: "Last 7 days", type: "days", value: "7"},
   {type: "divider"},
   {label: "Custom", type: "custom"}
 ]
