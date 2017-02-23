@@ -53,9 +53,12 @@ def run_ldd(elf_file_path, report_missing_libs=False):
         tokens = ldd_output_line.split()
         if len(tokens) >= 4 and tokens[1:4] == ['=>', 'not', 'found']:
             missing_lib_name = tokens[0]
-            if report_missing_libs:
-                logging.warn("Library not found for '%s': %s", elf_file_path, missing_lib_name)
-            missing_libs.append(missing_lib_name)
+            # We ignore c-index-test (part of clang) as it frequently comes for some reason but is
+            # not a real issue.
+            if os.path.basename(elf_file_path) != 'c-index-test':
+                if report_missing_libs:
+                    logging.warn("Library not found for '%s': %s", elf_file_path, missing_lib_name)
+                missing_libs.append(missing_lib_name)
     if missing_libs:
         return (False, missing_libs)
     return (True, [])
@@ -116,7 +119,6 @@ def main():
             os.path.join(thirdparty_dir, prefix_rel_dir)
             for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
             ]
-    print "prefix_dirs=" + str(prefix_dirs)
     if os.path.isfile('/usr/bin/patchelf'):
         linux_change_rpath_cmd = 'patchelf --set-rpath'
     else:

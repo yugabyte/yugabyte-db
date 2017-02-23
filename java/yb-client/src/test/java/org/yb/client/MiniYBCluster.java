@@ -27,18 +27,11 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.lang.management.ManagementFactory;
-import java.lang.management.RuntimeMXBean;
-import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.nio.file.FileSystems;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-
-import sun.management.VMManagement;
 
 /**
  * Utility class to start and manipulate YB clusters. Relies on being IN the Kudu source code with
@@ -46,6 +39,62 @@ import sun.management.VMManagement;
  * extended instead of directly using this class in almost all cases.
  */
 public class MiniYBCluster implements AutoCloseable {
+
+  enum YBDaemonType {
+    MASTER,
+    TSERVER
+  }
+
+  private static class YBDaemon {
+    public YBDaemon(YBDaemonType type, String[] commandLine, Process process) {
+      this.type = type;
+      this.commandLine = commandLine;
+      this.process = process;
+    }
+
+    public YBDaemonType getType() {
+      return type;
+    }
+
+    public String[] getCommandLine() {
+      return commandLine;
+    }
+
+    public Process getProcess() {
+      return process;
+    }
+
+    int getPid() throws NoSuchFieldException, IllegalAccessException {
+      return TestUtils.pidOfProcess(process);
+    }
+
+    String getPidStr() {
+      try {
+        return String.valueOf(getPid());
+      } catch (NoSuchFieldException | IllegalAccessException ex) {
+        return "<error_getting_pid>";
+      }
+    }
+
+    public int getRpcPort() {
+      return rpcPort;
+    }
+
+    public void setRpcPort(int rpcPort) {
+      this.rpcPort = rpcPort;
+    }
+
+    @Override
+    public String toString() {
+      return type.toString().toLowerCase() + " process on port " + rpcPort +
+          " with pid " + getPidStr();
+    }
+
+    private final YBDaemonType type;
+    private final String[] commandLine;
+    private final Process process;
+    private int rpcPort;
+  }
 
   private static final Logger LOG = LoggerFactory.getLogger(MiniYBCluster.class);
 
@@ -56,10 +105,10 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<Thread> PROCESS_INPUT_PRINTERS = new ArrayList<>();
 
   // Map of ports to master servers.
-  private final Map<Integer, Process> masterProcesses = new ConcurrentHashMap<>();
+  private final Map<Integer, YBDaemon> masterProcesses = new ConcurrentHashMap<>();
 
   // Map of ports to tablet servers.
-  private final Map<Integer, Process> tserverProcesses = new ConcurrentHashMap<>();
+  private final Map<Integer, YBDaemon> tserverProcesses = new ConcurrentHashMap<>();
 
   private final List<String> pathsToDelete = new ArrayList<>();
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
@@ -85,6 +134,7 @@ public class MiniYBCluster implements AutoCloseable {
   /**
    * Wait up to this instance's "default timeout" for an expected count of TS to
    * connect to the master.
+   *
    * @param expected How many TS are expected
    * @return true if there are at least as many TS as expected, otherwise false
    */
@@ -96,26 +146,6 @@ public class MiniYBCluster implements AutoCloseable {
       count = syncClient.listTabletServers().getTabletServersCount();
     }
     return count >= expected;
-  }
-
-  /**
-   * @return the local PID of this process.
-   * This is used to generate unique loopback IPs for parallel test running.
-   */
-  private static int getPid() {
-    try {
-      RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
-      java.lang.reflect.Field jvm = runtime.getClass().getDeclaredField("jvm");
-      jvm.setAccessible(true);
-      VMManagement mgmt = (VMManagement)jvm.get(runtime);
-      Method pid_method = mgmt.getClass().getDeclaredMethod("getProcessId");
-      pid_method.setAccessible(true);
-
-      return (Integer)pid_method.invoke(mgmt);
-    } catch (Exception e) {
-      LOG.warn("Cannot get PID", e);
-      return 1;
-    }
   }
 
   /**
@@ -133,7 +163,7 @@ public class MiniYBCluster implements AutoCloseable {
       return "127.0.0.1";
     }
 
-    int pid = getPid();
+    final int pid = TestUtils.getPid();
     return "127." + ((pid & 0xff00) >> 8) + "." + (pid & 0xff) + ".1";
   }
 
@@ -141,7 +171,7 @@ public class MiniYBCluster implements AutoCloseable {
    * Take into account any started processes and return the next possibly free port number.
    * The multiply by 2 is to account for one port each for rpc and web services per server.
    * The multiply by 3 is to account for tserver, yql and redis ports in tserver process.
-   * @param none
+   *
    * @return Port number for a potentially free port.
    */
   private int getNextPotentiallyFreePort() {
@@ -150,6 +180,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   /**
    * Starts a YB cluster composed of the provided masters and tablet servers.
+   *
    * @param numMasters how many masters to start
    * @param numTservers how many tablet servers to start
    * @throws Exception
@@ -189,7 +220,9 @@ public class MiniYBCluster implements AutoCloseable {
           "--cql_proxy_bind_address=" + localhost + ":" + cql_port,
           "--logtostderr",
           "--cql_proxy_webserver_port=" + cql_web_port};
-      tserverProcesses.put(rpc_port, configureAndStartProcess(tsCmdLine));
+      final YBDaemon daemon = configureAndStartProcess(YBDaemonType.TSERVER, tsCmdLine);
+      tserverProcesses.put(rpc_port, daemon);
+      daemon.setRpcPort(rpc_port);
       cqlContactPoints.add(new InetSocketAddress(localhost, cql_port));
       free_port = cql_web_port + 1;
 
@@ -204,7 +237,7 @@ public class MiniYBCluster implements AutoCloseable {
   /**
    * Start a new master server in 'shell' mode. Finds free web and RPC ports and then
    * starts the master on those ports, finally populates the 'masters' map.
-   * @param none
+   *
    * @return the host and port for a newly created master.
    * @throws Exception if we are unable to start the master.
    */
@@ -219,18 +252,19 @@ public class MiniYBCluster implements AutoCloseable {
     String dataDirPath = baseDirPath + "/master-" + masterProcesses.size() + "-" + now;
     String flagsPath = TestUtils.getFlagsPath();
     List<String> masterCmdLine = Lists.newArrayList(
-        TestUtils.findBinary("yb-master"),
-            "--flagfile=" + flagsPath,
-            "--fs_wal_dirs=" + dataDirPath,
-            "--fs_data_dirs=" + dataDirPath,
-            "--webserver_interface=" + localhost,
-            "--local_ip_for_outbound_sockets=" + localhost,
-            "--rpc_bind_addresses=" + localhost + ":" + rpcPort,
-            "--logtostderr",
-            "--webserver_port=" + webPort);
-    masterProcesses.put(
-        rpcPort,
-        configureAndStartProcess(masterCmdLine.toArray(new String[masterCmdLine.size()])));
+      TestUtils.findBinary("yb-master"),
+      "--flagfile=" + flagsPath,
+      "--fs_wal_dirs=" + dataDirPath,
+      "--fs_data_dirs=" + dataDirPath,
+      "--webserver_interface=" + localhost,
+      "--local_ip_for_outbound_sockets=" + localhost,
+      "--rpc_bind_addresses=" + localhost + ":" + rpcPort,
+      "--logtostderr",
+      "--webserver_port=" + webPort);
+    final YBDaemon daemon = configureAndStartProcess(
+        YBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]));
+    masterProcesses.put(rpcPort, daemon);
+    daemon.setRpcPort(rpcPort);
 
     HostAndPort newHp = HostAndPort.fromParts(localhost, rpcPort);
     masterHostPorts.add(newHp);
@@ -248,14 +282,15 @@ public class MiniYBCluster implements AutoCloseable {
    * Start the specified number of master servers with ports starting from a specified
    * number. Finds free web and RPC ports up front for all of the masters first, then
    * starts them on those ports, populating 'masters' map.
+   *
    * @param masterStartPort the starting point of the port range for the masters
    * @param numMasters number of masters to start
-   * @param baseDirPath the base directory where the mini cluster stores its data
+   * @param baseDirPath  the base directory where the mini cluster stores its data
    * @return the next free port
    * @throws Exception if we are unable to start the masters
    */
   private int startMasters(int masterStartPort, int numMasters,
-                          String baseDirPath) throws Exception {
+                           String baseDirPath) throws Exception {
     // Get the list of web and RPC ports to use for the master consensus configuration:
     // request NUM_MASTERS * 2 free ports as we want to also reserve the web
     // ports for the consensus configuration.
@@ -285,21 +320,22 @@ public class MiniYBCluster implements AutoCloseable {
       // started yet and findFreePort(s) is "check-time-of-use" (it does not reserve the
       // ports, only checks that when it was last called, these ports could be used).
       List<String> masterCmdLine = Lists.newArrayList(
-          TestUtils.findBinary("yb-master"),
-          "--create_cluster",
-          "--flagfile=" + flagsPath,
-          "--fs_wal_dirs=" + dataDirPath,
-          "--fs_data_dirs=" + dataDirPath,
-          "--webserver_interface=" + localhost,
-          "--local_ip_for_outbound_sockets=" + localhost,
-          "--rpc_bind_addresses=" + localhost + ":" + masterRpcPorts.get(i),
-          "--logtostderr",
-          "--webserver_port=" + masterWebPorts.get(i));
+        TestUtils.findBinary("yb-master"),
+        "--create_cluster",
+        "--flagfile=" + flagsPath,
+        "--fs_wal_dirs=" + dataDirPath,
+        "--fs_data_dirs=" + dataDirPath,
+        "--webserver_interface=" + localhost,
+        "--local_ip_for_outbound_sockets=" + localhost,
+        "--rpc_bind_addresses=" + localhost + ":" + masterRpcPorts.get(i),
+        "--logtostderr",
+        "--webserver_port=" + masterWebPorts.get(i));
       if (numMasters > 1) {
         masterCmdLine.add("--master_addresses=" + masterAddresses);
       }
       masterProcesses.put(masterRpcPorts.get(i),
-          configureAndStartProcess(masterCmdLine.toArray(new String[masterCmdLine.size()])));
+          configureAndStartProcess(YBDaemonType.MASTER,
+                                   masterCmdLine.toArray(new String[masterCmdLine.size()])));
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -314,13 +350,15 @@ public class MiniYBCluster implements AutoCloseable {
    * Starts a process using the provided command and configures it to be daemon,
    * redirects the stderr to stdout, and starts a thread that will read from the process' input
    * stream and redirect that to LOG.
+   *
    * @param command Process and options
    * @return The started process
    * @throws Exception Exception if an error prevents us from starting the process,
-   * or if we were able to start the process but noticed that it was then killed (in which case
-   * we'll log the exit value).
+   *                   or if we were able to start the process but noticed that it was then killed
+   *                   (in which case we'll log the exit value).
    */
-  private Process configureAndStartProcess(String[] command) throws Exception {
+  private YBDaemon configureAndStartProcess(YBDaemonType type, String[] command) throws Exception {
+    command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
     LOG.info("Starting process: {}", Joiner.on(" ").join(command));
     ProcessBuilder processBuilder = new ProcessBuilder(command);
     processBuilder.redirectErrorStream(true);
@@ -341,7 +379,42 @@ public class MiniYBCluster implements AutoCloseable {
     } catch (IllegalThreadStateException ex) {
       // This means the process is still alive, it's like reverse psychology.
     }
-    return proc;
+
+    LOG.info("Started " + command[0] + " as pid " + TestUtils.pidOfProcess(proc));
+
+    return new YBDaemon(type, command, proc);
+  }
+
+  private void processCoreFile(YBDaemon daemon) throws Exception {
+    final int pid = daemon.getPid();
+    final File coreFile = new File("core." + pid);
+    if (coreFile.exists()) {
+      LOG.warn("Found core file '{}' from {}", coreFile.getAbsolutePath(), daemon.toString());
+      Process analyzeCoreFileScript = new ProcessBuilder().command(Arrays.asList(new String[] {
+        TestUtils.findYbRootDir() + "/build-support/analyze_core_file.sh",
+        "--core",
+        coreFile.getAbsolutePath(),
+        "--executable",
+        daemon.getCommandLine()[0]
+      })).inheritIO().start();
+      analyzeCoreFileScript.waitFor();
+      if (coreFile.delete()) {
+        LOG.warn("Deleted core file at '{}'", coreFile.getAbsolutePath());
+      } else {
+        LOG.warn("Failed to delete core file at '{}'", coreFile.getAbsolutePath());
+      }
+    }
+  }
+
+  private void destroyDaemon(YBDaemon daemon) throws Exception {
+    LOG.warn("Destroying " + daemon.toString());
+    daemon.getProcess().destroy();
+    processCoreFile(daemon);
+  }
+
+  private void destroyDaemonAndWait(YBDaemon daemon) throws Exception {
+    destroyDaemon(daemon);
+    daemon.getProcess().waitFor();
   }
 
   /**
@@ -349,15 +422,13 @@ public class MiniYBCluster implements AutoCloseable {
    * @param port port on which the tablet server is listening on
    * @throws InterruptedException
    */
-  public void killTabletServerOnPort(int port) throws InterruptedException {
-    Process ts = tserverProcesses.remove(port);
+  public void killTabletServerOnPort(int port) throws Exception {
+    YBDaemon ts = tserverProcesses.remove(port);
     if (ts == null) {
       // The TS is already dead, good.
       return;
     }
-    LOG.info("Killing server at port " + port);
-    ts.destroy();
-    ts.waitFor();
+    destroyDaemonAndWait(ts);
   }
 
   /**
@@ -366,15 +437,13 @@ public class MiniYBCluster implements AutoCloseable {
    * @param port port on which the master is listening on
    * @throws InterruptedException
    */
-  public void killMasterOnPort(int port) throws InterruptedException {
-    Process master = masterProcesses.remove(port);
+  public void killMasterOnPort(int port) throws Exception {
+    YBDaemon master = masterProcesses.remove(port);
     if (master == null) {
       // The master is already dead, good.
       return;
     }
-    LOG.info("Killing master at port " + port);
-    master.destroy();
-    master.waitFor();
+    destroyDaemonAndWait(master);
   }
 
   /**
@@ -387,16 +456,31 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Destroys the given list of YB daemons. Returns a list of processes in case the caller wants
+   * to wait for all of them to shut down.
+   */
+  private List<Process> destroyDaemons(Collection<YBDaemon> daemons) throws Exception {
+    List<Process> processes = new ArrayList<>();
+    for (Iterator<YBDaemon> iter = daemons.iterator(); iter.hasNext(); ) {
+      final YBDaemon daemon = iter.next();
+      LOG.info("Destroying {} process with pid {}",
+        daemon.getType().toString().toLowerCase(), daemon.getPid());
+      destroyDaemon(daemon);
+      processes.add(daemon.getProcess());
+      iter.remove();
+    }
+    return processes;
+  }
+
+  /**
    * Stops all the processes and deletes the folders used to store data and the flagfile.
    */
-  public void shutdown() {
-    for (Iterator<Process> masterIter = masterProcesses.values().iterator(); masterIter.hasNext(); ) {
-      masterIter.next().destroy();
-      masterIter.remove();
-    }
-    for (Iterator<Process> tsIter = tserverProcesses.values().iterator(); tsIter.hasNext(); ) {
-      tsIter.next().destroy();
-      tsIter.remove();
+  public void shutdown() throws Exception {
+    List<Process> processes = new ArrayList<>();
+    processes.addAll(destroyDaemons(masterProcesses.values()));
+    processes.addAll(destroyDaemons(tserverProcesses.values()));
+    for (Process process : processes) {
+      process.waitFor();
     }
     for (Thread thread : PROCESS_INPUT_PRINTERS) {
       thread.interrupt();

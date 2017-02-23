@@ -29,25 +29,6 @@ $ mvn package -DskipTests
 The client jar will can then be found at yb-client/target.
 
 
-Building the YB CSD
-------------------------------------------------------------
-
-By default, the YB CSD will not be built with the client.
-It requires access to the YB binaries which may not be
-available. For example, when building on OSX.
-
-Here's how to build the yb-csd module:
-
-$ mvn package -DskipTests -PbuildCSD
-
-Also by default, building the CSD does not validate it,
-because (for the moment) this requires access to an internal
-Cloudera repository containing the validator maven plugin.
-
-Here's how to build the yb-csd module with validation:
-
-$ mvn package -DskipTests -PbuildCSD -PvalidateCSD
-
 Publishing YB build to S3
 ------------------------------------------------------------
 

@@ -4,6 +4,8 @@
 
 # This is common between build and test scripts.
 
+set -euo pipefail
+
 if [[ $BASH_SOURCE == $0 ]]; then
   echo "$BASH_SOURCE must be sourced, not executed" >&2
   exit 1
@@ -303,9 +305,17 @@ set_real_build_root_path() {
 }
 
 ensure_build_root_is_set() {
-  if [[ -z $BUILD_ROOT ]]; then
+  if [[ -z ${BUILD_ROOT:-} ]]; then
     fatal "The BUILD_ROOT environment variable is not set. This must point to the absolute path" \
           "of the build root directory, e.g. '<yugabyte_src_dir>/build/debug'."
+  fi
+}
+
+ensure_file_exists() {
+  expect_num_args 1 "$@"
+  local file_name=$1
+  if [[ ! -f $file_name ]]; then
+    fatal "File '$file_name' does not exist"
   fi
 }
 

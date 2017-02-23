@@ -18,11 +18,12 @@
 #include "yb/master/master.h"
 
 #include <algorithm>
-#include <boost/bind.hpp>
-#include <glog/logging.h>
 #include <list>
 #include <memory>
 #include <vector>
+
+#include <boost/bind.hpp>
+#include <glog/logging.h>
 
 #include "yb/cfile/block_cache.h"
 #include "yb/common/wire_protocol.h"

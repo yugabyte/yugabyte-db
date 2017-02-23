@@ -20,12 +20,17 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.sun.security.auth.module.UnixSystem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.ServerSocket;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -36,8 +41,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import sun.management.VMManagement;
 
 /**
  * A grouping of methods that help unit testing.
@@ -91,17 +95,16 @@ public class TestUtils {
     }
   }
 
-  public static String findBuildDir() {
+  public static String findYbRootDir() {
     URL myUrl = BaseYBTest.class.getProtectionDomain().getCodeSource().getLocation();
     File myPath = new File(urlToPath(myUrl));
     while (myPath != null) {
       if (new File(myPath, ".git").isDirectory()) {
-        return new File(myPath, "build/latest/bin").getAbsolutePath();
+        return myPath.getAbsolutePath();
       }
       myPath = myPath.getParentFile();
     }
-    LOG.warn("Unable to find build dir! myUrl={}", myUrl);
-    return null;
+    throw new RuntimeException("Unable to find build dir! myUrl=" + myUrl);
   }
 
   /**
@@ -115,7 +118,7 @@ public class TestUtils {
       LOG.info("Using binary directory specified by property: {}",
           binDir);
     } else {
-      binDir = findBuildDir();
+      binDir = findYbRootDir() + "/build/latest/bin";
     }
 
     File candidate = new File(binDir, binName);
@@ -189,7 +192,7 @@ public class TestUtils {
    * @throws IllegalArgumentException If the process is not a UNIXProcess.
    * @throws Exception If there are other getting the pid via reflection.
    */
-  static int pidOfProcess(Process proc) throws Exception {
+  static int pidOfProcess(Process proc) throws NoSuchFieldException, IllegalAccessException {
     Class<?> procCls = proc.getClass();
     if (!procCls.getName().equals(UNIX_PROCESS_CLS_NAME)) {
       throw new IllegalArgumentException("stopProcess() expects objects of class " +
@@ -199,6 +202,27 @@ public class TestUtils {
     pidField.setAccessible(true);
     return (Integer) pidField.get(proc);
   }
+
+  /**
+   * @return the local PID of this process.
+   * This is used to generate unique loopback IPs for parallel test running.
+   */
+  public static int getPid() {
+    try {
+      RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
+      java.lang.reflect.Field jvm = runtime.getClass().getDeclaredField("jvm");
+      jvm.setAccessible(true);
+      VMManagement mgmt = (VMManagement) jvm.get(runtime);
+      Method pid_method = mgmt.getClass().getDeclaredMethod("getProcessId");
+      pid_method.setAccessible(true);
+
+      return (Integer) pid_method.invoke(mgmt);
+    } catch (Exception e) {
+      LOG.warn("Cannot get PID", e);
+      return 1;
+    }
+  }
+
 
   /**
    * Send a code specified by its string representation to the specified process.
@@ -240,4 +264,5 @@ public class TestUtils {
   static void resumeProcess(Process proc) throws Exception {
     signalProcess(proc, "CONT");
   }
+
 }
