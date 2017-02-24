@@ -9,7 +9,7 @@ import argparse
 
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
-    generate_checksum, latest_release, download_release
+    generate_checksum, latest_release, download_release, docker_push_to_replicated
 from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
@@ -30,17 +30,14 @@ parser.add_argument('--type', action='store', choices=release_types,
 parser.add_argument('--publish', action='store_true',
                     help='Publish release to S3.')
 parser.add_argument('--destination', help='Copy release to Destination folder.')
+parser.add_argument('--tag', help='Release tag name')
 args = parser.parse_args()
 
+output = None
 try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    log_message(logging.INFO, "Building/Packaging UI code")
-    shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
-    check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
-    check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
-
-    check_output(["sbt", "clean"])
+    output = check_output(["sbt", "clean"])
 
     if args.type == "docker":
         # TODO, make these params, so we can specify which version of devops
@@ -56,19 +53,29 @@ try:
         download_release("snapshots.yugabyte.com", "devops", devops_release, packages_folder)
         download_release("snapshots.yugabyte.com", "yugabyte", yugabyte_release, packages_folder)
 
+        log_message(logging.INFO, "Package and publish yugaware docker image locally")
+        output = check_output(["sbt", "docker:publishLocal"])
+        log_message(logging.INFO, "Package and publish yugaware-ui docker image locally")
+        output = check_output(["docker", "build", "-t", "yugaware-ui", "ui"])
+
         if args.publish:
-            log_message(logging.INFO, "Package and publish docker image to replicated")
-            check_output(["sbt", "docker:publish"])
-        else:
-            log_message(logging.INFO, "Package and publish docker image locally")
-            check_output(["sbt", "docker:publishLocal"])
+            if not args.tag:
+                args.tag = check_output(["git", "rev-parse", "HEAD"]).strip()[:6]
+            log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
+            docker_push_to_replicated("yugaware", "1.0-SNAPSHOT", args.tag)
+            docker_push_to_replicated("yugaware-ui", "latest", args.tag)
 
         log_message(logging.INFO, "Cleanup the packages folder")
         shutil.rmtree(packages_folder)
 
     else:
+        log_message(logging.INFO, "Building/Packaging UI code")
+        shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
+        output = check_output(["npm", "install"], cwd=os.path.join(script_dir, 'ui'))
+        output = check_output(["npm", "run", "build"], cwd=os.path.join(script_dir, 'ui'))
+
         log_message(logging.INFO, "Kick off SBT universal packaging")
-        check_output(["sbt", "universal:packageZipTarball"])
+        output = check_output(["sbt", "universal:packageZipTarball"])
 
         log_message(logging.INFO, "Get a release file name based on the current commit sha")
         release_file = get_release_file(script_dir, 'yugaware')
@@ -88,3 +95,4 @@ try:
 
 except (CalledProcessError, OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
+    log_message(logging.ERROR, output)

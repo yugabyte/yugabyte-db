@@ -2,7 +2,7 @@ version: '2'
 
 services:
   yugaware:
-    image: registry.replicated.com/yugaware_apple/yugaware:1.0-SNAPSHOT
+    image: yugaware:1.0-SNAPSHOT
     volumes:
       - $HOME/.yugabyte:/root/.yugabyte
       - /var/run/docker.sock:/var/run/docker.sock:rw
@@ -17,12 +17,14 @@ services:
       - postgres
     volumes_from:
       - prometheus
+
   yugaware-ui:
-    image: registry.replicated.com/yugaware_apple/yugaware-ui:latest
+    image: yugaware-ui:latest
     expose:
       - 4000
     ports:
       - 4000:4000
+
   postgres:
     image: postgres:latest
     expose:

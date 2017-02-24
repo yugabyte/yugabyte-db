@@ -46,7 +46,6 @@ mappings in Universal ++= contentOf(baseDirectory.value / "ui/build").map {
 topLevelDirectory := None
 
 dockerExposedPorts := Seq(9000)
-dockerRepository := Some("registry.replicated.com/yugaware_apple")
 defaultLinuxInstallLocation in Docker := "/opt/yugabyte/yugaware"
 dockerEntrypoint := Seq("bin/yugaware", "-Dconfig.file=conf/application.docker.conf")
 
