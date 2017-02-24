@@ -1,0 +1,162 @@
+// Copyright (c) YugaByte, Inc.
+
+#ifndef YB_UTIL_DECIMAL_H
+#define YB_UTIL_DECIMAL_H
+
+#include <vector>
+
+#include "yb/util/status.h"
+#include "yb/util/slice.h"
+#include "yb/util/varint.h"
+
+namespace yb {
+namespace util {
+
+// The Decimal class can represent decimal numbers (including fractions) of arbitrary length.
+//
+// The API
+// -------
+// Typically Decimals should be used for parsing from String or Double, convert to String or Double,
+// Serialize or Deserialize. The default constructor (With digit arrays, exponent, sign need not
+// be used). It is not necessary to to keep a decimal object in memory for long time. The encoded
+// string should serve the same purpose, and it is easy to get the decimal from serialized string.
+//
+// The Serialization format specifications
+// -------
+// Both serialization formats are unique from a given decimal.
+// 1) Comparable Serialization:
+//  This is used by our storage layer. The lexicographical byte comparison of this encoding is the
+//  same as numerical comparison of numbers. Also it is possible to find the end of the encoding
+//  by looking at it. So Decode(slice) gives back the length of the encoding.
+//
+// 2) BigDecimal Serialization:
+//  This gives a serialization to Cassandra's way to serializing Java BigDecimal. The scale
+//  component is coded with 4 byte two's complement representation. Then it is followed by a byte
+//  array for the corresponding BigInt's serialization.
+//  See:
+//    https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec
+//    https://github.com/apache/cassandra/blob/81f6c784ce967fadb6ed7f58de1328e713eaf53c/ \
+//    src/java/org/apache/cassandra/serializers/DecimalSerializer.java
+//  Note that the byte buffer for Java BigInt doesn't have a size prefix or something similar. So
+//  the length is not known. The Decode(slice) function expects the whole slice to encode the
+//  decimal.
+//
+//  The internal representation in the Decimal class
+//  -------
+//  A decimal contains a sign bit (bool is_positive_), the exponent part (VarInt exponent_), and
+//  a digit (0-9) array (vector<int8_t> digits_). The corresponding number is
+//        +- 10^exp// 0.d1d2...dk .
+//  A representation is called canonical if and only if d1 != 0 and dk != 0. (If number is zero,
+//  then sign must be positive, and digit array empty). Note that every number can have only one
+//  canonical representation.
+//  Examples: 23.4 = ( is_positive_ = true, exponent_ = 2, digits_ = {2, 3, 4} )
+//          -0.0004372 is ( is_positive = false, exponent = -3, digits_ = {4, 3, 7, 2} )
+//          2378000 is ( is_positive = true, exponent = 7, digits_ = {2, 3, 7, 8} ).
+//  We ensure the state is always canonical, enforced by the make_canonical() function, after
+//  converting from String, double, constructor, or decode() the resulting representation must be
+//  canonical.
+//
+//  Converting to string
+//  -------
+//  There are two ways to convert to string,
+//    - PointString Format      (-0.0004372 or 2378000)
+//    - Scientific Notation     (-4.372e-4 or 2.378e+6)
+//  We have implemented both. Note that the pointstring format is infeasible if the exponent is too
+//  large or too small, so scientific notation is used.
+//    - The default ToString() function uses PointString format if the output has 10 bytes or less
+//    and Scientific notation otherwise (this is a constant defined as kDefaultMaxLength).
+
+class Decimal {
+ public:
+  static constexpr int kDefaultMaxLength = 10;
+
+  Decimal() {}
+  Decimal(const std::vector<uint8_t>& digits,
+          const VarInt& exponent = VarInt(0),
+          bool is_positive = true)
+      : digits_(digits), exponent_(exponent), is_positive_(is_positive) { make_canonical(); }
+  Decimal(const Decimal& other) : Decimal(other.digits_, other.exponent_, other.is_positive_) {}
+
+  // Ensure the type conversion is possible if you use these constructors. Use FromX() otherwise.
+  explicit Decimal(const std::string& string_val) { CHECK_OK(FromString(string_val)); }
+  explicit Decimal(double double_val) { CHECK_OK(FromDouble(double_val)); }
+  explicit Decimal(const VarInt& varint_val) { CHECK_OK(FromVarInt(varint_val)); }
+
+  void clear();
+
+  std::string ToDebugString() const;
+  CHECKED_STATUS ToPointString(std::string* string_val, int max_length = kDefaultMaxLength) const;
+  std::string ToScientificString() const;
+  std::string ToString() const;
+  // Note: We are using decimal -> string -> double using std::stod() function.
+  // In future, it may be better to write a direct conversion function.
+  CHECKED_STATUS ToDouble(double* int64_value) const;
+
+  // Note: The length of the varint is limited by kDefaultMaxLength by default to make sure we don't
+  // get stuck with large exponents. May be overriden.
+  CHECKED_STATUS ToVarInt(VarInt* varint_value, int max_length = kDefaultMaxLength) const;
+
+  // The FromX() functions always create a canonical Decimal,
+  // but the (digits, varint, sign) constructor doesn't.
+
+  // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9+])?,
+  // whitespace is not allowed. Use this after removing whitespace.
+  CHECKED_STATUS FromString(const Slice &slice);
+
+  // Note: We are using double -> string -> decimal using std::to_string() function.
+  // In future, it may be better to write a direct conversion function.
+  CHECKED_STATUS FromDouble(double double_val);
+  CHECKED_STATUS FromVarInt(const VarInt& varint_val);
+
+  // Checks if this is a whole number. Assumes canonical.
+  bool is_integer() const;
+
+  // <0, =0, >0 if this <,=,> other numerically. Assumes canonical.
+  int CompareTo(const Decimal& other) const;
+
+  bool operator==(const Decimal& other) const { return CompareTo(other) == 0; }
+  bool operator!=(const Decimal& other) const { return CompareTo(other) != 0; }
+  bool operator<(const Decimal& other) const { return CompareTo(other) < 0; }
+  bool operator<=(const Decimal& other) const { return CompareTo(other) <= 0; }
+  bool operator>(const Decimal& other) const { return CompareTo(other) > 0; }
+  bool operator>=(const Decimal& other) const { return CompareTo(other) >= 0; }
+  Decimal operator-() const { return Decimal(digits_, exponent_, !is_positive_); }
+  Decimal operator+() const { return Decimal(digits_, exponent_, is_positive_); }
+
+  // Encodes the decimal by using comparable encoding, as described above.
+  std::string EncodeToComparable() const;
+
+  // Decodes a Decimal from a given Slice. Sets num_decoded_bytes = number of bytes decoded.
+  CHECKED_STATUS DecodeFromComparable(const Slice& slice, size_t *num_decoded_bytes);
+  CHECKED_STATUS DecodeFromComparable(const std::string& string, size_t* num_decoded_bytes) {
+    return DecodeFromComparable(Slice(string), num_decoded_bytes);
+  }
+
+  // Encode the decimal by using to Cassandra serialization format, as described above.
+  std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
+
+  CHECKED_STATUS DecodeFromSerializedBigDecimal(const Slice &slice);
+
+ private:
+  friend class DecimalTest;
+
+  // Checks the representation by components, For testing purposes. For Decimal, == is the same as
+  // IsIdenticalTo, because we guarantee canonical-ness at all times, but the checking method is
+  // different.
+  bool IsIdenticalTo(const Decimal &other) const;
+
+  bool is_canonical() const;
+  void make_canonical();
+
+  std::vector<uint8_t> digits_;
+  VarInt exponent_;
+  bool is_positive_;
+};
+
+std::ostream& operator<<(ostream& os, const Decimal& d);
+
+} // namespace util
+} // namespace yb
+
+
+#endif // YB_UTIL_DECIMAL_H

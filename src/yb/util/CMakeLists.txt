@@ -173,6 +173,7 @@ set(UTIL_SRCS
   trilean.cc
   pending_op_counter.cc
   varint.cc
+  decimal.cc
   )
 
 if(NOT APPLE)
@@ -334,6 +335,7 @@ ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(string_trim-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(varint-test)
+ADD_YB_TEST(decimal-test)
 
 #######################################
 # jsonwriter_test_proto
