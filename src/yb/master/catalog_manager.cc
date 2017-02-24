@@ -4389,12 +4389,6 @@ Status CatalogManager::SetClusterConfig(
 
   // Save the list of blacklisted servers to be used for completion checking.
   if (config.has_server_blacklist()) {
-    if (config.server_blacklist().has_initial_replica_load()) {
-      Status s = STATUS(InvalidArgument, "Replica load field should not be set by the client.");
-      SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
-      return s;
-    }
-
     config.mutable_server_blacklist()->set_initial_replica_load(GetNumBlacklistReplicas());
 
     RETURN_NOT_OK(SetBlackList(config.server_blacklist()));
