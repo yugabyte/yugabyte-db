@@ -4,11 +4,7 @@ services:
   yugaware:
     image: registry.replicated.com/yugaware_apple/yugaware:1.0-SNAPSHOT
     volumes:
-      - ./docker/yugaware/:/opt/docker/conf/
       - $HOME/.yugabyte:/root/.yugabyte
-      - ./src/main/resources/metrics.yml:/opt/docker/conf/metrics.yml
-      - ./src/main/resources/db_seed.yml:/opt/docker/conf/db_seed.yml
-      - /opt/docker/public/
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - /usr/bin/docker:/usr/bin/docker
     expose:
@@ -21,18 +17,24 @@ services:
       - postgres
     volumes_from:
       - prometheus
-
+  yugaware-ui:
+    image: registry.replicated.com/yugaware_apple/yugaware-ui:latest
+    expose:
+      - 4000
+    ports:
+      - 4000:4000
   postgres:
     image: postgres:latest
     expose:
       - 5432
+    ports:
+      - 5433:5432
     environment:
       - POSTGRES_USER=yugaware
       - POSTGRES_PASSWORD=yugaware
       - POSTGRES_DB=yugaware
     volumes:
       - /var/lib/postgresql/data
-      - ./src/main/resources/db/migration/default/:/docker-entrypoint-initdb.d/
 
   nginx:
     image: nginx:latest
@@ -40,12 +42,11 @@ services:
       - ./docker/nginx/:/etc/nginx/conf.d/
     links:
       - yugaware
+      - yugaware-ui
     ports:
       - "80:80"
     expose:
       - 80
-    volumes_from:
-      - yugaware
 
   prometheus:
     image: prom/prometheus
