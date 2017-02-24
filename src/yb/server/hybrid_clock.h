@@ -144,8 +144,8 @@ class HybridClock : public Clock {
                                                 const MonoDelta& to_add);
 
   // Given two hybrid times, determines whether the delta between end and begin them is higher,
-  // lower or equal to the given delta and returns 1, -1 and 0 respectively. Note that the
-  // following condition must hold true: end >= begin
+  // lower or equal to the given delta and returns 1, -1 and 0 respectively. Note that if end <
+  // begin we return -1.
   static int CompareHybridClocksToDelta(const HybridTime& begin, const HybridTime& end,
                                         const MonoDelta& delta);
 

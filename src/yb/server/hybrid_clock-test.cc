@@ -278,10 +278,10 @@ TEST_F(HybridClockTest, CompareHybridClocksToDelta) {
 
   NO_FATALS(HybridClock::GetPhysicalValueNanos(HybridTime(std::numeric_limits<uint64_t>::max())));
 
-  EXPECT_EXIT(HybridClock::CompareHybridClocksToDelta(
+  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
       HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
       HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 9),
-      MonoDelta::FromMicroseconds(1)), ::testing::KilledBySignal(SIGABRT), "Check failed.*");
+      MonoDelta::FromMicroseconds(1)));
 }
 
 }  // namespace server

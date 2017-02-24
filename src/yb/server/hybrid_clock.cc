@@ -495,7 +495,9 @@ HybridTime HybridClock::AddPhysicalTimeToHybridTime(const HybridTime& original,
 int HybridClock::CompareHybridClocksToDelta(const HybridTime& begin,
                                             const HybridTime& end,
                                             const MonoDelta& delta) {
-  CHECK_GE(end, begin);
+  if (end < begin) {
+    return -1;
+  }
   // We use nanoseconds since MonoDelta has nanosecond granularity.
   uint64_t begin_nanos = GetPhysicalValueNanos(begin);
   uint64_t end_nanos = GetPhysicalValueNanos(end);
