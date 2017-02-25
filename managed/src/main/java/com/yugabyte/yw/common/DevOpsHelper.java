@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -25,6 +27,7 @@ import play.libs.Json;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Singleton
 public class DevOpsHelper {
@@ -164,6 +167,23 @@ public class DevOpsHelper {
     return subcommand;
   }
 
+  /**
+   * Adds the mount paths of the instance type as a comma-separated list to the devops command.
+   *
+   * @param providerCode
+   * @param instanceTypeCode
+   * @param command
+   */
+  private void addMountPaths(String providerCode, String instanceTypeCode, List<String> command) {
+    InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
+    List<VolumeDetails> detailsList = instanceType.instanceTypeDetails.volumeDetailsList;
+    String mountPoints = detailsList.stream()
+                                    .map(volume -> volume.mountPath)
+                                    .collect(Collectors.joining(","));
+    command.add("--mount_points");
+    command.add(mountPoints);
+  }
+
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> command = cloudBaseCommand(nodeTaskParam);
@@ -177,9 +197,9 @@ public class DevOpsHelper {
           throw new RuntimeException("NodeTaskParams is not AnsibleSetupServer.Params");
         }
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
-        command.add("--instance_type");
-        command.add(taskParam.instanceType);
         if (nodeTaskParam.cloud != Common.CloudType.onprem) {
+          command.add("--instance_type");
+          command.add(taskParam.instanceType);
           command.add("--cloud_subnet");
           command.add(taskParam.subnetId);
           command.add("--machine_image");
@@ -225,6 +245,9 @@ public class DevOpsHelper {
         command.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
+    }
+    if (!(nodeTaskParam.instanceType == null || nodeTaskParam.instanceType.isEmpty())) {
+      addMountPaths(nodeTaskParam.getProvider().code, nodeTaskParam.instanceType, command);
     }
 
     command.add(nodeTaskParam.nodeName);
