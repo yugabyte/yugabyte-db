@@ -21,7 +21,7 @@ from yb.library_packager import LibraryPackager
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--build', help='Build type (debug/release)',
-                        default="debug",
+                        default="release",
                         dest='build_type')
     parser.add_argument('--build-args',
                         help='Additional arguments to pass to the build script',
