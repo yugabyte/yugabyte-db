@@ -239,7 +239,8 @@ public class AWSInitializer extends AuthenticatedController {
       include &= (matches(productAttrs, "licenseModel", FilterOp.Equals, "No License required") ||
                   matches(productAttrs, "licenseModel", FilterOp.Equals, "NA"));
       // Pick the valid disk drive types.
-      include &= matches(productAttrs, "storage", FilterOp.Contains, "SSD");
+      include &= (matches(productAttrs, "storage", FilterOp.Contains, "SSD") ||
+                  matches(productAttrs, "storage", FilterOp.Contains, "EBS"));
       // Make sure it is current generation.
       include &= matches(productAttrs, "currentGeneration", FilterOp.Equals, "Yes");
 
@@ -286,18 +287,29 @@ public class AWSInitializer extends AuthenticatedController {
       String memSizeStrGB = productAttrs.get("memory").replace(" GiB", "");
       Double memSizeGB = Double.parseDouble(memSizeStrGB);
 
+      Integer volumeCount;
+      Integer volumeSizeGB;
+      VolumeType volumeType;
       // Parse the local instance store details. Format of the raw data is either "1 x 800 SSD" or
       // "12 x 2000 HDD".
       String[] parts = productAttrs.get("storage").split(" ");
       if (parts.length < 4) {
-        String msg = "Volume type not specified in product sku=" + productAttrs.get("sku") +
-                     ", storage={" + productAttrs.get("storage") + "}";
-        LOG.error(msg);
-        throw new UnsupportedOperationException(msg);
+        if (!productAttrs.get("storage").equals("EBS only")) {
+          String msg = "Volume type not specified in product sku=" + productAttrs.get("sku") +
+                       ", storage={" + productAttrs.get("storage") + "}";
+          LOG.error(msg);
+          throw new UnsupportedOperationException(msg);
+        } else {
+          // TODO: hardcode me not?
+          volumeCount = 2;
+          volumeSizeGB = 250;
+          volumeType = VolumeType.EBS;
+        }
+      } else {
+        volumeCount = Integer.parseInt(parts[0]);
+        volumeSizeGB = Integer.parseInt(parts[2]);
+        volumeType = VolumeType.valueOf(parts[3]);
       }
-      Integer volumeCount = Integer.parseInt(parts[0]);
-      Integer volumeSizeGB = Integer.parseInt(parts[2]);
-      VolumeType volumeType = VolumeType.valueOf(parts[3]);
 
       // Fill up all the per-region details.
       String regionName = productAttrs.get("location");
