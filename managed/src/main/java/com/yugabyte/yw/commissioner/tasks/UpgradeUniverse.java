@@ -158,6 +158,10 @@ public class UpgradeUniverse extends UniverseTaskBase {
       params.gflags = taskParams().getGFlagsAsMap();
     }
 
+    if (params.cloud == Common.CloudType.onprem) {
+      params.instanceType = node.cloudInfo.instance_type;
+    }
+
     // Create the Ansible task to get the server info.
     AnsibleConfigureServers task = new AnsibleConfigureServers();
     task.initialize(params);

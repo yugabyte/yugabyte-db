@@ -44,6 +44,7 @@ public class OnPremFormData {
 
   static public class NodeData {
     public String ip;
+    public int sshPort = 22;
     public String instanceTypeCode;
   }
 

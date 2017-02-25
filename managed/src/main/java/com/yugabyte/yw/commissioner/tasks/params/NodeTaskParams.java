@@ -22,6 +22,10 @@ public class NodeTaskParams extends UniverseTaskParams {
   // TODO: currently only used for onprem cloud.
   public UUID nodeUuid;
 
+  // The type of instance for this node
+  // TODO: currently only used for onprem cloud.
+  public String instanceType;
+
   public AvailabilityZone getAZ() {
     return AvailabilityZone.find.byId(azUuid);
   }

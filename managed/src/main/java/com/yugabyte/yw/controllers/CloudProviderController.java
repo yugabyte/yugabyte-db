@@ -181,6 +181,7 @@ public class CloudProviderController extends AuthenticatedController {
 
                     NodeInstanceFormData details = new NodeInstanceFormData();
                     details.ip = n.ip;
+                    details.sshPort = n.sshPort;
                     details.region = region.code;
                     details.zone = zone.code;
                     details.instanceType = it.getInstanceTypeCode();
