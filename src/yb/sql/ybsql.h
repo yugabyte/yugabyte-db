@@ -49,7 +49,10 @@ class YbSql {
   virtual ~YbSql();
 
   // Process a SQL statement and return error codes.
-  CHECKED_STATUS Process(SqlEnv* sql_env, const std::string& sql_stmt, YbSqlMetrics* yb_metrics);
+  CHECKED_STATUS Process(SqlEnv* sql_env,
+                         const std::string& sql_stmt,
+                         const StatementParameters& params,
+                         YbSqlMetrics* yb_metrics);
 
  private:
   //------------------------------------------------------------------------------------------------

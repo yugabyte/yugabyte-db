@@ -41,7 +41,9 @@ class SqlProcessor {
   virtual ~SqlProcessor();
 
   // Execute the given statement.
-  CHECKED_STATUS Run(const std::string& sql_stmt, YbSqlMetrics* yb_metrics = nullptr);
+  CHECKED_STATUS Run(const std::string& sql_stmt,
+                     const StatementParameters& params = StatementParameters(),
+                     YbSqlMetrics* yb_metrics = nullptr);
 
   // Send the rows_result back for processing. If there's an error, the rows_result is set to
   // nullptr.

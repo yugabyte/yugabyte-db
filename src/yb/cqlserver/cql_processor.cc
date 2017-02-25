@@ -87,7 +87,7 @@ void CQLProcessor::ProcessCall(const Slice& msg, unique_ptr<CQLResponse> *respon
 }
 
 CQLResponse *CQLProcessor::ProcessQuery(const QueryRequest& req) {
-  Status s = Run(req.query(), cql_metrics_.get());
+  Status s = Run(req.query(), req.GetStatementParameters(), cql_metrics_.get());
   VLOG(1) << "RUN " << req.query();
   if (!s.ok()) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());

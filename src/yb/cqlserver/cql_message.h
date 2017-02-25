@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/sql/statement.h"
 #include "yb/sql/util/rows_result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -160,6 +161,10 @@ class CQLMessage {
     static constexpr Flags kWithDefaultTimestampFlag  = 0x20;
     static constexpr Flags kWithNamesForValuesFlag    = 0x40;
 
+    sql::StatementParameters ToStatementParameters() const {
+      return sql::StatementParameters(page_size, paging_state);
+    }
+
     Consistency consistency = Consistency::ANY;
     Flags flags = 0;
     std::vector<Value> values;
@@ -298,8 +303,8 @@ class QueryRequest : public CQLRequest {
   const std::string& query() const {
     return query_;
   }
-  const QueryParameters& params() const {
-    return params_;
+  sql::StatementParameters GetStatementParameters() const {
+    return params_.ToStatementParameters();
   }
 
  protected:
@@ -332,6 +337,10 @@ class ExecuteRequest : public CQLRequest {
   ExecuteRequest(const Header& header, const Slice& body);
   virtual ~ExecuteRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
+
+  const QueryParameters& params() const {
+    return params_;
+  }
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;

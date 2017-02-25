@@ -34,6 +34,7 @@ Executor::~Executor() {
 
 CHECKED_STATUS Executor::Execute(const string& sql_stmt,
                                  ParseTree::UniPtr parse_tree,
+                                 const StatementParameters& params,
                                  SqlEnv *sql_env) {
   // Prepare execution context.
   ParseTree *ptree = parse_tree.get();
@@ -41,6 +42,7 @@ CHECKED_STATUS Executor::Execute(const string& sql_stmt,
                                                       sql_stmt.length(),
                                                       move(parse_tree),
                                                       sql_env));
+  params_ = &params;
 
   // Execute the parse tree.
   if (!ExecPTree(ptree).ok()) {
@@ -58,6 +60,7 @@ ParseTree::UniPtr Executor::Done() {
   // which doesn't belong to this context any longer.
   ParseTree::UniPtr ptree = exec_context_->AcquireParseTree();
   exec_context_ = nullptr;
+  params_ = nullptr;
   return ptree;
 }
 

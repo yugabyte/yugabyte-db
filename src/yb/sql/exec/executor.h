@@ -7,6 +7,7 @@
 #ifndef YB_SQL_EXEC_EXECUTOR_H_
 #define YB_SQL_EXEC_EXECUTOR_H_
 
+#include "yb/sql/statement.h"
 #include "yb/sql/exec/exec_context.h"
 #include "yb/sql/exec/eval_expr.h"
 #include "yb/sql/ptree/pt_create_keyspace.h"
@@ -38,6 +39,7 @@ class Executor {
   // Execute the given parse tree.
   CHECKED_STATUS Execute(const std::string& sql_stmt,
                          ParseTree::UniPtr ptree,
+                         const StatementParameters& params,
                          SqlEnv *sql_env);
 
   // Complete execution and release the parse tree from the process.
@@ -151,6 +153,9 @@ class Executor {
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.
   ExecContext::UniPtr exec_context_;
+
+  // Parameters to execute the statement with.
+  const StatementParameters *params_ = nullptr;
 };
 
 }  // namespace sql

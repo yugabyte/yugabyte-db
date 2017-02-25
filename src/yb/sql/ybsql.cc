@@ -59,7 +59,10 @@ YbSql::YbSql()
 YbSql::~YbSql() {
 }
 
-CHECKED_STATUS YbSql::Process(SqlEnv *sql_env, const string &sql_stmt, YbSqlMetrics *sql_metrics) {
+CHECKED_STATUS YbSql::Process(SqlEnv *sql_env,
+                              const string &sql_stmt,
+                              const StatementParameters& params,
+                              YbSqlMetrics *sql_metrics) {
   // Parse the statement and get the generated parse tree.
   MonoTime begin_parse = MonoTime::Now(MonoTime::FINE);
   RETURN_NOT_OK(parser_->Parse(sql_stmt));
@@ -118,7 +121,7 @@ CHECKED_STATUS YbSql::Process(SqlEnv *sql_env, const string &sql_stmt, YbSqlMetr
 
     // Code execution.
     MonoTime begin_execute = MonoTime::Now(MonoTime::FINE);
-    s = executor_->Execute(sql_stmt, move(parse_tree), sql_env);
+    s = executor_->Execute(sql_stmt, move(parse_tree), params, sql_env);
     ErrorCode exec_errcode = executor_->error_code();
     MonoTime end_execute = MonoTime::Now(MonoTime::FINE);
     if (sql_metrics != nullptr) {
