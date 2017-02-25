@@ -218,6 +218,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
       params.ybServerPackage = taskParams().userIntent.ybServerPackage;
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = new AnsibleConfigureServers();
       task.initialize(params);
@@ -251,6 +253,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // The service and the command we want to run.
       params.process = "master";
       params.command = isShell ? "start" : "create";
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
       task.initialize(params);
@@ -282,6 +286,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // The service and the command we want to run.
       params.process = "tserver";
       params.command = "start";
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
       task.initialize(params);

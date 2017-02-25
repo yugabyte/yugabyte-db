@@ -199,6 +199,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.process = processType.toString().toLowerCase();
     params.command = command;
     params.sleepAfterCmdMills = sleepAfterCmdMillis;
+    // Set the InstanceType
+    params.instanceType = node.cloudInfo.instance_type;
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = new AnsibleClusterServerCtl();
     task.initialize(params);

@@ -18,9 +18,6 @@ public class AnsibleSetupServer extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     // The VPC into which the node is to be provisioned.
     public String subnetId;
-
-    // The instance type that needs to be provisioned.
-    public String instanceType;
   }
 
   @Override
