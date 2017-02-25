@@ -17,6 +17,9 @@ services:
       - postgres
     volumes_from:
       - prometheus
+    links:
+      - postgres
+    network_mode: bridge
 
   yugaware-ui:
     image: yugaware-ui:latest
@@ -24,6 +27,7 @@ services:
       - 4000
     ports:
       - 4000:4000
+    network_mode: bridge
 
   postgres:
     image: postgres:latest
@@ -37,6 +41,7 @@ services:
       - POSTGRES_DB=yugaware
     volumes:
       - /var/lib/postgresql/data
+    network_mode: bridge
 
   nginx:
     image: nginx:latest
@@ -49,6 +54,7 @@ services:
       - "80:80"
     expose:
       - 80
+    network_mode: bridge
 
   prometheus:
     image: prom/prometheus
@@ -63,6 +69,7 @@ services:
       - 9090
     ports:
       - 9090:9090
+    network_mode: bridge
 
   node-exporter:
     image: prom/node-exporter
@@ -70,6 +77,7 @@ services:
       - 9100
     ports:
       - 9100:9100
+    network_mode: bridge
 
   alertmanager:
     image: prom/alertmanager
@@ -80,3 +88,5 @@ services:
     command:
       - '-config.file=/etc/alertmanager/alertmanager.yml'
       - '-storage.path=./docker/alertmanager'
+    network_mode: bridge
+
