@@ -238,14 +238,15 @@ VarInt VarInt::EncodeToComparableBytes(bool is_signed, size_t num_reserved_bits)
     // So we always set the sign bit = 1 here, regardless of the actual sign.
     binary.AppendDigits(1, 1);
   }
+  const bool is_negative = is_signed && !binary.is_positive_;
   // The reserved bits go to the very beginning of the digit array.
   // Since they need to be zero after complement, they start being is_signed && !is_positive_
-  binary.AppendDigits(num_reserved_bits, is_signed && !binary.is_positive_);
+  binary.AppendDigits(num_reserved_bits, static_cast<uint8_t>(is_negative));
   // group everything by 8 before returning.
   DCHECK_EQ(binary.digits_.size() % 8, 0);
   VarInt base_256 = binary.ConvertToBase(256);
   base_256.AppendDigits(num_bytes - base_256.digits_.size(), 0);
-  if (is_signed && !binary.is_positive_) {
+  if (is_negative) {
     // For negatives, complement everything
     for (size_t i = 0; i < base_256.digits_.size(); i++) {
       base_256.digits_[i] = ~base_256.digits_[i];

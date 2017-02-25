@@ -248,13 +248,11 @@ int Decimal::CompareTo(const Decimal &other) const {
 string Decimal::EncodeToComparable() const {
   string exponent = exponent_.EncodeToComparable(
       /* is_signed */ true, /* num_reserved_bits */ 1);
-  // Set the first bit of the exponent part to the sign bit. In case of negative
-  // everything will be inverted at the end.
   const string mantissa = VarInt(digits_, 10).EncodeToDigitPairs();
   string output = exponent + mantissa;
-  if (output[0] < 128) {
-    output[0] += 128;
-  }
+  // The first (reserved) bit is zero. This is the Decimal's sign bit. We set it to one here.
+  output[0] += 128;
+  // For negatives, everything is complemented (including the sign bit) which was set to 1.
   if (!is_positive_) {
     for (int i = 0; i < output.size(); i++) {
       output[i] = ~output[i]; // Bitwise not.

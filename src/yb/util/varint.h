@@ -166,6 +166,7 @@ class VarInt {
   // section 1 corresponds to is_signed = false, num_reserved_bits = 0, section 2 corresponds to
   // is_Signed = true, num_reserved_bits = 0, and section 3 addresses the general case with
   // num_reserved_bits > 0.
+  // Note that the first <num_reserved_bits> bits of the encoding is guaranteed to be zero.
   std::string EncodeToComparable(bool is_signed = true, size_t num_reserved_bits = 0) const {
     return EncodeToComparableBytes(is_signed, num_reserved_bits).ToStringFromBase256();
   }
