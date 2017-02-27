@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -105,6 +106,46 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public String toString() {
       return "UserIntent " + "for universe=" + universeName + ", isMultiAZ=" + isMultiAZ + " type=" +
              instanceType + ", numNodes=" + numNodes;
+    }
+
+    public UserIntent clone() {
+      UserIntent newUserIntent = new UserIntent();
+      newUserIntent.universeName = universeName;
+      newUserIntent.provider = provider;
+      newUserIntent.providerType = providerType;
+      newUserIntent.replicationFactor = replicationFactor;
+      newUserIntent.isMultiAZ = isMultiAZ;
+      newUserIntent.regionList = regionList;
+      newUserIntent.preferredRegion = preferredRegion;
+      newUserIntent.instanceType = instanceType;
+      newUserIntent.numNodes = numNodes;
+      newUserIntent.ybServerPackage = ybServerPackage;
+      newUserIntent.accessKeyCode = accessKeyCode;
+      return newUserIntent;
+    }
+
+    public boolean equals(UserIntent other) {
+      if (universeName.equals(other.universeName) &&
+          provider.equals(other.provider) &&
+          providerType == other.providerType &&
+          replicationFactor == other.replicationFactor &&
+          isMultiAZ == other.isMultiAZ &&
+          compareRegionLists(regionList, other.regionList) &&
+          preferredRegion.equals(other.preferredRegion) &&
+          instanceType.equals(other.instanceType) &&
+          numNodes == other.numNodes &&
+          ybServerPackage.equals(other.ybServerPackage) &&
+          accessKeyCode.equals(other.accessKeyCode)) {
+         return true;
+      }
+      return false;
+    }
+
+    // Helper API to check if the list of regions is the same in both lists.
+    private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
+      Set<UUID> leftSet = new HashSet<UUID>(left);
+      Set<UUID> rightSet = new HashSet<UUID>(right);
+      return leftSet.equals(rightSet);
     }
   }
 }
