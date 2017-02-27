@@ -9,13 +9,13 @@ export default class CustomerMetricsPanel extends Component {
   }
 
   render() {
-    const {origin} = this.props;
+    const {origin, nodePrefixes} = this.props;
     return (
       <GraphPanelHeaderContainer origin={origin}>
-        <GraphPanelContainer type={"server"} nodePrefixes={this.props.nodePrefixes}/>
-        <GraphPanelContainer type={"tserver"} nodePrefixes={this.props.nodePrefixes}/>
-        <GraphPanelContainer type={"redis"} nodePrefixes={this.props.nodePrefixes}/>
-        <GraphPanelContainer type={"cql"} nodePrefixes={this.props.nodePrefixes}/>
+        <GraphPanelContainer type={"cql"} nodePrefixes={nodePrefixes}/>
+        <GraphPanelContainer type={"redis"} nodePrefixes={nodePrefixes}/>
+        <GraphPanelContainer type={"tserver"} nodePrefixes={nodePrefixes}/>
+        <GraphPanelContainer type={"server"} nodePrefixes={nodePrefixes}/>
       </GraphPanelHeaderContainer>
     )
   }

@@ -76,16 +76,16 @@ export default class UniverseDetail extends Component {
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
         <GraphPanelHeaderContainer origin={"universe"}>
           <GraphPanelContainer
-            type={"server"}
-            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
-          <GraphPanelContainer
-            type={"tserver"}
+            type={"cql"}
             nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
           <GraphPanelContainer
             type={"redis"}
             nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
           <GraphPanelContainer
-            type={"cql"}
+            type={"tserver"}
+            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
+          <GraphPanelContainer
+            type={"server"}
             nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
         </GraphPanelHeaderContainer>
       </Tab>]
