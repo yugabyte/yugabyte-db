@@ -18,6 +18,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -68,6 +69,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.numNodes = 10;
       userIntent.provider = provider.code;
       userIntent.regionList = regionList;
+      userIntent.instanceType = "m3.medium";
+      userIntent.ybServerPackage = "random_pkg";
+      userIntent.accessKeyCode = "akc";
+      userIntent.providerType = CloudType.aws;
+      userIntent.preferredRegion = r1.uuid;
       Universe.saveDetails(univUuid, ApiUtils.mockUniverseUpdater(userIntent));
       universe = Universe.get(univUuid);
     }
@@ -237,6 +243,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       Universe.saveDetails(univUuid, t.setAzUUIDs(ud.userIntent));
       ud.universeUUID = univUuid;
       ud.userIntent.numNodes = 8;
+      ud.userIntent.instanceType = "m3.medium";
+      ud.userIntent.ybServerPackage = "random_pkg";
       PlacementInfoUtil.updateUniverseDefinition(ud, t.customer.getCustomerId());
       Set<NodeDetails> nodes = ud.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());

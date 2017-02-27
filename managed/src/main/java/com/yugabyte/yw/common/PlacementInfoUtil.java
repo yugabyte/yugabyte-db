@@ -44,11 +44,17 @@ public class PlacementInfoUtil {
   // odd number for consensus to work.
   private static final int maxMasterSubnets = 3;
 
-  // Helper API to check if the list of regions is the same in both lists.
-  private static boolean compareRegionLists(List<UUID> left, List<UUID> right) {
-    Set<UUID> leftSet = new HashSet<UUID>(left);
-    Set<UUID> rightSet = new HashSet<UUID>(right);
-    return leftSet.equals(rightSet);
+  /**
+   * Helper API to compare existing intent to a new task params intent and see if it is a pure
+   * universe expand or shrink case.
+   * @param taskIntent : Proposed user intent from universe task params.
+   * @param existingIntent : User intent that is part of the current universe.
+   * @return True iff the only difference between the intents is the number of nodes.
+   */
+  private static boolean isPureExpandOrShrink(UserIntent taskIntent, UserIntent existingIntent) {
+    UserIntent tempIntent = taskIntent.clone();
+    tempIntent.numNodes = existingIntent.numNodes;
+    return tempIntent.equals(existingIntent) && taskIntent.numNodes != existingIntent.numNodes;
   }
 
   /**
@@ -81,13 +87,9 @@ public class PlacementInfoUtil {
     if (universe != null) {
       UserIntent existingIntent = universe.getUniverseDetails().userIntent;
       verifyEditParams(taskParams.userIntent, existingIntent);
-      boolean areNumNodesSame = existingIntent.numNodes == taskParams.userIntent.numNodes;
-      boolean areRegionListsSame = compareRegionLists(existingIntent.regionList,
-                                                      taskParams.userIntent.regionList);
       Collection<NodeDetails> existingNodes = universe.getNodes();
       startIndex = getStartIndex(universe.getNodes());
-      LOG.info("Check for nodes={} and regions={}.", areNumNodesSame, areRegionListsSame);
-      if (!areNumNodesSame && areRegionListsSame) {
+      if (isPureExpandOrShrink(existingIntent, taskParams.userIntent)) {
         // Expand/shrink universe case with tserver addition/removal only.
         numDeltaNodes = taskParams.userIntent.numNodes - existingIntent.numNodes;
         numNewMasters = 0;
@@ -182,19 +184,44 @@ public class PlacementInfoUtil {
    */
   private static void verifyEditParams(UserIntent userIntent,
                                        UserIntent existingIntent) {
+    // Error out if no fields are modified.
+    if (userIntent.equals(existingIntent)) {
+      LOG.error("No fields were modified for edit universe.");
+      throw new IllegalArgumentException("Invalid operation: At least one field should be " +
+                                         "modified for editing the universe.");
+    }
+
     // Rule out some of the universe changes that we do not allow (they can be enabled as needed).
     if (existingIntent.replicationFactor != userIntent.replicationFactor) {
       LOG.error("Replication factor cannot be changed from {} to {}",
-        existingIntent.replicationFactor, userIntent.replicationFactor);
+                existingIntent.replicationFactor, userIntent.replicationFactor);
       throw new UnsupportedOperationException("Replication factor cannot be modified.");
+    }
+
+    if (!existingIntent.universeName.equals(userIntent.universeName)) {
+      LOG.error("universeName cannot be changed from {} to {}",
+                existingIntent.universeName, userIntent.universeName);
+      throw new UnsupportedOperationException("Universe name cannot be modified.");
+    }
+
+    if (!existingIntent.provider.equals(userIntent.provider)) {
+      LOG.error("Provider cannot be changed from {} to {}",
+                existingIntent.provider, userIntent.provider);
+      throw new UnsupportedOperationException("Provider cannot be modified.");
+    }
+
+    if (existingIntent.providerType != userIntent.providerType) {
+      LOG.error("Provider type cannot be changed from {} to {}",
+                existingIntent.providerType, userIntent.providerType);
+      throw new UnsupportedOperationException("providerType cannot be modified.");
     }
 
     if (userIntent.numNodes < 3) {
       LOG.error("Number of nodes cannot be reduced from {} to {}, to less than minimum of 3.",
-                userIntent.numNodes, existingIntent.numNodes);
+                existingIntent.numNodes, userIntent.numNodes);
       throw new UnsupportedOperationException("Number of nodes cannot be reduced to less than 3.");
     }
-}
+  }
 
   // Helper API to sort an given map in ascending order of its values and return the same.
   private static LinkedHashMap<UUID, Integer> sortByValues(Map<UUID, Integer> map,
