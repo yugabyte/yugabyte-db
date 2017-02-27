@@ -20,7 +20,5 @@ public class CustomerTaskFormData {
 
   public String type;
 
-  // We identify if the task was successful or not.
-  // Based on that we provide different color coding on the UI
-  public boolean success;
+  public String status;
 }

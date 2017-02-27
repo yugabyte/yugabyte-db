@@ -2,32 +2,30 @@
 
 import { connect } from 'react-redux';
 import { TasksList } from '../../tasks';
-import { fetchUniverseTasks, fetchUniverseTasksSuccess,
-  fetchUniverseTasksFailure, resetUniverseTasks
-} from '../../../actions/universe';
+import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure, resetCustomerTasks} from '../../../actions/tasks';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-
-    fetchUniverseTasks: () => {
-      dispatch(fetchUniverseTasks())
+    fetchCustomerTasks: () => {
+      dispatch(fetchCustomerTasks())
         .then((response) => {
           if (!response.error) {
-            dispatch(fetchUniverseTasksSuccess(response.payload));
+            dispatch(fetchCustomerTasksSuccess(response.payload));
           } else {
-            dispatch(fetchUniverseTasksFailure(response.payload));
+            dispatch(fetchCustomerTasksFailure(response.payload));
           }
         });
     },
-    resetUniverseTasks: () => {
-      dispatch(resetUniverseTasks());
+    resetCustomerTasks: () => {
+      dispatch(resetCustomerTasks());
     }
   }
 }
 
 function mapStateToProps(state, ownProps) {
   return {
-    universe: state.universe
+    universe: state.universe,
+    tasks: state.tasks
   };
 }
 

@@ -11,7 +11,7 @@ import {YBFormattedNumber} from '../../common/descriptors';
 export default class TasksList extends Component {
 
   componentWillMount() {
-    this.props.fetchUniverseTasks();
+    this.props.fetchCustomerTasks();
   }
 
   render() {
@@ -29,27 +29,24 @@ export default class TasksList extends Component {
                               month='long'
                               day='2-digit'
                               hour='numeric'
-                              minute='numeric'
-               />
+                              minute='numeric'/>
       }
     }
     function successStringFormatter(cell, row) {
-      if(cell === true ){
-        return <i className='fa fa-check'> Succeeded </i>;
-      } else {
-        return <i className='fa fa-times' > Failed </i>;
+      switch (cell) {
+        case "Success" :
+          return <span><i className='fa fa-check'/> Succeeded</span>;
+        case "Initializing" :
+          return <span><i className='fa fa-spinner fa-spin'/> Initializing</span>;
+        case "Running" :
+          return <span><i className='fa fa-spinner fa-spin'/> Pending</span>;
+        case "Failure" :
+          return <span><i className='fa fa-times' /> Failed</span> ;
+        default :
+          return <span><i className="fa fa-exclamation" />Unknown</span>;
       }
     }
-    const {universe: {universeTasks}} = this.props;
-
-    var alertsDisplay = [];
-
-    if (isValidObject(universeTasks)) {
-      Object.keys(universeTasks).forEach(function (key, idx) {
-        alertsDisplay = [].concat(alertsDisplay, universeTasks[key]);
-      });
-    }
-
+    const {tasks: {customerTaskList}} = this.props;
     const selectRowProp = {
       bgColor: "rgb(211,211,211)"
     };
@@ -58,7 +55,7 @@ export default class TasksList extends Component {
       return (
         <div id="page-wrapper" className="dashboard-widget-container">
         <YBPanelItem name="Tasks">
-          <BootstrapTable data={alertsDisplay} selectRow={selectRowProp}
+          <BootstrapTable data={customerTaskList} selectRow={selectRowProp}
                           bodyStyle={tableBodyContainer}
                           pagination={true}>
             <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
@@ -83,14 +80,14 @@ export default class TasksList extends Component {
                                columnClassName="no-border name-column" className="no-border">
                Type
             </TableHeaderColumn>
-            <TableHeaderColumn dataField="success"
+            <TableHeaderColumn dataField="status"
                                columnClassName="no-border name-column" className="no-border"
                                dataFormat={successStringFormatter}>
                Status
             </TableHeaderColumn>
           </BootstrapTable>
         </YBPanelItem>
-          </div>
+        </div>
 
       )
     }
