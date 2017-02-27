@@ -124,18 +124,18 @@ export default class GraphPanelHeader extends Component {
 
   handleStartDateChange(dateStr) {
     var newParams = this.state.filterParams;
-    newParams.startMoment = dateStr;
+    newParams.startMoment = moment(dateStr);
     this.setState({filterParams: newParams})
   }
 
   handleEndDateChange(dateStr) {
     var newParams = this.state.filterParams;
-    newParams.endMoment = dateStr;
+    newParams.endMoment = moment(dateStr);
     this.setState({filterParams: newParams})
   }
 
   applyCustomFilter() {
-    this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
+    this.updateGraphQueryParams(this.state.filterParams.startMoment, this.state.filterParams.endMoment)
   }
 
   updateGraphQueryParams(startMoment, endMoment) {
@@ -153,17 +153,18 @@ export default class GraphPanelHeader extends Component {
     const { origin } = this.props;
     var datePicker = null;
     if (this.state.filterType === "custom") {
+
       datePicker =
         <span className="graph-filter-custom" >
           <DateTimePicker
-            value={this.state.startMoment.toDate()}
+            value={this.state.filterParams.startMoment.toDate()}
             onChange={this.handleStartDateChange}
             max={new Date()} />
             &nbsp;&ndash;&nbsp;
           <DateTimePicker
-            value={this.state.endMoment.toDate()}
+            value={this.state.filterParams.endMoment.toDate()}
             onChange={this.handleEndDateChange}
-            max={new Date()} min={this.state.startMoment.toDate()} />
+            max={new Date()} min={this.state.filterParams.startMoment.toDate()} />
             &nbsp;
           <YBButton btnIcon={"fa fa-caret-right"} onClick={this.applyCustomFilter} />
         </span>;
