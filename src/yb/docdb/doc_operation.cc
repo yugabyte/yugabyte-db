@@ -406,11 +406,12 @@ void YQLColumnValuesToPrimitiveValues(
 // Populate dockey from YQL key columns.
 DocKey DocKeyFromYQLKey(
     const Schema& schema,
-    uint32_t hash_code,
-    const google::protobuf::RepeatedPtrField<YQLColumnValuePB>& hashed_column_values,
-    const google::protobuf::RepeatedPtrField<YQLColumnValuePB>& range_column_values) {
+    const YQLWriteRequestPB& request) {
   vector<PrimitiveValue> hashed_components;
   vector<PrimitiveValue> range_components;
+
+  const auto& hashed_column_values = request.hashed_column_values();
+  const auto& range_column_values = request.range_column_values();
 
   // Populate the hashed and range components in the same order as they are in the table schema.
   YQLColumnValuesToPrimitiveValues(
@@ -420,7 +421,12 @@ DocKey DocKeyFromYQLKey(
       range_column_values, schema, schema.num_hash_key_columns(),
       schema.num_key_columns() - schema.num_hash_key_columns(), &range_components);
 
-  return DocKey(hash_code, hashed_components, range_components);
+  if (request.has_hash_code() && !hashed_column_values.empty()) {
+    return DocKey(request.hash_code(), hashed_components, range_components);
+  } else {
+    // In case of syscatalog tables, we don't have any hash components.
+    return DocKey(range_components);
+  }
 }
 
 CHECKED_STATUS GetNonKeyColumns(
@@ -469,9 +475,7 @@ YQLWriteOperation::YQLWriteOperation(
       doc_key_(
           DocKeyFromYQLKey(
               schema,
-              request.hash_code(),
-              request.hashed_column_values(),
-              request.range_column_values())),
+              request)),
       doc_path_(DocPath(doc_key_.Encode())),
       request_(request),
       response_(response) {

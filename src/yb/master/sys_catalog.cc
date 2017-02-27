@@ -91,9 +91,7 @@ class SysCatalogWriter {
  public:
   explicit SysCatalogWriter(SysCatalogTable* sys_catalog)
       : sys_catalog_(sys_catalog),
-        req_(),
-        row_(&sys_catalog->schema_),
-        enc_(req_.mutable_row_operations()) {
+        req_() {
     req_.set_tablet_id(kSysCatalogTabletId);
   }
 
@@ -101,8 +99,13 @@ class SysCatalogWriter {
 
   template <class PersistentDataEntryClass>
   Status MutateItem(
-      const MemoryState<PersistentDataEntryClass>* item, const RowOperationsPB::Type& op_type) {
-    bool is_write = op_type == RowOperationsPB::INSERT || op_type == RowOperationsPB::UPDATE;
+      const MemoryState<PersistentDataEntryClass>* item,
+      const YQLWriteRequestPB::YQLStmtType& op_type) {
+    bool is_write = op_type == YQLWriteRequestPB::YQL_STMT_INSERT ||
+        op_type == YQLWriteRequestPB::YQL_STMT_UPDATE;
+
+    YQLWriteRequestPB* yql_write = req_.add_yql_write_batch();
+    yql_write->set_type(op_type);
 
     faststring metadata_buf;
     if (is_write) {
@@ -112,11 +115,20 @@ class SysCatalogWriter {
             PersistentDataEntryClass::type(), item->id()));
       }
 
-      CHECK_OK(row_.SetString(SysCatalogTable::schema_column_metadata(), metadata_buf));
+      // Add the metadata column.
+      YQLColumnValuePB* metadata = yql_write->add_column_values();
+      RETURN_NOT_OK(SetColumnId(SysCatalogTable::schema_column_metadata(), metadata));
+      SetStringValue(metadata_buf.ToString(), metadata);
     }
-    CHECK_OK(row_.SetInt8(SysCatalogTable::schema_column_type(), PersistentDataEntryClass::type()));
-    CHECK_OK(row_.SetString(SysCatalogTable::schema_column_id(), item->id()));
-    enc_.Add(op_type, row_);
+    // Add column type.
+    YQLColumnValuePB* entity_type = yql_write->add_range_column_values();
+    RETURN_NOT_OK(SetColumnId(SysCatalogTable::schema_column_type(), entity_type));
+    SetInt8Value(PersistentDataEntryClass::type(), entity_type);
+
+    // Add column id.
+    YQLColumnValuePB* entity_id = yql_write->add_range_column_values();
+    RETURN_NOT_OK(SetColumnId(SysCatalogTable::schema_column_id(), entity_id));
+    SetStringValue(item->id(), entity_id);
 
     return Status::OK();
   }
@@ -130,10 +142,29 @@ class SysCatalogWriter {
   }
 
  private:
+  CHECKED_STATUS SetColumnId(const std::string& column_name, YQLColumnValuePB* col_pb) {
+    size_t column_index = sys_catalog_->schema_with_ids_.find_column(column_name);
+    if (column_index == Schema::kColumnNotFound) {
+      return STATUS_SUBSTITUTE(NotFound, "Couldn't find column $0 in the schema", column_name);
+    }
+    col_pb->set_column_id(sys_catalog_->schema_with_ids_.column_id(column_index));
+    return Status::OK();
+  }
+
+  void SetStringValue(const std::string& string_val, YQLColumnValuePB* col_pb) {
+    YQLValuePB* value = col_pb->mutable_value();
+    value->set_datatype(DataType::STRING);
+    value->set_string_value(string_val);
+  }
+
+  void SetInt8Value(const int8_t int8_value, YQLColumnValuePB* col_pb) {
+    YQLValuePB* value = col_pb->mutable_value();
+    value->set_datatype(DataType::INT8);
+    value->set_int8_value(int8_value);
+  }
+
   SysCatalogTable* sys_catalog_;
   WriteRequestPB req_;
-  YBPartialRow row_;
-  RowOperationsPBEncoder enc_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogWriter);
 };
@@ -530,7 +561,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
 
   const Schema* schema = tablet->schema();
   schema_ = SchemaBuilder(*schema).BuildWithoutIds();
-  key_schema_ = schema_.CreateKeyProjection();
+  schema_with_ids_ = SchemaBuilder(*schema).Build();
   return Status::OK();
 }
 
@@ -614,7 +645,7 @@ Status SysCatalogTable::AddTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::AddTable",
                "table", table->ToString());
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(table, RowOperationsPB::INSERT));
+  RETURN_NOT_OK(w->MutateItem(table, YQLWriteRequestPB::YQL_STMT_INSERT));
   return w->Write();
 }
 
@@ -622,7 +653,7 @@ Status SysCatalogTable::UpdateTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::UpdateTable",
                "table", table->ToString());
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(table, RowOperationsPB::UPDATE));
+  RETURN_NOT_OK(w->MutateItem(table, YQLWriteRequestPB::YQL_STMT_UPDATE));
   return w->Write();
 }
 
@@ -630,7 +661,7 @@ Status SysCatalogTable::DeleteTable(const TableInfo *table) {
   TRACE_EVENT1("master", "SysCatalogTable::DeleteTable",
                "table", table->ToString());
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(table, RowOperationsPB::DELETE));
+  RETURN_NOT_OK(w->MutateItem(table, YQLWriteRequestPB::YQL_STMT_DELETE));
   return w->Write();
 }
 
@@ -646,10 +677,10 @@ Status SysCatalogTable::AddAndUpdateTablets(const vector<TabletInfo*>& tablets_t
 
   auto w = NewWriter();
   for (const auto tablet : tablets_to_add) {
-    RETURN_NOT_OK(w->MutateItem(tablet, RowOperationsPB::INSERT));
+    RETURN_NOT_OK(w->MutateItem(tablet, YQLWriteRequestPB::YQL_STMT_INSERT));
   }
   for (const auto tablet : tablets_to_update) {
-    RETURN_NOT_OK(w->MutateItem(tablet, RowOperationsPB::UPDATE));
+    RETURN_NOT_OK(w->MutateItem(tablet, YQLWriteRequestPB::YQL_STMT_UPDATE));
   }
   return w->Write();
 }
@@ -667,7 +698,7 @@ Status SysCatalogTable::DeleteTablets(const vector<TabletInfo*>& tablets) {
                "num_tablets", tablets.size());
   auto w = NewWriter();
   for (const auto tablet : tablets) {
-    RETURN_NOT_OK(w->MutateItem(tablet, RowOperationsPB::DELETE));
+    RETURN_NOT_OK(w->MutateItem(tablet, YQLWriteRequestPB::YQL_STMT_DELETE));
   }
   return w->Write();
 }
@@ -679,7 +710,7 @@ Status SysCatalogTable::AddNamespace(const NamespaceInfo *ns) {
   TRACE_EVENT1("master", "SysCatalogTable::AddNamespace",
                "namespace", ns->ToString());
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(ns, RowOperationsPB::INSERT));
+  RETURN_NOT_OK(w->MutateItem(ns, YQLWriteRequestPB::YQL_STMT_INSERT));
   return w->Write();
 }
 
@@ -687,7 +718,7 @@ Status SysCatalogTable::UpdateNamespace(const NamespaceInfo *ns) {
   TRACE_EVENT1("master", "SysCatalogTable::UpdateNamespace",
                "namespace", ns->ToString());
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(ns, RowOperationsPB::UPDATE));
+  RETURN_NOT_OK(w->MutateItem(ns, YQLWriteRequestPB::YQL_STMT_UPDATE));
   return w->Write();
 }
 
@@ -695,7 +726,7 @@ Status SysCatalogTable::DeleteNamespace(const NamespaceInfo *ns) {
   TRACE_EVENT1("master", "SysCatalogNamespace::DeleteNamespace",
                "namespace", ns->ToString());
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(ns, RowOperationsPB::DELETE));
+  RETURN_NOT_OK(w->MutateItem(ns, YQLWriteRequestPB::YQL_STMT_DELETE));
   return w->Write();
 }
 
@@ -704,13 +735,13 @@ Status SysCatalogTable::DeleteNamespace(const NamespaceInfo *ns) {
 // ==================================================================
 Status SysCatalogTable::AddClusterConfigInfo(ClusterConfigInfo* config_info) {
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(config_info, RowOperationsPB::INSERT));
+  RETURN_NOT_OK(w->MutateItem(config_info, YQLWriteRequestPB::YQL_STMT_INSERT));
   return w->Write();
 }
 
 Status SysCatalogTable::UpdateClusterConfigInfo(ClusterConfigInfo* config_info) {
   auto w = NewWriter();
-  RETURN_NOT_OK(w->MutateItem(config_info, RowOperationsPB::UPDATE));
+  RETURN_NOT_OK(w->MutateItem(config_info, YQLWriteRequestPB::YQL_STMT_UPDATE));
   return w->Write();
 }
 

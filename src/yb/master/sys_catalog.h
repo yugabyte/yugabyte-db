@@ -192,8 +192,6 @@ class SysCatalogTable {
   CHECKED_STATUS Visit(VisitorBase* visitor);
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
-
   friend class CatalogManager;
   friend class SysCatalogWriter;
 
@@ -252,7 +250,9 @@ class SysCatalogTable {
 
   // Table schema, without IDs, used to send messages to the TabletPeer
   Schema schema_;
-  Schema key_schema_;
+
+  // Table schema, with IDs, used for the YQL write path.
+  Schema schema_with_ids_;
 
   MetricRegistry* metric_registry_;
 
@@ -265,9 +265,11 @@ class SysCatalogTable {
   ElectedLeaderCallback leader_cb_;
 
   consensus::RaftPeerPB local_peer_pb_;
+
+  DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };
 
 } // namespace master
 } // namespace yb
 
-#endif
+#endif // YB_MASTER_SYS_CATALOG_H_

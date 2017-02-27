@@ -100,6 +100,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4
     yql_writereq_pb.set_type(stmt_type);
     // Add primary key column.
     AddPrimaryKeyColumn(&yql_writereq_pb, 1);
+    yql_writereq_pb.set_hash_code(0);
 
     AddColumnValues(&yql_writereq_pb, vector<int32_t>({2, 3, 4}));
 
@@ -207,6 +208,7 @@ TEST_F(DocOperationTest, TestYQLWriteNulls) {
   Schema schema = CreateSchema();
   yql_writereq_pb.set_type(
       YQLWriteRequestPB_YQLStmtType::YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT);
+  yql_writereq_pb.set_hash_code(0);
 
   // Add primary key column.
   AddPrimaryKeyColumn(&yql_writereq_pb, 1);
