@@ -259,7 +259,8 @@ int main(int argc, char* argv[]) {
   YB_LOG(INFO) << "Created a schema";
 
   // Create a table with that schema.
-  bool exists;
+  YB_LOG(INFO) << "Check if the target table exists before creating it";
+  bool exists = false;
   YB_CHECK_OK(DoesTableExist(client, kTableName, &exists));
   if (exists) {
     client->DeleteTable(kTableName);

@@ -419,9 +419,8 @@ bool PrintLoadedDynamicLibrariesOnceHelper() {
 
 void PrintLoadedDynamicLibraries() {
 #ifdef __linux__
+  // Supported on Linux only.
   dl_iterate_phdr(DynamcLibraryListCallback, nullptr);
-#else
-  LOG(WARNING) << __func__ << " is only supported on Linux";
 #endif
 }
 
