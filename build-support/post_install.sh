@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-bin_dir=${BASH_SOURCE%/*}
+bin_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
 distribution_dir=$( cd "$bin_dir/.." && pwd )
 patchelf_path=$bin_dir/patchelf
 

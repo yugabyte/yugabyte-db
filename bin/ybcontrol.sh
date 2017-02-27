@@ -263,8 +263,11 @@ case "$command" in
       echo $ip
       scp -i $pem_file -P $port $repo/build/$tar_prefix.tar.gz centos@$ip:/tmp/.
       ssh_cmd "sudo -u yugabyte mkdir -p /opt/yugabyte/$tar_prefix"
-      ssh_cmd "(cd /opt/yugabyte/$tar_prefix ; sudo -u yugabyte tar xvf /tmp/$tar_prefix.tar.gz )"
+      ssh_cmd "(cd /opt/yugabyte/$tar_prefix ; \
+          sudo -u yugabyte tar xvf /tmp/$tar_prefix.tar.gz;\
+          sudo /opt/yugabyte/$tar_prefix/bin/post_install.sh  )" &
     done
+    wait
   ;;
   status)
     for ip in $master_ips; do
