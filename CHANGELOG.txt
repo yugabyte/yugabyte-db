@@ -1,3 +1,9 @@
+2.6.4
+-- Note, if you installed update 2.6.3 prior to the release of 2.6.4, this update will not change anything, but is still required to be installed to allow the extension version update chain to work.
+-- While upgrading to version 2.6.3 or later, if you encounter the error: "cannot ALTER TABLE "part_config_sub" because it has pending trigger events" (or for the part_config table), then you must install that update by itself first and then install the update to 2.6.4 separately in a different transaction. Changing the values of a column in the same transaction as altering it to add/remove a constraint can cause the pending triggers error. The only way around that is to do the steps as separate transactions, which this update separates out from the previous one that caused the issue. Unfortunately, all extension updates run in a single transaction unless you upgrade manually to a specific version to control the transaction state between versions. (Github Issue #167).
+See the updates/pg_partman--2.6.3--2.6.4.sql file for more specific instructions on how to deal with this issue.
+
+
 2.6.3
 -- IMPORTANT NOTE: Installing the new C library requires a restart of the database cluster. Even if you are not running 9.6, it is recommended to restart after this update to ensure the latest library file is loaded into the database if you have compiled the C library.
 -- Fixed pg_partman background worker to work with PostgreSQL 9.6. If configured for multiple databases in a single cluster, the background worker processes will no longer start up and run in parallel. Unfortunately, changes in background worker code have made that harder to do at this time. Note it never ran in parallel on a single database before, it would only do that for multiple databases. (Github Issue #141).

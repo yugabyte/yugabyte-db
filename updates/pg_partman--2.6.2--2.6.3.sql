@@ -5,6 +5,9 @@
     -- The default is "none".
     -- Any current epoch partition sets will automatically have this value set to "seconds".
 
+-- Update for 2.6.4
+    -- This update has been modified since the release of 2.6.4 to allow upgrades in a specific edge case. See the CHANGELOG or the notes at the top of the 2.6.4 update file for why this happened and how to deal with possible update issues.
+
 CREATE TEMP TABLE partman_preserve_privs_temp (statement text);
 
 INSERT INTO partman_preserve_privs_temp 
@@ -32,12 +35,12 @@ DROP FUNCTION @extschema@.create_sub_parent(text, text, text, text, text[], int,
 ALTER TABLE @extschema@.part_config ALTER COLUMN epoch TYPE text;
 UPDATE @extschema@.part_config SET epoch = 'seconds' WHERE epoch = 'true';
 UPDATE @extschema@.part_config SET epoch = 'none' WHERE epoch = 'false';
-ALTER TABLE @extschema@.part_config ALTER COLUMN epoch SET DEFAULT 'none';
+--ALTER TABLE @extschema@.part_config ALTER COLUMN epoch SET DEFAULT 'none';
 
 ALTER TABLE @extschema@.part_config_sub ALTER COLUMN sub_epoch TYPE text;
 UPDATE @extschema@.part_config_sub SET sub_epoch = 'seconds' WHERE sub_epoch = 'true';
 UPDATE @extschema@.part_config_sub SET sub_epoch = 'none' WHERE sub_epoch = 'false';
-ALTER TABLE @extschema@.part_config_sub ALTER COLUMN sub_epoch SET DEFAULT 'none';
+--ALTER TABLE @extschema@.part_config_sub ALTER COLUMN sub_epoch SET DEFAULT 'none';
 
 /*
  * Check function for config table epoch types
@@ -53,13 +56,13 @@ BEGIN
 END
 $$;
 
-ALTER TABLE @extschema@.part_config
-ADD CONSTRAINT part_config_epoch_check 
-CHECK (@extschema@.check_epoch_type(epoch));
+--ALTER TABLE @extschema@.part_config
+--ADD CONSTRAINT part_config_epoch_check 
+--CHECK (@extschema@.check_epoch_type(epoch));
 
-ALTER TABLE @extschema@.part_config_sub
-ADD CONSTRAINT part_config_sub_epoch_check 
-CHECK (@extschema@.check_epoch_type(sub_epoch));
+--ALTER TABLE @extschema@.part_config_sub
+--ADD CONSTRAINT part_config_sub_epoch_check 
+--CHECK (@extschema@.check_epoch_type(sub_epoch));
 
 
 /*
