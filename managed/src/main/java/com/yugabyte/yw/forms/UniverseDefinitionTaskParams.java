@@ -135,7 +135,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           instanceType.equals(other.instanceType) &&
           numNodes == other.numNodes &&
           ybServerPackage.equals(other.ybServerPackage) &&
-          accessKeyCode.equals(other.accessKeyCode)) {
+          (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))) {
          return true;
       }
       return false;
