@@ -92,7 +92,7 @@ public class CustomerTaskControllerTest extends WithApplication {
     assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
-    assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
+    assertThat(universeTasks.get(0).get("status").asText(), allOf(notNullValue(), equalTo("Success")));
     assertTrue(universeTasks.get(0).get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
     assertTrue(universeTasks.get(0).get("completionTime").isNull());
     assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
@@ -123,7 +123,7 @@ public class CustomerTaskControllerTest extends WithApplication {
     assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Bar")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
-    assertThat(universeTasks.get(0).get("success").asBoolean(), allOf(notNullValue(), equalTo(true)));
+    assertThat(universeTasks.get(0).get("status").asText(), allOf(notNullValue(), equalTo("Success")));
     assertTrue(universeTasks.get(0).get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
     assertTrue(universeTasks.get(0).get("completionTime").isNull());
     assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));

@@ -193,12 +193,7 @@ export function editUniverseFailure(error) {
 export function fetchUniverseTasks(universeUUID) {
   var customerUUID = localStorage.getItem("customer_id");
   var requestUrl;
-  if (isValidObject(universeUUID)) {
-    requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`;
-  } else {
-    requestUrl = `${ROOT_URL}/customers/${customerUUID}/tasks`;
-  }
-
+  requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`;
   const request = axios.get(requestUrl);
   return {
     type: FETCH_UNIVERSE_TASKS,
