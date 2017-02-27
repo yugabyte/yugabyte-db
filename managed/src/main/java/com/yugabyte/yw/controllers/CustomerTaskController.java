@@ -88,7 +88,7 @@ public class CustomerTaskController extends AuthenticatedController {
         if (taskData.percentComplete == 100) {
           task.markAsCompleted();
         }
-        taskData.success = taskProgress.get("status").asText().equals("Success") ? true : false;
+        taskData.status = taskProgress.get("status").asText();
         taskData.id = task.getTaskUUID();
         taskData.title = task.getFriendlyDescription();
         taskData.createTime = task.getCreateTime();

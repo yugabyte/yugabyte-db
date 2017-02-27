@@ -10,9 +10,31 @@ import './TaskAlerts.scss'
 class AlertItem extends Component {
   render() {
     const {taskInfo} = this.props;
-    const statusText = taskInfo.success ? 'completed' : 'failed';
-    const statusVerbClassName = taskInfo.success ? 'yb-success-color' : 'yb-fail-color';
-    const statusIconClassName = taskInfo.success ? 'fa-check yb-success-color' : 'fa-warning yb-fail-color';
+    var statusText = "";
+    var statusVerbClassName = "";
+    var statusIconClassName = "";
+    if (taskInfo.status === "Initializing") {
+      statusText = 'initializing';
+      statusVerbClassName = "yb-pending-color";
+      statusIconClassName = "fa-spinner fa-spin yb-pending-color";
+    } else if (taskInfo.status === "Running") {
+      statusText = 'pending';
+      statusVerbClassName = "yb-pending-color";
+      statusIconClassName = "fa-spinner fa-spin yb-pending-color";
+    } else if (taskInfo.status === "Success") {
+      statusText = 'completed';
+      statusVerbClassName = "yb-success-color";
+      statusIconClassName = "fa-check yb-success-color";
+    } else if (taskInfo.status === "Failure"){
+      statusText = 'failed';
+      statusVerbClassName = "yb-fail-color";
+      statusIconClassName = "fa-warning yb-fail-color";
+    } else {
+      statusText = 'unknown';
+      statusVerbClassName = "yb-unknown-color";
+      statusIconClassName = "fa-exclamation yb-unknown-color";
+    }
+
     var timeStampDifference = moment(taskInfo.createTime).fromNow();
     var [currentTask, universeName] = taskInfo.title.split(":")
     return (
@@ -37,27 +59,19 @@ AlertItem.propTypes = {
 
 export default class TaskAlerts extends Component {
   componentDidMount() {
-    this.props.fetchUniverseTasks();
+    this.props.fetchCustomerTasks();
   }
   componentWillUnMount() {
-    this.props.resetUniverseTasks();
+    this.props.resetCustomerTasks();
   }
   render() {
-    const {universe: {universeTasks}} = this.props;
-    const numOfElementsToDisplay = 4;
-    if(isValidObject(universeTasks)) {
-      var tasksList = [];
-      Object.keys(universeTasks).forEach(function (key, idx) {
-        tasksList = [].concat(tasksList, universeTasks[key]);
+    const {tasks: {customerTaskList}} = this.props;
+    var tasksDisplayList = [];
+    if(isValidArray(customerTaskList)) {
+      var displayItems = customerTaskList.slice(0, 4);
+      tasksDisplayList = displayItems.map(function(listItem, idx){
+        return (<AlertItem key={`alertItem${idx}`} taskInfo={listItem}/>)
       });
-      var taskListLength = tasksList.length;
-      var displayItems = taskListLength > numOfElementsToDisplay ? tasksList.slice(0,numOfElementsToDisplay) : tasksList
-      var tasksDisplayList = [];
-      if(isValidArray(tasksList)) {
-        tasksDisplayList = displayItems.map(function(listItem, idx){
-          return (<AlertItem key={`alertItem${idx}`} taskInfo={listItem}/>)
-        });
-      }
     }
 
     return (
