@@ -12,8 +12,8 @@ class VarIntTest : public YBTest {
 
  protected:
 
-  std::string EncodeToComparable(const VarInt& v) {
-    return v.EncodeToComparableBytes().ToDebugStringFromBase256();
+  std::string EncodeToComparable(const VarInt& v, bool is_signed = true) {
+    return v.EncodeToComparableBytes(is_signed).ToDebugStringFromBase256();
   }
 
   std::string EncodeToTwosComplement(const VarInt& v, bool* is_out_of_range, size_t num_bytes = 0) {
@@ -147,9 +147,13 @@ TEST_F(VarIntTest, TestComparableEncoding) {
           "11011100 11111011 11101101 01011101 11111100 ]",
       EncodeToComparable(negative_big));
   EXPECT_EQ("[ 10100110 ]", EncodeToComparable(positive_small));
+  EXPECT_EQ("[ 00100110 ]", EncodeToComparable(positive_small, false));
   EXPECT_EQ("[ 11111111 11111100 00011011 00111100 01010011 01000111 10010101 11011111 "
           "00011011 00001010 01111011 11111101 01101101 00000001 ]",
       EncodeToComparable(positive_big));
+  EXPECT_EQ("[ 11111111 11111000 00011011 00111100 01010011 01000111 10010101 11011111 "
+      "00011011 00001010 01111011 11111101 01101101 00000001 ]",
+      EncodeToComparable(positive_big, false));
 
   VarInt decoded;
   size_t size;
@@ -170,7 +174,15 @@ TEST_F(VarIntTest, TestComparableEncoding) {
   EXPECT_EQ(1, size);
   EXPECT_EQ(positive_small, decoded);
 
+  EXPECT_OK(decoded.DecodeFromComparable(positive_small.EncodeToComparable(false), &size, false));
+  EXPECT_EQ(1, size);
+  EXPECT_EQ(positive_small, decoded);
+
   EXPECT_OK(decoded.DecodeFromComparable(positive_big.EncodeToComparable(), &size));
+  EXPECT_EQ(14, size);
+  EXPECT_EQ(positive_big, decoded);
+
+  EXPECT_OK(decoded.DecodeFromComparable(positive_big.EncodeToComparable(false), &size, false));
   EXPECT_EQ(14, size);
   EXPECT_EQ(positive_big, decoded);
 }

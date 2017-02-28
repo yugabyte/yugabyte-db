@@ -92,7 +92,7 @@ inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
 
 inline void AppendColumnIdToKey(ColumnId val, std::string* dest) {
   std::string encoded_varint = yb::util::VarInt(
-      static_cast<int64_t>(val)).EncodeToComparable();
+      static_cast<int64_t>(val)).EncodeToComparable(/* is_signed */ false);
   dest->append(encoded_varint);
 }
 

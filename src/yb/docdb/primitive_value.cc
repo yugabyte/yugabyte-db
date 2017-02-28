@@ -259,7 +259,8 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
 
       // Need to use a non-rocksdb slice for varint.
       Slice slice_temp(slice->data(), slice->size());
-      RETURN_NOT_OK(column_id_varint.DecodeFromComparable(slice_temp, &num_bytes_varint));
+      RETURN_NOT_OK(column_id_varint.DecodeFromComparable(
+          slice_temp, &num_bytes_varint, /* is_signed */ false));
 
       // Convert to column id.
       int64_t column_id = 0;

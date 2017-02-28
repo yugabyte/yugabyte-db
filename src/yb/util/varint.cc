@@ -55,12 +55,11 @@ string VarInt::ToString() const {
   return output;
 }
 
-const VarInt k_uint_64_max = VarInt({255, 255, 255, 255, 255, 255, 255, 255}, 256, true);
-const VarInt k_int_64_max = VarInt({255, 255, 255, 255, 255, 255, 255, 127}, 256, true);
-const VarInt k_int_64_min = VarInt({0, 0, 0, 0, 0, 0, 0, 128}, 256, false);
+const VarInt kInt64Max = VarInt({255, 255, 255, 255, 255, 255, 255, 127}, 256, true);
+const VarInt kInt64Min = VarInt({0, 0, 0, 0, 0, 0, 0, 128}, 256, false);
 
 Status VarInt::ToInt64(int64_t* int64_value) const {
-  const int comparison = CompareTo(is_positive_ ? k_int_64_max : k_int_64_min);
+  const int comparison = CompareTo(is_positive_ ? kInt64Max : kInt64Min);
   if (PREDICT_FALSE(!is_positive_ && comparison == 0)) {
     *int64_value = numeric_limits<int64_t>::min();
     return Status::OK();
@@ -269,6 +268,8 @@ Status VarInt::DecodeFromComparable(
     RETURN_NOT_OK(get_bit(num_reserved_bits, slice, false, &is_positive_));
     // All future bits will be interpreted as complement if is_positive_ is false.
     i++;
+  } else {
+    is_positive_ = true;
   }
   // Find the end of the unary size prefix by searching for the first zero.
   bool val = true;
