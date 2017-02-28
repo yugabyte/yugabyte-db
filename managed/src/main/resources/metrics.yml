@@ -399,7 +399,7 @@ cql_server_rpc_per_second:
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rpc_CQLServerService_Any.sum|yb_cqlserver_CQLServerService_ParsingErrors"
+    type: "rpc_CQLServerService_Any.num|yb_cqlserver_CQLServerService_ParsingErrors"
   group_by: "type"
   layout:
     title: "CQL Ops / Sec"
@@ -407,7 +407,7 @@ cql_server_rpc_per_second:
       type: "date"
     yaxis:
       alias:
-        "rpc_CQLServerService_Any.sum": "CQL Ops / Sec"
+        "rpc_CQLServerService_Any.num": "CQL Ops / Sec / Node"
         "yb_cqlserver_CQLServerService_ParsingErrors": "Parsing Errors/Sec"
 
 cql_sql_latency:
