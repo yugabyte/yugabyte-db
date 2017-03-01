@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,8 +28,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
   @Override
   public void run() {
     // Execute the ansible command.
-    ShellProcessHandler.ShellResponse response = getDevOpsHelper().nodeCommand(
-        DevOpsHelper.NodeCommandType.Provision, taskParams());
+    ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
+        NodeManager.NodeCommandType.Provision, taskParams());
     logShellResponse(response);
   }
 }

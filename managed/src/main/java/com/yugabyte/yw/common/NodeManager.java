@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Singleton
-public class DevOpsHelper {
+public class NodeManager {
   // Currently we need to define the enum such that the lower case value matches the action
   public enum NodeCommandType {
     Provision,
@@ -39,7 +39,7 @@ public class DevOpsHelper {
     List,
     Control
   }
-  public static final Logger LOG = LoggerFactory.getLogger(DevOpsHelper.class);
+  public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
   public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
 
