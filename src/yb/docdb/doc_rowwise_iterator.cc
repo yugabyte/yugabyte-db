@@ -475,8 +475,7 @@ CHECKED_STATUS SetYQLPrimaryKeyColumnValues(const Schema& schema,
   for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
     const auto column_id = schema.column_id(j);
     const auto data_type = schema.column(j).type_info()->type();
-    const auto& elem = value_map->emplace(column_id, YQLValue(data_type));
-    values[i].ToYQLValue(&elem.first->second);
+    values[i].ToYQLValuePB(&(*value_map)[column_id], data_type);
   }
   return Status::OK();
 }
@@ -570,8 +569,7 @@ Status DocRowwiseIterator::NextRow(const YQLScanSpec& spec, YQLValueMap* value_m
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& column_id = projection_.column_id(i);
     const auto data_type = projection_.column(i).type_info()->type();
-    const auto& elem = value_map->emplace(column_id, YQLValue(data_type));
-    values[i - projection_.num_key_columns()].ToYQLValue(&elem.first->second);
+    values[i - projection_.num_key_columns()].ToYQLValuePB(&(*value_map)[column_id], data_type);
   }
   return Status::OK();
 }
@@ -589,7 +587,7 @@ Status DocRowwiseIterator::NextBlock(const YQLScanSpec& spec, YQLRowBlock* rowbl
       const auto column_id = row.schema().column_id(i);
       const auto it = value_map.find(column_id);
       CHECK(it != value_map.end()) << "Projected column missing: " << column_id;
-      row.set_column(i, it->second);
+      *row.mutable_column(i) = std::move(it->second);
     }
   }
 

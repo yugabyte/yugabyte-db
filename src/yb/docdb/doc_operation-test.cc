@@ -252,10 +252,10 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 3; ttl: 1.000s
   YQLRowBlock row_block = ReadYQLRow(schema, 1,
                                   HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(2000, 0));
   ASSERT_EQ(1, row_block.row_count());
-  EXPECT_EQ(1, row_block.row(0).int32_value(0));
-  EXPECT_EQ(1, row_block.row(0).int32_value(1));
-  EXPECT_EQ(2, row_block.row(0).int32_value(2));
-  EXPECT_EQ(3, row_block.row(0).int32_value(3));
+  EXPECT_EQ(1, row_block.row(0).column(0).int32_value());
+  EXPECT_EQ(1, row_block.row(0).column(1).int32_value());
+  EXPECT_EQ(2, row_block.row(0).column(2).int32_value());
+  EXPECT_EQ(3, row_block.row(0).column(3).int32_value());
 }
 
 TEST_F(DocOperationTest, TestYQLReadWithoutLivenessColumn) {
@@ -282,10 +282,10 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> 4
   HybridTime read_time(3000);
   YQLRowBlock row_block = ReadYQLRow(schema, 100, read_time);
   ASSERT_EQ(1, row_block.row_count());
-  EXPECT_EQ(100, row_block.row(0).int32_value(0));
-  EXPECT_EQ(2, row_block.row(0).int32_value(1));
-  EXPECT_EQ(3, row_block.row(0).int32_value(2));
-  EXPECT_EQ(4, row_block.row(0).int32_value(3));
+  EXPECT_EQ(100, row_block.row(0).column(0).int32_value());
+  EXPECT_EQ(2, row_block.row(0).column(1).int32_value());
+  EXPECT_EQ(3, row_block.row(0).column(2).int32_value());
+  EXPECT_EQ(4, row_block.row(0).column(3).int32_value());
 }
 
 TEST_F(DocOperationTest, TestYQLReadWithTombstone) {
@@ -346,8 +346,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
   ASSERT_OK(yql_iter.NextRow(yql_scan_spec, &value_map));
   ASSERT_EQ(4, value_map.size());
   EXPECT_EQ(100, value_map.at(ColumnId(0)).int32_value());
-  EXPECT_TRUE(value_map.at(ColumnId(1)).IsNull());
-  EXPECT_TRUE(value_map.at(ColumnId(2)).IsNull());
+  EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(1))));
+  EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(2))));
   EXPECT_EQ(101, value_map.at(ColumnId(3)).int32_value());
 
   // Now verify row exists as long as liveness system column exists.
@@ -392,9 +392,9 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(3000)]) -> DEL
   ASSERT_OK(yql_iter_system.NextRow(yql_scan_spec_system, &value_map_system));
   ASSERT_EQ(4, value_map_system.size());
   EXPECT_EQ(101, value_map_system.at(ColumnId(0)).int32_value());
-  EXPECT_TRUE(value_map_system.at(ColumnId(1)).IsNull());
-  EXPECT_TRUE(value_map_system.at(ColumnId(2)).IsNull());
-  EXPECT_TRUE(value_map_system.at(ColumnId(3)).IsNull());
+  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(1))));
+  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(2))));
+  EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(3))));
 }
 
 TEST_F(DocOperationTest, TestYQLCompactions) {
@@ -458,10 +458,10 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 30; ttl: 2.000
   // Verify reads work well without system column id.
   YQLRowBlock row_block = ReadYQLRow(schema, 1, t1);
   ASSERT_EQ(1, row_block.row_count());
-  EXPECT_EQ(1, row_block.row(0).int32_value(0));
-  EXPECT_EQ(10, row_block.row(0).int32_value(1));
-  EXPECT_EQ(20, row_block.row(0).int32_value(2));
-  EXPECT_EQ(30, row_block.row(0).int32_value(3));
+  EXPECT_EQ(1, row_block.row(0).column(0).int32_value());
+  EXPECT_EQ(10, row_block.row(0).column(1).int32_value());
+  EXPECT_EQ(20, row_block.row(0).column(2).int32_value());
+  EXPECT_EQ(30, row_block.row(0).column(3).int32_value());
 }
 
 }  // namespace docdb

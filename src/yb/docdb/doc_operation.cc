@@ -522,13 +522,13 @@ Status YQLWriteOperation::IsConditionSatisfied(
   }
   rowblock->reset(new YQLRowBlock(Schema(columns, 0)));
   YQLRow& row = rowblock->get()->Extend();
-  row.set_bool_value(0, *should_apply);
+  row.mutable_column(0)->set_bool_value(*should_apply);
   if (!*should_apply && !value_map.empty()) {
     for (size_t i = 0; i < projection.num_columns(); i++) {
       const auto column_id = projection.column_id(i);
       const auto it = value_map.find(column_id);
       CHECK(it != value_map.end()) << "Projected column missing: " << column_id;
-      row.set_column(i + 1, std::move(it->second));
+      *row.mutable_column(i + 1) = std::move(it->second);
     }
   }
 

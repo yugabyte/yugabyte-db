@@ -265,7 +265,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       } else {
         int8_t actual_value = static_cast<int8_t>(int_value.value_);
         VLOG(3) << "Expr actual value = " << actual_value;
-        col_pb->mutable_value()->set_int8_value(actual_value);
+        YQLValue::set_int8_value(actual_value, col_pb->mutable_value());
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetInt8(col_index, actual_value));
         }
@@ -283,7 +283,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       } else {
         int16_t actual_value = static_cast<int16_t>(int_value.value_);
         VLOG(3) << "Expr actual value = " << actual_value;
-        col_pb->mutable_value()->set_int16_value(actual_value);
+        YQLValue::set_int16_value(actual_value, col_pb->mutable_value());
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetInt16(col_index, actual_value));
         }
@@ -301,7 +301,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       } else {
         int32_t actual_value = static_cast<int32_t>(int_value.value_);
         VLOG(3) << "Expr actual value = " << actual_value;
-        col_pb->mutable_value()->set_int32_value(actual_value);
+        YQLValue::set_int32_value(actual_value, col_pb->mutable_value());
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetInt32(col_index, actual_value));
         }
@@ -319,7 +319,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       } else {
         int64_t actual_value = int_value.value_;
         VLOG(3) << "Expr actual value = " << actual_value;
-        col_pb->mutable_value()->set_int64_value(actual_value);
+        YQLValue::set_int64_value(actual_value, col_pb->mutable_value());
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetInt64(col_index, actual_value));
         }
@@ -334,8 +334,9 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       if (string_value.is_null()) {
         VLOG(3) << "Expr actual value = null";
       } else {
-        col_pb->mutable_value()->set_string_value(string_value.value_->data(),
-                                                  string_value.value_->size());
+        YQLValue::set_string_value(string_value.value_->data(),
+                                   string_value.value_->size(),
+                                   col_pb->mutable_value());
         VLOG(3) << "Expr actual value = " << string_value.value_->c_str();
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetString(
@@ -354,7 +355,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       } else {
         float actual_value = double_value.value_;
         VLOG(3) << "Expr actual value = " << actual_value;
-        col_pb->mutable_value()->set_float_value(actual_value);
+        YQLValue::set_float_value(actual_value, col_pb->mutable_value());
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetFloat(col_index, actual_value));
         }
@@ -371,7 +372,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       } else {
         double actual_value = double_value.value_;
         VLOG(3) << "Expr actual value = " << actual_value;
-        col_pb->mutable_value()->set_double_value(actual_value);
+        YQLValue::set_double_value(actual_value, col_pb->mutable_value());
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetDouble(col_index, actual_value));
         }
@@ -386,7 +387,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       if (bool_value.is_null()) {
         VLOG(3) << "Expr actual value = null";
       } else {
-        col_pb->mutable_value()->set_bool_value(bool_value.value_);
+        YQLValue::set_bool_value(bool_value.value_, col_pb->mutable_value());
         VLOG(3) << "Expr actual value = " << bool_value.value_;
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetBool(col_index, bool_value.value_));
@@ -401,7 +402,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
 
       int64_t actual_value = timestamp_value.value_;
       VLOG(3) << "Expr actual value = " << actual_value;
-      col_pb->mutable_value()->set_timestamp_value(actual_value);
+      YQLValue::set_timestamp_value(actual_value, col_pb->mutable_value());
       if (row != nullptr) {
         RETURN_NOT_OK(row->SetTimestamp(col_index, actual_value));
       }

@@ -7,195 +7,278 @@
 
 #include <stdint.h>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/util/timestamp.h"
-#include "yb/util/faststring.h"
-#include "yb/util/slice.h"
-#include "yb/util/status.h"
 
 namespace yb {
 
-// A class that stores just the YQL value part. The datatype and null state are stored out-of-line.
-// For YQL row blocks, it is memory-inefficient for the same column in repeated rows to store the
-// datatype info. Also, the null state of the columns in the same row can be stored efficiently
-// in a bitmap. See YQLRow for details.
-class YQLValueCore {
-
- private:
-  friend class YQLValue;
-  friend class YQLRow;
-
-  // Construct a YQLValueCore for the specified datatype.
-  inline explicit YQLValueCore(const DataType type) {
-    // No need to call timestamp's constructor because it is a simple wrapper over an uint64_t.
-    if (type == STRING) {
-      new(&string_value_) std::string();
-    }
-  }
-
-  // Copy/move constructor for the specified datatype.
-  YQLValueCore(DataType type, bool is_null, const YQLValueCore& other);
-  YQLValueCore(DataType type, bool is_null, YQLValueCore* other);
-
-  // Since destructor cannot take an argument to indicate the datatype of the value stored, a
-  // YQLValueCore should be destroyed by first calling the Free() method below with the datatype.
-  virtual inline ~YQLValueCore() { }
-
-  inline void Free(const DataType type) {
-    // No need to call timestamp's destructor because it is a simple wrapper over an uint64_t.
-    if (type == STRING) {
-      string_value_.~basic_string();
-    }
-  }
-
-  //---------------------------------- get value template -----------------------------------
-  // A template to get different datatype value fields. CHECK failure will result if the value
-  // is not of the expected or the value is null.
-  template<typename type_t>
-  static inline type_t value(
-      const DataType type, const DataType expected_type, const bool is_null, const type_t value) {
-    CHECK_EQ(type, expected_type);
-    CHECK(!is_null);
-    return value;
-  }
-
-  //---------------------------------- set value template -----------------------------------
-  // A template to set different datatype value fields. CHECK failure will result if the value
-  // is not of the expected.
-  template<typename type_t>
-  static inline void set_value(
-      const DataType type, const DataType expected_type, const type_t other, type_t* value) {
-    CHECK_EQ(type, expected_type);
-    *value = other;
-  }
-
-  //----------------------------- serializer / deserializer ---------------------------------
-  void Serialize(DataType type, bool is_null, YQLClient client, faststring* buffer) const;
-  CHECKED_STATUS Deserialize(DataType type, YQLClient client, Slice* data, bool* is_null);
-
-  //------------------------------------ debug string ---------------------------------------
-  // Return a string for debugging.
-  std::string ToString(const DataType type, bool is_null) const;
-
-  //-------------------------------- union of different value types -------------------------
-  // Just primitive values currently.
-  union {
-    int8_t int8_value_;
-    int16_t int16_value_;
-    int32_t int32_value_;
-    int64_t int64_value_;
-    float float_value_;
-    double double_value_;
-    std::string string_value_;
-    bool bool_value_;
-    Timestamp timestamp_value_;
-  };
-};
-
-// A YQL value with datatype and null state. This class is good for expression evaluation.
-class YQLValue : YQLValueCore {
+// An abstract class that defines a YQL value interface to support different implementations
+// for in-memory / serialization trade-offs.
+class YQLValue {
  public:
-  explicit YQLValue(DataType type) : YQLValueCore(type), type_(type), is_null_(true) { }
-  YQLValue(const YQLValue& other) : YQLValue(other.type_, other.is_null_, other) { }
-  YQLValue(YQLValue&& other) : YQLValue(other.type_, other.is_null_, &other) { }
-
-  virtual ~YQLValue() {
-    Free(type_);
-  }
+  //-----------------------------------------------------------------------------------------
+  // Interfaces to be implemented.
 
   // The value's datatype
-  DataType type() const { return type_; }
+  virtual DataType type() const = 0;
 
+  //------------------------------------ Nullness methods -----------------------------------
   // Is the value null?
-  bool IsNull() const { return is_null_; }
-
-  // Set the value to null or not.
-  void SetNull(const bool is_null) { is_null_ = is_null; }
+  virtual bool IsNull() const = 0;
+  // Set the value to null.
+  virtual void SetNull() = 0;
 
   //----------------------------------- get value methods -----------------------------------
   // Get different datatype values. CHECK failure will result if the value stored is not of the
   // expected datatype or the value is null.
-  int8_t int8_value() const { return value(type_, INT8, is_null_, int8_value_); }
-  int16_t int16_value() const { return value(type_, INT16, is_null_, int16_value_); }
-  int32_t int32_value() const { return value(type_, INT32, is_null_, int32_value_); }
-  int64_t int64_value() const { return value(type_, INT64, is_null_, int64_value_); }
-  float float_value() const { return value(type_, FLOAT, is_null_, float_value_); }
-  double double_value() const { return value(type_, DOUBLE, is_null_, double_value_); }
-  std::string string_value() const { return value(type_, STRING, is_null_, string_value_); }
-  bool bool_value() const { return value(type_, BOOL, is_null_, bool_value_); }
-  Timestamp timestamp_value() const { return value(type_, TIMESTAMP, is_null_, timestamp_value_); }
+  virtual int8_t int8_value() const = 0;
+  virtual int16_t int16_value() const = 0;
+  virtual int32_t int32_value() const = 0;
+  virtual int64_t int64_value() const = 0;
+  virtual float float_value() const = 0;
+  virtual double double_value() const = 0;
+  virtual bool bool_value() const = 0;
+  virtual const std::string& string_value() const = 0;
+  virtual Timestamp timestamp_value() const = 0;
 
   //----------------------------------- set value methods -----------------------------------
-  // Set different datatype values. CHECK failure will result if the value stored is not of the
-  // expected datatype.
-  template<typename type_t>
-  void set_value(const DataType expected_type, const type_t other, type_t* value) {
-    YQLValueCore::set_value(type_, expected_type, other, value);
-    is_null_ = false;
+  // Set different datatype values.
+  virtual void set_int8_value(int8_t val) = 0;
+  virtual void set_int16_value(int16_t val) = 0;
+  virtual void set_int32_value(int32_t val) = 0;
+  virtual void set_int64_value(int64_t val) = 0;
+  virtual void set_float_value(float val) = 0;
+  virtual void set_double_value(double val) = 0;
+  virtual void set_bool_value(bool val) = 0;
+  virtual void set_string_value(const std::string& val) = 0;
+  virtual void set_string_value(const char* val) = 0;
+  virtual void set_string_value(const char* val, size_t size) = 0;
+  virtual void set_timestamp_value(const Timestamp& val) = 0;
+  virtual void set_timestamp_value(int64_t val) = 0;
+
+  //----------------------------------- assignment methods ----------------------------------
+  virtual YQLValue& operator=(const YQLValuePB& other) = 0;
+  virtual YQLValue& operator=(YQLValuePB&& other) = 0;
+
+  //-----------------------------------------------------------------------------------------
+  // Methods provided by this abstract class.
+
+  //----------------------------------- comparison methods -----------------------------------
+  virtual bool Comparable(const YQLValue& other) const {
+    return type() == other.type() || EitherIsNull(other);
+  }
+  virtual bool BothNotNull(const YQLValue& other) const { return !IsNull() && !other.IsNull(); }
+  virtual bool EitherIsNull(const YQLValue& other) const { return IsNull() || other.IsNull(); }
+  virtual int CompareTo(const YQLValue& other) const;
+  virtual bool operator <(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) < 0; }
+  virtual bool operator >(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) > 0; }
+  virtual bool operator <=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) <= 0; }
+  virtual bool operator >=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) >= 0; }
+  virtual bool operator ==(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) == 0; }
+  virtual bool operator !=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) != 0; }
+
+  //----------------------------- serializer / deserializer ---------------------------------
+  virtual void Serialize(YQLClient client, faststring* buffer) const;
+  virtual CHECKED_STATUS Deserialize(DataType type, YQLClient client, Slice* data);
+
+  // Deserialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
+  // <converter> converts the number from network byte-order to machine order and <data_type>
+  // is the coverter's return type. The converter's return type <data_type> is unsigned while
+  // <num_type> may be signed or unsigned. <setter> sets the value in YQLValue.
+  template<typename num_type, typename data_type>
+  CHECKED_STATUS CQLDeserializeNum(
+      size_t len, data_type (*converter)(const void*), void (YQLValue::*setter)(num_type),
+      Slice* data) {
+    num_type value = 0;
+    RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &value));
+    (this->*setter)(value);
+    return Status::OK();
   }
 
-  void set_int8_value(int8_t v) { return set_value(INT8, v, &int8_value_); }
-  void set_int16_value(int16_t v) { return set_value(INT16, v, &int16_value_); }
-  void set_int32_value(int32_t v) { return set_value(INT32, v, &int32_value_); }
-  void set_int64_value(int64_t v) { return set_value(INT64, v, &int64_value_); }
-  void set_float_value(float v) { return set_value(FLOAT, v, &float_value_); }
-  void set_double_value(double v) { return set_value(DOUBLE, v, &double_value_); }
-  void set_string_value(const std::string& v) { return set_value(STRING, v, &string_value_); }
-  void set_bool_value(bool v) { return set_value(BOOL, v, &bool_value_); }
-  void set_timestamp_value(const Timestamp& v) {
-    return set_value(TIMESTAMP, v, &timestamp_value_);
+  // Deserialize a CQL floating point number (float or double). <float_type> is the parsed floating
+  // point type. <converter> converts the number from network byte-order to machine order and
+  // <data_type> is the coverter's return type. The converter's return type <data_type> is an
+  // integer type. <setter> sets the value in YQLValue.
+  template<typename float_type, typename data_type>
+  CHECKED_STATUS CQLDeserializeFloat(
+      size_t len, data_type (*converter)(const void*), void (YQLValue::*setter)(float_type),
+      Slice* data) {
+    float_type value = 0.0;
+    RETURN_NOT_OK(CQLDecodeFloat(len, converter, data, &value));
+    (this->*setter)(value);
+    return Status::OK();
   }
-
-  // Assignment operator
-  YQLValue& operator=(const YQLValue& other);
-  YQLValue& operator=(YQLValue&& other);
-
-  // Comparison methods / operators
-  bool Comparable(const YQLValue& other) const { return type_ == other.type_; }
-
-  template<typename T>
-  int GenericCompare(const T& a, const T& b) const {
-    if (a < b) return -1;
-    if (a > b) return 1;
-    return 0;
-  }
-
-  int CompareTo(const YQLValue& v) const;
-
-  inline bool operator <(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) < 0; }
-  inline bool operator >(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) > 0; }
-  inline bool operator <=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) <= 0; }
-  inline bool operator >=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) >= 0; }
-  inline bool operator ==(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) == 0; }
-  inline bool operator !=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) != 0; }
-
-  // Get a YQLValue from a YQLValuePB protobuf.
-  static YQLValue FromYQLValuePB(const YQLValuePB& v);
-
-  // Note: YQLValue doesn't have serialize / deserialize methods because we expect YQL values
-  // to be serialized / deserialized as part of a row block. See YQLRowBlock.
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
-  std::string ToString() const { return YQLValueCore::ToString(type_, is_null_); }
+  virtual std::string ToString() const;
 
-  //-------------------------------- value datatype and null state --------------------------
- private:
-  friend class YQLRow;
+  //-----------------------------------------------------------------------------------------
+  // The following static functions provide YQLValue-equivalent interfaces for use with an
+  // existing YQLValuePB without wrapping it as a YQLValue.
+  //-----------------------------------------------------------------------------------------
 
-  YQLValue(const DataType type, const bool is_null, const YQLValueCore& v)
-      : YQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
+  // The value's datatype
+  static DataType type(const YQLValuePB& v);
+
+  //------------------------------------ Nullness methods -----------------------------------
+  // Is the value null?
+  static bool IsNull(const YQLValuePB& v) { return v.value_case() == YQLValuePB::VALUE_NOT_SET; }
+  // Set the value to null.
+  static void SetNull(YQLValuePB* v);
+
+  //----------------------------------- get value methods -----------------------------------
+  // Get different datatype values. CHECK failure will result if the value stored is not of the
+  // expected datatype or the value is null.
+#define YQL_GET_VALUE(v, type, field)                                   \
+  do { CHECK(v.has_##field()); return static_cast<type>(v.field()); } while (0)
+
+  static int8_t int8_value(const YQLValuePB& v) { YQL_GET_VALUE(v, int8_t, int8_value); }
+  static int16_t int16_value(const YQLValuePB& v) { YQL_GET_VALUE(v, int16_t, int16_value); }
+  static int32_t int32_value(const YQLValuePB& v) { YQL_GET_VALUE(v, int32_t, int32_value); }
+  static int64_t int64_value(const YQLValuePB& v) { YQL_GET_VALUE(v, int64_t, int64_value); }
+  static float float_value(const YQLValuePB& v) { YQL_GET_VALUE(v, float, float_value); }
+  static double double_value(const YQLValuePB& v) { YQL_GET_VALUE(v, double, double_value); }
+  static bool bool_value(const YQLValuePB& v) { YQL_GET_VALUE(v, bool, bool_value); }
+  static const std::string& string_value(const YQLValuePB& v) {
+    CHECK(v.has_string_value());
+    return v.string_value();
+  }
+  static Timestamp timestamp_value(const YQLValuePB& v) {
+    CHECK(v.has_timestamp_value());
+    return Timestamp(v.timestamp_value());
   }
 
-  YQLValue(const DataType type, const bool is_null, YQLValueCore* v)
-      : YQLValueCore(type, is_null, v), type_(type), is_null_(is_null) {
+#undef YQL_GET_VALUE
+
+  //----------------------------------- set value methods -----------------------------------
+  // Set different datatype values.
+  static void set_int8_value(const int8_t val, YQLValuePB *v) { v->set_int8_value(val); }
+  static void set_int16_value(const int16_t val, YQLValuePB *v) { v->set_int16_value(val); }
+  static void set_int32_value(const int32_t val, YQLValuePB *v) { v->set_int32_value(val); }
+  static void set_int64_value(const int64_t val, YQLValuePB *v) { v->set_int64_value(val); }
+  static void set_float_value(const float val, YQLValuePB *v) { v->set_float_value(val); }
+  static void set_double_value(const double val, YQLValuePB *v) { v->set_double_value(val); }
+  static void set_bool_value(const bool val, YQLValuePB *v) { v->set_bool_value(val); }
+  static void set_string_value(const std::string& val, YQLValuePB *v) { v->set_string_value(val); }
+  static void set_string_value(const char* val, YQLValuePB *v) { v->set_string_value(val); }
+  static void set_string_value(const char* val, const size_t size, YQLValuePB *v) {
+    v->set_string_value(val, size);
+  }
+  static void set_timestamp_value(const Timestamp& val, YQLValuePB *v) {
+    v->set_timestamp_value(val.ToInt64());
+  }
+  static void set_timestamp_value(const int64_t val, YQLValuePB *v) { v->set_timestamp_value(val); }
+
+  //----------------------------------- comparison methods -----------------------------------
+  static bool Comparable(const YQLValuePB& lhs, const YQLValuePB& rhs) {
+    return lhs.value_case() == rhs.value_case() || EitherIsNull(lhs, rhs);
   }
 
-  inline bool BothNotNull(const YQLValue& v) const { return !is_null_ && !v.is_null_; }
+  static bool BothNotNull(const YQLValuePB& lhs, const YQLValuePB& rhs) {
+    return !IsNull(lhs) && !IsNull(rhs);
+  }
 
-  const DataType type_;
-  bool is_null_;
+  static bool EitherIsNull(const YQLValuePB& lhs, const YQLValuePB& rhs) {
+    return IsNull(lhs) || IsNull(rhs);
+  }
+
+  static int CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs);
+
+  template<typename T>
+  static int GenericCompare(const T& lhs, const T& rhs) {
+    if (lhs < rhs) return -1;
+    if (lhs > rhs) return 1;
+    return 0;
+  }
+
+  //----------------------------- serializer / deserializer ---------------------------------
+  static void Serialize(const YQLValuePB& v, YQLClient client, faststring* buffer);
+  static CHECKED_STATUS Deserialize(YQLValuePB* v, DataType type, YQLClient client, Slice* data);
+
+  // Deserialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
+  // <converter> converts the number from network byte-order to machine order and <data_type>
+  // is the coverter's return type. The converter's return type <data_type> is unsigned while
+  // <num_type> may be signed or unsigned. <setter> sets the value in YQLValuePB.
+  template<typename num_type, typename data_type>
+  static CHECKED_STATUS CQLDeserializeNum(
+      YQLValuePB* v, size_t len, data_type (*converter)(const void*),
+      void (*setter)(num_type, YQLValuePB*), Slice* data) {
+    num_type value = 0;
+    RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &value));
+    (*setter)(value, v);
+    return Status::OK();
+  }
+
+  // Deserialize a CQL floating point number (float or double). <float_type> is the parsed floating
+  // point type. <converter> converts the number from network byte-order to machine order and
+  // <data_type> is the coverter's return type. The converter's return type <data_type> is an
+  // integer type. <setter> sets the value in YQLValuePB.
+  template<typename float_type, typename data_type>
+  static CHECKED_STATUS CQLDeserializeFloat(
+      YQLValuePB* v, size_t len, data_type (*converter)(const void*),
+      void (*setter)(float_type, YQLValuePB*), Slice* data) {
+    float_type value = 0.0;
+    RETURN_NOT_OK(CQLDecodeFloat(len, converter, data, &value));
+    (*setter)(value, v);
+    return Status::OK();
+  }
+
+  //------------------------------------ debug string ---------------------------------------
+  // Return a string for debugging.
+  static std::string ToString(const YQLValuePB& v);
+};
+
+//-------------------------------------------------------------------------------------------
+// YQLValuePB operators
+bool operator <(const YQLValuePB& lhs, const YQLValuePB& rhs);
+bool operator >(const YQLValuePB& lhs, const YQLValuePB& rhs);
+bool operator <=(const YQLValuePB& lhs, const YQLValuePB& rhs);
+bool operator >=(const YQLValuePB& lhs, const YQLValuePB& rhs);
+bool operator ==(const YQLValuePB& lhs, const YQLValuePB& rhs);
+bool operator !=(const YQLValuePB& lhs, const YQLValuePB& rhs);
+
+//-------------------------------------------------------------------------------------------
+// A class that implements YQLValue interface using YQLValuePB.
+class YQLValueWithPB : public YQLValue, public YQLValuePB {
+ public:
+  YQLValueWithPB();
+  virtual ~YQLValueWithPB() override;
+
+  virtual DataType type() const override;
+
+  //------------------------------------ Nullness methods -----------------------------------
+  virtual bool IsNull() const override;
+  virtual void SetNull() override;
+
+  //----------------------------------- get value methods -----------------------------------
+  virtual int8_t int8_value() const override;
+  virtual int16_t int16_value() const override;
+  virtual int32_t int32_value() const override;
+  virtual int64_t int64_value() const override;
+  virtual float float_value() const override;
+  virtual double double_value() const override;
+  virtual bool bool_value() const override;
+  virtual const std::string& string_value() const override;
+  virtual Timestamp timestamp_value() const override;
+
+  //----------------------------------- set value methods -----------------------------------
+  virtual void set_int8_value(int8_t val) override;
+  virtual void set_int16_value(int16_t val) override;
+  virtual void set_int32_value(int32_t val) override;
+  virtual void set_int64_value(int64_t val) override;
+  virtual void set_float_value(float val) override;
+  virtual void set_double_value(double val) override;
+  virtual void set_bool_value(bool val) override;
+  virtual void set_string_value(const std::string& val) override;
+  virtual void set_string_value(const char* val) override;
+  virtual void set_string_value(const char* val, size_t size) override;
+  virtual void set_timestamp_value(const Timestamp& val) override;
+  virtual void set_timestamp_value(int64_t val) override;
+
+  //----------------------------------- assignment methods ----------------------------------
+  virtual YQLValue& operator=(const YQLValuePB& other) override;
+  virtual YQLValue& operator=(YQLValuePB&& other) override;
 };
 
 } // namespace yb

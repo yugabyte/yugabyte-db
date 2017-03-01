@@ -22,10 +22,9 @@ class YQLScanRange {
 
   // Value range of a column
   struct YQLRange {
-    YQLValue lower_bound;
-    YQLValue upper_bound;
-    YQLRange(const YQLValue& lower_bound, const YQLValue& upper_bound)
-        : lower_bound(lower_bound), upper_bound(upper_bound) { }
+    YQLValuePB lower_bound;
+    YQLValuePB upper_bound;
+    YQLRange() : lower_bound(YQLValuePB()), upper_bound(YQLValuePB()) { }
   };
 
   YQLScanRange(const Schema& schema, const YQLConditionPB& condition);
@@ -33,7 +32,7 @@ class YQLScanRange {
   // Return the inclusive lower and upper range values to scan. If the full range group can be
   // determined, it will be returned. Otherwise, an empty group will be returned instead.
   // TODO(robert): allow only a subset (prefix) of range components to be specified as optimization.
-  vector<YQLValue> range_values(bool lower_bound) const;
+  vector<YQLValuePB> range_values(bool lower_bound) const;
 
  private:
   // Table schema being scanned.

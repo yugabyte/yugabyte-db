@@ -12,151 +12,27 @@ using std::shared_ptr;
 
 //----------------------------------------- YQL row ----------------------------------------
 YQLRow::YQLRow(const shared_ptr<const Schema>& schema)
-    : schema_(schema),
-      // Allocate just the YQLValueCore array memory here. Explicit constructor call follows below.
-      values_(reinterpret_cast<YQLValueCore*>(
-          ::operator new(sizeof(YQLValueCore) * schema_->num_columns()))),
-      is_nulls_(vector<bool>(schema_->num_columns(), true)) {
-  for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    new(&values_[col_idx]) YQLValueCore(column_type(col_idx));
-  }
+    : schema_(schema), values_(schema->num_columns()) {
 }
 
-YQLRow::YQLRow(const YQLRow& other)
-    : schema_(other.schema_),
-      // Allocate just the YQLValueCore array memory here. Explicit constructor call follows below.
-      values_(reinterpret_cast<YQLValueCore*>(
-          ::operator new(sizeof(YQLValueCore) * schema_->num_columns()))),
-      is_nulls_(other.is_nulls_) {
-  for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    new(&values_[col_idx]) YQLValueCore(
-        column_type(col_idx), IsNull(col_idx), other.values_[col_idx]);
-  }
+YQLRow::YQLRow(const YQLRow& other) : schema_(other.schema_), values_(other.values_) {
 }
 
-YQLRow::YQLRow(YQLRow&& other)
-    : schema_(other.schema_),
-      // Allocate just the YQLValueCore array memory here. Explicit constructor call follows below.
-      values_(reinterpret_cast<YQLValueCore*>(
-          ::operator new(sizeof(YQLValueCore) * schema_->num_columns()))),
-      is_nulls_(other.is_nulls_) {
-  for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    new(&values_[col_idx]) YQLValueCore(
-        column_type(col_idx), IsNull(col_idx), &other.values_[col_idx]);
-  }
+YQLRow::YQLRow(YQLRow&& other) : schema_(move(other.schema_)), values_(move(other.values_)) {
 }
 
 YQLRow::~YQLRow() {
-  for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    values_[col_idx].Free(column_type(col_idx));
-  }
-  ::operator delete(values_); // Just deallocate the YQLValueCore array memory.
-}
-
-YQLValue YQLRow::column(const size_t col_idx) const {
-  // Return a copy of the column value
-  return YQLValue(column_type(col_idx), IsNull(col_idx), values_[col_idx]);
-}
-
-void YQLRow::set_column(const size_t col_idx, const YQLValue& v) {
-  SetNull(col_idx, v.IsNull());
-  if (!v.IsNull()) {
-    values_[col_idx].Free(column_type(col_idx));
-    new(&values_[col_idx]) YQLValueCore(column_type(col_idx), v.IsNull(), v);
-  }
-}
-
-void YQLRow::set_column(const size_t col_idx, YQLValue&& v) {
-  SetNull(col_idx, v.IsNull());
-  if (!v.IsNull()) {
-    values_[col_idx].Free(column_type(col_idx));
-    new(&values_[col_idx]) YQLValueCore(column_type(col_idx), v.IsNull(), &v);
-  }
-}
-
-int8_t YQLRow::int8_value(const size_t col_idx) const {
-  return value(col_idx, INT8, values_[col_idx].int8_value_);
-}
-
-int16_t YQLRow::int16_value(const size_t col_idx) const {
-  return value(col_idx, INT16, values_[col_idx].int16_value_);
-}
-
-int32_t YQLRow::int32_value(const size_t col_idx) const {
-  return value(col_idx, INT32, values_[col_idx].int32_value_);
-}
-
-int64_t YQLRow::int64_value(const size_t col_idx) const {
-  return value(col_idx, INT64, values_[col_idx].int64_value_);
-}
-
-float YQLRow::float_value(const size_t col_idx) const {
-  return value(col_idx, FLOAT, values_[col_idx].float_value_);
-}
-
-double YQLRow::double_value(const size_t col_idx) const {
-  return value(col_idx, DOUBLE, values_[col_idx].double_value_);
-}
-
-string YQLRow::string_value(const size_t col_idx) const {
-  return value(col_idx, STRING, values_[col_idx].string_value_);
-}
-
-bool YQLRow::bool_value(const size_t col_idx) const {
-  return value(col_idx, BOOL, values_[col_idx].bool_value_);
-}
-
-Timestamp YQLRow::timestamp_value(const size_t col_idx) const {
-  return value(col_idx, TIMESTAMP, values_[col_idx].timestamp_value_);
-}
-
-void YQLRow::set_int8_value(const size_t col_idx, const int8_t v) {
-  set_value(col_idx, INT8, v, &values_[col_idx].int8_value_);
-}
-
-void YQLRow::set_int16_value(const size_t col_idx, const int16_t v) {
-  set_value(col_idx, INT16, v, &values_[col_idx].int16_value_);
-}
-
-void YQLRow::set_int32_value(const size_t col_idx, const int32_t v) {
-  set_value(col_idx, INT32, v, &values_[col_idx].int32_value_);
-}
-
-void YQLRow::set_int64_value(const size_t col_idx, const int64_t v) {
-  set_value(col_idx, INT64, v, &values_[col_idx].int64_value_);
-}
-
-void YQLRow::set_float_value(const size_t col_idx, const float v) {
-  set_value(col_idx, FLOAT, v, &values_[col_idx].float_value_);
-}
-
-void YQLRow::set_double_value(const size_t col_idx, const double v) {
-  set_value(col_idx, DOUBLE, v, &values_[col_idx].double_value_);
-}
-
-void YQLRow::set_string_value(const size_t col_idx, const std::string& v) {
-  set_value(col_idx, STRING, v, &values_[col_idx].string_value_);
-}
-
-void YQLRow::set_bool_value(const size_t col_idx, const bool v) {
-  set_value(col_idx, BOOL, v, &values_[col_idx].bool_value_);
-}
-
-void YQLRow::set_timestamp_value(const size_t col_idx, const Timestamp& v) {
-  set_value(col_idx, TIMESTAMP, v, &values_[col_idx].timestamp_value_);
 }
 
 void YQLRow::Serialize(const YQLClient client, faststring* buffer) const {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    values_[col_idx].Serialize(column_type(col_idx), IsNull(col_idx), client, buffer);
+    YQLValue::Serialize(values_.at(col_idx), client, buffer);
   }
 }
 
 Status YQLRow::Deserialize(const YQLClient client, Slice* data) {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    bool is_null = false;
-    RETURN_NOT_OK(values_[col_idx].Deserialize(column_type(col_idx), client, data, &is_null));
-    SetNull(col_idx, is_null);
+    RETURN_NOT_OK(YQLValue::Deserialize(&values_.at(col_idx), column_type(col_idx), client, data));
   }
   return Status::OK();
 }
@@ -167,7 +43,7 @@ string YQLRow::ToString() const {
     if (col_idx > 0) {
       s+= ", ";
     }
-    s += values_[col_idx].ToString(column_type(col_idx), IsNull(col_idx));
+    s += YQLValue::ToString(values_.at(col_idx));
   }
   s += " }";
   return s;
@@ -239,17 +115,16 @@ namespace {
 
 // Evaluate and return the value of an expression for the given row. Evaluate only column and
 // literal values for now.
-YQLValue EvaluateValue(
+YQLValuePB EvaluateValue(
     const YQLExpressionPB& expr, const YQLValueMap& row, const Schema& schema) {
   switch (expr.expr_case()) {
     case YQLExpressionPB::ExprCase::kColumnId: {
       const auto column_id = ColumnId(expr.column_id());
       const auto it = row.find(column_id);
-      return it != row.end() ?
-          it->second : YQLValue(schema.column_by_id(column_id).type_info()->type());
+      return it != row.end() ? it->second : YQLValuePB();
     }
     case YQLExpressionPB::ExprCase::kValue:
-      return YQLValue::FromYQLValuePB(expr.value());
+      return expr.value();
     case YQLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;
@@ -264,10 +139,10 @@ Status EvaluateInCondition(
     const YQLValueMap& row, const Schema& schema, bool* result) {
   CHECK_GE(operands.size(), 1);
   *result = false;
-  YQLValue left = EvaluateValue(operands.Get(0), row, schema);
+  YQLValuePB left = EvaluateValue(operands.Get(0), row, schema);
   for (int i = 1; i < operands.size(); ++i) {
-    YQLValue right = EvaluateValue(operands.Get(i), row, schema);
-    if (!left.Comparable(right)) return STATUS(RuntimeError, "values not comparable");
+    YQLValuePB right = EvaluateValue(operands.Get(i), row, schema);
+    if (!YQLValue::Comparable(left, right)) return STATUS(RuntimeError, "values not comparable");
     if (left == right) {
       *result = true;
       break;
@@ -281,10 +156,10 @@ Status EvaluateBetweenCondition(
     const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB>& operands,
     const YQLValueMap& row, const Schema& schema, bool* result) {
   CHECK_EQ(operands.size(), 3);
-  YQLValue v = EvaluateValue(operands.Get(0), row, schema);
-  YQLValue lower_bound = EvaluateValue(operands.Get(1), row, schema);
-  YQLValue upper_bound = EvaluateValue(operands.Get(2), row, schema);
-  if (!v.Comparable(lower_bound) || !v.Comparable(upper_bound)) {
+  YQLValuePB v = EvaluateValue(operands.Get(0), row, schema);
+  YQLValuePB lower_bound = EvaluateValue(operands.Get(1), row, schema);
+  YQLValuePB upper_bound = EvaluateValue(operands.Get(2), row, schema);
+  if (!YQLValue::Comparable(v, lower_bound) || !YQLValue::Comparable(v, upper_bound)) {
     return STATUS(RuntimeError, "values not comparable");
   }
   *result = (lower_bound <= v && v <= upper_bound);
@@ -307,36 +182,37 @@ Status EvaluateCondition(
     }
     case YQL_OP_IS_NULL: {
       CHECK_EQ(operands.size(), 1);
-      *result = EvaluateValue(operands.Get(0), row, schema).IsNull();
+      *result = YQLValue::IsNull(EvaluateValue(operands.Get(0), row, schema));
       return Status::OK();
     }
     case YQL_OP_IS_NOT_NULL: {
       CHECK_EQ(operands.size(), 1);
-      *result = !EvaluateValue(operands.Get(0), row, schema).IsNull();
+      *result = !YQLValue::IsNull(EvaluateValue(operands.Get(0), row, schema));
       return Status::OK();
     }
     case YQL_OP_IS_TRUE: {
       CHECK_EQ(operands.size(), 1);
-      YQLValue v = EvaluateValue(operands.Get(0), row, schema);
-      if (v.type() != BOOL) return STATUS(RuntimeError, "not a bool value");
-      *result = (!v.IsNull() && v.bool_value());
+      YQLValuePB v = EvaluateValue(operands.Get(0), row, schema);
+      if (YQLValue::type(v) != BOOL) return STATUS(RuntimeError, "not a bool value");
+      *result = (!YQLValue::IsNull(v) && YQLValue::bool_value(v));
       return Status::OK();
     }
     case YQL_OP_IS_FALSE: {
       CHECK_EQ(operands.size(), 1);
-      YQLValue v = EvaluateValue(operands.Get(0), row, schema);
-      if (v.type() != BOOL) return STATUS(RuntimeError, "not a bool value");
-      *result = (!v.IsNull() && !v.bool_value());
+      YQLValuePB v = EvaluateValue(operands.Get(0), row, schema);
+      if (YQLValue::type(v) != BOOL) return STATUS(RuntimeError, "not a bool value");
+      *result = (!YQLValue::IsNull(v) && !YQLValue::bool_value(v));
       return Status::OK();
     }
 
-#define YQL_EVALUATE_RELATIONAL_OP(op, operands, row, schema, result)                      \
-      do {                                                                                 \
-        CHECK_EQ(operands.size(), 2);                                                      \
-        const YQLValue left = EvaluateValue(operands.Get(0), row, schema);                 \
-        const YQLValue right = EvaluateValue(operands.Get(1), row, schema);                \
-        if (!left.Comparable(right)) return STATUS(RuntimeError, "values not comparable"); \
-        *result = (left op right);                                                         \
+#define YQL_EVALUATE_RELATIONAL_OP(op, operands, row, schema, result)         \
+      do {                                                                    \
+        CHECK_EQ(operands.size(), 2);                                         \
+        const YQLValuePB left = EvaluateValue(operands.Get(0), row, schema);  \
+        const YQLValuePB right = EvaluateValue(operands.Get(1), row, schema); \
+        if (!YQLValue::Comparable(left, right))                               \
+          return STATUS(RuntimeError, "values not comparable");               \
+        *result = (left op right);                                            \
       } while (0)
 
     case YQL_OP_EQUAL: {

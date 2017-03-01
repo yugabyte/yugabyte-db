@@ -136,8 +136,8 @@ TEST_F(YqlDmlTest, TestInsertUpdateAndSelect) {
     unique_ptr<YQLRowBlock> rowblock(RowsResult(op.get()).GetRowBlock());
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
-    EXPECT_EQ(row.int32_value(0), 4);
-    EXPECT_EQ(row.string_value(1), "d");
+    EXPECT_EQ(row.column(0).int32_value(), 4);
+    EXPECT_EQ(row.column(1).string_value(), "d");
   }
 }
 

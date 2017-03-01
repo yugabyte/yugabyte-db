@@ -100,11 +100,8 @@ class PrimitiveValue {
   // Construct a primitive value from a YQLValuePB.
   static PrimitiveValue FromYQLValuePB(const YQLValuePB& value);
 
-  // Construct a primitive value from a YQLValue.
-  static PrimitiveValue FromYQLValue(const YQLValue& value);
-
-  // Set a primitive value in a YQLValue.
-  void ToYQLValue(YQLValue* v) const;
+  // Set a primitive value in a YQLValuePB.
+  void ToYQLValuePB(YQLValuePB* v, DataType type) const;
 
   ValueType value_type() const { return type_; }
 

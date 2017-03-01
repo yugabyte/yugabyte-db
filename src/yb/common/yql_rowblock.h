@@ -13,9 +13,7 @@
 namespace yb {
 
 //------------------------------------------ YQL row ----------------------------------------
-// A YQL row. The columns' datatypes are kept in the row schema and the null states are stored in
-// a bitmap (specialized vector<bool>). Each column is identified by its column index in the row
-// schema, not by the column id.
+// A YQL row. It uses YQLValueWithPB to store the column values.
 class YQLRow {
  public:
   explicit YQLRow(const std::shared_ptr<const Schema>& schema);
@@ -34,59 +32,9 @@ class YQLRow {
     return schema_->column(col_idx).type_info()->type();
   }
 
-  // Get and set a column value as/using YQLValue.
-  // Note: for more efficient access, consider using the accessors below.
-  YQLValue column(size_t col_idx) const;
-  void set_column(size_t col_idx, const YQLValue& v);
-  void set_column(size_t col_idx, YQLValue&& v);
-
-  // Is the column null?
-  inline bool IsNull(size_t col_idx) const {
-    return is_nulls_[col_idx];
-  }
-
-  // Set the column to null or not.
-  void SetNull(const size_t col_idx, const bool is_null) {
-    is_nulls_[col_idx] = is_null;
-  }
-
-  //----------------------------------- get value methods -----------------------------------
-  // Get the row column value. CHECK failure will result if the value stored is not of the
-  // expected datatype or the value is null.
-  template<typename type_t>
-  type_t value(const size_t col_idx, const DataType expected_type, const type_t value) const {
-    return YQLValueCore::value(column_type(col_idx), expected_type, IsNull(col_idx), value);
-  }
-
-  int8_t int8_value(size_t col_idx) const;
-  int16_t int16_value(size_t col_idx) const;
-  int32_t int32_value(size_t col_idx) const;
-  int64_t int64_value(size_t col_idx) const;
-  float float_value(size_t col_idx) const;
-  double double_value(size_t col_idx) const;
-  std::string string_value(size_t col_idx) const;
-  bool bool_value(size_t col_idx) const;
-  Timestamp timestamp_value(size_t col_idx) const;
-
-  //----------------------------------- set value methods -----------------------------------
-  // Set the row column value. CHECK failure will result if the value stored is not of the
-  // expected datatype.
-  template<typename type_t>
-  void set_value(
-      const size_t col_idx, const DataType expected_type, const type_t other, type_t* value) {
-    YQLValueCore::set_value(column_type(col_idx), expected_type, other, value);
-    SetNull(col_idx, false);
-  }
-
-  void set_int8_value(size_t col_idx, int8_t v);
-  void set_int16_value(size_t col_idx, int16_t v);
-  void set_int32_value(size_t col_idx, int32_t v);
-  void set_int64_value(size_t col_idx, int64_t v);
-  void set_float_value(size_t col_idx, float v);
-  void set_double_value(size_t col_idx, double v);
-  void set_string_value(size_t col_idx, const std::string& v);
-  void set_bool_value(size_t col_idx, bool v);
-  void set_timestamp_value(size_t col_idx, const Timestamp& v);
+  // Get a mutable/non-mutable column value.
+  const YQLValue& column(const size_t col_idx) const { return values_.at(col_idx); }
+  YQLValue* mutable_column(const size_t col_idx) { return &values_.at(col_idx); }
 
   YQLRow& operator=(const YQLRow& other);
   YQLRow& operator=(YQLRow&& other);
@@ -105,8 +53,7 @@ class YQLRow {
   CHECKED_STATUS Deserialize(YQLClient client, Slice* data);
 
   std::shared_ptr<const Schema> schema_;
-  YQLValueCore* values_;
-  std::vector<bool> is_nulls_;
+  std::vector<YQLValueWithPB> values_;
 };
 
 //--------------------------------------- YQL row block --------------------------------------
@@ -153,8 +100,11 @@ class YQLRowBlock {
   std::vector<YQLRow> rows_;
 };
 
-// Map for easy lookup of column values of a row by the column id.
-using YQLValueMap = std::unordered_map<ColumnId, YQLValue>;
+// Map for easy lookup of column values of a row by the column id. This map is used in tserver
+// for saving the column values of a selected row to evaluate the WHERE and IF clauses. Since
+// we use the clauses in protobuf to evaluate, we will maintain the column values in YQLValuePB
+// also to avoid conversion to and from YQLValueWithPB.
+using YQLValueMap = std::unordered_map<ColumnId, YQLValuePB>;
 
 // Evaluate a boolean condition for the given row.
 CHECKED_STATUS EvaluateCondition(

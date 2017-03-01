@@ -24,8 +24,7 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
   for (size_t i = 0; i < schema.num_key_columns(); i++) {
     const auto& column = schema.column(i);
     if (!column.is_hash_key()) {
-      const auto data_type = column.type_info()->type();
-      ranges_.emplace(schema.column_id(i), YQLRange(YQLValue(data_type), YQLValue(data_type)));
+      ranges_.emplace(schema.column_id(i), YQLRange());
     }
   }
 
@@ -71,9 +70,8 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         // - <column> = <value> --> lower/upper bounds = <value>
         YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
-        YQLValue value = YQLValue::FromYQLValuePB(val_expr->value());
-        ranges_.at(column_id).lower_bound = value;
-        ranges_.at(column_id).upper_bound = value;
+        ranges_.at(column_id).lower_bound = val_expr->value();
+        ranges_.at(column_id).upper_bound = val_expr->value();
       }
       return;
     }
@@ -82,13 +80,12 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
       if (has_range_column) {
         YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
-        YQLValue value = YQLValue::FromYQLValuePB(val_expr->value());
         if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
           // - <column> <= <value> --> upper_bound = <value>
-          ranges_.at(column_id).upper_bound = value;
+          ranges_.at(column_id).upper_bound = val_expr->value();
         } else {
           // - <value> <= <column> --> lower_bound = <value>
-          ranges_.at(column_id).lower_bound = value;
+          ranges_.at(column_id).lower_bound = val_expr->value();
         }
       }
       return;
@@ -98,13 +95,12 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
       if (has_range_column) {
         YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
-        YQLValue value = YQLValue::FromYQLValuePB(val_expr->value());
         if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
           // - <column> >= <value> --> lower_bound = <value>
-          ranges_.at(column_id).lower_bound = value;
+          ranges_.at(column_id).lower_bound = val_expr->value();
         } else {
           // - <value> >= <column> --> upper_bound = <value>
-          ranges_.at(column_id).upper_bound = value;
+          ranges_.at(column_id).upper_bound = val_expr->value();
         }
       }
       return;
@@ -118,10 +114,10 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
           const ColumnId column_id(operands.Get(0).column_id());
           if (operands.Get(1).expr_case() == YQLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).lower_bound = YQLValue::FromYQLValuePB(operands.Get(1).value());
+            ranges_.at(column_id).lower_bound = operands.Get(1).value();
           }
           if (operands.Get(2).expr_case() == YQLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).upper_bound = YQLValue::FromYQLValuePB(operands.Get(2).value());
+            ranges_.at(column_id).upper_bound = operands.Get(2).value();
           }
         }
       }
@@ -147,19 +143,19 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         // - lower_bound = max(left_lower_bound, right_lower_bound)
         // - upper_bound = min(left_upper_bound, right_upper_bound)
         // - if only left or right lower/upper bound is defined, it is the resulting bound.
-        if (!left_range.lower_bound.IsNull() && !right_range.lower_bound.IsNull()) {
+        if (YQLValue::BothNotNull(left_range.lower_bound, right_range.lower_bound)) {
           range.lower_bound = std::max(left_range.lower_bound, right_range.lower_bound);
-        } else if (!left_range.lower_bound.IsNull()) {
+        } else if (!YQLValue::IsNull(left_range.lower_bound)) {
           range.lower_bound = left_range.lower_bound;
-        } else if (!right_range.lower_bound.IsNull()) {
+        } else if (!YQLValue::IsNull(right_range.lower_bound)) {
           range.lower_bound = right_range.lower_bound;
         }
 
-        if (!left_range.upper_bound.IsNull() && !right_range.upper_bound.IsNull()) {
+        if (YQLValue::BothNotNull(left_range.upper_bound, right_range.upper_bound)) {
           range.upper_bound = std::min(left_range.upper_bound, right_range.upper_bound);
-        } else if (!left_range.upper_bound.IsNull()) {
+        } else if (!YQLValue::IsNull(left_range.upper_bound)) {
           range.upper_bound = left_range.upper_bound;
-        } else if (!right_range.upper_bound.IsNull()) {
+        } else if (!YQLValue::IsNull(right_range.upper_bound)) {
           range.upper_bound = right_range.upper_bound;
         }
       }
@@ -181,11 +177,11 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         // - lower_bound = min(left_lower_bound, right_lower_bound)
         // - upper_bound = max(left_upper_bound, right_upper_bound)
         // - if either left or right (or both) lower/upper bound is undefined, there is no bound.
-        if (!left_range.lower_bound.IsNull() && !right_range.lower_bound.IsNull()) {
+        if (YQLValue::BothNotNull(left_range.lower_bound, right_range.lower_bound)) {
           range.lower_bound = std::min(left_range.lower_bound, right_range.lower_bound);
         }
 
-        if (!left_range.upper_bound.IsNull() && !right_range.upper_bound.IsNull()) {
+        if (YQLValue::BothNotNull(left_range.upper_bound, right_range.upper_bound)) {
           range.upper_bound = std::max(left_range.upper_bound, right_range.upper_bound);
         }
       }
@@ -201,7 +197,7 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         const auto& other_range = other.ranges_.at(column_id);
 
         // NOT <condition>:
-        if (!other_range.lower_bound.IsNull() && !other_range.upper_bound.IsNull()) {
+        if (YQLValue::BothNotNull(other_range.lower_bound, other_range.upper_bound)) {
           // If the condition's lower and upper bounds are defined, the negation of it will be
           // disjoint ranges at the two ends, which is not representable as a simple range. So
           // we will treat the result as unbounded.
@@ -242,14 +238,14 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
 // Return the lower/upper range components for the scan. We can use the range group as the bounds
 // in DocRowwiseIterator only when all the range columns have bounded values. So return an empty
 // group if any of the range column does not have a bound.
-vector<YQLValue> YQLScanRange::range_values(const bool lower_bound) const {
-  vector<YQLValue> range_values;
+vector<YQLValuePB> YQLScanRange::range_values(const bool lower_bound) const {
+  vector<YQLValuePB> range_values;
   range_values.reserve(schema_.num_range_key_columns());
   for (size_t i = 0; i < schema_.num_key_columns(); i++) {
     if (!schema_.column(i).is_hash_key()) {
       const auto& range = ranges_.at(schema_.column_id(i));
       const auto& value = lower_bound ? range.lower_bound : range.upper_bound;
-      if (value.IsNull()) {
+      if (YQLValue::IsNull(value)) {
         range_values.clear();
         break;
       }
@@ -283,10 +279,10 @@ DocKey YQLScanSpec::range_doc_key(const bool lower_bound) const {
   }
   vector<PrimitiveValue> range_components;
   if (range_.get() != nullptr) {
-    const vector<YQLValue> range_values = range_->range_values(lower_bound);
+    const vector<YQLValuePB> range_values = range_->range_values(lower_bound);
     range_components.reserve(range_values.size());
     for (const auto& value : range_values) {
-      range_components.emplace_back(PrimitiveValue::FromYQLValue(value));
+      range_components.emplace_back(PrimitiveValue::FromYQLValuePB(value));
     }
   }
   CHECK(hashed_components_ != nullptr) << "hashed primary key columns missing";
