@@ -3,10 +3,8 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -22,16 +20,12 @@ import java.util.List;
 import java.util.UUID;
 
 @Singleton
-public class AccessManager {
+public class AccessManager extends DevopsBase {
     public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
-
-    @Inject
-    ShellProcessHandler shellProcessHandler;
 
     @Inject
     play.Configuration appConfig;
 
-    public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
     public static final String YB_CLOUD_ACCESS_COMMAND = "access";
 
     public enum KeyType {
@@ -63,17 +57,6 @@ public class AccessManager {
         }
 
         throw new RuntimeException("Unable to create key file path " + keyFilePath.getAbsolutePath());
-    }
-
-    private List<String> getBaseCommand(UUID providerUUID) {
-        Provider cloudProvider = Provider.find.byId(providerUUID);
-
-        List<String> baseCommand = new ArrayList<>();
-        baseCommand.add(YBCLOUD_SCRIPT);
-        baseCommand.add(cloudProvider.code);
-
-        baseCommand.add(YB_CLOUD_ACCESS_COMMAND);
-        return baseCommand;
     }
 
     // This method would upload the provided key file to the provider key file path.
@@ -112,6 +95,7 @@ public class AccessManager {
     public AccessKey.KeyInfo addKey(UUID providerUUID, String keyCode) {
         List<String> command = new ArrayList<String>();
         String keyFilePath = getKeyFilePath(providerUUID);
+        command.add(YB_CLOUD_ACCESS_COMMAND);
         command.add("add-key");
         command.add("--key_pair_name");
         command.add(keyCode);
@@ -142,6 +126,7 @@ public class AccessManager {
         if (!new File(privateKeyFile).exists()) {
             throw new RuntimeException("File " + privateKeyFile + " doesn't exists.");
         }
+        command.add(YB_CLOUD_ACCESS_COMMAND);
         command.add("create-vault");
         command.add("--private_key_file");
         command.add(privateKeyFile);
@@ -149,21 +134,22 @@ public class AccessManager {
     }
 
     public JsonNode listKeys(UUID providerUUID) {
-        return executeCommand(providerUUID, ImmutableList.of("list-keys"));
+        List<String> command = new ArrayList<String>();
+        command.add(YB_CLOUD_ACCESS_COMMAND);
+        command.add("list-keys");
+        return executeCommand(providerUUID, command);
     }
 
     // TODO: Move this out of here..
     public JsonNode listRegions(UUID providerUUID) {
-        return executeCommand(providerUUID, ImmutableList.of("list-regions"));
+        List<String> command = new ArrayList<String>();
+        command.add(YB_CLOUD_ACCESS_COMMAND);
+        command.add("list-regions");
+        return executeCommand(providerUUID, command);
     }
 
     private JsonNode executeCommand(UUID providerUUID, List<String> commandArgs) {
-        List<String> command = getBaseCommand(providerUUID);
-        command.addAll(commandArgs);
-
-        Provider provider = Provider.get(providerUUID);
-        ShellProcessHandler.ShellResponse response = shellProcessHandler.run(command, provider.getConfig());
-
+        ShellProcessHandler.ShellResponse response = execCommand(providerUUID, commandArgs);
         if (response.code == 0) {
             return Json.parse(response.message);
         } else {
