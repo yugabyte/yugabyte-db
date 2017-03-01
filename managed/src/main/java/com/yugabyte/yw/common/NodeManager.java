@@ -168,6 +168,10 @@ public class NodeManager extends DevopsBase {
    */
   private void addMountPaths(String providerCode, String instanceTypeCode, List<String> command) {
     InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
+    if (instanceType == null) {
+      throw new RuntimeException("No InstanceType exists for provider code " + providerCode +
+                                 " and instance type code " + instanceTypeCode);
+    }
     List<VolumeDetails> detailsList = instanceType.instanceTypeDetails.volumeDetailsList;
     String mountPoints = detailsList.stream()
                                     .map(volume -> volume.mountPath)
