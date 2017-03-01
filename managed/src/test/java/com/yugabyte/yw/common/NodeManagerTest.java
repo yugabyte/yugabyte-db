@@ -39,7 +39,7 @@ import static org.mockito.Mockito.when;
 
 
 @RunWith(MockitoJUnitRunner.class)
-public class DevOpsHelperTest extends FakeDBApplication {
+public class NodeManagerTest extends FakeDBApplication {
 
   @Mock
   play.Configuration mockAppConfig;
@@ -48,7 +48,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
   ShellProcessHandler shellProcessHandler;
 
   @InjectMocks
-  DevOpsHelper devOpsHelper;
+  NodeManager nodeManager;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "host-n1:7100,host-n2:7100,host-n3:7100";
@@ -155,7 +155,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
   }
 
-  private List<String> nodeCommand(DevOpsHelper.NodeCommandType type, NodeTaskParams params) {
+  private List<String> nodeCommand(NodeManager.NodeCommandType type, NodeTaskParams params) {
     List<String> expectedCommand = new ArrayList<>();
 
     expectedCommand.add("instance");
@@ -235,9 +235,9 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Provision, params));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
 
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, params);
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -246,7 +246,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testProvisionNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Provision, createInvalidParams(t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, createInvalidParams(t));
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleSetupServer.Params"));
       }
@@ -257,7 +257,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testConfigureNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, createInvalidParams(t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, createInvalidParams(t));
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleConfigureServers.Params"));
       }
@@ -273,9 +273,9 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.isMasterInShellMode = true;
       params.ybServerPackage = "yb-server-pkg";
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
 
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -304,13 +304,13 @@ public class DevOpsHelperTest extends FakeDBApplication {
 
       // Set up expected command
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
           "/path/to/private.key");
       expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommand);
 
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -325,8 +325,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.ybServerPackage = "yb-server-pkg";
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -341,7 +341,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.ybServerPackage = "yb-server-pkg";
 
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid taskSubType property: null")));
@@ -361,8 +361,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.setProperty("taskSubType", Download.toString());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -379,8 +379,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.setProperty("taskSubType", Install.toString());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -399,7 +399,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.isMasterInShellMode = true;
 
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType property: null")));
@@ -417,7 +417,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.type = GFlags;
 
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), allOf(notNullValue(), is("Empty GFlags data provided")));
@@ -440,8 +440,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.setProperty("processType", UniverseDefinitionTaskBase.ServerType.MASTER.toString());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Configure, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Configure, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -450,7 +450,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testDestroyNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Destroy, createInvalidParams(t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, createInvalidParams(t));
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleDestroyServer.Params"));
       }
@@ -464,8 +464,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Destroy, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Destroy, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -474,7 +474,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testListNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, createInvalidParams(t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.List, createInvalidParams(t));
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleUpdateNodeInfo.Params"));
       }
@@ -488,8 +488,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.List, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -498,7 +498,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
   public void testControlNodeCommandWithInvalidParam() {
     for (TestData t : testData) {
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Control, createInvalidParams(t));
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, createInvalidParams(t));
       } catch (RuntimeException re) {
         assertThat(re.getMessage(), is("NodeTaskParams is not AnsibleClusterServerCtl.Params"));
       }
@@ -514,8 +514,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       params.command = "create";
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.Control, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.Control, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Control, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
@@ -527,7 +527,7 @@ public class DevOpsHelperTest extends FakeDBApplication {
       buildValidParams(t, params, createUniverse());
 
       try {
-        devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       } catch (RuntimeException re) {
         if (t.cloudType == Common.CloudType.docker) {
           assertThat(
@@ -546,8 +546,8 @@ public class DevOpsHelperTest extends FakeDBApplication {
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
-      expectedCommand.addAll(nodeCommand(DevOpsHelper.NodeCommandType.List, params));
-      devOpsHelper.nodeCommand(DevOpsHelper.NodeCommandType.List, params);
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params));
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }

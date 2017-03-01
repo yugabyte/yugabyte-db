@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,8 +54,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     // Update the node state as being decommissioned.
     setNodeState(NodeDetails.NodeState.BeingDecommissioned);
     // Execute the ansible command.
-    ShellProcessHandler.ShellResponse response = getDevOpsHelper().nodeCommand(
-        DevOpsHelper.NodeCommandType.Destroy, taskParams());
+    ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
+        NodeManager.NodeCommandType.Destroy, taskParams());
     logShellResponse(response);
 
     // Update the node state to destroyed. Even though we remove the node below, this will

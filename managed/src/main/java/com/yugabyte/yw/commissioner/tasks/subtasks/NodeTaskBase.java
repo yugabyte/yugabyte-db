@@ -1,6 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,8 +23,8 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
   // The task params.
   protected NodeTaskParams taskParams;
 
-  private DevOpsHelper devOpsHelper;
-  public DevOpsHelper getDevOpsHelper() { return devOpsHelper; }
+  private NodeManager nodeManager;
+  public NodeManager getNodeManager() { return nodeManager; }
 
   @Override
   protected NodeTaskParams taskParams() {
@@ -33,7 +33,7 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
 
   @Override
   public void initialize(ITaskParams params) {
-    this.devOpsHelper = Play.current().injector().instanceOf(DevOpsHelper.class);
+    this.nodeManager = Play.current().injector().instanceOf(NodeManager.class);
     this.taskParams = (NodeTaskParams)params;
   }
 

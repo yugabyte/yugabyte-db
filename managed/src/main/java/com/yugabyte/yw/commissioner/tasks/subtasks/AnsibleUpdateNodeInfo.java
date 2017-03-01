@@ -6,7 +6,7 @@ import java.lang.reflect.Field;
 import java.util.Iterator;
 import java.util.Map.Entry;
 
-import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,8 +31,8 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
   @Override
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
-    ShellProcessHandler.ShellResponse response = getDevOpsHelper().nodeCommand(
-        DevOpsHelper.NodeCommandType.List, taskParams());
+    ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
+        NodeManager.NodeCommandType.List, taskParams());
 
     if (response.code != 0) {
       throw new RuntimeException(response.message);
