@@ -24,6 +24,7 @@ import play.libs.Json;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,6 +34,7 @@ import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -225,6 +227,21 @@ public class NodeManagerTest extends FakeDBApplication {
 
     expectedCommand.add(params.nodeName);
     return expectedCommand;
+  }
+
+  @Test
+  public void testAddMountPathsInvalidParamsFail() {
+    try {
+      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      buildValidParams(testData.get(0), params, createUniverse());
+      params.instanceType = "fakeTypeBlah";
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+      fail();
+    } catch (RuntimeException re) {
+      String errMsg = "No InstanceType exists for provider code fake1 and instance type code fake2";
+      assertThat(re.getMessage(), is(errMsg));
+    }
   }
 
   @Test
