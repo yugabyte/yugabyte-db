@@ -18,7 +18,6 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 
 import org.slf4j.Logger;
@@ -30,7 +29,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Singleton
-public class NodeManager {
+public class NodeManager extends DevopsBase {
   // Currently we need to define the enum such that the lower case value matches the action
   public enum NodeCommandType {
     Provision,
@@ -41,18 +40,11 @@ public class NodeManager {
   }
   public static final Logger LOG = LoggerFactory.getLogger(NodeManager.class);
 
-  public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
-
   @Inject
   play.Configuration appConfig;
 
-  @Inject
-  ShellProcessHandler shellProcessHandler;
-
   private List<String> cloudBaseCommand(NodeTaskParams nodeTaskParam) {
     List<String> command = new ArrayList<String>();
-    command.add(YBCLOUD_SCRIPT);
-    command.add(nodeTaskParam.cloud.toString());
     command.add("--zone");
     command.add(nodeTaskParam.getAZ().code);
     command.add("--region");
@@ -252,8 +244,6 @@ public class NodeManager {
 
     command.add(nodeTaskParam.nodeName);
 
-    Provider provider = nodeTaskParam.getRegion().provider;
-    LOG.info("Command to run: [" + String.join(" ", command) + "]");
-    return shellProcessHandler.run(command, provider.getConfig());
+    return execCommand(nodeTaskParam.getRegion().provider.uuid, command);
   }
 }
