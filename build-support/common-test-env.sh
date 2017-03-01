@@ -883,6 +883,7 @@ set_asan_tsan_options() {
     # Suppressions require symbolization. We'll default to using the symbolizer in thirdparty.
     # If ASAN_SYMBOLIZER_PATH is already set but that file does not exist, we'll report that and
     # still use the default way to find the symbolizer.
+    local asan_symbolizer_candidate_paths=""
     if [[ -z ${ASAN_SYMBOLIZER_PATH:-} || ! -f ${ASAN_SYMBOLIZER_PATH:-} ]]; then
       if [[ -n "${ASAN_SYMBOLIZER_PATH:-}" ]]; then
         log "ASAN_SYMBOLIZER_PATH is set to '$ASAN_SYMBOLIZER_PATH' but that file does not " \
@@ -896,18 +897,24 @@ set_asan_tsan_options() {
           ASAN_SYMBOLIZER_PATH=$asan_symbolizer_candidate_path
           break
         fi
+        asan_symbolizer_candidate_paths+=" $asan_symbolizer_candidate_path"
       done
     fi
 
-    if [[ ! -f $ASAN_SYMBOLIZER_PATH ]]; then
-      log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' still does not exist."
-      ( set -x; ls -l "$ASAN_SYMBOLIZER_PATH" )
-    elif [[ ! -x $ASAN_SYMBOLIZER_PATH ]]; then
-      log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' is not binary, updating permissions."
-      ( set -x; chmod a+x "$ASAN_SYMBOLIZER_PATH" )
-    fi
+    if [[ -n ${ASAN_SYMBOLIZER_PATH:-} ]]; then
+      if [[ ! -f $ASAN_SYMBOLIZER_PATH ]]; then
+        log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' still does not exist."
+        ( set -x; ls -l "$ASAN_SYMBOLIZER_PATH" )
+      elif [[ ! -x $ASAN_SYMBOLIZER_PATH ]]; then
+        log "ASAN symbolizer at '$ASAN_SYMBOLIZER_PATH' is not binary, updating permissions."
+        ( set -x; chmod a+x "$ASAN_SYMBOLIZER_PATH" )
+      fi
 
-    export ASAN_SYMBOLIZER_PATH
+      export ASAN_SYMBOLIZER_PATH
+    else
+      fatal "ASAN_SYMBOLIZER_PATH has not been set and llvm-symbolizer not found at any of" \
+            "the candidate paths:$asan_symbolizer_candidate_paths"
+    fi
   fi
 
   if [[ $build_root_basename =~ ^asan- ]]; then
