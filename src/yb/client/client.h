@@ -596,7 +596,7 @@ class YB_EXPORT YBTable : public std::enable_shared_from_this<YBTable> {
 //
 // Sample usage:
 //   YBTableAlterer* alterer = client->NewTableAlterer("table-name");
-//   alterer->AddColumn("foo")->Type(YBColumnSchema::INT32)->NotNull();
+//   alterer->AddColumn("foo")->Type(INT32)->NotNull();
 //   alterer->AlterColumn("bar")->Compression(YBColumnStorageAttributes::LZ4);
 //   Status s = alterer->Alter();
 //   delete alterer;

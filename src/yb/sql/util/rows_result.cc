@@ -30,7 +30,7 @@ vector<ColumnSchema> GetColumnSchemasFromReadOp(const YBqlReadOp& op) {
   const auto& schema = op.table()->schema();
   for (const auto column_id : op.request().column_ids()) {
     const auto column = schema.ColumnById(column_id);
-    column_schemas.emplace_back(column.name(), ToInternalDataType(column.type()));
+    column_schemas.emplace_back(column.name(), column.type());
   }
   return column_schemas;
 }

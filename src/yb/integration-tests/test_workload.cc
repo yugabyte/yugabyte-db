@@ -32,9 +32,6 @@
 
 namespace yb {
 
-using client::FromInternalCompressionType;
-using client::FromInternalDataType;
-using client::FromInternalEncodingType;
 using client::YBClient;
 using client::YBClientBuilder;
 using client::YBColumnSchema;;

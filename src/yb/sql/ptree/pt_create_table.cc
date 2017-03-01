@@ -115,9 +115,9 @@ CHECKED_STATUS PTCreateTable::AppendHashColumn(SemContext *sem_context,
 CHECKED_STATUS PTCreateTable::CheckPrimaryType(SemContext *sem_context,
                                                const PTBaseType::SharedPtr& datatype) {
   switch (datatype->sql_type()) {
-  case YBColumnSchema::DataType::DOUBLE: FALLTHROUGH_INTENDED;
-  case YBColumnSchema::DataType::FLOAT: FALLTHROUGH_INTENDED;
-  case YBColumnSchema::DataType::BOOL:
+  case DataType::DOUBLE: FALLTHROUGH_INTENDED;
+  case DataType::FLOAT: FALLTHROUGH_INTENDED;
+  case DataType::BOOL:
     return sem_context->Error(datatype->loc(), ErrorCode::INVALID_PRIMARY_COLUMN_TYPE);
 
   default:

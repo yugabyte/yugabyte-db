@@ -10,6 +10,7 @@
 #include "yb/client/client.h"
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/common/types.h"
+#include "yb/common/yql_value.h"
 
 namespace yb {
 namespace sql {
@@ -29,11 +30,11 @@ class PTBaseType : public TreeNode {
   virtual ~PTBaseType() {
   }
 
-  virtual yb::DataType type_id() const = 0;
-  virtual client::YBColumnSchema::DataType sql_type() const = 0;
+  virtual InternalType type_id() const = 0;
+  virtual DataType sql_type() const = 0;
 };
 
-template<yb::DataType type_id_, client::YBColumnSchema::DataType sql_type_>
+template<InternalType type_id_, DataType sql_type_>
 class PTPrimitiveType : public PTBaseType {
  public:
   //------------------------------------------------------------------------------------------------
@@ -54,11 +55,11 @@ class PTPrimitiveType : public PTBaseType {
     return MCMakeShared<PTPrimitiveType>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual yb::DataType type_id() const {
+  virtual InternalType type_id() const {
     return type_id_;
   }
 
-  virtual client::YBColumnSchema::DataType sql_type() const {
+  virtual DataType sql_type() const {
     return sql_type_;
   }
 };
@@ -66,13 +67,13 @@ class PTPrimitiveType : public PTBaseType {
 //--------------------------------------------------------------------------------------------------
 // Numeric Types.
 
-using PTBoolean = PTPrimitiveType<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
-using PTTinyInt = PTPrimitiveType<yb::DataType::INT8, client::YBColumnSchema::INT8>;
-using PTSmallInt = PTPrimitiveType<yb::DataType::INT16, client::YBColumnSchema::INT16>;
-using PTInt = PTPrimitiveType<yb::DataType::INT32, client::YBColumnSchema::INT32>;
-using PTBigInt = PTPrimitiveType<yb::DataType::INT64, client::YBColumnSchema::INT64>;
+using PTBoolean = PTPrimitiveType<InternalType::kBoolValue, DataType::BOOL>;
+using PTTinyInt = PTPrimitiveType<InternalType::kInt8Value, DataType::INT8>;
+using PTSmallInt = PTPrimitiveType<InternalType::kInt16Value, DataType::INT16>;
+using PTInt = PTPrimitiveType<InternalType::kInt32Value, DataType::INT32>;
+using PTBigInt = PTPrimitiveType<InternalType::kInt64Value, DataType::INT64>;
 
-class PTFloat : public PTPrimitiveType<yb::DataType::FLOAT, client::YBColumnSchema::FLOAT> {
+class PTFloat : public PTPrimitiveType<InternalType::kFloatValue, DataType::FLOAT> {
  public:
   typedef MCSharedPtr<PTFloat> SharedPtr;
   typedef MCSharedPtr<const PTFloat> SharedPtrConst;
@@ -95,7 +96,7 @@ class PTFloat : public PTPrimitiveType<yb::DataType::FLOAT, client::YBColumnSche
   int8_t precision_;
 };
 
-class PTDouble : public PTPrimitiveType<yb::DataType::DOUBLE, client::YBColumnSchema::DOUBLE> {
+class PTDouble : public PTPrimitiveType<InternalType::kDoubleValue, DataType::DOUBLE> {
  public:
   typedef MCSharedPtr<PTDouble> SharedPtr;
   typedef MCSharedPtr<const PTDouble> SharedPtrConst;
@@ -122,7 +123,7 @@ class PTDouble : public PTPrimitiveType<yb::DataType::DOUBLE, client::YBColumnSc
 // Char-based types.
 
 class PTCharBaseType
-    : public PTPrimitiveType<yb::DataType::STRING, client::YBColumnSchema::STRING> {
+    : public PTPrimitiveType<InternalType::kStringValue, DataType::STRING> {
  public:
   typedef MCSharedPtr<PTCharBaseType> SharedPtr;
   typedef MCSharedPtr<const PTCharBaseType> SharedPtrConst;
@@ -158,8 +159,8 @@ class PTChar : public PTCharBaseType {
     return MCMakeShared<PTChar>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual yb::DataType type_id() const {
-    return yb::DataType::STRING;
+  virtual InternalType type_id() const {
+    return InternalType::kStringValue;
   }
 };
 
@@ -178,16 +179,16 @@ class PTVarchar : public PTCharBaseType {
     return MCMakeShared<PTVarchar>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual yb::DataType type_id() const {
-    return yb::DataType::STRING;
+  virtual InternalType type_id() const {
+    return InternalType::kStringValue;
   }
 };
 
 //--------------------------------------------------------------------------------------------------
 // Datetime types.
 
-class PTTimestamp : public PTPrimitiveType<yb::DataType::TIMESTAMP,
-    client::YBColumnSchema::TIMESTAMP> {
+class PTTimestamp : public PTPrimitiveType<InternalType::kTimestampValue,
+    DataType::TIMESTAMP> {
  public:
   typedef MCSharedPtr<PTTimestamp> SharedPtr;
   typedef MCSharedPtr<const PTTimestamp> SharedPtrConst;

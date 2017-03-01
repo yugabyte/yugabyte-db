@@ -139,7 +139,7 @@ class PTColumnDefinition : public TreeNode {
     return datatype_;
   }
 
-  client::YBColumnSchema::DataType sql_type() const {
+  DataType sql_type() const {
     return datatype_->sql_type();
   }
 

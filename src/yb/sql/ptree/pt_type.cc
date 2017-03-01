@@ -12,7 +12,7 @@ namespace sql {
 //--------------------------------------------------------------------------------------------------
 
 PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTPrimitiveType<yb::DataType::FLOAT, client::YBColumnSchema::FLOAT>(memctx, loc),
+    : PTPrimitiveType<InternalType::kFloatValue, DataType::FLOAT>(memctx, loc),
       precision_(precision) {
 }
 
@@ -20,7 +20,7 @@ PTFloat::~PTFloat() {
 }
 
 PTDouble::PTDouble(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTPrimitiveType<yb::DataType::DOUBLE, client::YBColumnSchema::DOUBLE>(memctx, loc),
+    : PTPrimitiveType<InternalType::kDoubleValue, DataType::DOUBLE>(memctx, loc),
       precision_(precision) {
 }
 
@@ -32,7 +32,7 @@ PTDouble::~PTDouble() {
 PTCharBaseType::PTCharBaseType(MemoryContext *memctx,
                                YBLocation::SharedPtr loc,
                                int32_t max_length)
-    : PTPrimitiveType<yb::DataType::STRING, client::YBColumnSchema::STRING>(memctx, loc),
+    : PTPrimitiveType<InternalType::kStringValue, DataType::STRING>(memctx, loc),
       max_length_(max_length) {
 }
 
@@ -54,7 +54,7 @@ PTVarchar::~PTVarchar() {
 }
 
 PTTimestamp::PTTimestamp(MemoryContext *memctx, YBLocation::SharedPtr loc)
-    : PTPrimitiveType<yb::DataType::TIMESTAMP, client::YBColumnSchema::TIMESTAMP>(memctx, loc) {
+    : PTPrimitiveType<InternalType::kTimestampValue, DataType::TIMESTAMP>(memctx, loc) {
 }
 
 PTTimestamp::~PTTimestamp() {

@@ -26,12 +26,12 @@ class YqlDmlTest : public YqlDmlBase {
   }
 
   virtual void addColumns(YBSchemaBuilder *b) override {
-    b->AddColumn("h1")->Type(YBColumnSchema::INT32)->HashPrimaryKey()->NotNull();
-    b->AddColumn("h2")->Type(YBColumnSchema::STRING)->HashPrimaryKey()->NotNull();
-    b->AddColumn("r1")->Type(YBColumnSchema::INT32)->PrimaryKey()->NotNull();
-    b->AddColumn("r2")->Type(YBColumnSchema::STRING)->PrimaryKey()->NotNull();
-    b->AddColumn("c1")->Type(YBColumnSchema::INT32);
-    b->AddColumn("c2")->Type(YBColumnSchema::STRING);
+    b->AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b->AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
+    b->AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
+    b->AddColumn("r2")->Type(STRING)->PrimaryKey()->NotNull();
+    b->AddColumn("c1")->Type(INT32);
+    b->AddColumn("c2")->Type(STRING);
   }
 
   // Insert a full, single row, equivalent to the insert statement below. Return a YB write op that

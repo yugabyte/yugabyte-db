@@ -100,7 +100,7 @@ string TServerDetails::ToString() const {
 client::YBSchema SimpleIntKeyYBSchema() {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(client::YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
   CHECK_OK(b.Build(&s));
   return s;
 }

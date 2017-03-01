@@ -10,6 +10,7 @@
 #include "yb/client/client.h"
 #include "yb/common/types.h"
 #include "yb/sql/util/base_types.h"
+#include "yb/sql/ptree/pt_type.h"
 
 namespace yb {
 namespace sql {
@@ -29,16 +30,16 @@ class ColumnDesc {
         id_(-1),
         is_hash_(false),
         is_primary_(false),
-        sql_type_(client::YBColumnSchema::DataType::MAX_TYPE_INDEX),
-        type_id_(yb::DataType::UNKNOWN_DATA) {
+        sql_type_(DataType::UNKNOWN_DATA),
+        type_id_(InternalType::VALUE_NOT_SET) {
   }
 
   void Init(int index,
             int id,
             bool is_hash,
             bool is_primary,
-            client::YBColumnSchema::DataType sql_type,
-            yb::DataType type_id) {
+            DataType sql_type,
+            InternalType type_id) {
     index_ = index,
     id_ = id;
     is_hash_ = is_hash;
@@ -67,11 +68,11 @@ class ColumnDesc {
     return is_primary_;
   }
 
-  client::YBColumnSchema::DataType sql_type() const {
+  DataType sql_type() const {
     return sql_type_;
   }
 
-  yb::DataType type_id() const {
+  InternalType type_id() const {
     return type_id_;
   }
 
@@ -80,8 +81,8 @@ class ColumnDesc {
   int id_;
   bool is_hash_;
   bool is_primary_;
-  client::YBColumnSchema::DataType sql_type_;
-  yb::DataType type_id_;
+  DataType sql_type_;
+  InternalType type_id_;
 };
 
 }  // namespace sql

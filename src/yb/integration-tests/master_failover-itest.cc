@@ -97,9 +97,9 @@ class MasterFailoverTest : public YBTest {
   Status CreateTable(const YBTableName& table_name, CreateTableMode mode) {
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(YBColumnSchema::INT32)->NotNull();
-    b.AddColumn("string_val")->Type(YBColumnSchema::STRING)->NotNull();
+    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(INT32)->NotNull();
+    b.AddColumn("string_val")->Type(STRING)->NotNull();
     CHECK_OK(b.Build(&schema));
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)

@@ -103,7 +103,7 @@ class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> 
     vector<string> pk;
     for (int i = 0; i < num_columns; i++) {
       string name = Substitute("c$0", i);
-      b.AddColumn(name)->Type(YBColumnSchema::INT32)->NotNull();
+      b.AddColumn(name)->Type(INT32)->NotNull();
       pk.push_back(name);
     }
     b.SetPrimaryKey(pk);

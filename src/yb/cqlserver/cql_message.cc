@@ -947,6 +947,7 @@ ResultResponse::RowsMetadata::Type::Type(const DataType type) {
     case DataType::UINT16: FALLTHROUGH_INTENDED;
     case DataType::UINT32: FALLTHROUGH_INTENDED;
     case DataType::UINT64: FALLTHROUGH_INTENDED;
+    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::UNKNOWN_DATA:
       break;
 

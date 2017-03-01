@@ -106,7 +106,7 @@ class Executor {
   // Convert expression to protobuf.
   template<typename PBType>
   CHECKED_STATUS ExprToPB(const PTExpr::SharedPtr& expr,
-                          yb::DataType col_type,
+                          InternalType col_type,
                           PBType* col_pb,
                           YBPartialRow *row = nullptr,
                           int col_index = -1);

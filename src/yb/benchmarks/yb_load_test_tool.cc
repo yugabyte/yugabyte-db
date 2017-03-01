@@ -281,8 +281,8 @@ void CreateRedisTable(const YBTableName &table_name, const shared_ptr<YBClient> 
 void CreateYBTable(const YBTableName &table_name, const shared_ptr<YBClient> &client) {
   LOG(INFO) << "Building schema";
   YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::BINARY)->NotNull();
-  schemaBuilder.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
+  schemaBuilder.AddColumn("k")->PrimaryKey()->Type(yb::BINARY)->NotNull();
+  schemaBuilder.AddColumn("v")->Type(yb::BINARY)->NotNull();
   YBSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
 

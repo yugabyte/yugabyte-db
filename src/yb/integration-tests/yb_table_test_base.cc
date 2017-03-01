@@ -148,8 +148,8 @@ void YBTableTestBase::CreateTable() {
   if (!table_exists_) {
     unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(YBColumnSchema::BINARY)->NotNull()->PrimaryKey();
-    b.AddColumn("v")->Type(YBColumnSchema::BINARY)->NotNull();
+    b.AddColumn("k")->Type(BINARY)->NotNull()->PrimaryKey();
+    b.AddColumn("v")->Type(BINARY)->NotNull();
     ASSERT_OK(b.Build(&schema_));
 
     ASSERT_OK(table_creator->table_name(table_name())

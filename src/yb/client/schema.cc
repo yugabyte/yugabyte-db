@@ -24,21 +24,8 @@
 #include "yb/client/schema-internal.h"
 #include "yb/client/value-internal.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/schema.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-
-MAKE_ENUM_LIMITS(yb::client::YBColumnStorageAttributes::EncodingType,
-                 yb::client::YBColumnStorageAttributes::AUTO_ENCODING,
-                 yb::client::YBColumnStorageAttributes::RLE);
-
-MAKE_ENUM_LIMITS(yb::client::YBColumnStorageAttributes::CompressionType,
-                 yb::client::YBColumnStorageAttributes::DEFAULT_COMPRESSION,
-                 yb::client::YBColumnStorageAttributes::ZLIB);
-
-MAKE_ENUM_LIMITS(yb::client::YBColumnSchema::DataType,
-                 yb::client::YBColumnSchema::INT8,
-                 yb::client::YBColumnSchema::BOOL);
 
 using std::unordered_map;
 using std::vector;
@@ -46,88 +33,6 @@ using strings::Substitute;
 
 namespace yb {
 namespace client {
-
-yb::EncodingType ToInternalEncodingType(YBColumnStorageAttributes::EncodingType type) {
-  switch (type) {
-    case YBColumnStorageAttributes::AUTO_ENCODING: return yb::AUTO_ENCODING;
-    case YBColumnStorageAttributes::PLAIN_ENCODING: return yb::PLAIN_ENCODING;
-    case YBColumnStorageAttributes::PREFIX_ENCODING: return yb::PREFIX_ENCODING;
-    case YBColumnStorageAttributes::DICT_ENCODING: return yb::DICT_ENCODING;
-    case YBColumnStorageAttributes::GROUP_VARINT: return yb::GROUP_VARINT;
-    case YBColumnStorageAttributes::RLE: return yb::RLE;
-    case YBColumnStorageAttributes::BIT_SHUFFLE: return yb::BIT_SHUFFLE;
-    default: LOG(FATAL) << "Unexpected encoding type: " << type;
-  }
-}
-
-YBColumnStorageAttributes::EncodingType FromInternalEncodingType(yb::EncodingType type) {
-  switch (type) {
-    case yb::AUTO_ENCODING: return YBColumnStorageAttributes::AUTO_ENCODING;
-    case yb::PLAIN_ENCODING: return YBColumnStorageAttributes::PLAIN_ENCODING;
-    case yb::PREFIX_ENCODING: return YBColumnStorageAttributes::PREFIX_ENCODING;
-    case yb::DICT_ENCODING: return YBColumnStorageAttributes::DICT_ENCODING;
-    case yb::GROUP_VARINT: return YBColumnStorageAttributes::GROUP_VARINT;
-    case yb::RLE: return YBColumnStorageAttributes::RLE;
-    case yb::BIT_SHUFFLE: return YBColumnStorageAttributes::BIT_SHUFFLE;
-    default: LOG(FATAL) << "Unexpected internal encoding type: " << type;
-  }
-}
-
-yb::CompressionType ToInternalCompressionType(YBColumnStorageAttributes::CompressionType type) {
-  switch (type) {
-    case YBColumnStorageAttributes::DEFAULT_COMPRESSION: return yb::DEFAULT_COMPRESSION;
-    case YBColumnStorageAttributes::NO_COMPRESSION: return yb::NO_COMPRESSION;
-    case YBColumnStorageAttributes::SNAPPY: return yb::SNAPPY;
-    case YBColumnStorageAttributes::LZ4: return yb::LZ4;
-    case YBColumnStorageAttributes::ZLIB: return yb::ZLIB;
-    default: LOG(FATAL) << "Unexpected compression type" << type;
-  }
-}
-
-YBColumnStorageAttributes::CompressionType FromInternalCompressionType(
-    yb::CompressionType type) {
-  switch (type) {
-    case yb::DEFAULT_COMPRESSION: return YBColumnStorageAttributes::DEFAULT_COMPRESSION;
-    case yb::NO_COMPRESSION: return YBColumnStorageAttributes::NO_COMPRESSION;
-    case yb::SNAPPY: return YBColumnStorageAttributes::SNAPPY;
-    case yb::LZ4: return YBColumnStorageAttributes::LZ4;
-    case yb::ZLIB: return YBColumnStorageAttributes::ZLIB;
-    default: LOG(FATAL) << "Unexpected internal compression type: " << type;
-  }
-}
-
-yb::DataType ToInternalDataType(YBColumnSchema::DataType type) {
-  switch (type) {
-    case YBColumnSchema::INT8: return yb::INT8;
-    case YBColumnSchema::INT16: return yb::INT16;
-    case YBColumnSchema::INT32: return yb::INT32;
-    case YBColumnSchema::INT64: return yb::INT64;
-    case YBColumnSchema::TIMESTAMP: return yb::TIMESTAMP;
-    case YBColumnSchema::FLOAT: return yb::FLOAT;
-    case YBColumnSchema::DOUBLE: return yb::DOUBLE;
-    case YBColumnSchema::STRING: return yb::STRING;
-    case YBColumnSchema::BINARY: return yb::BINARY;
-    case YBColumnSchema::BOOL: return yb::BOOL;
-    default: LOG(FATAL) << "Unexpected data type: " << type;
-  }
-}
-
-YBColumnSchema::DataType FromInternalDataType(yb::DataType type) {
-  switch (type) {
-    case yb::INT8: return YBColumnSchema::INT8;
-    case yb::INT16: return YBColumnSchema::INT16;
-    case yb::INT32: return YBColumnSchema::INT32;
-    case yb::INT64: return YBColumnSchema::INT64;
-    case yb::TIMESTAMP: return YBColumnSchema::TIMESTAMP;
-    case yb::FLOAT: return YBColumnSchema::FLOAT;
-    case yb::DOUBLE: return YBColumnSchema::DOUBLE;
-    case yb::STRING: return YBColumnSchema::STRING;
-    case yb::BINARY: return YBColumnSchema::BINARY;
-    case yb::BOOL: return YBColumnSchema::BOOL;
-    default: LOG(FATAL) << "Unexpected internal data type: " << type;
-  }
-}
-
 ////////////////////////////////////////////////////////////
 // YBColumnSpec
 ////////////////////////////////////////////////////////////
@@ -140,7 +45,7 @@ YBColumnSpec::~YBColumnSpec() {
   delete data_;
 }
 
-YBColumnSpec* YBColumnSpec::Type(YBColumnSchema::DataType type) {
+YBColumnSpec* YBColumnSpec::Type(DataType type) {
   data_->has_type = true;
   data_->type = type;
   return this;
@@ -159,15 +64,13 @@ YBColumnSpec* YBColumnSpec::Default(YBValue* v) {
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::Compression(
-    YBColumnStorageAttributes::CompressionType compression) {
+YBColumnSpec* YBColumnSpec::Compression(CompressionType compression) {
   data_->has_compression = true;
   data_->compression = compression;
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::Encoding(
-    YBColumnStorageAttributes::EncodingType encoding) {
+YBColumnSpec* YBColumnSpec::Encoding(EncodingType encoding) {
   data_->has_encoding = true;
   data_->encoding = encoding;
   return this;
@@ -231,7 +134,6 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   if (!data_->has_type) {
     return STATUS(InvalidArgument, "no type provided for column", data_->name);
   }
-  DataType internal_type = ToInternalDataType(data_->type);
 
   bool nullable = data_->has_nullable ? data_->nullable : true;
 
@@ -239,18 +141,16 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   // TODO: distinguish between DEFAULT NULL and no default?
   if (data_->has_default) {
     RETURN_NOT_OK(data_->default_val->data_->CheckTypeAndGetPointer(
-                      data_->name, internal_type, &default_val));
+                      data_->name, data_->type, &default_val));
   }
 
   // Encoding and compression
-  YBColumnStorageAttributes::EncodingType encoding =
-    YBColumnStorageAttributes::AUTO_ENCODING;
+  EncodingType encoding = AUTO_ENCODING;
   if (data_->has_encoding) {
     encoding = data_->encoding;
   }
 
-  YBColumnStorageAttributes::CompressionType compression =
-    YBColumnStorageAttributes::DEFAULT_COMPRESSION;
+  CompressionType compression = DEFAULT_COMPRESSION;
   if (data_->has_compression) {
     compression = data_->compression;
   }
@@ -437,7 +337,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
 ////////////////////////////////////////////////////////////
 
 std::string YBColumnSchema::DataTypeToString(DataType type) {
-  return DataType_Name(ToInternalDataType(type));
+  return DataType_Name(type);
 }
 
 YBColumnSchema::YBColumnSchema(const std::string &name,
@@ -447,10 +347,10 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                const void* default_value,
                                YBColumnStorageAttributes attributes) {
   ColumnStorageAttributes attr_private;
-  attr_private.encoding = ToInternalEncodingType(attributes.encoding());
-  attr_private.compression = ToInternalCompressionType(attributes.compression());
-  col_ = new ColumnSchema(name, ToInternalDataType(type), is_nullable, is_hash_key,
-                          default_value, default_value, attr_private);
+  attr_private.encoding = attributes.encoding();
+  attr_private.compression = attributes.compression();
+  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, default_value, default_value,
+      attr_private);
 }
 
 YBColumnSchema::YBColumnSchema(const YBColumnSchema& other)
@@ -499,8 +399,8 @@ bool YBColumnSchema::is_hash_key() const {
   return DCHECK_NOTNULL(col_)->is_hash_key();
 }
 
-YBColumnSchema::DataType YBColumnSchema::type() const {
-  return FromInternalDataType(DCHECK_NOTNULL(col_)->type_info()->type());
+DataType YBColumnSchema::type() const {
+  return DCHECK_NOTNULL(col_)->type_info()->type();
 }
 
 
@@ -558,11 +458,9 @@ bool YBSchema::Equals(const YBSchema& other) const {
 
 YBColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
-  YBColumnStorageAttributes attrs(FromInternalEncodingType(col.attributes().encoding),
-                                    FromInternalCompressionType(col.attributes().compression));
-  return YBColumnSchema(col.name(), FromInternalDataType(col.type_info()->type()),
-                        col.is_nullable(), col.is_hash_key(), col.read_default_value(),
-                        attrs);
+  YBColumnStorageAttributes attrs(col.attributes().encoding, col.attributes().compression);
+  return YBColumnSchema(col.name(), col.type_info()->type(), col.is_nullable(), col.is_hash_key(),
+      col.read_default_value(), attrs);
 }
 
 YBColumnSchema YBSchema::ColumnById(int32_t column_id) const {

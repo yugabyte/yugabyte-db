@@ -248,13 +248,12 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDropStmt *tnode) {
 
 template<typename PBType>
 CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
-                                  yb::DataType col_type,
+                                  InternalType col_type,
                                   PBType* col_pb,
                                   YBPartialRow *row,
                                   int col_index) {
-
   switch (col_type) {
-    case INT8: {
+    case InternalType::kInt8Value: {
       EvalIntValue int_value;
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
@@ -272,7 +271,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case INT16: {
+    case InternalType::kInt16Value: {
       EvalIntValue int_value;
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
@@ -290,7 +289,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case INT32: {
+    case InternalType::kInt32Value: {
       EvalIntValue int_value;
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
@@ -308,7 +307,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case INT64: {
+    case InternalType::kInt64Value: {
       EvalIntValue int_value;
       RETURN_NOT_OK(EvalExpr(expr, &int_value));
 
@@ -326,7 +325,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case STRING: {
+    case InternalType::kStringValue: {
       EvalStringValue string_value;
       RETURN_NOT_OK(EvalExpr(expr, &string_value));
 
@@ -345,7 +344,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case FLOAT: {
+    case InternalType::kFloatValue: {
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
@@ -362,7 +361,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case DOUBLE: {
+    case InternalType::kDoubleValue: {
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalExpr(expr, &double_value));
 
@@ -379,7 +378,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case BOOL: {
+    case InternalType::kBoolValue: {
       EvalBoolValue bool_value;
       RETURN_NOT_OK(EvalExpr(expr, &bool_value));
 
@@ -395,7 +394,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case TIMESTAMP: {
+    case InternalType::kTimestampValue: {
       EvalTimestampValue timestamp_value;
       RETURN_NOT_OK(EvalExpr(expr, &timestamp_value));
 
@@ -408,16 +407,9 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
-    case BINARY:
-      LOG(FATAL) << "BINARY type is not yet supported";
-      break;
-
-    case UINT8: FALLTHROUGH_INTENDED;
-    case UINT16: FALLTHROUGH_INTENDED;
-    case UINT32: FALLTHROUGH_INTENDED;
-    case UINT64: FALLTHROUGH_INTENDED;
+    case InternalType::VALUE_NOT_SET: FALLTHROUGH_INTENDED;
     default:
-      LOG(FATAL) << "Not an SQL type";
+      LOG(FATAL) << "Not a valid type";
   }
 
   return Status::OK();

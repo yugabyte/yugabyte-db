@@ -10,9 +10,9 @@ namespace sql {
 // the parser/scanner phase and as a result if we're doing string matching everything should be
 // lowercase.
 const char PTTableProperty::kDefaultTimeToLive[] = "default_time_to_live";
-const std::map<std::string, client::YBColumnSchema::DataType> PTTableProperty::kPropertyDataTypes
+const std::map<std::string, DataType> PTTableProperty::kPropertyDataTypes
     = {
-    {PTTableProperty::kDefaultTimeToLive, client::YBColumnSchema::INT64}
+    {PTTableProperty::kDefaultTimeToLive, DataType::INT64}
 };
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,

@@ -109,16 +109,16 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // schema has kNumIntCols contiguous columns of Int32 and Int64, in order.
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(YBColumnSchema::INT64)->NotNull()->PrimaryKey();
-    b.AddColumn("string_val")->Type(YBColumnSchema::STRING)->NotNull();
-    b.AddColumn("int32_val1")->Type(YBColumnSchema::INT32)->NotNull();
-    b.AddColumn("int32_val2")->Type(YBColumnSchema::INT32)->NotNull();
-    b.AddColumn("int32_val3")->Type(YBColumnSchema::INT32)->NotNull();
-    b.AddColumn("int32_val4")->Type(YBColumnSchema::INT32)->NotNull();
-    b.AddColumn("int64_val1")->Type(YBColumnSchema::INT64)->NotNull();
-    b.AddColumn("int64_val2")->Type(YBColumnSchema::INT64)->NotNull();
-    b.AddColumn("int64_val3")->Type(YBColumnSchema::INT64)->NotNull();
-    b.AddColumn("int64_val4")->Type(YBColumnSchema::INT64)->NotNull();
+    b.AddColumn("key")->Type(INT64)->NotNull()->PrimaryKey();
+    b.AddColumn("string_val")->Type(STRING)->NotNull();
+    b.AddColumn("int32_val1")->Type(INT32)->NotNull();
+    b.AddColumn("int32_val2")->Type(INT32)->NotNull();
+    b.AddColumn("int32_val3")->Type(INT32)->NotNull();
+    b.AddColumn("int32_val4")->Type(INT32)->NotNull();
+    b.AddColumn("int64_val1")->Type(INT64)->NotNull();
+    b.AddColumn("int64_val2")->Type(INT64)->NotNull();
+    b.AddColumn("int64_val3")->Type(INT64)->NotNull();
+    b.AddColumn("int64_val4")->Type(INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 

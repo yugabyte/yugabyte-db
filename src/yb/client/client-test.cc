@@ -102,10 +102,10 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   ClientTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(YBColumnSchema::INT32)->NotNull();
-    b.AddColumn("string_val")->Type(YBColumnSchema::STRING)->Nullable();
-    b.AddColumn("non_null_with_default")->Type(YBColumnSchema::INT32)->NotNull()
+    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(INT32)->NotNull();
+    b.AddColumn("string_val")->Type(STRING)->Nullable();
+    b.AddColumn("non_null_with_default")->Type(INT32)->NotNull()
       ->Default(YBValue::FromInt(12345));
     CHECK_OK(b.Build(&schema_));
 
@@ -766,7 +766,7 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns({ "int_val" }));
   ASSERT_EQ(scanner.GetProjectionSchema().num_columns(), 1);
-  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), YBColumnSchema::INT32);
+  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), INT32);
   ASSERT_OK(scanner.AddConjunctPredicate(
                 client_table_->NewComparisonPredicate("key", YBPredicate::GREATER_EQUAL,
                                                       YBValue::FromInt(5))));
@@ -1866,7 +1866,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   // test that adding a non-nullable column with no default value throws an error
   {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull();
+    table_alterer->AddColumn("key")->Type(INT32)->NotNull();
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(), "column `key`: NOT NULL columns must have a default");
@@ -1909,7 +1909,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->DropColumn("int_val")
-      ->AddColumn("new_col")->Type(YBColumnSchema::INT32);
+      ->AddColumn("new_col")->Type(INT32);
     ASSERT_OK(table_alterer->Alter());
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
   }
@@ -1918,8 +1918,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   // type throws an error
   {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new_string_val")->Type(YBColumnSchema::STRING)
-      ->Encoding(YBColumnStorageAttributes::GROUP_VARINT);
+    table_alterer->AddColumn("new_string_val")->Type(STRING)->Encoding(GROUP_VARINT);
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsNotSupported());
     ASSERT_STR_CONTAINS(s.ToString(), "Unsupported type/encoding pair");
@@ -1928,8 +1927,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   {
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new_string_val")->Type(YBColumnSchema::STRING)
-      ->Encoding(YBColumnStorageAttributes::PREFIX_ENCODING);
+    table_alterer->AddColumn("new_string_val")->Type(STRING)->Encoding(PREFIX_ENCODING);
     ASSERT_OK(table_alterer->Alter());
     ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
   }

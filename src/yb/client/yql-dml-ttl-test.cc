@@ -14,11 +14,11 @@ class YqlDmlTTLTest : public YqlDmlBase {
   }
 
   virtual void addColumns(YBSchemaBuilder *b) override {
-    b->AddColumn("k")->Type(YBColumnSchema::INT32)->HashPrimaryKey()->NotNull();
-    b->AddColumn("c1")->Type(YBColumnSchema::INT32);
-    b->AddColumn("c2")->Type(YBColumnSchema::STRING);
-    b->AddColumn("c3")->Type(YBColumnSchema::INT32);
-    b->AddColumn("c4")->Type(YBColumnSchema::STRING);
+    b->AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b->AddColumn("c1")->Type(INT32);
+    b->AddColumn("c2")->Type(STRING);
+    b->AddColumn("c3")->Type(INT32);
+    b->AddColumn("c4")->Type(STRING);
   }
 };
 

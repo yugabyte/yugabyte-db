@@ -80,10 +80,10 @@ class LinkedListTester {
         client_(std::move(client)) {
     client::YBSchemaBuilder b;
 
-    b.AddColumn(kKeyColumnName)->Type(client::YBColumnSchema::INT64)->NotNull()->PrimaryKey();
-    b.AddColumn(kLinkColumnName)->Type(client::YBColumnSchema::INT64)->NotNull();
-    b.AddColumn(kInsertTsColumnName)->Type(client::YBColumnSchema::INT64)->NotNull();
-    b.AddColumn(kUpdatedColumnName)->Type(client::YBColumnSchema::BOOL)->NotNull()
+    b.AddColumn(kKeyColumnName)->Type(INT64)->NotNull()->PrimaryKey();
+    b.AddColumn(kLinkColumnName)->Type(INT64)->NotNull();
+    b.AddColumn(kInsertTsColumnName)->Type(INT64)->NotNull();
+    b.AddColumn(kUpdatedColumnName)->Type(BOOL)->NotNull()
       ->Default(client::YBValue::FromBool(false));
     CHECK_OK(b.Build(&schema_));
   }

@@ -29,31 +29,31 @@ void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
                         YBPartialRow* row) {
-  client::YBColumnSchema::DataType type = schema.Column(col_idx).type();
+  DataType type = schema.Column(col_idx).type();
   char buf[kFastToBufferSize];
   switch (type) {
-    case client::YBColumnSchema::INT8:
+    case INT8:
       CHECK_OK(row->SetInt8(col_idx, value));
       break;
-    case client::YBColumnSchema::INT16:
+    case INT16:
       CHECK_OK(row->SetInt16(col_idx, value));
       break;
-    case client::YBColumnSchema::INT32:
+    case INT32:
       CHECK_OK(row->SetInt32(col_idx, value));
       break;
-    case client::YBColumnSchema::INT64:
+    case INT64:
       CHECK_OK(row->SetInt64(col_idx, value));
       break;
-    case client::YBColumnSchema::FLOAT:
+    case FLOAT:
       CHECK_OK(row->SetFloat(col_idx, value / 123.0));
       break;
-    case client::YBColumnSchema::DOUBLE:
+    case DOUBLE:
       CHECK_OK(row->SetDouble(col_idx, value / 123.0));
       break;
-    case client::YBColumnSchema::STRING:
+    case STRING:
       CHECK_OK(row->SetStringCopy(col_idx, FastHex64ToBuffer(value, buf)));
       break;
-    case client::YBColumnSchema::BOOL:
+    case BOOL:
       CHECK_OK(row->SetBool(col_idx, value));
       break;
     default:

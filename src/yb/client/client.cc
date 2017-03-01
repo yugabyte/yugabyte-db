@@ -815,7 +815,7 @@ Status YBTableCreator::Create() {
     CHECK(!data_->schema_) << "Schema should not be set for redis table creation";
     redis_schema = new YBSchema();
     YBSchemaBuilder b;
-    b.AddColumn(kRedisKeyColumnName)->Type(YBColumnSchema::BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn(kRedisKeyColumnName)->Type(BINARY)->NotNull()->HashPrimaryKey();
     RETURN_NOT_OK(b.Build(redis_schema));
     schema(redis_schema);
   }

@@ -227,7 +227,7 @@ struct MirrorTable {
   Status Create() {
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
     CHECK_OK(b.Build(&schema));
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     RETURN_NOT_OK(table_creator->table_name(kTableName)
@@ -300,9 +300,9 @@ struct MirrorTable {
 
     if (nullable) {
       default_value = RowState::kNullValue;
-      table_alterer->AddColumn(name)->Type(YBColumnSchema::INT32);
+      table_alterer->AddColumn(name)->Type(INT32);
     } else {
-      table_alterer->AddColumn(name)->Type(YBColumnSchema::INT32)->NotNull()
+      table_alterer->AddColumn(name)->Type(INT32)->NotNull()
         ->Default(YBValue::FromInt(default_value));
     }
     ASSERT_OK(table_alterer->Alter());

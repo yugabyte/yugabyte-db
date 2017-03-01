@@ -77,13 +77,34 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
 }
 
 //--------------------------------------------------------------------------------------------------
+// Utilities for Convertible and Comparable checks below
+// We map supported types to consecutive indexes so we can write down convertible/comparable
+// functions concisely using a matrix for each.
+// TODO (mihnea) this code is temporary: should be removed/simplified as part of cleaning up the
+// DataType enum to separate our CQL/Client types from the Kudu-inherited internal types
 
-ConversionMode SemContext::GetConversionMode(client::YBColumnSchema::DataType lhs_type,
-                                             client::YBColumnSchema::DataType rhs_type) const {
+const DataType kSupportedTypes[] =
+    {INT8, INT16, INT32, INT64, STRING, BOOL, FLOAT, DOUBLE, BINARY, TIMESTAMP, NULL_VALUE_TYPE};
+
+const std::map<DataType, int> MakeTypesIndex() {
+  std::map<DataType, int> type_indexes;
+  int size = sizeof(kSupportedTypes)/sizeof(kSupportedTypes[0]);
+  for (int i = 0; i < size; ++i) {
+    type_indexes.insert({kSupportedTypes[i], i});
+  }
+  return type_indexes;
+}
+
+const std::map<DataType, int> kTypesIndex = MakeTypesIndex();
+
+//--------------------------------------------------------------------------------------------------
+
+ConversionMode SemContext::GetConversionMode(DataType lhs_type,
+                                             DataType rhs_type) const {
   static const ConversionMode kIM = ConversionMode::kImplicit;
   static const ConversionMode kEX = ConversionMode::kExplicit;
   static const ConversionMode kNA = ConversionMode::kNotAllowed;
-  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX;
+  static const int max_index = sizeof(kSupportedTypes)/sizeof(kSupportedTypes[0]); // TODO fix this
   static const ConversionMode conversion_mode[max_index][max_index] = {
     // RHS (source)
     // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)
@@ -100,14 +121,14 @@ ConversionMode SemContext::GetConversionMode(client::YBColumnSchema::DataType lh
     { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kNA,  kNA,  kNA },            // null
   };
 
-  return conversion_mode[lhs_type][rhs_type];
+  return conversion_mode[kTypesIndex.at(lhs_type)][kTypesIndex.at(rhs_type)];
 }
 
-bool SemContext::IsComparable(client::YBColumnSchema::DataType lhs_type,
-                              client::YBColumnSchema::DataType rhs_type) const {
+bool SemContext::IsComparable(DataType lhs_type,
+                              DataType rhs_type) const {
   static const bool kYS = true;
   static const bool kNO = false;
-  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX;
+  static const int max_index = sizeof(kSupportedTypes)/sizeof(kSupportedTypes[0]); // TODO fix this
   static const bool compare_mode[max_index][max_index] = {
     // RHS (source)
     // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)
@@ -124,7 +145,7 @@ bool SemContext::IsComparable(client::YBColumnSchema::DataType lhs_type,
     { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // null
   };
 
-  return compare_mode[lhs_type][rhs_type];
+  return compare_mode[kTypesIndex.at(lhs_type)][kTypesIndex.at(rhs_type)];
 }
 
 }  // namespace sql

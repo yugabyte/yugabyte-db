@@ -44,8 +44,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_EmptySchema) {
 TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32)->NotNull();
+  b.AddColumn("a")->Type(INT32)->NotNull();
+  b.AddColumn("b")->Type(INT32)->NotNull();
   ASSERT_EQ("Invalid argument: no primary key specified",
             b.Build(&s).ToString(/* no file/line */ false));
 }
@@ -53,9 +53,9 @@ TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
 TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("x")->Type(YBColumnSchema::INT32);
-  b.AddColumn("x")->Type(YBColumnSchema::INT32);
+  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("x")->Type(INT32);
+  b.AddColumn("x")->Type(INT32);
   ASSERT_EQ("Invalid argument: Duplicate column name: x",
             b.Build(&s).ToString(/* no file/line */ false));
 }
@@ -63,9 +63,9 @@ TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
 TEST(ClientUnitTest, TestSchemaBuilder_WrongPrimaryKeyOrder) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(YBColumnSchema::INT32);
-  b.AddColumn("x")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();;
-  b.AddColumn("x")->Type(YBColumnSchema::INT32);
+  b.AddColumn("key")->Type(INT32);
+  b.AddColumn("x")->Type(INT32)->NotNull()->PrimaryKey();;
+  b.AddColumn("x")->Type(INT32);
   const char *expected_status =
     "Invalid argument: The given columns in a schema must be ordered as hash primary key columns "
     "then primary key columns and then regular columns";
@@ -75,8 +75,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_WrongPrimaryKeyOrder) {
 TEST(ClientUnitTest, TestSchemaBuilder_WrongHashKeyOrder) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->PrimaryKey();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32)->HashPrimaryKey();
+  b.AddColumn("a")->Type(INT32)->PrimaryKey();
+  b.AddColumn("b")->Type(INT32)->HashPrimaryKey();
   const char *expected_status =
     "Invalid argument: The given columns in a schema must be ordered as hash primary key columns "
     "then primary key columns and then regular columns";
@@ -86,8 +86,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_WrongHashKeyOrder) {
 TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->PrimaryKey();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32);
+  b.AddColumn("a")->Type(INT32)->PrimaryKey();
+  b.AddColumn("b")->Type(INT32);
   b.SetPrimaryKey({ "a", "b" });
   ASSERT_EQ("Invalid argument: primary key specified by both "
             "SetPrimaryKey() and on a specific column: a",
@@ -97,17 +97,17 @@ TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
 TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32);
-  b.AddColumn("c")->Type(YBColumnSchema::INT32)->NotNull();
+  b.AddColumn("a")->Type(INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("b")->Type(INT32);
+  b.AddColumn("c")->Type(INT32)->NotNull();
   ASSERT_EQ("OK", b.Build(&s).ToString());
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32)->NotNull();
+  b.AddColumn("a")->Type(INT32)->NotNull();
+  b.AddColumn("b")->Type(INT32)->NotNull();
   b.SetPrimaryKey({ "a", "b" });
   ASSERT_EQ("OK", b.Build(&s).ToString());
 
@@ -119,8 +119,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
 TEST(ClientUnitTest, TestSchemaBuilder_DefaultValues) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32)->NotNull()
+  b.AddColumn("a")->Type(INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("b")->Type(INT32)->NotNull()
     ->Default(YBValue::FromInt(12345));
   ASSERT_EQ("OK", b.Build(&s).ToString());
 }
@@ -128,10 +128,10 @@ TEST(ClientUnitTest, TestSchemaBuilder_DefaultValues) {
 TEST(ClientUnitTest, TestSchemaBuilder_DefaultValueString) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("b")->Type(YBColumnSchema::STRING)->NotNull()
+  b.AddColumn("a")->Type(INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("b")->Type(STRING)->NotNull()
     ->Default(YBValue::CopyString("abc"));
-  b.AddColumn("c")->Type(YBColumnSchema::BINARY)->NotNull()
+  b.AddColumn("c")->Type(BINARY)->NotNull()
     ->Default(YBValue::CopyString("def"));
   ASSERT_EQ("OK", b.Build(&s).ToString());
 }
@@ -139,9 +139,9 @@ TEST(ClientUnitTest, TestSchemaBuilder_DefaultValueString) {
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("x")->Type(YBColumnSchema::INT32)->NotNull();
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32)->NotNull();
+  b.AddColumn("x")->Type(INT32)->NotNull();
+  b.AddColumn("a")->Type(INT32)->NotNull();
+  b.AddColumn("b")->Type(INT32)->NotNull();
   b.SetPrimaryKey({ "a", "b" });
   ASSERT_EQ("Invalid argument: primary key columns must be listed "
             "first in the schema: a",
@@ -151,8 +151,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("a")->Type(YBColumnSchema::INT32)->NotNull();
-  b.AddColumn("b")->Type(YBColumnSchema::INT32)->NotNull();
+  b.AddColumn("a")->Type(INT32)->NotNull();
+  b.AddColumn("b")->Type(INT32)->NotNull();
   b.SetPrimaryKey({ "foo" });
   ASSERT_EQ("Invalid argument: primary key column not defined: foo",
             b.Build(&s).ToString(/* no file/line */ false));

@@ -108,13 +108,11 @@ class SemContext : public ProcessContext {
   const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
 
   // Check if the rhs and lhs datatypes are compatible. Their conversion mode must be implicit.
-  bool IsConvertible(client::YBColumnSchema::DataType lhs_type,
-                     client::YBColumnSchema::DataType rhs_type) const {
+  bool IsConvertible(DataType lhs_type, DataType rhs_type) const {
     return (GetConversionMode(lhs_type, rhs_type) == ConversionMode::kImplicit);
   }
 
-  bool IsComparable(client::YBColumnSchema::DataType lhs_type,
-                    client::YBColumnSchema::DataType rhs_type) const;
+  bool IsComparable(DataType lhs_type, DataType rhs_type) const;
 
   const std::string& CurrentKeyspace() const {
     return sql_env_->CurrentKeyspace();
@@ -127,8 +125,7 @@ class SemContext : public ProcessContext {
 
  private:
   // Find conversion mode from 'rhs_type' to 'lhs_type'.
-  ConversionMode GetConversionMode(client::YBColumnSchema::DataType lhs_type,
-                                   client::YBColumnSchema::DataType rhs_type) const;
+  ConversionMode GetConversionMode(DataType lhs_type, DataType rhs_type) const;
 
   // Find symbol.
   const SymbolEntry *SeekSymbol(const MCString& name) const;

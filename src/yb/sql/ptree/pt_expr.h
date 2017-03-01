@@ -75,8 +75,8 @@ class PTExpr : public TreeNode {
       MemoryContext *memctx,
       YBLocation::SharedPtr loc,
       ExprOperator op = ExprOperator::kNoOp,
-      yb::DataType type_id = yb::DataType::UNKNOWN_DATA,
-      client::YBColumnSchema::DataType sql_type = client::YBColumnSchema::MAX_TYPE_INDEX)
+      InternalType type_id = InternalType::VALUE_NOT_SET,
+      DataType sql_type = DataType::UNKNOWN_DATA)
       : TreeNode(memctx, loc),
         op_(op),
         type_id_(type_id),
@@ -86,21 +86,21 @@ class PTExpr : public TreeNode {
   }
 
   // Expression return type in Cassandra format.
-  virtual yb::DataType type_id() const {
+  virtual InternalType type_id() const {
     return type_id_;
   }
 
   bool has_valid_type_id() {
-    return type_id_ != yb::DataType::UNKNOWN_DATA;
+    return type_id_ != InternalType::VALUE_NOT_SET;
   }
 
   // Expression return type in DocDB format.
-  virtual client::YBColumnSchema::DataType sql_type() const {
+  virtual DataType sql_type() const {
     return sql_type_;
   }
 
   bool has_valid_sql_type() {
-    return sql_type_ != client::YBColumnSchema::MAX_TYPE_INDEX;
+    return sql_type_ != DataType::UNKNOWN_DATA;
   }
 
   // Node type.
@@ -115,7 +115,7 @@ class PTExpr : public TreeNode {
 
   // Predicate for null.
   virtual bool is_null() {
-    return sql_type_ == client::YBColumnSchema::NULL_VALUE_TYPE;
+    return sql_type_ == DataType::NULL_VALUE_TYPE;
   }
 
   // Returns the operands of an expression.
@@ -160,16 +160,16 @@ class PTExpr : public TreeNode {
 
  protected:
   ExprOperator op_;
-  yb::DataType type_id_;
-  client::YBColumnSchema::DataType sql_type_;
+  InternalType type_id_;
+  DataType sql_type_;
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with no operand (0 input).
-template<yb::DataType itype,
-         client::YBColumnSchema::DataType stype,
+template<InternalType itype,
+         DataType stype,
          typename ReturnType>
 class PTExprConst : public PTExpr {
  public:
@@ -217,7 +217,7 @@ class PTExprConst : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with no operand (0 input).
-template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+template<InternalType itype, DataType stype>
 class PTExpr0 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -253,7 +253,7 @@ class PTExpr0 : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with one operand (1 input).
-template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+template<InternalType itype, DataType stype>
 class PTExpr1 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -303,7 +303,7 @@ class PTExpr1 : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with two operands (2 inputs).
-template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+template<InternalType itype, DataType stype>
 class PTExpr2 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -361,7 +361,7 @@ class PTExpr2 : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with two operands (3 inputs).
-template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+template<InternalType itype, DataType stype>
 class PTExpr3 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -427,38 +427,38 @@ class PTExpr3 : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Tree node for constants
-using PTNull = PTExprConst<yb::DataType::UNKNOWN_DATA,
-                           client::YBColumnSchema::NULL_VALUE_TYPE,
+using PTNull = PTExprConst<InternalType::VALUE_NOT_SET,
+                           DataType::NULL_VALUE_TYPE,
                            void*>;
 
-using PTConstInt = PTExprConst<yb::DataType::INT64,
-                               client::YBColumnSchema::INT64,
+using PTConstInt = PTExprConst<InternalType::kInt64Value,
+                               DataType::INT64,
                                int64_t>;
 
-using PTConstDouble = PTExprConst<yb::DataType::DOUBLE,
-                                  client::YBColumnSchema::DOUBLE,
+using PTConstDouble = PTExprConst<InternalType::kDoubleValue,
+                                  DataType::DOUBLE,
                                   long double>;
 
-using PTConstText = PTExprConst<yb::DataType::STRING,
-                                client::YBColumnSchema::STRING,
+using PTConstText = PTExprConst<InternalType::kStringValue,
+                                DataType::STRING,
                                 MCString::SharedPtr>;
 
-using PTConstBool = PTExprConst<yb::DataType::BOOL,
-                                client::YBColumnSchema::BOOL,
+using PTConstBool = PTExprConst<InternalType::kBoolValue,
+                                DataType::BOOL,
                                 bool>;
 
 // Tree node for comparisons.
-using PTPredicate0 = PTExpr0<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
-using PTPredicate1 = PTExpr1<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
-using PTPredicate2 = PTExpr2<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
-using PTPredicate3 = PTExpr3<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
+using PTPredicate0 = PTExpr0<InternalType::kBoolValue, DataType::BOOL>;
+using PTPredicate1 = PTExpr1<InternalType::kBoolValue, DataType::BOOL>;
+using PTPredicate2 = PTExpr2<InternalType::kBoolValue, DataType::BOOL>;
+using PTPredicate3 = PTExpr3<InternalType::kBoolValue, DataType::BOOL>;
 
 // Operators: '+', '-', '*', '/', etc.
 // The datatypes for these operators cannot be determined at parsing time.
-using PTOperator0 = PTExpr0<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
-using PTOperator1 = PTExpr1<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
-using PTOperator2 = PTExpr2<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
-using PTOperator3 = PTExpr3<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
+using PTOperator0 = PTExpr0<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA>;
+using PTOperator1 = PTExpr1<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA>;
+using PTOperator2 = PTExpr2<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA>;
+using PTOperator3 = PTExpr3<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA>;
 
 //--------------------------------------------------------------------------------------------------
 // Column Reference. The datatype of this expression would need to be resolved by the analyzer.

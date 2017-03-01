@@ -14,38 +14,38 @@ namespace sql {
 Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
 
   switch (expr->type_id()) {
-    case DataType::UNKNOWN_DATA: {
+    case InternalType::VALUE_NOT_SET: {
       // This is a null node.
       result->set_null();
       break;
     }
 
-    case DataType::INT8: FALLTHROUGH_INTENDED;
-    case DataType::INT16: FALLTHROUGH_INTENDED;
-    case DataType::INT32: FALLTHROUGH_INTENDED;
-    case DataType::INT64: {
+    case InternalType::kInt8Value: FALLTHROUGH_INTENDED;
+    case InternalType::kInt16Value: FALLTHROUGH_INTENDED;
+    case InternalType::kInt32Value: FALLTHROUGH_INTENDED;
+    case InternalType::kInt64Value: {
       EvalIntValue int_value;
       RETURN_NOT_OK(EvalIntExpr(expr, &int_value));
       RETURN_NOT_OK(ConvertFromInt(result, int_value));
       break;
     }
 
-    case DataType::FLOAT: FALLTHROUGH_INTENDED;
-    case DataType::DOUBLE: {
+    case InternalType::kFloatValue: FALLTHROUGH_INTENDED;
+    case InternalType::kDoubleValue: {
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalDoubleExpr(expr, &double_value));
       RETURN_NOT_OK(ConvertFromDouble(result, double_value));
       break;
     }
 
-    case DataType::STRING: {
+    case InternalType::kStringValue: {
       EvalStringValue string_value;
       RETURN_NOT_OK(EvalStringExpr(expr, &string_value));
       RETURN_NOT_OK(ConvertFromString(result, string_value));
       break;
     }
 
-    case DataType::BOOL: {
+    case InternalType::kBoolValue: {
       EvalBoolValue bool_value;
       RETURN_NOT_OK(EvalBoolExpr(expr, &bool_value));
       RETURN_NOT_OK(ConvertFromBool(result, bool_value));
@@ -131,15 +131,15 @@ Status Executor::EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *resu
 
 Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value) {
   switch (result->datatype()) {
-    case DataType::INT64:
+    case InternalType::kInt64Value:
       static_cast<EvalIntValue *>(result)->value_ = int_value.value_;
       break;
 
-    case DataType::DOUBLE:
+    case InternalType::kDoubleValue:
       static_cast<EvalDoubleValue *>(result)->value_ = int_value.value_;
       break;
 
-    case DataType::TIMESTAMP: {
+    case InternalType::kTimestampValue: {
       int64_t val = int_value.value_;
       int64_t ts = DateTime::TimestampFromInt(val).ToInt64();
       static_cast<EvalTimestampValue *>(result)->value_ = ts;
@@ -154,7 +154,7 @@ Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value
 
 Status Executor::ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value) {
   switch (result->datatype()) {
-    case DataType::DOUBLE:
+    case InternalType::kDoubleValue:
       static_cast<EvalDoubleValue *>(result)->value_ = double_value.value_;
       break;
 
@@ -166,11 +166,11 @@ Status Executor::ConvertFromDouble(EvalValue *result, const EvalDoubleValue& dou
 
 Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& string_value) {
   switch (result->datatype()) {
-    case DataType::STRING:
+    case InternalType::kStringValue:
       static_cast<EvalStringValue *>(result)->value_ = string_value.value_;
       break;
 
-    case DataType::TIMESTAMP: {
+    case InternalType::kTimestampValue: {
       std::string s = string_value.value_.get()->c_str();
       Timestamp ts;
       RETURN_NOT_OK(DateTime::TimestampFromString(s, &ts));
@@ -186,7 +186,7 @@ Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& str
 
 Status Executor::ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_value) {
   switch (result->datatype()) {
-    case DataType::BOOL:
+    case InternalType::kBoolValue:
       static_cast<EvalBoolValue *>(result)->value_ = bool_value.value_;
       break;
 

@@ -27,22 +27,6 @@ namespace client {
 
 // Helper functions that convert between client-facing and internal PB enums.
 
-yb::EncodingType ToInternalEncodingType(
-    YBColumnStorageAttributes::EncodingType type);
-YBColumnStorageAttributes::EncodingType FromInternalEncodingType(
-    yb::EncodingType type);
-
-yb::CompressionType ToInternalCompressionType(
-    YBColumnStorageAttributes::CompressionType type);
-YBColumnStorageAttributes::CompressionType FromInternalCompressionType(
-    yb::CompressionType type);
-
-yb::DataType ToInternalDataType(
-    YBColumnSchema::DataType type);
-YBColumnSchema::DataType FromInternalDataType(
-    yb::DataType type);
-
-
 class YBColumnSpec::Data {
  public:
   explicit Data(std::string name)
@@ -68,16 +52,16 @@ class YBColumnSpec::Data {
   const std::string name;
 
   bool has_type;
-  YBColumnSchema::DataType type;
+  DataType type;
 
   bool has_order;
   int32_t order;
 
   bool has_encoding;
-  YBColumnStorageAttributes::EncodingType encoding;
+  EncodingType encoding;
 
   bool has_compression;
-  YBColumnStorageAttributes::CompressionType compression;
+  CompressionType compression;
 
   bool has_block_size;
   int32_t block_size;

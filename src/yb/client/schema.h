@@ -39,8 +39,13 @@
 #include "yb/client/value.h"
 #include "yb/util/yb_export.h"
 #include "yb/util/status.h"
+#include "yb/common/schema.h"
+#include "yb/common/yql_value.h"
 
 namespace yb {
+
+// the types used internally and sent over the wire to the tserver
+typedef YQLValue::InternalType InternalType;
 
 class ColumnSchema;
 class YBPartialRow;
@@ -67,25 +72,6 @@ class YBOperation;
 
 class YB_EXPORT YBColumnStorageAttributes {
  public:
-  enum EncodingType {
-    AUTO_ENCODING = 0,
-    PLAIN_ENCODING = 1,
-    PREFIX_ENCODING = 2,
-    GROUP_VARINT = 3,
-    RLE = 4,
-    DICT_ENCODING = 5,
-    BIT_SHUFFLE = 6
-  };
-
-  enum CompressionType {
-    DEFAULT_COMPRESSION = 0,
-    NO_COMPRESSION = 1,
-    SNAPPY = 2,
-    LZ4 = 3,
-    ZLIB = 4,
-  };
-
-
   // NOTE: this constructor is deprecated for external use, and will
   // be made private in a future release.
   YBColumnStorageAttributes(EncodingType encoding = AUTO_ENCODING,
@@ -114,24 +100,39 @@ class YB_EXPORT YBColumnStorageAttributes {
 
 class YB_EXPORT YBColumnSchema {
  public:
-  enum DataType {
-    INT8 = 0,
-    INT16 = 1,
-    INT32 = 2,
-    INT64 = 3,
-    STRING = 4,
-    BOOL = 5,
-    FLOAT = 6,
-    DOUBLE = 7,
-    BINARY = 8,
-    TIMESTAMP = 9,
 
-    // Logically, NULL has neither a real value or a datatype.  Implementation-wise, we give it a
-    // type so that we can typecheck expressions easier.
-    NULL_VALUE_TYPE = 10,
-
-    MAX_TYPE_INDEX
-  };
+  static InternalType ToInternalDataType(DataType data_type) {
+    switch (data_type) {
+      case INT8:
+        return InternalType::kInt8Value;
+      case INT16:
+        return InternalType::kInt16Value;
+      case INT32:
+        return InternalType::kInt32Value;
+      case INT64:
+        return InternalType::kInt64Value;
+      case FLOAT:
+        return InternalType::kFloatValue;
+      case DOUBLE:
+        return InternalType::kDoubleValue;
+      case STRING:
+        return InternalType::kStringValue;
+      case TIMESTAMP:
+        return InternalType::kTimestampValue;
+      case BOOL:
+        return InternalType::kBoolValue;
+      case UINT8: FALLTHROUGH_INTENDED;
+      case UINT16: FALLTHROUGH_INTENDED;
+      case UINT32: FALLTHROUGH_INTENDED;
+      case UINT64: FALLTHROUGH_INTENDED;
+      case BINARY: FALLTHROUGH_INTENDED;
+      case UNKNOWN_DATA: FALLTHROUGH_INTENDED;
+      case NULL_VALUE_TYPE:
+        break;
+    }
+    LOG(FATAL) << "Internal error: unsupported sql type " << data_type;
+    return InternalType::VALUE_NOT_SET;
+  }
 
   static bool IsInteger(DataType t) {
     return (t >= INT8 && t <= INT64);
@@ -201,11 +202,11 @@ class YB_EXPORT YBColumnSpec {
   YBColumnSpec* Default(YBValue* value);
 
   // Set the preferred compression for this column.
-  YBColumnSpec* Compression(YBColumnStorageAttributes::CompressionType compression);
+  YBColumnSpec* Compression(CompressionType compression);
 
   // Set the preferred encoding for this column.
   // Note that not all encodings are supported for all column types.
-  YBColumnSpec* Encoding(YBColumnStorageAttributes::EncodingType encoding);
+  YBColumnSpec* Encoding(EncodingType encoding);
 
   // Set the target block size for this column.
   //
@@ -251,7 +252,7 @@ class YB_EXPORT YBColumnSpec {
 
   // Set the type of this column.
   // Column types may not be changed once a table is created.
-  YBColumnSpec* Type(YBColumnSchema::DataType type);
+  YBColumnSpec* Type(DataType type);
 
   // Specify the user-defined order of the column.
   YBColumnSpec* Order(int32_t order);

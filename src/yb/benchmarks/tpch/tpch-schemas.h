@@ -16,8 +16,8 @@
 // under the License.
 //
 // Inline functions to create the TPC-H schemas
-#ifndef YB_BENCHMARKS_TPCH_SCHEMAS_H
-#define YB_BENCHMARKS_TPCH_SCHEMAS_H
+#ifndef YB_BENCHMARKS_TPCH_TPCH_SCHEMAS_H
+#define YB_BENCHMARKS_TPCH_TPCH_SCHEMAS_H
 
 #include <string>
 #include <vector>
@@ -45,17 +45,12 @@ static const char* const kShipInstructColName = "l_shipinstruct";
 static const char* const kShipModeColName = "l_shipmode";
 static const char* const kCommentColName = "l_comment";
 
-static const client::YBColumnStorageAttributes::EncodingType kPlainEncoding =
-  client::YBColumnStorageAttributes::PLAIN_ENCODING;
+static const EncodingType kPlainEncoding = PLAIN_ENCODING;
 
-static const client::YBColumnSchema::DataType kInt64 =
-    client::YBColumnSchema::INT64;
-static const client::YBColumnSchema::DataType kInt32 =
-    client::YBColumnSchema::INT32;
-static const client::YBColumnSchema::DataType kString =
-    client::YBColumnSchema::STRING;
-static const client::YBColumnSchema::DataType kDouble =
-    client::YBColumnSchema::DOUBLE;
+static const DataType kInt64 = INT64;
+static const DataType kInt32 = INT32;
+static const DataType kString = STRING;
+static const DataType kDouble = DOUBLE;
 
 enum {
   kOrderKeyColIdx = 0,
@@ -115,4 +110,4 @@ inline std::vector<std::string> GetTpchQ1QueryColumns() {
 
 } // namespace tpch
 } // namespace yb
-#endif
+#endif // YB_BENCHMARKS_TPCH_TPCH_SCHEMAS_H

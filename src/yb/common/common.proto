@@ -32,6 +32,7 @@ option java_package = "org.yb";
 // that have a vector that maps the protobuf tag with the index.
 enum DataType {
   UNKNOWN_DATA = 999;
+  NULL_VALUE_TYPE = 998;
   UINT8 = 0;
   INT8 = 1;
   UINT16 = 2;

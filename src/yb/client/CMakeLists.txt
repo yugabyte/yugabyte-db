@@ -238,10 +238,13 @@ if (NOT APPLE AND
   ADD_YB_TEST(client_symbol-test.sh LABELS no_dist_test)
 endif()
 
+### This test seems redundant in the presence of 'client-test' since we don't intend to support
+### the protobuffer-agnostic clients that Kudu does (otherwise tests the same code paths)
+### TODO: remove entirely or fix
 # The samples are never built with ASAN/TSAN.
-if(NOT "${YB_USE_ASAN}" AND NOT "${YB_USE_TSAN}")
-  ADD_YB_TEST(client_samples-test.sh RUN_SERIAL true LABELS no_dist_test)
-endif()
+#if(NOT "${YB_USE_ASAN}" AND NOT "${YB_USE_TSAN}")
+#  ADD_YB_TEST(client_samples-test.sh RUN_SERIAL true LABELS no_dist_test)
+#endif()
 set(YB_TEST_LINK_LIBS yb_client ybsql_util integration-tests ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)

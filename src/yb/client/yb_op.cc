@@ -228,6 +228,7 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
     case UINT32: FALLTHROUGH_INTENDED;
     case UINT64: FALLTHROUGH_INTENDED;
     case BINARY: FALLTHROUGH_INTENDED;
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
 

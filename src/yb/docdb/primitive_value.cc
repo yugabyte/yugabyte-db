@@ -506,6 +506,7 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
     case UINT32: FALLTHROUGH_INTENDED;
     case UINT64: FALLTHROUGH_INTENDED;
     case BINARY: FALLTHROUGH_INTENDED;
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
 
@@ -554,6 +555,7 @@ void PrimitiveValue::ToYQLValuePB(const DataType data_type, YQLValuePB* v) const
     case UINT32: FALLTHROUGH_INTENDED;
     case UINT64: FALLTHROUGH_INTENDED;
     case BINARY: FALLTHROUGH_INTENDED;
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
 

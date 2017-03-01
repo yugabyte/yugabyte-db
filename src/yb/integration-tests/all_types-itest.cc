@@ -47,8 +47,7 @@ struct SliceKeysTestSetup {
   }
 
   void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
-    builder->AddColumn("key")->Type(
-        client::FromInternalDataType(KeyTypeWrapper::type))->NotNull()->PrimaryKey();
+    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->PrimaryKey();
   }
 
   // Split points are calculated by equally partitioning the int64_t key space and then
@@ -128,8 +127,7 @@ struct IntKeysTestSetup {
   }
 
   void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
-    builder->AddColumn("key")->Type(
-        client::FromInternalDataType(KeyTypeWrapper::type))->NotNull()->PrimaryKey();
+    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->PrimaryKey();
   }
 
   vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
@@ -198,16 +196,16 @@ class AllTypesItest : public YBTest {
   void CreateAllTypesSchema() {
     YBSchemaBuilder builder;
     setup_.AddKeyColumnsToSchema(&builder);
-    builder.AddColumn("int8_val")->Type(YBColumnSchema::INT8);
-    builder.AddColumn("int16_val")->Type(YBColumnSchema::INT16);
-    builder.AddColumn("int32_val")->Type(YBColumnSchema::INT32);
-    builder.AddColumn("int64_val")->Type(YBColumnSchema::INT64);
-    builder.AddColumn("timestamp_val")->Type(YBColumnSchema::TIMESTAMP);
-    builder.AddColumn("string_val")->Type(YBColumnSchema::STRING);
-    builder.AddColumn("bool_val")->Type(YBColumnSchema::BOOL);
-    builder.AddColumn("float_val")->Type(YBColumnSchema::FLOAT);
-    builder.AddColumn("double_val")->Type(YBColumnSchema::DOUBLE);
-    builder.AddColumn("binary_val")->Type(YBColumnSchema::BINARY);
+    builder.AddColumn("int8_val")->Type(INT8);
+    builder.AddColumn("int16_val")->Type(INT16);
+    builder.AddColumn("int32_val")->Type(INT32);
+    builder.AddColumn("int64_val")->Type(INT64);
+    builder.AddColumn("timestamp_val")->Type(TIMESTAMP);
+    builder.AddColumn("string_val")->Type(STRING);
+    builder.AddColumn("bool_val")->Type(BOOL);
+    builder.AddColumn("float_val")->Type(FLOAT);
+    builder.AddColumn("double_val")->Type(DOUBLE);
+    builder.AddColumn("binary_val")->Type(BINARY);
     CHECK_OK(builder.Build(&schema_));
   }
 

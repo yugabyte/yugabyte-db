@@ -60,7 +60,7 @@ class PTTableProperty : public TreeNode {
   }
 
  private:
-  static const std::map<std::string, client::YBColumnSchema::DataType> kPropertyDataTypes;
+  static const std::map<std::string, DataType> kPropertyDataTypes;
   MCString::SharedPtr lhs_;
   PTExpr::SharedPtr rhs_;
 };
