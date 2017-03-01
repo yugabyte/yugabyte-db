@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import com.google.inject.AbstractModule;
-import com.yugabyte.yw.common.DevOpsHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -26,7 +26,7 @@ public class Module extends AbstractModule {
     // Set LocalMiniClusterService as the implementation for YBClientService
     bind(YBMiniClusterService.class).to(LocalYBMiniClusterService.class);
 
-    bind(DevOpsHelper.class).asEagerSingleton();
+    bind(NodeManager.class).asEagerSingleton();
     bind(MetricQueryHelper.class).asEagerSingleton();
     bind(ShellProcessHandler.class).asEagerSingleton();
   }
