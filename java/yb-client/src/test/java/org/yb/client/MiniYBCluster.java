@@ -218,6 +218,7 @@ public class MiniYBCluster implements AutoCloseable {
           "--redis_proxy_bind_address=" + localhost + ":" + redis_port,
           "--redis_proxy_webserver_port=" + redis_web_port,
           "--cql_proxy_bind_address=" + localhost + ":" + cql_port,
+          "--yb_num_shards_per_tserver=1",
           "--logtostderr",
           "--cql_proxy_webserver_port=" + cql_web_port};
       final YBDaemon daemon = configureAndStartProcess(YBDaemonType.TSERVER, tsCmdLine);

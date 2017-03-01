@@ -8,7 +8,6 @@ import static org.junit.Assert.fail;
 import com.datastax.driver.core.exceptions.QueryValidationException;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.exceptions.QueryValidationException;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -22,6 +21,7 @@ import org.yb.client.MiniYBCluster;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SocketOptions;
 import java.util.Iterator;
 import java.util.Date;
 import java.util.Calendar;
@@ -79,12 +79,17 @@ public class TestBase {
 
   @Before
   public void SetUpBefore() throws Exception {
+    SocketOptions socketOptions = new SocketOptions();
+    // Disable timeouts for sql queries since build servers might be really slow (especially mac
+    // mini)
+    socketOptions.setReadTimeoutMillis(0);
     cluster = Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
               // To sniff the CQL wire protocol using Wireshark and debug, uncomment the following
               // line to force the use of CQL V3 protocol. Wireshark does not decode V4 or higher
               // protocol yet.
               // .withProtocolVersion(com.datastax.driver.core.ProtocolVersion.V3)
+             .withSocketOptions(socketOptions)
              .build();
     LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
 
