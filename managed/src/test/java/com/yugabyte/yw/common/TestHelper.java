@@ -14,7 +14,7 @@ public class TestHelper {
   public static String createTempFile(String fileName, String data) {
     FileWriter fw;
     try {
-      File tmpFile = new File(fileName);
+      File tmpFile = new File(TMP_PATH, fileName);
       fw = new FileWriter(tmpFile);
       fw.write(data);
       fw.close();
@@ -24,6 +24,6 @@ public class TestHelper {
 
   public static String createTempFile(String data) {
     String fileName = new SimpleDateFormat("yyyyMMddhhmm").format(new Date());
-    return createTempFile(TMP_PATH + "/" + fileName, data);
+    return createTempFile(fileName, data);
   }
 }

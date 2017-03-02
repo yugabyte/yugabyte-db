@@ -280,7 +280,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateVaultWithValidFile() {
-    createTempFile(TMP_KEYS_PATH + "/vault-private.key", "PRIVATE_KEY_FILE");
+    createTempFile("keys/vault-private.key", "PRIVATE_KEY_FILE");
     JsonNode result = runCommand(defaultProvider.uuid, "create-vault", false);
     Mockito.verify(shellProcessHandler, times(1)).run(command.capture(),
         cloudCredentials.capture());

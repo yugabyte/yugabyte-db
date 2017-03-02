@@ -1,0 +1,27 @@
+# Copyright (c) YugaByte, Inc.
+
+asia-east1:
+  name: Gcp Asia East 1
+  latitude: 23.9919519
+  longitude: 120.3300829
+  ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+europe-west1:
+  name: Gcp Europe West  1
+  latitude: 50.489824
+  longitude: 3.7378805
+  ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+us-central1:
+  name: Gcp US Central 1
+  latitude: 41.2326957
+  longitude: -95.9167207
+  ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+us-west1:
+  name: Gcp US West 1
+  latitude: 45.6094756
+  longitude: -121.2088799
+  ybImage: projects/centos-cloud/global/images/centos-7-v20161025
+us-east1:
+  name: Gcp US East 1
+  latitude: 33.1637261
+  longitude: -80.1845003
+  ybImage: projects/centos-cloud/global/images/centos-7-v20161025
