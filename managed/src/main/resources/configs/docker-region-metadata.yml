@@ -1,0 +1,12 @@
+# Copyright (c) YugaByte, Inc.
+
+docker-localhost-region-1:
+  name: Localhost Region US-West
+  latitude: 36.778261
+  longitude: -119.417932
+  ybImage: local/yugabyte-server
+docker-localhost-region-2:
+  name: Localhost Region US-East
+  latitude: 37.478397
+  longitude: -76.453077
+  ybImage: local/yugabyte-server

@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.Region;
 import play.libs.Json;
 import play.mvc.Result;
 
+// TODO: move pricing data fetch to ybcloud.
 public class AWSInitializer extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AWSInitializer.class);
 

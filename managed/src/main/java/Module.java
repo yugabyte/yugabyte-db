@@ -3,6 +3,7 @@
 import com.google.inject.AbstractModule;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.common.services.LocalYBClientService;
@@ -20,6 +21,7 @@ public class Module extends AbstractModule {
   public void configure() {
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();
+    bind(ConfigHelper.class).asEagerSingleton();
     bind(SwamperHelper.class).asEagerSingleton();
     // Set LocalClientService as the implementation for YBClientService
     bind(YBClientService.class).to(LocalYBClientService.class);

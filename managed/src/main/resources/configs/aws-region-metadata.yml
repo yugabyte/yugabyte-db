@@ -1,0 +1,50 @@
+# Copyright (c) YugaByte, Inc.
+us-west-1:
+  name: US West (N. California)
+  latitude: 36.778261
+  longitude: -119.417932
+  ybImage: ami-479cdc27
+us-west-2:
+  name: US West (Oregon)
+  latitude: 43.804133
+  longitude: -120.554201
+  ybImage: ami-b613add6
+us-east-1:
+  name: US East (N. Virginia)
+  latitude: 37.478397
+  longitude: -76.453077
+  ybImage: ami-bf1f8ea8
+eu-west-1:
+  name: EU (Ireland)
+  latitude: 53.412910
+  longitude: -8.243890
+  ybImage: ami-ee79069d
+eu-central-1:
+  name: EU (Frankfurt)
+  latitude: 50.110922
+  longitude: 8.682127
+  ybImage: ami-359d6f5a
+ap-southeast-1:
+  name: Asia Pacific (Singapore)
+  latitude: 1.352083
+  longitude: 103.819836
+  ybImage: ami-80ba60e3
+ap-northeast-1:
+  name: Asia Pacific (Tokyo)
+  latitude: 35.689487
+  longitude: 139.691706
+  ybImage: ami-397fab58
+ap-southeast-2:
+  name: Asia Pacific (Sydney)
+  latitude: -33.868820
+  longitude: 151.209296
+  ybImage: ami-50102133
+ap-northeast-2:
+  name: Asia Pacific (Seoul)
+  latitude: 37.566535
+  longitude: 126.977969
+sa-east-1:
+  name: South America (São Paulo)
+  latitude: -23.550520
+  longitude: -46.633309
+  ybImage: ami-1052c27c
