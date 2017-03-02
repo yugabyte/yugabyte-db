@@ -6,6 +6,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,19 +44,24 @@ public class YugawareProperty extends Model {
   // The property config.
   @Constraints.Required
   @Column(columnDefinition = "TEXT")
-  private String value;
+  private JsonNode value;
+  public JsonNode getValue() { return value; }
 
   // The property description.
   @Column(columnDefinition = "TEXT")
   private String description;
 
-  private static final Find<String, YugawareProperty> find = new Find<String, YugawareProperty>(){};
+  public static final Find<String, YugawareProperty> find = new Find<String, YugawareProperty>(){};
 
-  private YugawareProperty(String name, PropertyEntryType type, String value, String description) {
+  private YugawareProperty(String name, PropertyEntryType type, JsonNode value, String description) {
     this.name = name;
     this.type = type;
     this.value = value;
     this.description = description;
+  }
+
+  public static YugawareProperty get(String name) {
+    return find.byId(name);
   }
 
   /**
@@ -64,12 +70,10 @@ public class YugawareProperty extends Model {
    * task that runs.
    *
    * @param name is the property name
-   * @param value is the property value
+   * @param value is the property value as JsonNode
    * @param description is a description of the property
    */
-  public static void addConfigProperty(String name,
-                                       String value,
-                                       String description) {
+  public static void addConfigProperty(String name, JsonNode value, String description) {
     if (find.byId(name) != null) {
       LOG.warn("Property " + name + " already present, skipping.");
       return;

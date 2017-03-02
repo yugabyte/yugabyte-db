@@ -8,6 +8,7 @@ import java.util.Map;
 import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 
@@ -26,7 +27,7 @@ import play.libs.Yaml;
 public class AppInit {
 
   @Inject
-  public AppInit(Environment environment, Application application) {
+  public AppInit(Environment environment, Application application, ConfigHelper configHelper) {
     Logger.info("Yugaware Application has started");
 
     Configuration appConfig = application.configuration();
@@ -52,10 +53,6 @@ public class AppInit {
             application.classloader()
         );
         Ebean.saveAll(all);
-
-        // Enter all the configuration data. This is the first thing that should be done as the other
-        // init steps may depend on this data.
-        com.yugabyte.yw.common.Configuration.initializeDB();
       }
 
       // Load metrics configurations.
@@ -64,6 +61,10 @@ public class AppInit {
         application.classloader()
       );
       MetricConfig.loadConfig(configs);
+
+      // Enter all the configuration data. This is the first thing that should be done as the other
+      // init steps may depend on this data.
+      configHelper.loadConfigsToDB();
     }
   }
 }
