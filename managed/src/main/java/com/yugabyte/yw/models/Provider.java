@@ -15,6 +15,7 @@ import javax.persistence.UniqueConstraint;
 import com.avaje.ebean.annotation.DbJson;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,7 +83,7 @@ public class Provider extends Model {
    * @param name, name of cloud provider
    * @return instance of cloud provider
    */
-  public static Provider create(UUID customerUUID, String code, String name) {
+  public static Provider create(UUID customerUUID, Common.CloudType code, String name) {
     return create(customerUUID, code, name, new HashMap<String, String>());
   }
 
@@ -94,10 +95,10 @@ public class Provider extends Model {
    * @param config, Map of cloud provider configuration
    * @return instance of cloud provider
    */
-  public static Provider create(UUID customerUUID, String code, String name, Map<String, String> config) {
+  public static Provider create(UUID customerUUID, Common.CloudType code, String name, Map<String, String> config) {
     Provider provider = new Provider();
     provider.customerUUID = customerUUID;
-    provider.code = code;
+    provider.code = code.toString();
     provider.name = name;
     provider.setConfig(config);
     provider.save();
