@@ -25,9 +25,8 @@ export const GET_SUPPORTED_REGION_DATA_SUCCESS = 'GET_SUPPORTED_REGION_DATA_SUCC
 export const GET_SUPPORTED_REGION_DATA_FAILURE = 'GET_SUPPORTED_REGION_DATA_FAILURE';
 
 export function getProviderList() {
-  var auth_token = localStorage.getItem("customer_token").toString();
-  axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
-  const request = axios.get(`${ROOT_URL}/providers`);
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
   return {
     type: GET_PROVIDER_LIST,
     payload: request

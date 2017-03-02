@@ -9,6 +9,7 @@ import static org.junit.Assert.assertFalse;
 import static play.test.Helpers.contentAsString;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
@@ -36,13 +37,13 @@ public class ProviderControllerTest extends FakeDBApplication {
   }
 
   private Result listProviders() {
-    return FakeApiHelper.doRequestWithAuthToken("GET", "/api/providers",
-            customer.createAuthToken());
+    return FakeApiHelper.doRequestWithAuthToken("GET",
+        "/api/customers/" + customer.uuid  + "/providers", customer.createAuthToken());
   }
 
   private Result createProvider(JsonNode bodyJson) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", "/api/providers",
-            customer.createAuthToken(), bodyJson);
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST",
+        "/api/customers/" + customer.uuid + "/providers", customer.createAuthToken(), bodyJson);
   }
 
   @Test
@@ -57,8 +58,8 @@ public class ProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testListProviders() {
-    Provider p1 = Provider.create(customer.uuid, "aws", "Amazon");
-    Provider p2 = Provider.create(customer.uuid, "gce", "Google");
+    Provider p1 = ModelFactory.awsProvider(customer);
+    Provider p2 = ModelFactory.gceProvider(customer);
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -69,8 +70,8 @@ public class ProviderControllerTest extends FakeDBApplication {
   }
   @Test
   public void testListProvidersWithValidCustomer() {
-    Provider.create(UUID.randomUUID(), "aws", "Amazon");
-    Provider p = Provider.create(customer.uuid, "gce", "Google");
+    Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
+    Provider p = ModelFactory.gceProvider(customer);
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
 
@@ -94,7 +95,7 @@ public class ProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateDuplicateProvider() {
-    Provider.create(customer.uuid, "aws", "Amazon");
+    ModelFactory.awsProvider(customer);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
@@ -104,7 +105,7 @@ public class ProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateProviderWithDifferentCustomer() {
-    Provider.create(UUID.randomUUID(), "aws", "Amazon");
+    Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");

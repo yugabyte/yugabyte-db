@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
@@ -24,7 +25,7 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Provider provider = Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+    Provider provider = ModelFactory.awsProvider(defaultCustomer);
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
@@ -33,14 +34,14 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testNullConfig() {
-    Provider provider = Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+    Provider provider = ModelFactory.awsProvider(defaultCustomer);
     assertNotNull(provider.uuid);
     assertTrue(provider.getConfig().isEmpty());
   }
 
   @Test
   public void testNotNullConfig() {
-    Provider provider = Provider.create(defaultCustomer.uuid, "aws",
+    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
         "Amazon", ImmutableMap.of("Foo", "Bar"));
     assertNotNull(provider.uuid);
     assertNotNull(provider.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
@@ -48,9 +49,9 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testCreateDuplicateProvider() {
-    Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+    ModelFactory.awsProvider(defaultCustomer);
     try {
-      Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+      Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
     } catch (Exception e) {
       assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
     }
@@ -58,15 +59,15 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testCreateProviderWithSameName() {
-    Provider p1 = Provider.create(defaultCustomer.uuid, "aws", "Amazon");
-    Provider p2 = Provider.create(UUID.randomUUID(), "aws", "Amazon");
+    Provider p1 = ModelFactory.awsProvider(defaultCustomer);
+    Provider p2 = Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
     assertNotNull(p1);
     assertNotNull(p2);
   }
 
   @Test
   public void testInactiveProvider() {
-    Provider provider = Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+    Provider provider = ModelFactory.awsProvider(defaultCustomer);
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
@@ -81,7 +82,7 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testFindProvider() {
-    Provider provider = Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+    Provider provider = ModelFactory.awsProvider(defaultCustomer);
 
     assertNotNull(provider.uuid);
     Provider fetch = Provider.find.byId(provider.uuid);
@@ -94,7 +95,7 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testGetByNameSuccess() {
-    Provider provider = Provider.create(defaultCustomer.uuid, "aws", "Amazon");
+    Provider provider = ModelFactory.awsProvider(defaultCustomer);
     Provider fetch = Provider.get(defaultCustomer.uuid, "Amazon");
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
@@ -105,8 +106,8 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testGetByNameFailure() {
-    Provider.create(defaultCustomer.uuid, "aws-1", "Amazon");
-    Provider.create(defaultCustomer.uuid, "aws-2", "Amazon");
+    Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
+    Provider.create(defaultCustomer.uuid, Common.CloudType.gcp, "Amazon");
     try {
       Provider.get(defaultCustomer.uuid, "Amazon");
     } catch (RuntimeException re) {

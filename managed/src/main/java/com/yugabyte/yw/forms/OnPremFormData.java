@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.UUID;
 import java.util.List;
 
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.InstanceType;
 import play.data.validation.Constraints;
 
@@ -24,7 +25,7 @@ public class OnPremFormData {
   static public class IdData {
     public UUID uuid;
     public String name;
-    public String type;
+    public Common.CloudType type;
   }
 
   static public class CloudData {
