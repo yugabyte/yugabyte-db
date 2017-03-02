@@ -176,8 +176,10 @@ public class NodeManager extends DevopsBase {
     String mountPoints = detailsList.stream()
                                     .map(volume -> volume.mountPath)
                                     .collect(Collectors.joining(","));
-    command.add("--mount_points");
-    command.add(mountPoints);
+    if (!mountPoints.isEmpty()) {
+      command.add("--mount_points");
+      command.add(mountPoints);
+    }
   }
 
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,

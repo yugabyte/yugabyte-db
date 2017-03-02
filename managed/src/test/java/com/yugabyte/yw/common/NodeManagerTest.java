@@ -24,7 +24,6 @@ import play.libs.Json;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
@@ -65,7 +64,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public NodeInstance node;
     public List<String> baseCommand = new ArrayList<>();
 
-    public final String instanceTypeCode = "fake_instance_type";
+    public static final String instanceTypeCode = "fake_instance_type";
 
     public TestData(Customer customer, Common.CloudType cloud) {
       cloudType = cloud;
@@ -220,7 +219,7 @@ public class NodeManagerTest extends FakeDBApplication {
         }
         break;
     }
-    if (!(params.instanceType == null || params.instanceType.isEmpty())) {
+    if (params.instanceType.equals(TestData.instanceTypeCode)) {
       expectedCommand.add("--mount_points");
       expectedCommand.add(fakeMountPath1 + "," + fakeMountPath2);
     }
@@ -231,17 +230,42 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testAddMountPathsInvalidParamsFail() {
+    String invalidInstanceType = "invalidType";
     try {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(testData.get(0), params, createUniverse());
-      params.instanceType = "fakeTypeBlah";
+      params.instanceType = invalidInstanceType;
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       fail();
     } catch (RuntimeException re) {
-      String errMsg = "No InstanceType exists for provider code fake1 and instance type code fake2";
+      String errMsg = "No InstanceType exists for provider code " + testData.get(0).provider.code +
+          " and instance type code " + invalidInstanceType;
       assertThat(re.getMessage(), is(errMsg));
     }
+  }
+
+  @Test
+  public void testAddMountPathsNoPathSpecified() {
+    TestData t = testData.get(0);
+    AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+    buildValidParams(t, params, createUniverse());
+    params.subnetId = t.zone.subnet;
+    params.instanceType = "fake_instance_type_2";
+    InstanceType.upsert(t.provider.code,
+                        params.instanceType,
+                        0,
+                        0.0,
+                        0,
+                        0,
+                        InstanceType.VolumeType.SSD,
+                        new InstanceType.InstanceTypeDetails());
+
+    List<String> expectedCommand = t.baseCommand;
+    expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
+
+    nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
   }
 
   @Test
