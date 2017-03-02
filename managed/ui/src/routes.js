@@ -13,7 +13,6 @@ import Universes from './pages/Universes';
 import Tasks from './pages/Tasks';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
-import SetupDataCenter from './pages/SetupDataCenter';
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
 import TableDetail from './pages/TableDetail';
@@ -64,7 +63,6 @@ export default (store) => {
         </Route>
         <Route path="/tasks" component={Tasks} />
         <Route path="/metrics" component={Metrics} />
-        <Route path="/setup_datacenter" component={SetupDataCenter} />
         <Route path="/config" component={DataCenterConfiguration} />
         <Route path="/alerts" component={Alerts}/>
         <Route path="/support" component={Support}/>

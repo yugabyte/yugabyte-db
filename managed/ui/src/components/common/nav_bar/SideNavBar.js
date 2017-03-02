@@ -42,7 +42,7 @@ export default class SideNavBar extends Component {
                   <NavLink to="/universes" icon="fa fa-globe">
                     Universes
                   </NavLink>
-                  <NavLink to="metrics" icon="fa fa-line-chart">
+                  <NavLink to="/metrics" icon="fa fa-line-chart">
                     Metrics
                   </NavLink>
                   <NavLink to="/tasks" icon="fa fa-list">
@@ -56,7 +56,7 @@ export default class SideNavBar extends Component {
                   </NavLink>
                 </ul>
                 <ul className="nav side-menu position-bottom">
-                  <NavLink to="support" icon="fa fa-question-circle-o">
+                  <NavLink to="/support" icon="fa fa-question-circle-o">
                     Help
                   </NavLink>
                 </ul>
