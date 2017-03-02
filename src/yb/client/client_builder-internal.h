@@ -52,6 +52,8 @@ class YBClientBuilder::Data {
   // Metric entity to be used by components emitting metrics.
   scoped_refptr<MetricEntity> metric_entity_;
 
+  // A descriptive name for the client. Useful for embedded ybclients.
+  std::string client_name_ = "ybclient";
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);
 };

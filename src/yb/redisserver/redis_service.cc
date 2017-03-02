@@ -269,6 +269,7 @@ Status RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
   std::lock_guard<std::mutex> guard(yb_mutex_);
   if (!yb_client_initialized_.load()) {
     YBClientBuilder client_builder;
+    client_builder.set_client_name("redis_ybclient");
     client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
     client_builder.add_master_server_addr(yb_tier_master_addresses);
     client_builder.set_metric_entity(server_->metric_entity());

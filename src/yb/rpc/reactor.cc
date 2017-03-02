@@ -66,6 +66,7 @@ static const int kDefaultLibEvFlags = ev::AUTO;
 using std::string;
 using std::shared_ptr;
 
+DECLARE_int32(num_connections_to_server);
 DEFINE_int64(rpc_negotiation_timeout_ms, 3000,
              "Timeout for negotiating an RPC connection.");
 TAG_FLAG(rpc_negotiation_timeout_ms, advanced);
@@ -138,7 +139,8 @@ Status ReactorThread::Init() {
                coarse_timer_granularity_.ToSeconds());
 
   // Create Reactor thread.
-  return yb::Thread::Create("reactor", "reactor", &ReactorThread::RunThread, this, &thread_);
+  const string group_name = StrCat(reactor()->messenger()->name(), "_reactor");
+  return yb::Thread::Create(group_name, group_name, &ReactorThread::RunThread, this, &thread_);
 }
 
 void ReactorThread::Shutdown() {
@@ -479,9 +481,16 @@ void ReactorThread::DestroyConnection(Connection *conn,
   // Unlink connection from lists.
   if (conn->direction() == Connection::CLIENT) {
     ConnectionId conn_id(conn->remote(), conn->user_credentials());
-    auto it = client_conns_.find(conn_id);
-    CHECK(it != client_conns_.end()) << "Couldn't find connection " << conn->ToString();
-    client_conns_.erase(it);
+    bool erased = false;
+    for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
+      conn_id.set_idx(idx);
+      auto it = client_conns_.find(conn_id);
+      if (it != client_conns_.end() && it->second.get() == conn) {
+        client_conns_.erase(it);
+        erased = true;
+      }
+    }
+    CHECK(erased) << "Couldn't find connection for any index to " << conn->ToString();
   } else if (conn->direction() == Connection::SERVER) {
     auto it = server_conns_.begin();
     while (it != server_conns_.end()) {

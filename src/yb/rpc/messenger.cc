@@ -53,6 +53,7 @@ using std::string;
 using std::shared_ptr;
 using strings::Substitute;
 
+DECLARE_int32(num_connections_to_server);
 DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
              "If an RPC connection from a client is idle for this amount of time, the server "
              "will disconnect the client.");
@@ -208,7 +209,7 @@ Status Messenger::UnregisterService(const string& service_name) {
 }
 
 void Messenger::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
-  Reactor *reactor = RemoteToReactor(call->conn_id().remote());
+  Reactor *reactor = RemoteToReactor(call->conn_id().remote(), call->conn_id().idx());
   reactor->QueueOutboundCall(call);
 }
 
@@ -229,7 +230,8 @@ void Messenger::QueueInboundCall(gscoped_ptr<InboundCall> call) {
 }
 
 void Messenger::RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote) {
-  Reactor *reactor = RemoteToReactor(remote);
+  int idx = num_connections_accepted_.fetch_add(1) % FLAGS_num_connections_to_server;
+  Reactor *reactor = RemoteToReactor(remote, idx);
   reactor->RegisterInboundSocket(new_socket, remote);
 }
 
@@ -239,7 +241,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
     closing_(false),
     metric_entity_(bld.metric_entity_),
     retain_self_(this),
-    next_task_id_(0) {
+    next_task_id_(0),
+    num_connections_accepted_(0) {
   for (int i = 0; i < bld.num_reactors_; i++) {
     reactors_.push_back(new Reactor(retain_self_, i, bld));
   }
@@ -254,11 +257,13 @@ Messenger::~Messenger() {
   STLDeleteElements(&reactors_);
 }
 
-Reactor* Messenger::RemoteToReactor(const Sockaddr &remote) {
+Reactor* Messenger::RemoteToReactor(const Sockaddr &remote, uint32_t idx) {
   uint32_t hashCode = remote.HashCode();
-  int reactor_idx = hashCode % reactors_.size();
-  // This is just a static partitioning; we could get a lot
-  // fancier with assigning Sockaddrs to Reactors.
+  int reactor_idx = (hashCode + idx) % reactors_.size();
+  // This is just a static partitioning; where each connection
+  // to a remote is assigned to a particular reactor. We could
+  // get a lot fancier with assigning Sockaddrs to Reactors,
+  // but this should be good enough.
   return reactors_[reactor_idx];
 }
 

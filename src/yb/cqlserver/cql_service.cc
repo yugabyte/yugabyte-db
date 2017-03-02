@@ -15,6 +15,9 @@ DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
 DECLARE_int32(cql_service_num_threads);
+DEFINE_int32(cql_ybclient_reactor_threads, 24,
+             "The number of reactor threads to be used for processing ybclient "
+             "requests originating in the cql layer");
 
 METRIC_DEFINE_histogram(server,
                         handler_latency_yb_cqlserver_CQLServerService_Any,
@@ -69,9 +72,11 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const string& yb_tier_master_a
 void CQLServiceImpl::SetUpYBClient(
     const string& yb_tier_master_addresses, const scoped_refptr<MetricEntity>& metric_entity) {
   YBClientBuilder client_builder;
+  client_builder.set_client_name("cql_ybclient");
   client_builder.default_rpc_timeout(MonoDelta::FromSeconds(kRpcTimeoutSec));
   client_builder.add_master_server_addr(yb_tier_master_addresses);
   client_builder.set_metric_entity(metric_entity);
+  client_builder.set_num_reactors(FLAGS_cql_ybclient_reactor_threads);
   CHECK_OK(client_builder.Build(&client_));
   table_cache_ = std::make_shared<YBTableCache>(client_);
 }

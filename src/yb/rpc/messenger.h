@@ -209,7 +209,7 @@ class Messenger {
 
   explicit Messenger(const MessengerBuilder &bld);
 
-  Reactor* RemoteToReactor(const Sockaddr &remote);
+  Reactor* RemoteToReactor(const Sockaddr &remote, uint32_t idx = 0);
   CHECKED_STATUS Init();
   void RunTimeoutThread();
   void UpdateCurTime();
@@ -288,6 +288,7 @@ class Messenger {
 
   // Id that will be assigned to the next task that is scheduled on the reactor.
   std::atomic<uint64_t> next_task_id_;
+  std::atomic<uint64_t> num_connections_accepted_;
 
   std::mutex mutex_scheduled_tasks_;
 

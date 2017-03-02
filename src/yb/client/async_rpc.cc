@@ -407,7 +407,7 @@ Status WriteRpc::response_error_status() {
 }
 
 void WriteRpc::ProcessResponseFromTserver(Status status) {
-  TRACE_TO(trace_, "ProcessResponseFromTserver(%s)", status.ToString(false));
+  TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   batcher_->ProcessWriteResponse(*this, status);
   if (resp_.has_error()) {
     LOG(WARNING) << "Write Rpc to tablet server has error:"
@@ -539,7 +539,7 @@ Status ReadRpc::response_error_status() {
 }
 
 void ReadRpc::ProcessResponseFromTserver(Status status) {
-  TRACE_TO(trace_, "ProcessResponseFromTserver(%s)", status.ToString(false));
+  TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   batcher_->ProcessReadResponse(*this, status);
   if (resp_.has_error()) {
     LOG(WARNING) << "Read Rpc to tablet server has error:"

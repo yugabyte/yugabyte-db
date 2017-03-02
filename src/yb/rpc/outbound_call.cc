@@ -457,6 +457,7 @@ string ConnectionId::ToString() const {
 
 void ConnectionId::DoCopyFrom(const ConnectionId& other) {
   remote_ = other.remote_;
+  idx_ = other.idx_;
   user_credentials_.CopyFrom(other.user_credentials_);
 }
 

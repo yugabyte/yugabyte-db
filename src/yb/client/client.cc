@@ -251,13 +251,18 @@ YBClientBuilder& YBClientBuilder::set_metric_entity(
   return *this;
 }
 
+YBClientBuilder& YBClientBuilder::set_client_name(const std::string& name) {
+  data_->client_name_ = name;
+  return *this;
+}
+
 Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   RETURN_NOT_OK(CheckCPUFlags());
 
   shared_ptr<YBClient> c(new YBClient());
 
   // Init messenger.
-  MessengerBuilder builder("client");
+  MessengerBuilder builder(data_->client_name_);
   builder.set_num_reactors(data_->num_reactors_);
   builder.set_metric_entity(data_->metric_entity_);
   RETURN_NOT_OK(builder.Build(&c->data_->messenger_));

@@ -172,6 +172,9 @@ class YB_EXPORT YBClientBuilder {
   // Sets metric entity to be used for emitting metrics. Optional.
   YBClientBuilder& set_metric_entity(const scoped_refptr<MetricEntity>& metric_entity);
 
+  // Sets client name to be used for naming the client's messenger/reactors.
+  YBClientBuilder& set_client_name(const std::string& name);
+
   // Creates the client.
   //
   // The return value may indicate an error in the create operation, or a
