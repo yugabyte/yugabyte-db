@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.commissioner.Common;
 import play.data.validation.Constraints;
 
 import java.util.Map;
@@ -13,7 +14,7 @@ import java.util.Map;
  */
 public class CloudProviderFormData {
     @Constraints.Required()
-    public String code;
+    public Common.CloudType code;
 
     @Constraints.Required()
     @Constraints.MinLength(5)

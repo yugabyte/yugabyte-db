@@ -42,8 +42,7 @@ public class CloudProviderController extends AuthenticatedController {
    * GET endpoint for listing providers
    * @return JSON response with provider's
    */
-  public Result list() {
-    UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
+  public Result list(UUID customerUUID) {
     List<Provider> providerList = Provider.getAll(customerUUID);
     return ok(Json.toJson(providerList));
   }
@@ -52,14 +51,13 @@ public class CloudProviderController extends AuthenticatedController {
    * POST endpoint for creating new providers
    * @return JSON response of newly created provider
    */
-  public Result create() {
+  public Result create(UUID customerUUID) {
     Form<CloudProviderFormData> formData = formFactory.form(CloudProviderFormData.class).bindFromRequest();
 
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
-    UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody
     JsonNode requestBody = request().body().asJson();

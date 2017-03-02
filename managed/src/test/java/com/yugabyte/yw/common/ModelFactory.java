@@ -14,12 +14,12 @@ public class ModelFactory {
     return Customer.create("Test customer", email, "password");
   }
   public static Provider awsProvider(Customer customer) {
-    return Provider.create(customer.uuid, "aws", "Amazon");
+    return Provider.create(customer.uuid, Common.CloudType.aws, "Amazon");
   }
   public static Provider gceProvider(Customer customer) {
-    return Provider.create(customer.uuid, "gce", "Google");
+    return Provider.create(customer.uuid, Common.CloudType.gcp, "Google");
   }
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
-    return Provider.create(customer.uuid, cloud.toString(), cloud.toString());
+    return Provider.create(customer.uuid, cloud, cloud.toString());
   }
 }

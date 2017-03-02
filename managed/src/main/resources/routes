@@ -15,8 +15,8 @@ GET     /api/logout                                   com.yugabyte.yw.controller
 POST    /api/register                                 com.yugabyte.yw.controllers.SessionController.register()
 
 # Cloud provider API
-GET     /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.list()
-POST    /api/providers                                com.yugabyte.yw.controllers.CloudProviderController.create()
+GET     /api/customers/:cUUID/providers               com.yugabyte.yw.controllers.CloudProviderController.list(cUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers               com.yugabyte.yw.controllers.CloudProviderController.create(cUUID: java.util.UUID)
 
 # Initialize cloud information.
 GET     /api/providers/:pUUID/initialize              com.yugabyte.yw.cloud.AWSInitializer.run(pUUID: java.util.UUID)
