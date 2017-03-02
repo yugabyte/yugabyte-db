@@ -36,11 +36,7 @@ export default class TopNavBar extends Component {
 						<MenuItem eventKey="2.1" href="/profile">
 							<i className="fa fa-user fa-fw"></i>Profile
 						</MenuItem>
-						<MenuItem eventKey="2.2" href="/setup_datacenter">
-							<i className="fa fa-user fa-fw"></i>Setup Data Center
-						</MenuItem>
-						<MenuItem divider />
-						<MenuItem eventKey="2.3" href="/login" id="logoutLink" onClick={this.handleLogout}>
+						<MenuItem eventKey="2.2" href="/login" id="logoutLink" onClick={this.handleLogout}>
 							<i className="fa fa-sign-out fa-fw"></i>Logout
 						</MenuItem>
 					</NavDropdown>
