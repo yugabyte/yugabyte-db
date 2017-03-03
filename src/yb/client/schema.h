@@ -126,9 +126,16 @@ class YB_EXPORT YBColumnSchema {
     BINARY = 8,
     TIMESTAMP = 9,
 
+    // Logically, NULL has neither a real value or a datatype.  Implementation-wise, we give it a
+    // type so that we can typecheck expressions easier.
+    NULL_VALUE_TYPE = 10,
+
     MAX_TYPE_INDEX
   };
 
+  static bool IsNumeric(DataType t) {
+    return (t >= INT8 && t <= INT64) || t == FLOAT || t == DOUBLE;
+  }
   static std::string DataTypeToString(DataType type);
 
   // DEPRECATED: use YBSchemaBuilder instead.

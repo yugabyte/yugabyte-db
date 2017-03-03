@@ -83,7 +83,7 @@ ConversionMode SemContext::GetConversionMode(client::YBColumnSchema::DataType lh
   static const ConversionMode kIM = ConversionMode::kImplicit;
   static const ConversionMode kEX = ConversionMode::kExplicit;
   static const ConversionMode kNA = ConversionMode::kNotAllowed;
-  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX + 1;
+  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX;
   static const ConversionMode conversion_mode[max_index][max_index] = {
     // RHS (source)
     // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)
@@ -107,7 +107,7 @@ bool SemContext::IsComparable(client::YBColumnSchema::DataType lhs_type,
                               client::YBColumnSchema::DataType rhs_type) const {
   static const bool kYS = true;
   static const bool kNO = false;
-  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX + 1;
+  static const int max_index = client::YBColumnSchema::MAX_TYPE_INDEX;
   static const bool compare_mode[max_index][max_index] = {
     // RHS (source)
     // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)

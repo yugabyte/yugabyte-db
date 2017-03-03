@@ -68,6 +68,10 @@ Status Executor::EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result
       result->value_ = static_cast<const PTConstInt*>(e)->Eval();
       break;
 
+    case ExprOperator::kUMinus:
+      result->value_ = -static_cast<const PTConstInt*>(e->op1().get())->Eval();
+      break;
+
     default:
       LOG(FATAL) << "Not supported operator";
   }
@@ -81,6 +85,10 @@ Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *
   switch (expr->expr_op()) {
     case ExprOperator::kConst:
       result->value_ = static_cast<const PTConstDouble*>(e)->Eval();
+      break;
+
+    case ExprOperator::kUMinus:
+      result->value_ = -static_cast<const PTConstDouble*>(e->op1().get())->Eval();
       break;
 
     default:

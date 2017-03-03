@@ -30,6 +30,8 @@ enum class ExprOperator : int {
   kNotExists,
 
   // Operators that take one operand.
+  kUMinus,
+
   kNot,
   kIsNull,
   kIsNotNull,
@@ -47,12 +49,14 @@ enum class ExprOperator : int {
   kOR,
   kLike,
   kNotLike,
-  kIn,
-  kNotIn,
 
   // Operators that take three operands.
   kBetween,
   kNotBetween,
+
+  // Operators that take unspecified number of operands.
+  kIn,
+  kNotIn,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -67,17 +71,37 @@ class PTExpr : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTExpr(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
-      : TreeNode(memctx, loc) {
+  explicit PTExpr(
+      MemoryContext *memctx,
+      YBLocation::SharedPtr loc,
+      ExprOperator op = ExprOperator::kNoOp,
+      yb::DataType type_id = yb::DataType::UNKNOWN_DATA,
+      client::YBColumnSchema::DataType sql_type = client::YBColumnSchema::MAX_TYPE_INDEX)
+      : TreeNode(memctx, loc),
+        op_(op),
+        type_id_(type_id),
+        sql_type_(sql_type) {
   }
   virtual ~PTExpr() {
   }
 
   // Expression return type in Cassandra format.
-  virtual yb::DataType type_id() const = 0;
+  virtual yb::DataType type_id() const {
+    return type_id_;
+  }
+
+  bool has_valid_type_id() {
+    return type_id_ != yb::DataType::UNKNOWN_DATA;
+  }
 
   // Expression return type in DocDB format.
-  virtual client::YBColumnSchema::DataType sql_type() const = 0;
+  virtual client::YBColumnSchema::DataType sql_type() const {
+    return sql_type_;
+  }
+
+  bool has_valid_sql_type() {
+    return sql_type_ != client::YBColumnSchema::MAX_TYPE_INDEX;
+  }
 
   // Node type.
   virtual TreeNodeOpcode opcode() const OVERRIDE {
@@ -85,65 +109,69 @@ class PTExpr : public TreeNode {
   }
 
   // Returns the expression operator.
-  virtual ExprOperator expr_op() const = 0;
+  virtual ExprOperator expr_op() const {
+    return op_;
+  }
 
   // Predicate for null.
   virtual bool is_null() {
-    return false;
+    return sql_type_ == client::YBColumnSchema::NULL_VALUE_TYPE;
   }
+
+  // Returns the operands of an expression.
+  virtual const PTExpr::SharedPtr op1() const {
+    return nullptr;
+  }
+
+  virtual const PTExpr::SharedPtr op2() const {
+    return nullptr;
+  }
+
+  virtual const PTExpr::SharedPtr op3() const {
+    return nullptr;
+  }
+
+  // All expressions must define this Analyze() function, which does the following steps.
+  // - Call Analyze() on child treenodes to run semantic analysis on the child nodes. The child
+  //   nodes will then call their own child nodes and so forth. In short, we traverse the expression
+  //   parse tree to run semantic analysis on them.
+  // - Run semantic analysis on this node.
+  // - The main job of semantics analysis is to run type resolution to find the correct values for
+  //   sql_type_ and type_id_ for expressions.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE = 0;
+
+  // These functions are called by analyze to run type resolution on this expression.
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context);
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+                                         PTExpr::SharedPtr op1);
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+                                         PTExpr::SharedPtr op1,
+                                         PTExpr::SharedPtr op2);
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context,
+                                         PTExpr::SharedPtr op1,
+                                         PTExpr::SharedPtr op2,
+                                         PTExpr::SharedPtr op3);
+
+  // Analyze LHS expression.
+  virtual CHECKED_STATUS AnalyzeLhsExpr(SemContext *sem_context);
+
+  // Analyze RHS expression.
+  virtual CHECKED_STATUS AnalyzeRhsExpr(SemContext *sem_context);
+
+ protected:
+  ExprOperator op_;
+  yb::DataType type_id_;
+  client::YBColumnSchema::DataType sql_type_;
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
 
 //--------------------------------------------------------------------------------------------------
-
-// Template for all expressions.
-template<yb::DataType type_id_,
-         client::YBColumnSchema::DataType sql_type_,
-         typename ReturnType>
-class PTExprOperator : public PTExpr {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTExprOperator> SharedPtr;
-  typedef MCSharedPtr<const PTExprOperator> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  explicit PTExprOperator(MemoryContext *memctx = nullptr,
-                          YBLocation::SharedPtr loc = nullptr,
-                          ExprOperator op = ExprOperator::kNoOp)
-      : PTExpr(memctx, loc),
-        op_(op) {
-  }
-  virtual ~PTExprOperator() {
-  }
-
-  // Expresion return type in Cassandra format.
-  virtual yb::DataType type_id() const OVERRIDE {
-    return type_id_;
-  }
-
-  // Expresion return type in DocDB format.
-  virtual client::YBColumnSchema::DataType sql_type() const OVERRIDE {
-    return sql_type_;
-  }
-
-  // Access to op_.
-  virtual ExprOperator expr_op() const OVERRIDE {
-    return op_;
-  }
-
- protected:
-  ExprOperator op_;
-};
-
-//--------------------------------------------------------------------------------------------------
 // Template for expression with no operand (0 input).
-template<yb::DataType type_id_,
-         client::YBColumnSchema::DataType sql_type_,
+template<yb::DataType itype,
+         client::YBColumnSchema::DataType stype,
          typename ReturnType>
-class PTExprConst : public PTExprOperator<type_id_, sql_type_, ReturnType> {
+class PTExprConst : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -155,7 +183,7 @@ class PTExprConst : public PTExprOperator<type_id_, sql_type_, ReturnType> {
   PTExprConst(MemoryContext *memctx,
               YBLocation::SharedPtr loc,
               ReturnType value)
-      : PTExprOperator<type_id_, sql_type_, ReturnType>(memctx, loc, ExprOperator::kConst),
+      : PTExpr(memctx, loc, ExprOperator::kConst, itype, stype),
         value_(value) {
   }
   virtual ~PTExprConst() {
@@ -167,18 +195,18 @@ class PTExprConst : public PTExprOperator<type_id_, sql_type_, ReturnType> {
     return MCMakeShared<PTExprConst>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  // Nothing to do.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Analyze this node operator and setup its sql_type_ and type_id_.
+    RETURN_NOT_OK(AnalyzeOperator(sem_context));
+
+    // Make sure that it has valid data type.
+    CHECK(has_valid_type_id() && has_valid_sql_type());
     return Status::OK();
   }
 
   // Evaluate this expression and its operand.
   virtual ReturnType Eval() const {
     return value_;
-  }
-
-  virtual bool is_null() OVERRIDE {
-    return sql_type_ == client::YBColumnSchema::MAX_TYPE_INDEX;
   }
 
  private:
@@ -189,10 +217,8 @@ class PTExprConst : public PTExprOperator<type_id_, sql_type_, ReturnType> {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with no operand (0 input).
-template<yb::DataType type_id_,
-         client::YBColumnSchema::DataType sql_type_,
-         typename ReturnType>
-class PTExpr0 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
+template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+class PTExpr0 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -204,7 +230,7 @@ class PTExpr0 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
   PTExpr0(MemoryContext *memctx,
           YBLocation::SharedPtr loc,
           ExprOperator op)
-      : PTExprOperator<type_id_, sql_type_, ReturnType>(memctx, loc, op) {
+      : PTExpr(memctx, loc, op, itype, stype) {
   }
   virtual ~PTExpr0() {
   }
@@ -214,14 +240,21 @@ class PTExpr0 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
   inline static PTExpr0::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
     return MCMakeShared<PTExpr0>(memctx, std::forward<TypeArgs>(args)...);
   }
+
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Analyze this node operator and setup its sql_type_ and type_id_.
+    RETURN_NOT_OK(AnalyzeOperator(sem_context));
+
+    // Make sure that it has valid data type.
+    CHECK(has_valid_type_id() && has_valid_sql_type());
+    return Status::OK();
+  }
 };
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with one operand (1 input).
-template<yb::DataType type_id_,
-         client::YBColumnSchema::DataType sql_type_,
-         typename ReturnType>
-class PTExpr1 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
+template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+class PTExpr1 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -234,7 +267,7 @@ class PTExpr1 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
           YBLocation::SharedPtr loc,
           ExprOperator op,
           PTExpr::SharedPtr op1)
-      : PTExprOperator<type_id_, sql_type_, ReturnType>(memctx, loc, op),
+      : PTExpr(memctx, loc, op, itype, stype),
         op1_(op1) {
   }
   virtual ~PTExpr1() {
@@ -250,6 +283,18 @@ class PTExpr1 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
     return op1_;
   }
 
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Run semantic analysis on child nodes.
+    RETURN_NOT_OK(op1_->Analyze(sem_context));
+
+    // Analyze this node operator and setup its sql_type_ and type_id_.
+    RETURN_NOT_OK(AnalyzeOperator(sem_context, op1_));
+
+    // Make sure that it has valid data type.
+    CHECK(has_valid_type_id() && has_valid_sql_type());
+    return Status::OK();
+  }
+
  private:
   //------------------------------------------------------------------------------------------------
   // Operand.
@@ -258,10 +303,8 @@ class PTExpr1 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with two operands (2 inputs).
-template<yb::DataType type_id_,
-         client::YBColumnSchema::DataType sql_type_,
-         typename ReturnType>
-class PTExpr2 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
+template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+class PTExpr2 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -275,7 +318,7 @@ class PTExpr2 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
           ExprOperator op,
           const PTExpr::SharedPtr& op1,
           const PTExpr::SharedPtr& op2)
-      : PTExprOperator<type_id_, sql_type_, ReturnType>(memctx, loc, op),
+      : PTExpr(memctx, loc, op, itype, stype),
         op1_(op1),
         op2_(op2) {
   }
@@ -296,6 +339,19 @@ class PTExpr2 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
     return op2_;
   }
 
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Run semantic analysis on child nodes.
+    RETURN_NOT_OK(op1_->Analyze(sem_context));
+    RETURN_NOT_OK(op2_->Analyze(sem_context));
+
+    // Analyze this node operator and setup its sql_type_ and type_id_.
+    RETURN_NOT_OK(AnalyzeOperator(sem_context, op1_, op2_));
+
+    // Make sure that it has valid data type.
+    CHECK(has_valid_type_id() && has_valid_sql_type());
+    return Status::OK();
+  }
+
  private:
   //------------------------------------------------------------------------------------------------
   // Operand 1 and 2.
@@ -305,10 +361,8 @@ class PTExpr2 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with two operands (3 inputs).
-template<yb::DataType type_id_,
-         client::YBColumnSchema::DataType sql_type_,
-         typename ReturnType>
-class PTExpr3 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
+template<yb::DataType itype, client::YBColumnSchema::DataType stype>
+class PTExpr3 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -323,7 +377,7 @@ class PTExpr3 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
           const PTExpr::SharedPtr& op1,
           const PTExpr::SharedPtr& op2,
           const PTExpr::SharedPtr& op3)
-      : PTExprOperator<type_id_, sql_type_, ReturnType>(memctx, loc, op),
+      : PTExpr(memctx, loc, op, itype, stype),
         op1_(op1),
         op2_(op2),
         op3_(op3) {
@@ -349,6 +403,20 @@ class PTExpr3 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
     return op3_;
   }
 
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Run semantic analysis on child nodes.
+    RETURN_NOT_OK(op1_->Analyze(sem_context));
+    RETURN_NOT_OK(op2_->Analyze(sem_context));
+    RETURN_NOT_OK(op3_->Analyze(sem_context));
+
+    // Analyze this node operator and setup its sql_type_ and type_id_.
+    RETURN_NOT_OK(AnalyzeOperator(sem_context, op1_, op2_, op3_));
+
+    // Make sure that it has valid data type.
+    CHECK(has_valid_type_id() && has_valid_sql_type());
+    return Status::OK();
+  }
+
  private:
   //------------------------------------------------------------------------------------------------
   // Operand 1 and 2.
@@ -360,7 +428,7 @@ class PTExpr3 : public PTExprOperator<type_id_, sql_type_, ReturnType> {
 //--------------------------------------------------------------------------------------------------
 // Tree node for constants
 using PTNull = PTExprConst<yb::DataType::UNKNOWN_DATA,
-                           client::YBColumnSchema::MAX_TYPE_INDEX,
+                           client::YBColumnSchema::NULL_VALUE_TYPE,
                            void*>;
 
 using PTConstInt = PTExprConst<yb::DataType::INT64,
@@ -380,13 +448,22 @@ using PTConstBool = PTExprConst<yb::DataType::BOOL,
                                 bool>;
 
 // Tree node for comparisons.
-using PTPredicate0 = PTExpr0<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;
-using PTPredicate1 = PTExpr1<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;
-using PTPredicate2 = PTExpr2<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;
-using PTPredicate3 = PTExpr3<yb::DataType::BOOL, client::YBColumnSchema::BOOL, bool>;
+using PTPredicate0 = PTExpr0<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
+using PTPredicate1 = PTExpr1<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
+using PTPredicate2 = PTExpr2<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
+using PTPredicate3 = PTExpr3<yb::DataType::BOOL, client::YBColumnSchema::BOOL>;
+
+// Operators: '+', '-', '*', '/', etc.
+// The datatypes for these operators cannot be determined at parsing time.
+using PTOperator0 = PTExpr0<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
+using PTOperator1 = PTExpr1<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
+using PTOperator2 = PTExpr2<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
+using PTOperator3 = PTExpr3<yb::DataType::UNKNOWN_DATA, client::YBColumnSchema::MAX_TYPE_INDEX>;
 
 //--------------------------------------------------------------------------------------------------
 // Column Reference. The datatype of this expression would need to be resolved by the analyzer.
+// TODO(mihnea) This class should be a subclass of PTOperator0. I'm not sure about this TODO, but
+// please investigate if it makes sense.
 class PTRef : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -408,34 +485,19 @@ class PTRef : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
+  // TODO(mihnea) This Analyze() function should be changed to AnalyzeOperator(), which will be
+  // called by Analyze() automatically by the tree traversal.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
   // Access function for descriptor.
   const ColumnDesc *desc() const {
     return desc_;
   }
 
-  // Expression return type in Cassandra format.
-  virtual yb::DataType type_id() const OVERRIDE {
-    DCHECK(desc_ != nullptr);
-    return desc_->type_id();
-  }
-
-  // Expression return type in DocDB format.
-  virtual client::YBColumnSchema::DataType sql_type() const OVERRIDE {
-    DCHECK(desc_ != nullptr);
-    return desc_->sql_type();
-  }
-
   // Node type.
   virtual TreeNodeOpcode opcode() const OVERRIDE {
     return TreeNodeOpcode::kPTRef;
-  }
-
-  // Access to op_.
-  virtual ExprOperator expr_op() const OVERRIDE {
-    return ExprOperator::kRef;
   }
 
  private:
@@ -447,6 +509,8 @@ class PTRef : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Expression alias - Name of an expression including reference to column.
+// TODO(mihnea) This class should be a subclass of PTOperator1. I'm not sure about this TODO, but
+// please investigate if it makes sense.
 class PTExprAlias : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -468,22 +532,12 @@ class PTExprAlias : public PTExpr {
     return MCMakeShared<PTExprAlias>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  // Expresion return type in Cassandra format.
-  virtual yb::DataType type_id() const OVERRIDE {
-    return expr_->type_id();
-  }
-
-  // Expresion return type in DocDB format.
-  virtual client::YBColumnSchema::DataType sql_type() const OVERRIDE {
-    return expr_->sql_type();
-  }
-
-  // Access to op_.
-  virtual ExprOperator expr_op() const OVERRIDE {
-    return ExprOperator::kAlias;
-  }
+  // TODO(mihnea) This Analyze() function should be changed to AnalyzeOperator(ctx, op1), which will
+  // be called by Analyze() automatically by the tree traversal.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
 
  private:
+  // TODO(mihnea) expr_ should be removed, and op1_ should be in its place.
   PTExpr::SharedPtr expr_;
   MCString::SharedPtr alias_;
 };

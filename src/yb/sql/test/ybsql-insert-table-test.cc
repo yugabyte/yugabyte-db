@@ -33,6 +33,7 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
 
   // INSERT: Valid statement with column list.
   EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100);");
+  EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(-1, 'Scott Tiger', -100);");
 
   // INSERT: Valid statement with column list and ttl.
   EXEC_VALID_STMT(InsertStmtWithTTL(std::to_string(1)));
@@ -64,17 +65,27 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   // INSERT: Statement with invalid TTL syntax.
   EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
       "TTL 1000;");
+  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(-1, 'Scott Tiger', -100) "
+      "TTL 1000;");
 
   // INSERT: Statement with invalid TTL value.
   EXEC_INVALID_STMT(InsertStmtWithTTL("abcxyz"));
 
   // INSERT: Invalid CQL statement though it's a valid SQL statement without column list.
   EXEC_INVALID_STMT("INSERT INTO human_resource VALUES(2, 'Scott Tiger', 100);");
+  EXEC_INVALID_STMT("INSERT INTO human_resource VALUES(-2, 'Scott Tiger', -100);");
 
   // INSERT: Invalid statement - Duplicate key.
   // IF NOT EXISTS is not implemented yet, so we ignore this test case for now.
   EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(1, 'Scott Tiger', 100) "
                   "IF NOT EXISTS;");
+  EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(-1, 'Scott Tiger', -100) "
+                  "IF NOT EXISTS;");
+
+  // INSERT: Invalid statement - "--" is not yet supported.
+  // TODO(neil) Parser needs to handle this error more elegantly.
+  EXEC_INVALID_STMT("INSERT INTO human_resource_wrong(id, name, salary)"
+                    "  VALUES(--1, 'Scott Tiger', 100);");
 
   // INSERT: Invalid statement - Wrong table name.
   EXEC_INVALID_STMT("INSERT INTO human_resource_wrong(id, name, salary)"

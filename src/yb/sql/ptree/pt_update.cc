@@ -25,6 +25,7 @@ PTAssign::PTAssign(MemoryContext *memctx,
 PTAssign::~PTAssign() {
 }
 
+// TODO(Mihnea) Some where in this function, we must call expr->Analyze() even if it is a const.
 CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
   // Analyze left value (column name).
   RETURN_NOT_OK(lhs_->Analyze(sem_context));
@@ -35,10 +36,8 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
   }
 
   // Analyze right value (constant).
-  if (rhs_->expr_op() != ExprOperator::kConst) {
-    return sem_context->Error(rhs_->loc(), "Only literal values are allowed in this context",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
+  RETURN_NOT_OK(rhs_->AnalyzeRhsExpr(sem_context));
+
   if (!sem_context->IsConvertible(col_desc_->sql_type(), rhs_->sql_type())) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
@@ -101,6 +100,7 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
+// TODO(Mihnea) Some where in this function, we must call expr->Analyze() even if it is a const.
 CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
   // Analyze the expression.
   RETURN_NOT_OK(assign_expr->Analyze(sem_context));

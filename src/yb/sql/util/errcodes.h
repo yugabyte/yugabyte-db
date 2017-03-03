@@ -55,6 +55,7 @@ enum class ErrorCode : int64_t {
   INCOMPARABLE_DATATYPES = -209,
   INVALID_TABLE_PROPERTY = -210,
   DUPLICATE_TABLE_PROPERTY = -211,
+  INVALID_DATATYPE = -212,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

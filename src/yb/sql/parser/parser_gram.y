@@ -2535,6 +2535,20 @@ a_expr:
     $$ = $1;
   }
 
+  // These operators must be called out explicitly in order to make use
+  // of bison's automatic operator-precedence handling.  All other
+  // operator names are handled by the generic productions using "Op",
+  // below; and all those operators will have the same precedence.
+  //
+  // If you add more explicitly-known operators, be sure to add them
+  // also to b_expr and to the MathOp list below.
+  | '+' a_expr                                                 %prec UMINUS {
+    $$ = $2;
+  }
+  | '-' a_expr                                                 %prec UMINUS {
+    $$ = MAKE_NODE(@1, PTOperator1, ExprOperator::kUMinus, $2);
+  }
+
   // Predicates that have no operand.
   | EXISTS {
     $$ = MAKE_NODE(@1, PTPredicate0, ExprOperator::kExists);
@@ -2603,12 +2617,6 @@ a_expr:
   | a_expr NOT_LA LIKE a_expr                                  %prec NOT_LA {
     $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotLike, $1, $4);
   }
-  | a_expr IN_P in_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kIn, $1, $3);
-  }
-  | a_expr NOT_LA IN_P in_expr                                 %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotIn, $1, $4);
-  }
 
   // Predicates that have 3 operands.
   | a_expr BETWEEN opt_asymmetric b_expr AND a_expr            %prec BETWEEN {
@@ -2618,8 +2626,18 @@ a_expr:
     $$ = MAKE_NODE(@1, PTPredicate3, ExprOperator::kNotBetween, $1, $5, $7);
   }
 
+  // Predicates that have variable number of operands.
+  | a_expr IN_P in_expr {
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kIn, $1, $3);
+    PARSER_UNSUPPORTED(@2);
+  }
+  | a_expr NOT_LA IN_P in_expr                                 %prec NOT_LA {
+    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotIn, $1, $4);
+    PARSER_UNSUPPORTED(@3);
+  }
+
   | inactive_a_expr {
-    PARSER_UNSUPPORTED(@1);
+    PARSER_CQL_INVALID(@1);
   }
 ;
 
@@ -2637,21 +2655,23 @@ inactive_a_expr:
   //
   // If you add more explicitly-known operators, be sure to add them
   // also to b_expr and to the MathOp list below.
-  | '+' a_expr                                                 %prec UMINUS {
-  }
-  | '-' a_expr                                                 %prec UMINUS {
-  }
   | a_expr '+' a_expr {
+    PARSER_CQL_INVALID(@2);
   }
   | a_expr '-' a_expr {
+    PARSER_CQL_INVALID(@2);
   }
   | a_expr '*' a_expr {
+    PARSER_CQL_INVALID(@2);
   }
   | a_expr '/' a_expr {
+    PARSER_CQL_INVALID(@2);
   }
   | a_expr '%' a_expr {
+    PARSER_CQL_INVALID(@2);
   }
   | a_expr '^' a_expr {
+    PARSER_CQL_INVALID(@2);
   }
   | a_expr qual_Op a_expr                                      %prec Op {
   }

@@ -106,6 +106,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
+// TODO(Mihnea) Some where in this function, we must call expr->Analyze() even if it is a const.
 CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
   // any expression except for references to table column.

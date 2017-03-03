@@ -35,6 +35,7 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
 PTInsertStmt::~PTInsertStmt() {
 }
 
+// TODO(Mihnea) Some where in this function, we must call expr->Analyze() even if it is a const.
 CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   // Clear column_args_ as this call might be a reentrance due to metadata mismatch.
   column_args_.clear();
@@ -52,11 +53,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   }
   const MCList<PTExpr::SharedPtr>& exprs = value_clause->Tuple(0)->node_list();
   for (const auto& const_expr : exprs) {
-    if (const_expr->expr_op() != ExprOperator::kConst) {
-      return sem_context->Error(const_expr->loc(),
-                                "Only literal values are allowed in this context",
-                                ErrorCode::CQL_STATEMENT_INVALID);
-    }
+    RETURN_NOT_OK(const_expr->AnalyzeRhsExpr(sem_context));
   }
 
   int idx = 0;

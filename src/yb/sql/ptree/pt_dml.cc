@@ -101,6 +101,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
   return Status::OK();
 }
 
+// TODO(Mihnea) Fix this function to use expr->Analyze().
 CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
                                            PTExpr *expr,
                                            MCVector<WhereSemanticStats> *col_stats) {
@@ -214,9 +215,8 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeIfExpr(SemContext *sem_context,
-                                        PTExpr *expr) {
-
+// TODO(Mihnea) Fix this function to use expr->Analyze().
+CHECKED_STATUS PTDmlStmt::AnalyzeIfExpr(SemContext *sem_context, PTExpr *expr) {
   if (expr == nullptr) {
     return Status::OK();
   }
@@ -255,7 +255,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeIfExpr(SemContext *sem_context,
     case ExprOperator::kIsNotNull: FALLTHROUGH_INTENDED;
     case ExprOperator::kIsTrue:    FALLTHROUGH_INTENDED;
     case ExprOperator::kIsFalse: {
-      RETURN_NOT_OK(AnalyzeColumnExpr(sem_context, expr));
+      RETURN_NOT_OK(expr->op1()->AnalyzeLhsExpr(sem_context));
       break;
     }
 
@@ -286,78 +286,44 @@ CHECKED_STATUS PTDmlStmt::AnalyzeIfClause(SemContext *sem_context,
   return Status::OK();
 }
 
+// TODO(Mihnea) Fix this function to use expr->Analyze().
 CHECKED_STATUS PTDmlStmt::AnalyzeCompareExpr(SemContext *sem_context,
                                              PTExpr *expr,
                                              const ColumnDesc **col_desc,
                                              PTExpr::SharedPtr *value) {
-  PTPredicate2 *bool_expr = static_cast<PTPredicate2*>(expr);
-  expr = bool_expr->op1().get();
-  if (expr->expr_op() != ExprOperator::kRef) {
-    return sem_context->Error(expr->loc(), "Only column reference is allowed here",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-  RETURN_NOT_OK(expr->Analyze(sem_context));
 
+  RETURN_NOT_OK(expr->op1()->AnalyzeLhsExpr(sem_context));
   if (col_desc != nullptr) {
-    *col_desc = static_cast<PTRef*>(expr)->desc();
+    *col_desc = static_cast<PTRef*>(expr->op1().get())->desc();
   }
-  expr = bool_expr->op2().get();
-  if (expr->expr_op() != ExprOperator::kConst) {
-    return sem_context->Error(expr->loc(), "Only literal value is allowed here",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
+
+  RETURN_NOT_OK(expr->op2()->AnalyzeRhsExpr(sem_context));
   if (value != nullptr) {
-    *value = bool_expr->op2();
+    *value = expr->op2();
   }
 
-  if (!sem_context->IsComparable(bool_expr->op1()->sql_type(), bool_expr->op2()->sql_type())) {
-    return sem_context->Error(bool_expr->loc(), "Cannot compare values of these datatypes",
+  if (!sem_context->IsComparable(expr->op1()->sql_type(), expr->op2()->sql_type())) {
+    return sem_context->Error(expr->loc(), "Cannot compare values of these datatypes",
                               ErrorCode::INCOMPARABLE_DATATYPES);
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS PTDmlStmt::AnalyzeBetweenExpr(SemContext *sem_context,
-                                             PTExpr *expr) {
-  PTPredicate3 *bool_expr = static_cast<PTPredicate3*>(expr);
-  expr = bool_expr->op1().get();
-  if (expr->expr_op() != ExprOperator::kRef) {
-    return sem_context->Error(expr->loc(), "Only column reference is allowed here",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-  RETURN_NOT_OK(expr->Analyze(sem_context));
+// TODO(Mihnea) Fix this function to use expr->Analyze().
+CHECKED_STATUS PTDmlStmt::AnalyzeBetweenExpr(SemContext *sem_context, PTExpr *expr) {
+  RETURN_NOT_OK(expr->op1()->AnalyzeLhsExpr(sem_context));
 
-  expr = bool_expr->op2().get();
-  if (expr->expr_op() != ExprOperator::kConst) {
-    return sem_context->Error(expr->loc(), "Only literal value is allowed here",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
+  RETURN_NOT_OK(expr->op2()->AnalyzeRhsExpr(sem_context));
+  RETURN_NOT_OK(expr->op3()->AnalyzeRhsExpr(sem_context));
 
-  expr = bool_expr->op3().get();
-  if (expr->expr_op() != ExprOperator::kConst) {
-    return sem_context->Error(expr->loc(), "Only literal value is allowed here",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-
-  if (!sem_context->IsComparable(bool_expr->op1()->sql_type(), bool_expr->op2()->sql_type()) ||
-      !sem_context->IsComparable(bool_expr->op1()->sql_type(), bool_expr->op3()->sql_type())) {
-    return sem_context->Error(bool_expr->loc(), "Cannot compare values of these datatypes",
+  if (!sem_context->IsComparable(expr->op1()->sql_type(), expr->op2()->sql_type()) ||
+      !sem_context->IsComparable(expr->op1()->sql_type(), expr->op3()->sql_type())) {
+    return sem_context->Error(expr->loc(), "Cannot compare values of these datatypes",
                               ErrorCode::INCOMPARABLE_DATATYPES);
   }
 
   return Status::OK();
-}
-
-CHECKED_STATUS PTDmlStmt::AnalyzeColumnExpr(SemContext *sem_context,
-                                            PTExpr *expr) {
-  PTPredicate1 *bool_expr = static_cast<PTPredicate1*>(expr);
-  expr = bool_expr->op1().get();
-  if (expr->expr_op() != ExprOperator::kRef) {
-    return sem_context->Error(expr->loc(), "Only column reference is allowed here",
-                              ErrorCode::CQL_STATEMENT_INVALID);
-  }
-  return expr->Analyze(sem_context);
 }
 
 CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
