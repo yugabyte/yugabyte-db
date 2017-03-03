@@ -95,12 +95,8 @@ Status MiniCluster::Start() {
   FLAGS_default_num_replicas = num_masters_initial_;
 
   // start the masters
-  if (num_masters_initial_ > 1) {
-    RETURN_NOT_OK_PREPEND(StartDistributedMasters(),
-                          "Couldn't start distributed masters");
-  } else {
-    RETURN_NOT_OK_PREPEND(StartSingleMaster(), "Couldn't start the single master");
-  }
+  RETURN_NOT_OK_PREPEND(StartMasters(),
+                        "Couldn't start distributed masters");
 
   for (int i = 0; i < num_ts_initial_; i++) {
     RETURN_NOT_OK_PREPEND(AddTabletServer(),
@@ -115,7 +111,7 @@ Status MiniCluster::Start() {
   return Status::OK();
 }
 
-Status MiniCluster::StartDistributedMasters() {
+Status MiniCluster::StartMasters() {
   CHECK_GE(master_rpc_ports_.size(), num_masters_initial_);
   EnsurePortsAllocated();
 
@@ -167,22 +163,6 @@ Status MiniCluster::RestartSync() {
     CHECK_OK(master_server->Restart());
     CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
-  return Status::OK();
-}
-
-
-Status MiniCluster::StartSingleMaster() {
-  // If there's a single master, 'mini_masters_' must be size 1.
-  CHECK_EQ(mini_masters_.size(), 1);
-  EnsurePortsAllocated(1);
-
-  // start the master (we need the port to set on the servers).
-  gscoped_ptr<MiniMaster> mini_master(
-      new MiniMaster(env_, GetMasterFsRoot(0), master_rpc_ports_[0], master_web_ports_[0],
-                     is_creating_));
-  RETURN_NOT_OK_PREPEND(mini_master->Start(), "Couldn't start master");
-  RETURN_NOT_OK(mini_master->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-  mini_masters_[0] = shared_ptr<MiniMaster>(mini_master.release());
   return Status::OK();
 }
 

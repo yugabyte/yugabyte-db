@@ -677,7 +677,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterUpdatingRemovedColumn) {
             "---------------------------\n"
             "MRS memrowset:\n"
             "RowSet RowSet(1):\n"
-            "(int32 c0=0, int32 c2=12345) Undos: [@2(DELETE)] Redos: []",
+            "(int32 c0=0, int32 c2=12345) Undos: [@3(DELETE)] Redos: []",
             JoinStrings(rows, "\n"));
 
 }
@@ -725,8 +725,8 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasIntoMissingBaseData) {
             "MRS memrowset:\n"
             "RowSet RowSet(0):\n"
             "(int32 c0=0, int32 c1=0, int32 c2=54321) "
-            "Undos: [@4(SET c2=12345), @1(DELETE)] Redos: []\n"
-            "(int32 c0=16777216, int32 c1=1, int32 c2=12345) Undos: [@2(DELETE)] Redos: []",
+            "Undos: [@5(SET c2=12345), @2(DELETE)] Redos: []\n"
+            "(int32 c0=16777216, int32 c1=1, int32 c2=12345) Undos: [@3(DELETE)] Redos: []",
             JoinStrings(rows, "\n"));
 }
 
@@ -779,7 +779,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterAddUpdateRemoveColumn) {
             "---------------------------\n"
             "MRS memrowset:\n"
             "RowSet RowSet(0):\n"
-            "(int32 c0=0, int32 c1=0) Undos: [@1(DELETE)] Redos: []",
+            "(int32 c0=0, int32 c1=0) Undos: [@2(DELETE)] Redos: []",
             JoinStrings(rows, "\n"));
 }
 

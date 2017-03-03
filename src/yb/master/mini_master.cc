@@ -77,7 +77,10 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   CHECK(!running_);
   CHECK(!master_);
 
-  MasterOptions opts(std::make_shared<std::vector<HostPort>>(), is_creating_);
+  HostPort local_host_port("127.0.0.1", rpc_port);
+  auto master_addresses = std::make_shared<std::vector<HostPort>>();
+  master_addresses->push_back(local_host_port);
+  MasterOptions opts(master_addresses, is_creating_);
   return StartOnPorts(rpc_port, web_port, &opts);
 }
 

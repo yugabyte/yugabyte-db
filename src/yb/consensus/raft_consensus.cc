@@ -333,8 +333,13 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       RETURN_NOT_OK(ExpireFailureDetectorUnlocked());
     }
 
-    // Now assume "follower" duties.
-    RETURN_NOT_OK(BecomeReplicaUnlocked());
+    // Now assume follower duties, unless we are the only peer, then become leader.
+    if (ShouldBecomeLeaderOnStart()) {
+      SetLeaderUuidUnlocked(state_->GetPeerUuid());
+      RETURN_NOT_OK(BecomeLeaderUnlocked());
+    } else {
+      RETURN_NOT_OK(BecomeReplicaUnlocked());
+    }
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_START));
@@ -347,6 +352,11 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
   MarkDirty(context);
 
   return Status::OK();
+}
+
+bool RaftConsensus::ShouldBecomeLeaderOnStart() {
+  const RaftConfigPB& config = state_->GetActiveConfigUnlocked();
+  return CountVoters(config) == 1 && IsRaftConfigVoter(state_->GetPeerUuid(), config);
 }
 
 bool RaftConsensus::IsRunning() const {
@@ -476,6 +486,20 @@ Status RaftConsensus::StartElection(
   }
 
   return Status::OK();
+}
+
+Status RaftConsensus::WaitUntilLeaderForTests(const MonoDelta& timeout) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(timeout);
+  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+    if (role() == consensus::RaftPeerPB::LEADER) {
+      return Status::OK();
+    }
+    SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+
+  return STATUS(TimedOut, Substitute("Peer $0 is not leader of tablet $1 after $2. Role: $3",
+                                     peer_uuid(), tablet_id(), timeout.ToString(), role()));
 }
 
 string RaftConsensus::ServersInTransitionMessage() {
@@ -1724,7 +1748,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
         }
         VLOG(3) << "config before CHANGE_ROLE: " << new_config.DebugString();
 
-        if (!GetMutableRaftConfigMember(new_config, server_uuid, &new_peer).ok()) {
+        if (!GetMutableRaftConfigMember(&new_config, server_uuid, &new_peer).ok()) {
           return STATUS(NotFound,
             Substitute("Server with UUID $0 not a member of the config. RaftConfig: $1",
                        server_uuid, new_config.ShortDebugString()));

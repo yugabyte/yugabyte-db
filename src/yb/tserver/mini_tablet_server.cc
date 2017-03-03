@@ -37,7 +37,6 @@
 #include "yb/consensus/log.pb.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/local_consensus.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -108,7 +107,6 @@ Status MiniTabletServer::Restart() {
 RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
   CHECK(started_) << "Must Start()";
   RaftConfigPB config;
-  config.set_local(true);
   RaftPeerPB* peer = config.add_peers();
   peer->set_permanent_uuid(server_->instance_pb().permanent_uuid());
   peer->mutable_last_known_addr()->set_host(bound_rpc_addr().host());

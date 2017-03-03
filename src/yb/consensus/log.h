@@ -71,7 +71,7 @@ typedef BlockingQueue<LogEntryBatch*, LogEntryBatchLogicalSize> LogEntryBatchQue
 // adds a callback that will be invoked once the entry is written and
 // synchronized to disk.
 //
-// For sample usage see local_consensus.cc and mt-log-test.cc
+// For sample usage see mt-log-test.cc
 //
 // Methods on this class are _not_ thread-safe and must be externally
 // synchronized unless otherwise noted.

@@ -109,6 +109,8 @@ class RemoteBootstrapTest : public YBTabletTest {
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(fs_manager()->uuid());
     config_peer.set_member_type(RaftPeerPB::VOTER);
+    config_peer.mutable_last_known_addr()->set_host("fake-host");
+    config_peer.mutable_last_known_addr()->set_port(0);
 
     tablet_peer_.reset(
         new TabletPeer(tablet()->metadata(),
@@ -120,7 +122,6 @@ class RemoteBootstrapTest : public YBTabletTest {
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;
-    config.set_local(true);
     config.add_peers()->CopyFrom(config_peer);
     config.set_opid_index(consensus::kInvalidOpIdIndex);
 

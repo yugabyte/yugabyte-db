@@ -15,7 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/bind.hpp>
+#ifndef YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
+#define YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_
+
 #include <gmock/gmock.h>
 #include <map>
 #include <memory>
@@ -24,6 +26,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <boost/bind.hpp>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
@@ -46,9 +49,9 @@
 #define ASSERT_OPID_EQ(left, right) \
   OpId TOKENPASTE2(_left, __LINE__) = (left); \
   OpId TOKENPASTE2(_right, __LINE__) = (right); \
-  if (!consensus::OpIdEquals(TOKENPASTE2(_left, __LINE__), TOKENPASTE2(_right,__LINE__))) \
-    FAIL() << "Expected: " << TOKENPASTE2(_right,__LINE__).ShortDebugString() << "\n" \
-           << "Value: " << TOKENPASTE2(_left,__LINE__).ShortDebugString() << "\n"
+  if (!consensus::OpIdEquals(TOKENPASTE2(_left, __LINE__), TOKENPASTE2(_right, __LINE__))) \
+    FAIL() << "Expected: " << TOKENPASTE2(_right, __LINE__).ShortDebugString() << "\n" \
+           << "Value: " << TOKENPASTE2(_left, __LINE__).ShortDebugString() << "\n"
 
 namespace yb {
 namespace consensus {
@@ -103,7 +106,6 @@ static inline void AppendReplicateMessagesToQueue(
 // Builds a configuration of 'num' voters.
 RaftConfigPB BuildRaftConfigPBForTests(int num) {
   RaftConfigPB raft_config;
-  raft_config.set_local(false);
   for (int i = 0; i < num; i++) {
     RaftPeerPB* peer_pb = raft_config.add_peers();
     peer_pb->set_member_type(RaftPeerPB::VOTER);
@@ -636,7 +638,8 @@ class TestDriver {
 // testing RaftConsensusState. Does not actually support running transactions.
 class MockTransactionFactory : public ReplicaTransactionFactory {
  public:
-  virtual CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) OVERRIDE {
+  virtual CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round)
+      OVERRIDE {
     return StartReplicaTransactionMock(round.get());
   }
   MOCK_METHOD1(StartReplicaTransactionMock, Status(ConsensusRound* round));
@@ -868,3 +871,5 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 
 }  // namespace consensus
 }  // namespace yb
+
+#endif /* YB_CONSENSUS_CONSENSUS_TEST_UTIL_H_ */

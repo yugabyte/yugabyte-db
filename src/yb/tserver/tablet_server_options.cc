@@ -49,6 +49,16 @@ TabletServerOptions::TabletServerOptions() {
   if (!s.ok()) {
     LOG(FATAL) << "Couldn't parse " << FLAGS_tserver_master_addrs << " flag: " << s.ToString();
   }
+
+  ValidateMasterAddresses();
+}
+
+void TabletServerOptions::ValidateMasterAddresses() const {
+  addresses_shared_ptr master_addresses = GetMasterAddresses();
+  if (master_addresses->empty()) {
+    LOG(FATAL) << "No masters were specified in the master addresses flag '"
+               << master_addresses_flag << "', but a minimum of one is required.";
+  }
 }
 
 }  // namespace tserver

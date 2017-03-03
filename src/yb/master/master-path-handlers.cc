@@ -256,24 +256,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "<h2>Impala CREATE TABLE statement</h2>\n";
 
   string master_addresses;
-  if (master_->opts().IsDistributed()) {
-    vector<string> all_addresses;
-    auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();  // ENG-285
-    for (const HostPort& hp : *master_addresses_shared_ptr) {
-      all_addresses.push_back(hp.ToString());
-    }
-    master_addresses = JoinElements(all_addresses, ",");
-  } else {
-    Sockaddr addr = master_->first_rpc_address();
-    HostPort hp;
-    Status s = HostPortFromSockaddrReplaceWildcard(addr, &hp);
-    if (s.ok()) {
-      master_addresses = hp.ToString();
-    } else {
-      LOG(WARNING) << "Unable to determine proper local hostname: " << s.ToString();
-      master_addresses = addr.ToString();
-    }
+  vector<string> all_addresses;
+  auto master_addresses_shared_ptr = master_->opts().GetMasterAddresses();  // ENG-285
+  for (const HostPort& hp : *master_addresses_shared_ptr) {
+    all_addresses.push_back(hp.ToString());
   }
+  master_addresses = JoinElements(all_addresses, ",");
   HtmlOutputImpalaSchema(table_name, schema, master_addresses, output);
 
   std::vector<scoped_refptr<MonitoredTask> > task_list;

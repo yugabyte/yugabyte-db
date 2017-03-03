@@ -88,10 +88,7 @@ class MiniCluster : public MiniClusterBase {
   // Setup a consensus configuration of distributed masters, with count specified in
   // 'options'. Requires that a reserve RPC port is specified in
   // 'options' for each master.
-  CHECKED_STATUS StartDistributedMasters();
-
-  // Add a new standalone master to the cluster. The new master is started.
-  CHECKED_STATUS StartSingleMaster();
+  CHECKED_STATUS StartMasters();
 
   // Add a new TS to the cluster. The new TS is started.
   // Requires that the master is already running.

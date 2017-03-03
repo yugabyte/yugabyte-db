@@ -82,29 +82,17 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
   SetMasterAddressesNoValidation(options.GetMasterAddresses());
 }
 
-void ServerBaseOptions::ValidateMasterAddresses() const {
-  addresses_shared_ptr master_addresses = GetMasterAddresses();
-  if (!master_addresses->empty()) {
-    if (master_addresses->size() == 2) {
-      LOG(WARNING) << "Only 2 masters are specified by master addresses flag '"
-                   << master_addresses_flag << "' , but minimum of 3 "
-                   << "are required to tolerate failures of any one master. "
-                   << "It is recommended to use at least 3 masters.";
-    }
-  }
-}
-
 // This implementation is better but it needs support of
 //    atomic_load( shared_ptr<> ), atomic_store( shared_ptr<> )
 //
 // #include <atomic>
 //
-// void ServerBaseOptions::SetMasterAddressesNoValidation(
-//     ServerBaseOptions::addresses_shared_ptr master_addresses) {
+// void ServerBaseOptions::SetMasterAddresses(
+//     addresses_shared_ptr master_addresses) {
 //   std::atomic_store(&master_addresses_, master_addresses);
 // }
-
-// ServerBaseOptions::addresses_shared_ptr ServerBaseOptions::GetMasterAddresses() const {
+//
+// addresses_shared_ptr ServerBaseOptions::GetMasterAddresses() const {
 //   addresses_shared_ptr local = std::atomic_load(&master_addresses_);
 //   return local;
 // }

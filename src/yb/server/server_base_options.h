@@ -64,7 +64,6 @@ class ServerBaseOptions {
     CHECK_NOTNULL(master_addresses.get());
 
     SetMasterAddressesNoValidation(master_addresses);
-    ValidateMasterAddresses();
   }
 
   addresses_shared_ptr GetMasterAddresses() const;
@@ -73,8 +72,6 @@ class ServerBaseOptions {
 
  protected:
   ServerBaseOptions();
-
-  virtual void ValidateMasterAddresses() const;
 
  private:
   void SetMasterAddressesNoValidation(addresses_shared_ptr master_addresses);

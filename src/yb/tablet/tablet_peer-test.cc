@@ -103,6 +103,8 @@ class TabletPeerTest : public YBTabletTest,
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(tablet()->metadata()->fs_manager()->uuid());
     config_peer.set_member_type(RaftPeerPB::VOTER);
+    config_peer.mutable_last_known_addr()->set_host("fake-host");
+    config_peer.mutable_last_known_addr()->set_port(0);
 
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(
@@ -119,7 +121,6 @@ class TabletPeerTest : public YBTabletTest,
     tablet_peer_->log_anchor_registry_ = tablet()->log_anchor_registry_;
 
     RaftConfigPB config;
-    config.set_local(true);
     config.add_peers()->CopyFrom(config_peer);
     config.set_opid_index(consensus::kInvalidOpIdIndex);
 

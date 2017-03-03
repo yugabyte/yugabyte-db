@@ -100,7 +100,6 @@ set(CONSENSUS_SRCS
   consensus_peers.cc
   consensus_queue.cc
   leader_election.cc
-  local_consensus.cc
   log_cache.cc
   peer_manager.cc
   quorum_util.cc

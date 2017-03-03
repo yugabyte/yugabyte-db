@@ -174,15 +174,8 @@ Status ExternalMiniCluster::Start() {
     RETURN_NOT_OK_PREPEND(s, "Could not create root dir " + data_root_);
   }
 
-  if (opts_.num_masters != 1) {
-    LOG(INFO) << "Starting " << opts_.num_masters << " masters";
-    RETURN_NOT_OK_PREPEND(StartDistributedMasters(),
-                          "Failed to add distributed masters");
-  } else {
-    LOG(INFO) << "Starting a single master";
-    RETURN_NOT_OK_PREPEND(StartSingleMaster(),
-                          Substitute("Failed to start a single Master"));
-  }
+  LOG(INFO) << "Starting " << opts_.num_masters << " masters";
+  RETURN_NOT_OK_PREPEND(StartMasters(), "Failed to start masters.");
   add_new_master_at_ = opts_.num_masters;
 
   LOG(INFO) << "Starting " << opts_.num_tablet_servers << " tablet servers";
@@ -283,24 +276,7 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags,
 
 }  // anonymous namespace
 
-Status ExternalMiniCluster::StartSingleMaster() {
-  string exe = GetBinaryPath(kMasterBinaryName);
-  uint16_t rpc_port = AllocateFreePort();
-  uint16_t http_port = AllocateFreePort();
-
-  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
-            << " to start an external mini-cluster non-distributed master";
-
-  scoped_refptr<ExternalMaster> master =
-    new ExternalMaster(0, messenger_, exe, GetDataPath("master"),
-                       SubstituteInFlags(opts_.extra_master_flags, 0),
-                       Substitute("127.0.0.1:$0", rpc_port), http_port);
-  RETURN_NOT_OK(master->Start());
-  masters_.push_back(master);
-  return Status::OK();
-}
-
-void ExternalMiniCluster::StartNewMaster(ExternalMaster** new_master) {
+void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
   uint16_t rpc_port = AllocateFreePort();
   uint16_t http_port = AllocateFreePort();
   LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
@@ -721,7 +697,7 @@ Status ExternalMiniCluster::GetLastOpIdForLeader(OpId* opid) {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::StartDistributedMasters() {
+Status ExternalMiniCluster::StartMasters() {
   int num_masters = opts_.num_masters;
 
   if (opts_.master_rpc_ports.size() != num_masters) {

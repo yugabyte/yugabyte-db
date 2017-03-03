@@ -38,14 +38,10 @@ class MasterOptions : public server::ServerBaseOptions {
   // Need copy constructor as AtomicBool doesnt allow default copy.
   MasterOptions(const MasterOptions& other);
 
-  bool IsDistributed() const { return !GetMasterAddresses()->empty(); }
-
   bool IsClusterCreationMode() const { return is_creating_; }
 
   bool IsShellMode() const { return is_shell_mode_.Load(); }
   void SetShellMode(bool mode) { is_shell_mode_.Store(mode); }
-
-  void ValidateMasterAddresses() const OVERRIDE;
 
  protected:
   // Set when its first setup of the cluster - master_addresses is non-empty and is_create is true.

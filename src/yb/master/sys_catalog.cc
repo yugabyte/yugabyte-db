@@ -315,29 +315,18 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     tablet::TABLET_DATA_READY,
     &metadata));
 
-    RaftConfigPB config;
-  if (master_->opts().IsDistributed()) {
-    RETURN_NOT_OK_PREPEND(SetupDistributedConfig(master_->opts(), &config),
-                          "Failed to initialize distributed config");
-  } else {
-    config.set_local(true);
-    config.set_opid_index(consensus::kInvalidOpIdIndex);
-    RaftPeerPB* peer = config.add_peers();
-    peer->set_permanent_uuid(fs_manager->uuid());
-    peer->set_member_type(RaftPeerPB::VOTER);
-  }
+  RaftConfigPB config;
+  RETURN_NOT_OK_PREPEND(SetupConfig(master_->opts(), &config),
+                        "Failed to initialize distributed config");
 
   RETURN_NOT_OK(CreateAndFlushConsensusMeta(fs_manager, config, consensus::kMinimumTerm));
 
   return SetupTablet(metadata);
 }
 
-Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
-                                               RaftConfigPB* committed_config) {
-  DCHECK(options.IsDistributed());
-
+Status SysCatalogTable::SetupConfig(const MasterOptions& options,
+                                    RaftConfigPB* committed_config) {
   RaftConfigPB new_config;
-  new_config.set_local(false);
   new_config.set_opid_index(consensus::kInvalidOpIdIndex);
 
   // Build the set of followers from our server options.
@@ -376,8 +365,9 @@ Status SysCatalogTable::SetupDistributedConfig(const MasterOptions& options,
     }
   }
 
+  LOG(INFO) << "Setting up raft configuration: " << resolved_config.ShortDebugString();
+
   RETURN_NOT_OK(consensus::VerifyRaftConfig(resolved_config, consensus::COMMITTED_QUORUM));
-  VLOG(1) << "Distributed Raft configuration: " << resolved_config.ShortDebugString();
 
   *committed_config = resolved_config;
   return Status::OK();

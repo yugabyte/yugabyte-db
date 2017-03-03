@@ -36,6 +36,9 @@ class TabletServerOptions : public yb::server::ServerBaseOptions {
   TabletServerOptions();
 
   ~TabletServerOptions() {}
+
+ private:
+  void ValidateMasterAddresses() const;
 };
 
 } // namespace tserver

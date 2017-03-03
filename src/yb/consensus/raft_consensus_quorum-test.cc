@@ -74,19 +74,6 @@ const char* kTestTablet = "TestTablet";
 void DoNothing(std::shared_ptr<consensus::StateChangeContext> context) {
 }
 
-Status WaitUntilLeaderForTests(RaftConsensus* raft) {
-  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
-  deadline.AddDelta(MonoDelta::FromSeconds(15));
-  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
-    if (raft->GetActiveRole() == RaftPeerPB::LEADER) {
-      return Status::OK();
-    }
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-
-  return STATUS(TimedOut, "Timed out waiting to become leader");
-}
-
 // Test suite for tests that focus on multiple peer interaction, but
 // without integrating with other components, such as transactions.
 class RaftConsensusQuorumTest : public YBTest {
@@ -918,7 +905,7 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
     // non-shutdown peer in the list become leader.
     LOG(INFO) << "Running election for future leader with index " << (current_config_size - 1);
     ASSERT_OK(new_leader->StartElection(Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE));
-    WaitUntilLeaderForTests(new_leader.get());
+    ASSERT_OK(new_leader->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
     LOG(INFO) << "Election won";
 
     // ... replicating a set of messages to the new leader should now be possible.

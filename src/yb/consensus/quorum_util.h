@@ -21,6 +21,7 @@
 #include <string>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class Status;
@@ -38,18 +39,18 @@ bool IsRaftConfigVoter(const std::string& uuid, const RaftConfigPB& config);
 // Get the specified member of the config.
 // Returns Status::NotFound if a member with the specified uuid could not be
 // found in the config.
-Status GetRaftConfigMember(const RaftConfigPB& config,
-                           const std::string& uuid,
-                           RaftPeerPB* peer_pb);
+CHECKED_STATUS GetRaftConfigMember(const RaftConfigPB& config,
+                                   const std::string& uuid,
+                                   RaftPeerPB* peer_pb);
 
-Status GetMutableRaftConfigMember(RaftConfigPB& config,
-                                  const std::string& uuid,
-                                  RaftPeerPB** peer_pb);
+CHECKED_STATUS GetMutableRaftConfigMember(RaftConfigPB* config,
+                                          const std::string& uuid,
+                                          RaftPeerPB** peer_pb);
 
 // Get the leader of the consensus configuration.
 // Returns Status::NotFound() if the leader RaftPeerPB could not be found in
 // the config, or if there is no leader defined.
-Status GetRaftConfigLeader(const ConsensusStatePB& cstate, RaftPeerPB* peer_pb);
+CHECKED_STATUS GetRaftConfigLeader(const ConsensusStatePB& cstate, RaftPeerPB* peer_pb);
 
 // Modifies 'configuration' remove the peer with the specified 'uuid'.
 // Returns false if the server with 'uuid' is not found in the configuration.
@@ -83,11 +84,11 @@ RaftPeerPB::Role GetConsensusRole(const std::string& uuid,
 // Verifies that the provided configuration is well formed.
 // If type == COMMITTED_QUORUM, we enforce that opid_index is set.
 // If type == UNCOMMITTED_QUORUM, we enforce that opid_index is NOT set.
-Status VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type);
+CHECKED_STATUS VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type);
 
 // Superset of checks performed by VerifyRaftConfig. Also ensures that the
 // leader is a configuration voter, if it is set, and that a valid term is set.
-Status VerifyConsensusState(const ConsensusStatePB& cstate, RaftConfigState type);
+CHECKED_STATUS VerifyConsensusState(const ConsensusStatePB& cstate, RaftConfigState type);
 
 }  // namespace consensus
 }  // namespace yb

@@ -121,7 +121,9 @@ struct ExternalMiniClusterOptions {
   // If more than one master is specified, list of ports for the
   // masters in a consensus configuration. Port at index 0 is used for the leader
   // master.
-  std::vector<uint16_t> master_rpc_ports;
+  // Default: one entry as num_masters defaults to 1. Value 0 implies, a free port
+  //          is picked at runtime.
+  std::vector<uint16_t> master_rpc_ports = { 0 };
 
   // Default timeout for operations involving RPC's, when none provided in the API.
   // Default : 10sec
@@ -195,7 +197,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Not thread safe for now. We could move this to a static function outside External Mini Cluster,
   // but keeping it here for now as it is currently used only in conjunction with EMC.
   // If there are any errors and if a new master could not be spawned, it will crash internally.
-  void StartNewMaster(ExternalMaster** new_master);
+  void StartShellMaster(ExternalMaster** new_master);
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
   CHECKED_STATUS ChangeConfig(ExternalMaster* master,
@@ -334,9 +336,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   virtual Sockaddr DoGetLeaderMasterBoundRpcAddr();
 
-  CHECKED_STATUS StartSingleMaster();
-
-  CHECKED_STATUS StartDistributedMasters();
+  CHECKED_STATUS StartMasters();
 
   std::string GetBinaryPath(const std::string& binary) const;
   std::string GetDataPath(const std::string& daemon_id) const;

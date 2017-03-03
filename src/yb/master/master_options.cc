@@ -55,7 +55,6 @@ MasterOptions::MasterOptions(
   rpc_opts.default_port = Master::kDefaultPort;
 
   SetMasterAddresses(master_addresses);
-  ValidateMasterAddresses();
 }
 
 MasterOptions::MasterOptions()
@@ -63,20 +62,16 @@ MasterOptions::MasterOptions()
       is_shell_mode_(false) {
   rpc_opts.default_port = Master::kDefaultPort;
   master_addresses_flag = FLAGS_master_addresses;
-  if (FLAGS_master_addresses.empty()) {
-    SetMasterAddresses(make_shared<vector<HostPort>>());
-  } else {
-    vector<HostPort> master_addresses;
+  vector<HostPort> master_addresses = std::vector<HostPort>();
+  if (!FLAGS_master_addresses.empty()) {
     Status s = HostPort::ParseStrings(FLAGS_master_addresses, Master::kDefaultPort,
                                       &master_addresses);
     if (!s.ok()) {
       LOG(FATAL) << "Couldn't parse the master_addresses flag ('"
                  << FLAGS_master_addresses << "'): " << s.ToString();
     }
-    SetMasterAddresses(make_shared<vector<HostPort>>(std::move(master_addresses)));
   }
-
-  ValidateMasterAddresses();
+  SetMasterAddresses(make_shared<vector<HostPort>>(std::move(master_addresses)));
 }
 
 MasterOptions::MasterOptions(const MasterOptions& other)
@@ -85,21 +80,6 @@ MasterOptions::MasterOptions(const MasterOptions& other)
   is_creating_ = other.is_creating_;
   is_shell_mode_.Store(other.IsShellMode());
   rpc_opts.default_port = other.rpc_opts.default_port;
-
-  ValidateMasterAddresses();
-}
-
-void MasterOptions::ValidateMasterAddresses() const {
-  server::ServerBaseOptions::addresses_shared_ptr master_addresses = GetMasterAddresses();
-  if (!master_addresses->empty()) {
-    if (master_addresses->size() < 2) {
-      LOG(FATAL) << "At least 2 masters are required for a distributed config, but "
-                 << "master addresses flag " <<  FLAGS_master_addresses
-                 << " only specifies " << master_addresses->size() << " masters.";
-    }
-  }
-
-  server::ServerBaseOptions::ValidateMasterAddresses();
 }
 
 } // namespace master

@@ -419,7 +419,7 @@ void RaftConsensusITest::AddFlagsForLogRolls(vector<string>* extra_tserver_flags
 // Test that we can retrieve the permanent uuid of a server running
 // consensus service via RPC.
 TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   RaftPeerPB peer;
   TServerDetails* leader = nullptr;
@@ -440,7 +440,7 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
 // from the leader and then use that id to make the replica wait
 // until it is done. This will avoid the sleeps below.
 TEST_F(RaftConsensusITest, TestInsertAndMutateThroughConsensus) {
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   int num_iters = AllowSlowTests() ? 10 : 1;
 
@@ -454,7 +454,7 @@ TEST_F(RaftConsensusITest, TestInsertAndMutateThroughConsensus) {
 }
 
 TEST_F(RaftConsensusITest, TestFailedTransaction) {
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   // Wait until we have a stable leader.
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
@@ -498,7 +498,7 @@ TEST_F(RaftConsensusITest, TestFailedTransaction) {
 // that steals consensus peer locks for a while. This is meant to test that
 // even with timeouts and repeated requests consensus still works.
 TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   if (500 == FLAGS_client_inserts_per_thread) {
     if (AllowSlowTests()) {
@@ -536,7 +536,7 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
 }
 
 TEST_F(RaftConsensusITest, TestInsertOnNonLeader) {
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   // Wait for the initial leader election to complete.
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
@@ -572,7 +572,7 @@ TEST_F(RaftConsensusITest, TestRunLeaderElection) {
   // Reset consensus rpc timeout to the default value or the election might fail often.
   FLAGS_consensus_rpc_timeout_ms = 1000;
 
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   int num_iters = AllowSlowTests() ? 10 : 1;
 
@@ -644,7 +644,7 @@ TEST_F(RaftConsensusITest, TestCatchupAfterOpsEvicted) {
   vector<string> extra_flags;
   extra_flags.push_back("--log_cache_size_limit_mb=1");
   extra_flags.push_back("--consensus_max_batch_size_bytes=500000");
-  BuildAndStart(extra_flags);
+  NO_FATALS(BuildAndStart(extra_flags));
   TServerDetails* replica = (*tablet_replicas_.begin()).second;
   ASSERT_TRUE(replica != nullptr);
   ExternalTabletServer* replica_ets = cluster_->tablet_server_by_uuid(replica->uuid());
@@ -939,7 +939,7 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::Membe
     ts_flags.push_back("--skip_change_role");
     vector<string> master_flags;
     master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-            NO_FATALS(BuildAndStart(ts_flags, master_flags));
+    NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
     vector<TServerDetails*> tservers;
     AppendValuesFromMap(tablet_servers_, &tservers);
@@ -1005,7 +1005,7 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
   // Disable follower eviction to maintain the original intent of this test.
   vector<string> extra_flags = { "--evict_failed_followers=false" };
   AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
-  BuildAndStart(extra_flags);
+  NO_FATALS(BuildAndStart(extra_flags));
 
   string leader_uuid;
   int64_t orig_term;
@@ -1234,7 +1234,7 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
   // higher replica count so that we kill more leaders).
 
   vector<string> flags;
-  BuildAndStart(flags);
+  NO_FATALS(BuildAndStart(flags));
 
   OverrideFlagForSlowTests(
       "client_inserts_per_thread",
@@ -1284,7 +1284,7 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
     FLAGS_num_tablet_servers = 5;
     FLAGS_num_replicas = 5;
   }
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
@@ -1327,9 +1327,7 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
 TEST_F(RaftConsensusITest, TestAutomaticLeaderElectionOneReplica) {
   FLAGS_num_tablet_servers = 1;
   FLAGS_num_replicas = 1;
-  vector<string> ts_flags;
-  vector<string> master_flags = { "--catalog_manager_allow_local_consensus=false" };
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart());
 
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
@@ -1382,7 +1380,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
 TEST_F(RaftConsensusITest, TestKUDU_597) {
   FLAGS_num_replicas = 3;
   FLAGS_num_tablet_servers = 3;
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   AtomicBool finish(false);
   for (int i = 0; i < FLAGS_num_tablet_servers; i++) {
@@ -1429,7 +1427,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--max_wait_for_safe_time_ms=100");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   // Kill all the servers but one.
   TServerDetails *replica_ts;
@@ -1635,7 +1633,7 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   vector<TServerDetails*> tservers;
   AppendValuesFromMap(tablet_servers_, &tservers);
@@ -1947,7 +1945,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--inject_latency_before_change_role_secs=10");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   vector<TServerDetails*> tservers;
   AppendValuesFromMap(tablet_servers_, &tservers);
@@ -2078,7 +2076,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   vector<TServerDetails*> tservers;
   AppendValuesFromMap(tablet_servers_, &tservers);
@@ -2258,7 +2256,7 @@ TEST_F(RaftConsensusITest, TestEarlyCommitDespiteMemoryPressure) {
   // Don't let transaction memory tracking get in the way.
   ts_flags.push_back("--tablet_transaction_memory_limit_mb=-1");
 
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   // Elect server 2 as leader, then kill it and server 1, leaving behind
   // server 0 as the sole follower.
@@ -2330,7 +2328,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   ts_flags.push_back("--flush_threshold_mb=1");
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=300");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   // 50K is enough to cause flushes & log rolls.
   int num_rows_to_write = 50000;
@@ -2416,7 +2414,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   // the test can complete faster.
   vector<string> flags;
   flags.push_back("--tablet_transaction_memory_limit_mb=2");
-  BuildAndStart(flags);
+  NO_FATALS(BuildAndStart(flags));
 
   // Kill both followers.
   TServerDetails* details;
@@ -2484,7 +2482,7 @@ static void EnableLogLatency(server::GenericServiceProxy* proxy) {
 // Run a regular workload with a leader that's writing to its WAL slowly.
 TEST_F(RaftConsensusITest, TestSlowLeader) {
   if (!AllowSlowTests()) return;
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
@@ -2500,7 +2498,7 @@ TEST_F(RaftConsensusITest, TestSlowLeader) {
 // Run a regular workload with one follower that's writing to its WAL slowly.
 TEST_F(RaftConsensusITest, TestSlowFollower) {
   if (!AllowSlowTests()) return;
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   TServerDetails* leader;
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
@@ -2529,7 +2527,7 @@ TEST_F(RaftConsensusITest, TestSlowFollower) {
 // where every replica is writing to its WAL slowly.
 TEST_F(RaftConsensusITest, TestHammerOneRow) {
   if (!AllowSlowTests()) return;
-  BuildAndStart(vector<string>());
+  NO_FATALS(BuildAndStart(vector<string>()));
 
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     ExternalTabletServer* ts = cluster_->tablet_server(i);
@@ -2577,7 +2575,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
 TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
   vector<string> extra_flags;
   AddFlagsForLogRolls(&extra_flags);  // For CauseFollowerToFallBehindLogGC().
-  BuildAndStart(extra_flags, {"--enable_load_balancing=true"});
+  NO_FATALS(BuildAndStart(extra_flags, {"--enable_load_balancing=true"}));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
 
@@ -2602,7 +2600,7 @@ TEST_F(RaftConsensusITest, TestMasterReplacesEvictedFollowers) {
 TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags = { "--catalog_manager_wait_for_new_tablets_to_elect_leader=false" };
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
 
@@ -2641,7 +2639,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  BuildAndStart(ts_flags, master_flags);
+  NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   vector<TServerDetails*> tservers;
   AppendValuesFromMap(tablet_servers_, &tservers);

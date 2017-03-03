@@ -136,10 +136,6 @@ DEFINE_int32(max_create_tablets_per_ts, 20,
              "The number of tablets per TS that can be requested for a new table.");
 TAG_FLAG(max_create_tablets_per_ts, advanced);
 
-DEFINE_bool(catalog_manager_allow_local_consensus, true,
-            "Use local consensus when config size == 1");
-TAG_FLAG(catalog_manager_allow_local_consensus, hidden);
-
 DEFINE_int32(master_failover_catchup_timeout_ms, 30 * 1000,  // 30 sec
              "Amount of time to give a newly-elected leader master to load"
              " the previous master's metadata and become active. If this time"
@@ -756,8 +752,7 @@ Status CatalogManager::InitSysCatalogAsync(bool is_first_run) {
                                          Bind(&CatalogManager::ElectedAsLeaderCb,
                                               Unretained(this))));
   if (is_first_run) {
-    if (!master_->opts().IsClusterCreationMode() &&
-        !master_->opts().IsDistributed()) {
+    if (!master_->opts().IsClusterCreationMode()) {
       master_->SetShellMode(true);
       LOG(INFO) << "Starting master in shell mode.";
       return Status::OK();
@@ -3819,12 +3814,6 @@ Status CatalogManager::SelectReplicasForTablet(const TSDescriptorVector& ts_desc
           ->pb.mutable_committed_consensus_state();
   cstate->set_current_term(kMinimumTerm);
   consensus::RaftConfigPB *config = cstate->mutable_config();
-
-  if (nreplicas == 1 && FLAGS_catalog_manager_allow_local_consensus) {
-    config->set_local(true);
-  } else {
-    config->set_local(false);
-  }
   config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   RETURN_NOT_OK(ValidateTableReplicationInfo(table_guard.data().pb.replication_info()));

@@ -31,6 +31,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
@@ -147,9 +148,14 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
       const OpId& opid = OpId::default_instance()) = 0;
 
   // Implement a LeaderStepDown() request.
-  virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
+  virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req,
+                                  LeaderStepDownResponsePB* resp) {
     return STATUS(NotSupported, "Not implemented.");
   }
+
+  // Wait until the node has LEADER role.
+  // Returns Status::TimedOut if the role is not LEADER within 'timeout'.
+  virtual CHECKED_STATUS WaitUntilLeaderForTests(const MonoDelta& timeout) = 0;
 
   // Creates a new ConsensusRound, the entity that owns all the data
   // structures required for a consensus round, such as the ReplicateMsg

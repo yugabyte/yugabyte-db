@@ -285,7 +285,7 @@ Status Master::ListRaftConfigMasters(std::vector<RaftPeerPB>* masters) const {
 }
 
 Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
-  if (IsShellMode() || !opts_.IsDistributed()) {
+  if (IsShellMode()) {
     ServerEntryPB local_entry;
     local_entry.mutable_instance_id()->CopyFrom(catalog_manager_->NodeInstance());
     RETURN_NOT_OK(GetMasterRegistration(local_entry.mutable_registration()));

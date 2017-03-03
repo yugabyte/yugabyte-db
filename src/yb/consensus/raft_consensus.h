@@ -108,6 +108,8 @@ class RaftConsensus : public Consensus,
       ElectionMode mode, const bool pending_commit = false,
       const OpId& opid = OpId::default_instance()) OVERRIDE;
 
+  virtual CHECKED_STATUS WaitUntilLeaderForTests(const MonoDelta& timeout) OVERRIDE;
+
   virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req,
                           LeaderStepDownResponsePB* resp) OVERRIDE;
 
@@ -117,7 +119,8 @@ class RaftConsensus : public Consensus,
 
   virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& round) OVERRIDE;
 
-  virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round) OVERRIDE;
+  virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round)
+      OVERRIDE;
 
   virtual CHECKED_STATUS Update(const ConsensusRequestPB* request,
                         ConsensusResponsePB* response) OVERRIDE;
@@ -215,6 +218,9 @@ class RaftConsensus : public Consensus,
 
   std::string LogPrefix();
 
+  // Return true if the peer could become a leader during RAFT consensus start.
+  bool ShouldBecomeLeaderOnStart();
+
   // Set the leader UUID of the configuration and mark the tablet config dirty for
   // reporting to the master.
   void SetLeaderUuidUnlocked(const std::string& uuid);
@@ -311,7 +317,8 @@ class RaftConsensus : public Consensus,
   void FillVoteResponseVoteDenied(ConsensusErrorPB::Code error_code, VoteResponsePB* response);
 
   // Respond to VoteRequest that the candidate has an old term.
-  CHECKED_STATUS RequestVoteRespondInvalidTerm(const VoteRequestPB* request, VoteResponsePB* response);
+  CHECKED_STATUS RequestVoteRespondInvalidTerm(const VoteRequestPB* request,
+                                               VoteResponsePB* response);
 
   // Respond to VoteRequest that we already granted our vote to the candidate.
   CHECKED_STATUS RequestVoteRespondVoteAlreadyGranted(const VoteRequestPB* request,

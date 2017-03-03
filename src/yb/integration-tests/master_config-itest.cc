@@ -183,7 +183,7 @@ Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
 TEST_F(MasterChangeConfigTest, TestAddMaster) {
   // NOTE: Not using smart pointer as ExternalMaster is derived from a RefCounted base class.
   ExternalMaster* new_master = nullptr;
-  cluster_->StartNewMaster(&new_master);
+  cluster_->StartShellMaster(&new_master);
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
@@ -200,7 +200,7 @@ TEST_F(MasterChangeConfigTest, TestAddMaster) {
 
 TEST_F(MasterChangeConfigTest, TestSlowRemoteBootstrapDoesNotCrashMaster) {
   ExternalMaster* new_master = nullptr;
-  cluster_->StartNewMaster(&new_master);
+  cluster_->StartShellMaster(&new_master);
   ASSERT_OK(cluster_->SetFlag(new_master, "inject_latency_during_remote_bootstrap_secs", "8"));
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
@@ -241,7 +241,7 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
 
 TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
   ExternalMaster* new_master = nullptr;
-  cluster_->StartNewMaster(&new_master);
+  cluster_->StartShellMaster(&new_master);
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
@@ -268,7 +268,7 @@ TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
 
 TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   ExternalMaster* new_master = nullptr;
-  cluster_->StartNewMaster(&new_master);
+  cluster_->StartShellMaster(&new_master);
 
   LOG(INFO) << "New master " << new_master->bound_rpc_hostport().ToString();
 
@@ -332,7 +332,7 @@ TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
 
   // Create all new masters before to avoid rpc port reuse.
   for (int idx = 0; idx <= 2; idx++) {
-    cluster_->StartNewMaster(&new_masters[idx]);
+    cluster_->StartShellMaster(&new_masters[idx]);
   }
 
   for (int idx = 0; idx <= 2; idx++) {
@@ -355,7 +355,7 @@ TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
 
 TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
   ExternalMaster* new_master = nullptr;
-  cluster_->StartNewMaster(&new_master);
+  cluster_->StartShellMaster(&new_master);
 
   ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER,
                                            consensus::RaftPeerPB::PRE_OBSERVER),
@@ -368,7 +368,7 @@ TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
 
 TEST_F(MasterChangeConfigTest, TestWaitForChangeRoleCompletion) {
   ExternalMaster* new_master = nullptr;
-  cluster_->StartNewMaster(&new_master);
+  cluster_->StartShellMaster(&new_master);
   ExternalMaster* leader = cluster_->GetLeaderMaster();
 
   // Ensure leader does not change.

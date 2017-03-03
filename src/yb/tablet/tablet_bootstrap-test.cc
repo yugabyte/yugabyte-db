@@ -15,13 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/consensus/log-test-base.h"
-
 #include <vector>
 
 #include "yb/common/iterator.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/consensus-test-util.h"
@@ -128,9 +127,10 @@ class BootstrapTest : public LogTestBase {
                           "Unable to load test tablet metadata");
 
     consensus::RaftConfigPB config;
-    config.set_local(true);
-    config.add_peers()->set_permanent_uuid(meta->fs_manager()->uuid());
     config.set_opid_index(consensus::kInvalidOpIdIndex);
+    consensus::RaftPeerPB* peer = config.add_peers();
+    peer->set_permanent_uuid(meta->fs_manager()->uuid());
+    peer->set_member_type(consensus::RaftPeerPB::VOTER);
 
     gscoped_ptr<ConsensusMetadata> cmeta;
     RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->tablet_id(),

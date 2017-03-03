@@ -356,13 +356,10 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenInSameTerm) {
 
   ConsensusBootstrapInfo info;
   ASSERT_OK(consensus_->Start(info));
-  ASSERT_OK(consensus_->EmulateElection());
 
   // Commit the first noop round, created on EmulateElection();
   OpId committed_index;
-  ASSERT_FALSE(rounds_.empty()) << "rounds_ is empty!";
   consensus_->UpdateMajorityReplicated(rounds_[0]->id(), &committed_index);
-
   ASSERT_OPID_EQ(rounds_[0]->id(), committed_index);
 
   // Append 10 rounds
@@ -385,6 +382,8 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
       .WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(*queue_, Init(_))
       .Times(1);
+  EXPECT_CALL(*queue_, SetLeaderMode(_, _, _))
+      .Times(2);
   EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
       .Times(3);
   EXPECT_CALL(*queue_, AppendOperationsMock(_, _))
@@ -392,7 +391,6 @@ TEST_F(RaftConsensusTest, TestCommittedIndexWhenTermsChange) {
 
   ConsensusBootstrapInfo info;
   ASSERT_OK(consensus_->Start(info));
-  ASSERT_OK(consensus_->EmulateElection());
 
   OpId committed_index;
   consensus_->UpdateMajorityReplicated(rounds_[0]->id(), &committed_index);
@@ -461,9 +459,12 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
 
     // Queue gets initted when the peer starts.
     EXPECT_CALL(*queue_, Init(_))
-      .Times(1);
-  }
+        .Times(1);
 
+    EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_))
+        .Times(1)
+        .WillOnce(Return(Status::OK()));
+  }
   ASSERT_OK(consensus_->Start(info));
 
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(queue_));
@@ -522,7 +523,6 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   cc_round_id.set_index(cc_round_id.index() + 1);
   consensus_->UpdateMajorityReplicated(cc_round_id,
                                        &committed_index);
-
   ASSERT_OPID_EQ(committed_index, cc_round_id);
 }
 
