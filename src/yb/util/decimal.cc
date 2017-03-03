@@ -289,14 +289,17 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
 
 string Decimal::EncodeToSerializedBigDecimal(bool* is_out_of_range) const {
   // Note that BigDecimal's scale is not the same as our exponent, but related by the following:
-  VarInt varint_scale = exponent_ - VarInt(static_cast<int64_t> (digits_.size()));
+  VarInt varint_scale = VarInt(static_cast<int64_t> (digits_.size())) - exponent_;
   // Must use 4 bytes for the two's complement encoding of the scale.
   bool is_overflow = false;
   string scale = varint_scale.EncodeToTwosComplement(&is_overflow, 4);
   *is_out_of_range = is_overflow;
+  vector<uint8_t> digits(digits_);
+  // VarInt representation needs reversed digits.
+  std::reverse(digits.begin(), digits.end());
   // Note that the mantissa varint needs to have the same sign as the current decimal.
   // Get the digit array in int from int8_t in this class.
-  string mantissa = VarInt(digits_, 10, is_positive_).EncodeToTwosComplement(&is_overflow);
+  string mantissa = VarInt(digits, 10, is_positive_).EncodeToTwosComplement(&is_overflow);
   return scale + mantissa;
 }
 
@@ -315,7 +318,9 @@ Status Decimal::DecodeFromSerializedBigDecimal(const Slice &slice) {
   // The sign of the BigDecimal is the sign of the mantissa
   is_positive_ = mantissa.is_positive_;
   digits_ = vector <uint8_t> (mantissa.digits_.begin(), mantissa.digits_.end());
-  exponent_ = scale + VarInt(static_cast<int64_t> (digits_.size()));
+  // The varint has the digits in reverse order
+  std::reverse(digits_.begin(), digits_.end());
+  exponent_ = VarInt(static_cast<int64_t> (digits_.size())) - scale;
   make_canonical();
   return Status::OK();
 }

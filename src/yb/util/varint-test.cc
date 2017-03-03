@@ -130,6 +130,8 @@ TEST_F(VarIntTest, TestArithmetic) {
   ASSERT_EQ(VarInt("0"), VarInt::add({VarInt("23"), VarInt("3"), VarInt("-26")}));
   ASSERT_EQ(VarInt("1"), VarInt::add({VarInt("23"), VarInt("3"), VarInt("-25")}));
   ASSERT_EQ(VarInt("-1"), VarInt::add({VarInt("23"), VarInt("3"), VarInt("-27")}));
+  // Test arithmetic even if the numbers are not in the same base
+  ASSERT_EQ(VarInt("-112"), VarInt("29").ConvertToBase(7) - VarInt("141"));
 }
 
 TEST_F(VarIntTest, TestComparableEncoding) {

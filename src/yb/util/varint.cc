@@ -126,16 +126,18 @@ VarInt VarInt::add(const vector<VarInt> &inputs) {
   int radix = inputs[0].radix_;
   DCHECK(radix > 0) << "Radix of VarInt found to be non-positive";
   vector<int> output_digits;
+  vector<VarInt> operands;
   size_t max_size = 0;
   for (const VarInt& v : inputs) {
-    if (v.digits_.size() > max_size) {
-      max_size = v.digits_.size();
+    operands.push_back(v.radix_ == radix ? v : v.ConvertToBase(radix));
+    if (operands.back().digits_.size() > max_size) {
+      max_size = operands.back().digits_.size();
     }
   }
   int carry = 0;
   bool is_positive = true;
   for (size_t i = 0; i < max_size || carry != 0; i++) {
-    for (const VarInt &v : inputs) {
+    for (const VarInt &v : operands) {
       carry += v.is_positive_ ? v.digit(i) : -v.digit(i);
     }
     is_positive = carry == 0 ? is_positive : carry > 0;

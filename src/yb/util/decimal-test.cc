@@ -18,16 +18,16 @@ class DecimalTest : public YBTest {
       // The priority order for comparing two decimals is sign > exponent > mantissa. The mantissa
       // must be compared lexicographically while exponent must be compared in absolute value.
 
-      // 2147483647 is the largest signed int, so BigDecimal Encoding should fail above this.
-      "-9847.236776e+2147483653", // Note that the scale is 2147483647.
-      "-9847.236780e+2147483652",
+      // -2147483648 is the smallest signed int, so BigDecimal Encoding fails below this scale.
+      "-9847.236776e+2147483654", // Note that the scale is -2147483648.
+      "-9847.236780e+2147483653",
       // Testing numbers with close by digits to make sure comparison is correct.
       "-1.34",
       "-13.37e-1",
       "-13.34e-1",
       "-13.3e-1",
-      // Checking the lower boundary of the exponent.
-      "-1.36e-2147483646", // Note that the scale is -2147483648.
+      // Checking the higher boundary of the scale.
+      "-1.36e-2147483645", // Note that the scale is 2147483647, largest signed int.
       "-0",
       "120e0",
       "1.2e+100",
@@ -236,9 +236,6 @@ TEST_F(DecimalTest, TestBigDecimalEncoding) {
     decoded_decimals.emplace_back();
     EXPECT_OK(decoded_decimals[i].DecodeFromSerializedBigDecimal(encoded_strings[i]));
     EXPECT_EQ(decoded_decimals[i], test_decimals[i]);
-    if (decoded_decimals[i] != test_decimals[i]) {
-      LOG(INFO) << decoded_decimals[i].ToDebugString() << test_decimals[i].ToDebugString();
-    }
     if (i > 0) {
       EXPECT_GT(decoded_decimals[i], decoded_decimals[i-1]);
       EXPECT_GT(decoded_decimals[i], test_decimals[i-1]);
@@ -249,10 +246,10 @@ TEST_F(DecimalTest, TestBigDecimalEncoding) {
     }
   }
 
-  // Testing just above the scale limit
-  Decimal("-9847.236780e+2147483653").EncodeToSerializedBigDecimal(&is_out_of_range);
+  // Testing just outside the scale limits.
+  Decimal("-9847.236780e+2147483654").EncodeToSerializedBigDecimal(&is_out_of_range);
   EXPECT_TRUE(is_out_of_range);
-  Decimal("-1.36e-2147483647").EncodeToSerializedBigDecimal(&is_out_of_range);
+  Decimal("-1.36e-2147483646").EncodeToSerializedBigDecimal(&is_out_of_range);
   EXPECT_TRUE(is_out_of_range);
 }
 

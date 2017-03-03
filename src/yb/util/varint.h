@@ -63,7 +63,7 @@ class VarInt {
   // or just in case we need them in future.
   //
   // Preconditions:
-  //  inputs.size() > 0, all positive, radix of the inputs are the same. radix * num_inputs <= 2^31.
+  //  inputs.size() > 0, all positive. radix * num_inputs <= 2^31.
   static VarInt add(const std::vector<VarInt>& inputs);
   // Not yet implemented
   static VarInt multiply(const VarInt& input1, const VarInt& input2);
