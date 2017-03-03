@@ -81,14 +81,16 @@ class Parser {
 
  private:
   //------------------------------------------------------------------------------------------------
+  // Parse context which consists of state variables and results.
+  // NOTE: parse context must be FIRST class field to be destroyed by the class destructor
+  //       after all other dependent class fields (e.g. processors below).
+  ParseContext::UniPtr parse_context_;
+
   // Lexical scanner.
   LexProcessor lex_processor_;
 
   // Grammar parser.
   GramProcessor gram_processor_;
-
-  // Parse context which consists of state variables and results.
-  ParseContext::UniPtr parse_context_;
 };
 
 }  // namespace sql
