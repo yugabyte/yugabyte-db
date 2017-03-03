@@ -312,6 +312,8 @@ class TabletBootstrap {
   // Snapshot of which stores were flushed prior to restart.
   FlushedStoresSnapshot flushed_stores_;
 
+  HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;
+
   DISALLOW_COPY_AND_ASSIGN(TabletBootstrap);
 };
 
@@ -768,6 +770,12 @@ struct ReplayState {
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb;
+
+  // If we encounter the last entry flushed to a RocksDB SSTable (as identified by the max
+  // persistent sequence number), we remember the hybrid time of that entry in this field.
+  // We guarantee that we'll either see that entry or a latter entry we know is committed into Raft
+  // during log replay. This is crucial for properly setting safe time at bootstrap.
+  HybridTime rocksdb_last_entry_hybrid_time = HybridTime::kMin;
 };
 
 // Handle the given log entry. If OK is returned, then takes ownership of 'entry'.
@@ -833,6 +841,15 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
     //
     // Also see the other place where we update state->committed_op_id in the end of this function.
     state->UpdateCommittedOpId(replicate_entry->replicate().id());
+
+    // We also update the MVCC safe time to make sure this committed entry is visible to readers
+    // as every committed entry should be. Unlike the committed op id, though, we can't just update
+    // the safe time here, as this entry could be overwritten by a later entry with a later term but
+    // an earlier hybrid time (TODO: would that still be possible when we have leader leases?).
+    // Instead, we only keep the last value of hybrid time of the entry at this index, and update
+    // safe time based on it in the end. We do require that we keep at least one committed entry
+    // in the log, though.
+    state->rocksdb_last_entry_hybrid_time = HybridTime(replicate_entry->replicate().hybrid_time());
   }
 
   // Append the replicate message to the log as is
@@ -847,7 +864,7 @@ Status TabletBootstrap::HandleReplicateMessage(ReplayState* state, LogEntryPB* r
     return Status::OK();
   }
 
-  LogEntryPB** existing_entry_ptr = InsertOrReturnExisting(
+  LogEntryPB** const existing_entry_ptr = InsertOrReturnExisting(
       &state->pending_replicates, index, replicate_entry);
 
   // If there was a entry with the same index we're overwriting then we need to delete
@@ -1284,6 +1301,18 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   if (tablet_->table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
     LOG(INFO) << "rocksdb_applied_index=" << state.rocksdb_applied_index
               << ", number of orphaned replicates=" << consensus_info->orphaned_replicates.size();
+    // In case there were no log records that told us that the commit index advanced past
+    // rocksdb_applied_index, update safe time with the timestamp of the latest log record that
+    // had rocksdb_applied_index as its index, because that entry must be the one that was
+    // committed.
+    tablet_->mvcc_manager()->OfflineAdjustSafeTime(state.rocksdb_last_entry_hybrid_time);
+    if (tablet_->mvcc_manager()->GetMaxSafeTimeToReadAt() == HybridTime::kMin &&
+        state.rocksdb_applied_index > 0) {
+      return STATUS(Corruption,
+                    "Even though RocksDB is not empty, we were not able to set safe time "
+                    "correctly on tablet bootstrap. Did we fail to keep at least one committed "
+                    "entry in the log?");
+    }
   }
   consensus_info->last_id = state.prev_op_id;
   consensus_info->last_committed_id = state.committed_op_id;

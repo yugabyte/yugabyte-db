@@ -26,6 +26,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
+#include "yb/gutil/strings/substitute.h"
 
 using std::thread;
 
@@ -34,6 +35,7 @@ namespace tablet {
 
 using server::Clock;
 using server::HybridClock;
+using strings::Substitute;
 
 class MvccTest : public YBTest {
  public:
@@ -93,7 +95,7 @@ TEST_F(MvccTest, TestMvccBasic) {
 
   // State should show 0 as committed, 1 as uncommitted.
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < 1 or (T in {1})}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < 2}]", snap.ToString());
   ASSERT_TRUE(snap.IsCommitted(HybridTime(1)));
   ASSERT_FALSE(snap.IsCommitted(HybridTime(2)));
 }
@@ -159,7 +161,7 @@ TEST_F(MvccTest, TestMvccMultipleInFlight) {
 
   // all committed
   mgr.TakeSnapshot(&snap);
-  ASSERT_EQ("MvccSnapshot[committed={T|T < 3 or (T in {3})}]", snap.ToString());
+  ASSERT_EQ("MvccSnapshot[committed={T|T < 4}]", snap.ToString());
   ASSERT_TRUE(snap.IsCommitted(t1));
   ASSERT_TRUE(snap.IsCommitted(t2));
   ASSERT_TRUE(snap.IsCommitted(t3));
@@ -216,7 +218,7 @@ TEST_F(MvccTest, TestOfflineTransactions) {
   // now start a transaction in the "past"
   ASSERT_OK(mgr.StartTransactionAtHybridTime(HybridTime(50)));
 
-  ASSERT_GE(mgr.GetMaxSafeTimeToReadAt().CompareTo(HybridTime::kInitialHybridTime), 0);
+  ASSERT_GE(mgr.GetMaxSafeTimeToReadAt(), HybridTime::kMin);
 
   // and committing this transaction "offline" this
   // should not advance the MvccManager 'all_committed_before_'
@@ -236,7 +238,7 @@ TEST_F(MvccTest, TestOfflineTransactions) {
   // Now advance the watermark to the last committed transaction.
   mgr.OfflineAdjustSafeTime(HybridTime(50));
 
-  ASSERT_GE(mgr.GetMaxSafeTimeToReadAt().CompareTo(HybridTime(50)), 0);
+  ASSERT_GE(mgr.GetMaxSafeTimeToReadAt(), HybridTime(50));
 
   MvccSnapshot snap2;
   mgr.TakeSnapshot(&snap2);
@@ -537,7 +539,7 @@ TEST_F(MvccTest, TestCleanTimeCoalescingOnOfflineTransactions) {
 
   mgr.StartApplyingTransaction(HybridTime(10));
   mgr.OfflineCommitTransaction(HybridTime(10));
-  ASSERT_EQ(mgr.cur_snap_.ToString(), "MvccSnapshot[committed={T|T < 15 or (T in {15})}]");
+  ASSERT_EQ(mgr.cur_snap_.ToString(), "MvccSnapshot[committed={T|T < 16}]");
 }
 
 // Various death tests which ensure that we can only transition in one of the following
@@ -617,6 +619,40 @@ TEST_F(MvccTest, TestWaitUntilCleanDeadline) {
   Status s = mgr.WaitForCleanSnapshotAtHybridTime(tx1, &snap, deadline);
   ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 }
+
+TEST_F(MvccTest, TestMaxSafeTimeToReadAt) {
+  MvccManager mgr(clock_.get());
+  auto apply_and_commit = [&](HybridTime tx_to_commit) {
+    mgr.StartApplyingTransaction(tx_to_commit);
+    mgr.CommitTransaction(tx_to_commit);
+  };
+
+  // Start four transactions, don't commit them yet.
+  for (int i = 1; i <= 4; ++i) {
+    ASSERT_EQ(i, mgr.StartTransaction().ToUint64());
+    // We haven't committed any transactions yet, so the safe time is zero.
+    ASSERT_EQ(HybridTime::kMin, mgr.GetMaxSafeTimeToReadAt());
+  }
+
+  // Commit previous transactions and start new transactions at the same time (up to 10 total),
+  // then just keep committing txns until all but one are committed.
+  for (int i = 5; i <= 13; ++i) {
+    if (i <= 10) {
+      ASSERT_EQ(i, mgr.StartTransaction().ToUint64());
+    }
+    const HybridTime tx_to_commit(i - 4);
+    apply_and_commit(tx_to_commit);
+    SCOPED_TRACE(Substitute("i=$0", i));
+    ASSERT_EQ(tx_to_commit, mgr.GetMaxSafeTimeToReadAt());
+  }
+
+  // Commit one more transaction, but now that there are no more transactions in flight, safe time
+  // should start returning current time.
+  apply_and_commit(HybridTime(10));
+  ASSERT_EQ(HybridTime(11), mgr.GetMaxSafeTimeToReadAt());
+  ASSERT_EQ(HybridTime(12), mgr.GetMaxSafeTimeToReadAt());
+}
+
 
 } // namespace tablet
 } // namespace yb

@@ -264,22 +264,23 @@ static void FilterHybridTimes(std::vector<HybridTime::val_type>* v,
 void MvccManager::AdjustMaxSafetimeToRead() {
   // There are two possibilities:
   //
-  // 1) We still have an in-flight transaction earlier than 'no_new_transactions_at_or_before_'.
-  //    In this case, we update the watermark to that transaction's hybrid_time.
+  // 1) We still have an in-flight transaction earlier than or exactly at
+  //    'no_new_transactions_at_or_before_'. In this case, we update the watermark to that
+  //    transaction's hybrid_time.
   //
-  // 2) There are no in-flight transactions earlier than 'no_new_transactions_at_or_before_'.
+  // 2) There are no in-flight transactions earlier than or at 'no_new_transactions_at_or_before_'.
   //    (There may still be in-flight transactions with future hybrid_times due to
   //    commit-wait transactions which start in the future). In this case, we update
-  //    the watermark to 'no_new_transactions_at_or_before_', since we know that no new
+  //    the watermark to 'no_new_transactions_at_or_before_ + 1', since we know that no new
   //    transactions can start with an earlier hybrid_time.
   //
-  // In either case, we have to add the newly committed ts only if it remains higher
-  // than the new watermark.
+  // In either case, we have to add the newly committed ts only if it remains higher than the new
+  // watermark.
 
-  if (earliest_in_flight_.CompareTo(no_new_transactions_at_or_before_) < 0) {
+  if (earliest_in_flight_.CompareTo(no_new_transactions_at_or_before_) <= 0) {
     cur_snap_.all_committed_before_ = earliest_in_flight_;
   } else {
-    cur_snap_.all_committed_before_ = no_new_transactions_at_or_before_;
+    cur_snap_.all_committed_before_ = HybridTime(no_new_transactions_at_or_before_.value() + 1);
   }
 
   // Filter out any committed hybrid_times that now fall below the watermark
@@ -418,13 +419,15 @@ HybridTime MvccManager::GetMaxSafeTimeToReadAt() const {
     // to register the reads across all the nodes, it is possible that a leadership change could
     // end up bringing up a new leader (who is slightly behind the current leader) that accepts
     // a write timestamp lower than this.
-    return HybridTime(clock_->Now().ToUint64() - 1);
+    //
+    // We are also assuming that every time we query the current clock time we get a new value (as
+    // is the case for a HybridClock or a purely logical auto-incrementing clock used in tests).
+    // With that assumption, if transactions are always created at the current time, all future
+    // transactions will get assigned a higher time than what we are about to return, so this is
+    // a safe time to read at.
+    return clock_->Now();
   } else {
-    // for non-trivial all_committed_before_ return something that is strictly less than that value
-    // because the docdb comparisions include up to <= read point.
-    return cur_snap_.all_committed_before_ == HybridTime::kInitialHybridTime
-               ? HybridTime::kInitialHybridTime
-               : HybridTime(cur_snap_.all_committed_before_.ToUint64() - 1);
+    return cur_snap_.LastCommittedHybridTime();
   }
 }
 
@@ -528,10 +531,28 @@ void MvccSnapshot::AddCommittedHybridTime(HybridTime hybrid_time) {
   }
 }
 
+HybridTime MvccSnapshot::LastCommittedHybridTime() const {
+  if (!is_clean()) {
+    if (committed_hybrid_times_.size() == 1 &&
+        all_committed_before_.value() == committed_hybrid_times_.front()) {
+      // This is a degenerate case of a dirty snapshot that is in fact clean, consiting of all
+      // hybrid_times less than X and the set {X}, e.g.:
+      // MvccSnapshot[committed={T|T < 6041797920884666368 or (T in {6041797920884666368})}]
+      return all_committed_before_;
+    }
+    // This is an invariant failure. This should never happen when MVCC transactions are being
+    // created and committed in the increasing order of timestamps. We should simplify MvccManager
+    // to make this kind of error handling unnecessary (ENG-979).
+    LOG(FATAL) << __func__ << " called on a dirty snapshot: " << ToString();
+  }
+  return all_committed_before_.Decremented();
+}
+
 ////////////////////////////////////////////////////////////
 // ScopedWriteTransaction
 ////////////////////////////////////////////////////////////
-ScopedWriteTransaction::ScopedWriteTransaction(MvccManager *mgr, HybridTimeAssignmentType assignment_type)
+ScopedWriteTransaction::ScopedWriteTransaction(MvccManager *mgr,
+                                               HybridTimeAssignmentType assignment_type)
   : done_(false),
     manager_(DCHECK_NOTNULL(mgr)),
     assignment_type_(assignment_type) {
@@ -557,6 +578,7 @@ ScopedWriteTransaction::ScopedWriteTransaction(MvccManager* mgr, HybridTime hybr
       manager_(DCHECK_NOTNULL(mgr)),
       assignment_type_(PRE_ASSIGNED),
       hybrid_time_(hybrid_time) {
+  // TODO: Do not crash the process here. Convert this to a static factory returning a status.
   CHECK_OK(mgr->StartTransactionAtHybridTime(hybrid_time));
 }
 

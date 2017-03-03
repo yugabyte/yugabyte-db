@@ -178,7 +178,7 @@ Status HybridClock::Init() {
 
   LOG(INFO) << "HybridClock initialized. Resolution in nanos?: " << (divisor_ == 1000)
             << " Wait times tolerance adjustment: " << tolerance_adjustment_
-            << " Current error: " << error_usec;
+            << " Current error (microseconds): " << error_usec;
 #endif // defined(__APPLE__)
 
   state_ = kInitialized;
@@ -344,8 +344,8 @@ Status HybridClock::WaitUntilAfter(const HybridTime& then_latest,
   return Status::OK();
 }
 
-  Status HybridClock::WaitUntilAfterLocally(const HybridTime& then,
-                                            const MonoTime& deadline) {
+Status HybridClock::WaitUntilAfterLocally(const HybridTime& then,
+                                          const MonoTime& deadline) {
   while (true) {
     HybridTime now;
     uint64_t error;

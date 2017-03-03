@@ -94,6 +94,7 @@ using consensus::RaftConsensus;
 using consensus::ReplicateMsg;
 using consensus::ALTER_SCHEMA_OP;
 using consensus::WRITE_OP;
+using consensus::OpIdType;
 using log::Log;
 using log::LogAnchorRegistry;
 using rpc::Messenger;
@@ -380,15 +381,10 @@ Status TabletPeer::RunLogGC() {
   if (!CheckRunning().ok()) {
     return Status::OK();
   }
-  int64_t min_log_index;
-  int32_t num_gced;
-  GetEarliestNeededLogIndex(&min_log_index);
-  Status s = log_->GC(min_log_index, &num_gced);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend("Unexpected error while running Log GC from TabletPeer");
-    LOG(ERROR) << s.ToString();
-  }
-  return Status::OK();
+  int64_t min_log_index = 0;
+  int32_t num_gced = 0;
+  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_log_index));
+  return log_->GC(min_log_index, &num_gced);
 }
 
 string TabletPeer::HumanReadableState() const {
@@ -437,7 +433,7 @@ void TabletPeer::GetInFlightTransactions(Transaction::TraceType trace_type,
   }
 }
 
-void TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
+Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
@@ -448,7 +444,9 @@ void TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   }
 
   // If we never have written to the log, no need to proceed.
-  if (*min_index == 0) return;
+  if (*min_index == 0) {
+    return Status::OK();
+  }
 
   // Next, we interrogate the anchor registry.
   // Returns OK if minimum known, NotFound if no anchors are registered.
@@ -475,14 +473,28 @@ void TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
   }
 
   if (tablet_->table_type() != KUDU_COLUMNAR_TABLE_TYPE) {
-    *min_index = std::min(*min_index, static_cast<int64>(tablet_->LargestFlushedSequenceNumber()));
+    *min_index = std::min(*min_index,
+                          static_cast<int64_t>(tablet_->LargestFlushedSequenceNumber()));
+    // We keep at least one committed operation in the log so that we can always recover safe time
+    // during bootstrap.
+    OpId committed_op_id;
+    const Status get_committed_op_id_status =
+        consensus()->GetLastOpId(OpIdType::COMMITTED_OPID, &committed_op_id);
+    if (!get_committed_op_id_status.IsNotFound()) {
+      // NotFound is returned by local consensus. We should get rid of this logic once local
+      // consensus is gone.
+      RETURN_NOT_OK(get_committed_op_id_status);
+      *min_index = std::min(*min_index, static_cast<int64_t>(committed_op_id.index()));
+    }
   }
+
+  return Status::OK();
 }
 
 Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx;
-  GetEarliestNeededLogIndex(&min_op_idx);
+  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_op_idx));
   log_->GetMaxIndexesToSegmentSizeMap(min_op_idx, idx_size_map);
   return Status::OK();
 }
@@ -490,7 +502,7 @@ Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_siz
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx;
-  GetEarliestNeededLogIndex(&min_op_idx);
+  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_op_idx));
   log_->GetGCableDataSize(min_op_idx, retention_size);
   return Status::OK();
 }

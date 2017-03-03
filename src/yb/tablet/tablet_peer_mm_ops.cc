@@ -223,7 +223,11 @@ bool LogGCOp::Prepare() {
 void LogGCOp::Perform() {
   CHECK(!sem_.try_lock());
 
-  CHECK_OK(tablet_peer_->RunLogGC());
+  Status s = tablet_peer_->RunLogGC();
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unexpected error while running Log GC from TabletPeer");
+    LOG(ERROR) << s.ToString();
+  }
 
   sem_.unlock();
 }

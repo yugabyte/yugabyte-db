@@ -118,19 +118,7 @@ class MvccSnapshot {
   // making sure hybrid_times increase monotonically along with Raft indexes, at least in the
   // absence of cross-shard transactions, and we always commit/apply REPLICATE messages in the Raft
   // log order.
-  HybridTime LastCommittedHybridTime() const {
-    if (!is_clean()) {
-      if (committed_hybrid_times_.size() == 1 &&
-          all_committed_before_.value() == committed_hybrid_times_.front()) {
-        // This is a degenerate case of a dirty snapshot that is in fact clean, consiting of all
-        // hybrid_times less than X and the set {X}, e.g.:
-        // MvccSnapshot[committed={T|T < 6041797920884666368 or (T in {6041797920884666368})}]
-        return all_committed_before_;
-      }
-      LOG(WARNING) << __func__ << " called on a dirty snapshot: " << ToString();
-    }
-    return HybridTime(all_committed_before_.value() - 1);
-  }
+  HybridTime LastCommittedHybridTime() const;
 
  private:
   friend class MvccManager;

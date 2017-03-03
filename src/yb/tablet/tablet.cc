@@ -1769,7 +1769,7 @@ bool Tablet::HasSSTables() const {
 }
 
 SequenceNumber Tablet::MaxPersistentSequenceNumber() const {
-  assert(table_type_ != TableType::KUDU_COLUMNAR_TABLE_TYPE);
+  CHECK_NE(table_type_, TableType::KUDU_COLUMNAR_TABLE_TYPE);
   vector<rocksdb::LiveFileMetaData> live_files_metadata;
   rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
   SequenceNumber max_seqno = 0;

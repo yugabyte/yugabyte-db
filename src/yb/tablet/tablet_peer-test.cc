@@ -248,7 +248,7 @@ class TabletPeerTest : public YBTabletTest,
     // And that there are no in-flight transactions (which are implicit
     // anchors) by comparing the TabletPeer's earliest needed OpId and the last
     // entry in the log; if they match there is nothing in flight.
-    tablet_peer_->GetEarliestNeededLogIndex(&earliest_index);
+    CHECK_OK(tablet_peer_->GetEarliestNeededLogIndex(&earliest_index));
     OpId last_log_opid;
     tablet_peer_->log_->GetLatestEntryOpId(&last_log_opid);
     CHECK_EQ(earliest_index, last_log_opid.index())
@@ -259,7 +259,7 @@ class TabletPeerTest : public YBTabletTest,
   // Assert that the Log GC() anchor is earlier than the latest OpId in the Log.
   void AssertLogAnchorEarlierThanLogLatest() {
     int64_t earliest_index = -1;
-    tablet_peer_->GetEarliestNeededLogIndex(&earliest_index);
+    CHECK_OK(tablet_peer_->GetEarliestNeededLogIndex(&earliest_index));
     OpId last_log_opid;
     tablet_peer_->log_->GetLatestEntryOpId(&last_log_opid);
     CHECK_LT(earliest_index, last_log_opid.index())
@@ -333,7 +333,7 @@ TEST_P(TabletPeerTest, TestMRSAnchorPreventsLogGC) {
 
   // Ensure nothing gets deleted.
   int64_t min_log_index = -1;
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(0, num_gced) << "earliest needed: " << min_log_index;
 
@@ -347,7 +347,7 @@ TEST_P(TabletPeerTest, TestMRSAnchorPreventsLogGC) {
   int32_t earliest_needed = table_type_ == KUDU_COLUMNAR_TABLE_TYPE ?
       2 : static_cast<int32_t>(tablet_peer_->tablet()->LargestFlushedSequenceNumber());
   auto total_segments = log->GetLogReader()->num_segments();
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced) << "earliest needed: " << min_log_index;
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -380,7 +380,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
       1 : static_cast<int32_t>(tablet_peer_->tablet()->LargestFlushedSequenceNumber());
   auto total_segments = log->GetLogReader()->num_segments();
   int64_t min_log_index = -1;
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   // We will only GC 1, and have 1 left because the earliest needed OpId falls
   // back to the latest OpId written to the Log if no anchors are set.
@@ -425,7 +425,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   // Note that this will allow GC of the 2nd insert done above.
   earliest_needed = table_type_ == KUDU_COLUMNAR_TABLE_TYPE ?
       1 : tablet_peer_->tablet()->LargestFlushedSequenceNumber();
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -444,7 +444,7 @@ TEST_P(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   // The last log OpId is the commit in the last segment, so it only anchors
   // that segment, not the previous, because it's not the first OpId in the
   // segment.
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -522,7 +522,7 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
 
   // GC the first four segments created by the inserts.
   int64_t min_log_index = -1;
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(4, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -543,7 +543,7 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
   AssertLogAnchorEarlierThanLogLatest();
 
   // Try to GC(), nothing should be deleted due to the in-flight transaction.
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(0, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
@@ -560,7 +560,7 @@ TEST_P(TabletPeerTest, TestActiveTransactionPreventsLogGC) {
   AssertNoLogAnchors();
 
   // All should be deleted except the two last segments.
-  tablet_peer_->GetEarliestNeededLogIndex(&min_log_index);
+  ASSERT_OK(tablet_peer_->GetEarliestNeededLogIndex(&min_log_index));
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(3, num_gced);
   ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));

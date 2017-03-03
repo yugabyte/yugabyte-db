@@ -124,7 +124,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   virtual CHECKED_STATUS StartReplicaTransaction(
       const scoped_refptr<consensus::ConsensusRound>& round) OVERRIDE;
 
-  consensus::Consensus* consensus() {
+  consensus::Consensus* consensus() const {
     std::lock_guard<simple_spinlock> lock(lock_);
     return consensus_.get();
   }
@@ -195,7 +195,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Returns the minimum known log index that is in-memory or in-flight.
   // Used for selection of log segments to delete during Log GC.
-  void GetEarliestNeededLogIndex(int64_t* log_index) const;
+  CHECKED_STATUS GetEarliestNeededLogIndex(int64_t* log_index) const;
 
   // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
   // because in-memory structures have anchors in them.

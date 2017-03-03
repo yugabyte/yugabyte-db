@@ -1136,19 +1136,27 @@ class ExternalDaemon::LogTailerThread {
           // etc.) in case we do get unblocked. Instead, we keep a local pointer to the atomic
           // "stopped" flag, and that allows us to safely check if it is OK to print log messages.
           // The "stopped" flag itself is never deallocated.
-          while (!feof(fp) && fgets(buf, sizeof(buf), fp) != nullptr && !stopped->load()) {
+          bool is_eof = false;
+          bool is_fgets_null = false;
+          bool is_stopped = false;
+          while (!(is_eof = feof(fp)) &&
+                 !(is_fgets_null = (fgets(buf, sizeof(buf), fp) == nullptr)) &&
+                 !stopped->load()) {
             size_t l = strlen(buf);
             const char* maybe_end_of_line = l > 0 && buf[l - 1] == '\n' ? "" : "\n";
             // Synchronize tailing output from all external daemons for simplicity.
             lock_guard<mutex> lock(global_state()->logging_mutex);
-            if (!stopped->load()) break;
+            if (stopped->load()) break;
             // Make sure we always output an end-of-line character.
             *out << line_prefix << " " << buf << maybe_end_of_line;
           }
           fclose(fp);
           if (!stopped->load()) {
             // It might not be safe to log anything if we have already stopped.
-            VLOG(1) << "Exiting " << thread_desc_;
+            VLOG(1) << "Exiting " << thread_desc_
+                    << ": is_eof=" << is_eof
+                    << ", is_fgets_null=" << is_fgets_null
+                    << ", stopped=0";
           }
         }) {
     thread_.detach();
