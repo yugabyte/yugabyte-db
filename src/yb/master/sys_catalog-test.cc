@@ -51,7 +51,9 @@ class SysCatalogTest : public YBTest {
     YBTest::SetUp();
 
     // Start master with the create flag on.
-    mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0, true));
+    mini_master_.reset(
+        new MiniMaster(Env::Default(), GetTestPath("Master"), AllocateFreePort(),
+                       AllocateFreePort(), true /* is_creating */));
     ASSERT_OK(mini_master_->Start());
     master_ = mini_master_->master();
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());

@@ -17,6 +17,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include <algorithm>
 
 #include "yb/client/client.h"
 #include "yb/gutil/strings/join.h"
@@ -49,6 +50,8 @@ using master::MiniMaster;
 using master::TabletLocationsPB;
 using master::TSDescriptor;
 using std::shared_ptr;
+using std::string;
+using std::vector;
 using tserver::MiniTabletServer;
 using tserver::TabletServer;
 
@@ -67,9 +70,7 @@ MiniCluster::MiniCluster(Env* env, const MiniClusterOptions& options)
                    ? options.data_root
                    : JoinPathSegments(GetTestDataDirectory(), "minicluster-data")),
       num_masters_initial_(options.num_masters),
-      num_ts_initial_(options.num_tablet_servers),
-      master_rpc_ports_(options.master_rpc_ports),
-      tserver_rpc_ports_(options.tserver_rpc_ports) {
+      num_ts_initial_(options.num_tablet_servers) {
   mini_masters_.resize(num_masters_initial_);
 }
 
@@ -81,9 +82,7 @@ Status MiniCluster::Start() {
   CHECK(!fs_root_.empty()) << "No Fs root was provided";
   CHECK(!running_);
 
-  if (num_masters_initial_ > 1) {
-    CHECK_GE(master_rpc_ports_.size(), num_masters_initial_);
-  }
+  EnsurePortsAllocated();
 
   if (!env_->FileExists(fs_root_)) {
     RETURN_NOT_OK(env_->CreateDir(fs_root_));
@@ -118,25 +117,16 @@ Status MiniCluster::Start() {
 
 Status MiniCluster::StartDistributedMasters() {
   CHECK_GE(master_rpc_ports_.size(), num_masters_initial_);
-  CHECK_GT(master_rpc_ports_.size(), 1);
-  const std::vector<uint16_t>& master_ports =
-      is_creating_ ? master_rpc_ports_ : EMPTY_MASTER_RPC_PORTS;
+  EnsurePortsAllocated();
 
-  for (int i = 0; i < master_rpc_ports_.size(); ++i) {
-    if (master_rpc_ports_[i] == 0) {
-      master_rpc_ports_[i] = AllocateFreePort();
-      LOG(INFO) << "Using auto-assigned port " << master_rpc_ports_[i]
-        << " to start a mini-cluster master";
-    }
-  }
-
-  LOG(INFO) << "Creating distributed mini masters. Ports: "
+  LOG(INFO) << "Creating distributed mini masters. RPC ports: "
             << JoinInts(master_rpc_ports_, ", ");
 
   for (int i = 0; i < num_masters_initial_; i++) {
     gscoped_ptr<MiniMaster> mini_master(
-        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], is_creating_));
-    RETURN_NOT_OK_PREPEND(mini_master->StartDistributedMaster(master_ports),
+        new MiniMaster(env_, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i],
+                       is_creating_));
+    RETURN_NOT_OK_PREPEND(mini_master->StartDistributedMaster(master_rpc_ports_),
                           Substitute("Couldn't start follower $0", i));
     VLOG(1) << "Started MiniMaster with UUID " << mini_master->permanent_uuid()
             << " at index " << i;
@@ -184,15 +174,12 @@ Status MiniCluster::RestartSync() {
 Status MiniCluster::StartSingleMaster() {
   // If there's a single master, 'mini_masters_' must be size 1.
   CHECK_EQ(mini_masters_.size(), 1);
-  CHECK_LE(master_rpc_ports_.size(), 1);
-  uint16_t master_rpc_port = 0;
-  if (master_rpc_ports_.size() == 1) {
-    master_rpc_port = master_rpc_ports_[0];
-  }
+  EnsurePortsAllocated(1);
 
   // start the master (we need the port to set on the servers).
   gscoped_ptr<MiniMaster> mini_master(
-      new MiniMaster(env_, GetMasterFsRoot(0), master_rpc_port, is_creating_));
+      new MiniMaster(env_, GetMasterFsRoot(0), master_rpc_ports_[0], master_web_ports_[0],
+                     is_creating_));
   RETURN_NOT_OK_PREPEND(mini_master->Start(), "Couldn't start master");
   RETURN_NOT_OK(mini_master->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   mini_masters_[0] = shared_ptr<MiniMaster>(mini_master.release());
@@ -205,10 +192,8 @@ Status MiniCluster::AddTabletServer() {
   }
   int new_idx = mini_tablet_servers_.size();
 
-  uint16_t ts_rpc_port = 0;
-  if (tserver_rpc_ports_.size() > new_idx) {
-    ts_rpc_port = tserver_rpc_ports_[new_idx];
-  }
+  EnsurePortsAllocated(0 /* num_masters (will pick default) */, new_idx + 1);
+  const uint16_t ts_rpc_port = tserver_rpc_ports_[new_idx];
   gscoped_ptr<MiniTabletServer> tablet_server(
     new MiniTabletServer(GetTabletServerFsRoot(new_idx), ts_rpc_port));
 
@@ -218,6 +203,7 @@ Status MiniCluster::AddTabletServer() {
     master_addr->push_back(HostPort(master->bound_rpc_addr()));
   }
   tablet_server->options()->SetMasterAddresses(master_addr);
+  tablet_server->options()->webserver_opts.port = tserver_web_ports_[new_idx];
   RETURN_NOT_OK(tablet_server->Start())
   mini_tablet_servers_.push_back(shared_ptr<MiniTabletServer>(tablet_server.release()));
   return Status::OK();
@@ -358,11 +344,37 @@ Sockaddr MiniCluster::DoGetLeaderMasterBoundRpcAddr() {
   return leader_mini_master()->bound_rpc_addr();
 }
 
-uint16_t MiniCluster::AllocateFreePort() {
-  // This will take a file lock ensuring the port does not get claimed by another thread/process
-  // and add it to our vector of such locks that will be freed on minicluster shutdown.
-  free_port_file_locks_.emplace_back();
-  return GetFreePort(&free_port_file_locks_.back());
+void MiniCluster::AllocatePortsForDaemonType(
+    const string daemon_type,
+    const int num_daemons,
+    const string port_type,
+    std::vector<uint16_t>* ports) {
+  const size_t old_size = ports->size();
+  if (ports->size() < num_daemons) {
+    ports->resize(num_daemons, 0 /* default value */);
+  }
+  for (int i = old_size; i < num_daemons; ++i) {
+    if ((*ports)[i] == 0) {
+      const uint16_t new_port = port_picker_.AllocateFreePort();
+      (*ports)[i] = new_port;
+      LOG(INFO) << "Using auto-assigned port " << new_port << " for a " << daemon_type
+                << " " << port_type << " port";
+    }
+  }
+}
+
+void MiniCluster::EnsurePortsAllocated(int new_num_masters, int new_num_tservers) {
+  if (new_num_masters == 0) {
+    new_num_masters = std::max(num_masters_initial_, num_masters());
+  }
+  AllocatePortsForDaemonType("master", new_num_masters, "RPC", &master_rpc_ports_);
+  AllocatePortsForDaemonType("master", new_num_masters, "web", &master_web_ports_);
+
+  if (new_num_tservers == 0) {
+    new_num_tservers = std::max(num_ts_initial_, num_tablet_servers());
+  }
+  AllocatePortsForDaemonType("tablet server", new_num_tservers, "RPC", &tserver_rpc_ports_);
+  AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
 }
 
 }  // namespace yb

@@ -92,23 +92,11 @@ tests=()
 rel_test_binary="$TEST_DIR_BASENAME/$TEST_NAME"
 total_num_tests=0
 num_tests=0
-num_tests_skipped=0
 collect_gtest_tests
-if [[ $total_num_tests -gt 0 && $num_tests_skipped -eq $total_num_tests ]]; then
-  set +u  # We do not want to fail if SKIPPED_TESTS_LOG_MSGS is empty, even though it should not be.
-  for log_msg in "${skipped_test_log_msgs[@]}"; do
-    log "$log_msg"
-  done
-  # No need to "set -u" back as we're about to fatal anyway.
-  fatal "Skipped all $total_num_tests tests in $rel_test_binary. Invalid regular expression?" \
-        "( YB_GTEST_REGEX=$YB_GTEST_REGEX )."
-fi
 
-set +u  # Do not fail on an empty list.
 if [[ ${#tests[@]} -eq 0 ]]; then
   fatal "No tests found in $rel_test_binary."
 fi
-set -u
 
 set_test_log_url_prefix
 
@@ -123,7 +111,7 @@ if [[ -n ${YB_NUM_TEST_ATTEMPTS:-} ]]; then
     fatal "YB_NUM_TEST_ATTEMPTS cannot be lower than 1"
   fi
 else
-  num_test_attempts=1
+  declare -i -r num_test_attempts=1
 fi
 
 # Loop over all tests in a gtest binary, or just one element (the whole test binary) for tests that

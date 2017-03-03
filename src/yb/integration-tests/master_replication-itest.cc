@@ -56,8 +56,7 @@ DECLARE_bool(create_cluster);
 class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   MasterReplicationTest() {
-    opts_.master_rpc_ports = { 0, 0, 0 };
-    opts_.num_masters = num_masters_ = opts_.master_rpc_ports.size();
+    opts_.num_masters = num_masters_ = 3;
     opts_.num_tablet_servers = kNumTabletServerReplicas;
   }
 

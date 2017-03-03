@@ -19,12 +19,14 @@
 #ifndef YB_UTIL_TEST_UTIL_H
 #define YB_UTIL_TEST_UTIL_H
 
-#include <gtest/gtest.h>
 #include <string>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/env.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/port_picker.h"
 
 namespace yb {
 
@@ -45,8 +47,11 @@ class YBTest : public ::testing::Test {
   // the test ends.
   std::string GetTestPath(const std::string& relative_path);
 
+  uint16_t AllocateFreePort() { return port_picker_.AllocateFreePort(); }
+
   gscoped_ptr<Env> env_;
   google::FlagSaver flag_saver_;  // Reset flags on every test.
+  PortPicker port_picker_;
 
  private:
   std::string test_dir_;
@@ -128,4 +133,4 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
 }
 
 } // namespace yb
-#endif
+#endif  // YB_UTIL_TEST_UTIL_H

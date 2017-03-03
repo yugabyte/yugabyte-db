@@ -67,7 +67,6 @@ void YBTableTestBase::SetUp() {
   } else {
     auto opts = MiniClusterOptions();
     opts.num_masters = num_masters();
-    opts.master_rpc_ports = master_rpc_ports();
     opts.num_tablet_servers = num_tablet_servers();
 
     mini_cluster_.reset(new MiniCluster(env_.get(), opts));

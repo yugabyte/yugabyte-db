@@ -18,7 +18,7 @@ class YBClient;
 // of mini cluster.
 class MiniClusterBase {
  public:
-  Status CreateClient(client::YBClientBuilder* builder,
+  CHECKED_STATUS CreateClient(client::YBClientBuilder* builder,
       std::shared_ptr<client::YBClient>* client) {
     return DoCreateClient(builder, client);
   }
@@ -31,7 +31,7 @@ class MiniClusterBase {
   virtual ~MiniClusterBase() = default;
 
  private:
-  virtual Status DoCreateClient(client::YBClientBuilder* builder,
+  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
       std::shared_ptr<client::YBClient>* client) = 0;
   virtual Sockaddr DoGetLeaderMasterBoundRpcAddr() = 0;
 };

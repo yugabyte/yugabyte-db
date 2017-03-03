@@ -40,8 +40,9 @@ class MasterOptions;
 // TODO: Store the distributed cluster configuration in the object, to avoid
 // having multiple Start methods.
 class MiniMaster {
+
  public:
-  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, bool is_creating);
+  MiniMaster(Env* env, std::string fs_root, uint16_t rpc_port, uint16_t web_port, bool is_creating);
   ~MiniMaster();
 
   // Start a master running on the loopback interface and
@@ -90,7 +91,7 @@ class MiniMaster {
 
   ATTRIBUTE_MEMBER_UNUSED Env* const env_;
   const std::string fs_root_;
-  const uint16_t rpc_port_;
+  const uint16_t rpc_port_, web_port_;
 
   gscoped_ptr<Master> master_;
 };

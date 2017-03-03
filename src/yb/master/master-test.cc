@@ -65,7 +65,9 @@ class MasterTest : public YBTest {
     FLAGS_catalog_manager_check_ts_count_for_create_table = false;
 
     // Start master with the create flag on.
-    mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0, true));
+    mini_master_.reset(
+        new MiniMaster(Env::Default(), GetTestPath("Master"),
+                       AllocateFreePort(), AllocateFreePort(), true /* is_creating */));
     ASSERT_OK(mini_master_->Start());
     master_ = mini_master_->master();
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -134,7 +136,8 @@ static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* p
 // Test that shutting down a MiniMaster without starting it does not
 // SEGV.
 TEST_F(MasterTest, TestShutdownWithoutStart) {
-  MiniMaster m(Env::Default(), "/xxxx", 0, true);
+  MiniMaster m(Env::Default(), "/xxxx", AllocateFreePort(), AllocateFreePort(),
+               true /* is_creating */);
   m.Shutdown();
 }
 

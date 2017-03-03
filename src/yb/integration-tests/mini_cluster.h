@@ -25,6 +25,7 @@
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/env.h"
+#include "yb/util/port_picker.h"
 
 namespace yb {
 
@@ -58,14 +59,6 @@ struct MiniClusterOptions {
   // Default: "", which auto-generates a unique path for this cluster.
   // The default may only be used from a gtest unit test.
   std::string data_root;
-
-  // List of RPC ports for the master to run on.
-  // Defaults to a list 0 (ephemeral ports).
-  std::vector<uint16_t> master_rpc_ports;
-
-  // List of RPC ports for the tservers to run on.
-  // Defaults to a list of 0 (ephemeral ports).
-  std::vector<uint16_t> tserver_rpc_ports;
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -148,11 +141,14 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForTabletServerCount(int count,
                                   std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
 
-  // Allocates a free port and stores a file lock guarding access to that port into an internal
-  // array of file locks.
-  uint16_t AllocateFreePort();
-
  private:
+
+  enum {
+    kTabletReportWaitTimeSeconds = 5,
+    kRegistrationWaitTimeSeconds = 30,
+    kMasterLeaderElectionWaitTimeSeconds = 10
+  };
+
   // Create a client configured to talk to this cluster. Builder may contain
   // override options for the client. The master address will be overridden to
   // talk to the running master. If 'builder' is NULL, default options will be
@@ -164,13 +160,21 @@ class MiniCluster : public MiniClusterBase {
 
   virtual Sockaddr DoGetLeaderMasterBoundRpcAddr();
 
-  enum {
-    kTabletReportWaitTimeSeconds = 5,
-    kRegistrationWaitTimeSeconds = 30,
-    kMasterLeaderElectionWaitTimeSeconds = 10
-  };
+  // Allocates ports for the given daemon type and saves them to the ports vector. Does not
+  // overwrite values in the ports vector that are non-zero already.
+  void AllocatePortsForDaemonType(std::string daemon_type,
+                                  int num_daemons,
+                                  std::string port_type,
+                                  std::vector<uint16_t>* ports);
+
+  // Picks free ports for the necessary number of masters / tservers and saves those ports in
+  // {master,tserver}_{rpc,web}_ports_ vectors. Values of 0 for the number of masters / tservers
+  // mean we pick the maximum number of masters/tservers that we already know we'll need.
+  void EnsurePortsAllocated(int new_num_masters = 0, int num_tservers = 0);
 
   bool running_;
+
+  // This is set to true initially, but is set to false when Start() finishes.
   bool is_creating_;
 
   Env* const env_;
@@ -179,11 +183,14 @@ class MiniCluster : public MiniClusterBase {
   const int num_ts_initial_;
 
   std::vector<uint16_t> master_rpc_ports_;
-  const std::vector<uint16_t> tserver_rpc_ports_;
+  std::vector<uint16_t> master_web_ports_;
+  std::vector<uint16_t> tserver_rpc_ports_;
+  std::vector<uint16_t> tserver_web_ports_;
 
   std::vector<std::shared_ptr<master::MiniMaster> > mini_masters_;
   std::vector<std::shared_ptr<tserver::MiniTabletServer> > mini_tablet_servers_;
-  std::vector<std::unique_ptr<FileLock> > free_port_file_locks_;
+
+  PortPicker port_picker_;
 };
 
 }  // namespace yb

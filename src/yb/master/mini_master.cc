@@ -36,12 +36,14 @@ DECLARE_bool(rpc_server_allow_ephemeral_ports);
 namespace yb {
 namespace master {
 
-MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, bool is_creating)
+MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port, uint16_t web_port,
+                       bool is_creating)
     : running_(false),
       is_creating_(is_creating),
       env_(env),
       fs_root_(std::move(fs_root)),
-      rpc_port_(rpc_port) {}
+      rpc_port_(rpc_port),
+      web_port_(web_port) {}
 
 MiniMaster::~MiniMaster() {
   if (running_) {
@@ -53,14 +55,14 @@ MiniMaster::~MiniMaster() {
 Status MiniMaster::Start() {
   CHECK(!running_);
   FLAGS_rpc_server_allow_ephemeral_ports = true;
-  RETURN_NOT_OK(StartOnPorts(rpc_port_, 0));
+  RETURN_NOT_OK(StartOnPorts(rpc_port_, web_port_));
   return master_->WaitForCatalogManagerInit();
 }
 
 
 Status MiniMaster::StartDistributedMaster(const vector<uint16_t>& peer_ports) {
   CHECK(!running_);
-  return StartDistributedMasterOnPorts(rpc_port_, 0, peer_ports);
+  return StartDistributedMasterOnPorts(rpc_port_, web_port_, peer_ports);
 }
 
 void MiniMaster::Shutdown() {

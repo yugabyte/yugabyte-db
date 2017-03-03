@@ -174,6 +174,7 @@ set(UTIL_SRCS
   pending_op_counter.cc
   varint.cc
   decimal.cc
+  port_picker.cc
   )
 
 if(NOT APPLE)

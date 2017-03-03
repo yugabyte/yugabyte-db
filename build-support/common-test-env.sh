@@ -51,10 +51,6 @@ RELEVANT_LOG_LINES_RE="^[[:space:]]*(Value of|Actual|Expected):|^Expected|^Faile
 RELEVANT_LOG_LINES_RE+="|: Failure$|ThreadSanitizer: data race"
 readonly RELEVANT_LOG_LINES_RE
 
-# We put log messages about tests skipped due to YB_GTEST_REGEX here so that we can log them only in
-# case we end up filtering out all the tests.
-skipped_test_log_msgs=()
-
 # Some functions use this to output to stdout/stderr along with a file.
 append_output_to=/dev/null
 
@@ -179,6 +175,10 @@ is_known_non_gtest_test_by_rel_path() {
 # Input:
 #   rel_test_binary
 #     Test binary path relative to the build directory. Copied from the arguemnt.
+#   YB_GTEST_FILTER
+#     If this is set, this is passed to the test binary as --gtest_filter=... along with
+#     --gtest_list_tests, so that we only run a subset of tests. The reason this is an all-uppercase
+#     variable is that we sometimes set it as an environment variable passed down to run-test.sh.
 # Output variables:
 #   tests
 #     This is an array that should be initialized by the caller. This adds new "test descriptors" to
@@ -219,6 +219,9 @@ collect_gtest_tests() {
   local gtest_list_tests_tmp_dir=$( mktemp -t -d "gtest_list_tests_tmp_dir.XXXXXXXXXX" )
   mkdir_safe "$gtest_list_tests_tmp_dir"  # on Mac OS X, mktemp does not create the directory
   local gtest_list_tests_cmd=( "$abs_test_binary_path" --gtest_list_tests )
+  if [[ -n ${YB_GTEST_FILTER:-} ]]; then
+    gtest_list_tests_cmd+=( "--gtest_filter=$YB_GTEST_FILTER" )
+  fi
 
   set +e
   pushd "$gtest_list_tests_tmp_dir" >/dev/null
@@ -290,15 +293,6 @@ collect_gtest_tests() {
       local full_test_name=$test_case$test
       if [[ -n ${total_num_tests:-} ]]; then
         let total_num_tests+=1
-      fi
-      if [[ -n ${YB_GTEST_REGEX:-} && ! $full_test_name =~ .*${YB_GTEST_REGEX:-}.* ]]; then
-        local log_msg="Skipping test '$full_test_name' in ${rel_test_binary}: does not match the"
-        log_msg+=" regular expression '${YB_GTEST_REGEX}' (specified with YB_GTEST_REGEX)."
-        skipped_test_log_msgs+=( "$log_msg" )
-        if [[ -n ${num_tests_skipped:-} ]]; then
-          let num_tests_skipped+=1
-        fi
-        continue
       fi
       tests+=( "${rel_test_binary}:::$test_case$test" )
       if [[ -n ${num_tests:-} ]]; then

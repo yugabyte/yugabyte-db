@@ -49,9 +49,8 @@ Options:
     Show compiler command line.
   --{no,skip}-{test-existence-check,check-test-existence}
     Don't check that all test binaries referenced by CMakeLists.txt files exist.
-  --gtest-regex
-    Use the given regular expression to filter tests within a gtest-based binary when running them
-    with --cxx-test.
+  --gtest_filter
+    Use the given filter to select Google Test tests to run. Uses with --cxx-test.
   --test-args
     Extra arguments to pass to the test. Used with --cxx-test.
   --rebuild-file <source_file_to_rebuild>
@@ -110,8 +109,7 @@ run_ctest=false
 ctest_args=""
 num_test_repetitions=1
 build_descriptor_path=""
-
-unset YB_GTEST_REGEX
+export YB_GTEST_FILTER=""
 
 original_args=( "$@" )
 
@@ -210,8 +208,8 @@ while [ $# -gt 0 ]; do
     ;;
     --skip-test-existence-check|--no-test-existence-check) test_existence_check=false ;;
     --skip-check-test-existence|--no-check-test-existence) test_existence_check=false ;;
-    --gtest-regex)
-      export YB_GTEST_REGEX="$2"
+    --gtest_filter)
+      export YB_GTEST_FILTER=$2
       shift
     ;;
     --rebuild-file)
@@ -219,7 +217,7 @@ while [ $# -gt 0 ]; do
       shift
     ;;
     --test-args)
-      YB_EXTRA_GTEST_FLAGS+=" $2"
+      export YB_EXTRA_GTEST_FLAGS+=" $2"
       shift
     ;;
     --rebuild-target)
@@ -448,9 +446,14 @@ if [[ -n $cxx_test_name ]]; then
   else
     (
       export YB_COMPILER_TYPE
+      repeat_unit_test_extra_args=""
+      if "$verbose"; then
+        repeat_unit_test_extra_args="--verbose"
+      fi
       set -x
       "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$cxx_test_name" \
-         --num-iter "$num_test_repetitions"
+         --num-iter "$num_test_repetitions" $repeat_unit_test_extra_args
+      unset repeat_unit_test_extra_args
     )
   fi
 fi

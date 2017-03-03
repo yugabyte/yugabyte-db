@@ -17,6 +17,8 @@ Options:
     Run this many iterations of the test.
   -v <verbosity>
     Verbosity option passed to the test.
+  --verbose
+    Output extra debug information from this script. Does not affect the test.
   -k, --keep-all-logs
     Keep all logs, not just failing tests' logs.
   --skip-address-already-in-use
@@ -64,8 +66,8 @@ declare -i iteration=0
 declare -i num_iter=1000
 keep_all_logs=false
 original_args=( "$@" )
-verbose_level=0
 yb_compiler_type_arg=""
+verbose=false
 
 while [[ $# -gt 0 ]]; do
   if [[ ${#positional_args[@]} -eq 0 ]] && is_valid_build_type "$1"; then
@@ -79,9 +81,11 @@ while [[ $# -gt 0 ]]; do
       exit 1
     ;;
     -v)
-      more_test_args+=" $1=$2"
-      verbose_level=$2
+      more_test_args+=" -v=$2"
       shift
+    ;;
+    --verbose)
+      verbose=true
     ;;
     -p|--parallelism)
       parallelism=$2
@@ -146,12 +150,19 @@ if [[ $num_pos_args -lt 1 || $num_pos_args -gt 2 ]]; then
 fi
 
 test_binary_name=${positional_args[0]}
-test_filter="all_tests"
+
 gtest_filter_arg=""
 if [[ $num_pos_args -eq 2 ]]; then
   test_filter=${positional_args[1]}
-  gtest_filter_arg="--gtest_filter=$test_filter"
+  gtest_filter_info="gtest_filter is $test_filter (from the command line)"
+elif [[ -n {$YB_GTEST_FILTER:-} ]]; then
+  test_filter=$YB_GTEST_FILTER
+  gtest_filter_info="gtest_filter is $test_filter (from the YB_GTEST_FILTER env var)"
+else
+  test_filter="all_tests"
+  gtest_filter_info="gtest_filter is not set, running all tests in the test program"
 fi
+gtest_filter_arg="--gtest_filter=$test_filter"
 
 abs_test_binary_path=$( find_test_binary "$test_binary_name" )
 rel_test_binary=${abs_test_binary_path#$BUILD_ROOT}
@@ -181,15 +192,16 @@ if [[ $iteration -gt 0 ]]; then
   determine_test_timeout
 
   # TODO: deduplicate the setup here against run_one_test() in common-test-env.sh.
-  test_cmd_line=( "$abs_test_binary_path" "$gtest_filter_arg" $more_test_args )
+  test_cmd_line=( "$abs_test_binary_path" "$gtest_filter_arg" $more_test_args
+                  ${YB_EXTRA_GTEST_FLAGS:-} )
   test_wrapper_cmd_line=(
     "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
   )
 
   (
     cd "$TEST_TMPDIR"
-    if [[ $verbose_level -gt 0 ]]; then
-      set -x
+    if "$verbose"; then
+      log "Logging to $raw_test_log_path"
     fi
     ulimit -c unlimited
     "${test_wrapper_cmd_line[@]}" &>"$raw_test_log_path"
@@ -220,6 +232,12 @@ if [[ $iteration -gt 0 ]]; then
 else
   if [[ -n $yb_compiler_type_from_env ]]; then
     log "YB_COMPILER_TYPE env variable was set to '$yb_compiler_type_from_env' by the caller."
+  fi
+  log "$gtest_filter_info"
+  if [[ -n ${YB_EXTRA_GTEST_FLAGS:-} ]]; then
+    log "Extra test flags from YB_EXTRA_GTEST_FLAGS: $YB_EXTRA_GTEST_FLAGS"
+  elif "$verbose"; then
+    log "YB_EXTRA_GTEST_FLAGS is not set"
   fi
   # Parallel execution of many iterations
   seq 1 $num_iter | \
