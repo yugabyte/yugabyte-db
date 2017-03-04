@@ -3,17 +3,20 @@ EXTENSION    = $(MAINEXT)
 EXTVERSION   = $(shell grep default_version $(MAINEXT).control | \
 			   sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
+VERSION_FILES = sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
+BASE_FILES 	 = $(subst --$(EXTVERSION),,$(VERSION_FILES)) sql/uninstall_$(MAINEXT).sql
 _IN_FILES 	 = $(wildcard sql/*--*.sql.in)
 _IN_PATCHED	 = $(_IN_FILES:.in=)
 TESTS        = $(wildcard test/sql/*.sql)
-EXTRA_CLEAN  = sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql doc/*.html
+EXTRA_CLEAN  = $(VERSION_FILES) sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql doc/*.html
+EXTRA_CLEAN  += $(wildcard sql/*.orig) # These are files left behind by patch
 DOCS         = doc/pgtap.mmd
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
 PG_CONFIG   ?= pg_config
 
 # sort is necessary to remove dupes so install won't complain
-DATA         = $(sort $(wildcard sql/*--*.sql) $(_IN_PATCHED)) # NOTE! This gets reset below!
+DATA         = $(BASE_FILES) # Set to something to make PGXS happy
 
 ifdef NO_PGXS
 top_builddir = ../..
@@ -96,10 +99,7 @@ sql/$(MAINEXT)-core--$(EXTVERSION).sql: sql/$(MAINEXT)-core.sql
 sql/$(MAINEXT)-schema--$(EXTVERSION).sql: sql/$(MAINEXT)-schema.sql
 	cp $< $@
 
-# I think this can go away...
-DATA         = $(sort $(wildcard sql/*--*.sql) $(_IN_PATCHED))
-
-EXTRA_CLEAN += sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
+DATA         = $(sort $(wildcard sql/*--*.sql) $(BASE_FILES) $(VERSION_FILES) $(_IN_PATCHED))
 endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
@@ -181,3 +181,6 @@ html:
 	multimarkdown doc/pgtap.mmd > doc/pgtap.html
 	./tocgen doc/pgtap.html 2> doc/toc.html
 	perl -MPod::Simple::XHTML -E "my \$$p = Pod::Simple::XHTML->new; \$$p->html_header_tags('<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">'); \$$p->strip_verbatim_indent(sub { my \$$l = shift; (my \$$i = \$$l->[0]) =~ s/\\S.*//; \$$i }); \$$p->parse_from_file('`perldoc -l pg_prove`')" > doc/pg_prove.html
+
+# To use this, do make print-VARIABLE_NAME
+print-%	: ; $(info $* is $(flavor $*) variable set to "$($*)") @true

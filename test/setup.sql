@@ -20,3 +20,4 @@ BEGIN;
 
 -- Load the TAP functions.
 \i sql/pgtap.sql
+--CREATE EXTENSION pgtap;
