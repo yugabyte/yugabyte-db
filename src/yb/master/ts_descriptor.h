@@ -95,7 +95,7 @@ class TSDescriptor {
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
   // Return the pre-computed placement_id, comprised of the cloud_info data.
-  std::string placement_id() const { return placement_id_; }
+  std::string placement_id() const;
 
   bool IsRunningOn(const HostPortPB& hp) const;
 

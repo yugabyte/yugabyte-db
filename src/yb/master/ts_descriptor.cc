@@ -17,10 +17,11 @@
 
 #include "yb/master/ts_descriptor.h"
 
+#include <math.h>
+
 #include <mutex>
 #include <vector>
 
-#include <math.h>
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/strings/substitute.h"
@@ -91,6 +92,11 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
 std::string TSDescriptor::generate_placement_id(const CloudInfoPB& ci) {
   return strings::Substitute(
       "$0:$1:$2", ci.placement_cloud(), ci.placement_region(), ci.placement_zone());
+}
+
+std::string TSDescriptor::placement_id() const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  return placement_id_;
 }
 
 void TSDescriptor::UpdateHeartbeatTime() {
