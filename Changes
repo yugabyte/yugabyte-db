@@ -3,6 +3,9 @@ Revision history for pgTAP
 
 0.98.0
 ---------------------------
+* `make install` once again properly installs the versioned SQL file required
+  by `CREATE EXTENSION`. Thanks to Keith Fiske for the report (Issue #131) and
+  Jim Nasby for the fix (Issue #132).
 
 0.97.0 2016-11-28T22:18:29Z
 ---------------------------
