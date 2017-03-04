@@ -175,8 +175,6 @@ resolve_path() {
   fi
 }
 
-compiler_args=( "$@" )
-
 # Solution for https://yugabyte.atlassian.net/browse/ENG-850: Improve RocksDB code debugging.
 # For each compiler argument which is a link to file, we are replacing it with absolute real source
 # file path.
@@ -187,18 +185,38 @@ compiler_args=( "$@" )
 #
 # We can remove that after we start building RocksDB from src folder instead of sym-linked sources
 # in rocksdb-build directory.
+resolve_symlinks_in_args() {
+  local prev_arg=""
+  local arg=""
+  local -i i
+  for i in "${!compiler_args[@]}"; do
+    prev_arg=$arg
+    arg=${compiler_args[$i]}
+    # We only resolve symlinks for files and include directories. One specific case when this
+    # matters is that we should not resolve symlinks to directories specifying an rpath.
+    if [[ $arg == "-I"* ]]; then
+      # This is an include directory specified as -I<dir_name>.
+      local include_dir=${arg#-I}
+      if [[ -d $include_dir ]] ;then
+        resolve_path "$include_dir"
+        compiler_args[$i]=-I$resolve_path_rv
+      fi
+    elif [[ $prev_arg == "-I" && -d $arg ]]; then
+      # An include directory specified as -I <dir_name>.
+      resolve_path "$arg"
+      compiler_args[$i]=$resolve_path_rv
+    elif [[ -L $arg && -f $arg ]]; then
+      resolve_path "$arg"
+      compiler_args[$i]=$resolve_path_rv
+    fi
+  done
+}
+
+compiler_args=( "$@" )
+
 YB_SRC="$YB_SRC_ROOT/src"
-for i in "${!compiler_args[@]}"
-do
-  arg="${compiler_args[$i]}"
-  if [[ -L "$arg" ]]; then
-    resolve_path "$arg"
-    compiler_args[$i]=$resolve_path_rv
-  elif [[ "$arg" == "-I"* ]]; then
-    resolve_path "${arg#-I}"
-    compiler_args[$i]="-I$resolve_path_rv"
-  fi
-done
+
+resolve_symlinks_in_args
 
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is
