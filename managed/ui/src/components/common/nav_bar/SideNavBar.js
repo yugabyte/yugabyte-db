@@ -56,7 +56,7 @@ export default class SideNavBar extends Component {
                   </NavLink>
                 </ul>
                 <ul className="nav side-menu position-bottom">
-                  <NavLink to="/support" icon="fa fa-question-circle-o">
+                  <NavLink to="/help" icon="fa fa-question-circle-o">
                     Help
                   </NavLink>
                 </ul>
