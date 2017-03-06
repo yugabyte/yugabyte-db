@@ -99,7 +99,7 @@ export default class UniverseDetail extends Component {
     }
     return (
       <Grid id="page-wrapper" fluid={true}>
-        <Row className="header-row">
+        <Row>
           <Col lg={10}>
             <div className="detail-label-small">
               <Link to="/universes">

@@ -6,9 +6,18 @@
 }
 
 .container-body {
-  margin: 70px 15px 0 115px;
-  padding-top: 25px;
+  margin: 90px 25px 0 115px;
   overflow-x: hidden;
+
+  h1, h2 {
+    &:first-child {
+      margin-top: 0 !important;
+    }
+  }
+}
+
+.container-fluid {
+  padding: 0 !important;
 }
 
 ul {
