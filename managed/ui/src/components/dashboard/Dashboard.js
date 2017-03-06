@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Col } from 'react-bootstrap';
+import { Row, Col } from 'react-bootstrap';
 
 import { RegionMapLegend } from '../maps';
 import { UniverseRegionLocationPanelContainer,
@@ -18,12 +18,17 @@ export default class Dashboard extends Component {
   render() {
     return (
       <div id="page-wrapper" className="dashboard-container">
-        <Col lg={12}>
-          <UniverseDisplayPanelContainer {...this.props}/>
-        </Col>
-        <Col lg={12}>
-          <UniverseRegionLocationPanelContainer {...this.props}/>
-        </Col>
+        <Row>
+          <Col lg={12}>
+            <UniverseDisplayPanelContainer {...this.props}/>
+          </Col>
+        </Row>
+        <Row>
+          <Col lg={12}>
+            <UniverseRegionLocationPanelContainer {...this.props}/>
+            <RegionMapLegend />
+          </Col>
+        </Row>
       </div>
     );
     }

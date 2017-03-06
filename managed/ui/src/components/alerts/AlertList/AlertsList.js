@@ -9,7 +9,7 @@ export default class AlertsList extends Component {
       <div id="page-wrapper">
         <Row className="header-row">
           <Col lg={10}>
-            <h3>Alerts</h3>
+            <h2>Alerts</h2>
           </Col>
         </Row>
       </div>

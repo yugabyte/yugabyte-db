@@ -1,8 +1,8 @@
 /* Copyright (c) YugaByte, Inc. */
 
 .universe-table-header-action {
-    margin-top: 5px;
     margin-bottom: 0;
+    text-align: right;
 }
 
 .universe-table-header-action .universe-button {
