@@ -54,7 +54,7 @@ export default class TasksList extends Component {
     const tableBodyContainer = {"marginBottom": "1%", "paddingBottom": "1%"}
       return (
         <div id="page-wrapper" className="dashboard-widget-container">
-        <YBPanelItem name="Tasks">
+          <h2>Tasks</h2>
           <BootstrapTable data={customerTaskList} selectRow={selectRowProp}
                           bodyStyle={tableBodyContainer}
                           pagination={true}>
@@ -86,9 +86,7 @@ export default class TasksList extends Component {
                Status
             </TableHeaderColumn>
           </BootstrapTable>
-        </YBPanelItem>
         </div>
-
-      )
+      );
     }
 }
