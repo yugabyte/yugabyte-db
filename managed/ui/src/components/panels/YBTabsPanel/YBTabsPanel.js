@@ -20,7 +20,8 @@ class YBTabsPanel extends Component {
   static propTypes = {
     id: PropTypes.string.isRequired,
     activeTab: PropTypes.string.isRequired,
-    children: PropTypes.array.isRequired
+    children: PropTypes.array.isRequired,
+    className: PropTypes.string,
   }
 
   render() {
@@ -31,7 +32,7 @@ class YBTabsPanel extends Component {
     }
 
     return (
-      <Tabs activeKey={activeTabKey} onSelect={this.tabSelect} id={this.props.id}>
+      <Tabs activeKey={activeTabKey} onSelect={this.tabSelect} id={this.props.id} className={this.props.className}>
         {this.props.children}
       </Tabs>
     )
