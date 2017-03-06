@@ -1,5 +1,28 @@
 /* Copyright (c) YugaByte, Inc. */
 
+.nav-tabs > li > a {
+  border: 1px solid #e2e2e1;
+  border-bottom: none;
+  border-radius: 0 !important;
+  min-width: 120px;
+  text-align: center;
+  padding: 6px 8px !important;
+  color: #555;
+  background-color: #f2f1f0;
+  margin-top: 4px;
+}
+.nav-tabs > li > a:hover {
+  border-color: #e1e1e0;
+  background-color: #f7f7f6;
+}
+.nav-tabs > li.active > a,
+.nav-tabs > li.active > a:hover,
+.nav-tabs > li.active > a:focus {
+  margin-top: 0;
+  padding: 8px !important;
+  background-color: #fdfdfc;
+}
+
 .tab-content {
   margin: 0;
   padding: 20px;

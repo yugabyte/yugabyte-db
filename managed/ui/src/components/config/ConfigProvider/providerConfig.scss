@@ -110,3 +110,35 @@
 .data-row-input-container {
   margin-top: 10px;
 }
+
+.config-tabs .nav-tabs {
+  > li > a {
+    min-width: 180px;
+    min-height: 65px;
+
+    img {
+      height: 50px;
+    }
+
+    .on-premise {
+      display: inline-block;
+      padding-top: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      text-align: left;
+      line-height: 1;
+
+      i {
+        display: inline-block;
+        float: left;
+        font-size: 32px;
+        padding-right: 6px;
+        color: #679;
+      }
+    }
+  }
+
+  > li.active > a {
+    min-height: 70px;
+  }
+}
