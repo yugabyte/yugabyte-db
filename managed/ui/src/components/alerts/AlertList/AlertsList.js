@@ -8,7 +8,7 @@ export default class AlertsList extends Component {
     return (
       <div id="page-wrapper">
         <Row className="header-row">
-          <Col lg={10} className="universe-table-header">
+          <Col lg={10}>
             <h3>Alerts</h3>
           </Col>
         </Row>

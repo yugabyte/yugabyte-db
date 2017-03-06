@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import { SupportItems } from '../../support';
+import HelpItems from './HelpItems';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -15,4 +15,4 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-export default connect(mapStateToProps, mapDispatchToProps)(SupportItems);
+export default connect(mapStateToProps, mapDispatchToProps)(HelpItems);
