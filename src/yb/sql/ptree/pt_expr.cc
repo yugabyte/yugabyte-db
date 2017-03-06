@@ -204,7 +204,7 @@ PTExprAlias::~PTExprAlias() {
 
 CHECKED_STATUS PTExprAlias::Analyze(SemContext *sem_context) {
   // Analyze the expression.
-  expr_->Analyze(sem_context);
+  RETURN_NOT_OK(expr_->Analyze(sem_context));
 
   // Type resolution: Alias of (x) should have the same datatype as (x).
   sql_type_ = expr_->sql_type();
