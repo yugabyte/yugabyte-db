@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React from 'react';
-import {ListGroup, ListGroupItem, Row, Col} from 'react-bootstrap';
-import {YBButton} from '../../common/forms/fields';
+import { ListGroup, ListGroupItem } from 'react-bootstrap';
+import { YBButton } from '../../common/forms/fields';
 var Dropzone = require('react-dropzone');
 import ProviderConfiguration from '../ConfigProvider/ProviderConfiguration';
 
@@ -31,12 +31,10 @@ export default class GCPProviderConfiguration extends ProviderConfiguration {
             <span>File Name</span>
           </ListGroupItem>
         </ListGroup>
-        <Row>
-          <Col lg={4} lgOffset={8}>
-            <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}/>
-            <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}/>
-          </Col>
-        </Row>
+        <div className="form-action-button-container">
+          <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn pull-right"}/>
+          <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn pull-right"}/>
+        </div>
       </div>
     )
   }

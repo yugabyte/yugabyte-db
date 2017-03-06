@@ -57,12 +57,10 @@ export default class AzureProviderConfiguration extends ProviderConfiguration {
             </form>
           </ListGroupItem>
         </ListGroup>
-        <Row>
-          <Col lg={4} lgOffset={8}>
-            <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}/>
-            <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}/>
-          </Col>
-        </Row>
+        <div className="form-action-button-container">
+          <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn pull-right"}/>
+          <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn pull-right"}/>
+        </div>
       </div>
     )
   }

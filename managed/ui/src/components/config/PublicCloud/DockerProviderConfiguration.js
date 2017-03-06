@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React from 'react';
-import {ListGroup, ListGroupItem, Well, Col, Row} from 'react-bootstrap';
-import {YBButton} from '../../common/forms/fields';
+import { ListGroup, ListGroupItem, Well } from 'react-bootstrap';
+import { YBButton } from '../../common/forms/fields';
 import ProviderConfiguration from '../ConfigProvider/ProviderConfiguration';
 
 export default class DockerProviderConfiguration extends ProviderConfiguration {
@@ -36,12 +36,10 @@ export default class DockerProviderConfiguration extends ProviderConfiguration {
             </Well>
           </ListGroupItem>
         </ListGroup>
-        <Row>
-          <Col lg={4} lgOffset={8}>
-            <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}/>
-            <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}/>
-          </Col>
-        </Row>
+        <div className="form-action-button-container">
+          <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn pull-right"}/>
+          <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn pull-right"}/>
+        </div>
       </div>
     )
   }
