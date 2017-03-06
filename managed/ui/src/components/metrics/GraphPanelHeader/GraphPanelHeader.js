@@ -229,9 +229,10 @@ export default class GraphPanelHeader extends Component {
 class UniversePicker extends Component {
   render() {
     const {universeItemChanged, universe: {universeList}} = this.props;
-    var universeItems = universeList.map(function(item, idx){
-      return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>
-    });
+    var universeItems = universeList.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+                          .map(function(item, idx){
+                            return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>
+                          });
     var universeOptionArray = [<option key={-1} value="all">All</option>].concat(universeItems);
     return (
       <div className="universe-picker">
@@ -249,11 +250,12 @@ class NodePicker extends Component {
     const {selectedUniverse, nodeItemChanged, selectedNode} = this.props;
     var nodeItems =[];
     if (isValidObject(selectedUniverse) && selectedUniverse!== "all") {
-      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.map(function(nodeItem, nodeIdx){
-                    return <option key={nodeIdx} value={nodeItem.nodeName}>
-                             {nodeItem.nodeName}
-                           </option>
-                  })
+      nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a, b) => a.nodeName.toLowerCase() > b.nodeName.toLowerCase())
+                    .map(function(nodeItem, nodeIdx){
+                          return <option key={nodeIdx} value={nodeItem.nodeName}>
+                               {nodeItem.nodeName}
+                             </option>
+                          })
     }
     var nodeOptionArray=[<option key={-1} value="all">All</option>].concat(nodeItems);
     return (
