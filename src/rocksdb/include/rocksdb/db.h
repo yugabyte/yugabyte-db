@@ -6,8 +6,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_DB_H_
-#define STORAGE_ROCKSDB_INCLUDE_DB_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_DB_H
+#define ROCKSDB_INCLUDE_ROCKSDB_DB_H
 
 #include <stdint.h>
 #include <stdio.h>
@@ -50,7 +50,8 @@ class EventListener;
 
 using std::unique_ptr;
 
-extern const std::string kDefaultColumnFamilyName;
+extern const char kDefaultColumnFamilyName[];
+
 struct ColumnFamilyDescriptor {
   std::string name;
   ColumnFamilyOptions options;
@@ -577,10 +578,9 @@ class DB {
 #elif _WIN32
   __declspec(deprecated)
 #endif
-   virtual Status
-      CompactRange(ColumnFamilyHandle* column_family, const Slice* begin,
-                   const Slice* end, bool change_level = false,
-                   int target_level = -1, uint32_t target_path_id = 0) {
+  virtual Status CompactRange(ColumnFamilyHandle* column_family, const Slice* begin,
+      const Slice* end, bool change_level = false,
+      int target_level = -1, uint32_t target_path_id = 0) {
     CompactRangeOptions options;
     options.change_level = change_level;
     options.target_level = target_level;
@@ -856,4 +856,4 @@ Status RepairDB(const std::string& dbname, const Options& options);
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_DB_H_
+#endif  // ROCKSDB_INCLUDE_ROCKSDB_DB_H

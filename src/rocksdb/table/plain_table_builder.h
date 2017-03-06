@@ -3,7 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_PLAIN_TABLE_BUILDER_H
+#define ROCKSDB_TABLE_PLAIN_TABLE_BUILDER_H
+
 #ifndef ROCKSDB_LITE
 #include <stdint.h>
 #include <vector>
@@ -133,3 +135,5 @@ class PlainTableBuilder: public TableBuilder {
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
+
+#endif  // ROCKSDB_TABLE_PLAIN_TABLE_BUILDER_H

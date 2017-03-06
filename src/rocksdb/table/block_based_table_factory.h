@@ -7,7 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
+#define ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H
+
 #include <stdint.h>
 
 #include <memory>
@@ -64,9 +66,11 @@ class BlockBasedTableFactory : public TableFactory {
   BlockBasedTableOptions table_options_;
 };
 
-extern const std::string kHashIndexPrefixesBlock;
-extern const std::string kHashIndexPrefixesMetadataBlock;
-extern const std::string kPropTrue;
-extern const std::string kPropFalse;
+extern const char kHashIndexPrefixesBlock[];
+extern const char kHashIndexPrefixesMetadataBlock[];
+extern const char kPropTrue[];
+extern const char kPropFalse[];
 
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_TABLE_BLOCK_BASED_TABLE_FACTORY_H

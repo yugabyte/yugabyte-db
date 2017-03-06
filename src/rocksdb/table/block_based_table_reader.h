@@ -7,7 +7,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
+#define ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H
 
 #include <stdint.h>
 #include <memory>
@@ -52,8 +53,8 @@ using std::unique_ptr;
 // multiple threads without external synchronization.
 class BlockBasedTable : public TableReader {
  public:
-  static const std::string kFilterBlockPrefix;
-  static const std::string kFullFilterBlockPrefix;
+  static const char kFilterBlockPrefix[];
+  static const char kFullFilterBlockPrefix[];
 
   // Attempt to open the table that is stored in bytes [0..file_size)
   // of "file", and read the metadata entries necessary to allow
@@ -233,3 +234,5 @@ class BlockBasedTable : public TableReader {
 };
 
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_TABLE_BLOCK_BASED_TABLE_READER_H

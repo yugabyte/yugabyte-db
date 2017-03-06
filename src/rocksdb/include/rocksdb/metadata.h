@@ -3,7 +3,8 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
-#pragma once
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_METADATA_H
+#define ROCKSDB_INCLUDE_ROCKSDB_METADATA_H
 
 #include <stdint.h>
 
@@ -87,6 +88,6 @@ struct LiveFileMetaData : SstFileMetaData {
   int level;               // Level at which this file resides.
 };
 
-
-
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_INCLUDE_ROCKSDB_METADATA_H

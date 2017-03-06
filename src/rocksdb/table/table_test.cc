@@ -906,10 +906,8 @@ class HarnessTest : public testing::Test {
 static bool Between(uint64_t val, uint64_t low, uint64_t high) {
   bool result = (val >= low) && (val <= high);
   if (!result) {
-    fprintf(stderr, "Value %llu is not in range [%llu, %llu]\n",
-            (unsigned long long)(val),
-            (unsigned long long)(low),
-            (unsigned long long)(high));
+    fprintf(stderr, "Value %" PRIu64 " is not in range [%" PRIu64 ", %" PRIu64 "]\n",
+            val, low, high);
   }
   return result;
 }
@@ -1397,7 +1395,7 @@ TEST_F(TableTest, HashIndexTest) {
     if (hash_iter->Valid()) {
       Slice ukey = ExtractUserKey(hash_iter->key());
       Slice ukey_prefix = options.prefix_extractor->Transform(ukey);
-      ASSERT_TRUE(BytewiseComparator()->Compare(prefix, ukey_prefix) < 0);
+      ASSERT_LT(BytewiseComparator()->Compare(prefix, ukey_prefix), 0);
     }
   }
 }

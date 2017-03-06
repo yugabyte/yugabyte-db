@@ -15,7 +15,9 @@
 // Example code is also available
 //   https://github.com/facebook/rocksdb/wiki/A-Tutorial-of-RocksDB-SST-formats#wiki-examples
 
-#pragma once
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_TABLE_H
+#define ROCKSDB_INCLUDE_ROCKSDB_TABLE_H
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -172,11 +174,11 @@ struct BlockBasedTableOptions {
 // Table Properties that are specific to block-based table properties.
 struct BlockBasedTablePropertyNames {
   // value of this propertis is a fixed int32 number.
-  static const std::string kIndexType;
+  static const char kIndexType[];
   // value is "1" for true and "0" for false.
-  static const std::string kWholeKeyFiltering;
+  static const char kWholeKeyFiltering[];
   // value is "1" for true and "0" for false.
-  static const std::string kPrefixFiltering;
+  static const char kPrefixFiltering[];
 };
 
 // Create default block based table factory.
@@ -204,10 +206,10 @@ enum EncodingType : char {
 
 // Table Properties that are specific to plain table properties.
 struct PlainTablePropertyNames {
-  static const std::string kPrefixExtractorName;
-  static const std::string kEncodingType;
-  static const std::string kBloomVersion;
-  static const std::string kNumBloomBlocks;
+  static const char kPrefixExtractorName[];
+  static const char kEncodingType[];
+  static const char kBloomVersion[];
+  static const char kNumBloomBlocks[];
 };
 
 const uint32_t kPlainTableVariableLength = 0;
@@ -275,11 +277,11 @@ extern TableFactory* NewPlainTableFactory(const PlainTableOptions& options =
 
 struct CuckooTablePropertyNames {
   // The key that is used to fill empty buckets.
-  static const std::string kEmptyKey;
+  static const char kEmptyKey[];
   // Fixed length of value.
-  static const std::string kValueLength;
+  static const char kValueLength[];
   // Number of hash functions used in Cuckoo Hash.
-  static const std::string kNumHashFunc;
+  static const char kNumHashFunc[];
   // It denotes the number of buckets in a Cuckoo Block. Given a key and a
   // particular hash function, a Cuckoo Block is a set of consecutive buckets,
   // where starting bucket id is given by the hash function on the key. In case
@@ -287,22 +289,22 @@ struct CuckooTablePropertyNames {
   // key in other locations of the cuckoo block before using the next hash
   // function. This reduces cache miss during read operation in case of
   // collision.
-  static const std::string kCuckooBlockSize;
+  static const char kCuckooBlockSize[];
   // Size of the hash table. Use this number to compute the modulo of hash
   // function. The actual number of buckets will be kMaxHashTableSize +
   // kCuckooBlockSize - 1. The last kCuckooBlockSize-1 buckets are used to
   // accommodate the Cuckoo Block from end of hash table, due to cache friendly
   // implementation.
-  static const std::string kHashTableSize;
+  static const char kHashTableSize[];
   // Denotes if the key sorted in the file is Internal Key (if false)
   // or User Key only (if true).
-  static const std::string kIsLastLevel;
+  static const char kIsLastLevel[];
   // Indicate if using identity function for the first hash function.
-  static const std::string kIdentityAsFirstHash;
+  static const char kIdentityAsFirstHash[];
   // Indicate if using module or bit and to calculate hash value
-  static const std::string kUseModuleHash;
+  static const char kUseModuleHash[];
   // Fixed user key length
-  static const std::string kUserKeyLength;
+  static const char kUserKeyLength[];
 };
 
 struct CuckooTableOptions {
@@ -448,3 +450,5 @@ extern TableFactory* NewAdaptiveTableFactory(
 #endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_INCLUDE_ROCKSDB_TABLE_H

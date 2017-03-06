@@ -47,8 +47,8 @@
 namespace rocksdb {
 
 extern const uint64_t kBlockBasedTableMagicNumber;
-extern const std::string kHashIndexPrefixesBlock;
-extern const std::string kHashIndexPrefixesMetadataBlock;
+extern const char kHashIndexPrefixesBlock[];
+extern const char kHashIndexPrefixesMetadataBlock[];
 using std::unique_ptr;
 
 typedef BlockBasedTable::IndexReader IndexReader;

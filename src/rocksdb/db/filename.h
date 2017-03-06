@@ -9,7 +9,9 @@
 //
 // File names used by DB code
 
-#pragma once
+#ifndef ROCKSDB_DB_FILENAME_H
+#define ROCKSDB_DB_FILENAME_H
+
 #include <stdint.h>
 #include <unordered_map>
 #include <string>
@@ -45,7 +47,7 @@ enum FileType {
 // "dbname".
 extern std::string LogFileName(const std::string& dbname, uint64_t number);
 
-static const std::string ARCHIVAL_DIR = "archive";
+static const char ARCHIVAL_DIR[] = "archive";
 
 extern std::string ArchivalDirectory(const std::string& dbname);
 
@@ -102,7 +104,7 @@ struct InfoLogPrefix {
   // Prefix with DB absolute path encoded
   explicit InfoLogPrefix(bool has_log_dir, const std::string& db_absolute_path);
   // Default Prefix
-  explicit InfoLogPrefix();
+  InfoLogPrefix();
 };
 
 // Return the name of the info log file for "dbname".
@@ -115,8 +117,8 @@ extern std::string OldInfoLogFileName(const std::string& dbname, uint64_t ts,
                                       const std::string& db_path = "",
                                       const std::string& log_dir = "");
 
-static const std::string kOptionsFileNamePrefix = "OPTIONS-";
-static const std::string kTempFileNameSuffix = "dbtmp";
+static const char kOptionsFileNamePrefix[] = "OPTIONS-";
+static const char kTempFileNameSuffix[] = "dbtmp";
 
 // Return a options file name given the "dbname" and file number.
 // Format:  OPTIONS-[number].dbtmp
@@ -164,3 +166,5 @@ extern Status SyncManifest(Env* env, const DBOptions* db_options,
                            WritableFileWriter* file);
 
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_DB_FILENAME_H

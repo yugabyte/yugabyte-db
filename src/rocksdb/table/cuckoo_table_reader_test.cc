@@ -18,11 +18,11 @@ int main() {
 #endif
 
 #include <inttypes.h>
-#include <gflags/gflags.h>
 #include <vector>
 #include <string>
 #include <map>
 
+#include <gflags/gflags.h>
 #include "table/meta_blocks.h"
 #include "table/cuckoo_table_builder.h"
 #include "table/cuckoo_table_reader.h"

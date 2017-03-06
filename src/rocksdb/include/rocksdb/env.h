@@ -14,8 +14,8 @@
 // All Env implementations are safe for concurrent access from
 // multiple threads without any external synchronization.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_ENV_H_
-#define STORAGE_ROCKSDB_INCLUDE_ENV_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_ENV_H
+#define ROCKSDB_INCLUDE_ROCKSDB_ENV_H
 
 #include <stdint.h>
 #include <cstdarg>
@@ -70,10 +70,10 @@ struct EnvOptions {
   // If true, then allow caching of data in environment buffers
   bool use_os_buffer = true;
 
-   // If true, then use mmap to read data
+  // If true, then use mmap to read data
   bool use_mmap_reads = false;
 
-   // If true, then use mmap to write data
+  // If true, then use mmap to write data
   bool use_mmap_writes = true;
 
   // If false, fallocate() calls are bypassed
@@ -467,7 +467,7 @@ class RandomAccessFile {
   virtual size_t GetUniqueId(char* id, size_t max_size) const {
     return 0; // Default implementation to prevent issues with backwards
               // compatibility.
-  };
+  }
 
   enum AccessPattern { NORMAL, RANDOM, SEQUENTIAL, WILLNEED, DONTNEED };
 
@@ -783,7 +783,7 @@ extern void LogWithContext(const char* file,
 #   if defined(__GNUC__) || defined(__clang__)
     __attribute__((__format__ (__printf__, 4, 5)))
 #   endif
-    ;
+    ; // NOLINT(whitespace/semicolon)
 
 extern void LogFlush(Logger *info_log);
 
@@ -803,7 +803,7 @@ extern void LogWithContext(const char* file,
 #   if defined(__GNUC__) || defined(__clang__)
     __attribute__((__format__ (__printf__, 4, 5)))
 #   endif
-    ;
+    ; // NOLINT(whitespace/semicolon)
 
 // a set of log functions with different log levels.
 extern void HeaderWithContext(const char* file, const int line,
@@ -1039,4 +1039,4 @@ Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname);
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_ENV_H_
+#endif  // ROCKSDB_INCLUDE_ROCKSDB_ENV_H

@@ -4,7 +4,8 @@
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
-#pragma once
+#ifndef ROCKSDB_TABLE_MOCK_TABLE_H
+#define ROCKSDB_TABLE_MOCK_TABLE_H
 
 #include <algorithm>
 #include <atomic>
@@ -186,3 +187,5 @@ class MockTableFactory : public TableFactory {
 
 }  // namespace mock
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_TABLE_MOCK_TABLE_H

@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_PLAIN_TABLE_FACTORY_H
+#define ROCKSDB_TABLE_PLAIN_TABLE_FACTORY_H
 
 #ifndef ROCKSDB_LITE
+#include <stdint.h>
 #include <memory>
 #include <string>
-#include <stdint.h>
 
 #include "rocksdb/options.h"
 #include "rocksdb/table.h"
@@ -160,7 +161,7 @@ class PlainTableFactory : public TableFactory {
 
   const PlainTableOptions& table_options() const;
 
-  static const char kValueTypeSeqId0 = char(0xFF);
+  static const char kValueTypeSeqId0 = '\xff';
 
   // Sanitizes the specified DB Options.
   Status SanitizeOptions(const DBOptions& db_opts,
@@ -176,3 +177,5 @@ class PlainTableFactory : public TableFactory {
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif // ROCKSDB_TABLE_PLAIN_TABLE_FACTORY_H

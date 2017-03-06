@@ -7,7 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_TABLE_READER_H
+#define ROCKSDB_TABLE_TABLE_READER_H
+
 #include <memory>
 
 namespace rocksdb {
@@ -94,3 +96,5 @@ class TableReader {
 };
 
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_TABLE_TABLE_READER_H

@@ -7,7 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_CUCKOO_TABLE_READER_H
+#define ROCKSDB_TABLE_CUCKOO_TABLE_READER_H
+
 #ifndef ROCKSDB_LITE
 #include <string>
 #include <memory>
@@ -82,3 +84,5 @@ class CuckooTableReader: public TableReader {
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif  // ROCKSDB_TABLE_CUCKOO_TABLE_READER_H

@@ -10,13 +10,13 @@
 // Introduction of SyncPoint effectively disabled building and running this test
 // in Release build.
 // which is a pity, it is a good test
+#include <fcntl.h>
 #include <algorithm>
 #include <iostream>
 #include <set>
 #include <thread>
 #include <unordered_set>
 #include <utility>
-#include <fcntl.h>
 #ifndef OS_WIN
 #include <unistd.h>
 #endif
@@ -1716,7 +1716,7 @@ TEST_F(DBTest, IterReseek) {
   // At this point, we have three versions of "a" and one version of "b".
   // The reseek statistics is already at 1.
   int num_reseeks =
-      (int)TestGetTickerCount(options, NUMBER_OF_RESEEKS_IN_ITERATION);
+      static_cast<int>(TestGetTickerCount(options, NUMBER_OF_RESEEKS_IN_ITERATION));
 
   // Insert another version of b and assert that reseek is not invoked
   ASSERT_OK(Put(1, "b", "btwo"));
@@ -2128,7 +2128,7 @@ TEST_F(DBTest, FLUSH) {
 
     perf_context.Reset();
     Get(1, "foo");
-    ASSERT_TRUE((int) perf_context.get_from_output_files_time > 0);
+    ASSERT_GT(perf_context.get_from_output_files_time, 0);
 
     ReopenWithColumnFamilies({"default", "pikachu"}, CurrentOptions());
     ASSERT_EQ("v1", Get(1, "foo"));
@@ -2143,7 +2143,7 @@ TEST_F(DBTest, FLUSH) {
     ASSERT_EQ("v2", Get(1, "bar"));
     perf_context.Reset();
     ASSERT_EQ("v2", Get(1, "foo"));
-    ASSERT_TRUE((int) perf_context.get_from_output_files_time > 0);
+    ASSERT_GT(perf_context.get_from_output_files_time, 0);
 
     writeOpt.disableWAL = false;
     ASSERT_OK(dbfull()->Put(writeOpt, handles_[1], "bar", "v3"));
@@ -2219,7 +2219,7 @@ TEST_F(DBTest, FlushSchedule) {
 TEST_F(DBTest, ManifestRollOver) {
   do {
     Options options;
-    options.max_manifest_file_size = 10 ;  // 10 bytes
+    options.max_manifest_file_size = 10; // 10 bytes
     options = CurrentOptions(options);
     CreateAndReopenWithCF({"pikachu"}, options);
     {
@@ -2526,13 +2526,12 @@ TEST_F(DBTest, ColumnFamilyMetaDataTest) {
 }
 
 namespace {
-void MinLevelHelper(DBTest* self, Options& options) {
+void MinLevelHelper(DBTest* self, const Options& options) {
   Random rnd(301);
 
   for (int num = 0;
     num < options.level0_file_num_compaction_trigger - 1;
-    num++)
-  {
+    num++) {
     std::vector<std::string> values;
     // Write 120KB (12 values, each 10K)
     for (int i = 0; i < 12; i++) {
@@ -2543,7 +2542,7 @@ void MinLevelHelper(DBTest* self, Options& options) {
     ASSERT_EQ(self->NumTableFilesAtLevel(0), num + 1);
   }
 
-  //generate one more file in level-0, and should trigger level-0 compaction
+  // generate one more file in level-0, and should trigger level-0 compaction
   std::vector<std::string> values;
   for (int i = 0; i < 12; i++) {
     values.push_back(DBTestBase::RandomString(&rnd, 10000));
@@ -2556,39 +2555,41 @@ void MinLevelHelper(DBTest* self, Options& options) {
 }
 
 // returns false if the calling-Test should be skipped
-bool MinLevelToCompress(CompressionType& type, Options& options, int wbits,
-                        int lev, int strategy) {
-  fprintf(stderr, "Test with compression options : window_bits = %d, level =  %d, strategy = %d}\n", wbits, lev, strategy);
-  options.write_buffer_size = 100<<10; //100KB
-  options.arena_block_size = 4096;
-  options.num_levels = 3;
-  options.level0_file_num_compaction_trigger = 3;
-  options.create_if_missing = true;
+bool MinLevelToCompress(int wbits, int lev, int strategy,
+    CompressionType* type, Options* options) {
+  fprintf(stderr,
+      "Test with compression options : window_bits = %d, level =  %d, strategy = %d}\n",
+      wbits, lev, strategy);
+  options->write_buffer_size = 100 << 10; // 100KB
+  options->arena_block_size = 4096;
+  options->num_levels = 3;
+  options->level0_file_num_compaction_trigger = 3;
+  options->create_if_missing = true;
 
   if (Snappy_Supported()) {
-    type = kSnappyCompression;
+    *type = kSnappyCompression;
     fprintf(stderr, "using snappy\n");
   } else if (Zlib_Supported()) {
-    type = kZlibCompression;
+    *type = kZlibCompression;
     fprintf(stderr, "using zlib\n");
   } else if (BZip2_Supported()) {
-    type = kBZip2Compression;
+    *type = kBZip2Compression;
     fprintf(stderr, "using bzip2\n");
   } else if (LZ4_Supported()) {
-    type = kLZ4Compression;
+    *type = kLZ4Compression;
     fprintf(stderr, "using lz4\n");
   } else {
     fprintf(stderr, "skipping test, compression disabled\n");
     return false;
   }
-  options.compression_per_level.resize(options.num_levels);
+  options->compression_per_level.resize(options->num_levels);
 
   // do not compress L0
   for (int i = 0; i < 1; i++) {
-    options.compression_per_level[i] = kNoCompression;
+    options->compression_per_level[i] = kNoCompression;
   }
-  for (int i = 1; i < options.num_levels; i++) {
-    options.compression_per_level[i] = type;
+  for (int i = 1; i < options->num_levels; i++) {
+    options->compression_per_level[i] = *type;
   }
   return true;
 }
@@ -2597,7 +2598,7 @@ bool MinLevelToCompress(CompressionType& type, Options& options, int wbits,
 TEST_F(DBTest, MinLevelToCompress1) {
   Options options = CurrentOptions();
   CompressionType type = kSnappyCompression;
-  if (!MinLevelToCompress(type, options, -14, -1, 0)) {
+  if (!MinLevelToCompress(-14, -1, 0, &type, &options)) {
     return;
   }
   Reopen(options);
@@ -2617,7 +2618,7 @@ TEST_F(DBTest, MinLevelToCompress1) {
 TEST_F(DBTest, MinLevelToCompress2) {
   Options options = CurrentOptions();
   CompressionType type = kSnappyCompression;
-  if (!MinLevelToCompress(type, options, 15, -1, 0)) {
+  if (!MinLevelToCompress(15, -1, 0, &type, &options)) {
     return;
   }
   Reopen(options);
@@ -2707,10 +2708,10 @@ TEST_F(DBTest, SparseMerge) {
 static bool Between(uint64_t val, uint64_t low, uint64_t high) {
   bool result = (val >= low) && (val <= high);
   if (!result) {
-    fprintf(stderr, "Value %llu is not in range [%llu, %llu]\n",
-            (unsigned long long)(val),
-            (unsigned long long)(low),
-            (unsigned long long)(high));
+    fprintf(stderr, "Value %" PRIu64 " is not in range [%" PRIu64 ", %" PRIu64 "]\n",
+            val,
+            low,
+            high);
   }
   return result;
 }
@@ -3225,7 +3226,7 @@ TEST_F(DBTest, OverlapInLevel0) {
     Options options = CurrentOptions();
     CreateAndReopenWithCF({"pikachu"}, options);
 
-    //Fill levels 1 and 2 to disable the pushing of new memtables to levels > 0.
+    // Fill levels 1 and 2 to disable the pushing of new memtables to levels > 0.
     ASSERT_OK(Put(1, "100", "v100"));
     ASSERT_OK(Put(1, "999", "v999"));
     Flush(1);
@@ -4507,25 +4508,23 @@ class RecoveryTestHelper {
   static const int kValueSize = 10;
 
   // Create WAL files with values filled in
-  static void FillData(DBTest* test, Options& options, const size_t wal_count,
-                       size_t& count) {
-    DBOptions& db_options = options;
-
-    count = 0;
+  static void FillData(DBTest* test, Options* db_options, const size_t wal_count,
+                       size_t* count) {
+    *count = 0;
 
     shared_ptr<Cache> table_cache = NewLRUCache(50000, 16);
     EnvOptions env_options;
-    WriteBuffer write_buffer(db_options.db_write_buffer_size);
+    WriteBuffer write_buffer(db_options->db_write_buffer_size);
 
     unique_ptr<VersionSet> versions;
     unique_ptr<WalManager> wal_manager;
     WriteController write_controller;
 
-    versions.reset(new VersionSet(test->dbname_, &db_options, env_options,
+    versions.reset(new VersionSet(test->dbname_, db_options, env_options,
                                   table_cache.get(), &write_buffer,
                                   &write_controller));
 
-    wal_manager.reset(new WalManager(db_options, env_options));
+    wal_manager.reset(new WalManager(*db_options, env_options));
 
     std::unique_ptr<log::Writer> current_log_writer;
 
@@ -4533,15 +4532,15 @@ class RecoveryTestHelper {
       uint64_t current_log_number = j;
       std::string fname = LogFileName(test->dbname_, current_log_number);
       unique_ptr<WritableFile> file;
-      ASSERT_OK(db_options.env->NewWritableFile(fname, &file, env_options));
+      ASSERT_OK(db_options->env->NewWritableFile(fname, &file, env_options));
       unique_ptr<WritableFileWriter> file_writer(
           new WritableFileWriter(std::move(file), env_options));
       current_log_writer.reset(
           new log::Writer(std::move(file_writer), current_log_number,
-                          db_options.recycle_log_file_num > 0));
+                          db_options->recycle_log_file_num > 0));
 
       for (int i = 0; i < kKeysPerWALFile; i++) {
-        std::string key = "key" + ToString(count++);
+        std::string key = "key" + ToString((*count)++);
         std::string value = test->DummyString(kValueSize);
         assert(current_log_writer.get() != nullptr);
         uint64_t seq = versions->LastSequence() + 1;
@@ -4557,13 +4556,13 @@ class RecoveryTestHelper {
   }
 
   // Recreate and fill the store with some data
-  static size_t FillData(DBTest* test, Options& options) {
-    options.create_if_missing = true;
-    test->DestroyAndReopen(options);
+  static size_t FillData(DBTest* test, Options* options) {
+    options->create_if_missing = true;
+    test->DestroyAndReopen(*options);
     test->Close();
 
     size_t count = 0;
-    FillData(test, options, kWALFilesCount, count);
+    FillData(test, options, kWALFilesCount, &count);
     return count;
   }
 
@@ -4579,7 +4578,7 @@ class RecoveryTestHelper {
   }
 
   // Manuall corrupt the specified WAL
-  static void CorruptWAL(DBTest* test, Options& options, const double off,
+  static void CorruptWAL(DBTest* test, const Options& options, const double off,
                          const double len, const int wal_file_id,
                          const bool trunc = false) {
     Env* env = options.env;
@@ -4612,11 +4611,11 @@ class RecoveryTestHelper {
     int fd = open(filename.c_str(), O_RDWR);
 
     ASSERT_GT(fd, 0);
-    ASSERT_EQ(offset, lseek(fd, static_cast<long>(offset), SEEK_SET));
+    ASSERT_EQ(offset, lseek(fd, offset, SEEK_SET));
 
     void* buf = alloca(len);
     memset(buf, 'a', len);
-    ASSERT_EQ(len, write(fd, buf, static_cast<unsigned int>(len)));
+    ASSERT_EQ(len, write(fd, buf, len));
 
     close(fd);
   }
@@ -4635,7 +4634,7 @@ TEST_F(DBTest, kTolerateCorruptedTailRecords) {
       for (int j = jstart; j < jend; j++) { /* WAL file */
         // Fill data for testing
         Options options = CurrentOptions();
-        const size_t row_count = RecoveryTestHelper::FillData(this, options);
+        const size_t row_count = RecoveryTestHelper::FillData(this, &options);
         // test checksum failure or parsing
         RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
                                        /*len%=*/.1, /*wal=*/j, trunc);
@@ -4667,7 +4666,7 @@ TEST_F(DBTest, kAbsoluteConsistency) {
 
   // Verify clean slate behavior
   Options options = CurrentOptions();
-  const size_t row_count = RecoveryTestHelper::FillData(this, options);
+  const size_t row_count = RecoveryTestHelper::FillData(this, &options);
   options.wal_recovery_mode = WALRecoveryMode::kAbsoluteConsistency;
   options.create_if_missing = false;
   ASSERT_OK(TryReopen(options));
@@ -4681,7 +4680,7 @@ TEST_F(DBTest, kAbsoluteConsistency) {
 
       for (int j = jstart; j < jend; j++) { /* wal files */
         // fill with new date
-        RecoveryTestHelper::FillData(this, options);
+        RecoveryTestHelper::FillData(this, &options);
         // corrupt the wal
         RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
                                        /*len%=*/.1, j, trunc);
@@ -4708,7 +4707,7 @@ TEST_F(DBTest, kPointInTimeRecovery) {
       for (int j = jstart; j < jend; j++) { /* WAL file */
         // Fill data for testing
         Options options = CurrentOptions();
-        const size_t row_count = RecoveryTestHelper::FillData(this, options);
+        const size_t row_count = RecoveryTestHelper::FillData(this, &options);
 
         // Corrupt the wal
         RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
@@ -4757,7 +4756,7 @@ TEST_F(DBTest, kSkipAnyCorruptedRecords) {
       for (int j = jstart; j < jend; j++) { /* wal files */
         // Fill data for testing
         Options options = CurrentOptions();
-        const size_t row_count = RecoveryTestHelper::FillData(this, options);
+        const size_t row_count = RecoveryTestHelper::FillData(this, &options);
 
         // Corrupt the WAL
         RecoveryTestHelper::CorruptWAL(this, options, /*off=*/i * .3,
@@ -4884,7 +4883,7 @@ static void MTThreadBody(void* arg) {
     counter++;
   }
   t->state->thread_done[id].store(true, std::memory_order_release);
-  fprintf(stderr, "... stopping thread %d after %d ops\n", id, int(counter));
+  fprintf(stderr, "... stopping thread %d after %d ops\n", id, counter);
 }
 
 }  // namespace
@@ -5163,7 +5162,7 @@ class ModelDB: public DB {
       }
       virtual void Merge(const Slice& key, const Slice& value) override {
         // ignore merge for now
-        //(*map_)[key.ToString()] = value.ToString();
+        // (*map_)[key.ToString()] = value.ToString();
       }
       virtual void Delete(const Slice& key) override {
         map_->erase(key.ToString());
@@ -5572,7 +5571,7 @@ TEST_F(DBTest, MultiGetEmpty) {
     cfs.push_back(handles_[0]);
     cfs.push_back(handles_[1]);
     s = db_->MultiGet(ReadOptions(), cfs, keys, &values);
-    ASSERT_EQ((int)s.size(), 2);
+    ASSERT_EQ(s.size(), 2);
     ASSERT_TRUE(s[0].IsNotFound() && s[1].IsNotFound());
   } while (ChangeCompactOptions());
 }
@@ -5667,7 +5666,7 @@ TEST_F(DBTest, PrefixScan) {
     env_->random_read_counter_.Reset();
     iter = db_->NewIterator(ReadOptions());
     for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
-      if (! iter->key().starts_with(prefix)) {
+      if (!iter->key().starts_with(prefix)) {
         break;
       }
       count++;
@@ -10323,7 +10322,7 @@ TEST_F(DBTest, WalFilterTest) {
       }
 
       // reopen database again to make sure previous log(s) are not used
-      //(even if they were skipped)
+      // (even if they were skipped)
       // reopn database with option to use WAL filter
       options = OptionsForLogIterTest();
       ReopenWithColumnFamilies({"default", "pikachu"}, options);
@@ -10458,7 +10457,7 @@ TEST_F(DBTest, WalFilterTestWithChangeBatch) {
     }
 
     // reopen database again to make sure previous log(s) are not used
-    //(even if they were skipped)
+    // (even if they were skipped)
     // reopn database with option to use WAL filter
     options = OptionsForLogIterTest();
     ReopenWithColumnFamilies({"default", "pikachu"}, options);

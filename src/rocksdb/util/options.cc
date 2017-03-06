@@ -626,8 +626,7 @@ void Options::DumpCFOptions(Logger* log) const {
 // allows an application to write all files into L0 and
 // then do a single compaction to output all files into L1.
 Options*
-Options::PrepareForBulkLoad()
-{
+Options::PrepareForBulkLoad() {
   // never slowdown ingest.
   level0_file_num_compaction_trigger = (1<<30);
   level0_slowdown_writes_trigger = (1<<30);

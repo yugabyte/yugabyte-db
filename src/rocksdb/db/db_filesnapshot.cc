@@ -13,10 +13,10 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
+#include <stdint.h>
 #include <inttypes.h>
 #include <algorithm>
 #include <string>
-#include <stdint.h>
 #include "db/db_impl.h"
 #include "db/filename.h"
 #include "db/job_context.h"
@@ -57,7 +57,7 @@ Status DBImpl::EnableFileDeletions(bool force) {
     } else if (disable_delete_obsolete_files_ > 0) {
       --disable_delete_obsolete_files_;
     }
-    if (disable_delete_obsolete_files_ == 0)  {
+    if (disable_delete_obsolete_files_ == 0) {
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "File Deletions Enabled");
       should_purge_files = true;
@@ -68,7 +68,7 @@ Status DBImpl::EnableFileDeletions(bool force) {
           disable_delete_obsolete_files_);
     }
   }
-  if (should_purge_files)  {
+  if (should_purge_files) {
     PurgeObsoleteFiles(job_context);
   }
   job_context.Clean();
@@ -80,9 +80,9 @@ int DBImpl::IsFileDeletionsEnabled() const {
   return disable_delete_obsolete_files_;
 }
 
-Status DBImpl::GetLiveFiles(std::vector<std::string>& ret,
-                            uint64_t* manifest_file_size,
-                            bool flush_memtable) {
+Status DBImpl::GetLiveFiles(std::vector<std::string> &ret,
+    uint64_t *manifest_file_size,
+    bool flush_memtable) {
 
   *manifest_file_size = 0;
 
@@ -126,7 +126,7 @@ Status DBImpl::GetLiveFiles(std::vector<std::string>& ret,
   }
 
   ret.clear();
-  ret.reserve(live.size() + 2); //*.sst + CURRENT + MANIFEST
+  ret.reserve(live.size() + 2); // *.sst + CURRENT + MANIFEST
 
   // create names of the live files. The names are not absolute
   // paths, instead they are relative to dbname_;
@@ -148,6 +148,6 @@ Status DBImpl::GetSortedWalFiles(VectorLogPtr& files) {
   return wal_manager_.GetSortedWalFiles(files);
 }
 
-}
+} // namespace rocksdb
 
 #endif  // ROCKSDB_LITE

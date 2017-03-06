@@ -5,7 +5,10 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#pragma once
+
+#ifndef ROCKSDB_DB_BUILDER_H
+#define ROCKSDB_DB_BUILDER_H
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -64,3 +67,5 @@ extern Status BuildTable(
     TableProperties* table_properties = nullptr);
 
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_DB_BUILDER_H

@@ -1706,7 +1706,7 @@ bool VersionStorageInfo::HasOverlappingUserKey(
 
   // If inputs empty, there is no overlap.
   // If level == 0, it is assumed that all needed files were already included.
-  if (inputs->empty() || level == 0){
+  if (inputs->empty() || level == 0) {
     return false;
   }
 
@@ -1767,7 +1767,7 @@ const char* VersionStorageInfo::LevelSummary(
       snprintf(scratch->buffer + len, sizeof(scratch->buffer) - len, "files[");
   for (int i = 0; i < num_levels(); i++) {
     int sz = sizeof(scratch->buffer) - len;
-    int ret = snprintf(scratch->buffer + len, sz, "%d ", int(files_[i].size()));
+    int ret = snprintf(scratch->buffer + len, sz, "%zd ", files_[i].size());
     if (ret < 0 || ret >= sz) break;
     len += ret;
   }
@@ -2306,8 +2306,8 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     prev_log_number_ = edit->prev_log_number_;
   } else {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_->info_log,
-        "Error in committing version %lu to [%s]",
-        (unsigned long)v->GetVersionNumber(),
+        "Error in committing version %" PRIu64 " to [%s]",
+        v->GetVersionNumber(),
         column_family_data ? column_family_data->GetName().c_str()
                            : "<null>");
     delete v;
@@ -2646,13 +2646,13 @@ Status VersionSet::Recover(
 
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
         "Recovered from manifest file:%s succeeded,"
-        "manifest_file_number is %lu, next_file_number is %lu, "
-        "last_sequence is %lu, log_number is %lu,"
-        "prev_log_number is %lu,"
+        "manifest_file_number is %" PRIu64 ", next_file_number is %lu, "
+        "last_sequence is %" PRIu64 ", log_number is %" PRIu64 ","
+        "prev_log_number is %" PRIu64 ","
         "max_column_family is %u\n",
-        manifest_filename.c_str(), (unsigned long)manifest_file_number_,
-        (unsigned long)next_file_number_.load(), (unsigned long)last_sequence_,
-        (unsigned long)log_number, (unsigned long)prev_log_number_,
+        manifest_filename.c_str(), manifest_file_number_,
+        next_file_number_.load(), last_sequence_.load(),
+        log_number, prev_log_number_,
         column_family_set_->GetMaxColumnFamily());
 
     for (auto cfd : *column_family_set_) {
@@ -2989,7 +2989,7 @@ Status VersionSet::DumpManifest(Options& options, std::string& dscname,
 
       printf("--------------- Column family \"%s\"  (ID %u) --------------\n",
              cfd->GetName().c_str(), (unsigned int)cfd->GetID());
-      printf("log number: %lu\n", (unsigned long)cfd->GetLogNumber());
+      printf("log number: %" PRIu64 "\n", cfd->GetLogNumber());
       auto comparator = comparators.find(cfd->GetID());
       if (comparator != comparators.end()) {
         printf("comparator: %s\n", comparator->second.c_str());
@@ -3010,10 +3010,9 @@ Status VersionSet::DumpManifest(Options& options, std::string& dscname,
     prev_log_number_ = previous_log_number;
 
     printf(
-        "next_file_number %lu last_sequence "
-        "%lu  prev_log_number %lu max_column_family %u\n",
-        (unsigned long)next_file_number_.load(), (unsigned long)last_sequence,
-        (unsigned long)previous_log_number,
+        "next_file_number %" PRIu64 " last_sequence "
+        "%" PRIu64 " prev_log_number %" PRIu64 " max_column_family %u\n",
+        next_file_number_.load(), last_sequence, previous_log_number,
         column_family_set_->GetMaxColumnFamily());
   }
 
@@ -3466,7 +3465,7 @@ void VersionSet::EnsureIncreasingLastSequence(
         "the previous last sequence id %" PRIu64,
         new_last_seq, prev_last_seq);
   }
-};
+}
 #endif
 
 }  // namespace rocksdb

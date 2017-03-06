@@ -26,8 +26,8 @@
 
 namespace rocksdb {
 
-static const std::string kRocksDbTFileExt = "sst";
-static const std::string kLevelDbTFileExt = "ldb";
+static const char kRocksDbTFileExt[] = "sst";
+static const char kLevelDbTFileExt[] = "ldb";
 
 // Given a path, flatten the path name by replacing all chars not in
 // {[0-9,a-z,A-Z,-,_,.]} with _. And append '_LOG\0' at the end.
@@ -45,7 +45,7 @@ static size_t GetInfoLogPrefix(const std::string& path, char* dest, int len) {
         (path[i] >= 'A' && path[i] <= 'Z') ||
         path[i] == '-' ||
         path[i] == '.' ||
-        path[i] == '_'){
+        path[i] == '_') {
       dest[write_idx++] = path[i];
     } else {
       if (i > 0) {
@@ -64,9 +64,7 @@ static size_t GetInfoLogPrefix(const std::string& path, char* dest, int len) {
 static std::string MakeFileName(const std::string& name, uint64_t number,
                                 const char* suffix) {
   char buf[100];
-  snprintf(buf, sizeof(buf), "/%06llu.%s",
-           static_cast<unsigned long long>(number),
-           suffix);
+  snprintf(buf, sizeof(buf), "/%06" PRIu64 ".%s", number, suffix);
   return name + buf;
 }
 
@@ -84,15 +82,15 @@ std::string ArchivedLogFileName(const std::string& name, uint64_t number) {
 }
 
 std::string MakeTableFileName(const std::string& path, uint64_t number) {
-  return MakeFileName(path, number, kRocksDbTFileExt.c_str());
+  return MakeFileName(path, number, kRocksDbTFileExt);
 }
 
 std::string Rocks2LevelTableFileName(const std::string& fullname) {
-  assert(fullname.size() > kRocksDbTFileExt.size() + 1);
-  if (fullname.size() <= kRocksDbTFileExt.size() + 1) {
+  assert(fullname.size() > sizeof(kRocksDbTFileExt));
+  if (fullname.size() <= sizeof(kRocksDbTFileExt)) {
     return "";
   }
-  return fullname.substr(0, fullname.size() - kRocksDbTFileExt.size()) +
+  return fullname.substr(0, fullname.size() - sizeof(kRocksDbTFileExt) + 1) +
          kLevelDbTFileExt;
 }
 
@@ -134,8 +132,7 @@ void FormatFileNumber(uint64_t number, uint32_t path_id, char* out_buf,
 std::string DescriptorFileName(const std::string& dbname, uint64_t number) {
   assert(number > 0);
   char buf[100];
-  snprintf(buf, sizeof(buf), "/MANIFEST-%06llu",
-           static_cast<unsigned long long>(number));
+  snprintf(buf, sizeof(buf), "/MANIFEST-%06" PRIu64, number);
   return dbname + buf;
 }
 
@@ -148,7 +145,7 @@ std::string LockFileName(const std::string& dbname) {
 }
 
 std::string TempFileName(const std::string& dbname, uint64_t number) {
-  return MakeFileName(dbname, number, kTempFileNameSuffix.c_str());
+  return MakeFileName(dbname, number, kTempFileNameSuffix);
 }
 
 InfoLogPrefix::InfoLogPrefix(bool has_log_dir,
@@ -178,7 +175,7 @@ std::string InfoLogFileName(const std::string& dbname,
 std::string OldInfoLogFileName(const std::string& dbname, uint64_t ts,
     const std::string& db_path, const std::string& log_dir) {
   char buf[50];
-  snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(ts));
+  snprintf(buf, sizeof(buf), "%" PRIu64, ts);
 
   if (log_dir.empty()) {
     return dbname + "/LOG.old." + buf;
@@ -191,22 +188,21 @@ std::string OldInfoLogFileName(const std::string& dbname, uint64_t ts,
 std::string OptionsFileName(const std::string& dbname, uint64_t file_num) {
   char buffer[256];
   snprintf(buffer, sizeof(buffer), "%s%06" PRIu64,
-           kOptionsFileNamePrefix.c_str(), file_num);
+           kOptionsFileNamePrefix, file_num);
   return dbname + "/" + buffer;
 }
 
 std::string TempOptionsFileName(const std::string& dbname, uint64_t file_num) {
   char buffer[256];
   snprintf(buffer, sizeof(buffer), "%s%06" PRIu64 ".%s",
-           kOptionsFileNamePrefix.c_str(), file_num,
-           kTempFileNameSuffix.c_str());
+           kOptionsFileNamePrefix, file_num,
+           kTempFileNameSuffix);
   return dbname + "/" + buffer;
 }
 
 std::string MetaDatabaseName(const std::string& dbname, uint64_t number) {
   char buf[100];
-  snprintf(buf, sizeof(buf), "/METADB-%llu",
-           static_cast<unsigned long long>(number));
+  snprintf(buf, sizeof(buf), "/METADB-%" PRIu64, number);
   return dbname + buf;
 }
 
@@ -290,7 +286,7 @@ bool ParseFileName(const std::string& fname, uint64_t* number,
   } else if (rest.starts_with(kOptionsFileNamePrefix)) {
     uint64_t ts_suffix;
     bool is_temp_file = false;
-    rest.remove_prefix(kOptionsFileNamePrefix.size());
+    rest.remove_prefix(sizeof(kOptionsFileNamePrefix) - 1);
     const std::string kTempFileNameSuffixWithDot =
         std::string(".") + kTempFileNameSuffix;
     if (rest.ends_with(kTempFileNameSuffixWithDot)) {
@@ -307,10 +303,10 @@ bool ParseFileName(const std::string& fname, uint64_t* number,
     // current locale
     bool archive_dir_found = false;
     if (rest.starts_with(ARCHIVAL_DIR)) {
-      if (rest.size() <= ARCHIVAL_DIR.size()) {
+      if (rest.size() < sizeof(ARCHIVAL_DIR)) {
         return false;
       }
-      rest.remove_prefix(ARCHIVAL_DIR.size() + 1); // Add 1 to remove / also
+      rest.remove_prefix(sizeof(ARCHIVAL_DIR)); // Don't subtract 1 to remove / also
       if (log_type) {
         *log_type = kArchivedLogFile;
       }

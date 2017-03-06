@@ -259,8 +259,7 @@ Status SstFileReader::SetTableOptionsByMagicNumber(
   } else {
     char error_msg_buffer[80];
     snprintf(error_msg_buffer, sizeof(error_msg_buffer) - 1,
-             "Unsupported table magic number --- %lx",
-             (long)table_magic_number);
+             "Unsupported table magic number --- %" PRIx64, table_magic_number);
     return Status::InvalidArgument(error_msg_buffer);
   }
 
@@ -384,8 +383,7 @@ int SSTDumpTool::Run(int argc, char** argv) {
     } else if (strcmp(argv[i], "--input_key_hex") == 0) {
       input_key_hex = true;
     } else if (sscanf(argv[i],
-               "--read_num=%lu%c",
-               (unsigned long*)&n, &junk) == 1) {
+               "--read_num=%" PRIu64 "%c", &n, &junk) == 1) {
       read_num = n;
     } else if (strcmp(argv[i], "--verify_checksum") == 0) {
       verify_checksum = true;

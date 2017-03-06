@@ -50,8 +50,8 @@
 
 namespace rocksdb {
 
-extern const std::string kHashIndexPrefixesBlock;
-extern const std::string kHashIndexPrefixesMetadataBlock;
+extern const char kHashIndexPrefixesBlock[];
+extern const char kHashIndexPrefixesMetadataBlock[];
 
 typedef BlockBasedTableOptions::IndexType IndexType;
 
@@ -227,9 +227,9 @@ class HashIndexBuilder : public IndexBuilder {
     FlushPendingPrefix();
     primary_index_builder_.Finish(index_blocks);
     index_blocks->meta_blocks.insert(
-        {kHashIndexPrefixesBlock.c_str(), prefix_block_});
+        {kHashIndexPrefixesBlock, prefix_block_});
     index_blocks->meta_blocks.insert(
-        {kHashIndexPrefixesMetadataBlock.c_str(), prefix_meta_block_});
+        {kHashIndexPrefixesMetadataBlock, prefix_meta_block_});
     return Status::OK();
   }
 
@@ -893,6 +893,6 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
   return ret;
 }
 
-const std::string BlockBasedTable::kFilterBlockPrefix = "filter.";
-const std::string BlockBasedTable::kFullFilterBlockPrefix = "fullfilter.";
+const char BlockBasedTable::kFilterBlockPrefix[] = "filter.";
+const char BlockBasedTable::kFullFilterBlockPrefix[] = "fullfilter.";
 }  // namespace rocksdb

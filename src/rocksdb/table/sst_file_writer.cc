@@ -14,7 +14,7 @@
 
 namespace rocksdb {
 
-const std::string ExternalSstFilePropertyNames::kVersion =
+const char ExternalSstFilePropertyNames::kVersion[] =
     "rocksdb.external_sst_file.version";
 
 // PropertiesCollector used to add properties specific to tables

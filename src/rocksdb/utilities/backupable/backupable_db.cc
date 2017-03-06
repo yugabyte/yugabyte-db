@@ -431,8 +431,8 @@ class BackupEngineImpl : public BackupEngine {
   // @param fname Name of destination file and, in case of copy, source file.
   // @param contents If non-empty, the file will be created with these contents.
   Status AddBackupFileWorkItem(
-      std::unordered_set<std::string>& live_dst_paths,
-      std::vector<BackupAfterCopyOrCreateWorkItem>& backup_items_to_finish,
+      std::unordered_set<std::string>* live_dst_paths,
+      std::vector<BackupAfterCopyOrCreateWorkItem>* backup_items_to_finish,
       BackupID backup_id, bool shared, const std::string& src_dir,
       const std::string& fname,  // starts with "/"
       RateLimiter* rate_limiter, uint64_t size_bytes, uint64_t size_limit = 0,
@@ -741,7 +741,7 @@ Status BackupEngineImpl::CreateNewBackup(
     // * if it's kTableFile, then it's shared
     // * if it's kDescriptorFile, limit the size to manifest_file_size
     s = AddBackupFileWorkItem(
-        live_dst_paths, backup_items_to_finish, new_backup_id,
+        &live_dst_paths, &backup_items_to_finish, new_backup_id,
         options_.share_table_files && type == kTableFile, db->GetName(),
         live_files[i], rate_limiter.get(), size_bytes,
         (type == kDescriptorFile) ? manifest_file_size : 0,
@@ -751,7 +751,7 @@ Status BackupEngineImpl::CreateNewBackup(
   if (s.ok() && !current_fname.empty() && !manifest_fname.empty()) {
     // Write the current file with the manifest filename as its contents.
     s = AddBackupFileWorkItem(
-        live_dst_paths, backup_items_to_finish, new_backup_id,
+        &live_dst_paths, &backup_items_to_finish, new_backup_id,
         false /* shared */, "" /* src_dir */, CurrentFileName(""),
         rate_limiter.get(), manifest_fname.size(), 0 /* size_limit */,
         false /* shared_checksum */, progress_callback,
@@ -779,7 +779,7 @@ Status BackupEngineImpl::CreateNewBackup(
     if (live_wal_files[i]->Type() == kAliveLogFile) {
       // we only care about live log files
       // copy the file into backup_dir/files/<new backup>/
-      s = AddBackupFileWorkItem(live_dst_paths, backup_items_to_finish,
+      s = AddBackupFileWorkItem(&live_dst_paths, &backup_items_to_finish,
                                 new_backup_id, false, /* not shared */
                                 db->GetOptions().wal_dir,
                                 live_wal_files[i]->PathName(),
@@ -1259,9 +1259,10 @@ Status BackupEngineImpl::CopyOrCreateFile(
 
 // fname will always start with "/"
 Status BackupEngineImpl::AddBackupFileWorkItem(
-    std::unordered_set<std::string>& live_dst_paths,
-    std::vector<BackupAfterCopyOrCreateWorkItem>& backup_items_to_finish,
-    BackupID backup_id, bool shared, const std::string& src_dir,
+    std::unordered_set<std::string>* live_dst_paths,
+    std::vector<BackupAfterCopyOrCreateWorkItem>* backup_items_to_finish,
+    BackupID backup_id, bool shared,
+    const std::string& src_dir,
     const std::string& fname, RateLimiter* rate_limiter, uint64_t size_bytes,
     uint64_t size_limit, bool shared_checksum,
     std::function<void()> progress_callback, const std::string& contents) {
@@ -1302,7 +1303,7 @@ Status BackupEngineImpl::AddBackupFileWorkItem(
   bool need_to_copy = true;
   // true if dst_path is the same path as another live file
   const bool same_path =
-      live_dst_paths.find(dst_path) != live_dst_paths.end();
+      live_dst_paths->find(dst_path) != live_dst_paths->end();
 
   bool file_exists = false;
   if (shared && !same_path) {
@@ -1343,7 +1344,7 @@ Status BackupEngineImpl::AddBackupFileWorkItem(
                             &checksum_value);
     }
   }
-  live_dst_paths.insert(dst_path);
+  live_dst_paths->insert(dst_path);
 
   if (!contents.empty() || need_to_copy) {
     RLOG(options_.info_log, "Copying %s to %s", fname.c_str(),
@@ -1356,13 +1357,13 @@ Status BackupEngineImpl::AddBackupFileWorkItem(
         copy_or_create_work_item.result.get_future(), shared, need_to_copy,
         backup_env_, dst_path_tmp, dst_path, dst_relative);
     files_to_copy_or_create_.write(std::move(copy_or_create_work_item));
-    backup_items_to_finish.push_back(std::move(after_copy_or_create_work_item));
+    backup_items_to_finish->push_back(std::move(after_copy_or_create_work_item));
   } else {
     std::promise<CopyOrCreateResult> promise_result;
     BackupAfterCopyOrCreateWorkItem after_copy_or_create_work_item(
         promise_result.get_future(), shared, need_to_copy, backup_env_,
         dst_path_tmp, dst_path, dst_relative);
-    backup_items_to_finish.push_back(std::move(after_copy_or_create_work_item));
+    backup_items_to_finish->push_back(std::move(after_copy_or_create_work_item));
     CopyOrCreateResult result;
     result.status = s;
     result.size = size_bytes;

@@ -411,7 +411,7 @@ class Repairer {
                      t.meta.marked_for_compaction);
     }
 
-    //fprintf(stderr, "NewDescriptor:\n%s\n", edit_.DebugString().c_str());
+    // fprintf(stderr, "NewDescriptor:\n%s\n", edit_.DebugString().c_str());
     {
       unique_ptr<WritableFileWriter> file_writer(
           new WritableFileWriter(std::move(file), env_options));

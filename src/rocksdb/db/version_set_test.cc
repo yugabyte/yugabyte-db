@@ -319,10 +319,10 @@ TEST_F(FindLevelFileTest, LevelEmpty) {
   LevelFileInit(0);
 
   ASSERT_EQ(0, Find("foo"));
-  ASSERT_TRUE(! Overlaps("a", "z"));
-  ASSERT_TRUE(! Overlaps(nullptr, "z"));
-  ASSERT_TRUE(! Overlaps("a", nullptr));
-  ASSERT_TRUE(! Overlaps(nullptr, nullptr));
+  ASSERT_TRUE(!Overlaps("a", "z"));
+  ASSERT_TRUE(!Overlaps(nullptr, "z"));
+  ASSERT_TRUE(!Overlaps("a", nullptr));
+  ASSERT_TRUE(!Overlaps(nullptr, nullptr));
 }
 
 TEST_F(FindLevelFileTest, LevelSingle) {
@@ -336,8 +336,8 @@ TEST_F(FindLevelFileTest, LevelSingle) {
   ASSERT_EQ(1, Find("q1"));
   ASSERT_EQ(1, Find("z"));
 
-  ASSERT_TRUE(! Overlaps("a", "b"));
-  ASSERT_TRUE(! Overlaps("z1", "z2"));
+  ASSERT_TRUE(!Overlaps("a", "b"));
+  ASSERT_TRUE(!Overlaps("z1", "z2"));
   ASSERT_TRUE(Overlaps("a", "p"));
   ASSERT_TRUE(Overlaps("a", "q"));
   ASSERT_TRUE(Overlaps("a", "z"));
@@ -349,8 +349,8 @@ TEST_F(FindLevelFileTest, LevelSingle) {
   ASSERT_TRUE(Overlaps("q", "q"));
   ASSERT_TRUE(Overlaps("q", "q1"));
 
-  ASSERT_TRUE(! Overlaps(nullptr, "j"));
-  ASSERT_TRUE(! Overlaps("r", nullptr));
+  ASSERT_TRUE(!Overlaps(nullptr, "j"));
+  ASSERT_TRUE(!Overlaps("r", nullptr));
   ASSERT_TRUE(Overlaps(nullptr, "p"));
   ASSERT_TRUE(Overlaps(nullptr, "p1"));
   ASSERT_TRUE(Overlaps("q", nullptr));
@@ -382,10 +382,10 @@ TEST_F(FindLevelFileTest, LevelMultiple) {
   ASSERT_EQ(3, Find("450"));
   ASSERT_EQ(4, Find("451"));
 
-  ASSERT_TRUE(! Overlaps("100", "149"));
-  ASSERT_TRUE(! Overlaps("251", "299"));
-  ASSERT_TRUE(! Overlaps("451", "500"));
-  ASSERT_TRUE(! Overlaps("351", "399"));
+  ASSERT_TRUE(!Overlaps("100", "149"));
+  ASSERT_TRUE(!Overlaps("251", "299"));
+  ASSERT_TRUE(!Overlaps("451", "500"));
+  ASSERT_TRUE(!Overlaps("351", "399"));
 
   ASSERT_TRUE(Overlaps("100", "150"));
   ASSERT_TRUE(Overlaps("100", "200"));
@@ -404,8 +404,8 @@ TEST_F(FindLevelFileTest, LevelMultipleNullBoundaries) {
   Add("200", "250");
   Add("300", "350");
   Add("400", "450");
-  ASSERT_TRUE(! Overlaps(nullptr, "149"));
-  ASSERT_TRUE(! Overlaps("451", nullptr));
+  ASSERT_TRUE(!Overlaps(nullptr, "149"));
+  ASSERT_TRUE(!Overlaps("451", nullptr));
   ASSERT_TRUE(Overlaps(nullptr, nullptr));
   ASSERT_TRUE(Overlaps(nullptr, "150"));
   ASSERT_TRUE(Overlaps(nullptr, "199"));
@@ -423,8 +423,8 @@ TEST_F(FindLevelFileTest, LevelOverlapSequenceChecks) {
   LevelFileInit(1);
 
   Add("200", "200", 5000, 3000);
-  ASSERT_TRUE(! Overlaps("199", "199"));
-  ASSERT_TRUE(! Overlaps("201", "300"));
+  ASSERT_TRUE(!Overlaps("199", "199"));
+  ASSERT_TRUE(!Overlaps("201", "300"));
   ASSERT_TRUE(Overlaps("200", "200"));
   ASSERT_TRUE(Overlaps("190", "200"));
   ASSERT_TRUE(Overlaps("200", "210"));
@@ -436,8 +436,8 @@ TEST_F(FindLevelFileTest, LevelOverlappingFiles) {
   Add("150", "600");
   Add("400", "500");
   disjoint_sorted_files_ = false;
-  ASSERT_TRUE(! Overlaps("100", "149"));
-  ASSERT_TRUE(! Overlaps("601", "700"));
+  ASSERT_TRUE(!Overlaps("100", "149"));
+  ASSERT_TRUE(!Overlaps("601", "700"));
   ASSERT_TRUE(Overlaps("100", "150"));
   ASSERT_TRUE(Overlaps("100", "200"));
   ASSERT_TRUE(Overlaps("100", "300"));

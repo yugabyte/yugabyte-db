@@ -3,7 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 
-#pragma once
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_SST_FILE_WRITER_H
+#define ROCKSDB_INCLUDE_ROCKSDB_SST_FILE_WRITER_H
+
 #include <string>
 #include "rocksdb/env.h"
 #include "rocksdb/immutable_options.h"
@@ -16,7 +18,7 @@ class Comparator;
 // Table Properties that are specific to tables created by SstFileWriter.
 struct ExternalSstFilePropertyNames {
   // value of this property is a fixed int32 number.
-  static const std::string kVersion;
+  static const char kVersion[];
 };
 
 // ExternalSstFileInfo include information about sst files created
@@ -75,3 +77,5 @@ class SstFileWriter {
   Rep* rep_;
 };
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_INCLUDE_ROCKSDB_SST_FILE_WRITER_H

@@ -9,13 +9,14 @@
 
 #ifndef ROCKSDB_LITE
 
-#include "rocksdb/db.h"
-
 #include <inttypes.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#include "rocksdb/db.h"
+
 #include "rocksdb/cache.h"
 #include "rocksdb/env.h"
 #include "rocksdb/table.h"
@@ -96,7 +97,7 @@ class CorruptionTest : public testing::Test {
         DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
         dbi->TEST_FlushMemTable();
       }
-      //if ((i % 100) == 0) fprintf(stderr, "@ %d of %d\n", i, n);
+      // if ((i % 100) == 0) fprintf(stderr, "@ %d of %d\n", i, n);
       Slice key = Key(i, &key_space);
       batch.Clear();
       batch.Put(key, Value(i, &value_space));
@@ -137,9 +138,8 @@ class CorruptionTest : public testing::Test {
     delete iter;
 
     fprintf(stderr,
-      "expected=%d..%d; got=%d; bad_keys=%d; bad_values=%d; missed=%llu\n",
-            min_expected, max_expected, correct, bad_keys, bad_values,
-            static_cast<unsigned long long>(missed));
+      "expected=%d..%d; got=%d; bad_keys=%d; bad_values=%d; missed=%" PRIu64 "\n",
+            min_expected, max_expected, correct, bad_keys, bad_values, missed);
     ASSERT_LE(min_expected, correct);
     ASSERT_GE(max_expected, correct);
   }

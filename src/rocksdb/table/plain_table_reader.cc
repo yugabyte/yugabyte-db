@@ -412,9 +412,9 @@ Status PlainTableReader::PopulateIndex(TableProperties* props,
 
 Status PlainTableReader::GetOffset(PlainTableKeyDecoder* decoder,
                                    const Slice& target, const Slice& prefix,
-                                   uint32_t prefix_hash, bool& prefix_matched,
+                                   uint32_t prefix_hash, bool* prefix_matched,
                                    uint32_t* offset) const {
-  prefix_matched = false;
+  *prefix_matched = false;
   uint32_t prefix_index_offset;
   auto res = index_.GetOffset(prefix_hash, &prefix_index_offset);
   if (res == PlainTableIndex::kNoPrefixForBucket) {
@@ -453,7 +453,7 @@ Status PlainTableReader::GetOffset(PlainTableKeyDecoder* decoder,
       if (cmp_result == 0) {
         // Happen to have found the exact key or target is smaller than the
         // first key after base_offset.
-        prefix_matched = true;
+        *prefix_matched = true;
         *offset = file_offset;
         return Status::OK();
       } else {
@@ -473,11 +473,11 @@ Status PlainTableReader::GetOffset(PlainTableKeyDecoder* decoder,
   }
 
   if (GetPrefix(low_key) == prefix) {
-    prefix_matched = true;
+    *prefix_matched = true;
     *offset = low_key_offset;
   } else if (low + 1 < upper_bound) {
     // There is possible a next prefix, return it
-    prefix_matched = false;
+    *prefix_matched = false;
     *offset = GetFixed32Element(base_ptr, low + 1);
   } else {
     // target is larger than a key of the last prefix in this bucket
@@ -561,7 +561,7 @@ Status PlainTableReader::Get(const ReadOptions& ro, const Slice& target,
   PlainTableKeyDecoder decoder(&file_info_, encoding_type_, user_key_len_,
                                ioptions_.prefix_extractor);
   Status s = GetOffset(&decoder, target, prefix_slice, prefix_hash,
-                       prefix_match, &offset);
+                       &prefix_match, &offset);
 
   if (!s.ok()) {
     return s;
@@ -662,7 +662,7 @@ void PlainTableIterator::Seek(const Slice& target) {
   }
   bool prefix_match;
   status_ = table_->GetOffset(&decoder_, target, prefix_slice, prefix_hash,
-                              prefix_match, &next_offset_);
+                              &prefix_match, &next_offset_);
   if (!status_.ok()) {
     offset_ = next_offset_ = table_->file_info_.data_end_offset;
     return;

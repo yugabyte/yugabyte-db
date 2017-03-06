@@ -25,23 +25,23 @@
 #include "util/string_util.h"
 
 namespace rocksdb {
-const std::string CuckooTablePropertyNames::kEmptyKey =
+const char CuckooTablePropertyNames::kEmptyKey[] =
       "rocksdb.cuckoo.bucket.empty.key";
-const std::string CuckooTablePropertyNames::kNumHashFunc =
+const char CuckooTablePropertyNames::kNumHashFunc[] =
       "rocksdb.cuckoo.hash.num";
-const std::string CuckooTablePropertyNames::kHashTableSize =
+const char CuckooTablePropertyNames::kHashTableSize[] =
       "rocksdb.cuckoo.hash.size";
-const std::string CuckooTablePropertyNames::kValueLength =
+const char CuckooTablePropertyNames::kValueLength[] =
       "rocksdb.cuckoo.value.length";
-const std::string CuckooTablePropertyNames::kIsLastLevel =
+const char CuckooTablePropertyNames::kIsLastLevel[] =
       "rocksdb.cuckoo.file.islastlevel";
-const std::string CuckooTablePropertyNames::kCuckooBlockSize =
+const char CuckooTablePropertyNames::kCuckooBlockSize[] =
       "rocksdb.cuckoo.hash.cuckooblocksize";
-const std::string CuckooTablePropertyNames::kIdentityAsFirstHash =
+const char CuckooTablePropertyNames::kIdentityAsFirstHash[] =
       "rocksdb.cuckoo.hash.identityfirst";
-const std::string CuckooTablePropertyNames::kUseModuleHash =
+const char CuckooTablePropertyNames::kUseModuleHash[] =
       "rocksdb.cuckoo.hash.usemodule";
-const std::string CuckooTablePropertyNames::kUserKeyLength =
+const char CuckooTablePropertyNames::kUserKeyLength[] =
       "rocksdb.cuckoo.hash.userkeylength";
 
 // Obtained by running echo rocksdb.table.cuckoo | sha1sum

@@ -5,8 +5,9 @@
 #ifndef ROCKSDB_LITE
 #include "table/plain_table_factory.h"
 
-#include <memory>
 #include <stdint.h>
+#include <memory>
+
 #include "db/dbformat.h"
 #include "table/plain_table_builder.h"
 #include "table/plain_table_reader.h"
@@ -83,16 +84,16 @@ extern TableFactory* NewPlainTableFactory(const PlainTableOptions& options) {
   return new PlainTableFactory(options);
 }
 
-const std::string PlainTablePropertyNames::kPrefixExtractorName =
+const char PlainTablePropertyNames::kPrefixExtractorName[] =
     "rocksdb.prefix.extractor.name";
 
-const std::string PlainTablePropertyNames::kEncodingType =
+const char PlainTablePropertyNames::kEncodingType[] =
     "rocksdb.plain.table.encoding.type";
 
-const std::string PlainTablePropertyNames::kBloomVersion =
+const char PlainTablePropertyNames::kBloomVersion[] =
     "rocksdb.plain.table.bloom.version";
 
-const std::string PlainTablePropertyNames::kNumBloomBlocks =
+const char PlainTablePropertyNames::kNumBloomBlocks[] =
     "rocksdb.plain.table.bloom.numblocks";
 
 }  // namespace rocksdb

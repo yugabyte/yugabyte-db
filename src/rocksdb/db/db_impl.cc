@@ -101,7 +101,7 @@
 
 namespace rocksdb {
 
-const std::string kDefaultColumnFamilyName("default");
+const char kDefaultColumnFamilyName[] = "default";
 
 void DumpRocksDBBuildVersion(Logger * log);
 

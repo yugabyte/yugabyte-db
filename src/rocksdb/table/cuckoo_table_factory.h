@@ -3,7 +3,9 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_CUCKOO_TABLE_FACTORY_H
+#define ROCKSDB_TABLE_CUCKOO_TABLE_FACTORY_H
+
 #ifndef ROCKSDB_LITE
 
 #include <string>
@@ -80,3 +82,5 @@ class CuckooTableFactory : public TableFactory {
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif  // ROCKSDB_TABLE_CUCKOO_TABLE_FACTORY_H

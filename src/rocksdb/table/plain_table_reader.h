@@ -2,14 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef ROCKSDB_TABLE_PLAIN_TABLE_READER_H
+#define ROCKSDB_TABLE_PLAIN_TABLE_READER_H
 
 #ifndef ROCKSDB_LITE
+#include <stdint.h>
 #include <unordered_map>
 #include <memory>
 #include <vector>
 #include <string>
-#include <stdint.h>
 
 #include "db/dbformat.h"
 #include "rocksdb/env.h"
@@ -221,7 +222,7 @@ class PlainTableReader: public TableReader {
   // for a key with the same prefix as target.
   Status GetOffset(PlainTableKeyDecoder* decoder, const Slice& target,
                    const Slice& prefix, uint32_t prefix_hash,
-                   bool& prefix_matched, uint32_t* offset) const;
+                   bool* prefix_matched, uint32_t* offset) const;
 
   bool IsTotalOrderMode() const { return (prefix_extractor_ == nullptr); }
 
@@ -231,3 +232,5 @@ class PlainTableReader: public TableReader {
 };
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif  // ROCKSDB_TABLE_PLAIN_TABLE_READER_H

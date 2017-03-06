@@ -10,9 +10,9 @@
 
 #include "table/block_based_table_factory.h"
 
+#include <stdint.h>
 #include <memory>
 #include <string>
-#include <stdint.h>
 
 #include "port/port.h"
 #include "rocksdb/flush_block_policy.h"
@@ -181,16 +181,16 @@ TableFactory* NewBlockBasedTableFactory(
   return new BlockBasedTableFactory(_table_options);
 }
 
-const std::string BlockBasedTablePropertyNames::kIndexType =
+const char BlockBasedTablePropertyNames::kIndexType[] =
     "rocksdb.block.based.table.index.type";
-const std::string BlockBasedTablePropertyNames::kWholeKeyFiltering =
+const char BlockBasedTablePropertyNames::kWholeKeyFiltering[] =
     "rocksdb.block.based.table.whole.key.filtering";
-const std::string BlockBasedTablePropertyNames::kPrefixFiltering =
+const char BlockBasedTablePropertyNames::kPrefixFiltering[] =
     "rocksdb.block.based.table.prefix.filtering";
-const std::string kHashIndexPrefixesBlock = "rocksdb.hashindex.prefixes";
-const std::string kHashIndexPrefixesMetadataBlock =
+const char kHashIndexPrefixesBlock[] = "rocksdb.hashindex.prefixes";
+const char kHashIndexPrefixesMetadataBlock[] =
     "rocksdb.hashindex.metadata";
-const std::string kPropTrue = "1";
-const std::string kPropFalse = "0";
+const char kPropTrue[] = "1";
+const char kPropFalse[] = "0";
 
 }  // namespace rocksdb

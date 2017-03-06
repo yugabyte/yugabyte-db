@@ -7,7 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#pragma once
+#ifndef ROCKSDB_DB_VERSION_EDIT_H
+#define ROCKSDB_DB_VERSION_EDIT_H
+
 #include <algorithm>
 #include <set>
 #include <utility>
@@ -285,3 +287,5 @@ class VersionEdit {
 };
 
 }  // namespace rocksdb
+
+#endif  // ROCKSDB_DB_VERSION_EDIT_H
