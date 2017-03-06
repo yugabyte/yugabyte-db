@@ -230,7 +230,7 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   // so that when the user calls Flush, we are ready to go.
   unique_ptr<InFlightOp> in_flight_op(new InFlightOp());
   RETURN_NOT_OK(
-      yb_op->table_->partition_schema().EncodeKey(yb_op->row(), &in_flight_op->partition_key));
+    yb_op->table_->partition_schema().EncodeKey(yb_op->row(), &in_flight_op->partition_key));
   in_flight_op->yb_op = yb_op;
   in_flight_op->state = InFlightOp::kLookingUpTablet;
 

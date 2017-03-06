@@ -124,6 +124,9 @@ class Partition {
 // significance components.
 class PartitionSchema {
  public:
+
+  static constexpr int32_t kPartitionKeySize = 2;
+
   // Deserializes a protobuf message into a partition schema.
   static CHECKED_STATUS FromPB(const PartitionSchemaPB& pb,
                        const Schema& schema,
@@ -138,7 +141,8 @@ class PartitionSchema {
 
   // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
-  CHECKED_STATUS EncodeKey(const ConstContiguousRow& row, std::string* buf) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS EncodeKey(const ConstContiguousRow& row, std::string* buf) const
+    WARN_UNUSED_RESULT;
 
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
   // the [0, max<UINT16>] range equally into the requested number of intervals.

@@ -75,6 +75,13 @@ class SqlEnv {
     return std::shared_ptr<YQLRowBlock>(rows_result_->GetRowBlock());
   }
 
+  // Clears the paging state from the row block.
+  void clear_paging_state() {
+    if (rows_result_ != nullptr) {
+      rows_result_->clear_paging_state();
+    }
+  }
+
   // Reset all env states or variables before executing the next statement.
   void Reset();
 

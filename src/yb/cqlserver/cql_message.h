@@ -20,6 +20,8 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/util/pb_util.h"
 
 namespace yb {
 namespace cqlserver {
@@ -162,6 +164,9 @@ class CQLMessage {
     static constexpr Flags kWithNamesForValuesFlag    = 0x40;
 
     sql::StatementParameters ToStatementParameters() const {
+      if (paging_state.empty()) {
+        return sql::StatementParameters(page_size);
+      }
       return sql::StatementParameters(page_size, paging_state);
     }
 

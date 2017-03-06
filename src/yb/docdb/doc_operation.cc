@@ -8,6 +8,7 @@
 #include "yb/docdb/subdocument.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/common/partition.h"
 
 using strings::Substitute;
 
@@ -634,11 +635,14 @@ Status YQLReadOperation::Execute(
   HybridTime req_hybrid_time(hybrid_time);
   SubDocKey start_sub_doc_key;
   // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
-  if (request_.has_next_read_key() && !request_.next_read_key().empty()) {
-    KeyBytes start_key_bytes(request_.next_read_key());
+  if (request_.has_paging_state() &&
+      request_.paging_state().has_next_row_key_to_read() &&
+      !request_.paging_state().next_row_key_to_read().empty()) {
+    KeyBytes start_key_bytes(request_.paging_state().next_row_key_to_read());
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
     req_hybrid_time = start_sub_doc_key.hybrid_time();
   }
+
 
   // Construct the scan spec basing on the WHERE condition.
   YQLScanSpec spec(
@@ -670,19 +674,31 @@ Status YQLReadOperation::Execute(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
   // Scan docdb for the rows.
-  DocRowwiseIterator iter(projection, schema, rocksdb, req_hybrid_time);
-  RETURN_NOT_OK(iter.Init(spec));
-  while (iter.HasNext()) {
-    RETURN_NOT_OK(iter.NextBlock(&spec, rowblock));
-    // If the limit has been reached as specified, retrieve no more rows.
-    if (rowblock->row_count() >= spec.row_count_limit()) {
-      break;
+  if (spec.row_count_limit() > 0) {
+    DocRowwiseIterator iter(projection, schema, rocksdb, req_hybrid_time);
+    RETURN_NOT_OK(iter.Init(spec));
+    while (iter.HasNext()) {
+      RETURN_NOT_OK(iter.NextBlock(&spec, rowblock));
+      // If the limit has been reached as specified, retrieve no more rows.
+      if (rowblock->row_count() >= spec.row_count_limit()) {
+        break;
+      }
     }
-  }
-  SubDocKey next_key;
-  RETURN_NOT_OK(iter.GetNextReadSubDocKey(&next_key));
-  if (!next_key.doc_key().empty() && next_key.has_hybrid_time()) {
-    response_.set_next_read_key(next_key.Encode(true /* include_hybrid_time */).data());
+    SubDocKey next_key;
+    RETURN_NOT_OK(iter.GetNextReadSubDocKey(&next_key));
+    YQLPagingStatePB* paging_state_pb = response_.mutable_paging_state();
+    *paging_state_pb = request_.paging_state();
+    paging_state_pb->set_total_num_rows_read(
+      paging_state_pb->total_num_rows_read() + rowblock->row_count());
+    if (!next_key.doc_key().empty() && next_key.has_hybrid_time()) {
+      paging_state_pb->set_next_row_key_to_read(
+        next_key.Encode(true /* include_hybrid_time */).data());
+      paging_state_pb->set_next_partition_key(
+        PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
+    } else {
+      paging_state_pb->clear_next_row_key_to_read();
+      paging_state_pb->clear_next_partition_key();
+    }
   }
   return Status::OK();
 }

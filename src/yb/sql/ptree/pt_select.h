@@ -165,6 +165,7 @@ class PTSelectStmt : public PTDmlStmt {
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
@@ -174,11 +175,22 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
   virtual void SetOrderByClause(PTListNode::SharedPtr order_by_clause) {
-    order_by_clause = order_by_clause_;
+    order_by_clause_ = order_by_clause;
   }
 
   virtual void SetLimitClause(PTExpr::SharedPtr limit_clause) {
     limit_clause_ = limit_clause;
+  }
+
+  bool has_limit() const {
+    return limit_clause_ != nullptr;
+  }
+
+  virtual PTExpr::SharedPtr limit() const {
+    if (!has_limit()) {
+      return nullptr;
+    }
+    return limit_clause_;
   }
 
   // Selected columns.

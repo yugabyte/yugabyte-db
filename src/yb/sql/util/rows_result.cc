@@ -9,6 +9,7 @@
 #include "yb/client/client.h"
 #include "yb/client/schema-internal.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/util/pb_util.h"
 
 namespace yb {
 namespace sql {
@@ -16,6 +17,7 @@ namespace sql {
 using std::string;
 using std::vector;
 using std::unique_ptr;
+using strings::Substitute;
 
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
@@ -48,8 +50,13 @@ RowsResult::RowsResult(YBqlReadOp* op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromReadOp(*op)),
       rows_data_(op->rows_data()),
-      client_(op->request().client()),
-      next_read_key_(op->response().next_read_key()) {
+      client_(op->request().client()) {
+  if (op->response().has_paging_state()) {
+    YQLPagingStatePB paging_state_pb = op->response().paging_state();
+    faststring paging_state_str;
+    CHECK(pb_util::SerializeToString(paging_state_pb, &paging_state_str));
+    paging_state_ = paging_state_str.ToString();
+  }
 }
 
 RowsResult::RowsResult(YBqlWriteOp* op)

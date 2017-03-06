@@ -21,6 +21,7 @@ using client::YBTableType;
 using client::YBTableName;
 using client::YBqlWriteOp;
 using client::YBqlReadOp;
+using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -734,19 +735,46 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
     req->add_column_ids(col_desc->id());
   }
 
-  // Set the paging state and the limit from the statement parameters.
-  int64_t limit = params_->rows_limit();
-  if (limit > 0) {
-    req->set_limit(limit);
+  // Check if there is a limit and compute the new limit based on the number of returned rows.
+  EvalIntValue limit_value;
+  if (tnode->has_limit()) {
+    const PTExpr::SharedPtr limit_expr = tnode->limit();
+    RETURN_NOT_OK(EvalIntExpr(limit_expr, &limit_value));
+    if (limit_value.value_ > 0) {
+      if (limit_value.value_ > params_->total_num_rows_read()) {
+        uint64_t limit = limit_value.value_ - params_->total_num_rows_read();
+        if (params_->page_size() > 0) {
+          req->set_limit(std::min(limit, params_->page_size()));
+        } else {
+          req->set_limit(limit);
+        }
+      } else {
+        return exec_context_->Error(tnode->loc(),
+                                    "Number of rows returned already reached the limit.",
+                                    ErrorCode::INVALID_ARGUMENTS);
+      }
+    }
+  } else if (params_->page_size() > 0) {
+    req->set_limit(params_->page_size());
   }
-  string next_read_key = params_->next_read_key();
-  if (!next_read_key.empty()) {
-    req->set_next_read_key(next_read_key);
+  *req->mutable_paging_state() = params_->paging_state();
+  string curr_table_id = params_->table_id();
+  if (!curr_table_id.empty() && curr_table_id != table->id()) {
+    return exec_context_->Error(tnode->loc(),
+                                "Table no longer exists.",
+                                ErrorCode::TABLE_NOT_FOUND);
   }
 
   // Apply the operator always even when select_op is "null" so that the last read_op saved in
   // exec_context is always cleared.
+  YQLPagingStatePB* paging_state_pb = select_op->mutable_response()->mutable_paging_state();
   RETURN_NOT_OK(exec_context_->ApplyRead(select_op, tnode));
+  paging_state_pb->set_table_id(table->id());
+  if ((tnode->has_limit() && limit_value.value_ <= paging_state_pb->total_num_rows_read()) ||
+      paging_state_pb->next_row_key_to_read().empty()) {
+    exec_context_->ClearPagingState();
+    select_op->mutable_response()->clear_paging_state();
+  }
   return Status::OK();
 }
 

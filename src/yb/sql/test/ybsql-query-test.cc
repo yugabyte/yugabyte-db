@@ -181,6 +181,32 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     CHECK_EQ(row.column(4).int32_value(), idx + 1000);
     CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
   }
+
+  // Select all 2 rows and check the values.
+  int limit = 2;
+  const string limit_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                                           "WHERE h1 = $0 AND h2 = '$1' LIMIT $2;",
+                                         h1_shared, h2_shared, limit);
+  CHECK_VALID_STMT(limit_select);
+  row_block = processor->row_block();
+
+  // Check the result set.
+  CHECK_EQ(row_block->row_count(), limit);
+  int32_t prev_r1 = 0;
+  string prev_r2;
+  for (int idx = 0; idx < limit; idx++) {
+    const YQLRow& row = row_block->row(idx);
+    CHECK_EQ(row.column(0).int32_value(), h1_shared);
+    CHECK_EQ(row.column(1).string_value(), h2_shared);
+    CHECK_EQ(row.column(2).int32_value(), idx + 100);
+    CHECK_EQ(row.column(3).string_value(), Substitute("r$0", idx + 100));
+    CHECK_EQ(row.column(4).int32_value(), idx + 1000);
+    CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
+    CHECK_GT(row.column(2).int32_value(), prev_r1);
+    CHECK_GT(row.column(3).string_value(), prev_r2);
+    prev_r1 = row.column(2).int32_value();
+    prev_r2 = row.column(3).string_value();
+  }
 }
 
 TEST_F(YbSqlQuery, TestInsertWithTTL) {

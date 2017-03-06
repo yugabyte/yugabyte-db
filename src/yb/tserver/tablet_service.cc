@@ -904,6 +904,17 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
               new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx);
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
           yql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
+          // Set the response table uuid and partition key if it does not exist.
+          YQLPagingStatePB* paging_state_pb = yql_response.mutable_paging_state();
+          string next_partition_key = tablet->metadata()->partition().partition_key_end();
+          if (!paging_state_pb->has_next_partition_key() && !next_partition_key.empty()) {
+            // Add a partition key in the case of no next_row_key,
+            // only if the partition keys are different between request and response.
+            if(!yql_read_req.paging_state().has_next_row_key_to_read() &&
+               next_partition_key != yql_read_req.paging_state().next_partition_key()) {
+              paging_state_pb->set_next_partition_key(next_partition_key);
+            }
+          }
         }
         *(resp->add_yql_batch()) = yql_response;
       }

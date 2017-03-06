@@ -104,6 +104,58 @@ public class TestSelect extends TestBase {
     LOG.info("TEST CQL SIMPLE QUERY - End");
   }
 
+  @Test
+  public void testSelectWithLimit() throws Exception {
+    LOG.info("TEST CQL LIMIT QUERY - Start");
+
+    // Setup test table.
+    SetupTable("test_select", 0);
+
+    // Insert multiple rows with the same partition key.
+    int num_rows = 20;
+    int h1_shared = 1111111;
+    int num_limit_rows = 10;
+    String h2_shared = "h2_shared_key";
+    for (int idx = 0; idx < num_rows; idx++) {
+      // INSERT: Valid statement with column list.
+      String insert_stmt = String.format(
+        "INSERT INTO test_select(h1, h2, r1, r2, v1, v2) VALUES(%d, '%s', %d, 'r%d', %d, 'v%d');",
+        h1_shared, h2_shared, idx+100, idx+100, idx+1000, idx+1000);
+      session.execute(insert_stmt);
+    }
+
+    // Verify multi-row select.
+    String multi_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_select" +
+                                      "  WHERE h1 = %d AND h2 = '%s' LIMIT %d;",
+                                      h1_shared, h2_shared, num_limit_rows);
+    ResultSet rs = session.execute(multi_stmt);
+
+    int row_count = 0;
+    Iterator<Row> iter = rs.iterator();
+    while (iter.hasNext()) {
+      Row row = iter.next();
+      String result = String.format("Result = %d, %s, %d, %s, %d, %s",
+                                    row.getInt(0),
+                                    row.getString(1),
+                                    row.getInt(2),
+                                    row.getString(3),
+                                    row.getInt(4),
+                                    row.getString(5));
+      LOG.info(result);
+
+      assertEquals(row.getInt(0), h1_shared);
+      assertEquals(row.getString(1), h2_shared);
+      assertEquals(row.getInt(2), row_count + 100);
+      assertEquals(row.getString(3), String.format("r%d", row_count + 100));
+      assertEquals(row.getInt(4), row_count + 1000);
+      assertEquals(row.getString(5), String.format("v%d", row_count + 1000));
+      row_count++;
+    }
+    assertEquals(row_count, num_limit_rows);
+
+    LOG.info("TEST CQL LIMIT QUERY - End");
+  }
+
   // testing only range queries, rest are tested by insert/update tests
   @Test
   public void testSelectWithTimestamp() throws Exception {

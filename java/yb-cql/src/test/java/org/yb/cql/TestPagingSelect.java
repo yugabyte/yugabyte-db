@@ -26,8 +26,8 @@ public class TestPagingSelect extends TestBase {
 
     // Insert multiple rows with the same partition key.
     // Default page size is 5000, so make it around 4 pages.
-    int num_rows_per_page = cluster.getConfiguration().getQueryOptions().getFetchSize();;
-    int num_rows = num_rows_per_page * 4;
+    int num_rows_per_page = cluster.getConfiguration().getQueryOptions().getFetchSize();
+    int num_rows = num_rows_per_page * 4 + 100;
     int h1_shared = 1111111;
     String h2_shared = "h2_shared_key";
     for (int idx = 0; idx < num_rows; idx++) {

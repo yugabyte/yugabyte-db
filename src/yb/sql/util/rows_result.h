@@ -24,7 +24,8 @@ class RowsResult {
   const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
   const std::string& rows_data() const { return rows_data_; }
-  const std::string& next_read_key() const { return next_read_key_; }
+  const std::string& paging_state() const { return paging_state_; }
+  void clear_paging_state() { paging_state_.clear(); }
   YQLClient client() const { return client_; }
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
@@ -36,7 +37,7 @@ class RowsResult {
   const std::vector<ColumnSchema> column_schemas_;
   const std::string rows_data_;
   const YQLClient client_;
-  const std::string next_read_key_;
+  std::string paging_state_;
 };
 
 } // namespace sql

@@ -89,6 +89,20 @@ enum YQLClient {
   YQL_CLIENT_CQL = 1;
 }
 
+message YQLPagingStatePB {
+  // Table UUID.
+  optional bytes table_id = 1;
+
+  // The next row key (SubDocKey = [DocKey + HybridTimestamp]) to read.
+  optional bytes next_row_key_to_read = 2;
+
+  // Partition key to find the next tablet server.
+  optional bytes next_partition_key = 3;
+
+  // Running total number of rows read across fetches so far.
+  optional uint64 total_num_rows_read = 4;
+}
+
 //-------------------------------------- Write request ---------------------------------------
 
 message YQLWriteRequestPB {
@@ -153,11 +167,11 @@ message YQLReadRequestPB {
   // Column ids to read (select)
   repeated int32 column_ids = 7; // required
 
-  // Limit number of rows to return
-  optional uint32 limit = 8;
+  // Limit number of rows to return.
+  optional uint64 limit = 8;
 
-  // Binary SubDocKey to start read from.
-  optional bytes next_read_key = 9;
+  // Paging state retrieved from the last response.
+  optional YQLPagingStatePB paging_state = 10;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------
@@ -182,6 +196,6 @@ message YQLResponsePB {
   // Sidecar of rows data returned
   optional int32 rows_data_sidecar = 4;
 
-  // Paging state for the read response. Contains the next SubDocKey to read.
-  optional bytes next_read_key = 5;
+  // Paging state retrieved from the last response.
+  optional YQLPagingStatePB paging_state = 5;
 }

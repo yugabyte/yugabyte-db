@@ -133,8 +133,12 @@ class YB_EXPORT YBColumnSchema {
     MAX_TYPE_INDEX
   };
 
+  static bool IsInteger(DataType t) {
+    return (t >= INT8 && t <= INT64);
+  }
+
   static bool IsNumeric(DataType t) {
-    return (t >= INT8 && t <= INT64) || t == FLOAT || t == DOUBLE;
+    return IsInteger(t) || t == FLOAT || t == DOUBLE;
   }
   static std::string DataTypeToString(DataType type);
 

@@ -211,14 +211,14 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
 }
 
 string PartitionSchema::EncodeMultiColumnHashValue(uint16_t hash_value) {
-  char value_bytes[2];
+  char value_bytes[kPartitionKeySize];
   value_bytes[0] = hash_value >> 8;
   value_bytes[1] = hash_value & 0xff;
-  return string(value_bytes, 2);
+  return string(value_bytes, kPartitionKeySize);
 }
 
 uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key) {
-  DCHECK_EQ(partition_key.size(), 2);
+  DCHECK_EQ(partition_key.size(), kPartitionKeySize);
   const uint8_t *bytes = reinterpret_cast<const uint8_t *>(partition_key.data());
   return (bytes[0] << 8) | bytes[1];
 }

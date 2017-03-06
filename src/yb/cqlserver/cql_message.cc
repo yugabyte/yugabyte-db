@@ -1138,7 +1138,7 @@ RowsResultResponse::~RowsResultResponse() {
 void RowsResultResponse::SerializeResultBody(faststring* mesg) {
   SerializeRowsMetadata(
       RowsMetadata(rows_result_.table_name(), rows_result_.column_schemas(),
-                   rows_result_.next_read_key(), skip_metadata_), mesg);
+                   rows_result_.paging_state(), skip_metadata_), mesg);
   mesg->append(rows_result_.rows_data());
 }
 

@@ -67,6 +67,11 @@ class ExecContext : public ProcessContext {
   CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op,
                            const TreeNode *tnode);
 
+  // Clears only the paging state of the row result.
+  void ClearPagingState() {
+    sql_env_->clear_paging_state();
+  }
+
  private:
   // Check and return read/write response status.
   CHECKED_STATUS ProcessResponseStatus(const client::YBqlOp& yb_op, const TreeNode *tnode);
