@@ -2,9 +2,12 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Accordion, Panel } from 'react-bootstrap';
+import Dimensions from 'react-dimensions';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
+
+const RESIZE_DEBOUNCE_MS = 100;
 
 const panelTypes = {
   server:  { title: "Node",
@@ -21,7 +24,7 @@ const panelTypes = {
              metrics: ["cql_server_rpc_per_second", "cql_sql_latency", "cql_yb_latency", "response_sizes"]}
 }
 
-export default class GraphPanel extends Component {
+class GraphPanel extends Component {
   constructor(props) {
     super(props);
     this.queryMetricsType = this.queryMetricsType.bind(this);
@@ -82,12 +85,14 @@ export default class GraphPanel extends Component {
        loop through all the possible panel types in the metric data fetched
        and group metrics by panel type and filter out anything that is empty.
        */
+      const containerWidth = this.props.containerWidth;
       var panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
         // if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
         return (isValidObject(metrics[type][metricKey])) ?
           <MetricsPanel metricKey={metricKey} key={idx}
                         metric={metrics[type][metricKey]}
-                        className={"metrics-panel-container"}/>
+                        className={"metrics-panel-container"}
+                        containerWidth={containerWidth} />
           : null;
       });
       return (
@@ -102,3 +107,5 @@ export default class GraphPanel extends Component {
     return (<div />)
   }
 }
+
+export default Dimensions({debounce: RESIZE_DEBOUNCE_MS, elementResize: true})(GraphPanel);
