@@ -2,20 +2,23 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 import java.util.Set;
+import java.util.UUID;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import play.libs.Json;
+
+import javax.persistence.PersistenceException;
 
 
 public class RegionTest extends FakeDBApplication {
@@ -110,5 +113,51 @@ public class RegionTest extends FakeDBApplication {
     for (AvailabilityZone zone : AvailabilityZone.getAZsForRegion(r.uuid)) {
       assertFalse(zone.isActive());
     }
+  }
+
+  @Test
+  public void testCreateWithValidMetadata() {
+    ObjectNode metaData = Json.newObject();
+    metaData.put("name", "sample region");
+    metaData.put("latitude", 36.778261);
+    metaData.put("longitude", -119.417932);
+    metaData.put("ybImage", "yb-image-1");
+    Region r = Region.createWithMetadata(defaultProvider, "region-1", metaData);
+    assertNotNull(r);
+    JsonNode regionJson = Json.toJson(r);
+
+    assertValue(regionJson, "code", "region-1");
+    assertValue(regionJson, "name", "sample region");
+    assertValue(regionJson, "latitude", "36.778261");
+    assertValue(regionJson, "longitude", "-119.417932");
+    assertValue(regionJson, "ybImage", "yb-image-1");
+  }
+
+  @Test(expected = PersistenceException.class)
+  public void testCreateWithEmptyMetadata() {
+    Region.createWithMetadata(defaultProvider, "region-1", Json.newObject());
+  }
+
+  @Test
+  public void testGetWithValidUUIDs() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    Region fetchedRegion = Region.get(defaultCustomer.uuid, defaultProvider.uuid, r.uuid);
+    assertEquals(r, fetchedRegion);
+  }
+
+  @Test
+  public void testGetWithInvalidCustomerUUID() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    UUID randomUUID = UUID.randomUUID();
+    Region fetchedRegion = Region.get(randomUUID, defaultProvider.uuid, r.uuid);
+    assertNull(fetchedRegion);
+  }
+
+  @Test
+  public void testGetWithInvalidProviderUUID() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    UUID randomUUID = UUID.randomUUID();
+    Region fetchedRegion = Region.get(defaultCustomer.uuid, randomUUID, r.uuid);
+    assertNull(fetchedRegion);
   }
 }

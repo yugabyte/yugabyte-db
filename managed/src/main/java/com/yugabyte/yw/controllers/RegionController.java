@@ -3,14 +3,14 @@
 package com.yugabyte.yw.controllers;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-import com.avaje.ebean.Ebean;
-import com.avaje.ebean.SqlUpdate;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.common.ConfigHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,13 +25,14 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
-import static com.avaje.ebean.Ebean.beginTransaction;
-import static com.avaje.ebean.Ebean.commitTransaction;
-import static com.avaje.ebean.Ebean.endTransaction;
 
 public class RegionController extends AuthenticatedController {
   @Inject
   FormFactory formFactory;
+
+  @Inject
+  ConfigHelper configHelper;
+
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ complaint
   protected static final int MULTI_AZ_MIN_ZONE_COUNT = 3;
@@ -40,9 +41,8 @@ public class RegionController extends AuthenticatedController {
    * GET endpoint for listing regions
    * @return JSON response with region's
    */
-  public Result list(UUID providerUUID) {
+  public Result list(UUID customerUUID, UUID providerUUID) {
     List<Region> regionList = null;
-    ObjectNode responseJson = Json.newObject();
 
     boolean multiAZ = false;
     if (request().getQueryString("isMultiAZ") != null) {
@@ -51,23 +51,23 @@ public class RegionController extends AuthenticatedController {
 
     try {
       int azCountNeeded = multiAZ ? MULTI_AZ_MIN_ZONE_COUNT : 1;
-      regionList = Region.fetchValidRegions(providerUUID, azCountNeeded);
+      regionList = Region.fetchValidRegions(customerUUID, providerUUID, azCountNeeded);
     } catch (Exception e) {
-      responseJson.put("error", e.getMessage());
-      return internalServerError(responseJson);
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list regions");
     }
-    return ok(Json.toJson(regionList));
+    return ApiResponse.success(regionList);
   }
 
   /**
    * GET endpoint for listing all regions across all providers
    * @return JSON response with RegionList joined with provider Name, uuid, code
    */
-  public Result listAllRegions() {
-    List<Provider> providerList = Provider.find.all();
+  public Result listAllRegions(UUID customerUUID) {
+    List<Provider> providerList = Provider.getAll(customerUUID);
     ArrayNode resultArray = Json.newArray();
     for (Provider provider : providerList) {
-      List<Region> regionList = Region.fetchValidRegions(provider.uuid, 1);
+      List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.uuid, 1);
       for (Region region : regionList) {
         ObjectNode regionNode = (ObjectNode) Json.toJson(region);
         regionNode.set("provider", Json.toJson(provider));
@@ -81,43 +81,51 @@ public class RegionController extends AuthenticatedController {
    * POST endpoint for creating new region
    * @return JSON response of newly created region
    */
-  public Result create(UUID providerUUID) {
+  public Result create(UUID customerUUID, UUID providerUUID) {
     Form<RegionFormData> formData = formFactory.form(RegionFormData.class).bindFromRequest();
-    Provider provider = Provider.find.byId(providerUUID);
-    ObjectNode responseJson = Json.newObject();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+    String regionCode = formData.get().code;
 
+    Provider provider = Provider.get(customerUUID, providerUUID);
     if (provider == null) {
-      responseJson.put("error", "Invalid Provider UUID");
-      return badRequest(responseJson);
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
     }
 
-    if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
+    if (Region.getByCode(provider, regionCode) != null) {
+      return ApiResponse.error(BAD_REQUEST, "Region code already exists: " + regionCode);
     }
 
     try {
-      Region p = Region.create(provider,
-                               formData.get().code,
-                               formData.get().name,
-                               formData.get().ybImage);
-      return ok(Json.toJson(p));
+      Map<String, Object> regionMetadata =
+          configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
+
+      Region region;
+      // If we have region metadata we create the region with that metadata or else we assume
+      // some metadata is passed in (esp for onprem case).
+      if (regionMetadata.containsKey(regionCode)) {
+        JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
+        region = Region.createWithMetadata(provider, regionCode, metaData);
+      } else {
+        region = Region.create(provider, regionCode, formData.get().name, formData.get().ybImage);
+      }
+      return ApiResponse.success(region);
     } catch (Exception e) {
-      // TODO: Handle exception and print user friendly message
-      responseJson.put("error", e.getMessage());
-      return internalServerError(responseJson);
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create region: " + regionCode);
     }
   }
 
   /**
    * DELETE endpoint for deleting a existing Region.
+   * @param customerUUID Customer UUID
    * @param providerUUID Provider UUID
    * @param regionUUID Region UUID
    * @return JSON response on whether or not delete region was sucessful or not.
      */
-  public Result delete(UUID providerUUID, UUID regionUUID) {
-    Region region = Region.find.where()
-            .idEq(regionUUID).eq("provider_uuid", providerUUID).findUnique();
+  public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
     if (region == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID:" + regionUUID);
@@ -126,7 +134,7 @@ public class RegionController extends AuthenticatedController {
     try {
       region.disableRegionAndZones();
     } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to flag Region UUID as deleted: " + regionUUID);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete Region UUID: " + regionUUID);
     }
 
     ObjectNode responseJson = Json.newObject();

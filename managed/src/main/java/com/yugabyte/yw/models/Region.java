@@ -14,8 +14,9 @@ import javax.persistence.OneToMany;
 import com.avaje.ebean.*;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 
-import com.yugabyte.yw.common.ApiResponse;
+import com.fasterxml.jackson.databind.JsonNode;
 import play.data.validation.Constraints;
+import play.libs.Json;
 
 import static com.avaje.ebean.Ebean.beginTransaction;
 import static com.avaje.ebean.Ebean.commitTransaction;
@@ -94,33 +95,58 @@ public class Region extends Model {
     return region;
   }
 
+  public static Region createWithMetadata(Provider provider, String code, JsonNode metadata) {
+    Region region = Json.fromJson(metadata, Region.class);
+    region.provider = provider;
+    region.code = code;
+    region.save();
+    return region;
+  }
+
   public static Region get(UUID regionUUID) {
     return find.byId(regionUUID);
   }
 
-  public static Region getByCode(String code) {
-    return find.where().eq("code", code).findUnique();
+  public static Region getByCode(Provider provider, String code) {
+    return find.where().eq("provider_uuid", provider.uuid).eq("code", code).findUnique();
+  }
+
+  public static Region get(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    String regionQuery
+        = " select r.uuid, r.code, r.name"
+        + "   from region r join provider p on p.uuid = r.provider_uuid "
+        + "  where r.uuid = :r_uuid and p.uuid = :p_uuid and p.customer_uuid = :c_uuid";
+
+    RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
+    Query<Region> query = Ebean.find(Region.class);
+    query.setRawSql(rawSql);
+    query.setParameter("r_uuid", regionUUID);
+    query.setParameter("p_uuid", providerUUID);
+    query.setParameter("c_uuid", customerUUID);
+    return query.findUnique();
   }
 
   /**
    * Fetch Regions with the minimum zone count and having a valid yb server image.
+   * @param customerUUID
    * @param providerUUID
    * @param minZoneCount
    * @return List of PlacementRegion
    */
-  public static List<Region> fetchValidRegions(UUID providerUUID, int minZoneCount) {
+  public static List<Region> fetchValidRegions(UUID customerUUID, UUID providerUUID, int minZoneCount) {
     String regionQuery
       = " select r.uuid, r.code, r.name"
-      + "   from region r left outer join availability_zone zone"
-      + "     on zone.region_uuid = r.uuid "
-      + "  where r.provider_uuid = :provider_uuid and r.yb_image is not null"
+      + "   from region r join provider p on p.uuid = r.provider_uuid "
+      + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
+      + "  where p.uuid = :p_uuid and p.customer_uuid = :c_uuid and r.yb_image is not null"
       + "  group by r.uuid "
       + " having count(zone.uuid) >= " + minZoneCount;
 
     RawSql rawSql = RawSqlBuilder.parse(regionQuery).create();
     Query<Region> query = Ebean.find(Region.class);
     query.setRawSql(rawSql);
-    query.setParameter("provider_uuid", providerUUID);
+    query.setParameter("p_uuid", providerUUID);
+    query.setParameter("c_uuid", customerUUID);
     return query.findList();
   }
 

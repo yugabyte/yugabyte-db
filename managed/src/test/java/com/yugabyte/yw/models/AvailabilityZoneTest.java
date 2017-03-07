@@ -7,6 +7,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNotNull;
 
 import java.util.Set;
 
@@ -19,11 +20,11 @@ import com.yugabyte.yw.common.FakeDBApplication;
 
 public class AvailabilityZoneTest extends FakeDBApplication {
   Region defaultRegion;
-
+  Provider provider;
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
-    Provider provider = ModelFactory.awsProvider(customer);
+    provider = ModelFactory.awsProvider(customer);
     defaultRegion = Region.create(provider, "region-1", "test region", "default-image");
   }
 
@@ -72,5 +73,13 @@ public class AvailabilityZoneTest extends FakeDBApplication {
     for (AvailabilityZone zone : zones) {
       assertThat(zone.code, containsString("az-"));
     }
+  }
+
+  @Test
+  public void testGetProvider() {
+    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
+    Provider p = az.getProvider();
+    assertNotNull(p);
+    assertEquals(p, provider);
   }
 }

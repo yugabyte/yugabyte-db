@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
 import play.Application;
 import play.libs.Json;
@@ -16,11 +17,6 @@ import java.util.Map;
 
 @Singleton
 public class ConfigHelper {
-  private Application app;
-
-  @Inject
-  public ConfigHelper(Application application) { app = application; }
-
   public enum ConfigType {
     AWSRegionMetadata,
     AWSInstanceTypeMetadata,
@@ -73,7 +69,20 @@ public class ConfigHelper {
     return Json.fromJson(node, Map.class);
   }
 
-  public void loadConfigsToDB() {
+  public Map<String, Object> getRegionMetadata(Common.CloudType type) {
+    switch (type) {
+      case aws:
+        return getConfig(ConfigType.AWSRegionMetadata);
+      case gcp:
+        return getConfig(ConfigType.GCPRegionMetadata);
+      case docker:
+        return getConfig(ConfigType.DockerRegionMetadata);
+      default:
+        return Collections.emptyMap();
+    }
+  }
+
+  public void loadConfigsToDB(Application app) {
     for (ConfigType type: ConfigType.values()) {
       Map<String, Object> config = (HashMap<String, Object>) Yaml.load(
           app.resourceAsStream(type.getConfigFile()),

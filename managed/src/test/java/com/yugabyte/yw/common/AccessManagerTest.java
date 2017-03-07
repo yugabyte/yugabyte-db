@@ -4,10 +4,9 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.Provider;
-import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -54,19 +53,9 @@ public class AccessManagerTest extends FakeDBApplication {
   static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
   static String TMP_KEYS_PATH = TMP_STORAGE_PATH + "/keys";
 
-  @BeforeClass
-  public static void setUp() {
-    new File(TMP_KEYS_PATH).mkdir();
-  }
-
-  @AfterClass
-  public static void tearDown() {
-    File file = new File(TMP_KEYS_PATH);
-    file.delete();
-  }
-
   @Before
   public void beforeTest() {
+    new TemporaryFolder(new File(TMP_KEYS_PATH));
     defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
     command = ArgumentCaptor.forClass(ArrayList.class);
@@ -94,7 +83,7 @@ public class AccessManagerTest extends FakeDBApplication {
       response.code = 0;
       if (commandType.equals("add-key")) {
         String tmpPrivateFile = TMP_KEYS_PATH + "/private.key";
-        createTempFile(tmpPrivateFile, "PRIVATE_KEY_FILE");
+        createTempFile("keys/private.key", "PRIVATE_KEY_FILE");
         String tmpPublicFile = TMP_KEYS_PATH + "/public.key";
         response.message = "{\"public_key\":\""+ tmpPublicFile + "\" ," +
             "\"private_key\": \"" + tmpPrivateFile + "\"}";
