@@ -6,14 +6,26 @@ import { YBLabel } from 'components/common/descriptors';
 
 // TODO: Rename to YBSelect after changing prior YBSelect references.
 // TODO: Make default export after checking all corresponding imports.
-export class YBNewSelect extends Component {
+
+export class YBControlledSelect extends Component {
   render() {
-    const { input, options, onSelectChange, readOnlySelect } = this.props;
+    const {selectVal, input, options, onInputChanged} = this.props;
+    return (
+      <select {...input} className="form-control" onChange={onInputChanged} value={selectVal}>
+        {options}
+      </select>
+    )
+  }
+}
+
+export class YBUnControlledSelect extends Component {
+  render() {
+    const { input, options, onInputChanged, readOnlySelect } = this.props;
 
     function onChange(event) {
       input.onChange(event.target.value);
-      if (isValidFunction(onSelectChange)) {
-        onSelectChange(event.target.value);
+      if (isValidFunction(onInputChanged)) {
+        onInputChanged(event.target.value);
       }
     }
 
@@ -25,12 +37,23 @@ export class YBNewSelect extends Component {
   }
 }
 
+export class YBControlledSelectWithLabel extends Component {
+  render() {
+    const { label, meta, ...otherProps} = this.props;
+    return (
+      <YBLabel label={label} meta={meta}>
+        <YBControlledSelect {...otherProps}/>
+      </YBLabel>
+    );
+  }
+}
+
 export default class YBSelectWithLabel extends Component {
   render() {
     const { label, meta, ...otherProps} = this.props;
     return (
       <YBLabel label={label} meta={meta}>
-        <YBNewSelect {...otherProps} />
+        <YBUnControlledSelect {...otherProps} />
       </YBLabel>
     );
   }

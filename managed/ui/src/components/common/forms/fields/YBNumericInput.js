@@ -7,19 +7,33 @@ import { YBLabel } from 'components/common/descriptors';
 
 // TODO: Rename to YBNumericInput after changing prior YBNumericInput references.
 // TODO: Make default export after checking all corresponding imports.
-export class YBNewNumericInput extends Component {
+
+export class YBControlledNumericInput extends Component {
+  static defaultProps = {
+    minVal: 0,
+    maxVal: 32,
+  };
+  render() {
+    const {input, val, onInputChanged, onInputSelect, onInputBlur, onInputFocus} = this.props;
+    return (
+      <NumericInput {...input} className="form-control" value={val} onChange={onInputChanged}
+                    onSelect={onInputSelect} onFocus={onInputFocus} onBlur={onInputBlur} />
+    )
+  }
+}
+export class YBUnControlledNumericInput extends Component {
   static defaultProps = {
     minVal: 3,
     maxVal: 32,
   };
 
   render() {
-    const { input, onValueChanged, minVal, maxVal } = this.props;
+    const { input, onInputChanged, minVal, maxVal } = this.props;
 
     function onChange(value) {
       input.onChange(value);
-      if (isValidFunction(onValueChanged)) {
-        onValueChanged(value);
+      if (isValidFunction(onInputChanged)) {
+        onInputChanged(value);
       }
     }
 
@@ -34,7 +48,18 @@ export default class YBNumericInputWithLabel extends Component {
     const { label, meta, ...otherProps } = this.props;
     return (
       <YBLabel label={label} meta={meta}>
-        <YBNewNumericInput {...otherProps} />
+        <YBUnControlledNumericInput {...otherProps} />
+      </YBLabel>
+    );
+  }
+}
+
+export class YBControlledNumericInputWithLabel extends Component {
+  render() {
+    const { label, meta, onLabelClick, ...otherProps } = this.props;
+    return (
+      <YBLabel label={label} meta={meta} onLabelClick={onLabelClick}>
+        <YBControlledNumericInput {...otherProps} />
       </YBLabel>
     );
   }

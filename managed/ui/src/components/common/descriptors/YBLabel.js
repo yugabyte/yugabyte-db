@@ -6,10 +6,10 @@ import './stylesheets/YBLabel.scss'
 
 export default class YBLabel extends Component {
   render() {
-    const { label, meta: { touched, error, invalid } } = this.props;
+    const { label, meta: { touched, error, invalid }, onLabelClick } = this.props;
 
     return (
-      <div className={`form-group ${ touched && invalid ? 'has-error' : ''}`}>
+      <div className={`form-group ${ touched && invalid ? 'has-error' : ''}`} onClick={onLabelClick}>
         <label className="form-item-label">
           {label}
         </label>
