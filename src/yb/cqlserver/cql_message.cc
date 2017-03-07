@@ -998,12 +998,14 @@ ResultResponse::RowsMetadata::Type::Type(const DataType type) {
     case DataType::TIMESTAMP:
       id = Id::TIMESTAMP;
       return;
+    case DataType::INET:
+      id = Id::INET;
+      return;
 
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
     case DataType::DECIMAL: FALLTHROUGH_INTENDED;
     case DataType::VARINT: FALLTHROUGH_INTENDED;
-    case DataType::INET: FALLTHROUGH_INTENDED;
     case DataType::LIST: FALLTHROUGH_INTENDED;
     case DataType::MAP: FALLTHROUGH_INTENDED;
     case DataType::SET: FALLTHROUGH_INTENDED;

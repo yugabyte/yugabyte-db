@@ -64,6 +64,11 @@ Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
       break;
     }
 
+    case InternalType::kInetaddressValue: {
+      RETURN_NOT_OK(EvalInetaddressExpr(expr, static_cast<EvalInetaddressValue*>(result)));
+      break;
+    }
+
     default:
       LOG(FATAL) << "Unknown expression datatype";
   }
@@ -235,6 +240,29 @@ Status Executor::EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampV
   return eval_status;
 }
 
+Status Executor::EvalInetaddressExpr(const PTExpr::SharedPtr& expr, EvalInetaddressValue *result) {
+  Status eval_status = Status::OK();
+
+  const PTExpr *e = expr.get();
+  switch (expr->expr_op()) {
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      result->value_ = value.inetaddress_value();
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Not supported operator";
+  }
+
+  return eval_status;
+}
+
 Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value) {
   switch (result->datatype()) {
     case InternalType::kInt64Value:
@@ -281,6 +309,14 @@ Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& str
       Timestamp ts;
       RETURN_NOT_OK(DateTime::TimestampFromString(s, &ts));
       static_cast<EvalTimestampValue *>(result)->value_ = ts.ToInt64();
+      break;
+    }
+
+    case InternalType::kInetaddressValue: {
+      std::string s = string_value.value_.get()->c_str();
+      InetAddress addr;
+      RETURN_NOT_OK(addr.FromString(s));
+      static_cast<EvalInetaddressValue*>(result)->value_ = addr;
       break;
     }
 

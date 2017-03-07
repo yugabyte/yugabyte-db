@@ -26,6 +26,8 @@ message YQLValuePB {
     bool bool_value = 8;
     int64 timestamp_value = 9;
     bytes binary_value = 10;
+    // raw bytes for inet address in network byte order.
+    bytes inetaddress_value = 11;
   }
 }
 

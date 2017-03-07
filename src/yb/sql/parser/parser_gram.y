@@ -494,7 +494,7 @@ using namespace yb::sql;
                           HANDLER HAVING HEADER_P HOLD HOUR_P
 
                           IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P
-                          INCLUDING INCREMENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
+                          INCLUDING INCREMENT INDEX INDEXES INET INHERIT INHERITS INITIALLY INLINE_P
                           INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
                           INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
@@ -3793,6 +3793,9 @@ SimpleTypename:
   | ConstDatetime {
     $$ = $1;
   }
+  | INET {
+    $$ = MAKE_NODE(@1, PTInet);
+  }
   | Bit {
     PARSER_UNSUPPORTED(@1);
   }
@@ -4403,6 +4406,7 @@ col_name_keyword:
   | FLOAT_P { $$ = $1; }
   | GREATEST { $$ = $1; }
   | GROUPING { $$ = $1; }
+  | INET { $$ = $1; }
   | INOUT { $$ = $1; }
   | INT_P { $$ = $1; }
   | INTEGER { $$ = $1; }

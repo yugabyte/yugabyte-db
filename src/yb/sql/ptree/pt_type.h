@@ -184,6 +184,23 @@ class PTVarchar : public PTCharBaseType {
   }
 };
 
+class PTInet : public PTPrimitiveType<InternalType::kInetaddressValue,
+    DataType::INET> {
+ public:
+  typedef MCSharedPtr<PTInet> SharedPtr;
+  typedef MCSharedPtr<const PTInet> SharedPtrConst;
+
+  explicit PTInet(MemoryContext *memctx = nullptr,
+                       YBLocation::SharedPtr loc = nullptr);
+
+  virtual ~PTInet();
+
+  template<typename... TypeArgs>
+  inline static PTInet::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTInet>(memctx, std::forward<TypeArgs>(args)...);
+  }
+};
+
 //--------------------------------------------------------------------------------------------------
 // Datetime types.
 

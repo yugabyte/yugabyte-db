@@ -161,6 +161,8 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
           )#"),
       FormatBytesAsStr(DocKey(PrimitiveValues("val1", 1000, "val2", 2000)).Encode().data()));
 
+  InetAddress addr;
+  ASSERT_OK(addr.FromString("1.2.3.4"));
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
           R"#(
@@ -168,6 +170,7 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
              I\x80\x00\x00\x00\x00\x00\x03\xe8\
              b\x7f\xff\xff\xff\xff\xff\xfc\x17\
              a\x89\x9e\x93\xce\xff\xfe\xff\xff\
+             .\xfe\xfd\xfc\xfb\xff\xff\
              c\x7f\xff\xff\xff\xff\xff\xfc\x17\
              !"
         )#"),
@@ -176,6 +179,7 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
           PrimitiveValue(1000),
           PrimitiveValue(1000, SortOrder::kDescending),
           PrimitiveValue(BINARY_STRING("val1""\x00"), SortOrder::kDescending),
+          PrimitiveValue(addr, SortOrder::kDescending),
           PrimitiveValue(Timestamp(1000), SortOrder::kDescending)}).Encode().data()));
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(

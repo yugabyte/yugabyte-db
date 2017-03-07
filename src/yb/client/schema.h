@@ -118,6 +118,8 @@ class YB_EXPORT YBColumnSchema {
         return InternalType::kStringValue;
       case TIMESTAMP:
         return InternalType::kTimestampValue;
+      case INET:
+        return InternalType::kInetaddressValue;
       case BOOL:
         return InternalType::kBoolValue;
 
@@ -125,7 +127,6 @@ class YB_EXPORT YBColumnSchema {
       case BINARY: FALLTHROUGH_INTENDED;
       case DECIMAL: FALLTHROUGH_INTENDED;
       case VARINT: FALLTHROUGH_INTENDED;
-      case INET: FALLTHROUGH_INTENDED;
       case LIST: FALLTHROUGH_INTENDED;
       case MAP: FALLTHROUGH_INTENDED;
       case SET: FALLTHROUGH_INTENDED;

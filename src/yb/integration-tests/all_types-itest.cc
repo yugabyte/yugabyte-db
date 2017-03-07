@@ -52,13 +52,13 @@ struct SliceKeysTestSetup {
 
   // Split points are calculated by equally partitioning the int64_t key space and then
   // using the stringified hexadecimal representation to create the split keys (with
-  // zero padding).
+  // zero padding). We use 016x since INET requires either 4 or 16 bytes.
   vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
     vector<string> splits;
     splits.reserve(kNumTablets - 1);
     for (int i = 1; i < kNumTablets; i++) {
       int split = i * increment_;
-      splits.push_back(StringPrintf("%08x", split));
+      splits.push_back(StringPrintf("%016x", split));
     }
     vector<const YBPartialRow*> rows;
     for (string val : splits) {
@@ -72,7 +72,7 @@ struct SliceKeysTestSetup {
 
   Status GenerateRowKey(YBInsert* insert, int split_idx, int row_idx) const {
     int row_key_num = (split_idx * increment_) + row_idx;
-    string row_key = StringPrintf("%08x", row_key_num);
+    string row_key = StringPrintf("%016x", row_key_num);
     Slice row_key_slice(row_key);
     return insert->mutable_row()->SetSliceCopy<TypeTraits<KeyTypeWrapper::type> >(0,
                                                                                   row_key_slice);
@@ -80,7 +80,7 @@ struct SliceKeysTestSetup {
 
   Status VerifyRowKey(const YBRowResult& result, int split_idx, int row_idx) const {
     int expected_row_key_num = (split_idx * increment_) + row_idx;
-    string expected_row_key = StringPrintf("%08x", expected_row_key_num);
+    string expected_row_key = StringPrintf("%016x", expected_row_key_num);
     Slice expected_row_key_slice(expected_row_key);
     Slice row_key;
     RETURN_NOT_OK(result.Get<TypeTraits<KeyTypeWrapper::type> >(0, &row_key));
@@ -206,6 +206,7 @@ class AllTypesItest : public YBTest {
     builder.AddColumn("float_val")->Type(FLOAT);
     builder.AddColumn("double_val")->Type(DOUBLE);
     builder.AddColumn("binary_val")->Type(BINARY);
+    builder.AddColumn("inet_val")->Type(INET);
     CHECK_OK(builder.Build(&schema_));
   }
 
@@ -256,10 +257,11 @@ class AllTypesItest : public YBTest {
     RETURN_NOT_OK(row->SetInt32("int32_val", int_val));
     RETURN_NOT_OK(row->SetInt64("int64_val", int_val));
     RETURN_NOT_OK(row->SetTimestamp("timestamp_val", int_val));
-    string content = strings::Substitute("hello $0", int_val);
+    string content = StringPrintf("hello %010x", int_val);
     Slice slice_val(content);
     RETURN_NOT_OK(row->SetStringCopy("string_val", slice_val));
     RETURN_NOT_OK(row->SetBinaryCopy("binary_val", slice_val));
+    RETURN_NOT_OK(row->SetInet("inet_val", slice_val));
     double double_val = int_val;
     RETURN_NOT_OK(row->SetDouble("double_val", double_val));
     RETURN_NOT_OK(row->SetFloat("float_val", double_val));
@@ -298,6 +300,7 @@ class AllTypesItest : public YBTest {
     projection->push_back("int32_val");
     projection->push_back("int64_val");
     projection->push_back("timestamp_val");
+    projection->push_back("inet_val");
     projection->push_back("string_val");
     projection->push_back("binary_val");
     projection->push_back("double_val");
@@ -325,7 +328,7 @@ class AllTypesItest : public YBTest {
     ASSERT_OK(row.GetTimestamp("timestamp_val", &timestamp_val));
     ASSERT_EQ(timestamp_val, expected_int_val);
 
-    string content = strings::Substitute("hello $0", expected_int_val);
+    string content = StringPrintf("hello %010x", expected_int_val);
     Slice expected_slice_val(content);
     Slice string_val;
     ASSERT_OK(row.GetString("string_val", &string_val));
@@ -333,6 +336,9 @@ class AllTypesItest : public YBTest {
     Slice binary_val;
     ASSERT_OK(row.GetBinary("binary_val", &binary_val));
     ASSERT_EQ(binary_val, expected_slice_val);
+    Slice inet_val;
+    ASSERT_OK(row.GetInet("inet_val", &inet_val));
+    ASSERT_EQ(inet_val, expected_slice_val);
 
     bool expected_bool_val = expected_int_val % 2;
     bool bool_val;
@@ -435,6 +441,7 @@ typedef ::testing::Types<IntKeysTestSetup<KeyTypeWrapper<INT8> >,
                          IntKeysTestSetup<KeyTypeWrapper<INT64> >,
                          IntKeysTestSetup<KeyTypeWrapper<TIMESTAMP> >,
                          SliceKeysTestSetup<KeyTypeWrapper<STRING> >,
+                         SliceKeysTestSetup<KeyTypeWrapper<INET> >,
                          SliceKeysTestSetup<KeyTypeWrapper<BINARY> >
                          > KeyTypes;
 

@@ -472,6 +472,21 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
+    case InternalType::kInetaddressValue: {
+      EvalInetaddressValue inetaddress_value;
+      RETURN_NOT_OK(EvalExpr(expr, &inetaddress_value));
+
+      InetAddress& actual_value = inetaddress_value.value_;
+      VLOG(3) << "Expr actual value = " << actual_value.ToString();
+      YQLValue::set_inetaddress_value(actual_value, col_pb->mutable_value());
+      std::string bytes;
+      RETURN_NOT_OK(actual_value.ToBytes(&bytes));
+      if (row != nullptr) {
+        RETURN_NOT_OK(row->SetInet(col_index, Slice(bytes)));
+      }
+      break;
+    }
+
     case InternalType::VALUE_NOT_SET: FALLTHROUGH_INTENDED;
     default:
       LOG(FATAL) << "Not a valid type";

@@ -10,6 +10,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -179,6 +180,26 @@ public class TestDescendingOrder extends TestBase {
 
     dropTable();
     LOG.info("TEST CQL TIMESTAMP DESCENDING ORDER - END");
+  }
+
+  @Test
+  public void testInetDesc() throws Exception {
+    List <String> values = new ArrayList<String>(
+      Arrays.asList("'1.2.3.4'", "'180::2978:9018:b288:3f6c'", "'2.2.3.4'"));
+    ResultSet rs = createInsertAndSelectDesc("inet", values);
+    assertEquals(rs.getAvailableWithoutFetching(), values.size());
+
+    // Rows should come sorted by column r1 in descending order.
+    for (int i = values.size() - 1; i >= 0; i--) {
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals(InetAddress.getByName(values.get(i).replace("\'", "")), row.getInet("r1"));
+      assertEquals("b", row.getString("r2"));
+      assertEquals(1, row.getInt("v1"));
+      assertEquals("c", row.getString("v2"));
+    }
+
+    dropTable();
   }
 
   private void insertValues(int[] numbers, String[] strings) throws Exception {

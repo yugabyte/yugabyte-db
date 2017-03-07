@@ -64,6 +64,9 @@ string PrimitiveValue::ToString() const {
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
       return timestamp_val_.ToString();
+    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kInetaddress:
+      return inetaddress_val_->ToString();
     case ValueType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
     case ValueType::kHybridTime:
@@ -125,6 +128,20 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendDescendingInt64(timestamp_val_.ToInt64());
       return;
 
+    case ValueType::kInetaddress: {
+      std::string bytes;
+      CHECK_OK(inetaddress_val_->ToBytes(&bytes));
+      key_bytes->AppendString(bytes);
+      return;
+    }
+
+    case ValueType::kInetaddressDescending: {
+      std::string bytes;
+      CHECK_OK(inetaddress_val_->ToBytes(&bytes));
+      key_bytes->AppendDescendingString(bytes);
+      return;
+    }
+
     case ValueType::kArrayIndex:
       key_bytes->AppendInt64(int64_val_);
       return;
@@ -183,6 +200,14 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kTimestamp:
       AppendBigEndianUInt64(timestamp_val_.ToInt64(), &result);
       return result;
+
+    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kInetaddress: {
+      std::string bytes;
+      CHECK_OK(inetaddress_val_->ToBytes(&bytes))
+      result.append(bytes);
+      return result;
+    }
 
     case ValueType::kHybridTime:
       AppendBigEndianUInt64(hybrid_time_val_.value(), &result);
@@ -290,6 +315,24 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       return Status::OK();
     }
 
+    case ValueType::kInetaddress: {
+      string bytes;
+      RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
+      inetaddress_val_ = new InetAddress();
+      RETURN_NOT_OK(inetaddress_val_->FromBytes(bytes));
+      type_ = value_type;
+      return Status::OK();
+    }
+
+    case ValueType::kInetaddressDescending: {
+      string bytes;
+      RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
+      inetaddress_val_ = new InetAddress();
+      RETURN_NOT_OK(inetaddress_val_->FromBytes(bytes));
+      type_ = value_type;
+      return Status::OK();
+    }
+
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: {
       // Decode varint.
@@ -384,6 +427,20 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       timestamp_val_ = Timestamp(BigEndian::Load64(slice.data()));
       return Status::OK();
 
+    case ValueType::kInetaddress: {
+      if (slice.size() != InetAddress::kV4Size && slice.size() != InetAddress::kV6Size) {
+        return STATUS(Corruption,
+                      Substitute("Invalid number of bytes to decode IPv4/IPv6: $0, need $1 or $2",
+                                 slice.size(), InetAddress::kV4Size, InetAddress::kV6Size));
+      }
+      // Need to use a non-rocksdb slice for InetAddress.
+      Slice slice_temp(slice.data(), slice.size());
+      inetaddress_val_ = new InetAddress();
+      RETURN_NOT_OK(inetaddress_val_->FromSlice(slice_temp));
+      type_ = value_type;
+      return Status::OK();
+    }
+
     case ValueType::kArray:
       return STATUS(IllegalState, "Arrays are currently not supported");
 
@@ -396,6 +453,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestampDescending:
       return STATUS(Corruption,
           Substitute("$0 is not allowed in a RocksDB PrimitiveValue", ValueTypeToStr(value_type)));
@@ -462,6 +520,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
+    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
 
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: return column_id_val_ == other.column_id_val_;
@@ -494,6 +554,9 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
       return GenericCompare(timestamp_val_, other.timestamp_val_);
+    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kInetaddress:
+      return GenericCompare(*inetaddress_val_, *(other.inetaddress_val_));
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId:
       return GenericCompare(column_id_val_, other.column_id_val_);
@@ -510,6 +573,9 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
     : type_(value_type) {
   if (value_type == ValueType::kString || value_type == ValueType::kStringDescending) {
     new(&str_val_) std::string();
+  } else if (value_type == ValueType::kInetaddress
+      || value_type == ValueType::kInetaddressDescending) {
+    inetaddress_val_ = new InetAddress();
   }
 }
 
@@ -578,10 +644,10 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
       }
       return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
     case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
+    case INET: return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
-    case INET: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
@@ -633,6 +699,9 @@ void PrimitiveValue::ToYQLValuePB(const DataType data_type, YQLValuePB* v) const
     case TIMESTAMP:
       YQLValue::set_timestamp_value(GetTimestamp(), v);
       return;
+    case INET:
+      YQLValue::set_inetaddress_value(*GetInetaddress(), v);
+      return;
     case STRING:
       YQLValue::set_string_value(GetString(), v);
       return;
@@ -643,7 +712,6 @@ void PrimitiveValue::ToYQLValuePB(const DataType data_type, YQLValuePB* v) const
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
-    case INET: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;

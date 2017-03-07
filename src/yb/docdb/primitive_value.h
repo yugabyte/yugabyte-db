@@ -53,6 +53,10 @@ class PrimitiveValue {
     if (other.type_ == ValueType::kString || other.type_ == ValueType::kStringDescending) {
       type_ = other.type_;
       new(&str_val_) std::string(other.str_val_);
+    } else if (other.type_ == ValueType::kInetaddress
+        || other.type_ == ValueType::kInetaddressDescending) {
+      type_ = other.type_;
+      inetaddress_val_ = new InetAddress(*(other.inetaddress_val_));
     } else {
       memmove(this, &other, sizeof(PrimitiveValue));
     }
@@ -113,6 +117,16 @@ class PrimitiveValue {
     timestamp_val_ = timestamp;
   }
 
+  explicit PrimitiveValue(const InetAddress& inetaddress,
+                          SortOrder sort_order = SortOrder::kAscending) {
+    if (sort_order == SortOrder::kDescending) {
+      type_ = ValueType::kInetaddressDescending;
+    } else {
+      type_ = ValueType::kInetaddress;
+    }
+    inetaddress_val_ = new InetAddress(inetaddress);
+  }
+
   explicit PrimitiveValue(const HybridTime& hybrid_time) : type_(ValueType::kHybridTime) {
     hybrid_time_val_ = hybrid_time;
   }
@@ -149,6 +163,8 @@ class PrimitiveValue {
   ~PrimitiveValue() {
     if (type_ == ValueType::kString || type_ == ValueType::kStringDescending) {
       str_val_.~basic_string();
+    } else if (type_ == ValueType::kInetaddress || type_ == ValueType::kInetaddressDescending) {
+      delete inetaddress_val_;
     }
     // HybridTime does not need its destructor to be called, because it is a simple wrapper over an
     // unsigned 64-bit integer.
@@ -217,6 +233,11 @@ class PrimitiveValue {
     return timestamp_val_;
   }
 
+  const InetAddress* GetInetaddress() const {
+    DCHECK(type_ == ValueType::kInetaddress || type_ == ValueType::kInetaddressDescending);
+    return inetaddress_val_;
+  }
+
   ColumnId GetColumnId() const {
     DCHECK(type_ == ValueType::kColumnId || type_ == ValueType::kSystemColumnId);
     return column_id_val_;
@@ -246,6 +267,7 @@ class PrimitiveValue {
     std::string str_val_;
     double double_val_;
     Timestamp timestamp_val_;
+    InetAddress* inetaddress_val_;
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
     ColumnId column_id_val_;
@@ -264,6 +286,10 @@ class PrimitiveValue {
       type_ = other->type_;
       new(&str_val_) std::string(std::move(other->str_val_));
       // The moved-from object should now be in a "valid but unspecified" state as per the standard.
+    } else if (other->type_ == ValueType::kInetaddress
+        || other->type_ == ValueType::kInetaddressDescending) {
+      type_ = other->type_;
+      inetaddress_val_ = new InetAddress(std::move(*(other->inetaddress_val_)));
     } else {
       // Non-string primitive values only have plain old data. We are assuming there is no overlap
       // between the two objects, so we're using memcpy instead of memmove.

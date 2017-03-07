@@ -134,6 +134,7 @@ set(UTIL_SRCS
   net/dns_resolver.cc
   net/net_util.cc
   net/sockaddr.cc
+  net/inetaddress.cc
   net/socket.cc
   oid_generator.cc
   once.cc
@@ -338,6 +339,7 @@ ADD_YB_TEST(string_trim-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(net/inetaddress-test)
 
 #######################################
 # jsonwriter_test_proto

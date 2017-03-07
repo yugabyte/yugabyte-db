@@ -130,6 +130,11 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
       "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
       "default_time_to_live = 1000.1;");
 
+  // Valid statement: CREATE table with inet type.
+  PARSE_VALID_STMT("CREATE TABLE human_resource (c1 inet, c2 int, c3 int, PRIMARY KEY(c1));");
+
+  // Invalid statement: CREATE table with invalid type.
+  PARSE_INVALID_STMT("CREATE TABLE human_resource (c1 ine, c2 int, c3 int, PRIMARY KEY(c1));");
 }
 
 }  // namespace sql

@@ -129,7 +129,8 @@ class YB_EXPORT YBScanBatch::RowPtr {
   CHECKED_STATUS GetInt16(int col_idx, int16_t* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetInt32(int col_idx, int32_t* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetInt64(int col_idx, int64_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimestamp(int col_idx,
+                              int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
   CHECKED_STATUS GetFloat(int col_idx, float* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetDouble(int col_idx, double* val) const WARN_UNUSED_RESULT;
@@ -140,6 +141,8 @@ class YB_EXPORT YBScanBatch::RowPtr {
   CHECKED_STATUS GetString(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInet(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInet(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   // Raw cell access. Should be avoided unless absolutely necessary.
   const void* cell(int col_idx) const;
@@ -221,4 +224,4 @@ inline YBScanBatch::const_iterator YBScanBatch::end() const {
 } // namespace client
 } // namespace yb
 
-#endif
+#endif // YB_CLIENT_SCAN_BATCH_H

@@ -18,15 +18,17 @@
 #ifndef YB_COMMON_TYPES_H
 #define YB_COMMON_TYPES_H
 
-#include <glog/logging.h>
-
 #include <stdint.h>
 #include <string>
+
+#include <glog/logging.h>
 
 #include "yb/common/common.pb.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -345,6 +347,19 @@ struct DataTypeTraits<STRING> : public DerivedTypeTraits<BINARY>{
   }
 };
 
+template<>
+struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "inet";
+  }
+  static void AppendDebugStringForValue(const void *val, string *str) {
+    const Slice *s = reinterpret_cast<const Slice *>(val);
+    InetAddress addr;
+    DCHECK(addr.FromSlice(*s).ok());
+    str->append(addr.ToString());
+  }
+};
+
 static const char* kDateFormat = "%Y-%m-%d %H:%M:%S";
 static const char* kDateMicrosAndTzFormat = "%s.%06d GMT";
 
@@ -451,7 +466,8 @@ class Variant {
       case DOUBLE:
         numeric_.double_val = *static_cast<const double *>(value);
         break;
-      case STRING: // Fallthrough intended.
+      case STRING: FALLTHROUGH_INTENDED;
+      case INET: FALLTHROUGH_INTENDED;
       case BINARY:
         {
           const Slice *str = static_cast<const Slice *>(value);
@@ -511,7 +527,8 @@ class Variant {
       case UINT64:       return &(numeric_.u64);
       case FLOAT:        return (&numeric_.float_val);
       case DOUBLE:       return (&numeric_.double_val);
-      case STRING:
+      case STRING:       FALLTHROUGH_INTENDED;
+      case INET:       FALLTHROUGH_INTENDED;
       case BINARY:       return &vstr_;
       default: LOG(FATAL) << "Unknown data type: " << type_;
     }
@@ -526,8 +543,6 @@ class Variant {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(Variant);
-
   void Clear() {
     // No need to delete[] zero-length vstr_, because we always ensure that
     // such a string would point to a constant "" rather than an allocated piece
@@ -555,8 +570,9 @@ class Variant {
   DataType type_;
   NumericValue numeric_;
   Slice vstr_;
+  DISALLOW_COPY_AND_ASSIGN(Variant);
 };
 
 }  // namespace yb
 
-#endif
+#endif // YB_COMMON_TYPES_H

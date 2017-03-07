@@ -71,6 +71,7 @@ class TypeInfoResolver {
     AddMapping<FLOAT>();
     AddMapping<DOUBLE>();
     AddMapping<BINARY>();
+    AddMapping<INET>();
   }
 
   template<DataType type> void AddMapping() {

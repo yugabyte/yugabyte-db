@@ -62,6 +62,7 @@ public class TestCreateTable extends TestBase {
                          "c7 varchar, " +
                          "c8 boolean, " +
                          "c9 timestamp, " +
+                         "c10 inet, " +
                          "primary key (c1));";
     session.execute(create_stmt);
 

@@ -5,6 +5,7 @@ import com.datastax.driver.core.Row;
 
 import org.junit.Test;
 
+import java.net.InetAddress;
 import java.util.Date;
 import java.util.Map;
 
@@ -163,5 +164,34 @@ public class TestUpdate extends TestBase {
     // Valid statements.
     runValidUpdateWithTTL(tableName, MAX_TTL_SEC);
     runValidUpdateWithTTL(tableName, 0);
+  }
+
+  @Test
+  public void testUpdateWithInet() throws Exception {
+    String tableName = "testUpdateWithInet";
+    CreateTable(tableName, "inet");
+
+    // Insert a row.
+    String insert_stmt = String.format(
+      "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(1, '1.2.3.4', 2, '1.2.3.4', 3, " +
+        "'1.2.3.4');", tableName);
+    session.execute(insert_stmt);
+
+    // Update the row.
+    String update_stmt = String.format(
+      "UPDATE %s SET v2 = '1.2.3.5' WHERE h1 = 1 AND h2 = '1.2.3.4' AND r1 = 2 AND r2 = " +
+        "'1.2.3.4';", tableName);
+    session.execute(update_stmt);
+
+    // Verify the update worked.
+    String select_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s" +
+      "  WHERE h1 = 1 AND h2 = '1.2.3.4';", tableName);
+    Row row = RunSelect(tableName, select_stmt).next();
+    assertEquals(1, row.getInt(0));
+    assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet(1));
+    assertEquals(2, row.getInt(2));
+    assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet(3));
+    assertEquals(3, row.getInt(4));
+    assertEquals(InetAddress.getByName("1.2.3.5"), row.getInet(5));
   }
 }

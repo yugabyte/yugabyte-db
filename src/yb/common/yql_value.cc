@@ -19,7 +19,6 @@
   case BINARY: FALLTHROUGH_INTENDED;    \
   case DECIMAL: FALLTHROUGH_INTENDED;   \
   case VARINT: FALLTHROUGH_INTENDED;    \
-  case INET: FALLTHROUGH_INTENDED;      \
   case LIST: FALLTHROUGH_INTENDED;      \
   case MAP: FALLTHROUGH_INTENDED;       \
   case SET: FALLTHROUGH_INTENDED;       \
@@ -68,6 +67,8 @@ int YQLValue::CompareTo(const YQLValue& other) const {
     case InternalType::kTimestampValue:
       return GenericCompare(timestamp_value(), other.timestamp_value());
     case InternalType::kBinaryValue: return binary_value().compare(other.binary_value());
+    case InternalType::kInetaddressValue:
+      return GenericCompare(inetaddress_value(), other.inetaddress_value());
 
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
@@ -118,6 +119,12 @@ void YQLValue::Serialize(
           DateTime::internal_precision,
           DateTime::CqlDateTimeInputFormat.input_precision());
       CQLEncodeNum(NetworkByteOrder::Store64, val, buffer);
+      return;
+    }
+    case INET: {
+      std::string bytes;
+      CHECK_OK(inetaddress_value().ToBytes(&bytes));
+      CQLEncodeBytes(bytes, buffer);
       return;
     }
 
@@ -185,6 +192,14 @@ Status YQLValue::Deserialize(const DataType sql_type, const YQLClient client, Sl
       set_timestamp_value(value);
       return Status::OK();
     }
+    case INET: {
+      string bytes;
+      RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
+      InetAddress addr;
+      RETURN_NOT_OK(addr.FromBytes(bytes));
+      set_inetaddress_value(addr);
+      return Status::OK();
+    }
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -214,6 +229,7 @@ string YQLValue::ToString() const {
     case InternalType::kDoubleValue: return "double:" + to_string(double_value());
     case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
+    case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
     case InternalType::kBinaryValue: return "binary:" + b2a_hex(binary_value());
     case InternalType::VALUE_NOT_SET:
@@ -239,6 +255,7 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kBoolValue:   v->clear_bool_value(); return;
     case YQLValuePB::kTimestampValue: v->clear_timestamp_value(); return;
     case YQLValuePB::kBinaryValue: v->clear_binary_value(); return;
+    case YQLValuePB::kInetaddressValue: v->clear_inetaddress_value(); return;
     case YQLValuePB::VALUE_NOT_SET: return;
   }
   LOG(FATAL) << "Internal error: unknown or unsupported type " << v->value_case();
@@ -261,6 +278,8 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     case YQLValuePB::kTimestampValue:
       return GenericCompare(lhs.timestamp_value(), rhs.timestamp_value());
     case YQLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
+    case YQLValuePB::kInetaddressValue:
+      return GenericCompare(lhs.inetaddress_value(), rhs.inetaddress_value());
     case YQLValuePB::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;

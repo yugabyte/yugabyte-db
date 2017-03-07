@@ -71,6 +71,14 @@ struct EvalTimestampValue : public EvalValue {
   int64_t value_;
 };
 
+struct EvalInetaddressValue: public EvalValue {
+  InternalType datatype() {
+    return InternalType::kInetaddressValue;
+  }
+
+  InetAddress value_;
+};
+
 }  // namespace sql
 }  // namespace yb
 

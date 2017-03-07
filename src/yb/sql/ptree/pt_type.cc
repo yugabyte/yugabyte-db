@@ -60,5 +60,12 @@ PTTimestamp::PTTimestamp(MemoryContext *memctx, YBLocation::SharedPtr loc)
 PTTimestamp::~PTTimestamp() {
 }
 
+PTInet::PTInet(MemoryContext *memctx, YBLocation::SharedPtr loc)
+    : PTPrimitiveType<InternalType::kInetaddressValue, DataType::INET>(memctx, loc) {
+}
+
+PTInet::~PTInet() {
+}
+
 }  // namespace sql
 }  // namespace yb

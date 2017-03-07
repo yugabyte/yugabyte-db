@@ -1,12 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.Test;
 
+import java.net.InetAddress;
 import java.util.Date;
 import java.util.Map;
 
+import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 
@@ -189,4 +192,37 @@ public class TestInsert extends TestBase {
     assertEquals("v60", row.getString(5));
   }
 
+  @Test
+  public void testInsertWithInet() throws Exception {
+    String tableName = "table_with_inet";
+    session.execute(String.format("CREATE TABLE %s (c1 inet, c2 inet, c3 int, c4 " +
+      "inet, c5 inet, PRIMARY KEY(c1, c2, c3));", tableName));
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.4', " +
+      "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
+    ResultSet rs = session.execute(String.format("SELECT c1, c2, c3, c4, c5 FROM %s WHERE c1 = " +
+      "'1.2.3.4' AND c2 = 'fe80::2978:9018:b288:3f6c' AND c3 = 1;", tableName));
+    Row row = rs.one();
+
+    assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet("c1"));
+    assertEquals(InetAddress.getByName("fe80::2978:9018:b288:3f6c"), row.getInet("c2"));
+    assertEquals(1, row.getInt("c3"));
+    assertEquals(InetAddress.getByName("fe80::9929:23c3:8309:c29f"), row.getInet("c4"));
+    assertEquals(InetAddress.getByName("10.10.10.10"), row.getInet("c5"));
+    assertNull(rs.one());
+
+    // Now try a bunch of invalid inserts.
+    // 1.2.3.400 invalid IPv4
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.400', " +
+      "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
+    // fe80::2978:9018:b288:3z6c invalid IPv6
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.4', " +
+      "'fe80::2978:9018:b288:3z6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
+    // Invalid types.
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (1, " +
+      "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (3.1, " +
+      "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (true, " +
+      "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
+  }
 }

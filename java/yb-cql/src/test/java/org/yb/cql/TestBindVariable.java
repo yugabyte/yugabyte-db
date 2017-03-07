@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import java.net.InetAddress;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -610,12 +611,13 @@ public class TestBindVariable extends TestBase {
                          "c7 varchar, " +
                          "c8 boolean, " +
                          "c9 timestamp, " +
+                         "c10 inet, " +
                          "primary key (c1));";
     session.execute(create_stmt);
 
     // Insert data of all supported datatypes with bind by position.
-    String insert_stmt = "INSERT INTO test_bind (c1, c2, c3, c4, c5, c6, c7, c8, c9) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    String insert_stmt = "INSERT INTO test_bind (c1, c2, c3, c4, c5, c6, c7, c8, c9, c10) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     session.execute(insert_stmt,
@@ -623,7 +625,8 @@ public class TestBindVariable extends TestBase {
                     new Float(5.0), new Double(6.0),
                     "c7",
                     new Boolean(true),
-                    new Date(2017, 1, 1));
+                    new Date(2017, 1, 1),
+                    InetAddress.getByName("1.2.3.4"));
 
     {
       // Select data from the test table.
@@ -641,6 +644,7 @@ public class TestBindVariable extends TestBase {
       assertEquals("c7", row.getString("c7"));
       assertTrue(row.getBool("c8"));
       assertEquals(new Date(2017, 1, 1), row.getTimestamp("c9"));
+      assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet("c10"));
     }
 
     // Update data of all supported datatypes with bind by position.
@@ -652,7 +656,8 @@ public class TestBindVariable extends TestBase {
                          "c6 = ?, " +
                          "c7 = ?, " +
                          "c8 = ?, " +
-                         "c9 = ? " +
+                         "c9 = ?, " +
+                         "c10 = ? " +
                          "WHERE c1 = ?;";
     session.execute(update_stmt,
                     new HashMap<String, Object>() {{
@@ -665,6 +670,7 @@ public class TestBindVariable extends TestBase {
                       put("c7", "c17");
                       put("c8", new Boolean(false));
                       put("c9", new Date(2017, 11, 11));
+                      put("c10", InetAddress.getByName("1.2.3.4"));
                     }});
 
     {
@@ -683,6 +689,7 @@ public class TestBindVariable extends TestBase {
       assertEquals("c17", row.getString("c7"));
       assertFalse(row.getBool("c8"));
       assertEquals(new Date(2017, 11, 11), row.getTimestamp("c9"));
+      assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet("c10"));
     }
 
     LOG.info("End test");

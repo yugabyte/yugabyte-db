@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "yb/common/yql_protocol.pb.h"
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
 
 namespace yb {
@@ -44,6 +45,7 @@ class YQLValue {
   virtual const std::string& string_value() const = 0;
   virtual Timestamp timestamp_value() const = 0;
   virtual const std::string& binary_value() const = 0;
+  virtual InetAddress inetaddress_value() const = 0;
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
@@ -61,6 +63,7 @@ class YQLValue {
   virtual void set_timestamp_value(int64_t val) = 0;
   virtual void set_binary_value(const std::string& val) = 0;
   virtual void set_binary_value(const void* val, size_t size) = 0;
+  virtual void set_inetaddress_value(const InetAddress& val) = 0;
 
   //----------------------------------- assignment methods ----------------------------------
   virtual YQLValue& operator=(const YQLValuePB& other) = 0;
@@ -131,6 +134,13 @@ class YQLValue {
     return v.binary_value();
   }
 
+  static InetAddress inetaddress_value(const YQLValuePB& v) {
+    CHECK(v.has_inetaddress_value());
+    InetAddress addr;
+    CHECK_OK(addr.FromBytes(v.inetaddress_value()));
+    return addr;
+  }
+
 #undef YQL_GET_VALUE
 
   //----------------------------------- set value methods -----------------------------------
@@ -150,6 +160,13 @@ class YQLValue {
   static void set_timestamp_value(const Timestamp& val, YQLValuePB *v) {
     v->set_timestamp_value(val.ToInt64());
   }
+
+  static void set_inetaddress_value(const InetAddress& val, YQLValuePB *v) {
+    std::string bytes;
+    CHECK_OK(val.ToBytes(&bytes));
+    v->set_inetaddress_value(bytes);
+  }
+
   static void set_timestamp_value(const int64_t val, YQLValuePB *v) { v->set_timestamp_value(val); }
   static void set_binary_value(const std::string& val, YQLValuePB *v) { v->set_binary_value(val); }
   static void set_binary_value(const void* val, const size_t size, YQLValuePB *v) {
@@ -238,6 +255,9 @@ class YQLValueWithPB : public YQLValue {
   virtual const std::string& binary_value() const override {
     return YQLValue::binary_value(value_);
   }
+  virtual InetAddress inetaddress_value() const override {
+    return YQLValue::inetaddress_value(value_);
+  }
 
   //----------------------------------- set value methods -----------------------------------
   virtual void set_int8_value(int8_t val) override { YQLValue::set_int8_value(val, &value_); }
@@ -258,6 +278,9 @@ class YQLValueWithPB : public YQLValue {
   }
   virtual void set_timestamp_value(const Timestamp& val) override {
     YQLValue::set_timestamp_value(val, &value_);
+  }
+  virtual void set_inetaddress_value(const InetAddress& val) override {
+    YQLValue::set_inetaddress_value(val, &value_);
   }
   virtual void set_timestamp_value(const int64_t val) override {
     YQLValue::set_timestamp_value(val, &value_);

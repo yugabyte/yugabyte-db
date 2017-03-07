@@ -128,7 +128,7 @@ Status YBPartialRow::Set(int col_idx,
 
   ContiguousRow row(schema_, row_data_);
 
-  // If we're replacing an existing STRING/BINARY value, deallocate the old value.
+  // If we're replacing an existing STRING/BINARY/INET value, deallocate the old value.
   if (T::physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
 
   // Mark the column as set.
@@ -190,6 +190,10 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
       RETURN_NOT_OK(SetTimestamp(column_idx, *reinterpret_cast<const int64_t*>(val)));
       break;
     };
+    case INET: {
+      RETURN_NOT_OK(SetInet(column_idx, *reinterpret_cast<const Slice*>(val)));
+      break;
+    };
     default: {
       return STATUS(InvalidArgument, "Unknown column type in schema",
                                      column_schema.ToString());
@@ -204,6 +208,8 @@ void YBPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col) {
     const Slice* dst;
     if (col.type_info()->type() == BINARY) {
       dst = schema_->ExtractColumnFromRow<BINARY>(row, col_idx);
+    } else if (col.type_info()->type() == INET) {
+      dst = schema_->ExtractColumnFromRow<INET>(row, col_idx);
     } else {
       CHECK(col.type_info()->type() == STRING);
       dst = schema_->ExtractColumnFromRow<STRING>(row, col_idx);
@@ -253,6 +259,9 @@ Status YBPartialRow::SetString(const Slice& col_name, const Slice& val) {
 Status YBPartialRow::SetBinary(const Slice& col_name, const Slice& val) {
   return Set<TypeTraits<BINARY> >(col_name, val, false);
 }
+Status YBPartialRow::SetInet(const Slice& col_name, const Slice& val) {
+  return SetSliceCopy<TypeTraits<INET> >(col_name, val);
+}
 Status YBPartialRow::SetBool(int col_idx, bool val) {
   return Set<TypeTraits<BOOL> >(col_idx, val);
 }
@@ -276,6 +285,9 @@ Status YBPartialRow::SetString(int col_idx, const Slice& val) {
 }
 Status YBPartialRow::SetBinary(int col_idx, const Slice& val) {
   return Set<TypeTraits<BINARY> >(col_idx, val, false);
+}
+Status YBPartialRow::SetInet(int col_idx, const Slice& val) {
+  return SetSliceCopy<TypeTraits<INET> >(col_idx, val);
 }
 Status YBPartialRow::SetFloat(int col_idx, float val) {
   return Set<TypeTraits<FLOAT> >(col_idx, val);
@@ -369,10 +381,16 @@ template
 Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(int col_idx, const Slice& val);
 
 template
+Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(int col_idx, const Slice& val);
+
+template
 Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(const Slice& col_name, const Slice& val);
 
 template
 Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(const Slice& col_name, const Slice& val);
+
+template
+Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(const Slice& col_name, const Slice& val);
 
 template
 Status YBPartialRow::Set<TypeTraits<INT8> >(int col_idx,
@@ -539,6 +557,9 @@ Status YBPartialRow::GetString(const Slice& col_name, Slice* val) const {
 Status YBPartialRow::GetBinary(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<BINARY> >(col_name, val);
 }
+Status YBPartialRow::GetInet(const Slice& col_name, Slice* val) const {
+  return Get<TypeTraits<INET> >(col_name, val);
+}
 
 Status YBPartialRow::GetBool(int col_idx, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_idx, val);
@@ -569,6 +590,9 @@ Status YBPartialRow::GetString(int col_idx, Slice* val) const {
 }
 Status YBPartialRow::GetBinary(int col_idx, Slice* val) const {
   return Get<TypeTraits<BINARY> >(col_idx, val);
+}
+Status YBPartialRow::GetInet(int col_idx, Slice* val) const {
+  return Get<TypeTraits<INET> >(col_idx, val);
 }
 
 template<typename T>

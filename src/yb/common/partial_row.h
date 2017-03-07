@@ -70,7 +70,8 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS SetInt16(const Slice& col_name, int16_t val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetInt32(const Slice& col_name, int32_t val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetInt64(const Slice& col_name, int64_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetTimestamp(const Slice& col_name, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetTimestamp(const Slice& col_name,
+                              int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
 
   CHECKED_STATUS SetFloat(const Slice& col_name, float val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDouble(const Slice& col_name, double val) WARN_UNUSED_RESULT;
@@ -85,6 +86,7 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS SetInt32(int col_idx, int32_t val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetInt64(int col_idx, int64_t val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetTimestamp(int col_idx, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInet(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   CHECKED_STATUS SetFloat(int col_idx, float val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDouble(int col_idx, double val) WARN_UNUSED_RESULT;
@@ -94,6 +96,7 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS SetString(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetString(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetBinary(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetInet(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetBinary(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   // Copies 'val' immediately.
@@ -147,7 +150,8 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS GetInt16(int col_idx, int16_t* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetInt32(int col_idx, int32_t* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetInt64(int col_idx, int64_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimestamp(int col_idx,
+                              int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
   CHECKED_STATUS GetFloat(int col_idx, float* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetDouble(int col_idx, double* val) const WARN_UNUSED_RESULT;
@@ -158,6 +162,8 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS GetString(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInet(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetInet(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   //------------------------------------------------------------
   // Key-encoding related functions

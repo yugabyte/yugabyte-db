@@ -236,6 +236,20 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT(3500)]) 
           options().statistics->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL), expected_counter_val);
     }
   }
+
+  InetAddress GetInetAddress(const std::string& strval) {
+    InetAddress addr;
+    CHECK_OK(addr.FromString(strval));
+    return addr;
+  }
+
+  void InsertInet(const std::string strval) {
+    const DocKey doc_key(PrimitiveValues("mydockey"));
+    KeyBytes encoded_doc_key(doc_key.Encode());
+    NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(GetInetAddress(strval))),
+                           Value(PrimitiveValue()), HybridTime(1000), nullptr,
+                           InitMarkerBehavior::kOptional));
+  }
 };
 
 KeyBytes DocDBTest::kEncodedDocKey1;
@@ -1679,6 +1693,32 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT(2800)]) -> "row1_e"
 
     ASSERT_FALSE(iter.HasNext());
   }
+}
+
+TEST_F(DocDBTest, TestInetSortOrder) {
+  InsertInet("1.2.3.4");
+  InsertInet("2.2.3.4");
+  InsertInet("::1");
+  InsertInet("::ffff:ffff");
+  InsertInet("::ff:ffff:ffff");
+  InsertInet("180::2978:9018:b288:3f6c");
+  InsertInet("fe80::2978:9018:b288:3f6c");
+  InsertInet("255.255.255.255");
+  InsertInet("ffff:ffff::");
+  InsertInet("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["mydockey"]), [::1; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [::255.255.255.255; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [::ff:ffff:ffff; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [1.2.3.4; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [180::2978:9018:b288:3f6c; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [2.2.3.4; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [fe80::2978:9018:b288:3f6c; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [255.255.255.255; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [ffff:ffff::; HT(1000)]) -> null
+SubDocKey(DocKey([], ["mydockey"]), [ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff; HT(1000)]) -> null
+      )#");
 }
 
 }  // namespace docdb

@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+
 #include "yb/client/row_result.h"
 #include "yb/client/scan_batch.h"
 #include "yb/client/scanner-internal.h"
 #include "yb/client/schema.h"
-
-#include <string>
 
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
@@ -147,6 +147,10 @@ Status YBScanBatch::RowPtr::GetBinary(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<BINARY> >(col_name, val);
 }
 
+Status YBScanBatch::RowPtr::GetInet(const Slice& col_name, Slice* val) const {
+  return Get<TypeTraits<INET> >(col_name, val);
+}
+
 Status YBScanBatch::RowPtr::GetBool(int col_idx, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_idx, val);
 }
@@ -185,6 +189,10 @@ Status YBScanBatch::RowPtr::GetString(int col_idx, Slice* val) const {
 
 Status YBScanBatch::RowPtr::GetBinary(int col_idx, Slice* val) const {
   return Get<TypeTraits<BINARY> >(col_idx, val);
+}
+
+Status YBScanBatch::RowPtr::GetInet(int col_idx, Slice* val) const {
+  return Get<TypeTraits<INET> >(col_idx, val);
 }
 
 template<typename T>
@@ -259,6 +267,9 @@ template
 Status YBScanBatch::RowPtr::Get<TypeTraits<BINARY> >(const Slice& col_name, Slice* val) const;
 
 template
+Status YBScanBatch::RowPtr::Get<TypeTraits<INET> >(const Slice& col_name, Slice* val) const;
+
+template
 Status YBScanBatch::RowPtr::Get<TypeTraits<BOOL> >(int col_idx, bool* val) const;
 
 template
@@ -287,6 +298,9 @@ Status YBScanBatch::RowPtr::Get<TypeTraits<STRING> >(int col_idx, Slice* val) co
 
 template
 Status YBScanBatch::RowPtr::Get<TypeTraits<BINARY> >(int col_idx, Slice* val) const;
+
+template
+Status YBScanBatch::RowPtr::Get<TypeTraits<INET> >(int col_idx, Slice* val) const;
 
 string YBScanBatch::RowPtr::ToString() const {
   string ret;
