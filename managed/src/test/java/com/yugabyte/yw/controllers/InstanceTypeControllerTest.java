@@ -3,9 +3,11 @@
 package com.yugabyte.yw.controllers;
 
 
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.core.IsNull.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -15,12 +17,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
+import java.util.List;
 import java.util.UUID;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
-import org.hamcrest.CoreMatchers;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -36,29 +38,55 @@ import play.mvc.Result;
 
 public class InstanceTypeControllerTest extends FakeDBApplication {
   Provider provider;
+  Customer customer;
 
   @Before
   public void setUp() {
-    Customer customer = ModelFactory.testCustomer();
+    customer = ModelFactory.testCustomer();
     provider = ModelFactory.awsProvider(customer);
   }
 
+  private JsonNode doListInstanceTypesAndVerify(UUID providerUUID, int status) {
+    Result result = FakeApiHelper.doRequest("GET", "/api/customers/" + customer.uuid
+        + "/providers/" + providerUUID + "/instance_types");
+    assertEquals(status, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
+  private JsonNode doCreateInstanceTypeAndVerify(UUID providerUUID, JsonNode bodyJson, int status) {
+    Result result = FakeApiHelper.doRequestWithBody(
+        "POST",
+        "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
+        bodyJson);
+
+    assertEquals(status, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
+  private JsonNode doGetInstanceTypeAndVerify(UUID providerUUID, String instanceTypeCode, int status) {
+    Result result = FakeApiHelper.doRequest("GET", "/api/customers/" + customer.uuid
+        + "/providers/" + providerUUID + "/instance_types/" + instanceTypeCode);
+    assertEquals(status, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
+  private JsonNode doDeleteInstanceTypeAndVerify(UUID providerUUID, String instanceTypeCode, int status) {
+    Result result = FakeApiHelper.doRequest("DELETE", "/api/customers/" + customer.uuid
+        + "/providers/" + providerUUID + "/instance_types/" + instanceTypeCode);
+    assertEquals(status, result.status());
+    return Json.parse(contentAsString(result));
+  }
 
   @Test
   public void testListInstanceTypeWithInvalidProviderUUID() {
-    Result result =
-      FakeApiHelper.doRequest("GET", "/api/providers/" + UUID.randomUUID() + "/instance_types");
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("error").toString(), CoreMatchers.containsString("Invalid Provider UUID"));
+    UUID randomUUID = UUID.randomUUID();
+    JsonNode json = doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST);
+    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
   }
 
   @Test
   public void testListEmptyInstanceTypeWithValidProviderUUID() {
-    Result result =
-      FakeApiHelper.doRequest("GET", "/api/providers/" + provider.uuid + "/instance_types");
-    assertEquals(OK, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = doListInstanceTypesAndVerify(provider.uuid, OK);
     assertEquals(0, json.size());
   }
 
@@ -67,12 +95,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     InstanceType.upsert(provider.code, "test-i1", 2, 10.5, 1, 100,
                         InstanceType.VolumeType.EBS, null);
     InstanceType.upsert(provider.code, "test-i2", 3, 9.0, 1, 80, InstanceType.VolumeType.EBS, null);
-
-    Result result =
-      FakeApiHelper.doRequest("GET", "/api/providers/" + provider.uuid + "/instance_types");
-
-    assertEquals(OK, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = doListInstanceTypesAndVerify(provider.uuid, OK);
     assertEquals(2, json.size());
 
     int idx = 1;
@@ -80,37 +103,35 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       assertThat(instance.get("instanceTypeCode").asText(), allOf(notNullValue(), equalTo("test-i" + idx)));
       idx++;
     }
+    List<String> expectedCodes = ImmutableList.of("test-i1", "test-i2");
+    assertValues(json, "instanceTypeCode", expectedCodes);
   }
 
   @Test
   public void testCreateInstanceTypeWithInvalidProviderUUID() {
     ObjectNode instanceTypeJson = Json.newObject();
-
-    Result result = FakeApiHelper.doRequestWithBody(
-      "POST",
-      "/api/providers/" + UUID.randomUUID() + "/instance_types",
-      instanceTypeJson);
-
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("error").toString(), CoreMatchers.containsString("Invalid Provider UUID"));
+    ObjectNode idKey = Json.newObject();
+    idKey.put("instanceTypeCode", "test-i1");
+    idKey.put("providerCode", "aws");
+    instanceTypeJson.put("memSizeGB", 10.9);
+    instanceTypeJson.put("volumeCount", 1);
+    instanceTypeJson.put("volumeSizeGB", 10);
+    instanceTypeJson.put("volumeType", "EBS");
+    instanceTypeJson.put("numCores", 3);
+    instanceTypeJson.set("idKey", idKey);
+    UUID randomUUID = UUID.randomUUID();
+    JsonNode json = doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST);
+    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
   }
 
   @Test
   public void testCreateInstanceTypeWithInvalidParams() {
-    ObjectNode instanceTypeJson = Json.newObject();
-
-    Result result = FakeApiHelper.doRequestWithBody(
-      "POST",
-      "/api/providers/" + provider.uuid + "/instance_types",
-      instanceTypeJson);
-
-    assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result), CoreMatchers.containsString("\"idKey\":[\"This field is required\"]"));
-    assertThat(contentAsString(result), CoreMatchers.containsString("\"memSizeGB\":[\"This field is required\"]"));
-    assertThat(contentAsString(result), CoreMatchers.containsString("\"volumeSizeGB\":[\"This field is required\"]"));
-    assertThat(contentAsString(result), CoreMatchers.containsString("\"volumeType\":[\"This field is required\"]"));
-    assertThat(contentAsString(result), CoreMatchers.containsString("\"numCores\":[\"This field is required\"]"));
+    JsonNode json = doCreateInstanceTypeAndVerify(provider.uuid, Json.newObject(), BAD_REQUEST);
+    assertErrorNodeValue(json, "idKey", "This field is required");
+    assertErrorNodeValue(json, "memSizeGB", "This field is required");
+    assertErrorNodeValue(json, "volumeSizeGB", "This field is required");
+    assertErrorNodeValue(json, "volumeType", "This field is required");
+    assertErrorNodeValue(json, "numCores", "This field is required");
   }
 
   @Test
@@ -132,28 +153,19 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.put("volumeType", "EBS");
     instanceTypeJson.put("numCores", 3);
     instanceTypeJson.set("instanceTypeDetails", Json.toJson(details));
-
-    Result result = FakeApiHelper.doRequestWithBody(
-      "POST",
-      "/api/providers/" + provider.uuid + "/instance_types",
-      instanceTypeJson);
-
-    assertEquals(OK, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("instanceTypeCode").asText(), allOf(notNullValue(), equalTo("test-i1")));
-    assertThat(json.get("volumeCount").asInt(), allOf(notNullValue(), equalTo(1)));
-    assertThat(json.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(10)));
-    assertThat(json.get("memSizeGB").asDouble(), allOf(notNullValue(), equalTo(10.9)));
-    assertThat(json.get("numCores").asInt(), allOf(notNullValue(), equalTo(3)));
-    assertThat(json.get("volumeType").asText(), allOf(notNullValue(), equalTo("EBS")));
-    assertTrue(json.get("active").asBoolean());
+    JsonNode json = doCreateInstanceTypeAndVerify(provider.uuid, instanceTypeJson, OK);
+    assertValue(json, "instanceTypeCode", "test-i1");
+    assertValue(json, "volumeCount", "1");
+    assertValue(json, "volumeSizeGB", "10");
+    assertValue(json, "memSizeGB", "10.9");
+    assertValue(json, "numCores", "3");
+    assertValue(json, "volumeType", "EBS");
+    assertValue(json, "active", "true");
     JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
     assertThat(machineDetailsNode, notNullValue());
-    assertThat(machineDetailsNode.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(10)));
-    assertThat(machineDetailsNode.get("volumeType").asText(),
-        allOf(notNullValue(), equalTo("EBS")));
-    assertThat(machineDetailsNode.get("mountPath").asText(),
-        allOf(notNullValue(), equalTo("/tmp/path/")));
+    assertValue(machineDetailsNode, "volumeSizeGB", "10");
+    assertValue(machineDetailsNode, "volumeType", "EBS");
+    assertValue(machineDetailsNode, "mountPath", "/tmp/path/");
   }
 
   @Test
@@ -166,65 +178,41 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     details.volumeDetailsList.add(volumeDetails);
     InstanceType it = InstanceType.upsert(provider.code, "test-i1", 3, 5.0, 1, 20,
             InstanceType.VolumeType.EBS, details);
-
-    Result result = FakeApiHelper.doRequest(
-            "GET",
-            "/api/providers/" + provider.uuid + "/instance_types/" + it.getInstanceTypeCode());
-
-    assertEquals(OK, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("instanceTypeCode").asText(), allOf(notNullValue(), equalTo("test-i1")));
-    assertThat(json.get("volumeCount").asInt(), allOf(notNullValue(), equalTo(1)));
-    assertThat(json.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(20)));
-    assertThat(json.get("memSizeGB").asDouble(), allOf(notNullValue(), equalTo(5.0)));
-    assertThat(json.get("numCores").asInt(), allOf(notNullValue(), equalTo(3)));
-    assertThat(json.get("volumeType").asText(), allOf(notNullValue(), equalTo("EBS")));
-    assertTrue(json.get("active").asBoolean());
+    JsonNode json = doGetInstanceTypeAndVerify(provider.uuid, it.getInstanceTypeCode(), OK);
+    assertValue(json, "instanceTypeCode", "test-i1");
+    assertValue(json, "volumeCount", "1");
+    assertValue(json, "volumeSizeGB", "20");
+    assertValue(json, "memSizeGB", "5.0");
+    assertValue(json, "numCores", "3");
+    assertValue(json, "volumeType", "EBS");
+    assertValue(json, "active", "true");
     JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
     assertThat(machineDetailsNode, notNullValue());
-    assertThat(machineDetailsNode.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(20)));
-    assertThat(machineDetailsNode.get("volumeType").asText(),
-        allOf(notNullValue(), equalTo("EBS")));
-    assertThat(machineDetailsNode.get("mountPath").asText(),
-        allOf(notNullValue(), equalTo("/tmp/path/")));
+    assertValue(machineDetailsNode, "volumeSizeGB", "20");
+    assertValue(machineDetailsNode, "volumeType", "EBS");
+    assertValue(machineDetailsNode, "mountPath", "/tmp/path/");
   }
 
   @Test
   public void testGetInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
-    Result result = FakeApiHelper.doRequest(
-            "GET",
-            "/api/providers/" + provider.uuid + "/instance_types/" + fakeInstanceCode);
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    Assert.assertThat(json.get("error").toString(),
-            CoreMatchers.containsString("Instance Type not found: " + fakeInstanceCode));
+    JsonNode json = doGetInstanceTypeAndVerify(provider.uuid, fakeInstanceCode, BAD_REQUEST);
+    assertErrorNodeValue(json, "Instance Type not found: " + fakeInstanceCode);
   }
 
   @Test
   public void testGetInstanceTypeWithInvalidProvider() {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
-    Result result = FakeApiHelper.doRequest(
-            "GET",
-            "/api/providers/" + randomUUID + "/instance_types/" + fakeInstanceCode);
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    Assert.assertThat(json.get("error").toString(),
-            CoreMatchers.containsString("Invalid Provider UUID: " + randomUUID));
+    JsonNode json = doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
+    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
   }
 
   @Test
   public void testDeleteInstanceTypeWithValidParams() {
     InstanceType it = InstanceType.upsert(provider.code, "test-i1", 3, 5.0, 1, 20,
             InstanceType.VolumeType.EBS, new InstanceType.InstanceTypeDetails());
-
-    Result result = FakeApiHelper.doRequest(
-            "DELETE",
-            "/api/providers/" + provider.uuid + "/instance_types/" + it.getInstanceTypeCode());
-
-    assertEquals(OK, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = doDeleteInstanceTypeAndVerify(provider.uuid, it.getInstanceTypeCode(), OK);
     it = InstanceType.get(provider.code, it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());
     assertFalse(it.isActive());
@@ -233,27 +221,15 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
-    Result result = FakeApiHelper.doRequest(
-            "DELETE",
-            "/api/providers/" + provider.uuid + "/instance_types/" + fakeInstanceCode);
-
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    Assert.assertThat(json.get("error").toString(),
-            CoreMatchers.containsString("Invalid InstanceType Code: " + fakeInstanceCode));
+    JsonNode json = doDeleteInstanceTypeAndVerify(provider.uuid, fakeInstanceCode, BAD_REQUEST);
+    assertErrorNodeValue(json, "Instance Type not found: " + fakeInstanceCode);
   }
 
   @Test
   public void testDeleteInstanceTypeWithInvalidProvider() {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
-    Result result = FakeApiHelper.doRequest(
-            "DELETE",
-            "/api/providers/" + randomUUID + "/instance_types/" + fakeInstanceCode);
-
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    Assert.assertThat(json.get("error").toString(),
-            CoreMatchers.containsString("Invalid Provider UUID: " + randomUUID));
+    JsonNode json = doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
+    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
   }
 }

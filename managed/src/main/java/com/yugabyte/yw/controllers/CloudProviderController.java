@@ -136,7 +136,7 @@ public class CloudProviderController extends AuthenticatedController {
       }
       if (description.regions != null) {
         for (OnPremFormData.RegionData r : description.regions) {
-          Region region = Region.getByCode(r.code);
+          Region region = Region.getByCode(p, r.code);
           if (region == null) {
             // TODO: region name vs code?
             region = Region.create(

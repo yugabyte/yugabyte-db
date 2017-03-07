@@ -64,7 +64,7 @@ public class AppInit {
 
       // Enter all the configuration data. This is the first thing that should be done as the other
       // init steps may depend on this data.
-      configHelper.loadConfigsToDB();
+      configHelper.loadConfigsToDB(application);
     }
   }
 }

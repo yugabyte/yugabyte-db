@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.common;
 
-import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -32,20 +31,9 @@ public class ShellProcessHandlerTest {
     play.Configuration appConfig;
     static String YB_DEVOPS_HOME = "/tmp/yugaware_tests";
 
-    @BeforeClass
-    public static void setUp() {
-        new File(YB_DEVOPS_HOME).mkdir();
-    }
-
-    @AfterClass
-    public static void tearDown() {
-        File file = new File(YB_DEVOPS_HOME);
-        file.delete();
-    }
-
-
     @Before
     public void beforeTest() {
+        new TemporaryFolder(new File(YB_DEVOPS_HOME));
         when(appConfig.getString("yb.devops.home")).thenReturn(YB_DEVOPS_HOME);
     }
 

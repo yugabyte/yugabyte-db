@@ -2,15 +2,15 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsInstanceOf.instanceOf;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -92,39 +92,25 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
         doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid, azRequestJson, OK);
 
     assertThat(json.get("uuid").toString(), is(notNullValue()));
-    assertThat(json.get("code").asText(),
-               is(allOf(notNullValue(), instanceOf(String.class), equalTo("foo-az-1"))));
-    assertThat(json.get("name").asText(),
-               is(allOf(notNullValue(), instanceOf(String.class), equalTo("foo az 1"))));
-    assertThat(json.get("subnet").asText(),
-               is(allOf(notNullValue(), instanceOf(String.class), equalTo("az subnet 1"))));
+    assertValue(json, "code", "foo-az-1");
+    assertValue(json, "name", "foo az 1");
+    assertValue(json, "subnet", "az subnet 1");
   }
 
   @Test
   public void testCreateAvailabilityZoneWithInValidParams() {
-    ObjectNode azRequestJson = Json.newObject();
-
-    String uri =
-        "/api/providers/" + defaultProvider.uuid + "/regions/" + defaultRegion.uuid + "/zones";
-    Result result = FakeApiHelper.doRequestWithBody("POST", uri, azRequestJson);
-    assertEquals(BAD_REQUEST, result.status());
-    assertThat(contentAsString(result),
-                CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
-    assertThat(contentAsString(result),
-               CoreMatchers.containsString("\"name\":[\"This field is required\"]"));
-    assertThat(contentAsString(result),
-               CoreMatchers.containsString("\"subnet\":[\"This field is required\"]"));
+    JsonNode json = doCreateAZAndVerifyResult(defaultProvider.uuid, defaultRegion.uuid,
+        Json.newObject(), BAD_REQUEST);
+    assertErrorNodeValue(json, "code", "This field is required");
+    assertErrorNodeValue(json, "name", "This field is required");
+    assertErrorNodeValue(json, "subnet", "This field is required");
   }
 
   @Test
   public void testDeleteAvailabilityZoneWithInValidParams() {
     UUID randomUUID = UUID.randomUUID();
-    Result result =
-            FakeApiHelper.doRequest("DELETE", "/api/providers/" + defaultProvider.uuid +
-                    "/regions/" + defaultRegion.uuid + "/zones/" + randomUUID);
-
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid,
+        randomUUID, BAD_REQUEST);
     Assert.assertThat(json.get("error").toString(),
             CoreMatchers.containsString("Invalid Region/AZ UUID:" + randomUUID));
   }
@@ -133,20 +119,24 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   public void testDeleteAvailabilityZoneWithValidParams() {
     AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "AZ 1", "subnet-1");
 
-    Result result =
-            FakeApiHelper.doRequest("DELETE", "/api/providers/" + defaultProvider.uuid +
-                    "/regions/" + defaultRegion.uuid + "/zones/" + az.uuid);
-
-    assertEquals(OK, result.status());
-
-    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = doDeleteAZAndVerify(defaultProvider.uuid, defaultRegion.uuid, az.uuid, OK);
     az = AvailabilityZone.find.byId(az.uuid);
     assertTrue(json.get("success").asBoolean());
     assertFalse(az.active);
   }
 
+  private JsonNode doDeleteAZAndVerify(UUID providerUUID, UUID regionUUID,
+                                       UUID zoneUUID, int expectedStatus) {
+    String uri = "/api/customers/" + defaultCustomer.uuid +
+        "/providers/" + providerUUID + "/regions/" + regionUUID + "/zones/" + zoneUUID;
+    Result result = FakeApiHelper.doRequest("DELETE", uri);
+    assertEquals(expectedStatus, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
   private JsonNode doListAZAndVerifyResult(UUID cloudProvider, UUID region, int expectedStatus) {
-    String uri = "/api/providers/" + cloudProvider + "/regions/" + region + "/zones";
+    String uri = "/api/customers/" + defaultCustomer.uuid +
+        "/providers/" + cloudProvider + "/regions/" + region + "/zones";
     Result result = FakeApiHelper.doRequest("GET", uri);
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
@@ -157,7 +147,8 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
                                              ObjectNode azRequestJson,
                                              int expectedStatus) {
 
-    String uri = "/api/providers/" + cloudProvider + "/regions/" + region + "/zones";
+    String uri = "/api/customers/" + defaultCustomer.uuid +
+        "/providers/" + cloudProvider + "/regions/" + region + "/zones";
 
     Result result;
     if (azRequestJson != null) {

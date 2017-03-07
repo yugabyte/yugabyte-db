@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 
 import play.data.Form;
@@ -28,12 +27,13 @@ public class InstanceTypeController extends AuthenticatedController {
   /**
    * GET endpoint for listing instance types
    *
+   * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider
    * @return JSON response with instance types's
    */
-  public Result list(UUID providerUUID) {
+  public Result list(UUID customerUUID, UUID providerUUID) {
     List<InstanceType> instanceTypeList = null;
-    Provider provider = Provider.find.byId(providerUUID);
+    Provider provider = Provider.get(customerUUID, providerUUID);
 
     if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
@@ -42,7 +42,8 @@ public class InstanceTypeController extends AuthenticatedController {
     try {
       instanceTypeList = InstanceType.findByProvider(provider);
     } catch (Exception e) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      LOG.error("Unable to list Instance types {}:{}", providerUUID, e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to list InstanceType");
     }
     return ApiResponse.success(instanceTypeList);
   }
@@ -50,22 +51,19 @@ public class InstanceTypeController extends AuthenticatedController {
   /**
    * POST endpoint for creating new instance type
    *
+   * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider
    * @return JSON response of newly created instance type
    */
-  public Result create(UUID providerUUID) {
+  public Result create(UUID customerUUID, UUID providerUUID) {
     Form<InstanceType> formData = formFactory.form(InstanceType.class).bindFromRequest();
-    Provider provider = Provider.find.byId(providerUUID);
-    ObjectNode responseJson = Json.newObject();
-
-    if (provider == null) {
-      responseJson.put("error", "Invalid Provider UUID");
-      return badRequest(responseJson);
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
-    if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
 
     try {
@@ -77,21 +75,22 @@ public class InstanceTypeController extends AuthenticatedController {
                                             formData.get().volumeSizeGB,
                                             formData.get().volumeType,
                                             formData.get().instanceTypeDetails);
-      return ok(Json.toJson(it));
+      return ApiResponse.success(it);
     } catch (Exception e) {
-      responseJson.put("error", e.getMessage());
-      return internalServerError(responseJson);
+      LOG.error("Unable to create instance type {}: {}", formData.data(), e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create InstanceType" );
     }
   }
 
   /**
    * DELETE endpoint for deleting instance types.
+   * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider
    * @param instanceTypeCode, Instance Type code.
    * @return JSON response to denote if the delete was successful or not.
    */
-  public Result delete(UUID providerUUID, String instanceTypeCode) {
-    Provider provider = Provider.find.byId(providerUUID);
+  public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
 
     if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
@@ -100,7 +99,7 @@ public class InstanceTypeController extends AuthenticatedController {
     try {
       InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);
       if (instanceType == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid InstanceType Code: " + instanceTypeCode);
+        return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
       }
 
       instanceType.setActive(false);
@@ -109,18 +108,20 @@ public class InstanceTypeController extends AuthenticatedController {
       responseJson.put("success", true);
       return ApiResponse.success(responseJson);
     } catch (Exception e) {
+      LOG.error("Unable to delete instance type {}: {}", instanceTypeCode, e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete InstanceType: " + instanceTypeCode);
     }
   }
 
   /**
    * Info endpoint for getting instance type information.
+   * @param customerUUID, UUID of customer
    * @param providerUUID, UUID of provider.
    * @param instanceTypeCode, Instance type code.
    * @return JSON response with instance type information.
    */
-  public Result index(UUID providerUUID, String instanceTypeCode) {
-    Provider provider = Provider.find.byId(providerUUID);
+  public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
 
     if (provider == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);

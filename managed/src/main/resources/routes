@@ -21,19 +21,18 @@ POST    /api/customers/:cUUID/providers               com.yugabyte.yw.controller
 # Initialize cloud information.
 GET     /api/providers/:pUUID/initialize              com.yugabyte.yw.cloud.AWSInitializer.run(pUUID: java.util.UUID)
 
-# TODO: need to revamp all provider calls to take a customerUuid parameter!
 POST    /api/customers/:cUUID/providers/onprem        com.yugabyte.yw.controllers.CloudProviderController.setupOnPrem(cUUID: java.util.UUID)
-GET     /api/regions                                  com.yugabyte.yw.controllers.RegionController.listAllRegions()
-GET     /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(pUUID: java.util.UUID)
-POST    /api/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(pUUID: java.util.UUID)
-DELETE  /api/providers/:pUUID/regions/:rUUID          com.yugabyte.yw.controllers.RegionController.delete(pUUID: java.util.UUID, rUUID: java.util.UUID)
-GET     /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.list(pUUID: java.util.UUID, rUUID: java.util.UUID)
-POST    /api/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.create(pUUID: java.util.UUID, rUUID: java.util.UUID)
-DELETE  /api/providers/:pUUID/regions/:rUUID/zones/:azUUID  com.yugabyte.yw.controllers.AvailabilityZoneController.delete(pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID)
-GET     /api/providers/:pUUID/instance_types/:code    com.yugabyte.yw.controllers.InstanceTypeController.index(pUUID: java.util.UUID, code: java.lang.String)
-GET     /api/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.list(pUUID: java.util.UUID)
-POST    /api/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.create(pUUID: java.util.UUID)
-DELETE  /api/providers/:pUUID/instance_types/:code    com.yugabyte.yw.controllers.InstanceTypeController.delete(pUUID: java.util.UUID, code: java.lang.String)
+GET     /api/customers/:cUUID/regions                                  com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)
+GET     /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/providers/:pUUID/regions/:rUUID          com.yugabyte.yw.controllers.RegionController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
+GET     /api/customers/:cUUID/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers/:pUUID/regions/:rUUID/zones    com.yugabyte.yw.controllers.AvailabilityZoneController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID  com.yugabyte.yw.controllers.AvailabilityZoneController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID)
+GET     /api/customers/:cUUID/providers/:pUUID/instance_types/:code    com.yugabyte.yw.controllers.InstanceTypeController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, code: java.lang.String)
+GET     /api/customers/:cUUID/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
+DELETE  /api/customers/:cUUID/providers/:pUUID/instance_types/:code    com.yugabyte.yw.controllers.InstanceTypeController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, code: java.lang.String)
 
 
 # Customer profile API
