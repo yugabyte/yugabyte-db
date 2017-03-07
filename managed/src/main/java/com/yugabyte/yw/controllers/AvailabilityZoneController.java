@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.UUID;
 
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,29 +31,22 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * GET endpoint for listing availability zones
    * @return JSON response with availability zone's
    */
-  public Result list(UUID providerUUID, UUID regionUUID) {
-    Region region = Region.find.where()
-        .idEq(regionUUID)
-        .eq("provider_uuid", providerUUID)
-        .findUnique();
-
-    ObjectNode responseJson = Json.newObject();
+  public Result list(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+    Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
     if (region == null) {
       LOG.warn("PlacementRegion not found, cloud provider: " + providerUUID + ", region: " + regionUUID);
-      responseJson.put("error", "Invalid PlacementRegion/Provider UUID");
-      return badRequest(responseJson);
+      return ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");
     }
 
     try {
       List<AvailabilityZone>  zoneList = AvailabilityZone.find.where()
           .eq("region", region)
           .findList();
-      return ok(Json.toJson(zoneList));
+      return ApiResponse.success(zoneList);
     } catch (Exception e) {
-      // TODO: Handle exception and print user friendly message
-      responseJson.put("error", e.getMessage());
-      return internalServerError(responseJson);
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to fetch zones");
     }
   }
 
@@ -62,34 +54,26 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * POST endpoint for creating new region
    * @return JSON response of newly created region
    */
-  public Result create(UUID providerUUID, UUID regionUUID) {
+  public Result create(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Form<AvailabilityZoneFormData> formData = formFactory.form(AvailabilityZoneFormData.class).bindFromRequest();
-    Region region = Region.find.where()
-        .idEq(regionUUID)
-        .eq("provider_uuid", providerUUID)
-        .findUnique();
-
-    ObjectNode responseJson = Json.newObject();
+    Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
     if (region == null) {
-      responseJson.put("error", "Invalid PlacementRegion/Provider UUID");
-      return badRequest(responseJson);
+      return ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");
     }
 
     if (formData.hasErrors()) {
-      responseJson.set("error", formData.errorsAsJson());
-      return badRequest(responseJson);
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
     AvailabilityZoneFormData azData = formData.get();
 
     try {
       AvailabilityZone az = AvailabilityZone.create(region, azData.code, azData.name, azData.subnet);
-      return ok(Json.toJson(az));
+      return ApiResponse.success(az);
     } catch (Exception e) {
-      // TODO: Handle exception and print user friendly message
-      responseJson.put("error", e.getMessage());
-      return internalServerError(responseJson);
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create zone: " + azData.code);
     }
   }
 
@@ -100,9 +84,8 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @param azUUID AvailabilityZone UUID
    * @return JSON response on whether or not delete region was successful or not.
    */
-  public Result delete(UUID providerUUID, UUID regionUUID, UUID azUUID) {
-    Region region = Region.find.where()
-            .idEq(regionUUID).eq("provider_uuid", providerUUID).findUnique();
+  public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
+    Region region = Region.get(customerUUID, providerUUID, regionUUID);
 
     if (region == null) {
       ApiResponse.error(BAD_REQUEST, "Invalid PlacementRegion/Provider UUID");

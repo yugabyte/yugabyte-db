@@ -250,6 +250,6 @@ public class NodeManager extends DevopsBase {
 
     command.add(nodeTaskParam.nodeName);
 
-    return execCommand(nodeTaskParam.getRegion().provider.uuid, command);
+    return execCommand(nodeTaskParam.getProvider().uuid, command);
   }
 }

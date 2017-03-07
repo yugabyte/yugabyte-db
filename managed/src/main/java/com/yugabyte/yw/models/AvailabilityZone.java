@@ -9,7 +9,11 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 
+import com.avaje.ebean.Ebean;
 import com.avaje.ebean.Model;
+import com.avaje.ebean.Query;
+import com.avaje.ebean.RawSql;
+import com.avaje.ebean.RawSqlBuilder;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import play.data.validation.Constraints;
@@ -68,5 +72,14 @@ public class AvailabilityZone extends Model {
     return find.byId(zoneUuid);
   }
 
-  public Provider getProvider() { return region.provider; }
+  @JsonBackReference
+  public Provider getProvider() {
+    String providerQuery =
+        "select p.uuid, p.code, p.name from provider p where p.uuid = :p_uuid";
+    RawSql rawSql = RawSqlBuilder.parse(providerQuery).create();
+    Query<Provider> query = Ebean.find(Provider.class);
+    query.setRawSql(rawSql);
+    query.setParameter("p_uuid", region.provider.uuid);
+    return query.findUnique();
+  }
 }

@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -19,10 +21,9 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
@@ -55,7 +56,7 @@ public class ConfigHelperTest extends FakeDBApplication {
       when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
       when(application.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
     }
-    configHelper.loadConfigsToDB();
+    configHelper.loadConfigsToDB(application);
 
     for (ConfigHelper.ConfigType configType: ConfigHelper.ConfigType.values()) {
       assertEquals(map, configHelper.getConfig(configType));
@@ -65,7 +66,7 @@ public class ConfigHelperTest extends FakeDBApplication {
   @Test(expected = YAMLException.class)
   public void testLoadConfigsToDBWithoutFile() {
     when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
-    configHelper.loadConfigsToDB();
+    configHelper.loadConfigsToDB(application);
   }
 
   @Test
@@ -93,5 +94,29 @@ public class ConfigHelperTest extends FakeDBApplication {
     YugawareProperty.addConfigProperty(testConfig.toString(), null, testConfig.getDescription());
     Map<String, Object> data = configHelper.getConfig(testConfig);
     assertTrue(data.isEmpty());
+  }
+
+  @Test
+  public void testGetRegionMetadata() {
+    ConfigHelper.ConfigType awsRegionType = ConfigHelper.ConfigType.AWSRegionMetadata;
+    YugawareProperty.addConfigProperty(awsRegionType.toString(),
+        Json.parse("{\"region\": \"aws-data\"}"),
+        awsRegionType.getDescription());
+    ConfigHelper.ConfigType gcpRegionType = ConfigHelper.ConfigType.GCPRegionMetadata;
+    YugawareProperty.addConfigProperty(gcpRegionType.toString(),
+        Json.parse("{\"region\": \"gcp-data\"}"),
+        gcpRegionType.getDescription());
+    ConfigHelper.ConfigType dockerRegionType = ConfigHelper.ConfigType.DockerRegionMetadata;
+    YugawareProperty.addConfigProperty(dockerRegionType.toString(),
+        Json.parse("{\"region\": \"docker-data\"}"),
+        dockerRegionType.getDescription());
+
+    assertThat(configHelper.getRegionMetadata(Common.CloudType.aws).get("region"),
+        allOf(notNullValue(), equalTo("aws-data")));
+    assertThat(configHelper.getRegionMetadata(Common.CloudType.gcp).get("region"),
+        allOf(notNullValue(), equalTo("gcp-data")));
+    assertThat(configHelper.getRegionMetadata(Common.CloudType.docker).get("region"),
+        allOf(notNullValue(), equalTo("docker-data")));
+    assertTrue(configHelper.getRegionMetadata(Common.CloudType.onprem).isEmpty());
   }
 }

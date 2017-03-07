@@ -48,8 +48,10 @@ export function getProviderListFailure(error) {
   };
 }
 
-export function getRegionList(provider,isMultiAz) {
-  const request = axios.get(`${ROOT_URL}/providers/${provider}/regions?multiAZ=${isMultiAz}`);
+export function getRegionList(providerUUID, isMultiAz) {
+  var cUUID = localStorage.getItem("customer_id");
+  const request =
+    axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}/regions?multiAZ=${isMultiAz}`);
   return {
     type: GET_REGION_LIST,
     payload: request
@@ -70,8 +72,9 @@ export function getRegionListFailure(error) {
   };
 }
 
-export function getInstanceTypeList(provider) {
-  const request = axios.get(`${ROOT_URL}/providers/${provider}/instance_types`);
+export function getInstanceTypeList(providerUUID) {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}/instance_types`);
   return {
     type: GET_INSTANCE_TYPE_LIST,
     payload: request
@@ -93,7 +96,8 @@ export function getInstanceTypeListFailure(error) {
 }
 
 export function getSupportedRegionData() {
-  const request = axios.get(`${ROOT_URL}/regions`);
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/regions`);
   return {
     type: GET_SUPPORTED_REGION_DATA,
     payload: request

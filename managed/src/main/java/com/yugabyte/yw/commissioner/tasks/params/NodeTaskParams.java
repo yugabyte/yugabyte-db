@@ -27,12 +27,10 @@ public class NodeTaskParams extends UniverseTaskParams {
   public String instanceType;
 
   public AvailabilityZone getAZ() {
-    return AvailabilityZone.find.byId(azUuid);
+    return AvailabilityZone.find.fetch("region").where().idEq(azUuid).findUnique();
   }
 
-  public Region getRegion() {
-    return getAZ().region;
-  }
+  public Region getRegion() { return getAZ().region; }
 
   public Provider getProvider() { return getAZ().getProvider(); }
 

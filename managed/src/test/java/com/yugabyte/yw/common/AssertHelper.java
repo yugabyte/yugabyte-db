@@ -9,9 +9,8 @@ import play.mvc.Result;
 import java.util.List;
 
 import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.*;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
@@ -46,5 +45,19 @@ public class AssertHelper {
 
   public static void assertValues(JsonNode json, String key, List<String> values) {
     json.findValues(key).forEach((node) -> assertTrue(values.contains(node.asText())));
+  }
+
+  public static void assertErrorNodeValue(JsonNode json, String key, String value) {
+    JsonNode errorJson = json.get("error");
+    assertNotNull(errorJson);
+    if (key == null) {
+      assertThat(errorJson.asText(), allOf(notNullValue(), equalTo(value)));
+    } else {
+      assertThat(errorJson.get(key).get(0).asText(), allOf(notNullValue(), equalTo(value)));
+    }
+  }
+
+  public static void assertErrorNodeValue(JsonNode json, String value) {
+    assertErrorNodeValue(json, null, value);
   }
 }
