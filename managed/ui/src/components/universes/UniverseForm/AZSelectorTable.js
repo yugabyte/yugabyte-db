@@ -1,59 +1,161 @@
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
-import { YBNewSelect, YBNewNumericInput } from 'components/common/forms/fields';
-import { isValidArray, sortedGroupCounts } from 'utils/ObjectUtils';
+import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
+import { isValidArray, isValidObject } from 'utils/ObjectUtils';
+import {Row, Col} from 'react-bootstrap';
 
 export default class AZSelectorTable extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {azItemState: {}};
+    this.getGroupWithCounts = this.getGroupWithCounts.bind(this);
+    this.updatePlacementInfo = this.updatePlacementInfo.bind(this);
+  }
   static propTypes = {
     universe: PropTypes.object,
   }
 
-  render() {
-    const { universe } = this.props;
+  handleAZChange(listKey, event) {
+    var currentAZState = this.state.azItemState;
+    currentAZState[listKey].value = event.target.value;
+    this.updatePlacementInfo(currentAZState);
+  }
 
-    if (!isValidArray(universe.universeResourceTemplate.azList)) {
-      return <span />;
-    }
+  handleAZNodeCountChange(listKey, value) {
+    var currentAZState = this.state.azItemState;
+    currentAZState[listKey].count = value;
+    this.setState({azItemState: currentAZState});
+    this.updatePlacementInfo(currentAZState);
+  }
 
-    var maxNodeCount = universe.universeResourceTemplate.azList.length;
-    var counts = sortedGroupCounts(universe.universeResourceTemplate.azList);
-    var zoneNames = counts.map(function(zone) { return zone.value; });
-
-    var azFieldRows = counts.map(function(zone, idx) {
-      var rowName = 'az_' + idx;
-
-      // TODO: Add zone name (zone.value) and node count (zone.count) to form state
-      // TODO: to populate the default values of the fields below.
-
-      var zoneOptions = zoneNames.map(function(item, idx) {
-        return (<option key={'az_select_option_' + idx} value={item} selected={item === zone.value}>{item}</option>);
-      });
-
-      return (
-        <tr key={rowName}>
-          <td>
-            <Field name={rowName + '_name'} type="select" component={YBNewSelect} options={zoneOptions} />
-          </td>
-          <td>
-            <Field name={rowName + '_node_count'} type="text" component={YBNewNumericInput}
-              minVal={1} maxVal={maxNodeCount} />
-          </td>
-        </tr>
-      );
+  updatePlacementInfo(currentAZState) {
+    const {universe: {universeConfigTemplate}, cloud, numNodesChanged} = this.props;
+    this.setState({azItemState: currentAZState});
+    var totalNodesInConfig = 0;
+    currentAZState.forEach(function(item){
+      totalNodesInConfig += item.count;
     });
+    if (totalNodesInConfig !== universeConfigTemplate.userIntent.numNodes) {
+      numNodesChanged(totalNodesInConfig);
+    }
+    var newPlacementInfo = universeConfigTemplate.placementInfo;
+    newPlacementInfo.isCustom = true;
+    var newRegionList = [];
+    cloud.regions.forEach(function(regionItem){
+      var newAzList = [];
+      var zoneFoundInRegion = false;
+      regionItem.zones.forEach(function(zoneItem){
+        currentAZState.forEach(function(azItem){
+          if (zoneItem.uuid === azItem.value) {
+            zoneFoundInRegion = true;
+            newAzList.push({
+              uuid: zoneItem.uuid, replicationFactor: 1,
+              subnet: zoneItem.subnet, name: zoneItem.name
+              });
+            }
+          });
+        });
+        if (zoneFoundInRegion) {
+          newRegionList.push({uuid: regionItem.uuid, code: regionItem.code,
+                            name: regionItem.name, azList: newAzList});
+        }
+      });
+      newPlacementInfo.cloudList[0].regionList = newRegionList;
+      var newTaskParams = universeConfigTemplate;
+      newTaskParams.placementInfo = newPlacementInfo;
+     this.props.submitConfigureUniverse(newTaskParams);
+  }
 
+  getGroupWithCounts(universeConfigTemplate) {
+    var uniConfigArray = [];
+    if (isValidArray(universeConfigTemplate.nodeDetailsSet)) {
+      universeConfigTemplate.nodeDetailsSet.forEach(function(nodeItem){
+        var nodeFound = false;
+        for (var idx = 0; idx < uniConfigArray.length; idx++) {
+          if (uniConfigArray[idx].value === nodeItem.azUuid) {
+            nodeFound = true;
+            uniConfigArray[idx].count ++;
+            break;
+          }
+        }
+        if (!nodeFound) {
+          uniConfigArray.push({value: nodeItem.azUuid, count: 1})
+        }
+      });
+    }
+    var groupsArray = [];
+    if (isValidObject(universeConfigTemplate.placementInfo)) {
+      universeConfigTemplate.placementInfo.cloudList[0].regionList.forEach(function(regionItem){
+        regionItem.azList.forEach(function(azItem){
+           uniConfigArray.forEach(function(configArrayItem){
+             if(configArrayItem.value === azItem.uuid) {
+               groupsArray.push({value: azItem.uuid, count: configArrayItem.count})
+             }
+           });
+        });
+      });
+    }
+    return groupsArray;
+  }
+
+  componentWillReceiveProps(nextProps) {
+    const {universe: {universeConfigTemplate}} = nextProps;
+    var azGroups = this.getGroupWithCounts(universeConfigTemplate);
+    if (this.props.universe.universeConfigTemplate !== universeConfigTemplate
+      && isValidObject(universeConfigTemplate.placementInfo) && !universeConfigTemplate.placementInfo.isCustom) {
+        this.setState({azItemState: azGroups});
+      }
+      if (isValidObject(universeConfigTemplate) && isValidObject(universeConfigTemplate.placementInfo)) {
+        const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
+        if (isValidObject(uniqueAZs)) {
+          this.props.setPlacementStatus(uniqueAZs.length > 2 ? "optimal" : "suboptimal");
+        }
+      }
+  }
+
+  componentWillUnmount() {
+    this.props.resetConfig();
+  }
+
+  render() {
+    const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
+    var self = this;
+    var azListForSelectedRegions = [];
+    if (isValidObject(universeConfigTemplate.userIntent) && isValidArray(universeConfigTemplate.userIntent.regionList)) {
+       azListForSelectedRegions = regions.filter(
+        region => universeConfigTemplate.userIntent.regionList.includes(region.uuid)
+      ).reduce((az, region) => az.concat(region.zones), []);
+    }
+    var azListOptions = <span/>;
+    if (isValidArray(azListForSelectedRegions)) {
+      azListOptions = azListForSelectedRegions.map(function(azItem, azIdx){
+        return <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
+      });
+    }
+    var azGroups = self.state.azItemState;
+    var azList = [];
+    if (isValidArray(azGroups)) {
+      azList = azGroups.map(function(azGroupItem, idx){
+        return (
+          <Row key={idx} >
+            <Col lg={6}>
+              <Field name={`select${idx}`} component={YBControlledSelect}
+                     options={azListOptions} selectVal={azGroupItem.value}
+                     onInputChanged={self.handleAZChange.bind(self, idx)}/>
+            </Col>
+            <Col lg={6}>
+              <Field name={`nodes${idx}`} component={YBControlledNumericInput}
+                     val={azGroupItem.count}
+                     onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
+            </Col>
+          </Row>
+        )
+      })
+    }
     return (
-      <table className="form-grid">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Nodes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {azFieldRows}
-        </tbody>
-      </table>
-    );
+      <div className={"az-table-container"}>
+        {azList}
+      </div>
+    )
   }
 }

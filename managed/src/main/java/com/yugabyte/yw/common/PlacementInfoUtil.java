@@ -17,7 +17,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
-
+import java.util.ArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,18 +99,18 @@ public class PlacementInfoUtil {
         taskParams.nodeDetailsSet.addAll(existingNodes);
       } else {
         // In the case of Full Move get placementInfo from UserIntent
-        taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+        if ( taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
+          taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+        }
         // Here for full move based edit or full move + expand case.
         for (NodeDetails node : existingNodes) {
           node.state = NodeDetails.NodeState.ToBeDecommissioned;
           taskParams.nodeDetailsSet.add(node);
         }
       }
-    } else {
-      // In the case of Create, get placementInfo from UserIntent
-      taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+    } else if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
+        taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
     }
-
     // Compute the node states that should be configured for this operation.
     configureNodeStates(taskParams, startIndex, numDeltaNodes, numNewMasters);
   }
@@ -546,41 +546,51 @@ public class PlacementInfoUtil {
         addPlacementZone(azUUID, placementInfo);
       }
       return placementInfo;
-    }
+    } else {
+      List<AvailabilityZone> totalAzsInRegions = new ArrayList<>();
+      for (int idx = 0; idx < userIntent.regionList.size(); idx++) {
+        totalAzsInRegions.addAll(AvailabilityZone.getAZsForRegion(userIntent.regionList.get(idx)));
+      }
+      if (totalAzsInRegions.size() <= 2) {
+        for(int idx = 0; idx < userIntent.numNodes; idx++) {
+          addPlacementZone(totalAzsInRegions.get(idx % totalAzsInRegions.size()).uuid, placementInfo);
+        }
+      } else {
 
-    // If one region is specified, pick all three AZs from it. Make sure there are enough regions.
-    if (userIntent.regionList.size() == 1) {
-      selectAndAddPlacementZones(userIntent.regionList.get(0), placementInfo, 3);
-    } else if (userIntent.regionList.size() == 2) {
-      // Pick two AZs from one of the regions (preferred region if specified).
-      UUID preferredRegionUUID = userIntent.preferredRegion;
-      // If preferred region was not specified, then pick the region that has at least 2 zones as
-      // the preferred region.
-      if (preferredRegionUUID == null) {
-        if (AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0)).size() >= 2) {
-          preferredRegionUUID = userIntent.regionList.get(0);
+        // If one region is specified, pick all three AZs from it. Make sure there are enough regions.
+        if (userIntent.regionList.size() == 1) {
+          selectAndAddPlacementZones(userIntent.regionList.get(0), placementInfo, 3);
+        } else if (userIntent.regionList.size() == 2) {
+          // Pick two AZs from one of the regions (preferred region if specified).
+          UUID preferredRegionUUID = userIntent.preferredRegion;
+          // If preferred region was not specified, then pick the region that has at least 2 zones as
+          // the preferred region.
+          if (preferredRegionUUID == null) {
+            if (AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0)).size() >= 2) {
+              preferredRegionUUID = userIntent.regionList.get(0);
+            } else {
+              preferredRegionUUID = userIntent.regionList.get(1);
+            }
+          }
+          selectAndAddPlacementZones(preferredRegionUUID, placementInfo, 2);
+
+          // Pick one AZ from the other region.
+          UUID otherRegionUUID = userIntent.regionList.get(0).equals(preferredRegionUUID) ?
+            userIntent.regionList.get(1) :
+            userIntent.regionList.get(0);
+          selectAndAddPlacementZones(otherRegionUUID, placementInfo, 1);
+        } else if (userIntent.regionList.size() == 3) {
+          // If the user has specified three regions, pick one AZ from each region.
+          for (int idx = 0; idx < 3; idx++) {
+            selectAndAddPlacementZones(userIntent.regionList.get(idx), placementInfo, 1);
+          }
         } else {
-          preferredRegionUUID = userIntent.regionList.get(1);
+          throw new RuntimeException("Unsupported placement, num regions " +
+            userIntent.regionList.size() + " is more than replication factor of " +
+            userIntent.replicationFactor);
         }
       }
-      selectAndAddPlacementZones(preferredRegionUUID, placementInfo, 2);
-
-      // Pick one AZ from the other region.
-      UUID otherRegionUUID = userIntent.regionList.get(0).equals(preferredRegionUUID) ?
-        userIntent.regionList.get(1) :
-        userIntent.regionList.get(0);
-      selectAndAddPlacementZones(otherRegionUUID, placementInfo, 1);
-    } else if (userIntent.regionList.size() == 3) {
-      // If the user has specified three regions, pick one AZ from each region.
-      for (int idx = 0; idx < 3; idx++) {
-        selectAndAddPlacementZones(userIntent.regionList.get(idx), placementInfo, 1);
-      }
-    } else {
-      throw new RuntimeException("Unsupported placement, num regions " +
-        userIntent.regionList.size() + " is more than replication factor of " +
-        userIntent.replicationFactor);
     }
-
     return placementInfo;
   }
 

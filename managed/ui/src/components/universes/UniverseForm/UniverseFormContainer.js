@@ -11,7 +11,7 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog,
   configureUniverseTemplate, configureUniverseTemplateSuccess, configureUniverseTemplateFailure,
   configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
-  checkIfUniverseExists } from 'actions/universe';
+  checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration } from 'actions/universe';
 import { isDefinedNotNull, isValidArray } from 'utils/ObjectUtils';
 import { SOFTWARE_PACKAGE } from 'config';
 
@@ -98,12 +98,19 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(getRegionListSuccess(response.payload));
           }
         });
+    },
+    setPlacementStatus: (currentStatus) => {
+      dispatch(setPlacementStatus(currentStatus));
+    },
+
+    resetConfig: () => {
+      dispatch(resetUniverseConfiguration());
     }
   }
 }
 
 const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
-  'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage'];
+  'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage', 'azSelectorFields'];
 
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
