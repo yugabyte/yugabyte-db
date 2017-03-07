@@ -1,0 +1,10 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+.loading-icon-container {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 5% 0;
+  color: $YB_ORANGE;
+}

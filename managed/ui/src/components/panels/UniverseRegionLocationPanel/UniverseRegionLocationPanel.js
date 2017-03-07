@@ -3,13 +3,15 @@
 import React, { Component } from 'react';
 import {isValidArray} from '../../../utils/ObjectUtils';
 import { RegionMap } from '../../maps';
+import {YBLoadingIcon} from '../../common/indicators';
+import { RegionMapLegend } from '../../maps';
 
 export default class UniverseRegionLocationPanel extends Component {
 
   render() {
     const { cloud, universe: {universeList} } = this.props;
     if (!isValidArray(cloud.supportedRegionList)) {
-      return <span/>
+      return <YBLoadingIcon/>
     }
     var completeRegionList = cloud.supportedRegionList;
     var universeListByRegions = {};
@@ -32,7 +34,10 @@ export default class UniverseRegionLocationPanel extends Component {
     });
 
     return (
-      <RegionMap title="All Supported Regions" regions={completeRegionList} type="all"/>
+      <div>
+        <RegionMap title="All Supported Regions" regions={completeRegionList} type="all"/>
+        <RegionMapLegend />
+      </div>
     )
   }
 }

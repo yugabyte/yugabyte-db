@@ -8,6 +8,7 @@ import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
+import {YBLoadingIcon} from '../../common/indicators';
 
 export default class UniverseTable extends Component {
 
@@ -26,7 +27,7 @@ export default class UniverseTable extends Component {
     var self = this;
     const { universe: { universeList, universeTasks, loading }, universeReadWriteData } = this.props;
     if (loading) {
-      return <div className="container">Loading...</div>;
+      return <YBLoadingIcon/>;
     }
 
     var universeRowItem =

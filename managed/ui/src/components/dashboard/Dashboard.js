@@ -23,7 +23,6 @@ export default class Dashboard extends Component {
         </Col>
         <Col lg={12}>
           <UniverseRegionLocationPanelContainer {...this.props}/>
-          <RegionMapLegend />
         </Col>
       </div>
     );
