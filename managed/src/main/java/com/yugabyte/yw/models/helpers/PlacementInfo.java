@@ -44,6 +44,7 @@ public class PlacementInfo {
     // The subnet in the AZ.
     public String subnet;
   }
+  public Boolean isCustom = false;
 
   // The list of clouds to place data in.
   public List<PlacementCloud> cloudList = new ArrayList<PlacementCloud>();

@@ -10,11 +10,12 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
          OPEN_DIALOG, CLOSE_DIALOG, CONFIGURE_UNIVERSE_TEMPLATE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
          CONFIGURE_UNIVERSE_TEMPLATE_FAILURE, CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
          CONFIGURE_UNIVERSE_RESOURCES_FAILURE, ROLLING_UPGRADE, ROLLING_UPGRADE_SUCCESS, ROLLING_UPGRADE_FAILURE,
-         RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS }
+         RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS, SET_PLACEMENT_STATUS, RESET_UNIVERSE_CONFIGURATION }
         from '../actions/universe';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], error: null, showModal: false, visibleModal: "",
-                       formSubmitSuccess: false, universeConfigTemplate: {}, universeResourceTemplate: {}};
+                       formSubmitSuccess: false, universeConfigTemplate: {}, universeResourceTemplate: {},
+                       currentPlacementStatus: null};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -98,6 +99,10 @@ export default function(state = INITIAL_STATE, action) {
         }
       });
       return {...state, universeList: currentUniverseList}
+    case SET_PLACEMENT_STATUS:
+      return {...state, currentPlacementStatus: action.payload}
+    case RESET_UNIVERSE_CONFIGURATION:
+      return {...state, currentPlacementStatus: null, universeResourceTemplate: {}, universeConfigTemplate: {}}
     default:
       return state;
   }

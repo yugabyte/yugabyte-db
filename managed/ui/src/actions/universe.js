@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import { isValidObject } from '../utils/ObjectUtils';
 import { ROOT_URL } from '../config';
 
 // Create Universe
@@ -61,6 +60,12 @@ export const CHECK_IF_UNIVERSE_EXISTS = 'CHECK_IF_UNIVERSE_EXISTS';
 
 // Set Universe Read Write Metrics
 export const SET_UNIVERSE_METRICS = 'SET_UNIVERSE_METRICS';
+
+// Set Placement Status
+export const SET_PLACEMENT_STATUS = 'SET_PLACEMENT_STATUS';
+
+// Reset Universe Configuration
+export const RESET_UNIVERSE_CONFIGURATION = 'RESET_UNIVERSE_CONFIGURATION';
 
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
@@ -323,5 +328,18 @@ export function setUniverseMetrics(values) {
   return {
     type: SET_UNIVERSE_METRICS,
     payload: values
+  }
+}
+
+export function setPlacementStatus(currentStatus) {
+  return {
+    type: SET_PLACEMENT_STATUS,
+    payload: currentStatus
+  }
+}
+
+export function resetUniverseConfiguration() {
+  return {
+    type: RESET_UNIVERSE_CONFIGURATION
   }
 }
