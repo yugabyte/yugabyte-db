@@ -14,6 +14,7 @@ import { YBTabsPanel } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
+import {YBLoadingIcon} from '../../common/indicators';
 
 export default class UniverseDetail extends Component {
 
@@ -36,7 +37,7 @@ export default class UniverseDetail extends Component {
   render() {
     const { universe: { currentUniverse, universeTasks, loading, showModal, visibleModal } } = this.props;
     if (loading) {
-      return <div className="container">Loading...</div>;
+      return <YBLoadingIcon/>
     } else if (!currentUniverse) {
       return <span />;
     }

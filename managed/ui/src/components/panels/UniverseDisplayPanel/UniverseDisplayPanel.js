@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
-
+import {YBLoadingIcon} from '../../common/indicators';
 import { isValidObject } from 'utils/ObjectUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseFormContainer } from 'components/universes/UniverseForm';
@@ -76,7 +76,7 @@ export default class UniverseDisplayPanel extends Component {
     var self = this;
     const { universe: {universeList, loading, showModal, visibleModal}} = this.props;
     if (loading) {
-      return <div className="container">Loading...</div>;
+      return <YBLoadingIcon/>;
     }
     if (!isValidObject(universeList)) {
       return <span/>;
