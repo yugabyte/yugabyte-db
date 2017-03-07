@@ -15,6 +15,7 @@ export default class CustomerMetricsPanel extends Component {
         <GraphPanelContainer type={"cql"} nodePrefixes={nodePrefixes}/>
         <GraphPanelContainer type={"redis"} nodePrefixes={nodePrefixes}/>
         <GraphPanelContainer type={"tserver"} nodePrefixes={nodePrefixes}/>
+        <GraphPanelContainer type={"lsmdb"} nodePrefixes={nodePrefixes}/>
         <GraphPanelContainer type={"server"} nodePrefixes={nodePrefixes}/>
       </GraphPanelHeaderContainer>
     )
