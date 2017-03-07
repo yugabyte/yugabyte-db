@@ -81,6 +81,9 @@ export default class UniverseDetail extends Component {
             type={"tserver"}
             nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
           <GraphPanelContainer
+            type={"lsmdb"}
+            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
+          <GraphPanelContainer
             type={"server"}
             nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
         </GraphPanelHeaderContainer>
