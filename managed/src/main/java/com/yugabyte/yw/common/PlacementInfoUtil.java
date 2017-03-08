@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -43,6 +44,9 @@ public class PlacementInfoUtil {
   // This is the maximum number of subnets that the masters can be placed across, and need to be an
   // odd number for consensus to work.
   private static final int maxMasterSubnets = 3;
+
+  // List of replication factors supported currently.
+  private static final List<Integer> supportedRFs = ImmutableList.of(1, 3, 5, 7);
 
   /**
    * Helper API to compare existing intent to a new task params intent and see if it is a pure
@@ -112,7 +116,7 @@ public class PlacementInfoUtil {
         }
       }
     } else if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
-        taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+      taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
     }
     // Compute the node states that should be configured for this operation.
     configureNodeStates(taskParams, startIndex, numDeltaNodes, numNewMasters);
@@ -219,10 +223,21 @@ public class PlacementInfoUtil {
       throw new UnsupportedOperationException("providerType cannot be modified.");
     }
 
-    if (userIntent.numNodes < 3) {
-      LOG.error("Number of nodes cannot be reduced from {} to {}, to less than minimum of 3.",
-                existingIntent.numNodes, userIntent.numNodes);
-      throw new UnsupportedOperationException("Number of nodes cannot be reduced to less than 3.");
+    verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
+  }
+
+  // Helper API to verify number of nodes and replication factor requirements.
+  public static void verifyNodesAndRF(int numNodes, int replicationFactor) {
+    // We only support a replication factor of 1,3,5,7. TODO: Make the log output based on the list.
+    if (!supportedRFs.contains(replicationFactor)) {
+      throw new UnsupportedOperationException("Replication factor " + replicationFactor +
+                                              " not allowed, must be one of 1,3,5 or 7.");
+    }
+
+    if (numNodes < replicationFactor) {
+      LOG.error("Number of nodes {} cannot be below the replication factor of {}.",
+                numNodes, replicationFactor);
+      throw new UnsupportedOperationException("Number of nodes cannot be less than the replication factor.");
     }
   }
 
@@ -475,19 +490,23 @@ public class PlacementInfoUtil {
       nodeSet.add(entry.getKey());
     }
     LOG.info("Subnet map has {}, nodesMap has {}, need {} masters.",
-      subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
+             subnetsToNodenameMap.size(), nodesMap.size(), numMasters);
     // Choose the masters such that we have one master per subnet if there are enough subnets.
     int numMastersChosen = 0;
     if (subnetsToNodenameMap.size() >= maxMasterSubnets) {
-      for (Entry<String, TreeSet<String>> entry : subnetsToNodenameMap.entrySet()) {
-        // Get one node from each subnet.
-        String nodeName = entry.getValue().first();
-        NodeDetails node = nodesMap.get(nodeName);
-        node.isMaster = true;
-        LOG.info("Chose node {} as a master from subnet {}.", nodeName, entry.getKey());
-        numMastersChosen++;
-        if (numMastersChosen == numMasters) {
-          break;
+      while (numMastersChosen < numMasters) {
+        // Get one node from each subnet and removes it so that a different node is picked in next.
+        for (Entry<String, TreeSet<String>> entry : subnetsToNodenameMap.entrySet()) {
+          TreeSet<String>  value = entry.getValue();
+          String nodeName = value.first();
+          value.remove(nodeName);
+          NodeDetails node = nodesMap.get(nodeName);
+          node.isMaster = true;
+          LOG.info("Chose node '{}' as a master from subnet {}.", nodeName, entry.getKey());
+          numMastersChosen++;
+          if (numMastersChosen == numMasters) {
+            break;
+          }
         }
       }
     } else {
@@ -495,7 +514,7 @@ public class PlacementInfoUtil {
       for (NodeDetails node : nodesMap.values()) {
         node.isMaster = true;
         LOG.info("Chose node {} as a master from subnet {}.",
-          node.nodeName, node.cloudInfo.subnet_id);
+                  node.nodeName, node.cloudInfo.subnet_id);
         numMastersChosen++;
         if (numMastersChosen == numMasters) {
           break;
@@ -519,22 +538,20 @@ public class PlacementInfoUtil {
   }
 
   public static PlacementInfo getPlacementInfo(UserIntent userIntent) {
-    // We only support a replication factor of 3.
-    if (userIntent.replicationFactor != 3) {
-      throw new RuntimeException("Replication factor must be 3");
-    }
+    verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
+
     // Make sure the preferred region is in the list of user specified regions.
     if (userIntent.preferredRegion != null &&
-      !userIntent.regionList.contains(userIntent.preferredRegion)) {
+        !userIntent.regionList.contains(userIntent.preferredRegion)) {
       throw new RuntimeException("Preferred region " + userIntent.preferredRegion +
-        " not in user region list");
+                                 " not in user region list.");
     }
 
     // Create the placement info object.
     PlacementInfo placementInfo = new PlacementInfo();
-
-    // Handle the single AZ deployment case.
-    if (!userIntent.isMultiAZ) {
+    boolean useSingleAZ = !userIntent.isMultiAZ || (userIntent.replicationFactor == 1);
+    // Handle the single AZ deployment case or RF=1 case.
+    if (useSingleAZ) {
       // Select an AZ in the required region.
       List<AvailabilityZone> azList =
         AvailabilityZone.getAZsForRegion(userIntent.regionList.get(0));
@@ -559,7 +576,6 @@ public class PlacementInfoUtil {
           addPlacementZone(totalAzsInRegions.get(idx % totalAzsInRegions.size()).uuid, placementInfo);
         }
       } else {
-
         // If one region is specified, pick all three AZs from it. Make sure there are enough regions.
         if (userIntent.regionList.size() == 1) {
           selectAndAddPlacementZones(userIntent.regionList.get(0), placementInfo, 3);
