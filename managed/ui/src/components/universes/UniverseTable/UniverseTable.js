@@ -25,7 +25,7 @@ export default class UniverseTable extends Component {
 
   render() {
     var self = this;
-    const { universe: { universeList, universeTasks, loading }, universeReadWriteData } = this.props;
+    const { universe: { universeList, universeTasks, loading }, universeReadWriteData, tasks } = this.props;
     if (loading) {
       return <YBLoadingIcon/>;
     }
@@ -33,12 +33,18 @@ export default class UniverseTable extends Component {
     var universeRowItem =
       universeList.map(function (item, idx) {
         var universeTaskUUIDs = [];
-        if (isValidObject(universeTasks) && universeTasks[item.universeUUID] !== undefined) {
-        universeTaskUUIDs = universeTasks[item.universeUUID].map(function (task) {
-          return {"id": task.id, "data": task, "universe": item.universeUUID};
-        });
-      }
-        self.props.fetchCurrentTaskList(universeTaskUUIDs);
+        if (isValidArray(tasks.customerTaskList)) {
+          universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
+            if (taskItem.universeUUID === item.universeUUID) {
+              return {"id": taskItem.id, "data": taskItem, "universe": item.universeUUID};
+            } else {
+              return null;
+            }
+          }).filter(Boolean).sort(function(a, b){
+            return a.data.createTime < b.data.createTime;
+          })
+          console.log(universeTaskUUIDs);
+        }
         return <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
                                taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />
       });
@@ -53,6 +59,10 @@ export default class UniverseTable extends Component {
 }
 
 class YBUniverseItem extends Component {
+  componentWillMount() {
+    const {taskId} = this.props;
+    this.props.fetchCurrentTaskList(taskId);
+  }
   render() {
     const {universe, taskId} = this.props;
     var updateProgressStatus = false;

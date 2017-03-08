@@ -53,7 +53,7 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, universeList: [], error: error, loading: false};
     case RESET_UNIVERSE_LIST:
       return { ...state, universeList: [], universeCurrentCostList: [],
-        currentTotalCost: 0, error: null, loading: false};
+               currentTotalCost: 0, error: null, loading: false};
     case FETCH_UNIVERSE_TASKS:
       return { ...state, universeTasks: [], error: null, loading: true};
     case FETCH_UNIVERSE_TASKS_SUCCESS:

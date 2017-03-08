@@ -1,0 +1,21 @@
+@import "_style/colors.scss";
+
+/* Copyright (c) YugaByte, Inc. */
+
+.progress-bar-container {
+    min-height: 200px;
+}
+
+.progress-bar-container .progressbar {
+    margin-left: -50px ;
+    margin-top: 30px;
+}
+.description-text-container {
+    margin-top: 30px;
+}
+.description-text {
+    line-height: 1.5em;
+    font-size: 14px;
+    font-weight: 500;
+    color: $YB_DARK_GREY;
+}
