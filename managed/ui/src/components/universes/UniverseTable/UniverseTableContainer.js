@@ -8,7 +8,7 @@ import { fetchUniverseList, fetchUniverseListSuccess,
   fetchUniverseTasksSuccess, fetchUniverseTasksFailure,
   resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
 import { fetchTaskProgress, fetchCurrentTaskListSuccess,
-  fetchCurrentTaskListFailure, resetTaskProgress } from '../../../actions/tasks';
+  fetchCurrentTaskListFailure, resetTaskProgress, fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import { queryMetrics } from '../../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
@@ -27,12 +27,12 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(resetUniverseList());
     },
     fetchUniverseTasks: () => {
-      dispatch(fetchUniverseTasks())
+      dispatch(fetchCustomerTasks())
       .then((response) => {
         if (!response.error) {
-          dispatch(fetchUniverseTasksSuccess(response.payload));
+          dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
-          dispatch(fetchUniverseTasksFailure(response.payload));
+          dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
     },
@@ -81,7 +81,8 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   return {
     universe: state.universe,
-    graph: state.graph
+    graph: state.graph,
+    tasks: state.tasks
   };
 }
 

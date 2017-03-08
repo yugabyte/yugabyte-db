@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { UniverseInfoPanel, ConnectStringPanel } from '../../panels'
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
-import { TaskProgressContainer } from '../../tasks';
+import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatus, NodeDetails, DeleteUniverseContainer } from '..';
 import { YBButton } from '../../common/forms/fields';
@@ -14,7 +14,9 @@ import { YBTabsPanel } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
+import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 import {YBLoadingIcon} from '../../common/indicators';
+
 
 export default class UniverseDetail extends Component {
 
@@ -35,18 +37,11 @@ export default class UniverseDetail extends Component {
   }
 
   render() {
-    const { universe: { currentUniverse, universeTasks, loading, showModal, visibleModal } } = this.props;
+    const { universe: { currentUniverse, universeTasks, loading, showModal, visibleModal }, universe } = this.props;
     if (loading) {
       return <YBLoadingIcon/>
     } else if (!currentUniverse) {
       return <span />;
-    }
-
-    var universeTaskUUIDs = [];
-    if (universeTasks && universeTasks[currentUniverse.universeUUID] !== undefined) {
-      universeTaskUUIDs = universeTasks[currentUniverse.universeUUID].map(function(task) {
-        return (task.percentComplete !== 100) ? task.id : false;
-      }).filter(Boolean);
     }
 
     var tabElements = [
@@ -89,14 +84,12 @@ export default class UniverseDetail extends Component {
             type={"server"}
             nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
         </GraphPanelHeaderContainer>
+      </Tab>,
+      <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
+        <UniverseTaskList universe={universe}/>
+
       </Tab>]
 
-    if (universeTaskUUIDs.length > 0) {
-      tabElements.push(
-         <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
-           <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>
-         </Tab>)
-    }
     return (
       <Grid id="page-wrapper" fluid={true}>
         <Row>
@@ -154,5 +147,33 @@ export default class UniverseDetail extends Component {
         </YBTabsPanel>
       </Grid>
     );
+  }
+}
+
+class UniverseTaskList extends Component {
+
+  render() {
+    const {universe: {universeTasks, currentUniverse}} = this.props;
+    var universeTaskUUIDs = [];
+    var universeTaskHistoryArray = [];
+    var universeTaskHistory = <span/>;
+    if (isValidObject(universeTasks) && isValidObject(currentUniverse) && universeTasks[currentUniverse.universeUUID] !== undefined) {
+      universeTaskUUIDs = universeTasks[currentUniverse.universeUUID].map(function(task) {
+        if (task.status !== "Running") {
+          universeTaskHistoryArray.push(task);
+        }
+        return (task.status !== "Failed" && task.percentComplete !== 100) ? task.id : false;
+      }).filter(Boolean);
+    }
+    if (isValidArray(universeTaskHistoryArray)) {
+      universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>
+    }
+
+    return (
+      <div>
+        <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar"/>
+        {universeTaskHistory}
+      </div>
+    )
   }
 }
