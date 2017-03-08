@@ -9,12 +9,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,9 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
@@ -48,13 +45,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 public class AccessKeyControllerTest extends WithApplication {
   Provider defaultProvider;
   Customer defaultCustomer;
+  Region defaultRegion;
   AccessManager mockAccessManager;
 
   @Override
@@ -70,6 +67,7 @@ public class AccessKeyControllerTest extends WithApplication {
   public void before() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    defaultRegion = Region.create(defaultProvider, "us-west-2", "us-west-2", "yb-image");
   }
 
   private Result getAccessKey(UUID providerUUID, String keyCode) {
@@ -93,6 +91,7 @@ public class AccessKeyControllerTest extends WithApplication {
       List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData = new ArrayList<>();
       if (keyCode != null) {
         bodyData.add(new Http.MultipartFormData.DataPart("keyCode", keyCode));
+        bodyData.add(new Http.MultipartFormData.DataPart("regionUUID", defaultRegion.uuid.toString()));
         bodyData.add(new Http.MultipartFormData.DataPart("keyType", "PRIVATE"));
         String tmpFile = createTempFile("PRIVATE KEY DATA");
         Source<ByteString, ?> keyFile =  FileIO.fromFile(new File(tmpFile));
@@ -108,6 +107,7 @@ public class AccessKeyControllerTest extends WithApplication {
       ObjectNode bodyJson = Json.newObject();
       if (keyCode != null) {
         bodyJson.put("keyCode", keyCode);
+        bodyJson.put("regionUUID", defaultRegion.uuid.toString());
       }
       return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
           defaultCustomer.createAuthToken(), bodyJson);
@@ -166,7 +166,7 @@ public class AccessKeyControllerTest extends WithApplication {
     AccessKey.create(defaultProvider.uuid, "key-1", new AccessKey.KeyInfo());
     AccessKey.create(defaultProvider.uuid, "key-2", new AccessKey.KeyInfo());
     Result result = listAccessKey(defaultProvider.uuid);
-        JsonNode json = Json.parse(contentAsString(result));
+    JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertEquals(json.size(), 2);
     json.forEach((key) -> {
@@ -177,46 +177,45 @@ public class AccessKeyControllerTest extends WithApplication {
 
   @Test
   public void testCreateAccessKeyWithInvalidProviderUUID() {
-    UUID invalidProviderUUID = UUID.randomUUID();
-    Result result = createAccessKey(invalidProviderUUID, "foo", false);
-    assertBadRequest(result, "Invalid Provider UUID: " + invalidProviderUUID);
+    Result result = createAccessKey(UUID.randomUUID(), "foo", false);
+    assertBadRequest(result, "Invalid Provider/Region UUID");
   }
 
   @Test
   public void testCreateAccessKeyWithInvalidParams() {
     Result result = createAccessKey(defaultProvider.uuid, null, false);
-    assertBadRequest(result, "{\"keyCode\":[\"This field is required\"]}");
+    JsonNode node = Json.parse(contentAsString(result));
+    assertErrorNodeValue(node, "keyCode", "This field is required");
+    assertErrorNodeValue(node, "regionUUID", "This field is required");
   }
 
   @Test
   public void testCreateAccessKeyWithDifferentProviderUUID() {
     Provider gceProvider = ModelFactory.gceProvider(ModelFactory.testCustomer("foo@bar.com"));
     Result result = createAccessKey(gceProvider.uuid, "key-code", false);
-    assertBadRequest(result, "Invalid Provider UUID: " + gceProvider.uuid);
+    assertBadRequest(result, "Invalid Provider/Region UUID");
   }
 
   @Test
-  public void testCreateAccessKeyWithDuplicateKeyCode() {
-    AccessKey.create(defaultProvider.uuid, "key-code", new AccessKey.KeyInfo());
+  public void testCreateAccessKeyInDifferentRegion() {
+    AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code", new AccessKey.KeyInfo());
+    when(mockAccessManager.addKey(defaultRegion.uuid, "key-code")).thenReturn(accessKey);
     Result result = createAccessKey(defaultProvider.uuid, "key-code", false);
-    assertBadRequest(result, "Duplicate keycode: key-code");
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json.get("idKey"), "keyCode", "key-code");
+    assertValue(json.get("idKey"), "providerUUID", defaultProvider.uuid.toString());
   }
 
   @Test
   public void testCreateAccessKeyWithoutKeyFile() {
-    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    keyInfo.publicKey = "/path/to/public.key";
-    keyInfo.privateKey = "/path/to/private.key";
-    when(mockAccessManager.addKey(defaultProvider.uuid, "key-code-1")).thenReturn(keyInfo);
+    AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
+    when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1")).thenReturn(accessKey);
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
-    assertNotNull(json);
-    AccessKey accessKey = AccessKey.get(AccessKeyId.create(defaultProvider.uuid, "key-code-1"));
-    assertThat(accessKey.getKeyInfo().publicKey, allOf(notNullValue(),
-            equalTo("/path/to/public.key")));
-    assertThat(accessKey.getKeyInfo().privateKey, allOf(notNullValue(),
-              equalTo("/path/to/private.key")));
+    assertValue(json.get("idKey"), "keyCode", "key-code-1");
+    assertValue(json.get("idKey"), "providerUUID", defaultProvider.uuid.toString());
   }
 
   @Test
@@ -224,20 +223,16 @@ public class AccessKeyControllerTest extends WithApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
+    AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo);
     ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
-    when(mockAccessManager.uploadKeyFile(eq(defaultProvider.uuid), any(File.class),
-        eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE))).thenReturn(keyInfo);
+    when(mockAccessManager.uploadKeyFile(eq(defaultRegion.uuid), any(File.class),
+        eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE))).thenReturn(accessKey);
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", true);
-    Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultProvider.uuid),
+    Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
         updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE));
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertNotNull(json);
-    AccessKey accessKey = AccessKey.get(AccessKeyId.create(defaultProvider.uuid, "key-code-1"));
-    assertThat(accessKey.getKeyInfo().publicKey, allOf(notNullValue(),
-        equalTo("/path/to/public.key")));
-    assertThat(accessKey.getKeyInfo().privateKey, allOf(notNullValue(),
-        equalTo("/path/to/private.key")));
     try {
       List<String> lines = Files.readAllLines(updatedFile.getValue().toPath());
       assertEquals(1, lines.size());
@@ -245,6 +240,14 @@ public class AccessKeyControllerTest extends WithApplication {
     } catch (IOException e) {
       assertNull(e.getMessage());
     }
+  }
+
+  @Test
+  public void testCreateAccessKeyWithException() {
+    when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1"))
+        .thenThrow(new RuntimeException("Something went wrong!!"));
+    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false);
+    assertErrorResponse(result, "Something went wrong!!");
   }
 
   @Test

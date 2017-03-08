@@ -137,7 +137,6 @@ public class Util {
       String uuidWithHyphens = id.replaceAll(
         "(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})",
         "$1-$2-$3-$4-$5");
-      System.out.println(uuidWithHyphens);
       return UUID.fromString(uuidWithHyphens);
     }
   }

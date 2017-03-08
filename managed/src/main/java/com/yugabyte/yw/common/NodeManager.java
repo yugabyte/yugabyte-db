@@ -30,6 +30,13 @@ import java.util.stream.Collectors;
 
 @Singleton
 public class NodeManager extends DevopsBase {
+  private static final String YB_CLOUD_COMMAND_TYPE = "instance";
+
+  @Override
+  protected String getCommandType() {
+    return YB_CLOUD_COMMAND_TYPE;
+  }
+
   // Currently we need to define the enum such that the lower case value matches the action
   public enum NodeCommandType {
     Provision,
@@ -43,13 +50,8 @@ public class NodeManager extends DevopsBase {
   @Inject
   play.Configuration appConfig;
 
-  private List<String> cloudBaseCommand(NodeTaskParams nodeTaskParam) {
+  private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
     List<String> command = new ArrayList<String>();
-    command.add("--zone");
-    command.add(nodeTaskParam.getAZ().code);
-    command.add("--region");
-    command.add(nodeTaskParam.getRegion().code);
-
     // Right now for docker we grab the network from application conf.
     if (nodeTaskParam.cloud == Common.CloudType.docker) {
       String networkName = appConfig.getString("yb.docker.network");
@@ -184,8 +186,7 @@ public class NodeManager extends DevopsBase {
 
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
-    List<String> command = cloudBaseCommand(nodeTaskParam);
-    command.add("instance");
+    List<String> command = new ArrayList<>();
     command.add(type.toString().toLowerCase());
 
     switch (type) {
@@ -250,6 +251,6 @@ public class NodeManager extends DevopsBase {
 
     command.add(nodeTaskParam.nodeName);
 
-    return execCommand(nodeTaskParam.getProvider().uuid, command);
+    return execCommand(nodeTaskParam.azUuid, command, getCloudArgs(nodeTaskParam));
   }
 }
