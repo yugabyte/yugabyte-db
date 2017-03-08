@@ -5,6 +5,8 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -26,7 +28,12 @@ public class AccessManager extends DevopsBase {
     @Inject
     play.Configuration appConfig;
 
-    public static final String YB_CLOUD_ACCESS_COMMAND = "access";
+    private static final String YB_CLOUD_COMMAND_TYPE = "access";
+
+    @Override
+    protected String getCommandType() {
+        return YB_CLOUD_COMMAND_TYPE;
+    }
 
     public enum KeyType {
         PUBLIC,
@@ -60,9 +67,14 @@ public class AccessManager extends DevopsBase {
     }
 
     // This method would upload the provided key file to the provider key file path.
-    public AccessKey.KeyInfo uploadKeyFile(UUID providerUUID, File uploadedFile,
-                                           String keyCode, KeyType keyType) {
-        String keyFilePath = getKeyFilePath(providerUUID);
+    public AccessKey uploadKeyFile(UUID regionUUID, File uploadedFile,
+                                   String keyCode, KeyType keyType) {
+        Region region = Region.get(regionUUID);
+        String keyFilePath = getKeyFilePath(region.provider.uuid);
+        AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
+        if (accessKey != null) {
+            throw new RuntimeException("Duplicate Access KeyCode: " + keyCode);
+        }
         Path source = Paths.get(uploadedFile.getAbsolutePath());
         Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
         if (!Files.exists(source)) {
@@ -86,70 +98,78 @@ public class AccessManager extends DevopsBase {
         } else {
             keyInfo.privateKey = keyFileName;
         }
-        return keyInfo;
+        return AccessKey.create(region.provider.uuid, keyCode, keyInfo);
     }
 
     // This method would create a public/private key file and upload that to
     // the provider cloud account. And store the credentials file in the keyFilePath
     // and return the file names. It will also create the vault file
-    public AccessKey.KeyInfo addKey(UUID providerUUID, String keyCode) {
+    public AccessKey addKey(UUID regionUUID, String keyCode) {
         List<String> command = new ArrayList<String>();
-        String keyFilePath = getKeyFilePath(providerUUID);
-        command.add(YB_CLOUD_ACCESS_COMMAND);
+        Region region = Region.get(regionUUID);
+        String keyFilePath = getKeyFilePath(region.provider.uuid);
+        AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
+
         command.add("add-key");
         command.add("--key_pair_name");
         command.add(keyCode);
         command.add("--key_file_path");
         command.add(keyFilePath);
 
-        JsonNode response = executeCommand(providerUUID, command);
+        if (accessKey != null && accessKey.getKeyInfo().privateKey != null) {
+            command.add("--private_key_file");
+            command.add(accessKey.getKeyInfo().privateKey);
+        }
+
+        JsonNode response = executeCommand(regionUUID, command);
         if (response.has("error")) {
             throw new RuntimeException(response.get("error").asText());
         }
 
-        AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-        keyInfo.publicKey = response.get("public_key").asText();
-        keyInfo.privateKey = response.get("private_key").asText();
-
-        JsonNode vaultResponse = createVault(providerUUID, keyInfo.privateKey);
-        if (response.has("error")) {
-            throw new RuntimeException(response.get("error").asText());
+        if (accessKey == null) {
+            AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+            keyInfo.publicKey = response.get("public_key").asText();
+            keyInfo.privateKey = response.get("private_key").asText();
+            JsonNode vaultResponse = createVault(regionUUID, keyInfo.privateKey);
+            if (response.has("error")) {
+                throw new RuntimeException(response.get("error").asText());
+            }
+            keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
+            keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
+            accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
         }
-        keyInfo.vaultFile = vaultResponse.get("vault_file").asText();
-        keyInfo.vaultPasswordFile = vaultResponse.get("vault_password").asText();
-        return keyInfo;
+        return accessKey;
     }
 
-    public JsonNode createVault(UUID providerUUID, String privateKeyFile) {
+    public JsonNode createVault(UUID regionUUID, String privateKeyFile) {
         List<String> command = new ArrayList<String>();
 
         if (!new File(privateKeyFile).exists()) {
             throw new RuntimeException("File " + privateKeyFile + " doesn't exists.");
         }
-        command.add(YB_CLOUD_ACCESS_COMMAND);
         command.add("create-vault");
         command.add("--private_key_file");
         command.add(privateKeyFile);
-        return executeCommand(providerUUID, command);
+        return executeCommand(regionUUID, command);
     }
-
-    public JsonNode listKeys(UUID providerUUID) {
+    
+    public JsonNode listKeys(UUID regionUUID) {
         List<String> command = new ArrayList<String>();
-        command.add(YB_CLOUD_ACCESS_COMMAND);
         command.add("list-keys");
-        return executeCommand(providerUUID, command);
+        return executeCommand(regionUUID, command);
     }
 
-    // TODO: Move this out of here..
-    public JsonNode listRegions(UUID providerUUID) {
-        List<String> command = new ArrayList<String>();
-        command.add(YB_CLOUD_ACCESS_COMMAND);
-        command.add("list-regions");
-        return executeCommand(providerUUID, command);
-    }
+    private JsonNode executeCommand(UUID regionUUID, List<String> commandArgs) {
+        // Since our YBCloud api calls we provider zones, we will just one of the AZ for the
+        // given region.
+        List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(regionUUID);
+        if (zones.isEmpty()) {
+            String errMsg = "No Zones found for Region UUID: " + regionUUID;
+            LOG.error(errMsg);
+            return ApiResponse.errorJSON(errMsg);
+        }
 
-    private JsonNode executeCommand(UUID providerUUID, List<String> commandArgs) {
-        ShellProcessHandler.ShellResponse response = execCommand(providerUUID, commandArgs);
+        ShellProcessHandler.ShellResponse response = execCommand(zones.get(0).uuid, commandArgs);
         if (response.code == 0) {
             return Json.parse(response.message);
         } else {

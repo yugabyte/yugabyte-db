@@ -9,6 +9,7 @@ import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -63,34 +64,30 @@ public class AccessKeyController extends AuthenticatedController {
       if (formData.hasErrors()) {
         return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
       }
-      String validationError = validateUUIDs(customerUUID, providerUUID);
-      if (validationError != null) {
-          return ApiResponse.error(BAD_REQUEST, validationError);
+
+      UUID regionUUID = formData.get().regionUUID;
+      Region region = Region.get(customerUUID, providerUUID, regionUUID);
+      if (region == null) {
+        return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID");
       }
 
       String keyCode = formData.get().keyCode;
       AccessManager.KeyType keyType = formData.get().keyType;
 
-      AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-      if (accessKey != null) {
-          return ApiResponse.error(BAD_REQUEST, "Duplicate keycode: " + keyCode);
-      }
-
+      AccessKey accessKey;
       // Check if a public/private key was uploaded as part of the request
       Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
       try {
-        AccessKey.KeyInfo keyInfo;
         if (multiPartBody != null) {
           Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
           File uploadedFile = (File) filePart.getFile();
           if (keyType == null || uploadedFile == null) {
             return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
           }
-          keyInfo = accessManager.uploadKeyFile(providerUUID, uploadedFile, keyCode, keyType);
+          accessKey = accessManager.uploadKeyFile(region.uuid, uploadedFile, keyCode, keyType);
         } else {
-          keyInfo = accessManager.addKey(providerUUID, keyCode);
+          accessKey = accessManager.addKey(region.uuid, keyCode);
         }
-        accessKey = AccessKey.create(providerUUID, keyCode, keyInfo);
       } catch(RuntimeException re) {
         return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());
       }
