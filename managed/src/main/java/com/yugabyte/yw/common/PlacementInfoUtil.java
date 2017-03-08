@@ -95,7 +95,10 @@ public class PlacementInfoUtil {
         numNewMasters = 0;
         LOG.info("Num nodes changing from {} to {}.",
                  existingIntent.numNodes, taskParams.userIntent.numNodes);
-        taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
+        // If Placement Info has not been set by client.
+        if (!taskParams.placementInfo.isCustom) {
+          taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
+        }
         taskParams.nodeDetailsSet.addAll(existingNodes);
       } else {
         // In the case of Full Move get placementInfo from UserIntent
