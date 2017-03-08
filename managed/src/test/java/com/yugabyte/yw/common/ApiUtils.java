@@ -25,10 +25,11 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails.userIntent = new UserIntent();
         // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 3;
+        universeDetails.userIntent.numNodes = universeDetails.userIntent.replicationFactor;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running);
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
+                                           idx <= universeDetails.userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = nodePrefix;
@@ -46,7 +47,9 @@ public class ApiUtils {
         universeDetails.userIntent = userIntent;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running);
+          NodeDetails node =
+              getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
+                 idx <= universeDetails.userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.nodePrefix = "host";
@@ -62,10 +65,11 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails.userIntent = new UserIntent();
         // Add a desired number of nodes.
-        universeDetails.userIntent.numNodes = 3;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.userIntent.numNodes = universeDetails.userIntent.replicationFactor;
         for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
-          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running);
+          NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Running,
+                                 idx <= universeDetails.userIntent.replicationFactor);
           universeDetails.nodeDetailsSet.add(node);
         }
 
@@ -78,6 +82,12 @@ public class ApiUtils {
   }
 
   public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state) {
+    return getDummyNodeDetails(idx, state, false /* isMaster */);
+  }
+
+  private static NodeDetails getDummyNodeDetails(int idx,
+                                                 NodeDetails.NodeState state,
+                                                 boolean isMaster) {
     NodeDetails node = new NodeDetails();
     node.nodeName = "host-n" + idx;
     node.cloudInfo = new CloudSpecificInfo();
@@ -89,9 +99,7 @@ public class ApiUtils {
     node.cloudInfo.instance_type = "c3-large";
     node.isTserver = true;
     node.state = state;
-    if (idx <= 3) {
-      node.isMaster = true;
-    }
+    node.isMaster = isMaster;
     node.nodeIdx = idx;
     return node;
   }

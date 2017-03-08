@@ -27,7 +27,7 @@ public class NodeDetailsTest {
   public void testToString() {
     assertThat(nd.toString(), allOf(notNullValue(),
                                     equalTo("name: host-n1.cloudInfo: az-1.test-region.aws, type: c3-large, " +
-                                              "ip: host-n1, isMaster: true, isTserver: true, state: Running")));
+                                              "ip: host-n1, isMaster: false, isTserver: true, state: Running")));
   }
 
   @Test

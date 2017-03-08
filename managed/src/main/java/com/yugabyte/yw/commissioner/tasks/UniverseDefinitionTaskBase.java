@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -386,11 +387,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (taskParams().nodePrefix == null) {
       throw new RuntimeException(getName() + ": nodePrefix not set");
     }
-    if (taskParams().userIntent.numNodes < 3) {
-      throw new RuntimeException(getName() + ": numNodes is invalid, need at least 3 nodes");
-    }
-    if (taskParams().userIntent.replicationFactor < 3) {
-      throw new RuntimeException(getName() + ": replicationFactor is invalid, needs to be at least 3.");
-    }
+    PlacementInfoUtil.verifyNodesAndRF(taskParams().userIntent.numNodes, taskParams().userIntent.replicationFactor);
   }
 }

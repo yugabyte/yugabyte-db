@@ -75,7 +75,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public CloudType providerType = CloudType.unknown;
 
     // The replication factor.
-    @Constraints.Min(3)
+    @Constraints.Min(1)
     public int replicationFactor = 3;
 
     // Determines if this universe is a single or multi AZ deployment.
@@ -93,7 +93,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public String instanceType;
 
     // The number of nodes to provision. These include ones for both masters and tservers.
-    @Constraints.Min(3)
+    @Constraints.Min(1)
     public int numNodes;
 
     // The software version of YB to install.
