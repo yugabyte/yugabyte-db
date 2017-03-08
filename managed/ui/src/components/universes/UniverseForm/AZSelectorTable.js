@@ -63,7 +63,7 @@ export default class AZSelectorTable extends Component {
       newPlacementInfo.cloudList[0].regionList = newRegionList;
       var newTaskParams = universeConfigTemplate;
       newTaskParams.placementInfo = newPlacementInfo;
-     this.props.submitConfigureUniverse(newTaskParams);
+      this.props.submitConfigureUniverse(newTaskParams);
   }
 
   getGroupWithCounts(universeConfigTemplate) {
@@ -98,19 +98,26 @@ export default class AZSelectorTable extends Component {
     return groupsArray;
   }
 
+  componentWillMount() {
+    const {universe: {universeConfigTemplate, currentUniverse}, type} = this.props;
+    if (type === "Edit" &&  isValidObject(currentUniverse)) {
+      var azGroups = this.getGroupWithCounts(universeConfigTemplate);
+      this.setState({azItemState: azGroups});
+    }
+  }
   componentWillReceiveProps(nextProps) {
     const {universe: {universeConfigTemplate}} = nextProps;
     var azGroups = this.getGroupWithCounts(universeConfigTemplate);
     if (this.props.universe.universeConfigTemplate !== universeConfigTemplate
       && isValidObject(universeConfigTemplate.placementInfo) && !universeConfigTemplate.placementInfo.isCustom) {
         this.setState({azItemState: azGroups});
-      }
-      if (isValidObject(universeConfigTemplate) && isValidObject(universeConfigTemplate.placementInfo)) {
+    }
+    if (isValidObject(universeConfigTemplate) && isValidObject(universeConfigTemplate.placementInfo)) {
         const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
         if (isValidObject(uniqueAZs)) {
           this.props.setPlacementStatus(uniqueAZs.length > 2 ? "optimal" : "suboptimal");
         }
-      }
+    }
   }
 
   componentWillUnmount() {
