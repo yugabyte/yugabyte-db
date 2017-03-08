@@ -3,6 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 import { TaskProgressBar, TaskProgressBarWithDetails, TaskProgressStepBar  } from '..';
 import { isValidObject } from '../../../utils/ObjectUtils';
+import {YBLoadingIcon} from '../../common/indicators';
 
 export default class TaskProgress extends Component {
   static contextTypes = {
@@ -37,7 +38,7 @@ export default class TaskProgress extends Component {
     if (taskUUIDs.length === 0) {
       return <span />;
     } else if (loading || taskProgressData.length === 0) {
-      return <div className="container">Loading...</div>;
+      return <YBLoadingIcon/>;
     } else if (taskProgressData.status === "Success" ||
       taskProgressData.status === "Failure") {
       // TODO: Better handle/display the success/failure case

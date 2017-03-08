@@ -32,6 +32,7 @@ export default function(state = INITIAL_STATE, action) {
       var taskListResultArray = [];
       Object.keys(taskData).forEach(function(taskIdx){
         taskData[taskIdx].forEach(function(taskItem){
+          taskItem.universeUUID = taskIdx;
           taskListResultArray.push(taskItem);
         })
       });

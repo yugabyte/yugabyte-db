@@ -148,6 +148,7 @@ function mapStateToProps(state, ownProps) {
 
   return {
     universe: state.universe,
+    tasks: state.tasks,
     cloud: state.cloud,
     initialValues: data,
     formValues: selector(state,
