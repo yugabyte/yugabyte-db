@@ -216,7 +216,9 @@ compiler_args=( "$@" )
 
 YB_SRC="$YB_SRC_ROOT/src"
 
-resolve_symlinks_in_args
+if [[ -z ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
+  resolve_symlinks_in_args
+fi
 
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is
