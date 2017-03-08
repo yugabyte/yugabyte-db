@@ -69,7 +69,7 @@ public class AvailabilityZone extends Model {
   }
 
   public static AvailabilityZone get(UUID zoneUuid) {
-    return find.byId(zoneUuid);
+    return AvailabilityZone.find.fetch("region").where().idEq(zoneUuid).findUnique();
   }
 
   @JsonBackReference
