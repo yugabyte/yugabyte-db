@@ -89,13 +89,15 @@ export default class UniverseForm extends Component {
 
   componentWillMount() {
     if (this.props.type === "Edit") {
-      var providerUUID = this.props.universe.currentUniverse.provider.uuid;
-      var isMultiAZ = this.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ;
+      const {universe: {currentUniverse}} = this.props;
+      var providerUUID = currentUniverse.provider.uuid;
+      var isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
       this.setState({providerSelected: providerUUID});
       this.setState({azCheckState: isMultiAZ});
-      this.setState({instanceTypeSelected: this.props.universe.currentUniverse.universeDetails.userIntent.instanceType});
+      this.setState({instanceTypeSelected: currentUniverse.universeDetails.userIntent.instanceType});
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
+      this.props.submitConfigureUniverse({userIntent: currentUniverse.universeDetails.userIntent});
     }
   }
 

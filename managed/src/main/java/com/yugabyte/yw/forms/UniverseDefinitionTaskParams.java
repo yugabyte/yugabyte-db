@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Objects;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -131,7 +132,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           replicationFactor == other.replicationFactor &&
           isMultiAZ == other.isMultiAZ &&
           compareRegionLists(regionList, other.regionList) &&
-          preferredRegion.equals(other.preferredRegion) &&
+          Objects.equals(preferredRegion, other.preferredRegion) &&
           instanceType.equals(other.instanceType) &&
           numNodes == other.numNodes &&
           ybServerPackage.equals(other.ybServerPackage) &&
