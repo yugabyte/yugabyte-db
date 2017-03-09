@@ -2,11 +2,11 @@
 
 import React, { Component } from 'react';
 import 'react-fa';
-import { MenuItem , NavDropdown, Navbar, Nav, Image } from 'react-bootstrap';
+import { MenuItem , NavDropdown, Navbar, Nav } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { HighlightedStatsPanelContainer } from '../../panels';
 import { TaskAlertsContainer } from '../../tasks';
-import logo from './images/small-logo.png';
+import YBLogo from '../YBLogo/YBLogo';
 import './stylesheets/TopNavBar.scss';
 
 export default class TopNavBar extends Component {
@@ -25,7 +25,7 @@ export default class TopNavBar extends Component {
 			<Navbar fixedTop>
 				<Navbar.Header>
 					<Link to="/" className="col-md-3 left_col text-center">
-						<Image src={logo} className="yb-logo-img" />
+						<YBLogo />
 					</Link>
 				</Navbar.Header>
 				<Nav pullRight>
