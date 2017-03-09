@@ -20,6 +20,11 @@ import re
 import subprocess
 import sys
 
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', 'python'))
+
+# "noqa" silences the code style warning in the following line.
+from yb.command_util import run_program  # noqa
+
 READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
 
 # We have to update paths to Linuxbrew libraries dependent on the home directory. We are using a
@@ -27,6 +32,8 @@ READELF_RPATH_RE = re.compile(r'Library (?:rpath|runpath): \[(.+)\]')
 LINUXBREW_PATH_RE = re.compile(r'/home/[^/]+/([.]linuxbrew-yb-build/.*)$')
 
 HOME_DIR = os.path.expanduser('~')
+
+patchelf_path = None  # This is set in main().
 
 
 def run_ldd(elf_file_path, report_missing_libs=False):
@@ -72,6 +79,32 @@ def add_if_absent(items, new_item):
     """
     if new_item not in items:
         items.append(new_item)
+
+
+def update_interpreter(binary_path):
+    """
+    Runs patchelf --set-interpreter on the given file to use Linuxbrew's dynamic loader if
+    necessary.
+
+    @return True in case of success.
+    """
+
+    print_interpreter_result = run_program([patchelf_path, '--print-interpreter', binary_path],
+                                           error_ok=True)
+    if print_interpreter_result.returncode != 0:
+        if print_interpreter_result.stderr.strip() == "cannot find section .interp":
+            return True  # This is OK.
+        logging.error(print_interpreter.error_msg)
+        return False
+    interpreter_path = print_interpreter_result.stdout.strip()
+    linuxbrew_interpreter_path_suffix = '.linuxbrew-yb-build/lib/ld.so'
+    if interpreter_path.endswith('/' + linuxbrew_interpreter_path_suffix):
+        new_interpreter_path = os.path.join(HOME_DIR, linuxbrew_interpreter_path_suffix)
+        if new_interpreter_path != interpreter_path:
+            logging.info("Setting interpreter to '{}' on '{}'".format(
+                    new_interpreter_path, binary_path))
+            run_program([patchelf_path, '--set-interpreter', new_interpreter_path, binary_path])
+    return True
 
 
 def main():
@@ -120,14 +153,26 @@ def main():
             for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
             ]
 
-    # Prefer patchelf to chrpath as it is more flexible and can in fact increase the length of rpath
-    # if there is enough space. This could happen if rpath used to be longer but was reduced by a
-    # previous patchelf / chrpath command.
-    change_rpath_cmd = 'chrpath -r'
-    for patchelf_path in ['/usr/bin/patchelf',
-                          os.path.join(HOME_DIR, '.linuxbrew-yb-build', 'bin', 'patchelf')]:
-        if os.path.isfile(patchelf_path):
-            change_rpath_cmd = patchelf_path + ' --set-rpath'
+    # We need patchelf as it is more flexible than chrpath and can in fact increase the length of
+    # rpath if there is enough space. This could happen if rpath used to be longer but was reduced
+    # by a previous patchelf / chrpath command. Another reason we need patchelf is to set the
+    # interpreter (dynamic linker) path on binaries that used to point to Linuxbrew's dynamic linker
+    # installed in a different location.
+    global patchelf_path
+
+    patchelf_possible_paths = [
+            '/usr/bin/patchelf',
+            os.path.join(HOME_DIR, '.linuxbrew-yb-build', 'bin', 'patchelf')]
+    for patchelf_path_candidate in patchelf_possible_paths:
+        if os.path.isfile(patchelf_path_candidate):
+            patchelf_path = patchelf_path_candidate
+            break
+    if not patchelf_path:
+        logging.error("Could not find patchelf in any of the paths: {}".format(
+            patchelf_possible_paths))
+        return False
+
+    change_rpath_cmd = patchelf_path + ' --set-rpath'
     logging.info("Command for updating rpath: {}".format(change_rpath_cmd))
 
     num_binaries_no_rpath_change = 0
@@ -253,6 +298,9 @@ def main():
                                      binary_path, set_rpath_exit_code))
                         is_success = False
                     num_binaries_updated_rpath += 1
+
+                    if not update_interpreter(binary_path):
+                        is_success = False
 
     logging.info("Number of binaries with no rpath change: {}, updated rpath: {}".format(
         num_binaries_no_rpath_change, num_binaries_updated_rpath))

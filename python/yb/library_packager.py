@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
-# Copyright (c) YugaByte, Inc.
 
 """
+Copyright (c) YugaByte, Inc.
+
 Finds all Linux dynamic libraries that have to be packaged with the YugaByte distribution tarball
 by starting from a small set of executables and walking the dependency graph.
 
@@ -22,16 +23,16 @@ import os
 import re
 import shutil
 import stat
-import subprocess
 import sys
 import yaml
 
-from collections import deque, defaultdict, namedtuple
+from collections import deque, defaultdict
 from os.path import basename as path_basename
 from os.path import dirname as path_dirname
 from os.path import join as path_join
 from os.path import realpath
 from distutils.dir_util import mkpath
+from yb.command_util import run_program
 
 
 # A resolved shared library dependency shown by ldd.
@@ -95,28 +96,6 @@ class Dependency:
         return dict(name=self.name,
                     original_location=normalize_path_for_metadata(self.target),
                     via_dlopen=self.via_dlopen)
-
-
-ProgramResult = namedtuple('ProgramResult', ['returncode', 'stdout', 'stderr', 'error_msg'])
-
-
-def run_program(args, error_ok=False):
-    program_subprocess = subprocess.Popen(
-        args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
-    program_stdout, program_stderr = program_subprocess.communicate()
-    error_msg = None
-    if program_subprocess.returncode != 0:
-        error_msg = "Non-zero exit code {} from: {}, stdout: '{}', stderr: '{}'".format(
-                program_subprocess.returncode, args,
-                program_stdout.strip(), program_stderr.strip())
-        if not error_ok:
-            raise RuntimeError(error_msg)
-    return ProgramResult(returncode=program_subprocess.returncode,
-                         stdout=program_stdout.strip(),
-                         stderr=program_stderr.strip(),
-                         error_msg=error_msg)
 
 
 def run_patchelf(*args):
@@ -441,7 +420,7 @@ class LibraryPackager:
             name = node.lib_link_dir_name_prefix()
             if name in unique_dir_names:
                 logging.warn(
-                        "Duplicate library dir name: '{}', will use SHA256 digest prefix to"
+                        "Duplicate library dir name: '{}', will use SHA256 digest prefix to "
                         "ensure directory name uniqueness".format(name))
                 need_short_digest = True
             unique_dir_names.add(name)
