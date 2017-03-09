@@ -96,7 +96,7 @@ public class PlacementInfoUtil {
         LOG.info("Num nodes changing from {} to {}.",
                  existingIntent.numNodes, taskParams.userIntent.numNodes);
         // If Placement Info has not been set by client.
-        if (!taskParams.placementInfo.isCustom) {
+        if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
           taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
         }
         taskParams.nodeDetailsSet.addAll(existingNodes);
