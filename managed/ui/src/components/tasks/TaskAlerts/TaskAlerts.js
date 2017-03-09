@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Link } from 'react-router';
-import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
+import { isValidArray } from '../../../utils/ObjectUtils';
 import moment from 'moment';
 
 import './TaskAlerts.scss'
