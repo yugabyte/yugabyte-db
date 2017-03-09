@@ -287,6 +287,7 @@ if [[ $BUILD_CPP == "1" ]]; then
     packaged_dest_dir=${BUILD_ROOT}__packaged
     rm -rf "$packaged_dest_dir"
     log "Testing creating a distribution in '$packaged_dest_dir'"
+    export PYTHONPATH=${PYTHONPATH:-}:$YB_SRC_ROOT/python
     "$YB_SRC_ROOT/python/yb/library_packager.py" \
       --build-dir "$BUILD_ROOT" \
       --dest-dir "$packaged_dest_dir"
