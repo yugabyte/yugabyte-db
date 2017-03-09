@@ -2,9 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { StepProgressBar } from '../../common/indicators';
-import { YBPanelItem } from '../../panels';
 import {Row, Col} from 'react-bootstrap';
-import { ProgressList } from '../../common/indicators';
 import './TaskProgressStepBar.scss'
 
 export default class TaskProgressStepBar extends Component {
@@ -13,7 +11,7 @@ export default class TaskProgressStepBar extends Component {
   }
 
   render() {
-    const { progressData: {percent, details : {taskDetails}}, currentOperation } = this.props;
+    const { progressData: {details : {taskDetails}}} = this.props;
     var currentTaskDetail = <span/>;
     for (var idx = 0; idx < taskDetails.length; idx ++) {
       if (taskDetails[idx].state === "Running") {

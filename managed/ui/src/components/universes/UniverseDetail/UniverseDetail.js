@@ -37,7 +37,7 @@ export default class UniverseDetail extends Component {
   }
 
   render() {
-    const { universe: { currentUniverse, universeTasks, loading, showModal, visibleModal }, universe } = this.props;
+    const { universe: { currentUniverse, loading, showModal, visibleModal }, universe } = this.props;
     if (loading) {
       return <YBLoadingIcon/>
     } else if (!currentUniverse) {
