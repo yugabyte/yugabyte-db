@@ -1,5 +1,16 @@
 /* Copyright (c) YugaByte, Inc. */
 
+/* TODO: Do we still use the .h1, .h2, .h3 classes? */
+h1, .h1, h2, .h2, h3, .h3 {
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+h1 {
+  font-size: 30px;
+  font-weight: 500;
+}
+
 h2 {
   font-size: 24px;
   font-weight: 500;

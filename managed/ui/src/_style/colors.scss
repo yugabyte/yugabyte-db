@@ -17,6 +17,8 @@ $YB_GRAY_15: #e6e4e3;
 $YB_GRAY_20: #dddbd9;
 
 $YB_DARK_GREY: #A9A9A9;
+$YB_SIDEBAR_GRAY: #333;
+
 .yb-orange {
   color: $YB_ORANGE
 }
@@ -35,4 +37,41 @@ $YB_DARK_GREY: #A9A9A9;
 
 .yb-warn-color {
   color: #ff9933;
+}
+
+.color-grey {
+  color: #d3d3d3;
+  font-size: 1.5em;
+}
+
+.dark-background {
+  color: #fff;
+  background: $YB_SIDEBAR_GRAY;
+
+  .form-control {
+    border: 2px solid #777;
+    background-color: #393939;
+    color: #fff;
+
+    &:focus {
+      border: 2px solid #888;
+      background-color: #444;
+    }
+  }
+
+  .has-error {
+    .form-control {
+      border-color: $YB_FAIL_COLOR !important;
+      color: $YB_FAIL_COLOR !important;
+    }
+    .help-block {
+      display: inline-block;
+      background-color: $YB_FAIL_COLOR;
+      color: #fff !important;
+      font-weight: 600;
+      padding: 0 6px 1px 6px;
+      margin-top: 0;
+      border-radius: 2px;
+    }
+  }
 }
