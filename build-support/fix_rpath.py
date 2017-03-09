@@ -119,10 +119,16 @@ def main():
             os.path.join(thirdparty_dir, prefix_rel_dir)
             for prefix_rel_dir in ['installed', 'installed-deps', 'installed-deps-tsan']
             ]
-    if os.path.isfile('/usr/bin/patchelf'):
-        linux_change_rpath_cmd = 'patchelf --set-rpath'
-    else:
-        linux_change_rpath_cmd = 'chrpath -r'
+
+    # Prefer patchelf to chrpath as it is more flexible and can in fact increase the length of rpath
+    # if there is enough space. This could happen if rpath used to be longer but was reduced by a
+    # previous patchelf / chrpath command.
+    change_rpath_cmd = 'chrpath -r'
+    for patchelf_path in ['/usr/bin/patchelf',
+                          os.path.join(HOME_DIR, '.linuxbrew-yb-build', 'bin', 'patchelf')]:
+        if os.path.isfile(patchelf_path):
+            change_rpath_cmd = patchelf_path + ' --set-rpath'
+    logging.info("Command for updating rpath: {}".format(change_rpath_cmd))
 
     num_binaries_no_rpath_change = 0
     num_binaries_updated_rpath = 0
@@ -236,7 +242,7 @@ def main():
                     # Note: pipes.quote is a way to escape strings for inclusion in shell
                     # commands.
                     set_rpath_exit_code = os.system(
-                        "%s %s %s" % (linux_change_rpath_cmd,
+                        "%s %s %s" % (change_rpath_cmd,
                                       pipes.quote(new_rpath_str),
                                       binary_path)
                     ) >> 8
