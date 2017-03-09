@@ -25,7 +25,7 @@ export default class UniverseTable extends Component {
 
   render() {
     var self = this;
-    const { universe: { universeList, universeTasks, loading }, universeReadWriteData, tasks } = this.props;
+    const { universe: { universeList, loading }, universeReadWriteData, tasks } = this.props;
     if (loading) {
       return <YBLoadingIcon/>;
     }
@@ -43,7 +43,6 @@ export default class UniverseTable extends Component {
           }).filter(Boolean).sort(function(a, b){
             return a.data.createTime < b.data.createTime;
           })
-          console.log(universeTaskUUIDs);
         }
         return <YBUniverseItem {...self.props} key={idx} universe={item} idx={idx}
                                taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />

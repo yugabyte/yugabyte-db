@@ -12,9 +12,8 @@ export default class TableSchema extends Component {
     var partitionKeyRows = [];
     var clusteringKeyRows = [];
     var otherKeyRows = [];
-    var tableName = "";
     if (isValidObject(tableDetails) && isValidArray(tableDetails.columns)) {
-      tableDetails.columns.forEach(function(item, idx){
+      tableDetails.columns.forEach(function(item){
         if (item.isPartitionKey) {
           partitionKeyRows.push(item);
         } else if (item.isClusteringKey) {
@@ -22,7 +21,6 @@ export default class TableSchema extends Component {
         } else {
           otherKeyRows.push(item);
         }
-        tableName = tableDetails.tableName;
       });
     }
     return (
