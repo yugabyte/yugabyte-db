@@ -279,7 +279,7 @@ class PTExpr1 : public PTExpr {
     return MCMakeShared<PTExpr1>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  const PTExpr::SharedPtr op1() const {
+  const PTExpr::SharedPtr op1() const OVERRIDE {
     return op1_;
   }
 
@@ -331,11 +331,11 @@ class PTExpr2 : public PTExpr {
     return MCMakeShared<PTExpr2>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  const PTExpr::SharedPtr op1() const {
+  const PTExpr::SharedPtr op1() const OVERRIDE {
     return op1_;
   }
 
-  const PTExpr::SharedPtr op2() const {
+  const PTExpr::SharedPtr op2() const OVERRIDE {
     return op2_;
   }
 
@@ -391,15 +391,15 @@ class PTExpr3 : public PTExpr {
     return MCMakeShared<PTExpr3>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  const PTExpr::SharedPtr op1() const {
+  const PTExpr::SharedPtr op1() const OVERRIDE {
     return op1_;
   }
 
-  const PTExpr::SharedPtr op2() const {
+  const PTExpr::SharedPtr op2() const OVERRIDE {
     return op2_;
   }
 
-  const PTExpr::SharedPtr op3() const {
+  const PTExpr::SharedPtr op3() const OVERRIDE {
     return op3_;
   }
 

@@ -829,6 +829,29 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
 }
 
+Status TabletServiceImpl::CheckLeaderRole(const TabletPeer& tablet_peer,
+                                          TabletServerErrorPB::Code* error_code) {
+
+  scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
+  if (!consensus) {
+    *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
+    return STATUS(IllegalState,
+                  Substitute("Consensus not available for tablet $0.", tablet_peer.tablet_id()));
+  }
+  VLOG(1) << Substitute("CheckLeaderRole T $0 P $1 Role: $2",
+                        tablet_peer.tablet_id(),
+                        tablet_peer.permanent_uuid(),
+                        consensus->role());
+  if (consensus->role() != RaftPeerPB::LEADER) {
+    *error_code = TabletServerErrorPB::NOT_THE_LEADER;
+    return STATUS(IllegalState,
+                  Substitute("Not a leader for tablet $0. Current role is $1.",
+                             tablet_peer.tablet_id(), consensus->role()));
+  }
+
+  return Status::OK();
+}
+
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext* context) {
@@ -842,9 +865,15 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  shared_ptr<Tablet> tablet;
   TabletServerErrorPB::Code error_code;
-  Status s = GetTabletRef(tablet_peer, &tablet, &error_code);
+  Status s = CheckLeaderRole(*tablet_peer.get(), &error_code);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+    return;
+  }
+
+  shared_ptr<Tablet> tablet;
+  s = GetTabletRef(tablet_peer, &tablet, &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
     return;
@@ -1486,23 +1515,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
   VLOG(1) << "New scan request for " << tablet_peer->tablet_id()
           << " leader_only: "  << req->leader_only();
   if (req->leader_only()) {
-    scoped_refptr<consensus::Consensus> consensus = tablet_peer->shared_consensus();
-    if (!consensus) {
-      *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-      return STATUS(IllegalState,
-                    Substitute("Consensus not available for tablet: $0",
-                               tablet_peer->tablet_id()));
-    }
-    VLOG(1) << Substitute("Scan request $0 P $1 Role: $2",
-                          tablet_peer->tablet_id(),
-                          tablet_peer->permanent_uuid(),
-                          consensus->role());
-    if (consensus->role() != RaftPeerPB::LEADER) {
-      *error_code = TabletServerErrorPB::NOT_THE_LEADER;
-      return STATUS(IllegalState,
-                    Substitute("Leader only scan request for tablet $0 at a non-leader. "
-                               "Current Role: $1", tablet_peer->tablet_id(), consensus->role()));
-    }
+    RETURN_NOT_OK(CheckLeaderRole(*tablet_peer, error_code));
   }
 
   const NewScanRequestPB& scan_pb = req->new_scan_request();

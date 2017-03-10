@@ -114,6 +114,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                           const HybridTime& hybrid_time,
                           tablet::MvccSnapshot* snap);
 
+  // Check if the tablet is a leader.
+  CHECKED_STATUS CheckLeaderRole(const tablet::TabletPeer& tablet_peer,
+                                 TabletServerErrorPB::Code* error_code);
+
   TabletServer* server_;
 };
 
