@@ -46,7 +46,7 @@ export default class HighlightedStatsPanel extends Component {
           <StatsPanelComponent value={universeList.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
           <StatsPanelComponent value={<YBFormattedNumber value={totalCost} maximumFractionDigits={2}
-                                                         formattedNumberStyle="currency" currency="USD"/>} label={"Cost"}/>
+                                                         formattedNumberStyle="currency" currency="USD"/>} label={"Monthly Cost"}/>
         </Col>
       </div>
     )

@@ -18,10 +18,10 @@ class TableTitle extends Component {
       <div className="table-container-title">
         Tables
         &nbsp; &nbsp;
+        <Image src={cassandraLogo} className="table-type-logo"/>&nbsp;
+        {numCassandraTables} <span>Cassandra</span>&nbsp;
         <Image src={redisLogo} className="table-type-logo"/>&nbsp;
-        {numRedisTables} <span>Redis</span> &nbsp; &nbsp; 
-        <Image src={cassandraLogo} className="table-type-logo"/>&nbsp; 
-        {numCassandraTables} <span>Cassandra</span>
+        {numRedisTables} <span>Redis</span> &nbsp; &nbsp;
         <div>
           <input type="text" className="table-search-bar "/>
           <Button onClick={onCreateButtonClick}>
