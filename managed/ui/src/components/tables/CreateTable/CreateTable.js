@@ -35,7 +35,7 @@ class KeyColumnList extends Component {
                             <option key={"descending"} value={"desc"}>
                               desc
                             </option>];
-    if (columnType !== "partitionKey") {
+    if (columnType === "clustering") {
       return <Col lg={2}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
     }
   }
