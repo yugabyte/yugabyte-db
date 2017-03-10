@@ -79,7 +79,7 @@ installed_dirs=(
   "$PREFIX_COMMON"
   "$PREFIX_DEPS"
   "$PREFIX_DEPS_TSAN"
-  "$TP_DIR/build/common"
+  "$TP_DIR/build/common/llvm-$LLVM_VERSION-normal"
   "$TP_DIR/build/tsan/${GFLAGS_DIR##*/}/lib"
   "$TP_DIR/build/tsan/${GFLAGS_DIR##*/}/include"
   "$TP_DIR/build/uninstrumented/${GFLAGS_DIR##*/}/lib"

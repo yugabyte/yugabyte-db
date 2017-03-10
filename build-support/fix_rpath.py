@@ -13,6 +13,7 @@
 # third-party package was built.
 
 import argparse
+import glob
 import logging
 import os
 import pipes
@@ -142,8 +143,12 @@ def main():
         # This is an indication that we are using a new-style directory layout in
         # thirdparty/installed.
         prefix_dirs = [
-            os.path.join(thirdparty_dir, 'installed', prefix_rel_dir)
-            for prefix_rel_dir in ['common', 'tsan', 'uninstrumented']
+                os.path.join(thirdparty_dir, 'installed', prefix_rel_dir)
+                for prefix_rel_dir in ['common', 'tsan', 'uninstrumented']
+            ] + [os.path.join(thirdparty_dir, 'clang-toolchain')] + [
+                os.path.join(thirdparty_dir, 'build', instrumentation_type, glob_pattern)
+                for instrumentation_type in ['uninstrumented', 'tsan']
+                for glob_pattern in ['gflags-*', 'snappy-*']
             ]
     else:
         # Old-style directory structure, to be removed once migration is complete.
@@ -178,7 +183,14 @@ def main():
     num_binaries_no_rpath_change = 0
     num_binaries_updated_rpath = 0
 
-    for prefix_dir in prefix_dirs:
+    dirs_to_search = []
+    for pattern in prefix_dirs:
+        dirs_to_search += glob.glob(pattern)
+    logging.info(
+            "Fixing rpath/interpreter path for ELF files in the following directories:{}".format(
+                ("\n" + " " * 8).join([""] + dirs_to_search)))
+
+    for prefix_dir in dirs_to_search:
         for file_dir, dirs, file_names in os.walk(prefix_dir):
             for file_name in file_names:
                 if file_name.endswith('_patchelf_tmp'):
@@ -202,6 +214,9 @@ def main():
                     if 'Not an ELF file' in readelf_stderr:
                         logging.warn("Not an ELF file: '%s', skipping" % binary_path)
                         continue
+
+                    if not update_interpreter(binary_path):
+                        is_success = False
 
                     if readelf_subprocess.returncode != 0:
                         logging.warn("readelf returned exit code %d for '%s', stderr:\n%s" % (
@@ -298,9 +313,6 @@ def main():
                                      binary_path, set_rpath_exit_code))
                         is_success = False
                     num_binaries_updated_rpath += 1
-
-                    if not update_interpreter(binary_path):
-                        is_success = False
 
     logging.info("Number of binaries with no rpath change: {}, updated rpath: {}".format(
         num_binaries_no_rpath_change, num_binaries_updated_rpath))
