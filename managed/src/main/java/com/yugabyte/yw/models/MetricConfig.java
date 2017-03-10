@@ -23,6 +23,7 @@ public class MetricConfig extends Model {
     public static class Axis {
       public String type;
       public Map<String, String> alias = new HashMap<>();
+      public String ticksuffix;
     }
 
     public String title;

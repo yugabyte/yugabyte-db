@@ -70,6 +70,7 @@ memory_usage:
     title: "Memory Usage"
     xaxis:
       type: "date"
+    ticksuffix: "&nbsp;GiB"
 network_bytes:
   metric: "collectd_yb_system_counter_total"
   function: "rate|avg"
@@ -85,6 +86,7 @@ network_bytes:
       alias:
         "net_bytes_sent": "TX"
         "net_bytes_recv": "RX"
+      ticksuffix: "&nbsp;GBps"
 
 network_packets:
   metric: "collectd_yb_system_counter_total"
@@ -150,6 +152,7 @@ disk_bytes_per_second_per_node:
       alias:
         "iostat_read_bytes": "RX"
         "iostat_write_bytes": "TX"
+      ticksuffix: "&nbsp;GBPs"
 
 redis_rpcs_per_sec:
   metric: "collectd_yb_redis_counter_total"
@@ -183,6 +186,8 @@ redis_ops_latency:
         "rpc_RedisServerService_get.avg": "Get"
         "rpc_RedisServerService_set.avg": "Set"
         "rpc_RedisServerService_echo.avg": "Echo"
+      ticksuffix: "&nbsp;\u00B5s"
+
 redis_yb_latency:
   metric: "collectd_yb_redis_counter_total"
   function: "avg"
@@ -214,6 +219,8 @@ tserver_ops_latency:
         "rpc_TabletServerService_Scan.avg": "Scan"
         "rpc_TabletServerService_Write.avg": "Write"
         "rpc_TabletServerService_Read.avg": "Read"
+      ticksuffix: "&nbsp;ms"
+
 tserver_handler_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
@@ -229,6 +236,7 @@ tserver_handler_latency:
         "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
+
 tserver_rpcs_per_sec:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
@@ -318,6 +326,7 @@ tserver_spinlock_server:
     yaxis:
       alias:
         "spinlock_contention_time": "SpinLock"
+      ticksuffix: "&nbsp;%"
 tserver_log_latency:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
@@ -333,6 +342,7 @@ tserver_log_latency:
         "log_sync_latency.avg": "Sync"
         "log_group_commit_latency.avg": "Commit"
         "log_append_latency.avg": "Append"
+      ticksuffix: "&nbsp;ms"
 tserver_log_bytes_written:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
@@ -347,6 +357,7 @@ tserver_log_bytes_written:
     yaxis:
       alias:
         "log_bytes_logged": "Log Bytes Logged"
+      ticksuffix: "&nbsp;GBps"
 tserver_log_bytes_read:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
@@ -361,6 +372,7 @@ tserver_log_bytes_read:
     yaxis:
       alias:
         "log_reader_bytes_read": "Log Bytes Read"
+      ticksuffix: "&nbsp;KBps"
 tserver_log_ops_second:
    metric: "collectd_yb_tserver_counter_total"
    function: "rate|avg"
@@ -377,6 +389,7 @@ tserver_log_ops_second:
          "log_group_commit_latency.avg": "Commit"
          "log_append_latency.avg": "Append"
          "log_sync_latency.avg": "Sync"
+       ticksuffix: "&nbsp;ops"
 tserver_tc_malloc_stats:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
@@ -394,6 +407,7 @@ tserver_tc_malloc_stats:
         "tcmalloc_max_total_thread_cache_bytes": "Usage"
         "tcmalloc_pageheap_free_bytes": "Free"
         "tcmalloc_pageheap_unmapped_bytes": "Small"
+      ticksuffix: "&nbsp;GiB"
 tserver_log_stats:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
@@ -408,6 +422,7 @@ tserver_log_stats:
       alias:
         "log_reader_bytes_read": "Log Bytes Read"
         "log_cache_size": "Log Cache Size"
+      ticksuffix: "&nbsp;KiB"
 tserver_cache_reader_num_ops:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"

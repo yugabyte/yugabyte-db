@@ -37,7 +37,19 @@ export default class MetricsPanel extends Component {
       metric.layout.width = this.getGraphWidth(this.props.containerWidth);
       metric.layout.height = 360;
       metric.layout.showlegend = true;
-      metric.layout.yaxis = {range: [0, max]};
+      metric.layout.margin = {
+        l: 45,
+        r: 25,
+        b: 45,
+        t: 70,
+        pad: 4,
+      };
+      if (isValidObject(metric.layout.yaxis) && isValidObject(metric.layout.yaxis.ticksuffix)) {
+        metric.layout.margin.l = 70;
+        metric.layout.yaxis.range = [0, max];
+      } else {
+        metric.layout.yaxis = {range: [0, max]};
+      }
       metric.layout.font = {
         family: 'Helvetica Neue, Helvetica, Roboto, Arial, Droid Sans, sans-serif',
       };
@@ -48,13 +60,7 @@ export default class MetricsPanel extends Component {
         x: 0.5,
         y: -0.3,
       };
-      metric.layout.margin = {
-        l: 45,
-        r: 25,
-        b: 45,
-        t: 70,
-        pad: 4,
-      };
+
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
