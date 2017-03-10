@@ -479,7 +479,7 @@ CHECKED_STATUS SetYQLPrimaryKeyColumnValues(const Schema& schema,
   for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
     const auto column_id = schema.column_id(j);
     const auto data_type = schema.column(j).type_info()->type();
-    values[i].ToYQLValuePB(&(*value_map)[column_id], data_type);
+    values[i].ToYQLValuePB(data_type, &(*value_map)[column_id]);
   }
   return Status::OK();
 }
@@ -573,7 +573,7 @@ Status DocRowwiseIterator::NextRow(const YQLScanSpec& spec, YQLValueMap* value_m
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& column_id = projection_.column_id(i);
     const auto data_type = projection_.column(i).type_info()->type();
-    values[i - projection_.num_key_columns()].ToYQLValuePB(&(*value_map)[column_id], data_type);
+    values[i - projection_.num_key_columns()].ToYQLValuePB(data_type, &(*value_map)[column_id]);
   }
   return Status::OK();
 }

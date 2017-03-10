@@ -28,6 +28,7 @@
 #include "yb/common/row_operations.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/yql_value.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/opid_util.h"
@@ -151,16 +152,12 @@ class SysCatalogWriter {
     return Status::OK();
   }
 
-  void SetStringValue(const std::string& string_val, YQLColumnValuePB* col_pb) {
-    YQLValuePB* value = col_pb->mutable_value();
-    value->set_datatype(DataType::STRING);
-    value->set_string_value(string_val);
+  void SetStringValue(const std::string& string_value, YQLColumnValuePB* col_pb) {
+    YQLValue::set_string_value(string_value, col_pb->mutable_value());
   }
 
   void SetInt8Value(const int8_t int8_value, YQLColumnValuePB* col_pb) {
-    YQLValuePB* value = col_pb->mutable_value();
-    value->set_datatype(DataType::INT8);
-    value->set_int8_value(int8_value);
+    YQLValue::set_int8_value(int8_value, col_pb->mutable_value());
   }
 
   SysCatalogTable* sys_catalog_;

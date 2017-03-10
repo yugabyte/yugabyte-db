@@ -252,7 +252,6 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
                                   YBPartialRow *row,
                                   int col_index) {
 
-  col_pb->mutable_value()->set_datatype(col_type);
   switch (col_type) {
     case INT8: {
       EvalIntValue int_value;

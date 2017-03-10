@@ -122,7 +122,6 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
       YBPartialRow *prow = nullptr, int prow_index = -1) {
 
     column_value->set_column_id(ColumnId(column_name));
-    column_value->mutable_value()->set_datatype(INT32);
     column_value->mutable_value()->set_int32_value(value);
 
     if (prow != nullptr) {
@@ -135,7 +134,6 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
       YBPartialRow *prow = nullptr, int prow_index = -1) {
 
     column_value->set_column_id(ColumnId(column_name));
-    column_value->mutable_value()->set_datatype(STRING);
     column_value->mutable_value()->set_string_value(value);
 
     if (prow != nullptr) {
@@ -157,7 +155,6 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
     condition->add_operands()->set_column_id(ColumnId(column_name));
     condition->set_op(op);
     auto *const val = condition->add_operands()->mutable_value();
-    val->set_datatype(INT32);
     val->set_int32_value(value);
   }
 
@@ -169,7 +166,6 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
     condition->add_operands()->set_column_id(ColumnId(column_name));
     condition->set_op(op);
     auto *const val = condition->add_operands()->mutable_value();
-    val->set_datatype(STRING);
     val->set_string_value(value);
   }
 

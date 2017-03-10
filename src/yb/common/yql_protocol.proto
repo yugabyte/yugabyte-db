@@ -14,19 +14,17 @@ import "yb/common/common.proto";
 
 // A YQL value
 message YQLValuePB {
-  // Note: UINT8, UINT16, UINT32, UINT64, and BINARY are not supported.
-  optional DataType datatype = 1;
   // Note: an absent value means NULL
   oneof value {
-    int32 int8_value = 2;  // Note: min int size in protobuf is int32
-    int32 int16_value = 3;
-    int32 int32_value = 4;
-    int64 int64_value = 5;
-    float float_value = 6;
-    double double_value = 7;
-    string string_value = 8;
-    bool bool_value = 9;
-    int64 timestamp_value = 10;
+    int32 int8_value = 1;  // Note: min int size in protobuf is int32
+    int32 int16_value = 2;
+    int32 int32_value = 3;
+    int64 int64_value = 4;
+    float float_value = 5;
+    double double_value = 6;
+    string string_value = 7;
+    bool bool_value = 8;
+    int64 timestamp_value = 9;
   }
 }
 

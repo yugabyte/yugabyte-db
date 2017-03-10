@@ -32,7 +32,6 @@ class DocOperationTest : public DocDBTestBase {
   void AddPrimaryKeyColumn(yb::YQLWriteRequestPB* yql_writereq_pb, int32_t value) {
     auto hashed_column = yql_writereq_pb->add_hashed_column_values();
     hashed_column->set_column_id(0);
-    hashed_column->mutable_value()->set_datatype(INT32);
     hashed_column->mutable_value()->set_int32_value(value);
   }
 
@@ -42,7 +41,6 @@ class DocOperationTest : public DocDBTestBase {
     for (int i = 0; i < 3; i++) {
       auto column = yql_writereq_pb->add_column_values();
       column->set_column_id(i + 1);
-      column->mutable_value()->set_datatype(INT32);
       column->mutable_value()->set_int32_value(column_values[i]);
     }
   }
@@ -141,7 +139,6 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4
     YQLColumnValuePB* hash_column = yql_read_req.add_hashed_column_values();
     hash_column->set_column_id(schema.column_id(0));
     YQLValuePB* value_pb = hash_column->mutable_value();
-    value_pb->set_datatype(DataType::INT32);
     value_pb->set_int32_value(primary_key);
 
     for (int i = 1; i <= 3 ; i++) {
@@ -218,7 +215,7 @@ TEST_F(DocOperationTest, TestYQLWriteNulls) {
   for (int i = 0; i < 3; i++) {
     auto column = yql_writereq_pb.add_column_values();
     column->set_column_id(i + 1);
-    column->mutable_value()->set_datatype(INT32);
+    column->mutable_value();
   }
 
   // Write to docdb.

@@ -98,10 +98,10 @@ class PrimitiveValue {
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
   // Construct a primitive value from a YQLValuePB.
-  static PrimitiveValue FromYQLValuePB(const YQLValuePB& value);
+  static PrimitiveValue FromYQLValuePB(DataType data_type, const YQLValuePB& value);
 
   // Set a primitive value in a YQLValuePB.
-  void ToYQLValuePB(YQLValuePB* v, DataType type) const;
+  void ToYQLValuePB(DataType data_type, YQLValuePB* v) const;
 
   ValueType value_type() const { return type_; }
 

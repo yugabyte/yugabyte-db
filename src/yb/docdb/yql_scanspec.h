@@ -24,7 +24,6 @@ class YQLScanRange {
   struct YQLRange {
     YQLValuePB lower_bound;
     YQLValuePB upper_bound;
-    YQLRange() : lower_bound(YQLValuePB()), upper_bound(YQLValuePB()) { }
   };
 
   YQLScanRange(const Schema& schema, const YQLConditionPB& condition);

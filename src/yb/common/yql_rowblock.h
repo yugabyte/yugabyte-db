@@ -108,7 +108,7 @@ using YQLValueMap = std::unordered_map<ColumnId, YQLValuePB>;
 
 // Evaluate a boolean condition for the given row.
 CHECKED_STATUS EvaluateCondition(
-    const YQLConditionPB& condition, const YQLValueMap& row, const Schema& schema, bool* result);
+    const YQLConditionPB& condition, const YQLValueMap& row, bool* result);
 
 } // namespace yb
 

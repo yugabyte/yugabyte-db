@@ -486,38 +486,21 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value) {
-  CHECK(value.has_datatype());
-  switch (value.datatype()) {
-    case INT8:
-      return value.has_int8_value() ?
-          PrimitiveValue(value.int8_value()) : PrimitiveValue(ValueType::kTombstone);
-    case INT16:
-      return value.has_int16_value() ?
-          PrimitiveValue(value.int16_value()) : PrimitiveValue(ValueType::kTombstone);
-    case INT32:
-      return value.has_int32_value() ?
-          PrimitiveValue(value.int32_value()) : PrimitiveValue(ValueType::kTombstone);
-    case INT64:
-      return value.has_int64_value() ?
-          PrimitiveValue(value.int64_value()) : PrimitiveValue(ValueType::kTombstone);
-    case FLOAT:
-      return value.has_float_value() ?
-          PrimitiveValue::Double(value.float_value()) : PrimitiveValue(ValueType::kTombstone);
-    case DOUBLE:
-      return value.has_double_value() ?
-          PrimitiveValue::Double(value.double_value()) : PrimitiveValue(ValueType::kTombstone);
-    case STRING:
-      return value.has_string_value() ?
-          PrimitiveValue(value.string_value()) : PrimitiveValue(ValueType::kTombstone);
+PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQLValuePB& value) {
+  if (YQLValue::IsNull(value)) {
+    return PrimitiveValue(ValueType::kTombstone);
+  }
+  switch (data_type) {
+    case INT8:    return PrimitiveValue(YQLValue::int8_value(value));
+    case INT16:   return PrimitiveValue(YQLValue::int16_value(value));
+    case INT32:   return PrimitiveValue(YQLValue::int32_value(value));
+    case INT64:   return PrimitiveValue(YQLValue::int64_value(value));
+    case FLOAT:   return PrimitiveValue::Double(YQLValue::float_value(value));
+    case DOUBLE:  return PrimitiveValue::Double(YQLValue::double_value(value));
+    case STRING:  return PrimitiveValue(YQLValue::string_value(value));
     case BOOL:
-      return value.has_bool_value() ?
-          PrimitiveValue(value.bool_value() ? ValueType::kTrue : ValueType::kFalse) :
-          PrimitiveValue(ValueType::kTombstone);
-    case TIMESTAMP:
-      return value.has_timestamp_value() ?
-          PrimitiveValue(Timestamp(value.timestamp_value())) : PrimitiveValue(
-              ValueType::kTombstone);
+      return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
+    case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value));
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
@@ -529,16 +512,16 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLValuePB& value) {
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype " << value.datatype();
+  LOG(FATAL) << "Unsupported datatype " << data_type;
 }
 
-void PrimitiveValue::ToYQLValuePB(YQLValuePB* v, const DataType type) const {
+void PrimitiveValue::ToYQLValuePB(const DataType data_type, YQLValuePB* v) const {
   if (value_type() == ValueType::kNull) {
     YQLValue::SetNull(v);
     return;
   }
 
-  switch (type) {
+  switch (data_type) {
     case INT8:
       YQLValue::set_int8_value(static_cast<int8_t>(GetInt64()), v);
       return;
@@ -577,7 +560,7 @@ void PrimitiveValue::ToYQLValuePB(YQLValuePB* v, const DataType type) const {
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype " << type;
+  LOG(FATAL) << "Unsupported datatype " << data_type;
 }
 
 }  // namespace docdb

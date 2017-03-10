@@ -398,7 +398,8 @@ void YQLColumnValuesToPrimitiveValues(
   for (const auto& column_value : column_values) {
     CHECK_EQ(schema.column_id(column_idx), column_value.column_id())
         << "Primary key column id mismatch";
-    components->push_back(PrimitiveValue::FromYQLValuePB(column_value.value()));
+    components->push_back(PrimitiveValue::FromYQLValuePB(
+        schema.column(column_idx).type_info()->type(), column_value.value()));
     column_idx++;
   }
 }
@@ -511,7 +512,7 @@ Status YQLWriteOperation::IsConditionSatisfied(
   }
 
   // See if the if-condition is satisfied.
-  RETURN_NOT_OK(EvaluateCondition(condition, value_map, projection, should_apply));
+  RETURN_NOT_OK(EvaluateCondition(condition, value_map, should_apply));
 
   // Populate the result set to return the "applied" status, and optionally the present column
   // values if the condition is not satisfied and the row does exist (value_map is not empty).
@@ -573,7 +574,10 @@ Status YQLWriteOperation::Apply(
                 << "column value missing: " << column_value.DebugString();;
             const DocPath sub_path(doc_key_.Encode(),
                                    PrimitiveValue(ColumnId(column_value.column_id())));
-            const auto value = Value(PrimitiveValue::FromYQLValuePB(column_value.value()), ttl);
+            const auto data_type =
+                schema_.column_by_id(ColumnId(column_value.column_id())).type_info()->type();
+            const auto value = Value(PrimitiveValue::FromYQLValuePB(
+                data_type, column_value.value()), ttl);
             RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value, HybridTime::kMax,
                                                         InitMarkerBehavior::kNeverUse));
           }

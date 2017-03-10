@@ -26,13 +26,13 @@ YQLRow::~YQLRow() {
 
 void YQLRow::Serialize(const YQLClient client, faststring* buffer) const {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    YQLValue::Serialize(values_.at(col_idx), client, buffer);
+    values_.at(col_idx).Serialize(column_type(col_idx), client, buffer);
   }
 }
 
 Status YQLRow::Deserialize(const YQLClient client, Slice* data) {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    RETURN_NOT_OK(YQLValue::Deserialize(&values_.at(col_idx), column_type(col_idx), client, data));
+    RETURN_NOT_OK(values_.at(col_idx).Deserialize(column_type(col_idx), client, data));
   }
   return Status::OK();
 }
@@ -43,7 +43,7 @@ string YQLRow::ToString() const {
     if (col_idx > 0) {
       s+= ", ";
     }
-    s += YQLValue::ToString(values_.at(col_idx));
+    s += values_.at(col_idx).ToString();
   }
   s += " }";
   return s;
@@ -115,8 +115,7 @@ namespace {
 
 // Evaluate and return the value of an expression for the given row. Evaluate only column and
 // literal values for now.
-YQLValuePB EvaluateValue(
-    const YQLExpressionPB& expr, const YQLValueMap& row, const Schema& schema) {
+YQLValuePB EvaluateValue(const YQLExpressionPB& expr, const YQLValueMap& row) {
   switch (expr.expr_case()) {
     case YQLExpressionPB::ExprCase::kColumnId: {
       const auto column_id = ColumnId(expr.column_id());
@@ -136,12 +135,12 @@ YQLValuePB EvaluateValue(
 // Evaluate an IN (...) condition.
 Status EvaluateInCondition(
     const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB>& operands,
-    const YQLValueMap& row, const Schema& schema, bool* result) {
+    const YQLValueMap& row, bool* result) {
   CHECK_GE(operands.size(), 1);
   *result = false;
-  YQLValuePB left = EvaluateValue(operands.Get(0), row, schema);
+  YQLValuePB left = EvaluateValue(operands.Get(0), row);
   for (int i = 1; i < operands.size(); ++i) {
-    YQLValuePB right = EvaluateValue(operands.Get(i), row, schema);
+    YQLValuePB right = EvaluateValue(operands.Get(i), row);
     if (!YQLValue::Comparable(left, right)) return STATUS(RuntimeError, "values not comparable");
     if (left == right) {
       *result = true;
@@ -154,11 +153,11 @@ Status EvaluateInCondition(
 // Evaluate a BETWEEN(a, b) condition.
 Status EvaluateBetweenCondition(
     const google::protobuf::RepeatedPtrField<yb::YQLExpressionPB>& operands,
-    const YQLValueMap& row, const Schema& schema, bool* result) {
+    const YQLValueMap& row, bool* result) {
   CHECK_EQ(operands.size(), 3);
-  YQLValuePB v = EvaluateValue(operands.Get(0), row, schema);
-  YQLValuePB lower_bound = EvaluateValue(operands.Get(1), row, schema);
-  YQLValuePB upper_bound = EvaluateValue(operands.Get(2), row, schema);
+  YQLValuePB v = EvaluateValue(operands.Get(0), row);
+  YQLValuePB lower_bound = EvaluateValue(operands.Get(1), row);
+  YQLValuePB upper_bound = EvaluateValue(operands.Get(2), row);
   if (!YQLValue::Comparable(v, lower_bound) || !YQLValue::Comparable(v, upper_bound)) {
     return STATUS(RuntimeError, "values not comparable");
   }
@@ -169,74 +168,75 @@ Status EvaluateBetweenCondition(
 } // namespace
 
 // Evaluate a condition for the given row.
-Status EvaluateCondition(
-    const YQLConditionPB& condition, const YQLValueMap& row, const Schema& schema, bool* result) {
+Status EvaluateCondition(const YQLConditionPB& condition, const YQLValueMap& row, bool* result) {
   const auto& operands = condition.operands();
   switch (condition.op()) {
     case YQL_OP_NOT: {
       CHECK_EQ(operands.size(), 1);
       CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
-      RETURN_NOT_OK(EvaluateCondition(operands.Get(0).condition(), row, schema, result));
+      RETURN_NOT_OK(EvaluateCondition(operands.Get(0).condition(), row, result));
       *result = !*result;
       return Status::OK();
     }
     case YQL_OP_IS_NULL: {
       CHECK_EQ(operands.size(), 1);
-      *result = YQLValue::IsNull(EvaluateValue(operands.Get(0), row, schema));
+      *result = YQLValue::IsNull(EvaluateValue(operands.Get(0), row));
       return Status::OK();
     }
     case YQL_OP_IS_NOT_NULL: {
       CHECK_EQ(operands.size(), 1);
-      *result = !YQLValue::IsNull(EvaluateValue(operands.Get(0), row, schema));
+      *result = !YQLValue::IsNull(EvaluateValue(operands.Get(0), row));
       return Status::OK();
     }
     case YQL_OP_IS_TRUE: {
       CHECK_EQ(operands.size(), 1);
-      YQLValuePB v = EvaluateValue(operands.Get(0), row, schema);
-      if (YQLValue::type(v) != BOOL) return STATUS(RuntimeError, "not a bool value");
+      YQLValuePB v = EvaluateValue(operands.Get(0), row);
+      if (YQLValue::type(v) != YQLValue::InternalType::kBoolValue)
+        return STATUS(RuntimeError, "not a bool value");
       *result = (!YQLValue::IsNull(v) && YQLValue::bool_value(v));
       return Status::OK();
     }
     case YQL_OP_IS_FALSE: {
       CHECK_EQ(operands.size(), 1);
-      YQLValuePB v = EvaluateValue(operands.Get(0), row, schema);
-      if (YQLValue::type(v) != BOOL) return STATUS(RuntimeError, "not a bool value");
+      YQLValuePB v = EvaluateValue(operands.Get(0), row);
+      if (YQLValue::type(v) != YQLValue::InternalType::kBoolValue)
+        return STATUS(RuntimeError, "not a bool value");
       *result = (!YQLValue::IsNull(v) && !YQLValue::bool_value(v));
       return Status::OK();
     }
 
-#define YQL_EVALUATE_RELATIONAL_OP(op, operands, row, schema, result)         \
-      do {                                                                    \
-        CHECK_EQ(operands.size(), 2);                                         \
-        const YQLValuePB left = EvaluateValue(operands.Get(0), row, schema);  \
-        const YQLValuePB right = EvaluateValue(operands.Get(1), row, schema); \
-        if (!YQLValue::Comparable(left, right))                               \
-          return STATUS(RuntimeError, "values not comparable");               \
-        *result = (left op right);                                            \
+#define YQL_EVALUATE_RELATIONAL_OP(op, operands, row, result)         \
+      do {                                                            \
+        CHECK_EQ(operands.size(), 2);                                 \
+        const YQLValuePB left = EvaluateValue(operands.Get(0), row);  \
+        const YQLValuePB right = EvaluateValue(operands.Get(1), row); \
+        if (!YQLValue::Comparable(left, right))                       \
+          return STATUS(RuntimeError, "values not comparable");       \
+        *result = (left op right);                                    \
       } while (0)
 
     case YQL_OP_EQUAL: {
-      YQL_EVALUATE_RELATIONAL_OP(==, operands, row, schema, result);
+      YQL_EVALUATE_RELATIONAL_OP(==, operands, row, result);
       return Status::OK();
     }
     case YQL_OP_LESS_THAN: {
-      YQL_EVALUATE_RELATIONAL_OP(<, operands, row, schema, result);
+      YQL_EVALUATE_RELATIONAL_OP(<, operands, row, result);
       return Status::OK();
     }
     case YQL_OP_LESS_THAN_EQUAL: {
-      YQL_EVALUATE_RELATIONAL_OP(<=, operands, row, schema, result);
+      YQL_EVALUATE_RELATIONAL_OP(<=, operands, row, result);
       return Status::OK();
     }
     case YQL_OP_GREATER_THAN: {
-      YQL_EVALUATE_RELATIONAL_OP(>, operands, row, schema, result);
+      YQL_EVALUATE_RELATIONAL_OP(>, operands, row, result);
       return Status::OK();
     }
     case YQL_OP_GREATER_THAN_EQUAL: {
-      YQL_EVALUATE_RELATIONAL_OP(>=, operands, row, schema, result);
+      YQL_EVALUATE_RELATIONAL_OP(>=, operands, row, result);
       return Status::OK();
     }
     case YQL_OP_NOT_EQUAL: {
-      YQL_EVALUATE_RELATIONAL_OP(!=, operands, row, schema, result);
+      YQL_EVALUATE_RELATIONAL_OP(!=, operands, row, result);
       return Status::OK();
     }
 
@@ -246,25 +246,25 @@ Status EvaluateCondition(
 // "(left op true) ^ (left op false)" that applies the "left" result with both
 // "true" and "false" and only if the answers are different (i.e. exclusive or ^)
 // that we should evaluate the "right" result also.
-#define YQL_EVALUATE_LOGICAL_OP(op, operands, row, schema, result)                            \
-      do {                                                                                    \
-        CHECK_EQ(operands.size(), 2);                                                         \
-        CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);         \
-        CHECK_EQ(operands.Get(1).expr_case(), YQLExpressionPB::ExprCase::kCondition);         \
-        bool left = false, right = false;                                                     \
-        RETURN_NOT_OK(EvaluateCondition(operands.Get(0).condition(), row, schema, &left));    \
-        if ((left op true) ^ (left op false)) {                                               \
-          RETURN_NOT_OK(EvaluateCondition(operands.Get(1).condition(), row, schema, &right)); \
-        }                                                                                     \
-        *result = (left op right);                                                            \
+#define YQL_EVALUATE_LOGICAL_OP(op, operands, row, result)                            \
+      do {                                                                            \
+        CHECK_EQ(operands.size(), 2);                                                 \
+        CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition); \
+        CHECK_EQ(operands.Get(1).expr_case(), YQLExpressionPB::ExprCase::kCondition); \
+        bool left = false, right = false;                                             \
+        RETURN_NOT_OK(EvaluateCondition(operands.Get(0).condition(), row, &left));    \
+        if ((left op true) ^ (left op false)) {                                       \
+          RETURN_NOT_OK(EvaluateCondition(operands.Get(1).condition(), row, &right)); \
+        }                                                                             \
+        *result = (left op right);                                                    \
       } while (0)
 
     case YQL_OP_AND: {
-      YQL_EVALUATE_LOGICAL_OP(&&, operands, row, schema, result);
+      YQL_EVALUATE_LOGICAL_OP(&&, operands, row, result);
       return Status::OK();
     }
     case YQL_OP_OR: {
-      YQL_EVALUATE_LOGICAL_OP(||, operands, row, schema, result);
+      YQL_EVALUATE_LOGICAL_OP(||, operands, row, result);
       return Status::OK();
     }
 
@@ -275,19 +275,19 @@ Status EvaluateCondition(
       return STATUS(RuntimeError, "LIKE operator not supported yet");
 
     case YQL_OP_IN: {
-      return EvaluateInCondition(operands, row, schema, result);
+      return EvaluateInCondition(operands, row, result);
     }
     case YQL_OP_NOT_IN: {
-      RETURN_NOT_OK(EvaluateInCondition(operands, row, schema, result));
+      RETURN_NOT_OK(EvaluateInCondition(operands, row, result));
       *result = !*result;
       return Status::OK();
     }
 
     case YQL_OP_BETWEEN: {
-      return EvaluateBetweenCondition(operands, row, schema, result);
+      return EvaluateBetweenCondition(operands, row, result);
     }
     case YQL_OP_NOT_BETWEEN: {
-      RETURN_NOT_OK(EvaluateBetweenCondition(operands, row, schema, result));
+      RETURN_NOT_OK(EvaluateBetweenCondition(operands, row, result));
       *result = !*result;
       return Status::OK();
     }

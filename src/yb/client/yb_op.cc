@@ -208,38 +208,21 @@ namespace {
 Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& value) {
   const auto column_idx = row->schema()->find_column_by_id(ColumnId(column_id));
   CHECK_NE(column_idx, Schema::kColumnNotFound);
-  CHECK(value.has_datatype());
-  switch (value.datatype()) {
-    case INT8:
-      return value.has_int8_value() ?
-          row->SetInt8(column_idx, static_cast<int8_t>(value.int8_value())) :
-          row->SetNull(column_idx);
-    case INT16:
-      return value.has_int16_value() ?
-          row->SetInt16(column_idx, static_cast<int16_t>(value.int32_value())) :
-          row->SetNull(column_idx);
-    case INT32:
-      return value.has_int32_value() ?
-          row->SetInt32(column_idx, value.int32_value()) : row->SetNull(column_idx);
-    case INT64:
-      return value.has_int64_value() ?
-          row->SetInt64(column_idx, value.int64_value()) : row->SetNull(column_idx);
-    case FLOAT:
-      return value.has_float_value() ?
-          row->SetFloat(column_idx, value.float_value()) : row->SetNull(column_idx);
-    case DOUBLE:
-      return value.has_double_value() ?
-          row->SetDouble(column_idx, value.double_value()) : row->SetNull(column_idx);
-    case STRING:
-      return value.has_string_value() ?
-          row->SetString(column_idx, Slice(value.string_value())) : row->SetNull(column_idx);
-    case BOOL:
-      return value.has_bool_value() ?
-          row->SetBool(column_idx, value.bool_value()) : row->SetNull(column_idx);
+  if (YQLValue::IsNull(value)) {
+    return row->SetNull(column_idx);
+  }
+  const DataType data_type = row->schema()->column(column_idx).type_info()->type();
+  switch (data_type) {
+    case INT8:     return row->SetInt8(column_idx, YQLValue::int8_value(value));
+    case INT16:    return row->SetInt16(column_idx, YQLValue::int16_value(value));
+    case INT32:    return row->SetInt32(column_idx, YQLValue::int32_value(value));
+    case INT64:    return row->SetInt64(column_idx, YQLValue::int64_value(value));
+    case FLOAT:    return row->SetFloat(column_idx, YQLValue::float_value(value));
+    case DOUBLE:   return row->SetDouble(column_idx, YQLValue::double_value(value));
+    case STRING:   return row->SetString(column_idx, Slice(YQLValue::string_value(value)));
+    case BOOL:     return row->SetBool(column_idx, YQLValue::bool_value(value));
     case TIMESTAMP:
-      return value.has_timestamp_value() ?
-          row->SetTimestamp(column_idx, value.timestamp_value()) : row->SetNull(column_idx);
-
+      return row->SetTimestamp(column_idx, YQLValue::timestamp_value(value).ToInt64());
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
@@ -251,7 +234,7 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: unsupported datatype " << value.datatype();
+  LOG(ERROR) << "Internal error: unsupported datatype " << data_type;
   return STATUS(RuntimeError, "unsupported datatype");
 }
 

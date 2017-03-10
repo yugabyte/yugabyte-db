@@ -22,8 +22,7 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
   // Initialize the lower/upper bounds of each range column to null to mean it is unbounded.
   ranges_.reserve(schema_.num_range_key_columns());
   for (size_t i = 0; i < schema.num_key_columns(); i++) {
-    const auto& column = schema.column(i);
-    if (!column.is_hash_key()) {
+    if (schema.is_range_column(i)) {
       ranges_.emplace(schema.column_id(i), YQLRange());
     }
   }
@@ -283,8 +282,11 @@ DocKey YQLScanSpec::bound_key(const bool lower_bound) const {
   if (range_.get() != nullptr) {
     const vector<YQLValuePB> range_values = range_->range_values(lower_bound);
     range_components.reserve(range_values.size());
+    size_t column_idx = schema_.num_hash_key_columns();
     for (const auto& value : range_values) {
-      range_components.emplace_back(PrimitiveValue::FromYQLValuePB(value));
+      range_components.emplace_back(PrimitiveValue::FromYQLValuePB(
+          schema_.column(column_idx).type_info()->type(), value));
+      column_idx++;
     }
   }
   return DocKey(hash_code_, *hashed_components_, range_components);
@@ -312,18 +314,15 @@ Status YQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
     *key = start_doc_key_;
     return Status::OK();
   }
-  if (lower_bound) {
-    *key = lower_doc_key_;
-  } else {
-    *key = upper_doc_key_;
-  }
+
+  *key = lower_bound ? lower_doc_key_ : upper_doc_key_;
   return Status::OK();
 }
 
 // Evaluate the WHERE condition for the given row.
 Status YQLScanSpec::Match(const YQLValueMap& row, bool* match) const {
   if (condition_ != nullptr) {
-    return EvaluateCondition(*condition_, row, schema_, match);
+    return EvaluateCondition(*condition_, row, match);
   }
   *match = true;
   return Status::OK();
