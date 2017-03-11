@@ -119,7 +119,7 @@ class SysCatalogWriter {
       // Add the metadata column.
       YQLColumnValuePB* metadata = yql_write->add_column_values();
       RETURN_NOT_OK(SetColumnId(SysCatalogTable::schema_column_metadata(), metadata));
-      SetStringValue(metadata_buf.ToString(), metadata);
+      SetBinaryValue(metadata_buf.ToString(), metadata);
     }
     // Add column type.
     YQLColumnValuePB* entity_type = yql_write->add_range_column_values();
@@ -129,7 +129,7 @@ class SysCatalogWriter {
     // Add column id.
     YQLColumnValuePB* entity_id = yql_write->add_range_column_values();
     RETURN_NOT_OK(SetColumnId(SysCatalogTable::schema_column_id(), entity_id));
-    SetStringValue(item->id(), entity_id);
+    SetBinaryValue(item->id(), entity_id);
 
     return Status::OK();
   }
@@ -152,8 +152,8 @@ class SysCatalogWriter {
     return Status::OK();
   }
 
-  void SetStringValue(const std::string& string_value, YQLColumnValuePB* col_pb) {
-    YQLValue::set_string_value(string_value, col_pb->mutable_value());
+  void SetBinaryValue(const std::string& binary_value, YQLColumnValuePB* col_pb) {
+    YQLValue::set_binary_value(binary_value, col_pb->mutable_value());
   }
 
   void SetInt8Value(const int8_t int8_value, YQLColumnValuePB* col_pb) {
@@ -629,8 +629,8 @@ Status SysCatalogTable::SyncWrite(const WriteRequestPB *req, WriteResponsePB *re
 Schema SysCatalogTable::BuildTableSchema() {
   SchemaBuilder builder;
   CHECK_OK(builder.AddKeyColumn(SysCatalogTable::schema_column_type(), INT8));
-  CHECK_OK(builder.AddKeyColumn(SysCatalogTable::schema_column_id(), STRING));
-  CHECK_OK(builder.AddColumn(SysCatalogTable::schema_column_metadata(), STRING));
+  CHECK_OK(builder.AddKeyColumn(SysCatalogTable::schema_column_id(), BINARY));
+  CHECK_OK(builder.AddColumn(SysCatalogTable::schema_column_metadata(), BINARY));
   return builder.Build();
 }
 
@@ -772,9 +772,9 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
     for (size_t i = 0; i < block.nrows(); i++) {
       if (!block.selection_vector()->IsRowSelected(i)) continue;
 
-      const Slice* id = schema_.ExtractColumnFromRow<STRING>(
+      const Slice* id = schema_.ExtractColumnFromRow<BINARY>(
           block.row(i), schema_.find_column(SysCatalogTable::schema_column_id()));
-      const Slice* data = schema_.ExtractColumnFromRow<STRING>(
+      const Slice* data = schema_.ExtractColumnFromRow<BINARY>(
           block.row(i), schema_.find_column(SysCatalogTable::schema_column_metadata()));
       RETURN_NOT_OK(visitor->Visit(id, data));
     }

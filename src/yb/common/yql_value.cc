@@ -9,6 +9,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/gutil/strings/escaping.h"
 #include "yb/util/date_time.h"
 #include "yb/util/bytes_formatter.h"
 
@@ -54,6 +55,7 @@ int YQLValue::CompareTo(const YQLValue& other) const {
       return 0;
     case InternalType::kTimestampValue:
       return GenericCompare(timestamp_value(), other.timestamp_value());
+    case InternalType::kBinaryValue: return binary_value().compare(other.binary_value());
 
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
@@ -193,9 +195,10 @@ string YQLValue::ToString() const {
     case InternalType::kInt64Value: return "int64" + to_string(int64_value());
     case InternalType::kFloatValue: return "float" + to_string(float_value());
     case InternalType::kDoubleValue: return "double:" + to_string(double_value());
-    case InternalType::kStringValue: return "string" + FormatBytesAsStr(string_value());
+    case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
+    case InternalType::kBinaryValue: return "binary:" + b2a_hex(binary_value());
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       return "null";
@@ -218,6 +221,7 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kStringValue: v->clear_string_value(); return;
     case YQLValuePB::kBoolValue:   v->clear_bool_value(); return;
     case YQLValuePB::kTimestampValue: v->clear_timestamp_value(); return;
+    case YQLValuePB::kBinaryValue: v->clear_binary_value(); return;
     case YQLValuePB::VALUE_NOT_SET: return;
   }
   LOG(FATAL) << "Internal error: unknown or unsupported type " << v->value_case();
@@ -239,6 +243,7 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
       return 0;
     case YQLValuePB::kTimestampValue:
       return GenericCompare(lhs.timestamp_value(), rhs.timestamp_value());
+    case YQLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
     case YQLValuePB::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;

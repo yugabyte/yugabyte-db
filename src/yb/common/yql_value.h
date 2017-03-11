@@ -43,6 +43,7 @@ class YQLValue {
   virtual bool bool_value() const = 0;
   virtual const std::string& string_value() const = 0;
   virtual Timestamp timestamp_value() const = 0;
+  virtual const std::string& binary_value() const = 0;
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
@@ -58,6 +59,8 @@ class YQLValue {
   virtual void set_string_value(const char* val, size_t size) = 0;
   virtual void set_timestamp_value(const Timestamp& val) = 0;
   virtual void set_timestamp_value(int64_t val) = 0;
+  virtual void set_binary_value(const std::string& val) = 0;
+  virtual void set_binary_value(const void* val, size_t size) = 0;
 
   //----------------------------------- assignment methods ----------------------------------
   virtual YQLValue& operator=(const YQLValuePB& other) = 0;
@@ -123,6 +126,10 @@ class YQLValue {
     CHECK(v.has_timestamp_value());
     return Timestamp(v.timestamp_value());
   }
+  static const std::string& binary_value(const YQLValuePB& v) {
+    CHECK(v.has_binary_value());
+    return v.binary_value();
+  }
 
 #undef YQL_GET_VALUE
 
@@ -144,6 +151,10 @@ class YQLValue {
     v->set_timestamp_value(val.ToInt64());
   }
   static void set_timestamp_value(const int64_t val, YQLValuePB *v) { v->set_timestamp_value(val); }
+  static void set_binary_value(const std::string& val, YQLValuePB *v) { v->set_binary_value(val); }
+  static void set_binary_value(const void* val, const size_t size, YQLValuePB *v) {
+    v->set_string_value(static_cast<const char *>(val), size);
+  }
 
   //----------------------------------- comparison methods -----------------------------------
   static bool Comparable(const YQLValuePB& lhs, const YQLValuePB& rhs) {
@@ -224,6 +235,9 @@ class YQLValueWithPB : public YQLValue {
     return YQLValue::string_value(value_);
   }
   virtual Timestamp timestamp_value() const override { return YQLValue::timestamp_value(value_); }
+  virtual const std::string& binary_value() const override {
+    return YQLValue::binary_value(value_);
+  }
 
   //----------------------------------- set value methods -----------------------------------
   virtual void set_int8_value(int8_t val) override { YQLValue::set_int8_value(val, &value_); }
@@ -247,6 +261,12 @@ class YQLValueWithPB : public YQLValue {
   }
   virtual void set_timestamp_value(const int64_t val) override {
     YQLValue::set_timestamp_value(val, &value_);
+  }
+  virtual void set_binary_value(const std::string& val) override {
+    YQLValue::set_binary_value(val, &value_);
+  }
+  virtual void set_binary_value(const void* val, const size_t size) override {
+    YQLValue::set_binary_value(val, size, &value_);
   }
 
   //----------------------------------- assignment methods ----------------------------------

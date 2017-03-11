@@ -25,6 +25,7 @@ message YQLValuePB {
     string string_value = 7;
     bool bool_value = 8;
     int64 timestamp_value = 9;
+    bytes binary_value = 10;
   }
 }
 

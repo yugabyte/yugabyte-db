@@ -498,6 +498,7 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
     case FLOAT:   return PrimitiveValue::Double(YQLValue::float_value(value));
     case DOUBLE:  return PrimitiveValue::Double(YQLValue::double_value(value));
     case STRING:  return PrimitiveValue(YQLValue::string_value(value));
+    case BINARY:  return PrimitiveValue(YQLValue::binary_value(value));
     case BOOL:
       return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
     case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value));
@@ -505,7 +506,6 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
     case UINT64: FALLTHROUGH_INTENDED;
-    case BINARY: FALLTHROUGH_INTENDED;
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
@@ -550,11 +550,13 @@ void PrimitiveValue::ToYQLValuePB(const DataType data_type, YQLValuePB* v) const
     case STRING:
       YQLValue::set_string_value(GetString(), v);
       return;
+    case BINARY:
+      YQLValue::set_binary_value(GetString(), v);
+      return;
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
     case UINT64: FALLTHROUGH_INTENDED;
-    case BINARY: FALLTHROUGH_INTENDED;
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
