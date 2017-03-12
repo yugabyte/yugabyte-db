@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React from 'react';
-import {ListGroup, ListGroupItem, Row, Col} from 'react-bootstrap';
-import {YBButton} from '../../common/forms/fields'
+import { ListGroup, ListGroupItem } from 'react-bootstrap';
+import { YBButton } from '../../common/forms/fields'
 import ProviderConfiguration from '../ConfigProvider/ProviderConfiguration';
 
 export default class AWSProviderConfiguration extends ProviderConfiguration {
@@ -38,12 +38,10 @@ export default class AWSProviderConfiguration extends ProviderConfiguration {
             <input type="text"/>
           </ListGroupItem>
         </ListGroup>
-        <Row className="form-action-button-container">
-          <Col lg={4} lgOffset={8}>
-            <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}/>
-            <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}/>
-          </Col>
-        </Row>
+        <div className="form-action-button-container">
+          <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}/>
+          <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}/>
+        </div>
       </div>
     )
   }

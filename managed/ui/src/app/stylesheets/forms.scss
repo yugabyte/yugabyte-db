@@ -9,3 +9,13 @@
 form a {
   margin-left: 5px;
 }
+
+.form-field-grid {
+  .row {
+    margin: 6px 0 !important;
+
+    > * {
+      padding: 0 2px !important;
+    }
+  }
+}

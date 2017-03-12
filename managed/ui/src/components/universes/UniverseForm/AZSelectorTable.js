@@ -160,7 +160,7 @@ export default class AZSelectorTable extends Component {
       })
     }
     return (
-      <div className={"az-table-container"}>
+      <div className={"az-table-container form-field-grid"}>
         {azList}
       </div>
     )

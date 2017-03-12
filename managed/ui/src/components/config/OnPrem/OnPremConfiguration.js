@@ -1,8 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {OnPremConfigWizardContainer, OnPremConfigJSONContainer, AddHostDataFormContainer} from '../../config';
-import { Row } from 'react-bootstrap';
+import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, AddHostDataFormContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 
 export default class OnPremConfiguration extends Component {
@@ -34,11 +33,11 @@ export default class OnPremConfiguration extends Component {
       <div className="on-prem-provider-container">
         {hostDataForm}
         {ConfigurationDataForm}
-        <Row className="form-action-button-container">
+        <div className="form-action-button-container">
           <YBButton btnText={btnText} btnClass={"btn btn-default"} onClick={this.toggleJsonEntry}/>
           <YBButton btnText={"Additional Host Options"} onClick={this.toggleAdditionalOptionsModal}/>
           <YBButton btnClass="pull-right btn btn-default bg-orange" btnText={"Save"} btnType={"submit"}/>
-        </Row>
+        </div>
       </div>
     )
   }

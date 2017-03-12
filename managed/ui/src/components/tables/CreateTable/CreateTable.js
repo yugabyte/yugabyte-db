@@ -4,9 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBInputField, YBButton, YBSelect } from '../../common/forms/fields';
 import { Field, FieldArray } from 'redux-form';
-import { YBPanelItem } from '../../panels';
 import './CreateTables.scss';
-import { DescriptionItem } from '../../common/descriptors';
 import {isValidArray} from '../../../utils/ObjectUtils';
 
 class KeyColumnList extends Component {
@@ -36,7 +34,7 @@ class KeyColumnList extends Component {
                               desc
                             </option>];
     if (columnType === "clustering") {
-      return <Col lg={2}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
+      return <Col lg={1}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
     }
   }
 
@@ -84,29 +82,31 @@ class KeyColumnList extends Component {
                     }));
     }
     return (
-      <div>
+      <div className="form-field-grid">
         {fields.map((item, index) =>
           <Row key={item+index}>
-            <Col lg={4}>
+            <Col lg={5}>
               <Field
                 name={`${item}.name`} component={YBInputField} placeHolder={"Column Name"}
                 checkState={true} />
             </Col>
-            <Col lg={2}>
+            <Col lg={5}>
               <Field
                 name={`${item}.selected`} options={typeOptions}
                 component={YBSelect} placeHolder={"Type"}
               />
             </Col>
             {this.columnListSort(item)}
-            <Col lg={1}>
+            <Col lg={1} className="text-center">
               {this.removeRowItem(index)}
             </Col>
           </Row>
         )}
-        <div className="add-key-column key-row-heading" onClick={this.addKeyItem}>
-          <i className="fa fa-plus"></i>&nbsp;Add {getFieldLabel()} Column
-        </div>
+        <Row>
+          <Col lg={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
+            <i className="fa fa-plus"></i>&nbsp;Add {getFieldLabel()} Column
+          </Col>
+        </Row>
       </div>
     )
   }
@@ -116,31 +116,30 @@ class CassandraColumnSpecification extends Component {
   render () {
     return (
       <div>
+        <hr />
         <Row>
           <Col lg={3}>
-            <DescriptionItem title="Partition Key Column">
-              <span>(In Order)</span>
-            </DescriptionItem>
+            <h5 className="no-bottom-margin">Partition Key Columns</h5>
+            (In Order)
           </Col>
           <Col lg={9}>
             <FieldArray name="partitionKeyColumns" component={KeyColumnList} columnType={"partitionKey"} {...this.props}/>
           </Col>
         </Row>
+        <hr />
         <Row>
           <Col lg={3}>
-            <DescriptionItem title="Clustering Columns">
-              <span>(In Order)</span>
-            </DescriptionItem>
+            <h5 className="no-bottom-margin">Clustering Columns</h5>
+            (In Order)
           </Col>
           <Col lg={9}>
             <FieldArray name="clusteringColumns" component={KeyColumnList} columnType={"clustering"} {...this.props}/>
           </Col>
         </Row>
-        <Row className="other-column-container">
+        <hr />
+        <Row>
           <Col lg={3}>
-            <DescriptionItem title="Other Columns">
-              <span/>
-            </DescriptionItem>
+            <h5 className="no-bottom-margin">Other Columns</h5>
           </Col>
           <Col lg={9}>
             <FieldArray name="otherColumns" component={KeyColumnList} columnType={"other"} {...this.props} />
@@ -174,23 +173,24 @@ export default class CreateTable extends Component {
     const {handleSubmit} = this.props;
     var onFormSubmit = handleSubmit(this.createTable);
     return (
-      <YBPanelItem name="Create Table">
+      <div className="bottom-bar-padding">
+        <h3>Create Table</h3>
         <form name="CreateTableForm" onSubmit={onFormSubmit}>
           <Row className="create-table-name-container">
             <Col lg={6}>
-              <Field name="tableName" component={YBInputField} className={`table-name-cell`}
-                     label="Name" placeHolder={"Table Name"}/>
+              <div className="form-right-aligned-labels">
+                <Field name="tableName" component={YBInputField} className={`table-name-cell`}
+                       label="Name" placeHolder={"Table Name"}/>
+              </div>
             </Col>
           </Row>
           <CassandraColumnSpecification {...this.props} />
-          <Row>
-            <Col lg={2} lgOffset={10}>
-              <YBButton btnText="Cancel" btnClass={`btn bg-grey table-btn`} onClick={this.props.showListTables}/>
-              <YBButton btnText="Create" btnClass={`btn bg-orange table-btn`} btnType="submit"/>
-            </Col>
-          </Row>
+          <div className="form-action-button-container">
+            <YBButton btnText="Create" btnClass={`pull-right btn btn-default bg-orange`} btnType="submit"/>
+            <YBButton btnText="Cancel" btnClass={`pull-right btn btn-default`} onClick={this.props.showListTables}/>
+          </div>
         </form>
-      </YBPanelItem>
+      </div>
     )
   }
 }

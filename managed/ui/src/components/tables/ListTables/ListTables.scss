@@ -1,5 +1,6 @@
-
 // Copyright (c) YugaByte, Inc.
+
+@import "_style/colors.scss";
 
 .table-type-logo {
     width: 30px;
@@ -8,9 +9,16 @@
 }
 
 .table-search-bar {
-    width: 140px;
+    position: relative;
+    top: 1px;
+    width: 200px;
     height: 30px;
-    border-radius: 12px;
+    border: 1px solid $YB_GRAY_20;
+    border-radius: 15px;
+    padding-left: 10px;
+    margin-right: 10px;
+    font-size: 14px;
+    font-weight: 400;
 }
 
 .table-container {
