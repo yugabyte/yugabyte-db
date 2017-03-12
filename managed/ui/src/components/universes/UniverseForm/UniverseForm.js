@@ -152,11 +152,14 @@ export default class UniverseForm extends Component {
   render() {
     var self = this;
     const { visible, onHide, handleSubmit, title, universe } = this.props;
-    var universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
-      return <option key={providerItem.uuid} value={providerItem.uuid}>
-        {providerItem.name}
-      </option>;
-    });
+    var universeProviderList = [];
+    if (isValidArray(this.props.cloud.providers)) {
+      this.props.cloud.providers.map(function(providerItem, idx) {
+        return <option key={providerItem.uuid} value={providerItem.uuid}>
+          {providerItem.name}
+        </option>;
+      });
+    }
     universeProviderList.unshift(<option key="" value=""></option>);
 
     var universeRegionList = this.props.cloud.regions.map(function (regionItem, idx) {
