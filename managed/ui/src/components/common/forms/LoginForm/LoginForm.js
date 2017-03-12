@@ -38,7 +38,7 @@ class LoginForm extends Component {
         <div className="col-sm-5 login-form">
           <PageHeader bsClass="login-heading">
             <YBLogo />
-            <span>Administrative Console</span>
+            <span>Admin Console</span>
           </PageHeader>
           <form onSubmit={handleSubmit(this.submitLogin)}>
             <div className={`alert alert-danger form-error-alert
