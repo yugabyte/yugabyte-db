@@ -23,8 +23,8 @@ class TableTitle extends Component {
         <Image src={redisLogo} className="table-type-logo"/>&nbsp;
         {numRedisTables} <span>Redis</span> &nbsp; &nbsp;
         <div>
-          <input type="text" className="table-search-bar "/>
-          <Button onClick={onCreateButtonClick}>
+          <input type="text" className="table-search-bar" placeholder="Search Tables" />
+          <Button bsClass="btn bg-orange" onClick={onCreateButtonClick}>
             Create Table
           </Button>
         </div>

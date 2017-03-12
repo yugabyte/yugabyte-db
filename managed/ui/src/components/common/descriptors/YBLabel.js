@@ -10,14 +10,18 @@ export default class YBLabel extends Component {
 
     return (
       <div className={`form-group ${ touched && invalid ? 'has-error' : ''}`} onClick={onLabelClick}>
-        <label className="form-item-label">
-          {label}
-        </label>
+        {label &&
+          <label className="form-item-label">
+            {label}
+          </label>
+        }
         <div className="yb-field-group">
           {this.props.children}
-          <div className="help-block">
-            {touched && error && <span>{error}</span>}
-          </div>
+          {touched && error &&
+            <div className="help-block">
+              <span>{error}</span>
+            </div>
+          }
         </div>
       </div>
     )
