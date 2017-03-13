@@ -1,18 +1,22 @@
 //--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //
-// This class represents a SQL statement (to be adde).
+// This class represents a SQL statement.
 //--------------------------------------------------------------------------------------------------
 
 #ifndef YB_SQL_STATEMENT_H_
 #define YB_SQL_STATEMENT_H_
 
-#include <string>
-#include <glog/logging.h>
+#include <boost/thread/shared_mutex.hpp>
+
 #include "yb/common/yql_protocol.pb.h"
+#include "yb/sql/ptree/parse_tree.h"
 
 namespace yb {
 namespace sql {
+
+class SqlProcessor;
+class PreparedResult;
 
 // This class represents the parameters for executing a SQL statement.
 class StatementParameters {
@@ -37,6 +41,52 @@ class StatementParameters {
 
   // Paging State.
   YQLPagingStatePB paging_state_pb_;
+};
+
+class Statement {
+ public:
+  //------------------------------------------------------------------------------------------------
+  explicit Statement(const std::string& keyspace, const std::string& text);
+
+  // Returns statement text.
+  const std::string& text() const { return text_; }
+
+  // Prepare the statement for execution. Reprepare it if it hasn't been since last_prepare_time.
+  // Use MonoTime::Min() if it doesn't need to be reprepared. Optionally return prepared result
+  // if requested.
+  CHECKED_STATUS Prepare(SqlProcessor* processor,
+                         const MonoTime& last_prepare_time = MonoTime::Min(),
+                         bool refresh_cache = false,
+                         std::shared_ptr<MemTracker> mem_tracker = nullptr,
+                         std::unique_ptr<PreparedResult>* prepared_result = nullptr);
+
+  // Execute the prepared statement.
+  CHECKED_STATUS Execute(SqlProcessor* processor, const StatementParameters& params);
+
+  // Run the statement (i.e. prepare and execute).
+  CHECKED_STATUS Run(SqlProcessor* processor, const StatementParameters& params);
+
+ protected:
+  // Execute the prepared statement. Don't reprepare.
+  CHECKED_STATUS DoExecute(SqlProcessor* processor,
+                           const StatementParameters& params,
+                           MonoTime* last_prepare_time,
+                           bool* new_analysis_needed);
+
+  // The keyspace this statement is parsed in.
+  const std::string keyspace_;
+
+  // The text of the SQL statement.
+  const std::string text_;
+
+  // The prepare time.
+  MonoTime prepare_time_;
+
+  // The parse tree.
+  ParseTree::UniPtr parse_tree_;
+
+  // Shared/exclusive lock on the parse tree and parse time.
+  boost::shared_mutex lock_;
 };
 
 } // namespace sql

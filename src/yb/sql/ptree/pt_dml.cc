@@ -31,7 +31,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     where_ops_(memctx),
     write_only_(write_only),
     ttl_seconds_(ttl_seconds),
-    column_args_(memctx) {
+    column_args_(nullptr) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
@@ -71,6 +71,13 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
     RETURN_NOT_OK(sem_context->MapSymbol(col_name, &table_columns_[idx]));
   }
 
+  return Status::OK();
+}
+
+// Node semantics analysis.
+CHECKED_STATUS PTDmlStmt::Analyze(SemContext *sem_context) {
+  MemoryContext *psem_mem = sem_context->PSemMem();
+  column_args_.reset(psem_mem->NewObject<MCVector<ColumnArg>>(psem_mem));
   return Status::OK();
 }
 
@@ -339,6 +346,10 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
                               ErrorCode::INVALID_ARGUMENTS);
   }
   return Status::OK();
+}
+
+void PTDmlStmt::Reset() {
+  column_args_ = nullptr;
 }
 
 } // namespace sql

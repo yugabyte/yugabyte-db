@@ -8,17 +8,21 @@
 namespace yb {
 namespace sql {
 
+using std::shared_ptr;
+using client::YBTable;
+
 //--------------------------------------------------------------------------------------------------
 
 SemContext::SemContext(const char *sql_stmt,
                        size_t stmt_len,
                        ParseTree::UniPtr parse_tree,
                        SqlEnv *sql_env,
-                       int retry_count)
+                       bool refresh_cache)
     : ProcessContext(sql_stmt, stmt_len, move(parse_tree)),
       symtab_(ptemp_mem_.get()),
       sql_env_(sql_env),
-      retry_count_(retry_count) {
+      refresh_cache_(refresh_cache),
+      cache_used_(false) {
 }
 
 SemContext::~SemContext() {
@@ -50,6 +54,16 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
   }
   symtab_[name].column_desc_ = entry;
   return Status::OK();
+}
+
+shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_name) {
+  bool cache_used = false;
+  shared_ptr<YBTable> table = sql_env_->GetTableDesc(table_name, refresh_cache_, &cache_used);
+  if (cache_used) {
+    // Remember cache was used.
+    cache_used_ = true;
+  }
+  return table;
 }
 
 const SymbolEntry *SemContext::SeekSymbol(const MCString& name) const {

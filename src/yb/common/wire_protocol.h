@@ -227,7 +227,7 @@ static inline CHECKED_STATUS CQLDecodeFloat(
     size_t len, data_type (*converter)(const void*), Slice* data, float_type* val) {
   // Make sure float and double are exactly sizeof uint32_t and uint64_t.
   static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
-  data_type bval;
+  data_type bval = 0;
   RETURN_NOT_OK(CQLDecodeNum(len, converter, data, &bval));
   *val = *reinterpret_cast<float_type*>(&bval);
   return Status::OK();

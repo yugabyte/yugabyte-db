@@ -29,6 +29,7 @@ import java.util.GregorianCalendar;
 import java.util.TimeZone;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
 
 
 public class TestBase {
@@ -46,6 +47,8 @@ public class TestBase {
   protected static MiniYBCluster miniCluster;
 
   protected static final int DEFAULT_SLEEP = 50000;
+  protected static List<String> masterArgs = null;
+  protected static List<String> tserverArgs = null;
 
   // Long.MAX_VALUE / 1000000000 is the max allowed ttl, since internally in docdb we use MonoDelta
   // to store the ttl, which uses nanoseconds.
@@ -62,6 +65,8 @@ public class TestBase {
                   .numMasters(NUM_MASTERS)
                   .numTservers(NUM_TABLET_SERVERS)
                   .defaultTimeoutMs(DEFAULT_SLEEP)
+                  .masterArgs(masterArgs)
+                  .tserverArgs(tserverArgs)
                   .build();
 
     LOG.info("Waiting for tablet servers...");

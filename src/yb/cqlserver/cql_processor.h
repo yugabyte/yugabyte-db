@@ -11,13 +11,17 @@
 
 #include "yb/client/client.h"
 #include "yb/cqlserver/cql_message.h"
+#include "yb/cqlserver/cql_service.h"
 #include "yb/sql/sql_processor.h"
+#include "yb/sql/statement.h"
 #include "yb/rpc/inbound_call.h"
 
 namespace yb {
 namespace cqlserver {
 
-class CQLMetrics : public sql::YbSqlMetrics {
+class CQLServiceImpl;
+
+class CQLMetrics : public sql::SqlMetrics {
  public:
   explicit CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
 
@@ -30,25 +34,49 @@ class CQLMetrics : public sql::YbSqlMetrics {
   scoped_refptr<yb::Counter> num_errors_parsing_cql_;
 };
 
+// A CQL statement that is prepared and cached.
+class CQLStatement : public sql::Statement {
+ public:
+  explicit CQLStatement(const std::string& keyspace, const std::string& sql_stmt);
+
+  // Return the query id.
+  CQLMessage::QueryId query_id() const { return GetQueryId(keyspace_, text_); }
+
+  // Get/set position of the statement in the LRU.
+  CQLStatementListPos pos() const { return pos_; }
+  void set_pos(CQLStatementListPos pos) { pos_ = pos; }
+
+  // Return the query id of a statement.
+  static CQLMessage::QueryId GetQueryId(const std::string& keyspace, const std::string& sql_stmt);
+
+ private:
+  // Position of the statement in the LRU.
+  CQLStatementListPos pos_;
+};
+
 class CQLProcessor : public sql::SqlProcessor {
  public:
-  // Public types.
-  typedef std::unique_ptr<CQLProcessor> UniPtr;
-  typedef std::unique_ptr<const CQLProcessor> UniPtrConst;
-
   // Constructor and destructor.
-  CQLProcessor(std::shared_ptr<client::YBClient> client,
-               std::shared_ptr<client::YBTableCache> cache,
-               std::shared_ptr<CQLMetrics> metrics);
+  explicit CQLProcessor(CQLServiceImpl* service_impl);
   ~CQLProcessor();
 
   // Processing an inbound call.
   void ProcessCall(const Slice& msg, std::unique_ptr<CQLResponse> *response);
 
-  // Process SQL statement.
+  // Process a PREPARE request.
+  CQLResponse *ProcessPrepare(const PrepareRequest& req);
+
+  // Process a EXECUTE request.
+  CQLResponse *ProcessExecute(const ExecuteRequest& req);
+
+  // Process a QUERY request.
   CQLResponse *ProcessQuery(const QueryRequest& req);
 
  private:
+  // Pointer to the containing CQL service implementation.
+  CQLServiceImpl* const service_impl_;
+
+  // CQL metrics.
   std::shared_ptr<CQLMetrics> cql_metrics_;
 };
 

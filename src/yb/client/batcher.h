@@ -148,7 +148,11 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Cleans up an RPC response, scooping out any errors and passing them up
   // to the batcher.
-  void ProcessKuduWriteResponse(const WriteRpc &rpc, const Status &s);
+  void ProcessReadResponse(const ReadRpc &rpc, const Status &s);
+  void ProcessWriteResponse(const WriteRpc &rpc, const Status &s);
+
+  // Process RPC status.
+  void ProcessRpcStatus(const AsyncRpc &rpc, const Status &s);
 
   // Async Callbacks.
   void TabletLookupFinished(InFlightOp* op, const Status& s);

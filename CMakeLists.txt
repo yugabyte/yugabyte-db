@@ -1440,7 +1440,9 @@ foreach(IDX RANGE ${LAST_IDX})
   get_filename_component(LIB_NAME ${BOOST_STATIC_LIB} NAME_WE)
   string(REGEX REPLACE "lib([^-]*)(-mt)?" "\\1" LIB_NAME_NO_PREFIX_SUFFIX ${LIB_NAME})
   ADD_THIRDPARTY_LIB(${LIB_NAME_NO_PREFIX_SUFFIX}
-    STATIC_LIB "${BOOST_STATIC_LIB}"
+    # Boost's static library is not compiled with PIC so it cannot be used to link a shared
+    # library. So skip that and use the shared library instead.
+    # STATIC_LIB "${BOOST_STATIC_LIB}"
     SHARED_LIB "${BOOST_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS ${LIB_NAME_NO_PREFIX_SUFFIX})
 endforeach()

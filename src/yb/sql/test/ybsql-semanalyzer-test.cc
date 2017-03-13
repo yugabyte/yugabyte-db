@@ -17,7 +17,7 @@ class YbSqlTestAnalyzer: public YbSqlTestBase {
 
 TEST_F(YbSqlTestAnalyzer, TestCreateTablePropertyAnalyzer) {
   CreateSimulatedCluster();
-  SqlEnv* sql_env = CreateNewConnectionContext();
+  SqlEnv* sql_env = CreateSqlEnv();
 
   // Analyze the sql statement.
   ParseTree::UniPtr parse_tree;
@@ -45,7 +45,7 @@ TEST_F(YbSqlTestAnalyzer, TestCreateTablePropertyAnalyzer) {
 
 TEST_F(YbSqlTestAnalyzer, TestCreateTableAnalyze) {
   CreateSimulatedCluster();
-  SqlEnv *sql_env = CreateNewConnectionContext();
+  SqlEnv *sql_env = CreateSqlEnv();
 
   // Analyze the sql statement.
   ParseTree::UniPtr parse_tree;

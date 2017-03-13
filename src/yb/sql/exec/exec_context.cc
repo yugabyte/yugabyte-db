@@ -9,9 +9,8 @@ namespace sql {
 
 ExecContext::ExecContext(const char *sql_stmt,
                          size_t stmt_len,
-                         ParseTree::UniPtr parse_tree,
                          SqlEnv *sql_env)
-    : ProcessContext(sql_stmt, stmt_len, move(parse_tree)),
+    : ProcessContextBase(sql_stmt, stmt_len),
       sql_env_(sql_env) {
 }
 

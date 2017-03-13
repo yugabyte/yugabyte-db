@@ -25,7 +25,7 @@ class ParseTree {
 
   //------------------------------------------------------------------------------------------------
   // Public functions.
-  ParseTree();
+  explicit ParseTree(std::shared_ptr<MemTracker> mem_tracker = nullptr);
   ~ParseTree();
 
   // Run semantics analysis.
@@ -44,6 +44,11 @@ class ParseTree {
     return ptree_mem_.get();
   }
 
+  // Access function to psem_mem_.
+  MemoryContext *PSemMem() const {
+    return psem_mem_.get();
+  }
+
  private:
   //------------------------------------------------------------------------------------------------
   // Private data members.
@@ -53,6 +58,13 @@ class ParseTree {
   // should be part of the generated parse tree that is stored within parse_context. Once the
   // parse tree is destructed, it's also gone.
   MemoryContext::UniPtr ptree_mem_;
+
+  // Semantic analysis memory pool. This pool is used to allocate memory for storing semantic
+  // analysis results in the parse tree. When a parse tree is analyzed, the parse tree is reset to
+  // release the previous analysis result and this pool should be reset to free the associated
+  // memory. This pool should be part of the generated parse tree also that is stored within
+  // sem_context. Once the parse tree is destructed, it's also gone too.
+  MemoryContext::UniPtr psem_mem_;
 };
 
 }  // namespace sql

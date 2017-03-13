@@ -8,24 +8,25 @@
 #ifndef YB_SQL_SQL_PROCESSOR_H_
 #define YB_SQL_SQL_PROCESSOR_H_
 
-#include <yb/util/metrics.h>
+#include "yb/sql/exec/executor.h"
+#include "yb/sql/parser/parser.h"
+#include "yb/sql/sem/analyzer.h"
 #include "yb/sql/util/sql_env.h"
-#include "yb/sql/ybsql.h"
+#include "yb/util/metrics.h"
 
 namespace yb {
 namespace sql {
 
-class SQLMetrics {
+class SqlMetrics {
  public:
-  explicit SQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
+  explicit SqlMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
 
-  scoped_refptr<yb::Histogram> time_to_process_request_;
-  scoped_refptr<yb::Histogram> time_to_get_processor_;
-  scoped_refptr<yb::Histogram> time_to_parse_request_;
-  scoped_refptr<yb::Histogram> time_to_execute_request_;
-  scoped_refptr<yb::Histogram> time_to_queue_response_;
+  scoped_refptr<yb::Histogram> time_to_parse_sql_query_;
+  scoped_refptr<yb::Histogram> time_to_analyse_sql_query_;
+  scoped_refptr<yb::Histogram> time_to_execute_sql_query_;
+  scoped_refptr<yb::Histogram> num_rounds_to_analyse_sql_;
 
-  scoped_refptr<yb::Counter> num_errors_parsing_;
+  scoped_refptr<yb::Histogram> sql_response_size_bytes_;
 };
 
 class SqlProcessor {
@@ -33,17 +34,32 @@ class SqlProcessor {
   // Public types.
   typedef std::unique_ptr<SqlProcessor> UniPtr;
   typedef std::unique_ptr<const SqlProcessor> UniPtrConst;
-  static const int kSessionTimeoutMs = 60000;
 
   // Constructors.
   explicit SqlProcessor(
-      std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache);
+      std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache,
+      SqlMetrics* sql_metrics = nullptr);
   virtual ~SqlProcessor();
 
-  // Execute the given statement.
+  // Parse a SQL statement and generate a parse tree.
+  CHECKED_STATUS Parse(const string& sql_stmt,
+                       ParseTree::UniPtr* parse_tree,
+                       std::shared_ptr<MemTracker> mem_tracker = nullptr);
+
+  // Semantically analyze a parse tree.
+  CHECKED_STATUS Analyze(const string& sql_stmt,
+                         ParseTree::UniPtr* parse_tree,
+                         bool refresh_cache);
+
+  // Execute a parse tree.
+  CHECKED_STATUS Execute(const string& sql_stmt,
+                         const ParseTree& parse_tree,
+                         const StatementParameters& params,
+                         bool* new_analysis_needed);
+
+  // Execute a SQL statement.
   CHECKED_STATUS Run(const std::string& sql_stmt,
-                     const StatementParameters& params = StatementParameters(),
-                     YbSqlMetrics* yb_metrics = nullptr);
+                     const StatementParameters& params = StatementParameters());
 
   // Send the rows_result back for processing. If there's an error, the rows_result is set to
   // nullptr.
@@ -70,14 +86,21 @@ class SqlProcessor {
   }
 
  protected:
-  // SQL engine.
-  YbSql::UniPtr ybsql_;
+  //------------------------------------------------------------------------------------------------
+  // Parsing processor.
+  Parser::UniPtr parser_;
+
+  // Semantic analysis processor.
+  Analyzer::UniPtr analyzer_;
+
+  // Tree executor.
+  Executor::UniPtr executor_;
 
   // Environment (YBClient) that processor uses to execute statement.
-  std::shared_ptr<client::YBClient> client_;
-  std::shared_ptr<client::YBSession> write_session_;
-  std::shared_ptr<client::YBSession> read_session_;
   SqlEnv::UniPtr sql_env_;
+
+  // SQL metrics.
+  SqlMetrics* const sql_metrics_;
 
   // Processing state.
   bool is_used_;

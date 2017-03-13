@@ -71,13 +71,19 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
       having_clause_(having_clause),
       order_by_clause_(order_by_clause),
       limit_clause_(limit_clause),
-      selected_columns_(memctx) {
+      selected_columns_(nullptr) {
 }
 
 PTSelectStmt::~PTSelectStmt() {
 }
 
 CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
+
+  RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
+
+  MemoryContext *psem_mem = sem_context->PSemMem();
+  selected_columns_.reset(psem_mem->NewObject<MCVector<const ColumnDesc*>>(psem_mem));
+
   // Get the table descriptor.
   if (from_clause_->size() > 1) {
     return sem_context->Error(from_clause_->loc(), "Only one selected table is allowed",
@@ -93,7 +99,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
 
   // Run error checking on the select list 'target_'.
   // Check that all targets are valid references to table columns.
-  selected_columns_.reserve(num_columns());
+  selected_columns_->reserve(num_columns());
   TreeNodePtrOperator<SemContext> analyze = std::bind(&PTSelectStmt::AnalyzeTarget,
                                                       this,
                                                       std::placeholders::_1,
@@ -140,10 +146,10 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
     }
     int num_cols = num_columns();
     for (int idx = 0; idx < num_cols; idx++) {
-      selected_columns_.push_back(&table_columns_[idx]);
+      selected_columns_->push_back(&table_columns_[idx]);
     }
   } else {
-    selected_columns_.push_back(col_desc);
+    selected_columns_->push_back(col_desc);
   }
 
   return Status::OK();
@@ -151,6 +157,11 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
 
 void PTSelectStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
+}
+
+void PTSelectStmt::Reset() {
+  PTDmlStmt::Reset();
+  selected_columns_ = nullptr;
 }
 
 //--------------------------------------------------------------------------------------------------

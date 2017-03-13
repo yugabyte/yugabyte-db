@@ -31,7 +31,10 @@ class Analyzer {
   CHECKED_STATUS Analyze(const std::string& sql_stmt,
                          ParseTree::UniPtr ptree,
                          SqlEnv *sql_env,
-                         int retry_count);
+                         bool refresh_cache);
+
+  // Return if metadata cache is used during semantic analysis.
+  bool cache_used() const { return sem_context_->cache_used(); }
 
   // Returns decorated parse tree from the semantic analysis.
   ParseTree::UniPtr Done();

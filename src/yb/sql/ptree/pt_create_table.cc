@@ -35,11 +35,6 @@ PTCreateTable::~PTCreateTable() {
 }
 
 CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
-  // DDL statement is not allowed to be retried.
-  if (sem_context->retry_count() > 0) {
-    return sem_context->Error(loc(), ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED);
-  }
-
   // Processing table name.
   RETURN_NOT_OK(relation_->Analyze(sem_context));
 

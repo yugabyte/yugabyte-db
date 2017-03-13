@@ -13,14 +13,15 @@ namespace sql {
 using std::endl;
 using std::istream;
 using std::min;
+using std::shared_ptr;
 using std::string;
 
 //--------------------------------------------------------------------------------------------------
 // ParseContext
 //--------------------------------------------------------------------------------------------------
 
-ParseContext::ParseContext(const char *stmt, size_t stmt_len)
-    : ProcessContext(stmt, stmt_len),
+ParseContext::ParseContext(const char *stmt, size_t stmt_len, shared_ptr<MemTracker> mem_tracker)
+    : ProcessContext(stmt, stmt_len, ParseTree::UniPtr(new ParseTree(mem_tracker))),
       stmt_offset_(0),
       trace_scanning_(false),
       trace_parsing_(false) {

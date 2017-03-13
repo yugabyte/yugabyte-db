@@ -397,7 +397,8 @@ class YBTableCache {
   // in this client, or if force_refresh is true, this will do an RPC to ensure
   // that the table exists and look up its schema.
   CHECKED_STATUS GetTable(
-      const YBTableName& table_name, std::shared_ptr<YBTable>* table, bool force_refresh);
+      const YBTableName& table_name, std::shared_ptr<YBTable>* table, bool force_refresh,
+      bool* cache_used);
 
  private:
   std::shared_ptr<YBClient> client_;

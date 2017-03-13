@@ -64,6 +64,9 @@ class PTDmlStmt : public PTCollection {
   // Lookup table from the metadata database.
   CHECKED_STATUS LookupTable(SemContext *sem_context);
 
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
 
@@ -112,8 +115,12 @@ class PTDmlStmt : public PTCollection {
 
   // Access for column_args.
   const MCVector<ColumnArg>& column_args() const {
-    return column_args_;
+    CHECK(column_args_ != nullptr) << "column arguments not set up";
+    return *column_args_;
   }
+
+  // Reset to clear and release previous semantics analysis results.
+  virtual void Reset() OVERRIDE;
 
  protected:
   // Data types.
@@ -167,7 +174,7 @@ class PTDmlStmt : public PTCollection {
   PTConstInt::SharedPtr ttl_seconds_;
 
   // Semantic phase will decorate the following field.
-  MCVector<ColumnArg> column_args_;
+  MCUniPtr<MCVector<ColumnArg>> column_args_;
 };
 
 }  // namespace sql

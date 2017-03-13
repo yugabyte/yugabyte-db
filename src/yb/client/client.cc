@@ -635,16 +635,19 @@ Status YBClient::TableExists(const YBTableName& table_name, bool* exists) {
 }
 
 Status YBTableCache::GetTable(
-    const YBTableName& table_name, shared_ptr<YBTable>* table, bool force_refresh) {
+    const YBTableName& table_name, shared_ptr<YBTable>* table, bool force_refresh,
+    bool* cache_used) {
   if (!force_refresh) {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
     auto itr = cached_tables_.find(table_name.ToString());
     if (itr != cached_tables_.end()) {
       *table = itr->second;
+      *cache_used = true;
       return Status::OK();
     }
   }
   RETURN_NOT_OK(client_->OpenTable(table_name, table));
+  *cache_used = false;
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
     cached_tables_[table_name.ToString()] = *table;

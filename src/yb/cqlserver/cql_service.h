@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "yb/cqlserver/cql_message.h"
-#include "yb/cqlserver/cql_processor.h"
 #include "yb/cqlserver/cql_service.service.h"
 #include "yb/rpc/transfer.h"
 #include "yb/rpc/inbound_call.h"
@@ -25,7 +24,19 @@ class YBSession;
 
 namespace cqlserver {
 
+class CQLMetrics;
+class CQLProcessor;
 class CQLServer;
+class CQLStatement;
+
+// A map of CQL query id to the prepared statement for caching the prepared statments. Shared_ptr
+// is used so that a prepared statement can be aged out and removed from the cache here without
+// deleting one that is being executed by another client in another thread.
+using CQLStatementMap = std::unordered_map<CQLMessage::QueryId, std::shared_ptr<CQLStatement>>;
+
+// A LRU list of CQL statements and position in the list.
+using CQLStatementList = std::list<std::shared_ptr<CQLStatement>>;
+using CQLStatementListPos = CQLStatementList::iterator;
 
 class CQLServiceImpl : public CQLServerServiceIf {
  public:
@@ -41,6 +52,27 @@ class CQLServiceImpl : public CQLServerServiceIf {
   // Reply to a call request.
   void SendResponse(rpc::CQLInboundCall* cql_call, CQLResponse *response);
 
+  // Allocate a prepared statement. If the statement already exists, return it instead.
+  std::shared_ptr<CQLStatement> AllocatePreparedStatement(
+      const CQLMessage::QueryId& id, const std::string& keyspace, const std::string& sql_stmt);
+
+  // Look up a prepared statement by its id. Nullptr will be returned if the statement is not found.
+  std::shared_ptr<CQLStatement> GetPreparedStatement(const CQLMessage::QueryId& id);
+
+  // Return the memory tracker for prepared statements.
+  std::shared_ptr<MemTracker> prepared_stmts_mem_tracker() const {
+    return prepared_stmts_mem_tracker_;
+  }
+
+  // Return the YBClient to communicate with either master or tserver.
+  std::shared_ptr<client::YBClient> client() const { return client_; }
+
+  // Return the YBClientCache.
+  std::shared_ptr<client::YBTableCache> table_cache() const { return table_cache_; }
+
+  // Return the CQL metrics.
+  std::shared_ptr<CQLMetrics> cql_metrics() const { return cql_metrics_; }
+
  private:
   constexpr static int kRpcTimeoutSec = 5;
 
@@ -48,16 +80,40 @@ class CQLServiceImpl : public CQLServerServiceIf {
   void SetUpYBClient(
       const std::string& yb_master_address, const scoped_refptr<MetricEntity>& metric_entity);
 
+  // Insert a prepared statement at the front of the LRU list. "prepared_stmts_mutex_" needs to be
+  // locked before this call.
+  void InsertLruPreparedStatementUnlocked(const std::shared_ptr<CQLStatement>& stmt);
+
+  // Move a prepared statement to the front of the LRU list. "prepared_stmts_mutex_" needs to be
+  // locked before this call.
+  void MoveLruPreparedStatementUnlocked(const std::shared_ptr<CQLStatement>& stmt);
+
+  // Delete the least recently used prepared statement from the cache to free up memory.
+  void DeleteLruPreparedStatement();
+
+
   // YBClient is to communicate with either master or tserver.
   std::shared_ptr<client::YBClient> client_;
   // A cache to reduce opening tables again and again.
   std::shared_ptr<client::YBTableCache> table_cache_;
 
   // Processors.
-  vector<CQLProcessor::UniPtr> processors_;
+  vector<std::unique_ptr<CQLProcessor>> processors_;
 
   // Mutex that protects the creation of client_ and processor_.
   std::mutex process_mutex_;
+
+  // Prepared statements cache.
+  CQLStatementMap prepared_stmts_map_;
+
+  // Prepared statements LRU list (least recently used one at the end).
+  CQLStatementList prepared_stmts_list_;
+
+  // Mutex that protects the prepared statements and the LRU list.
+  std::mutex prepared_stmts_mutex_;
+
+  // Tracker to measure and limit memory usage of prepared statements.
+  std::shared_ptr<MemTracker> prepared_stmts_mem_tracker_;
 
   // Metrics to be collected and reported.
   yb::rpc::RpcMethodMetrics metrics_;

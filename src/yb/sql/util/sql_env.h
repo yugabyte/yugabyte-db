@@ -11,7 +11,7 @@
 #define YB_SQL_UTIL_SQL_ENV_H_
 
 #include "yb/client/client.h"
-#include "yb/sql/util/rows_result.h"
+#include "yb/sql/util/stmt_result.h"
 
 namespace yb {
 namespace sql {
@@ -22,13 +22,11 @@ class SqlEnv {
   // Public types.
   typedef std::unique_ptr<SqlEnv> UniPtr;
   typedef std::unique_ptr<const SqlEnv> UniPtrConst;
+  static const int kSessionTimeoutMs = 60000;
 
   //------------------------------------------------------------------------------------------------
   // Constructor & desructor.
-  SqlEnv(std::shared_ptr<client::YBClient> client,
-         std::shared_ptr<client::YBTableCache> cache,
-         std::shared_ptr<client::YBSession> write_session,
-         std::shared_ptr<client::YBSession> read_session);
+  SqlEnv(std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache);
 
   virtual client::YBTableCreator *NewTableCreator();
 
@@ -39,7 +37,8 @@ class SqlEnv {
   virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
-                                                        bool refresh_metadata);
+                                                        bool refresh_cache,
+                                                        bool* cache_used);
 
   // Access function for rows_result. If the statement executed is a regular DML or there's an
   // error in execution, rows_result would be null.

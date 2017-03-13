@@ -16,7 +16,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/sql/statement.h"
-#include "yb/sql/util/rows_result.h"
+#include "yb/sql/util/stmt_result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
@@ -152,6 +152,9 @@ class CQLMessage {
     std::string value;
   };
 
+  // Id of a prepared query for PREPARE, EXECUTE and BATCH requests.
+  using QueryId = std::string;
+
   // Query parameters for QUERY, EXECUTE and BATCH requests
   struct QueryParameters {
     using Flags = uint8_t;
@@ -188,6 +191,10 @@ class CQLMessage {
  protected:
   explicit CQLMessage(const Header& header) : header_(header) { }
   virtual ~CQLMessage() { }
+
+  bool VersionIsCompatible(const Version min_version) {
+    return (version() & ~kResponseVersion) >= min_version;
+  }
 
   const Header header_;
 };
@@ -305,9 +312,7 @@ class QueryRequest : public CQLRequest {
   virtual ~QueryRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
-  const std::string& query() const {
-    return query_;
-  }
+  const std::string& query() const { return query_; }
   sql::StatementParameters GetStatementParameters() const {
     return params_.ToStatementParameters();
   }
@@ -329,6 +334,8 @@ class PrepareRequest : public CQLRequest {
   virtual ~PrepareRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
+  const std::string& query() const { return query_; }
+
  protected:
   virtual CHECKED_STATUS ParseBody() override;
 
@@ -343,15 +350,18 @@ class ExecuteRequest : public CQLRequest {
   virtual ~ExecuteRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
-  const QueryParameters& params() const {
-    return params_;
+  const QueryId& query_id() const { return query_id_; }
+  sql::StatementParameters GetStatementParameters() const {
+    return params_.ToStatementParameters();
   }
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
 
  private:
-  std::string query_id_;
+  friend class RowsResultResponse;
+
+  QueryId query_id_;
   QueryParameters params_;
 };
 
@@ -373,7 +383,7 @@ class BatchRequest : public CQLRequest {
   };
   struct Query {
     bool is_prepared = false;
-    std::string query_id;
+    QueryId query_id;
     std::string query;
     std::vector<Value> values;
   };
@@ -489,10 +499,24 @@ class ErrorResponse : public CQLResponse {
 
  protected:
   virtual void SerializeBody(faststring* mesg) override;
+  virtual void SerializeErrorBody(faststring* mesg);
 
  private:
   const Code code_;
   const std::string message_;
+};
+
+//------------------------------------------------------------
+class UnpreparedErrorResponse : public ErrorResponse {
+ public:
+  explicit UnpreparedErrorResponse(const CQLRequest& request, const QueryId& query_id);
+  virtual ~UnpreparedErrorResponse() override;
+
+ protected:
+  virtual void SerializeErrorBody(faststring* mesg) override;
+
+ private:
+  const QueryId query_id_;
 };
 
 //------------------------------------------------------------
@@ -657,10 +681,11 @@ class ResultResponse : public CQLResponse {
     int32_t col_count;
     std::vector<ColSpec> col_specs;
 
-    explicit RowsMetadata(const client::YBTableName& table_name,
-                          const std::vector<ColumnSchema>& columns,
-                          const std::string& paging_state,
-                          bool no_metadata);
+    RowsMetadata();
+    RowsMetadata(const client::YBTableName& table_name,
+                 const std::vector<ColumnSchema>& columns,
+                 const std::string& paging_state,
+                 bool no_metadata);
   };
 
   ResultResponse(const CQLRequest& request, Kind kind);
@@ -694,6 +719,7 @@ class VoidResultResponse : public ResultResponse {
 class RowsResultResponse : public ResultResponse {
  public:
   RowsResultResponse(const QueryRequest& request, const sql::RowsResult& rows_result);
+  RowsResultResponse(const ExecuteRequest& request, const sql::RowsResult& rows_result);
   virtual ~RowsResultResponse() override;
 
  protected:
@@ -718,6 +744,9 @@ class SetKeyspaceResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class PreparedResultResponse : public ResultResponse {
  public:
+  PreparedResultResponse(
+      const CQLRequest& request, const QueryId& query_id,
+      const sql::PreparedResult* prepared_result);
   virtual ~PreparedResultResponse() override;
 
  protected:
@@ -732,14 +761,13 @@ class PreparedResultResponse : public ResultResponse {
     std::vector<uint16_t> pk_indices;
     RowsMetadata::GlobalTableSpec global_table_spec;
     std::vector<RowsMetadata::ColSpec> col_specs;
+
+    PreparedMetadata() : flags(0), global_table_spec("" /* keyspace */, "" /* table */) { }
   };
 
-  PreparedResultResponse(
-      const CQLRequest& request, const PreparedMetadata& prepared_metadata,
-      const RowsMetadata& rows_metadata);
   void SerializePreparedMetadata(const PreparedMetadata& metadata, faststring* mesg);
 
-  const std::string query_id_;
+  const QueryId query_id_;
   const PreparedMetadata prepared_metadata_;
   const RowsMetadata rows_metadata_;
 };

@@ -69,11 +69,14 @@ PTUpdateStmt::~PTUpdateStmt() {
 }
 
 CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
+
+  RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
+
   // Collect table's schema for semantic analysis.
   RETURN_NOT_OK(LookupTable(sem_context));
 
   // Process set clause.
-  column_args_.resize(num_columns());
+  column_args_->resize(num_columns());
   TreeNodePtrOperator<SemContext, PTAssign> analyze = std::bind(&PTUpdateStmt::AnalyzeSetExpr,
                                                                 this,
                                                                 std::placeholders::_1,
@@ -83,7 +86,7 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Set clause can't have primary keys.
   int num_keys = num_key_columns();
   for (int idx = 0; idx < num_keys; idx++) {
-    if (column_args_[idx].IsInitialized()) {
+    if (column_args_->at(idx).IsInitialized()) {
       return sem_context->Error(set_clause_->loc(), ErrorCode::INVALID_ARGUMENTS);
     }
   }
@@ -107,7 +110,7 @@ CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *s
 
   // Form the column args for protobuf.
   const ColumnDesc *col_desc = assign_expr->col_desc();
-  column_args_[col_desc->index()].Init(col_desc, assign_expr->rhs());
+  column_args_->at(col_desc->index()).Init(col_desc, assign_expr->rhs());
 
   return Status::OK();
 }

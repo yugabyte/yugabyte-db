@@ -1,21 +1,36 @@
 //--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //
-// RowsResult represents rows resulted from the execution of a SQL statement.
+// Different results of processing a statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_SQL_UTIL_ROWS_RESULT_H_
-#define YB_SQL_UTIL_ROWS_RESULT_H_
+#ifndef YB_SQL_UTIL_STMT_RESULT_H_
+#define YB_SQL_UTIL_STMT_RESULT_H_
 
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/schema.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/common/yql_rowblock.h"
+#include "yb/sql/ptree/pt_select.h"
 
 namespace yb {
 namespace sql {
 
+// Result of preparing a statement.
+class PreparedResult {
+ public:
+  explicit PreparedResult(const PTSelectStmt *tnode);
+
+  const client::YBTableName& table_name() const { return table_name_; }
+  const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
+
+ private:
+  const client::YBTableName table_name_;
+  const std::vector<ColumnSchema> column_schemas_;
+};
+
+// Result of rows returned from executing a statement.
 class RowsResult {
  public:
   explicit RowsResult(client::YBqlReadOp* op);
@@ -43,4 +58,4 @@ class RowsResult {
 } // namespace sql
 } // namespace yb
 
-#endif  // YB_SQL_UTIL_ROWS_RESULT_H_
+#endif  // YB_SQL_UTIL_STMT_RESULT_H_

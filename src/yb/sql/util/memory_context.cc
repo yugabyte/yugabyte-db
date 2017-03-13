@@ -10,13 +10,19 @@
 namespace yb {
 namespace sql {
 
+using std::shared_ptr;
 using std::unordered_map;
 
 //--------------------------------------------------------------------------------------------------
 // Default MemoryContext
 //--------------------------------------------------------------------------------------------------
-MemoryContext::MemoryContext()
-    : manager_(kStartBlockSize, kMaxBlockSize),
+MemoryContext::MemoryContext(shared_ptr<MemTracker> mem_tracker)
+    : manager_(mem_tracker != nullptr ?
+               static_cast<ArenaBase<false>*>(
+                   new MemoryTrackingArena(kStartBlockSize, kMaxBlockSize,
+                                           std::make_shared<MemoryTrackingBufferAllocator>(
+                                               HeapBufferAllocator::Get(), mem_tracker))) :
+               static_cast<ArenaBase<false>*>(new Arena(kStartBlockSize, kMaxBlockSize))),
       deleter_(MCDeleter<>()) {
 }
 
@@ -31,7 +37,13 @@ MemoryContext::~MemoryContext() {
 }
 
 void *MemoryContext::Malloc(size_t size) {
-  return manager_.AllocateBytes(size);
+  return manager_->AllocateBytes(size);
+}
+
+void MemoryContext::Reset() {
+  // Clear allocators allocated from Arena before resetting Arena to release allocated memory.
+  allocator_map_.clear();
+  manager_->Reset();
 }
 
 //--------------------------------------------------------------------------------------------------

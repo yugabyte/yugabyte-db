@@ -120,10 +120,14 @@ public class MiniYBCluster implements AutoCloseable {
 
   private String masterAddresses;
 
-  private MiniYBCluster(int numMasters, int numTservers, int defaultTimeoutMs) throws Exception {
+  private MiniYBCluster(int numMasters,
+                        int numTservers,
+                        int defaultTimeoutMs,
+                        List<String> masterArgs,
+                        List<String> tserverArgs) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
 
-    startCluster(numMasters, numTservers);
+    startCluster(numMasters, numTservers, masterArgs, tserverArgs);
 
     syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
         .defaultAdminOperationTimeoutMs(defaultTimeoutMs)
@@ -185,7 +189,10 @@ public class MiniYBCluster implements AutoCloseable {
    * @param numTservers how many tablet servers to start
    * @throws Exception
    */
-  private void startCluster(int numMasters, int numTservers) throws Exception {
+  private void startCluster(int numMasters,
+                            int numTservers,
+                            List<String> masterArgs,
+                            List<String> tserverArgs) throws Exception {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
     // The following props are set via yb-client's pom.
@@ -194,7 +201,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     long now = System.currentTimeMillis();
     LOG.info("Starting {} masters...", numMasters);
-    int free_port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath);
+    int free_port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath, masterArgs);
     LOG.info("Starting {} tablet servers...", numTservers);
     for (int i = 0; i < numTservers; i++) {
       int rpc_port = TestUtils.findFreePort(free_port);
@@ -205,7 +212,7 @@ public class MiniYBCluster implements AutoCloseable {
       int cql_web_port = TestUtils.findFreePort(cql_port + 1);
       String dataDirPath = baseDirPath + "/ts-" + i + "-" + now;
       String flagsPath = TestUtils.getFlagsPath();
-      String[] tsCmdLine = {
+      List<String> tsCmdLine = Lists.newArrayList(
           TestUtils.findBinary("yb-tserver"),
           "--flagfile=" + flagsPath,
           "--fs_wal_dirs=" + dataDirPath,
@@ -220,8 +227,16 @@ public class MiniYBCluster implements AutoCloseable {
           "--cql_proxy_bind_address=" + localhost + ":" + cql_port,
           "--yb_num_shards_per_tserver=3",
           "--logtostderr",
-          "--cql_proxy_webserver_port=" + cql_web_port};
-      final YBDaemon daemon = configureAndStartProcess(YBDaemonType.TSERVER, tsCmdLine);
+          "--cql_proxy_webserver_port=" + cql_web_port);
+      if (tserverArgs != null) {
+        for (String arg : tserverArgs) {
+          tsCmdLine.add(arg);
+        }
+      }
+
+      final YBDaemon daemon =
+          configureAndStartProcess(YBDaemonType.TSERVER,
+                                   tsCmdLine.toArray(new String[tsCmdLine.size()]));
       tserverProcesses.put(rpc_port, daemon);
       daemon.setRpcPort(rpc_port);
       cqlContactPoints.add(new InetSocketAddress(localhost, cql_port));
@@ -290,8 +305,10 @@ public class MiniYBCluster implements AutoCloseable {
    * @return the next free port
    * @throws Exception if we are unable to start the masters
    */
-  private int startMasters(int masterStartPort, int numMasters,
-                           String baseDirPath) throws Exception {
+  private int startMasters(int masterStartPort,
+                           int numMasters,
+                           String baseDirPath,
+                           List<String> masterArgs) throws Exception {
     // Get the list of web and RPC ports to use for the master consensus configuration:
     // request NUM_MASTERS * 2 free ports as we want to also reserve the web
     // ports for the consensus configuration.
@@ -333,6 +350,11 @@ public class MiniYBCluster implements AutoCloseable {
         "--webserver_port=" + masterWebPorts.get(i));
       if (numMasters > 1) {
         masterCmdLine.add("--master_addresses=" + masterAddresses);
+      }
+      if (masterArgs != null) {
+        for (String arg : masterArgs) {
+          masterCmdLine.add(arg);
+        }
       }
       masterProcesses.put(masterRpcPorts.get(i),
           configureAndStartProcess(YBDaemonType.MASTER,
@@ -584,6 +606,8 @@ public class MiniYBCluster implements AutoCloseable {
     private int numMasters = 1;
     private int numTservers = 3;
     private int defaultTimeoutMs = 50000;
+    private List<String> masterArgs = null;
+    private List<String> tserverArgs = null;
 
     public MiniYBClusterBuilder numMasters(int numMasters) {
       this.numMasters = numMasters;
@@ -606,8 +630,26 @@ public class MiniYBCluster implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Configure additional command-line arguments for starting master.
+     * @param masterArgs additional command-line arguments
+     * @return this instance
+     */
+    public MiniYBClusterBuilder masterArgs(List<String> masterArgs) {
+      this.masterArgs = masterArgs;
+      return this;
+    }
+
+    /**
+     * Configure additional command-line arguments for starting tserver.
+     */
+    public MiniYBClusterBuilder tserverArgs(List<String> tserverArgs) {
+      this.tserverArgs = tserverArgs;
+      return this;
+    }
+
     public MiniYBCluster build() throws Exception {
-      return new MiniYBCluster(numMasters, numTservers, defaultTimeoutMs);
+      return new MiniYBCluster(numMasters, numTservers, defaultTimeoutMs, masterArgs, tserverArgs);
     }
   }
 

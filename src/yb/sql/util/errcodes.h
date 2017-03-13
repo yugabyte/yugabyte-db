@@ -26,7 +26,6 @@ enum class ErrorCode : int64_t {
 
   FEATURE_NOT_YET_IMPLEMENTED = -10,
   FEATURE_NOT_SUPPORTED = -11,
-  DDL_EXECUTION_RERUN_NOT_ALLOWED = -12,
 
   //------------------------------------------------------------------------------------------------
   // Lexical errors [-50, -100).

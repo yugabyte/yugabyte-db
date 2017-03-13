@@ -25,11 +25,6 @@ PTCreateKeyspace::~PTCreateKeyspace() {
 }
 
 CHECKED_STATUS PTCreateKeyspace::Analyze(SemContext *sem_context) {
-  // DDL statement is not allowed to be retry.
-  if (sem_context->retry_count() > 0) {
-    return sem_context->Error(loc(), ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED);
-  }
-
   if (VLOG_IS_ON(3)) {
     PrintSemanticAnalysisResult(sem_context);
   }

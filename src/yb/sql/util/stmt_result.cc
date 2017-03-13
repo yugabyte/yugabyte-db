@@ -1,10 +1,10 @@
 //--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //
-// RowsResult represents rows resulted from the execution of a SQL statement.
+// Different results of processing a statement.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/util/rows_result.h"
+#include "yb/sql/util/stmt_result.h"
 
 #include "yb/client/client.h"
 #include "yb/client/schema-internal.h"
@@ -22,7 +22,20 @@ using strings::Substitute;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
+//------------------------------------------------------------------------------------------------
 namespace {
+
+// Get column schemas from different statements / YQL ops.
+vector<ColumnSchema> GetColumnSchemasFromSelectStmt(const PTSelectStmt *tnode) {
+  vector<ColumnSchema> column_schemas;
+  column_schemas.reserve(tnode->selected_columns().size());
+  const auto& schema = tnode->table()->schema();
+  for (const ColumnDesc *col_desc : tnode->selected_columns()) {
+    const auto column = schema.ColumnById(col_desc->id());
+    column_schemas.emplace_back(column.name(), column.type());
+  }
+  return column_schemas;
+}
 
 vector<ColumnSchema> GetColumnSchemasFromReadOp(const YBqlReadOp& op) {
   vector<ColumnSchema> column_schemas;
@@ -46,6 +59,13 @@ vector<ColumnSchema> GetColumnSchemasFromWriteOp(const YBqlWriteOp& op) {
 
 } // namespace
 
+//------------------------------------------------------------------------------------------------
+PreparedResult::PreparedResult(const PTSelectStmt *tnode)
+    : table_name_(tnode->table()->name()),
+      column_schemas_(GetColumnSchemasFromSelectStmt(tnode)) {
+}
+
+//------------------------------------------------------------------------------------------------
 RowsResult::RowsResult(YBqlReadOp* op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromReadOp(*op)),

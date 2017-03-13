@@ -23,15 +23,18 @@ using client::YBTableName;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
-SqlEnv::SqlEnv(shared_ptr<YBClient> client,
-               shared_ptr<YBTableCache> cache,
-               shared_ptr<YBSession> write_session,
-               shared_ptr<YBSession> read_session)
+SqlEnv::SqlEnv(shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache)
     : client_(client),
       table_cache_(cache),
-      write_session_(write_session),
-      read_session_(read_session),
+      write_session_(client_->NewSession(false)),
+      read_session_(client->NewSession(true)),
       current_keyspace_(yb::master::kDefaultNamespaceName) {
+
+  write_session_->SetTimeoutMillis(kSessionTimeoutMs);
+  CHECK_OK(write_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
+
+  read_session_->SetTimeoutMillis(kSessionTimeoutMs);
+  CHECK_OK(read_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
 YBTableCreator *SqlEnv::NewTableCreator() {
@@ -96,12 +99,10 @@ CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBqlReadOp> yb_op) {
   return Status::OK();
 }
 
-shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool refresh_metadata) {
-  // TODO(neil) Once we decide where to cache the descriptor, the refresh_metadata should be used
-  // to decide whether or not the cached version should be used.
-  // At the moment, we read the table descriptor every time we need it.
+shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool refresh_cache,
+                                         bool* cache_used) {
   shared_ptr<YBTable> yb_table;
-  Status s = table_cache_->GetTable(table_name, &yb_table, refresh_metadata);
+  Status s = table_cache_->GetTable(table_name, &yb_table, refresh_cache, cache_used);
 
   if (s.IsNotFound()) {
     return nullptr;

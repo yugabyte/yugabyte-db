@@ -15,7 +15,7 @@ using client::YBClientBuilder;
 
 //--------------------------------------------------------------------------------------------------
 
-YbSqlTestBase::YbSqlTestBase() : ybsql_(new YbSql()) {
+YbSqlTestBase::YbSqlTestBase() {
   sql_envs_.reserve(1);
 }
 
@@ -37,16 +37,17 @@ void YbSqlTestBase::CreateSimulatedCluster() {
 
 //--------------------------------------------------------------------------------------------------
 
-SqlEnv *YbSqlTestBase::CreateSqlEnv(shared_ptr<YBSession> write_session,
-                                    shared_ptr<YBSession> read_session) {
-  CHECK(client_ != nullptr) << "Cannot create session context without a valid YB client";
+SqlEnv *YbSqlTestBase::CreateSqlEnv() {
+  if (client_ == nullptr) {
+    CreateSimulatedCluster();
+  }
 
   const int max_id = sql_envs_.size();
   if (sql_envs_.capacity() == max_id) {
     sql_envs_.reserve(max_id + 10);
   }
 
-  SqlEnv *sql_env = new SqlEnv(client_, table_cache_, write_session, read_session);
+  SqlEnv *sql_env = new SqlEnv(client_, table_cache_);
   sql_envs_.emplace_back(sql_env);
   return sql_env;
 }
@@ -60,26 +61,10 @@ SqlEnv *YbSqlTestBase::GetSqlEnv(int session_id) {
 
 //--------------------------------------------------------------------------------------------------
 
-SqlEnv *YbSqlTestBase::CreateNewConnectionContext() {
-  CHECK(client_ != nullptr) << "Cannot create new connection without a valid YB client";
-
-  shared_ptr<YBSession> write_session = client_->NewSession();
-  write_session->SetTimeoutMillis(kSessionTimeoutMs);
-  Status s = write_session->SetFlushMode(YBSession::MANUAL_FLUSH);
-  CHECK(s.ok());
-
-  shared_ptr<YBSession> read_session = client_->NewSession(true);
-  read_session->SetTimeoutMillis(kSessionTimeoutMs);
-  s = read_session->SetFlushMode(YBSession::MANUAL_FLUSH);
-  CHECK(s.ok());
-
-  return CreateSqlEnv(write_session, read_session);
-}
-
-//--------------------------------------------------------------------------------------------------
-
 SqlProcessor *YbSqlTestBase::GetSqlProcessor() {
-  CHECK(client_ != nullptr) << "Cannot create new sql processor without a valid YB client";
+  if (client_ == nullptr) {
+    CreateSimulatedCluster();
+  }
 
   for (const SqlProcessor::UniPtr& processor : sql_processors_) {
     if (!processor->is_used()) {

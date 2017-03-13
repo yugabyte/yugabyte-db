@@ -31,11 +31,6 @@ CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  // DDL statement is not allowed to be retried.
-  if (sem_context->retry_count() > 0) {
-    return sem_context->Error(loc(), ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED);
-  }
-
   // Processing object name.
   RETURN_NOT_OK(names_->element(0)->Analyze(sem_context));
   return Status::OK();

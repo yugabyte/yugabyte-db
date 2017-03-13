@@ -37,8 +37,8 @@ PTInsertStmt::~PTInsertStmt() {
 
 // TODO(Mihnea) Some where in this function, we must call expr->Analyze() even if it is a const.
 CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
-  // Clear column_args_ as this call might be a reentrance due to metadata mismatch.
-  column_args_.clear();
+
+  RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
   // Get table descriptor.
   RETURN_NOT_OK(relation_->Analyze(sem_context));
@@ -57,7 +57,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   }
 
   int idx = 0;
-  column_args_.resize(num_cols);
+  column_args_->resize(num_cols);
   if (columns_) {
     // Mismatch between column names and their values.
     const MCList<PTQualifiedName::SharedPtr>& names = columns_->node_list();
@@ -86,10 +86,10 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
       // Check that the given column is not a duplicate and initialize the argument entry.
       idx = col_desc->index();
-      if (column_args_[idx].IsInitialized()) {
+      if (column_args_->at(idx).IsInitialized()) {
         return sem_context->Error((*iter)->loc(), ErrorCode::DUPLICATE_COLUMN);
       }
-      column_args_[idx].Init(col_desc, *iter);
+      column_args_->at(idx).Init(col_desc, *iter);
       iter++;
     }
   } else {
@@ -111,7 +111,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       }
 
       // Initialize the argument entry.
-      column_args_[idx].Init(col_desc, expr);
+      column_args_->at(idx).Init(col_desc, expr);
       idx++;
     }
   }
@@ -120,10 +120,10 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   // NOTE: we assumed that primary_indexes and arguments are sorted by column_index.
   int num_keys = num_key_columns();
   for (idx = 0; idx < num_keys; idx++) {
-    if (!column_args_[idx].IsInitialized()) {
+    if (!column_args_->at(idx).IsInitialized()) {
       return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
     }
-    if (column_args_[idx].expr()->is_null()) {
+    if (column_args_->at(idx).expr()->is_null()) {
       return sem_context->Error(value_clause_->loc(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
@@ -139,7 +139,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
 void PTInsertStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):";
-  for (const ColumnArg& arg : column_args_) {
+  for (const ColumnArg& arg : *column_args_) {
     if (arg.IsInitialized()) {
       const ColumnDesc *col_desc = arg.desc();
       VLOG(3) << "ARG: " << col_desc->id()

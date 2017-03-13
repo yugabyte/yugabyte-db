@@ -23,8 +23,6 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::CQL_STATEMENT_INVALID), "Invalid CQL Statement" },
   { static_cast<int64_t>(ErrorCode::FEATURE_NOT_YET_IMPLEMENTED), "Feature Not Yet Implemented" },
   { static_cast<int64_t>(ErrorCode::FEATURE_NOT_SUPPORTED), "Feature Not Supported" },
-  { static_cast<int64_t>(ErrorCode::DDL_EXECUTION_RERUN_NOT_ALLOWED),
-      "DDL Execution Rerun Not Allowed" },
 
   //------------------------------------------------------------------------------------------------
   // Lexical errors [-50, -100).

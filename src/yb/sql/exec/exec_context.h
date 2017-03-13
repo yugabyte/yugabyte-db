@@ -14,7 +14,7 @@
 namespace yb {
 namespace sql {
 
-class ExecContext : public ProcessContext {
+class ExecContext : public ProcessContextBase {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -23,10 +23,7 @@ class ExecContext : public ProcessContext {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  ExecContext(const char *sql_stmt,
-              size_t stmt_len,
-              ParseTree::UniPtr parse_tree,
-              SqlEnv *sql_env);
+  ExecContext(const char *sql_stmt, size_t stmt_len, SqlEnv *sql_env);
   virtual ~ExecContext();
 
   // Get a table creator from YB client.

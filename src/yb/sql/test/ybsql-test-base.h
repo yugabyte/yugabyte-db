@@ -5,7 +5,6 @@
 #ifndef YB_SQL_TEST_YBSQL_TEST_BASE_H_
 #define YB_SQL_TEST_YBSQL_TEST_BASE_H_
 
-#include "yb/sql/ybsql.h"
 #include "yb/sql/sql_processor.h"
 #include "yb/sql/util/sql_env.h"
 
@@ -89,13 +88,18 @@ class YbSqlTestBase : public YBTest {
   //------------------------------------------------------------------------------------------------
   // Test only the parser.
   CHECKED_STATUS TestParser(const std::string& sql_stmt) {
-    return ybsql_->TestParser(sql_stmt);
+    SqlProcessor *processor = GetSqlProcessor();
+    ParseTree::UniPtr parse_tree;
+    return processor->Parse(sql_stmt, &parse_tree);
   }
 
   // Tests parser and analyzer
   CHECKED_STATUS TestAnalyzer(SqlEnv *sql_env, const string& sql_stmt,
                               ParseTree::UniPtr *parse_tree) {
-    return ybsql_->TestAnalyzer(sql_env, sql_stmt, parse_tree);
+    SqlProcessor *processor = GetSqlProcessor();
+    RETURN_NOT_OK(processor->Parse(sql_stmt, parse_tree));
+    RETURN_NOT_OK(processor->Analyze(sql_stmt, parse_tree, false /* refresh_cache */));
+    return Status::OK();
   }
 
   //------------------------------------------------------------------------------------------------
@@ -106,21 +110,13 @@ class YbSqlTestBase : public YBTest {
   SqlProcessor *GetSqlProcessor();
 
   // Create a session context for client_.
-  SqlEnv *CreateSqlEnv(std::shared_ptr<client::YBSession> write_session = nullptr,
-                       std::shared_ptr<client::YBSession> read_session = nullptr);
+  SqlEnv *CreateSqlEnv();
 
   // Pull a session from the cached tables.
   SqlEnv *GetSqlEnv(int session_id);
 
-  // Create a session context for a new connection.
-  SqlEnv *CreateNewConnectionContext();
-
  protected:
   //------------------------------------------------------------------------------------------------
-  static constexpr int kSessionTimeoutMs = 60000;
-
-  // SQL engine.
-  YbSql::UniPtr ybsql_;
 
   // Simulated cluster.
   std::shared_ptr<MiniCluster> cluster_;

@@ -11,6 +11,7 @@ namespace yb {
 namespace sql {
 
 using std::endl;
+using std::shared_ptr;
 using std::string;
 using std::to_string;
 
@@ -27,8 +28,10 @@ Parser::~Parser() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Parser::Parse(const string& sql_stmt) {
-  parse_context_ = ParseContext::UniPtr(new ParseContext(sql_stmt.c_str(), sql_stmt.length()));
+CHECKED_STATUS Parser::Parse(const string& sql_stmt, shared_ptr<MemTracker> mem_tracker) {
+  parse_context_ = ParseContext::UniPtr(new ParseContext(sql_stmt.c_str(),
+                                                         sql_stmt.length(),
+                                                         mem_tracker));
   lex_processor_.ScanInit(parse_context());
   gram_processor_.set_debug_level(parse_context_->trace_parsing());
 

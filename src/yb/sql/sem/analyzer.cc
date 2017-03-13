@@ -23,14 +23,14 @@ Analyzer::~Analyzer() {
 CHECKED_STATUS Analyzer::Analyze(const string& sql_stmt,
                                  ParseTree::UniPtr parse_tree,
                                  SqlEnv *sql_env,
-                                 int retry_count) {
+                                 bool refresh_cache) {
   ParseTree *ptree = parse_tree.get();
   DCHECK(ptree != nullptr) << "Parse tree is null";
   sem_context_ = SemContext::UniPtr(new SemContext(sql_stmt.c_str(),
                                                    sql_stmt.length(),
                                                    move(parse_tree),
                                                    sql_env,
-                                                   retry_count));
+                                                   refresh_cache));
 
   if (!ptree->Analyze(sem_context_.get()).ok()) {
     // Before leaving the semantic step, collect all errors and place them in return status.

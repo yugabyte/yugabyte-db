@@ -15,14 +15,16 @@ namespace sql {
 // Parse Tree
 //--------------------------------------------------------------------------------------------------
 
-ParseTree::ParseTree()
+ParseTree::ParseTree(std::shared_ptr<MemTracker> mem_tracker)
     : root_(nullptr),
-      ptree_mem_(new MemoryContext()) {
+      ptree_mem_(new MemoryContext(mem_tracker)),
+      psem_mem_(new MemoryContext(mem_tracker)) {
 }
 
 ParseTree::~ParseTree() {
-  // Make sure we delete the tree first before deleting the tree memory pool.
+  // Make sure we delete the tree first before deleting the memory pools.
   root_ = nullptr;
+  psem_mem_ = nullptr;
   ptree_mem_ = nullptr;
 }
 
@@ -31,6 +33,11 @@ CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
     LOG(INFO) << "Parse tree is NULL";
     return Status::OK();
   }
+
+  // Reset and release previous semantic analysis results and free the associated memory.
+  root_->Reset();
+  psem_mem_->Reset();
+
   return root_->Analyze(sem_context);
 }
 

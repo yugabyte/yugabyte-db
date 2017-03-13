@@ -14,37 +14,23 @@ using std::min;
 using std::string;
 
 //--------------------------------------------------------------------------------------------------
-// ProcessContext
+// ProcessContextBase
 //--------------------------------------------------------------------------------------------------
 
-ProcessContext::ProcessContext(const char *stmt,
-                               size_t stmt_len,
-                               ParseTree::UniPtr parse_tree)
+ProcessContextBase::ProcessContextBase(const char *stmt, size_t stmt_len)
     : stmt_(stmt),
       stmt_len_(stmt_len),
-      parse_tree_(move(parse_tree)),
       ptemp_mem_(new MemoryContext()),
       error_code_(ErrorCode::SUCCESS),
       error_msgs_(ptemp_mem_.get()) {
-
-  if (parse_tree_ == nullptr) {
-    parse_tree_ = ParseTree::UniPtr(new ParseTree());
-  }
 }
 
-ProcessContext::~ProcessContext() {
+ProcessContextBase::~ProcessContextBase() {
 }
 
 //--------------------------------------------------------------------------------------------------
 
-void ProcessContext::SaveGeneratedParseTree(TreeNode::SharedPtr generated_parse_tree) {
-  CHECK(parse_tree_.get() != nullptr) << "Context is already associated with a parse tree";
-  parse_tree_->set_root(generated_parse_tree);
-}
-
-//--------------------------------------------------------------------------------------------------
-
-CHECKED_STATUS ProcessContext::GetStatus() {
+CHECKED_STATUS ProcessContextBase::GetStatus() {
   // Erroneous index is negative while successful index is non-negative.
   if (error_code_ < ErrorCode::SUCCESS) {
     return STATUS(SqlError, error_msgs_.c_str());
@@ -54,17 +40,17 @@ CHECKED_STATUS ProcessContext::GetStatus() {
 
 //--------------------------------------------------------------------------------------------------
 
-void ProcessContext::Warn(const YBLocation& l, const string& m, ErrorCode error_code) {
+void ProcessContextBase::Warn(const YBLocation& l, const string& m, ErrorCode error_code) {
   error_code_ = error_code;
   LOG(WARNING) << kErrorFontStart << "SQL Warning (" << l << "): " << m << kErrorFontEnd << endl;
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS ProcessContext::Error(const YBLocation& l,
-                                     const char *m,
-                                     ErrorCode error_code,
-                                     const char* token) {
+CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
+                                         const char *m,
+                                         ErrorCode error_code,
+                                         const char* token) {
   error_code_ = error_code;
 
   // Form an error message.
@@ -105,17 +91,19 @@ CHECKED_STATUS ProcessContext::Error(const YBLocation& l,
   return STATUS(SqlError, msg.c_str());
 }
 
-CHECKED_STATUS ProcessContext::Error(const YBLocation& l, const char *m, const char* token) {
+CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l, const char *m, const char* token) {
   return Error(l, m, ErrorCode::SQL_STATEMENT_INVALID, token);
 }
 
-CHECKED_STATUS ProcessContext::Error(const YBLocation& l, ErrorCode error_code, const char* token) {
+CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
+                                         ErrorCode error_code,
+                                         const char* token) {
   return Error(l, "", error_code, token);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-const pair<const char *, const size_t> ProcessContext::ReadToken(const YBLocation& l) {
+const pair<const char *, const size_t> ProcessContextBase::ReadToken(const YBLocation& l) {
   const int err_begin_line = l.BeginLine();
   const int err_begin_column = l.BeginColumn();
   const int err_end_line = l.EndLine();
@@ -158,6 +146,27 @@ const pair<const char *, const size_t> ProcessContext::ReadToken(const YBLocatio
   }
 
   return make_pair(start, end - start);
+}
+
+//--------------------------------------------------------------------------------------------------
+// ProcessContext
+//--------------------------------------------------------------------------------------------------
+
+ProcessContext::ProcessContext(const char *stmt,
+                               size_t stmt_len,
+                               ParseTree::UniPtr parse_tree)
+    : ProcessContextBase(stmt, stmt_len),
+      parse_tree_(move(parse_tree)) {
+}
+
+ProcessContext::~ProcessContext() {
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void ProcessContext::SaveGeneratedParseTree(TreeNode::SharedPtr generated_parse_tree) {
+  CHECK(parse_tree_.get() != nullptr) << "Context is not associated with a parse tree";
+  parse_tree_->set_root(generated_parse_tree);
 }
 
 }  // namespace sql

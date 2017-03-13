@@ -63,6 +63,9 @@ class TreeNode : public MCBase {
     return MCMakeShared<TreeNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  // Reset to clear and release previous semantics analysis results.
+  virtual void Reset() { /* no-op */ }
+
   // Run semantics analysis on this node.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context);
 

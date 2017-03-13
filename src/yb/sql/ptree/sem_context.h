@@ -56,8 +56,13 @@ class SemContext : public ProcessContext {
              size_t stmt_len,
              ParseTree::UniPtr parse_tree,
              SqlEnv *sql_env,
-             int retry_count);
+             bool refresh_cache);
   virtual ~SemContext();
+
+  // Memory pool for semantic analysis of the parse tree of a statement.
+  MemoryContext *PSemMem() const {
+    return parse_tree_->PSemMem();
+  }
 
   //------------------------------------------------------------------------------------------------
   // Symbol table support.
@@ -90,16 +95,7 @@ class SemContext : public ProcessContext {
   }
 
   // Find table descriptor from metadata server.
-  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name) {
-    // If "retry_count_" is greater than 0, we want to reload metadata from master server.
-    return sql_env_->GetTableDesc(table_name, retry_count_ > 0);
-  }
-
-  // Find table descriptor from metadata server.
-  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
-                                                bool refresh_metadata) {
-    return sql_env_->GetTableDesc(table_name, refresh_metadata);
-  }
+  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name);
 
   // Find column descriptor from symbol table.
   PTColumnDefinition *GetColumnDefinition(const MCString& col_name) const;
@@ -118,10 +114,8 @@ class SemContext : public ProcessContext {
     return sql_env_->CurrentKeyspace();
   }
 
-  // Access function to retry counter.
-  int retry_count() {
-    return retry_count_;
-  }
+  // Access function to cache_used.
+  bool cache_used() const { return cache_used_; }
 
  private:
   // Find conversion mode from 'rhs_type' to 'lhs_type'.
@@ -139,8 +133,11 @@ class SemContext : public ProcessContext {
   // Session.
   SqlEnv *sql_env_;
 
-  // Force to refresh metadata.
-  int retry_count_;
+  // Force to refresh cache.
+  const bool refresh_cache_;
+
+  // Is metadata cache used?
+  bool cache_used_;
 };
 
 }  // namespace sql

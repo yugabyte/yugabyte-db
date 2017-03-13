@@ -434,26 +434,32 @@ void Batcher::RemoveInFlightOps(const vector<InFlightOp*>& ops) {
   }
 }
 
-void Batcher::ProcessKuduWriteResponse(const WriteRpc &rpc,
-    const Status &s) {
+void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
   // TODO: there is a potential race here -- if the Batcher gets destructed while
   // RPCs are in-flight, then accessing state_ will crash. We probably need to keep
   // track of the in-flight RPCs, and in the destructor, change each of them to an
   // "aborted" state.
   CHECK_EQ(state_, kFlushing);
 
-  if (s.ok()) {
-    if (rpc.resp().has_hybrid_time()) {
-      client_->data_->UpdateLatestObservedHybridTime(rpc.resp().hybrid_time());
-    }
-  } else {
-    // Mark each of the rows in the write op as failed, since the whole RPC failed.
+  if (PREDICT_FALSE(!s.ok())) {
+    // Mark each of the ops as failed, since the whole RPC failed.
     for (InFlightOp* in_flight_op : rpc.ops()) {
       gscoped_ptr<YBError> error(new YBError(in_flight_op->yb_op, s));
       error_collector_->AddError(error.Pass());
     }
-
     MarkHadErrors();
+  }
+}
+
+void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
+  ProcessRpcStatus(rpc, s);
+}
+
+void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
+  ProcessRpcStatus(rpc, s);
+
+  if (s.ok() && rpc.resp().has_hybrid_time()) {
+    client_->data_->UpdateLatestObservedHybridTime(rpc.resp().hybrid_time());
   }
 
   // Check individual row errors.

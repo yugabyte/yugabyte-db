@@ -195,7 +195,8 @@ class PTSelectStmt : public PTDmlStmt {
 
   // Selected columns.
   const MCVector<const ColumnDesc*> &selected_columns() const {
-    return selected_columns_;
+    CHECK(selected_columns_ != nullptr) << "selected columns not set up";
+    return *selected_columns_;
   }
 
   // Returns table name.
@@ -212,6 +213,9 @@ class PTSelectStmt : public PTDmlStmt {
   bool is_system() const {
     return from_clause_->element(0)->is_system();
   }
+
+  // Reset to clear and release previous semantics analysis results.
+  virtual void Reset() OVERRIDE;
 
  private:
   // The following members represent different components of SELECT statement. However, Cassandra
@@ -232,7 +236,7 @@ class PTSelectStmt : public PTDmlStmt {
   PTExpr::SharedPtr limit_clause_;
 
   // Members that will be constructed by semantic analyzer.
-  MCVector<const ColumnDesc*> selected_columns_;
+  MCUniPtr<MCVector<const ColumnDesc*>> selected_columns_;
 };
 
 }  // namespace sql

@@ -315,7 +315,7 @@ Status CQLRequest::ParseValue(const bool with_name, Value* value) {
       body_.remove_prefix(length);
       DVLOG(4) << "CQL value bytes " << value->value;
     }
-  } else if (version() >= kV4Version) {
+  } else if (VersionIsCompatible(kV4Version)) {
     switch (length) {
       case -1:
         value->kind = Value::Kind::IS_NULL;
@@ -451,8 +451,7 @@ Status PrepareRequest::ParseBody() {
 }
 
 CQLResponse* PrepareRequest::Execute(CQLProcessor *processor) {
-  // TODO(Robert): return actual results
-  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  return processor->ProcessPrepare(*this);
 }
 
 //----------------------------------------------------------------------------------------
@@ -469,8 +468,7 @@ Status ExecuteRequest::ParseBody() {
 }
 
 CQLResponse* ExecuteRequest::Execute(CQLProcessor *processor) {
-  // TODO(Robert): return actual results
-  return new ErrorResponse(*this, ErrorResponse::Code::PROTOCOL_ERROR, "Not implemented yet");
+  return processor->ProcessExecute(*this);
 }
 
 //----------------------------------------------------------------------------------------
@@ -721,6 +719,22 @@ ErrorResponse::~ErrorResponse() {
 void ErrorResponse::SerializeBody(faststring* mesg) {
   SerializeInt(static_cast<int32_t>(code_), mesg);
   SerializeString(message_, mesg);
+  SerializeErrorBody(mesg);
+}
+
+void ErrorResponse::SerializeErrorBody(faststring* mesg) {
+}
+
+//----------------------------------------------------------------------------------------
+UnpreparedErrorResponse::UnpreparedErrorResponse(const CQLRequest& request, const QueryId& query_id)
+    : ErrorResponse(request, Code::UNPREPARED, "Unprepared query"), query_id_(query_id) {
+}
+
+UnpreparedErrorResponse::~UnpreparedErrorResponse() {
+}
+
+void UnpreparedErrorResponse::SerializeErrorBody(faststring* mesg) {
+  SerializeShortBytes(query_id_, mesg);
 }
 
 //----------------------------------------------------------------------------------------
@@ -1002,6 +1016,10 @@ ResultResponse::RowsMetadata::Type::~Type() {
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
 }
 
+ResultResponse::RowsMetadata::RowsMetadata()
+    : flags(kNoMetadata), paging_state(""),
+      global_table_spec(GlobalTableSpec("" /* keyspace */, "" /* table_name */)), col_count(0) {
+}
 
 ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name,
                                            const vector<ColumnSchema>& columns,
@@ -1133,6 +1151,12 @@ RowsResultResponse::RowsResultResponse(
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
+RowsResultResponse::RowsResultResponse(
+    const ExecuteRequest& request, const sql::RowsResult& rows_result)
+    : ResultResponse(request, Kind::ROWS), rows_result_(rows_result),
+      skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
+}
+
 RowsResultResponse::~RowsResultResponse() {
 }
 
@@ -1145,10 +1169,15 @@ void RowsResultResponse::SerializeResultBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 PreparedResultResponse::PreparedResultResponse(
-    const CQLRequest& request, const PreparedMetadata& prepared_metadata,
-    const RowsMetadata& rows_metadata)
-    : ResultResponse(request, Kind::PREPARED), prepared_metadata_(prepared_metadata),
-      rows_metadata_(rows_metadata) {
+    const CQLRequest& request, const QueryId& query_id,
+    const sql::PreparedResult* prepared_result)
+    : ResultResponse(request, Kind::PREPARED), query_id_(query_id),
+      prepared_metadata_(PreparedMetadata()),
+      rows_metadata_(prepared_result != nullptr ?
+                     RowsMetadata(
+                         prepared_result->table_name(), prepared_result->column_schemas(),
+                         "" /* paging_state */, false /* no_metadata */) :
+                     RowsMetadata()) {
 }
 
 PreparedResultResponse::~PreparedResultResponse() {
@@ -1158,9 +1187,11 @@ void PreparedResultResponse::SerializePreparedMetadata(
     const PreparedMetadata& metadata, faststring* mesg) {
   SerializeInt(metadata.flags, mesg);
   SerializeInt(metadata.col_specs.size(), mesg);
-  SerializeInt(metadata.pk_indices.size(), mesg);
-  for (const auto& pk_index : metadata.pk_indices) {
-    SerializeShort(pk_index, mesg);
+  if (VersionIsCompatible(kV4Version)) {
+    SerializeInt(metadata.pk_indices.size(), mesg);
+    for (const auto& pk_index : metadata.pk_indices) {
+      SerializeShort(pk_index, mesg);
+    }
   }
   SerializeColSpecs(
       metadata.flags & PreparedMetadata::kHasGlobalTableSpec, metadata.global_table_spec,

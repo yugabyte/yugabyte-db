@@ -38,12 +38,12 @@ class Executor {
 
   // Execute the given parse tree.
   CHECKED_STATUS Execute(const std::string& sql_stmt,
-                         ParseTree::UniPtr ptree,
+                         const ParseTree& ptree,
                          const StatementParameters& params,
                          SqlEnv *sql_env);
 
-  // Complete execution and release the parse tree from the process.
-  ParseTree::UniPtr Done();
+  // Complete execution.
+  void Done();
 
   // Access to error code.
   ErrorCode error_code() const {
@@ -53,7 +53,7 @@ class Executor {
   //------------------------------------------------------------------------------------------------
   // Currently, we don't yet have code generator into byte code, so the following ExecTNode()
   // functions are operating directly on the parse tree.
-  CHECKED_STATUS ExecPTree(const ParseTree *ptree);
+  CHECKED_STATUS ExecPTree(const ParseTree& ptree);
 
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);

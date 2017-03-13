@@ -34,40 +34,34 @@ Executor::~Executor() {
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::Execute(const string& sql_stmt,
-                                 ParseTree::UniPtr parse_tree,
+                                 const ParseTree& parse_tree,
                                  const StatementParameters& params,
                                  SqlEnv *sql_env) {
   // Prepare execution context.
-  ParseTree *ptree = parse_tree.get();
   exec_context_ = ExecContext::UniPtr(new ExecContext(sql_stmt.c_str(),
                                                       sql_stmt.length(),
-                                                      move(parse_tree),
                                                       sql_env));
   params_ = &params;
   // Execute the parse tree.
-  if (!ExecPTree(ptree).ok()) {
+  if (!ExecPTree(parse_tree).ok()) {
     // Before leaving the execution step, collect all errors and place them in return status.
-    VLOG(3) << "Failed to execute parse-tree <" << ptree << ">";
+    VLOG(3) << "Failed to execute parse-tree <" << &parse_tree << ">";
     return exec_context_->GetStatus();
   }
 
-  VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
+  VLOG(3) << "Successfully executed parse-tree <" << &parse_tree << ">";
   return Status::OK();
 }
 
-ParseTree::UniPtr Executor::Done() {
-  // When releasing the parse tree, we must free the context because it has references to the tree
-  // which doesn't belong to this context any longer.
-  ParseTree::UniPtr ptree = exec_context_->AcquireParseTree();
+void Executor::Done() {
   exec_context_ = nullptr;
   params_ = nullptr;
-  return ptree;
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTree(const ParseTree *ptree) {
-  return ExecTreeNode(ptree->root().get());
+CHECKED_STATUS Executor::ExecPTree(const ParseTree& ptree) {
+  return ExecTreeNode(ptree.root().get());
 }
 
 CHECKED_STATUS Executor::ExecTreeNode(const TreeNode *tnode) {
