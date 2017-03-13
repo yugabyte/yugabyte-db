@@ -3,6 +3,8 @@
 import React, { Component } from 'react';
 import {Row, Col} from 'react-bootstrap';
 
+import './HelpItems.scss';
+
 export default class HelpItems extends Component {
   render() {
     return (
@@ -12,32 +14,28 @@ export default class HelpItems extends Component {
             <h2>Help</h2>
           </Col>
         </Row>
+        <hr/>
 
         <Row>
           <Col lg={3}>
-            <h3>
-              <a href="#">
-                <i className="fa fa-book"></i> Documentation
-              </a>
-            </h3>
+            <h4><i className="fa fa-support"></i> Support</h4>
           </Col>
-
-          <Col lg={3}>
-            <h3>
-              <a href="#">
-                <i className="fa fa-support"></i> Support Desk
-              </a>
-            </h3>
-          </Col>
-
-          <Col lg={3}>
-            <h3>
-              <a href="#">
-                <i className="fa fa-envelope-o"></i> Contact Us
-              </a>
-            </h3>
+          <Col lg={9} className="help-links">
+            <p><a href="#"><i className="fa fa-slack"></i> Slack Channel</a></p>
+            <p><a href="mailto:support@yugabyte.com"><i className="fa fa-envelope-o"></i> Support Email</a></p>
           </Col>
         </Row>
+        <hr/>
+
+        <Row>
+          <Col lg={3}>
+            <h4><i className="fa fa-book"></i> Documentation</h4>
+          </Col>
+          <Col lg={9} className="help-links">
+            Coming soon&hellip;
+          </Col>
+        </Row>
+        <hr/>
       </div>
     )
   }
