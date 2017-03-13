@@ -4,6 +4,9 @@
  */
 
 #include "postgres.h"
+
+#include <math.h>
+
 #include "funcapi.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
