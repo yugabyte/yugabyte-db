@@ -40,6 +40,7 @@ extern int no_such_variable
 
 /* from aggregate.c */
 extern PGDLLEXPORT Datum orafce_listagg1_transfn(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_wm_concat_transfn(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_listagg2_transfn(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_listagg_finalfn(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_median4_transfn(PG_FUNCTION_ARGS);

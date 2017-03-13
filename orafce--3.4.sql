@@ -1,4 +1,4 @@
-/* contrib/orafce--3.2.sql */
+/* contrib/orafce--3.4.sql */
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION orafce" to load this file. \quit
@@ -2035,6 +2035,11 @@ RETURNS internal
 AS 'MODULE_PATHNAME','orafce_listagg1_transfn'
 LANGUAGE C IMMUTABLE;
 
+CREATE FUNCTION pg_catalog.wm_concat_transfn(internal, text)
+RETURNS internal
+AS 'MODULE_PATHNAME','orafce_wm_concat_transfn'
+LANGUAGE C IMMUTABLE;
+
 CREATE FUNCTION pg_catalog.listagg2_transfn(internal, text, text)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_listagg2_transfn'
@@ -2047,6 +2052,16 @@ LANGUAGE C IMMUTABLE;
 
 CREATE AGGREGATE pg_catalog.listagg(text) (
   SFUNC=pg_catalog.listagg1_transfn,
+  STYPE=internal,
+  FINALFUNC=pg_catalog.listagg_finalfn
+);
+
+/*
+ * Undocumented function wm_concat - removed from
+ * Oracle 12c.
+ */
+CREATE AGGREGATE pg_catalog.wm_concat(text) (
+  SFUNC=pg_catalog.wm_concat_transfn,
   STYPE=internal,
   FINALFUNC=pg_catalog.listagg_finalfn
 );

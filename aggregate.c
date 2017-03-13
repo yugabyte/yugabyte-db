@@ -1,4 +1,7 @@
 #include "postgres.h"
+
+#include <math.h>
+
 #include "funcapi.h"
 #include "builtins.h"
 
@@ -8,6 +11,7 @@
 #include "orafce.h"
 
 PG_FUNCTION_INFO_V1(orafce_listagg1_transfn);
+PG_FUNCTION_INFO_V1(orafce_wm_concat_transfn);
 PG_FUNCTION_INFO_V1(orafce_listagg2_transfn);
 PG_FUNCTION_INFO_V1(orafce_listagg_finalfn);
 
@@ -95,6 +99,32 @@ orafce_listagg1_transfn(PG_FUNCTION_ARGS)
 	 */
 	PG_RETURN_POINTER(state);
 }
+
+Datum
+orafce_wm_concat_transfn(PG_FUNCTION_ARGS)
+{
+	StringInfo	state;
+
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
+
+	/* Append the element unless null. */
+	if (!PG_ARGISNULL(1))
+	{
+		if (state == NULL)
+			state = makeStringAggState(fcinfo);
+		else
+			appendStringInfoChar(state, ',');
+
+		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
+	}
+
+	/*
+	 * The transition type for string_agg() is declared to be "internal",
+	 * which is a pass-by-value type the same size as a pointer.
+	 */
+	PG_RETURN_POINTER(state);
+}
+
 
 Datum
 orafce_listagg2_transfn(PG_FUNCTION_ARGS)

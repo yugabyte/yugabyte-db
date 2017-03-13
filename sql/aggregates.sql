@@ -3,6 +3,7 @@ SELECT listagg(i::text) from generate_series(1,3) g(i);
 SELECT listagg(i::text, ',') from generate_series(1,3) g(i);
 SELECT coalesce(listagg(i::text), '<NULL>') from (SELECT ''::text) g(i);
 SELECT coalesce(listagg(i::text), '<NULL>') from generate_series(1,0) g(i);
+SELECT wm_concat(i::text) from generate_series(1,3) g(i);
 
 -- Tests for the aggregate median( real | double )
 CREATE FUNCTION checkMedianRealOdd()  RETURNS real AS $$
