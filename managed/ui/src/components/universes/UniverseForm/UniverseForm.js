@@ -29,6 +29,7 @@ export default class UniverseForm extends Component {
     this.azChanged = this.azChanged.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.numNodesClicked = this.numNodesClicked.bind(this);
+    this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
     var azInitState = true;
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     if (isDefinedNotNull(this.props.universe.currentUniverse)) {
@@ -39,7 +40,8 @@ export default class UniverseForm extends Component {
       azCheckState: azInitState,
       providerSelected: '',
       numNodes: 3,
-      isCustom: false
+      isCustom: false,
+      replicationFactor: 3
     };
   }
 
@@ -51,9 +53,11 @@ export default class UniverseForm extends Component {
       universeTaskParams.expectedUniverseVersion = currentUniverse.version;
     }
     var formSubmitVals = formValues;
-
     delete formSubmitVals.formType;
     universeTaskParams.userIntent = formSubmitVals;
+    if (fieldName !== "replicationFactor") {
+      universeTaskParams.userIntent["replicationFactor"] = this.state.replicationFactor;
+    }
     universeTaskParams.userIntent[fieldName] = fieldVal;
     if (isDefinedNotNull(formValues.instanceType) && isValidArray(universeTaskParams.userIntent.regionList)) {
       this.props.cloud.providers.forEach(function(providerItem, idx){
@@ -141,6 +145,11 @@ export default class UniverseForm extends Component {
 
   serverPackageChanged(packageName) {
     this.configureUniverseNodeList("ybServerPackage", packageName, false);
+  }
+
+  replicationFactorChanged(value) {
+    this.setState({replicationFactor: value});
+    this.configureUniverseNodeList("replicationFactor", value, false);
   }
 
   componentDidUpdate(newProps) {
@@ -242,7 +251,7 @@ export default class UniverseForm extends Component {
           <h4>Advanced</h4>
           <div className="form-right-aligned-labels">
             <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                   label="Replication Factor" />
+                   label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged}/>
             <Field name="ybServerPackage" type="text" component={YBTextInputWithLabel}
                    label="Server Package" defaultValue={this.state.ybServerPackage}
                    onValueChanged={this.serverPackageChanged} />

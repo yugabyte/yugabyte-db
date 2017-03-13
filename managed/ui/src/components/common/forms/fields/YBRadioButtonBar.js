@@ -1,23 +1,32 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, PropTypes } from 'react';
 import {isValidArray, isValidObject, isProperObject} from '../../../../utils/ObjectUtils';
 import YBRadioButton from './YBRadioButton';
 
 import { YBLabel } from '../../descriptors';
 
 export default class YBRadioButtonBar extends Component {
+  static propTypes = {
+    onSelect: PropTypes.func.isRequired
+  }
+  constructor(props) {
+    super(props);
+    this.state = {fieldValue: 0};
+    this.radioButtonChecked = this.radioButtonChecked.bind(this);
+  }
   componentWillMount() {
-    this.fieldValue = this.props.fieldValue;
+    this.setState({fieldValue: this.props.initialValue});
   }
 
-  componentWillReceiveProps(newProps) {
-    this.fieldValue = newProps.fieldValue;
+  radioButtonChecked(event) {
+    const {onSelect} = this.props;
+    this.setState({fieldValue: Number(event.target.value)})
+    onSelect(event.target.value);
   }
-
   render() {
-    const { input, options, onClick } = this.props;
-    var component = this;
+    const { input, options } = this.props;
+    var self = this;
     function radioButtonForOption(option) {
       var value, display;
       if (isValidArray(option)) {
@@ -28,18 +37,13 @@ export default class YBRadioButtonBar extends Component {
       } else {
         value = display = option;
       }
-      value = value.toString();
+      value = Number(value);
       function getLabelClass() {
-        return 'btn btn-default' + (component.fieldValue === value ? ' bg-orange' : '');
+        return 'btn btn-default' + (self.state.fieldValue === value ? ' bg-orange' : '');
       }
-      var onClickWrapper = function (event) {
-        component.fieldValue = event.target.value;
-        component.forceUpdate();
-        return isValidObject(onClick) ? onClick(event) : true;
-      };
       return (
-        <YBRadioButton key={value} {...input} fieldValue={value} checkState={component.fieldValue === value}
-          label={display} labelClass={getLabelClass()} onClick={onClickWrapper} />
+        <YBRadioButton key={value} {...input} fieldValue={value} checkState={self.state.fieldValue === value}
+          label={display} labelClass={getLabelClass()} onClick={self.radioButtonChecked} />
       );
     }
     return (
