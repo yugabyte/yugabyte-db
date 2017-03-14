@@ -18,12 +18,6 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context) {
   switch (op_) {
     case ExprOperator::kNoOp:
       break;
-    case ExprOperator::kConst:
-      break;
-    case ExprOperator::kAlias:
-      break;
-    case ExprOperator::kRef:
-      break;
     case ExprOperator::kExists:
       break;
     case ExprOperator::kNotExists:
@@ -55,17 +49,21 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
       type_id_ = op1->type_id();
       break;
     case ExprOperator::kNot:
+      if (op1->sql_type_ != BOOL) {
+        return sem_context->Error(loc(), "Only boolean data type is allowed in this context",
+            ErrorCode::INVALID_DATATYPE);
+      }
+      sql_type_ = yb::DataType::BOOL;
+      type_id_ = yb::InternalType::kBoolValue;
       break;
-    case ExprOperator::kIsNull:
-      break;
-    case ExprOperator::kIsNotNull:
-      break;
-    case ExprOperator::kIsTrue:
-      break;
+    case ExprOperator::kIsNull: FALLTHROUGH_INTENDED;
+    case ExprOperator::kIsNotNull: FALLTHROUGH_INTENDED;
+    case ExprOperator::kIsTrue: FALLTHROUGH_INTENDED;
     case ExprOperator::kIsFalse:
-      break;
+      return sem_context->Error(loc(), "Operator not supported yet",
+          ErrorCode::CQL_STATEMENT_INVALID);
     default:
-      LOG(FATAL) << "Invalid operator";
+      LOG(FATAL) << "Invalid operator" << int(op_);
   }
 
   return Status::OK();
@@ -74,31 +72,38 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
 CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
                                        PTExpr::SharedPtr op1,
                                        PTExpr::SharedPtr op2) {
+  // "op1" and "op2" must have been analyzed before getting here
   switch (op_) {
-    case ExprOperator::kEQ: // Starting op with 2 operands.
-      break;
-    case ExprOperator::kLT:
-      break;
-    case ExprOperator::kGT:
-      break;
-    case ExprOperator::kLE:
-      break;
-    case ExprOperator::kGE:
-      break;
+    case ExprOperator::kEQ: FALLTHROUGH_INTENDED;
+    case ExprOperator::kLT: FALLTHROUGH_INTENDED;
+    case ExprOperator::kGT: FALLTHROUGH_INTENDED;
+    case ExprOperator::kLE: FALLTHROUGH_INTENDED;
+    case ExprOperator::kGE: FALLTHROUGH_INTENDED;
     case ExprOperator::kNE:
+      RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
+      RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
+      if (!sem_context->IsComparable(op1->sql_type(), op2->sql_type())) {
+        return sem_context->Error(loc(), "Cannot compare values of these datatypes",
+            ErrorCode::INCOMPARABLE_DATATYPES);
+      }
+      sql_type_ = yb::DataType::BOOL;
+      type_id_ = yb::InternalType::kBoolValue;
       break;
-    case ExprOperator::kAND:
-      break;
+    case ExprOperator::kAND: FALLTHROUGH_INTENDED;
     case ExprOperator::kOR:
+      if (op1->sql_type_ != BOOL || op2->sql_type_ != BOOL) {
+        return sem_context->Error(loc(), "Only boolean data type is allowed in this context",
+            ErrorCode::INVALID_DATATYPE);
+      }
+      sql_type_ = yb::DataType::BOOL;
+      type_id_ = yb::InternalType::kBoolValue;
       break;
-    case ExprOperator::kLike:
-      break;
-    case ExprOperator::kNotLike:
-      break;
-    case ExprOperator::kIn:
-      break;
+    case ExprOperator::kLike: FALLTHROUGH_INTENDED;
+    case ExprOperator::kNotLike: FALLTHROUGH_INTENDED;
+    case ExprOperator::kIn: FALLTHROUGH_INTENDED;
     case ExprOperator::kNotIn:
-      break;
+      return sem_context->Error(loc(), "Operator not supported yet",
+          ErrorCode::CQL_STATEMENT_INVALID);
     default:
       LOG(FATAL) << "Invalid operator";
   }
@@ -110,10 +115,21 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
                                        PTExpr::SharedPtr op1,
                                        PTExpr::SharedPtr op2,
                                        PTExpr::SharedPtr op3) {
+  // "op1", "op2", and "op3" must have been analyzed before getting here
   switch (op_) {
-    case ExprOperator::kBetween: // Starting op with 3 operands.
+    case ExprOperator::kBetween: FALLTHROUGH_INTENDED;
+    case ExprOperator::kNotBetween:
+      RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
+      RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
+      RETURN_NOT_OK(op3->CheckRhsExpr(sem_context));
+      if (!sem_context->IsComparable(op1->sql_type(), op2->sql_type()) ||
+          !sem_context->IsComparable(op1->sql_type(), op3->sql_type())) {
+        return sem_context->Error(loc(), "Cannot compare values of these datatypes",
+            ErrorCode::INCOMPARABLE_DATATYPES);
+      }
+      sql_type_ = yb::DataType::BOOL;
+      type_id_ = yb::InternalType::kBoolValue;
       break;
-    case ExprOperator::kNotBetween: break;
     default:
       LOG(FATAL) << "Invalid operator";
   }
@@ -123,20 +139,15 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
 
 //--------------------------------------------------------------------------------------------------
 
-// TODO(mihnea) This function should be called from AnalyzeOperator() from certain kOp.
-CHECKED_STATUS PTExpr::AnalyzeLhsExpr(SemContext *sem_context) {
+CHECKED_STATUS PTExpr::CheckLhsExpr(SemContext *sem_context) {
   if (op_ != ExprOperator::kRef) {
     return sem_context->Error(loc(), "Only column reference is allowed for left hand value",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
-
-  // TODO(mihnea) This call should be removed as it's already called by the exp tree traversal.
-  // Analyze variable.
-  return Analyze(sem_context);
+  return Status::OK();
 }
 
-// TODO(mihnea) This function should be called from AnalyzeOperator() from certain kOp.
-CHECKED_STATUS PTExpr::AnalyzeRhsExpr(SemContext *sem_context) {
+CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
   // Check for limitation in YQL (Not all expressions are acceptable).
   switch (op_) {
     case ExprOperator::kConst: FALLTHROUGH_INTENDED;
@@ -146,10 +157,7 @@ CHECKED_STATUS PTExpr::AnalyzeRhsExpr(SemContext *sem_context) {
       return sem_context->Error(loc(), "Only literal value is allowed for right hand value",
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
-
-  // TODO(mihnea) This call should be removed as it's already called by the exp tree traversal.
-  // Analyze the argument.
-  return Analyze(sem_context);
+  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -157,7 +165,7 @@ CHECKED_STATUS PTExpr::AnalyzeRhsExpr(SemContext *sem_context) {
 PTRef::PTRef(MemoryContext *memctx,
              YBLocation::SharedPtr loc,
              const PTQualifiedName::SharedPtr& name)
-    : PTExpr(memctx, loc, ExprOperator::kRef),
+    : PTOperator0(memctx, loc, ExprOperator::kRef),
       name_(name),
       desc_(nullptr) {
 }
@@ -165,10 +173,11 @@ PTRef::PTRef(MemoryContext *memctx,
 PTRef::~PTRef() {
 }
 
-CHECKED_STATUS PTRef::Analyze(SemContext *sem_context) {
+CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
+
   // Check if this refers to the whole table (SELECT *).
   if (name_ == nullptr) {
-    return Status::OK();
+    return sem_context->Error(loc(), "Cannot do type resolution for wildcard reference (SELECT *)");
   }
 
   // Look for a column descriptor from symbol table.
@@ -194,21 +203,17 @@ PTExprAlias::PTExprAlias(MemoryContext *memctx,
                          YBLocation::SharedPtr loc,
                          const PTExpr::SharedPtr& expr,
                          const MCString::SharedPtr& alias)
-    : PTExpr(memctx, loc, ExprOperator::kAlias),
-      expr_(expr),
+    : PTOperator1(memctx, loc, ExprOperator::kAlias, expr),
       alias_(alias) {
 }
 
 PTExprAlias::~PTExprAlias() {
 }
 
-CHECKED_STATUS PTExprAlias::Analyze(SemContext *sem_context) {
-  // Analyze the expression.
-  RETURN_NOT_OK(expr_->Analyze(sem_context));
-
+CHECKED_STATUS PTExprAlias::AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) {
   // Type resolution: Alias of (x) should have the same datatype as (x).
-  sql_type_ = expr_->sql_type();
-  type_id_ = expr_->type_id();
+  sql_type_ = op1->sql_type();
+  type_id_ = op1->type_id();
 
   return Status::OK();
 }

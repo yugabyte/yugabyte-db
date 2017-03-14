@@ -108,7 +108,6 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
   return Status::OK();
 }
 
-// TODO(Mihnea) Fix this function to use expr->Analyze().
 CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
                                            PTExpr *expr,
                                            MCVector<WhereSemanticStats> *col_stats) {
@@ -133,7 +132,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
       if ((*col_stats)[col_desc->index()].has_eq_ ||
           (*col_stats)[col_desc->index()].has_lt_ ||
           (*col_stats)[col_desc->index()].has_gt_) {
-        // A column in CQL WHERE shouldn't have "==" operator toghether in combination with others.
+        // A column in CQL WHERE shouldn't have "==" operator together in combination with others.
         // Invalid conditions: (col = x && col = y), (col = x && col < y)
         return sem_context->Error(expr->loc(), "Illogical condition for where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -222,112 +221,28 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
   return Status::OK();
 }
 
-// TODO(Mihnea) Fix this function to use expr->Analyze().
-CHECKED_STATUS PTDmlStmt::AnalyzeIfExpr(SemContext *sem_context, PTExpr *expr) {
-  if (expr == nullptr) {
-    return Status::OK();
-  }
-
-  switch (expr->expr_op()) {
-    case ExprOperator::kAND: FALLTHROUGH_INTENDED;
-    case ExprOperator::kOR: {
-      PTPredicate2 *bool_expr = static_cast<PTPredicate2*>(expr);
-      RETURN_NOT_OK(AnalyzeIfExpr(sem_context, bool_expr->op1().get()));
-      RETURN_NOT_OK(AnalyzeIfExpr(sem_context, bool_expr->op2().get()));
-      break;
-    }
-    case ExprOperator::kNot: {
-      PTPredicate1 *bool_expr = static_cast<PTPredicate1*>(expr);
-      RETURN_NOT_OK(AnalyzeIfExpr(sem_context, bool_expr->op1().get()));
-      break;
-    }
-
-    case ExprOperator::kEQ: FALLTHROUGH_INTENDED;
-    case ExprOperator::kLT: FALLTHROUGH_INTENDED;
-    case ExprOperator::kGT: FALLTHROUGH_INTENDED;
-    case ExprOperator::kLE: FALLTHROUGH_INTENDED;
-    case ExprOperator::kGE: FALLTHROUGH_INTENDED;
-    case ExprOperator::kNE: {
-      RETURN_NOT_OK(AnalyzeCompareExpr(sem_context, expr));
-      break;
-    }
-
-    case ExprOperator::kBetween: FALLTHROUGH_INTENDED;
-    case ExprOperator::kNotBetween: {
-      RETURN_NOT_OK(AnalyzeBetweenExpr(sem_context, expr));
-      break;
-    }
-
-    case ExprOperator::kIsNull:    FALLTHROUGH_INTENDED;
-    case ExprOperator::kIsNotNull: FALLTHROUGH_INTENDED;
-    case ExprOperator::kIsTrue:    FALLTHROUGH_INTENDED;
-    case ExprOperator::kIsFalse: {
-      RETURN_NOT_OK(expr->op1()->AnalyzeLhsExpr(sem_context));
-      break;
-    }
-
-    case ExprOperator::kExists: FALLTHROUGH_INTENDED;
-    case ExprOperator::kNotExists:
-      break;
-
-    case ExprOperator::kIn:      FALLTHROUGH_INTENDED;
-    case ExprOperator::kNotIn:   FALLTHROUGH_INTENDED;
-    case ExprOperator::kLike:    FALLTHROUGH_INTENDED;
-    case ExprOperator::kNotLike:
-      return sem_context->Error(expr->loc(), "Operator not supported yet",
-                                ErrorCode::CQL_STATEMENT_INVALID);
-
-    default:
-      LOG(FATAL) << "Illegal op = " << int(expr->expr_op());
-      break;
-  }
-
-  return Status::OK();
-}
-
 CHECKED_STATUS PTDmlStmt::AnalyzeIfClause(SemContext *sem_context,
                                           const PTExpr::SharedPtr& if_clause) {
   if (if_clause != nullptr) {
-    RETURN_NOT_OK(AnalyzeIfExpr(sem_context, if_clause.get()));
+    PTExpr *expr = if_clause.get();
+    if (expr != nullptr) {
+      return expr->Analyze(sem_context);
+    }
   }
   return Status::OK();
 }
 
-// TODO(Mihnea) Fix this function to use expr->Analyze().
 CHECKED_STATUS PTDmlStmt::AnalyzeCompareExpr(SemContext *sem_context,
                                              PTExpr *expr,
                                              const ColumnDesc **col_desc,
                                              PTExpr::SharedPtr *value) {
-
-  RETURN_NOT_OK(expr->op1()->AnalyzeLhsExpr(sem_context));
+  RETURN_NOT_OK(expr->Analyze(sem_context));
   if (col_desc != nullptr) {
     *col_desc = static_cast<PTRef*>(expr->op1().get())->desc();
   }
 
-  RETURN_NOT_OK(expr->op2()->AnalyzeRhsExpr(sem_context));
   if (value != nullptr) {
     *value = expr->op2();
-  }
-
-  if (!sem_context->IsComparable(expr->op1()->sql_type(), expr->op2()->sql_type())) {
-    return sem_context->Error(expr->loc(), "Cannot compare values of these datatypes",
-                              ErrorCode::INCOMPARABLE_DATATYPES);
-  }
-
-  return Status::OK();
-}
-
-// TODO(Mihnea) Fix this function to use expr->Analyze().
-CHECKED_STATUS PTDmlStmt::AnalyzeBetweenExpr(SemContext *sem_context, PTExpr *expr) {
-  RETURN_NOT_OK(expr->op1()->AnalyzeLhsExpr(sem_context));
-
-  RETURN_NOT_OK(expr->op2()->AnalyzeRhsExpr(sem_context));
-  RETURN_NOT_OK(expr->op3()->AnalyzeRhsExpr(sem_context));
-
-  if (!sem_context->IsComparable(expr->op1()->sql_type(), expr->op2()->sql_type()) ||
-      !sem_context->IsComparable(expr->op1()->sql_type(), expr->op3()->sql_type())) {
-    return sem_context->Error(expr->loc(), "Cannot compare values of these datatypes",
-                              ErrorCode::INCOMPARABLE_DATATYPES);
   }
 
   return Status::OK();

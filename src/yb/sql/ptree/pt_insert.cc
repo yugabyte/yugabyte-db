@@ -35,7 +35,6 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
 PTInsertStmt::~PTInsertStmt() {
 }
 
-// TODO(Mihnea) Some where in this function, we must call expr->Analyze() even if it is a const.
 CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
@@ -52,8 +51,9 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
   }
   const MCList<PTExpr::SharedPtr>& exprs = value_clause->Tuple(0)->node_list();
-  for (const auto& const_expr : exprs) {
-    RETURN_NOT_OK(const_expr->AnalyzeRhsExpr(sem_context));
+  for (const auto& expr : exprs) {
+    RETURN_NOT_OK(expr->Analyze(sem_context));
+    RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
   }
 
   int idx = 0;

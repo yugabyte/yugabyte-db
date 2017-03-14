@@ -153,10 +153,10 @@ class PTExpr : public TreeNode {
                                          PTExpr::SharedPtr op3);
 
   // Analyze LHS expression.
-  virtual CHECKED_STATUS AnalyzeLhsExpr(SemContext *sem_context);
+  virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context);
 
   // Analyze RHS expression.
-  virtual CHECKED_STATUS AnalyzeRhsExpr(SemContext *sem_context);
+  virtual CHECKED_STATUS CheckRhsExpr(SemContext *sem_context);
 
  protected:
   ExprOperator op_;
@@ -165,55 +165,6 @@ class PTExpr : public TreeNode {
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
-
-//--------------------------------------------------------------------------------------------------
-// Template for expression with no operand (0 input).
-template<InternalType itype,
-         DataType stype,
-         typename ReturnType>
-class PTExprConst : public PTExpr {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTExprConst> SharedPtr;
-  typedef MCSharedPtr<const PTExprConst> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTExprConst(MemoryContext *memctx,
-              YBLocation::SharedPtr loc,
-              ReturnType value)
-      : PTExpr(memctx, loc, ExprOperator::kConst, itype, stype),
-        value_(value) {
-  }
-  virtual ~PTExprConst() {
-  }
-
-  // Shared pointer support.
-  template<typename... TypeArgs>
-  inline static PTExprConst::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-    return MCMakeShared<PTExprConst>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
-    // Analyze this node operator and setup its sql_type_ and type_id_.
-    RETURN_NOT_OK(AnalyzeOperator(sem_context));
-
-    // Make sure that it has valid data type.
-    CHECK(has_valid_type_id() && has_valid_sql_type());
-    return Status::OK();
-  }
-
-  // Evaluate this expression and its operand.
-  virtual ReturnType Eval() const {
-    return value_;
-  }
-
- private:
-  //------------------------------------------------------------------------------------------------
-  // Constant value.
-  ReturnType value_;
-};
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with no operand (0 input).
@@ -427,6 +378,52 @@ class PTExpr3 : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Tree node for constants
+//--------------------------------------------------------------------------------------------------
+// Template for constant expressions.
+template<InternalType itype,
+    DataType stype,
+    typename ReturnType>
+class PTExprConst : public PTExpr0<itype, stype> {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTExprConst> SharedPtr;
+  typedef MCSharedPtr<const PTExprConst> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTExprConst(MemoryContext *memctx,
+              YBLocation::SharedPtr loc,
+              ReturnType value)
+      : PTExpr0<itype, stype>(memctx, loc, ExprOperator::kConst),
+        value_(value) {
+  }
+  virtual ~PTExprConst() {
+  }
+
+  // Shared pointer support.
+  template<typename... TypeArgs>
+  inline static PTExprConst::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTExprConst>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) OVERRIDE {
+    // Nothing to do: constant expressions should be initialized with valid data type already
+    return Status::OK();
+  };
+
+
+  // Evaluate this expression and its operand.
+  virtual ReturnType Eval() const {
+    return value_;
+  }
+
+ private:
+  //------------------------------------------------------------------------------------------------
+  // Constant value.
+  ReturnType value_;
+};
+
 using PTNull = PTExprConst<InternalType::VALUE_NOT_SET,
                            DataType::NULL_VALUE_TYPE,
                            void*>;
@@ -462,9 +459,7 @@ using PTOperator3 = PTExpr3<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA>
 
 //--------------------------------------------------------------------------------------------------
 // Column Reference. The datatype of this expression would need to be resolved by the analyzer.
-// TODO(mihnea) This class should be a subclass of PTOperator0. I'm not sure about this TODO, but
-// please investigate if it makes sense.
-class PTRef : public PTExpr {
+class PTRef : public PTOperator0 {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -486,13 +481,15 @@ class PTRef : public PTExpr {
 
   // Node semantics analysis.
   void PrintSemanticAnalysisResult(SemContext *sem_context);
-  // TODO(mihnea) This Analyze() function should be changed to AnalyzeOperator(), which will be
-  // called by Analyze() automatically by the tree traversal.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) OVERRIDE;
 
   // Access function for descriptor.
   const ColumnDesc *desc() const {
     return desc_;
+  }
+
+  const PTQualifiedName::SharedPtr name() const {
+    return name_;
   }
 
   // Node type.
@@ -509,9 +506,7 @@ class PTRef : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Expression alias - Name of an expression including reference to column.
-// TODO(mihnea) This class should be a subclass of PTOperator1. I'm not sure about this TODO, but
-// please investigate if it makes sense.
-class PTExprAlias : public PTExpr {
+class PTExprAlias : public PTOperator1 {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -532,13 +527,9 @@ class PTExprAlias : public PTExpr {
     return MCMakeShared<PTExprAlias>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  // TODO(mihnea) This Analyze() function should be changed to AnalyzeOperator(ctx, op1), which will
-  // be called by Analyze() automatically by the tree traversal.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) OVERRIDE;
 
  private:
-  // TODO(mihnea) expr_ should be removed, and op1_ should be in its place.
-  PTExpr::SharedPtr expr_;
   MCString::SharedPtr alias_;
 };
 

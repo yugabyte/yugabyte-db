@@ -124,7 +124,6 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   return Status::OK();
 }
 
-// TODO(Mihnea) Some where in this function, we must call expr->Analyze() even if it is a const.
 CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
   // any expression except for references to table column.
@@ -134,12 +133,8 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
   }
 
   PTRef *ref = static_cast<PTRef *>(target);
-  RETURN_NOT_OK(ref->Analyze(sem_context));
 
-  // Add the column descriptor to select_list_.
-  const ColumnDesc *col_desc = ref->desc();
-  if (col_desc == nullptr) {
-    // This ref is pointing to the whole table (SELECT *).
+  if (ref->name() == nullptr) { // This ref is pointing to the whole table (SELECT *)
     if (target_->size() != 1) {
       return sem_context->Error(target->loc(), "Selecting '*' is not allowed in this context",
                                 ErrorCode::CQL_STATEMENT_INVALID);
@@ -148,7 +143,9 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
     for (int idx = 0; idx < num_cols; idx++) {
       selected_columns_->push_back(&table_columns_[idx]);
     }
-  } else {
+  } else { // Add the column descriptor to selected_columns_.
+    RETURN_NOT_OK(ref->Analyze(sem_context));
+    const ColumnDesc *col_desc = ref->desc();
     selected_columns_->push_back(col_desc);
   }
 
