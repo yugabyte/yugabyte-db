@@ -116,7 +116,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     assertEquals(1, json.size());
     JsonNode regionJson = json.get(0);
-    JsonNode providerJson = regionJson.get("provider");
+    JsonNode providerJson = regionJson.get("awsProvider");
     JsonNode zonesJson = regionJson.get("zones");
     assertNotNull(provider);
     assertEquals(1, zonesJson.size());
