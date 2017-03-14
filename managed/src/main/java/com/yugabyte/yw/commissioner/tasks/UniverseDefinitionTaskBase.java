@@ -144,6 +144,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     TaskList taskList = new TaskList("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = taskParams().userIntent.deviceInfo;
       // Set the cloud name.
       params.cloud = taskParams().userIntent.providerType;
       // Set the region code.
@@ -176,6 +178,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     TaskList taskList = new TaskList("AnsibleUpdateNodeInfo", executor);
     for (NodeDetails node : nodes) {
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = taskParams().userIntent.deviceInfo;
       // Set the cloud name.
       params.cloud = taskParams().userIntent.providerType;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
@@ -207,6 +211,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     TaskList taskList = new TaskList("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = taskParams().userIntent.deviceInfo;
       // Set the cloud name.
       params.cloud = taskParams().userIntent.providerType;
       // Add the node name.

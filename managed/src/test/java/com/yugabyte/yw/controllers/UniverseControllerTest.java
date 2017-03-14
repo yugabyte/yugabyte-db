@@ -197,7 +197,7 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("instanceType", "a-instance");
     bodyJson.put("replicationFactor", 3);
     bodyJson.put("numNodes", 3);
-    bodyJson.put("provider", p.uuid.toString());
+    bodyJson.put("awsProvider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universe_configure")
@@ -230,7 +230,7 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("instanceType", i.getInstanceTypeCode());
     bodyJson.put("replicationFactor", 3);
     bodyJson.put("numNodes", 3);
-    bodyJson.put("provider", p.uuid.toString());
+    bodyJson.put("awsProvider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
@@ -286,7 +286,7 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("instanceType", i.getInstanceTypeCode());
     bodyJson.put("replicationFactor", 3);
     bodyJson.put("numNodes", 3);
-    bodyJson.put("provider", p.uuid.toString());
+    bodyJson.put("awsProvider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
@@ -334,7 +334,7 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("numNodes", 5);
     bodyJson.put("instanceType", i.getInstanceTypeCode());
     bodyJson.put("replicationFactor", 3);
-    bodyJson.put("provider", p.uuid.toString());
+    bodyJson.put("awsProvider", p.uuid.toString());
     topJson.set("userIntent", bodyJson);
 
     Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid +

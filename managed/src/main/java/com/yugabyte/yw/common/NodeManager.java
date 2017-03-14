@@ -20,11 +20,14 @@ import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -108,6 +111,26 @@ public class NodeManager extends DevopsBase {
     return subCommand;
   }
 
+  private List<String> getDeviceArgs(NodeTaskParams params) {
+    List<String> args = new ArrayList<>();
+    if (params.deviceInfo.numVolumes != null) {
+      args.add("--num_volumes");
+      args.add(Integer.toString(params.deviceInfo.numVolumes));
+    } else if (params.deviceInfo.mountPoints != null)  {
+      args.add("--mount_points");
+      args.add(params.deviceInfo.mountPoints);
+    }
+    if (params.deviceInfo.volumeSize != null) {
+      args.add("--volume_size");
+      args.add(Integer.toString(params.deviceInfo.volumeSize));
+    }
+    if (params.deviceInfo.diskIops != null) {
+      args.add("--disk_iops");
+      args.add(Integer.toString(params.deviceInfo.diskIops));
+    }
+    return args;
+  }
+
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     List<String> subcommand = new ArrayList<String>();
 
@@ -167,29 +190,6 @@ public class NodeManager extends DevopsBase {
     return subcommand;
   }
 
-  /**
-   * Adds the mount paths of the instance type as a comma-separated list to the devops command.
-   *
-   * @param providerCode
-   * @param instanceTypeCode
-   * @param command
-   */
-  private void addMountPaths(String providerCode, String instanceTypeCode, List<String> command) {
-    InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
-    if (instanceType == null) {
-      throw new RuntimeException("No InstanceType exists for provider code " + providerCode +
-                                 " and instance type code " + instanceTypeCode);
-    }
-    List<VolumeDetails> detailsList = instanceType.instanceTypeDetails.volumeDetailsList;
-    String mountPoints = detailsList.stream()
-                                    .map(volume -> volume.mountPath)
-                                    .collect(Collectors.joining(","));
-    if (!mountPoints.isEmpty()) {
-      command.add("--mount_points");
-      command.add(mountPoints);
-    }
-  }
-
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
     List<String> commandArgs = new ArrayList<>();
@@ -211,6 +211,9 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--assign_public_ip");
         }
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
+        if (nodeTaskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        }
         break;
       }
       case Configure:
@@ -221,6 +224,9 @@ public class NodeManager extends DevopsBase {
         AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params)nodeTaskParam;
         commandArgs.addAll(getConfigureSubCommand(taskParam));
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
+        if (nodeTaskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        }
         break;
       }
       case List:
@@ -236,6 +242,9 @@ public class NodeManager extends DevopsBase {
         if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
+        if (nodeTaskParam.deviceInfo != null) {
+          commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+        }
         break;
       }
       case Control:
@@ -249,9 +258,6 @@ public class NodeManager extends DevopsBase {
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
-    }
-    if (!(nodeTaskParam.instanceType == null || nodeTaskParam.instanceType.isEmpty())) {
-      addMountPaths(nodeTaskParam.getProvider().code, nodeTaskParam.instanceType, commandArgs);
     }
 
     commandArgs.add(nodeTaskParam.nodeName);

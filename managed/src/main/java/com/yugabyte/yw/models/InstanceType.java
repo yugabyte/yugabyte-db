@@ -204,6 +204,9 @@ public class InstanceType extends Model {
     return instanceTypes;
   }
 
+  /**
+   * Default details for volumes attached to this instance.
+   */
   public static class VolumeDetails {
 
     public Integer volumeSizeGB;

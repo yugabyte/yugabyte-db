@@ -5,8 +5,12 @@ package com.yugabyte.yw.forms;
 import java.util.UUID;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 
 public class UniverseTaskParams implements ITaskParams {
+
+  public DeviceInfo deviceInfo;
+
   // The cloud provider to get node details.
   public CloudType cloud;
 

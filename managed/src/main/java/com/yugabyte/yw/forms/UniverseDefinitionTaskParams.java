@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.Objects;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 
@@ -46,9 +47,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // The placement information computed from the user intent.
   public PlacementInfo placementInfo;
-
-  // Internal UUID picked for this universe.
-  public UUID universeUUID;
 
   // TODO: Add a version number to prevent stale updates.
   // Set to true when an create/edit/destroy intent on the universe is started.
@@ -102,6 +100,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     // TODO: make this required at some point, when we have this coming from UI.
     public String accessKeyCode;
+
+    public DeviceInfo deviceInfo;
 
     @Override
     public String toString() {

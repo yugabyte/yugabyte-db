@@ -12,12 +12,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
 
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
+
+import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 
 public class InstanceTypeController extends AuthenticatedController {
   @Inject
@@ -130,6 +133,17 @@ public class InstanceTypeController extends AuthenticatedController {
     InstanceType instanceType = InstanceType.get(provider.code, instanceTypeCode);
     if (instanceType == null) {
       return ApiResponse.error(BAD_REQUEST, "Instance Type not found: " + instanceTypeCode);
+    }
+    // Mount paths are not persisted for non-onprem clouds, but we know the default details.
+    if (!provider.code.equals(onprem.toString())) {
+      List<VolumeDetails> detailsList = instanceType.instanceTypeDetails.volumeDetailsList;
+      for (int count = 0; count < instanceType.volumeCount; ++count) {
+        VolumeDetails details = new VolumeDetails();
+        details.mountPath = String.format("/mnt/d%d", count);
+        details.volumeType = instanceType.volumeType;
+        details.volumeSizeGB = instanceType.volumeSizeGB;
+        detailsList.add(details);
+      }
     }
     return ApiResponse.success(instanceType);
   }
