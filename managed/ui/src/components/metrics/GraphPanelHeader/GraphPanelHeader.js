@@ -6,9 +6,11 @@ import { DateTimePicker } from 'react-widgets';
 import { YBButton } from '../../common/forms/fields';
 require('react-widgets/dist/css/react-widgets.css');
 var moment = require('moment');
-import { isValidObject } from '../../../utils/ObjectUtils';
+import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
 var momentLocalizer = require('react-widgets/lib/localizers/moment');
 import './GraphPanelHeader.scss';
+import { withRouter, browserHistory } from 'react-router';
+import _ from 'lodash';
 
 // We can define different filter types here, the type parameter should be
 // valid type that moment supports except for custom and divider.
@@ -31,11 +33,14 @@ export const DEFAULT_GRAPH_FILTER = {
     filterTypes[DEFAULT_FILTER_KEY].type),
   endMoment: moment(),
   nodePrefix: "all",
-  nodeName: "all"
+  nodeName: "all",
+  filterLabel: filterTypes[DEFAULT_FILTER_KEY].label,
+  filterType: filterTypes[DEFAULT_FILTER_KEY].type,
+  filterValue: filterTypes[DEFAULT_FILTER_KEY].value
 }
 
 
-export default class GraphPanelHeader extends Component {
+class GraphPanelHeader extends Component {
   constructor(props) {
     super(props);
     momentLocalizer(moment);
@@ -54,17 +59,67 @@ export default class GraphPanelHeader extends Component {
       currentUniverse = this.props.universe.currentUniverse;
       currentUniversePrefix = currentUniverse.universeDetails.nodePrefix;
     }
+    this.updateUrlQueryParams = this.updateUrlQueryParams.bind(this);
     this.state = {
       showDatePicker: false,
       filterLabel: defaultFilter.label,
       filterType: defaultFilter.type,
+      filterValue: defaultFilter.value,
       currentSelectedUniverse: currentUniverse,
-      currentSelectedNode: "all",
-      filterParams: {
-        endMoment: moment(),
-        startMoment: moment().subtract("1", "hours"),
-        nodePrefix: currentUniversePrefix,
-        nodeName: "all"
+      endMoment: moment(),
+      startMoment: moment().subtract("1", "hours"),
+      nodePrefix: currentUniversePrefix,
+      nodeName: "all"
+    }
+  }
+
+  componentWillMount() {
+    var location = browserHistory.getCurrentLocation();
+    var currentQuery = location.query;
+    var currentFilters = this.state;
+    if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
+      var currentLabel = decodeURIComponent(currentQuery.filterLabel);
+      var filterParams = {
+        nodePrefix: currentQuery.nodePrefix,
+        nodeName: currentQuery.nodeName,
+        filterType: currentQuery.filterType,
+        filterValue: currentQuery.filterValue
+      }
+      if (currentQuery.filterType === "custom") {
+          filterParams.startMoment = moment.unix(currentQuery.startDate);
+          filterParams.endMoment = moment.unix(currentQuery.endDate);
+          filterParams.filterValue  = "";
+          filterParams.filterLabel = "Custom";
+      } else {
+        var currentFilterItem = filterTypes.find(filterType => filterType.type === currentQuery.filterType
+                                                 && filterType.value === currentQuery.filterValue);
+        filterParams.filterLabel = currentFilterItem.label;
+        filterParams.endMoment = moment();
+        filterParams.startMoment = moment().subtract(currentFilterItem.value, currentFilterItem.type);
+      }
+      this.setState({...filterParams});
+      currentFilters = filterParams;
+    }
+    this.props.changeGraphQueryFilters(currentFilters);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    const {location, universe: {universeList}} = nextProps;
+    if (this.props.location !== nextProps.location || this.props.universe.universeList !== universeList) {
+      var currentUniverse = universeList.find(function (item) {
+        return item.universeDetails.nodePrefix === location.query.nodePrefix;
+      })
+      if (!isValidObject(currentUniverse) || !isValidArray(Object.keys(currentUniverse))) {
+        currentUniverse = "all";
+      }
+      var currentSelectedNode = "all";
+      if (isValidObject(location.query.nodeName)) {
+        currentSelectedNode = location.query.nodeName;
+      }
+      this.setState({currentSelectedUniverse: currentUniverse, currentSelectedNode: currentSelectedNode});
+      if (Object.keys(nextProps.location.query).length <= 1) {
+        this.setState({...DEFAULT_GRAPH_FILTER})
+        this.props.changeGraphQueryFilters(DEFAULT_GRAPH_FILTER);
       }
     }
   }
@@ -73,98 +128,114 @@ export default class GraphPanelHeader extends Component {
     var queryObject = this.state.filterParams;
     queryObject[type] = val;
     this.props.changeGraphQueryFilters(queryObject);
+    this.updateUrlQueryParams(queryObject);
   }
+
   handleFilterChange(eventKey, event) {
     var filterInfo = filterTypes[eventKey] || filterTypes[DEFAULT_FILTER_KEY];
+    var newParams = this.state;
+    newParams.filterLabel = filterInfo.label;
+    newParams.filterType = filterInfo.type;
+    newParams.filterValue = filterInfo.value;
     this.setState({
       filterLabel: filterInfo.label,
-      filterType: filterInfo.type
-    })
+      filterType: filterInfo.type,
+      filterValue: filterInfo.value});
 
     if (event.target.getAttribute("data-filter-type") !== "custom") {
       var endMoment = moment()
       var startMoment = moment().subtract(filterInfo.value, filterInfo.type);
-      var newParams = this.state.filterParams;
       newParams.startMoment = startMoment;
       newParams.endMoment = endMoment;
-      this.setState({filterParams: newParams});
+      this.setState({startMoment: startMoment, endMoment: endMoment});
       this.props.changeGraphQueryFilters(newParams)
+      this.updateUrlQueryParams(newParams);
     }
   }
+
   universeItemChanged(event) {
     const {universe: {universeList}} = this.props;
     var self = this;
     var universeFound = false;
-    var newParams = this.state.filterParams;
+    var newParams = this.state;
     for (var counter = 0; counter < universeList.length; counter++) {
       if (universeList[counter].universeUUID === event.target.value) {
-        self.setState({currentSelectedUniverse: universeList[counter]});
         universeFound = true;
+        self.setState({currentSelectedUniverse: universeList[counter], nodePrefix: universeList[counter].universeDetails.nodePrefix,
+                       nodeName: "all"});
         newParams.nodePrefix = universeList[counter].universeDetails.nodePrefix;
         break;
       }
     }
     if (!universeFound) {
-      newParams.nodePrefix = "all";
+      self.setState({nodeName: "all", nodePrefix: "all"})
     }
+    newParams.nodeName = "all";
     this.props.changeGraphQueryFilters(newParams);
-    this.setState({filterParams: newParams, currentSelectedNode: "all"})
+    this.updateUrlQueryParams(newParams);
   }
 
   nodeItemChanged(event) {
-    var newParams = this.state.filterParams;
+    var newParams = this.state;
     newParams.nodeName = event.target.value;
     this.props.changeGraphQueryFilters(newParams);
-    this.setState({filterParams: newParams, currentSelectedNode: event.target.value});
-  }
-
-  componentDidMount() {
-    this.updateGraphQueryParams(this.state.filterParams);
+    this.setState({nodeName: event.target.value});
+    this.updateUrlQueryParams(newParams);
   }
 
   handleStartDateChange(dateStr) {
-    var newParams = this.state.filterParams;
-    newParams.startMoment = moment(dateStr);
-    this.setState({filterParams: newParams})
+    this.setState({startMoment: moment(dateStr)});
   }
 
   handleEndDateChange(dateStr) {
-    var newParams = this.state.filterParams;
-    newParams.endMoment = moment(dateStr);
-    this.setState({filterParams: newParams})
+    this.setState({endMoment: moment(dateStr)})
   }
 
   applyCustomFilter() {
-    this.updateGraphQueryParams(this.state.filterParams.startMoment, this.state.filterParams.endMoment)
+    this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment)
   }
 
   updateGraphQueryParams(startMoment, endMoment) {
-    var newFilterParams = this.state.filterParams;
+    var newFilterParams = this.state;
     if (isValidObject(startMoment) && isValidObject(endMoment)) {
       newFilterParams.startMoment = startMoment;
       newFilterParams.endMoment = endMoment;
-      this.setState({filterParams: newFilterParams})
-      this.props.changeGraphQueryFilters(this.state.filterParams);
+      this.props.changeGraphQueryFilters(this.state);
+      this.updateUrlQueryParams(newFilterParams);
     }
   }
 
+  updateUrlQueryParams(filterParams) {
+    const location = Object.assign({}, browserHistory.getCurrentLocation());
+    var queryParams = location.query;
+    queryParams.nodePrefix = filterParams.nodePrefix;
+    queryParams.nodeName = filterParams.nodeName;
+    queryParams.filterType = filterParams.filterType;
+    queryParams.filterValue = filterParams.filterValue;
+    if (queryParams.filterType === "custom") {
+      queryParams.startDate = filterParams.startMoment.unix();
+      queryParams.endDate = filterParams.endMoment.unix();
+    }
+    Object.assign(location.query, queryParams);
+    browserHistory.push(location);
+    this.props.changeGraphQueryFilters(filterParams);
+  }
 
   render() {
     const { origin } = this.props;
     var datePicker = null;
-    if (this.state.filterType === "custom") {
-
+    if (this.state.filterLabel === "Custom") {
       datePicker =
         <span className="graph-filter-custom" >
           <DateTimePicker
-            value={this.state.filterParams.startMoment.toDate()}
+            value={this.state.startMoment.toDate()}
             onChange={this.handleStartDateChange}
             max={new Date()} />
             &nbsp;&ndash;&nbsp;
           <DateTimePicker
-            value={this.state.filterParams.endMoment.toDate()}
+            value={this.state.endMoment.toDate()}
             onChange={this.handleEndDateChange}
-            max={new Date()} min={this.state.filterParams.startMoment.toDate()} />
+            max={new Date()} min={this.state.startMoment.toDate()} />
             &nbsp;
           <YBButton btnIcon={"fa fa-caret-right"} onClick={this.applyCustomFilter} />
         </span>;
@@ -176,6 +247,7 @@ export default class GraphPanelHeader extends Component {
       if (filter.type === "divider") {
         return <MenuItem divider key={key}/>
       }
+
       return (
         <MenuItem onSelect={self.handleFilterChange} data-filter-type={filter.type}
           key={key} eventKey={idx} active={filter.label === self.state.filterLabel}>
@@ -186,7 +258,8 @@ export default class GraphPanelHeader extends Component {
 
     var universePicker = <span/>;
     if (origin === "customer") {
-      universePicker = <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}/>;
+      universePicker = <UniversePicker {...this.props} universeItemChanged={this.universeItemChanged}
+      selectedUniverse={self.state.currentSelectedUniverse}/>;
     }
     return (
       <Grid className="x_panel graph-panel">
@@ -226,18 +299,24 @@ export default class GraphPanelHeader extends Component {
   }
 }
 
+export default withRouter(GraphPanelHeader);
+
 class UniversePicker extends Component {
   render() {
-    const {universeItemChanged, universe: {universeList}} = this.props;
+    const {universeItemChanged, universe: {universeList}, selectedUniverse} = this.props;
     var universeItems = universeList.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
                           .map(function(item, idx){
                             return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>
                           });
     var universeOptionArray = [<option key={-1} value="all">All</option>].concat(universeItems);
+    var currentUniverseValue = "all";
+    if (!_.isString(selectedUniverse)) {
+      currentUniverseValue = selectedUniverse.universeUUID;
+    }
     return (
       <div className="universe-picker">
         Universe:
-        <FormControl componentClass="select" placeholder="select" onChange={universeItemChanged}>
+        <FormControl componentClass="select" placeholder="select" onChange={universeItemChanged} value={currentUniverseValue}>
           {universeOptionArray}
         </FormControl>
       </div>
