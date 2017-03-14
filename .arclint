@@ -1,5 +1,5 @@
 {
-  "exclude":"(\\.l$|Makefile$)",
+  "exclude":"(\\.l$|Makefile$|src/yb/common/yql_type.h$)",
   "linters": {
     "text": {
       "type": "text",
@@ -21,7 +21,6 @@
         "(\\.hpp$)",
         "(\\.h$)"
       ],
-      "exclude": "(src/yb/sql/kwlist.h)",
       "cpplint.header_guard_root_dir": "src",
       "cpplint.max_line_length": 100,
       "severity.rules": {

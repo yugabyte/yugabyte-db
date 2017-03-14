@@ -91,75 +91,13 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
 }
 
 //--------------------------------------------------------------------------------------------------
-// Utilities for Convertible and Comparable checks below
-// We map supported types to consecutive indexes so we can write down convertible/comparable
-// functions concisely using a matrix for each.
-// TODO (mihnea) this code is temporary: should be removed/simplified as part of cleaning up the
-// DataType enum to separate our CQL/Client types from the Kudu-inherited internal types
 
-const DataType kSupportedTypes[] =
-    {INT8, INT16, INT32, INT64, STRING, BOOL, FLOAT, DOUBLE, BINARY, TIMESTAMP, NULL_VALUE_TYPE};
-
-const std::map<DataType, int> MakeTypesIndex() {
-  std::map<DataType, int> type_indexes;
-  int size = sizeof(kSupportedTypes)/sizeof(kSupportedTypes[0]);
-  for (int i = 0; i < size; ++i) {
-    type_indexes.insert({kSupportedTypes[i], i});
-  }
-  return type_indexes;
+bool SemContext::IsConvertible(DataType lhs_type, DataType rhs_type) const {
+  return YQLType::IsImplicitlyConvertible(lhs_type, rhs_type);
 }
 
-const std::map<DataType, int> kTypesIndex = MakeTypesIndex();
-
-//--------------------------------------------------------------------------------------------------
-
-ConversionMode SemContext::GetConversionMode(DataType lhs_type,
-                                             DataType rhs_type) const {
-  static const ConversionMode kIM = ConversionMode::kImplicit;
-  static const ConversionMode kEX = ConversionMode::kExplicit;
-  static const ConversionMode kNA = ConversionMode::kNotAllowed;
-  static const int max_index = sizeof(kSupportedTypes)/sizeof(kSupportedTypes[0]); // TODO fix this
-  static const ConversionMode conversion_mode[max_index][max_index] = {
-    // RHS (source)
-    // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)
-    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int8
-    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int16
-    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kNA,  kIM },            // int32
-    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kEX,  kEX,  kNA,  kEX,  kIM },            // int64
-    { kNA,  kNA,  kNA,  kNA,  kIM,  kNA,   kNA,  kNA,  kNA,  kEX,  kIM },            // string
-    { kNA,  kNA,  kNA,  kNA,  kNA,  kIM,   kNA,  kNA,  kNA,  kNA,  kIM },            // bool
-    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kIM,  kNA,  kNA,  kNA,  kIM },            // float
-    { kIM,  kIM,  kIM,  kIM,  kNA,  kNA,   kNA,  kIM,  kNA,  kNA,  kIM },            // double
-    { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kIM,  kNA,  kIM },            // bin
-    { kNA,  kNA,  kNA,  kIM,  kIM,  kNA,   kNA,  kNA,  kNA,  kIM,  kIM },            // timestamp
-    { kNA,  kNA,  kNA,  kNA,  kNA,  kNA,   kNA,  kNA,  kNA,  kNA,  kNA },            // null
-  };
-
-  return conversion_mode[kTypesIndex.at(lhs_type)][kTypesIndex.at(rhs_type)];
-}
-
-bool SemContext::IsComparable(DataType lhs_type,
-                              DataType rhs_type) const {
-  static const bool kYS = true;
-  static const bool kNO = false;
-  static const int max_index = sizeof(kSupportedTypes)/sizeof(kSupportedTypes[0]); // TODO fix this
-  static const bool compare_mode[max_index][max_index] = {
-    // RHS (source)
-    // i8  | i16 | i32 | i64 | str | bool | flt | dbl | bin | tst | null             // LHS (dest)
-    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int8
-    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int16
-    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int32
-    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // int64
-    { kNO,  kNO,  kNO,  kNO,  kYS,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // string
-    { kNO,  kNO,  kNO,  kNO,  kNO,  kYS,   kNO,  kNO,  kNO,  kNO,  kNO },            // bool
-    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kYS,  kNO,  kNO,  kNO,  kNO },            // float
-    { kYS,  kYS,  kYS,  kYS,  kNO,  kNO,   kNO,  kYS,  kNO,  kNO,  kNO },            // double
-    { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kYS,  kNO,  kNO },            // bin
-    { kNO,  kNO,  kNO,  kYS,  kYS,  kNO,   kNO,  kNO,  kNO,  kYS,  kNO },            // timestamp
-    { kNO,  kNO,  kNO,  kNO,  kNO,  kNO,   kNO,  kNO,  kNO,  kNO,  kNO },            // null
-  };
-
-  return compare_mode[kTypesIndex.at(lhs_type)][kTypesIndex.at(rhs_type)];
+bool SemContext::IsComparable(DataType lhs_type, DataType rhs_type) const {
+  return YQLType::IsComparable(lhs_type, rhs_type);
 }
 
 }  // namespace sql

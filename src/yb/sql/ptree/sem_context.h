@@ -104,9 +104,7 @@ class SemContext : public ProcessContext {
   const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
 
   // Check if the rhs and lhs datatypes are compatible. Their conversion mode must be implicit.
-  bool IsConvertible(DataType lhs_type, DataType rhs_type) const {
-    return (GetConversionMode(lhs_type, rhs_type) == ConversionMode::kImplicit);
-  }
+  bool IsConvertible(DataType lhs_type, DataType rhs_type) const;
 
   bool IsComparable(DataType lhs_type, DataType rhs_type) const;
 
@@ -118,9 +116,6 @@ class SemContext : public ProcessContext {
   bool cache_used() const { return cache_used_; }
 
  private:
-  // Find conversion mode from 'rhs_type' to 'lhs_type'.
-  ConversionMode GetConversionMode(DataType lhs_type, DataType rhs_type) const;
-
   // Find symbol.
   const SymbolEntry *SeekSymbol(const MCString& name) const;
 

@@ -27,26 +27,38 @@ package yb;
 
 option java_package = "org.yb";
 
-// If you add a new type keep in mind to add it to the end
-// or update AddMapping() functions like the one in key_encoder.cc
-// that have a vector that maps the protobuf tag with the index.
+// To ensure compatibility between release versions, the numeric values of these datatypes cannot
+// be changed once the types are implemented and released.
 enum DataType {
   UNKNOWN_DATA = 999;
-  NULL_VALUE_TYPE = 998;
-  UINT8 = 0;
+  NULL_VALUE_TYPE = 0;
   INT8 = 1;
-  UINT16 = 2;
-  INT16 = 3;
-  UINT32 = 4;
-  INT32 = 5;
-  UINT64 = 6;
-  INT64 = 7;
-  STRING = 8;
-  BOOL = 9;
-  FLOAT = 10;
-  DOUBLE = 11;
-  BINARY = 12;
-  TIMESTAMP = 13;
+  INT16 = 2;
+  INT32 = 3;
+  INT64 = 4;
+  STRING = 5;
+  BOOL = 6;
+  FLOAT = 7;
+  DOUBLE = 8;
+  BINARY = 9;
+  TIMESTAMP = 10;
+  DECIMAL = 11;
+  VARINT = 12;
+  INET = 13;
+  LIST = 14;
+  MAP = 15;
+  SET = 16;
+  // UUID, TIMEUUID, and TUPLE are not yet implemented, but they are CQL types. It doesn't hurt
+  // if we remove them or use their slots for different datatypes.
+  UUID = 17;
+  TIMEUUID = 18;
+  TUPLE = 19;
+  TYPEARGS = 20;
+  // All unsigned datatypes will be removed from YQL because databases do not have these types.
+  UINT8 = 100;
+  UINT16 = 101;
+  UINT32 = 102;
+  UINT64 = 103;
 }
 
 enum EncodingType {

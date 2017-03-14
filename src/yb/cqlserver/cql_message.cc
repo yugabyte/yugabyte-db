@@ -956,12 +956,23 @@ ResultResponse::RowsMetadata::Type::Type(const DataType type) {
       id = Id::TIMESTAMP;
       return;
 
+    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
+    case DataType::VARINT: FALLTHROUGH_INTENDED;
+    case DataType::INET: FALLTHROUGH_INTENDED;
+    case DataType::LIST: FALLTHROUGH_INTENDED;
+    case DataType::MAP: FALLTHROUGH_INTENDED;
+    case DataType::SET: FALLTHROUGH_INTENDED;
+    case DataType::UUID: FALLTHROUGH_INTENDED;
+    case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
+    case DataType::TUPLE: FALLTHROUGH_INTENDED;
+    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+
     case DataType::UINT8:  FALLTHROUGH_INTENDED;
     case DataType::UINT16: FALLTHROUGH_INTENDED;
     case DataType::UINT32: FALLTHROUGH_INTENDED;
     case DataType::UINT64: FALLTHROUGH_INTENDED;
-    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::UNKNOWN_DATA:
       break;
 

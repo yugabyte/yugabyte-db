@@ -223,12 +223,24 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
     case BOOL:     return row->SetBool(column_idx, YQLValue::bool_value(value));
     case TIMESTAMP:
       return row->SetTimestamp(column_idx, YQLValue::timestamp_value(value).ToInt64());
+
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case DECIMAL: FALLTHROUGH_INTENDED;
+    case VARINT: FALLTHROUGH_INTENDED;
+    case INET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
+    case MAP: FALLTHROUGH_INTENDED;
+    case SET: FALLTHROUGH_INTENDED;
+    case UUID: FALLTHROUGH_INTENDED;
+    case TIMEUUID: FALLTHROUGH_INTENDED;
+    case TUPLE: FALLTHROUGH_INTENDED;
+    case TYPEARGS: FALLTHROUGH_INTENDED;
+
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;
     case UINT64: FALLTHROUGH_INTENDED;
-    case BINARY: FALLTHROUGH_INTENDED;
-    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
 

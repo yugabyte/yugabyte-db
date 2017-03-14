@@ -121,13 +121,25 @@ class YB_EXPORT YBColumnSchema {
         return InternalType::kTimestampValue;
       case BOOL:
         return InternalType::kBoolValue;
+
+      case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+      case BINARY: FALLTHROUGH_INTENDED;
+      case DECIMAL: FALLTHROUGH_INTENDED;
+      case VARINT: FALLTHROUGH_INTENDED;
+      case INET: FALLTHROUGH_INTENDED;
+      case LIST: FALLTHROUGH_INTENDED;
+      case MAP: FALLTHROUGH_INTENDED;
+      case SET: FALLTHROUGH_INTENDED;
+      case UUID: FALLTHROUGH_INTENDED;
+      case TIMEUUID: FALLTHROUGH_INTENDED;
+      case TUPLE: FALLTHROUGH_INTENDED;
+      case TYPEARGS: FALLTHROUGH_INTENDED;
+
       case UINT8: FALLTHROUGH_INTENDED;
       case UINT16: FALLTHROUGH_INTENDED;
       case UINT32: FALLTHROUGH_INTENDED;
       case UINT64: FALLTHROUGH_INTENDED;
-      case BINARY: FALLTHROUGH_INTENDED;
-      case UNKNOWN_DATA: FALLTHROUGH_INTENDED;
-      case NULL_VALUE_TYPE:
+      case UNKNOWN_DATA:
         break;
     }
     LOG(FATAL) << "Internal error: unsupported sql type " << data_type;

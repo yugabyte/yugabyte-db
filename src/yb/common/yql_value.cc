@@ -15,13 +15,25 @@
 
 // The list of unsupported datypes to use in switch statements
 #define YQL_UNSUPPORTED_TYPES_IN_SWITCH \
+  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
+  case BINARY: FALLTHROUGH_INTENDED;    \
+  case DECIMAL: FALLTHROUGH_INTENDED;   \
+  case VARINT: FALLTHROUGH_INTENDED;    \
+  case INET: FALLTHROUGH_INTENDED;      \
+  case LIST: FALLTHROUGH_INTENDED;      \
+  case MAP: FALLTHROUGH_INTENDED;       \
+  case SET: FALLTHROUGH_INTENDED;       \
+  case UUID: FALLTHROUGH_INTENDED;      \
+  case TIMEUUID: FALLTHROUGH_INTENDED;  \
+  case TUPLE: FALLTHROUGH_INTENDED;     \
+  case TYPEARGS: FALLTHROUGH_INTENDED;  \
+  case UNKNOWN_DATA
+
+#define YQL_INVALID_TYPES_IN_SWITCH     \
   case UINT8:  FALLTHROUGH_INTENDED;    \
   case UINT16: FALLTHROUGH_INTENDED;    \
   case UINT32: FALLTHROUGH_INTENDED;    \
-  case UINT64: FALLTHROUGH_INTENDED;    \
-  case BINARY: FALLTHROUGH_INTENDED;    \
-  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case UNKNOWN_DATA
+  case UINT64
 
 namespace yb {
 
@@ -112,6 +124,8 @@ void YQLValue::Serialize(
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
 
+    YQL_INVALID_TYPES_IN_SWITCH:
+      break;
     // default: fall through
   }
 
@@ -173,6 +187,9 @@ Status YQLValue::Deserialize(const DataType sql_type, const YQLClient client, Sl
     }
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
+      break;
+
+    YQL_INVALID_TYPES_IN_SWITCH:
       break;
 
     // default: fall through

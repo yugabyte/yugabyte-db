@@ -27,6 +27,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/yql_type.h"
 #include "yb/common/id_mapping.h"
 #include "yb/common/key_encoder.h"
 #include "yb/gutil/stl_util.h"
