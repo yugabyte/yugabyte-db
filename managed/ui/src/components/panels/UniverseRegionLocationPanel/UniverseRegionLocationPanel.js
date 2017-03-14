@@ -24,15 +24,14 @@ export default class UniverseRegionLocationPanel extends Component {
         }
       });
     });
-
     completeRegionList.forEach(function(completeRegionItem, crIdx){
+      delete completeRegionList[crIdx].universes;
       Object.keys(universeListByRegions).forEach(function(regionKey, rIdx){
         if (regionKey === completeRegionItem.uuid) {
           completeRegionList[crIdx].universes = universeListByRegions[regionKey];
         }
       });
     });
-
     return (
       <div>
         <RegionMap title="All Supported Regions" regions={completeRegionList} type="all"/>
