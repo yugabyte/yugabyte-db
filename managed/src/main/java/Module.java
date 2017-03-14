@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import com.google.inject.AbstractModule;
+import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -31,5 +33,7 @@ public class Module extends AbstractModule {
     bind(NodeManager.class).asEagerSingleton();
     bind(MetricQueryHelper.class).asEagerSingleton();
     bind(ShellProcessHandler.class).asEagerSingleton();
+    bind(NetworkManager.class).asEagerSingleton();
+    bind(AccessManager.class).asEagerSingleton();
   }
 }

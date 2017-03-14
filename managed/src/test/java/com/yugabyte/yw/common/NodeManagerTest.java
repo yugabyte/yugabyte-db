@@ -105,10 +105,10 @@ public class NodeManagerTest extends FakeDBApplication {
 
       baseCommand.add("bin/ybcloud.sh");
       baseCommand.add(provider.code);
-      baseCommand.add("--zone");
-      baseCommand.add(zone.code);
       baseCommand.add("--region");
       baseCommand.add(region.code);
+      baseCommand.add("--zone");
+      baseCommand.add(zone.code);
 
       if (cloudType == Common.CloudType.docker) {
         baseCommand.add("--network");
@@ -277,6 +277,41 @@ public class NodeManagerTest extends FakeDBApplication {
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
+
+      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
+      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+
+  @Test
+  public void testProvisionNodeCommandWithAccessKey() {
+    for (TestData t : testData) {
+      // Create AccessKey
+      AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+      keyInfo.privateKey = "/path/to/private.key";
+      keyInfo.publicKey = "/path/to/public.key";
+      keyInfo.vaultFile = "/path/to/vault_file";
+      keyInfo.vaultPasswordFile = "/path/to/vault_password";
+      AccessKey.create(t.provider.uuid, "demo-access", keyInfo);
+
+      // Set up task params
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          new UniverseDefinitionTaskParams.UserIntent();
+      userIntent.numNodes = 3;
+      userIntent.accessKeyCode = "demo-access";
+      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater(userIntent)));
+
+      // Set up expected command
+      List<String> expectedCommand = t.baseCommand;
+      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
+      List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
+          "--vault_password_file", "/path/to/vault_password", "--private_key_file",
+          "/path/to/private.key", "--key_pair_name", userIntent.accessKeyCode,
+          "--security_group", "yb-" +  t.region.code + "-sg");
+      expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
