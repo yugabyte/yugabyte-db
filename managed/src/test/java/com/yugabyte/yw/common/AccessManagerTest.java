@@ -62,7 +62,6 @@ public class AccessManagerTest extends FakeDBApplication {
     new TemporaryFolder(new File(TMP_KEYS_PATH));
     defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
-    AvailabilityZone.create(defaultRegion, "az-1", "az", "subnet-1");
     when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
     command = ArgumentCaptor.forClass(ArrayList.class);
     cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
@@ -123,10 +122,8 @@ public class AccessManagerTest extends FakeDBApplication {
   }
 
   private String getBaseCommand(Region region, String commandType) {
-    AvailabilityZone az = AvailabilityZone.getAZsForRegion(region.uuid).get(0);
     return "bin/ybcloud.sh " + region.provider.code +
-        " --zone " + az.code + " --region " + region.code +
-        " access " + commandType;
+        " --region " + region.code + " access " + commandType;
   }
 
   @Test
@@ -345,13 +342,5 @@ public class AccessManagerTest extends FakeDBApplication {
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Key path /foo/keys doesn't exists.")));
     }
-  }
-
-  @Test
-  public void testExecuteAgainstRegionWithoutZones() {
-    Region region = Region.create(defaultProvider, "new-region", "new region", "yb-image");
-    JsonNode result = runCommand(region.uuid, "list-keys", true);
-    Mockito.verify(shellProcessHandler, times(0)).run(anyList(), anyMap());
-    assertErrorNodeValue(result, "No Zones found for Region UUID: " + region.uuid);
   }
 }

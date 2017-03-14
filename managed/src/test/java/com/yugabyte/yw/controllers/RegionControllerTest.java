@@ -2,23 +2,27 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
+import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.core.IsInstanceOf.instanceOf;
 import static org.junit.Assert.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
+import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.YugawareProperty;
 import org.hamcrest.CoreMatchers;
@@ -32,12 +36,27 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 
+import org.mockito.Mockito;
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
+import play.test.Helpers;
 
 public class RegionControllerTest extends FakeDBApplication {
   Provider provider;
   Customer customer;
+
+  NetworkManager networkManager;
+
+  @Override
+  protected Application provideApplication() {
+    networkManager = mock(NetworkManager.class);
+    return new GuiceApplicationBuilder()
+        .configure((Map) Helpers.inMemoryDatabase())
+        .overrides(bind(NetworkManager.class).toInstance(networkManager))
+        .build();
+  }
 
   @Before
   public void setUp() {
@@ -194,12 +213,14 @@ public class RegionControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateRegionWithMetadata() {
+  public void testCreateRegionWithMetadataValidVPCInfo() {
     YugawareProperty.addConfigProperty(ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
         Json.parse("{\"foo-region\": {\"name\": \"Foo Region\", \"ybImage\": \"yb image\"}}"),
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
+    JsonNode vpcInfo = Json.parse("{\"foo-region\": {\"zones\": {\"zone-1\": \"subnet-1\"}}}");
+    Mockito.when(networkManager.bootstrap(any(UUID.class))).thenReturn(vpcInfo);
     Result result = createRegion(provider.uuid, regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -207,6 +228,25 @@ public class RegionControllerTest extends FakeDBApplication {
     assertValue(json, "code", "foo-region");
     assertValue(json, "name", "Foo Region");
     assertValue(json, "ybImage", "yb image");
+    assertNotNull(json.get("zones"));
+    Region r = Region.getByCode(provider, "foo-region");
+    assertEquals(1, r.zones.size());
+  }
+
+  @Test
+  public void testCreateRegionWithMetadataInvalidVPCInfo() {
+    YugawareProperty.addConfigProperty(ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
+        Json.parse("{\"foo-region\": {\"name\": \"Foo Region\", \"ybImage\": \"yb image\"}}"),
+        ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
+    ObjectNode regionJson = Json.newObject();
+    regionJson.put("code", "foo-region");
+    ObjectNode vpcInfo = Json.newObject();
+    vpcInfo.put("error", "Something went wrong!!.");
+    Mockito.when(networkManager.bootstrap(any(UUID.class))).thenReturn(vpcInfo);
+    Result result = createRegion(provider.uuid, regionJson);
+    assertInternalServerError(result, "Region Bootstrap failed.");
+    Region r = Region.getByCode(provider, "foo-region");
+    assertNull(r);
   }
 
   @Test

@@ -104,7 +104,7 @@ public class Region extends Model {
   }
 
   public static Region get(UUID regionUUID) {
-    return find.byId(regionUUID);
+    return find.fetch("provider").where().idEq(regionUUID).findUnique();
   }
 
   public static Region getByCode(Provider provider, String code) {
