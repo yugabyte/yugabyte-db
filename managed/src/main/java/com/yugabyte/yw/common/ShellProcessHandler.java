@@ -22,6 +22,13 @@ public class ShellProcessHandler {
     public static class ShellResponse {
         public int code;
         public String message;
+
+        public static ShellResponse create(int code, String message) {
+            ShellResponse response = new ShellResponse();
+            response.code = code;
+            response.message = message;
+            return response;
+        }
     }
 
     @Inject

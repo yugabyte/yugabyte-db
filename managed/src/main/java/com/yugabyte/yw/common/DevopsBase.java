@@ -3,8 +3,7 @@
 package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,40 +16,38 @@ public abstract class DevopsBase {
   public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
   public static final Logger LOG = LoggerFactory.getLogger(DevopsBase.class);
 
+  // Command that we would need to execute eg: instance, network, access.
   protected abstract String getCommandType();
 
   @Inject
   ShellProcessHandler shellProcessHandler;
 
 
-  private List<String> getBaseCommand(Provider provider, AvailabilityZone az) {
+  private List<String> getBaseCommand(Region region) {
     List<String> baseCommand = new ArrayList<>();
     baseCommand.add(YBCLOUD_SCRIPT);
-    baseCommand.add(provider.code);
-    baseCommand.add("--zone");
-    baseCommand.add(az.code);
+    baseCommand.add(region.provider.code);
     baseCommand.add("--region");
-    baseCommand.add(az.region.code);
+    baseCommand.add(region.code);
 
     return baseCommand;
   }
 
-  protected ShellProcessHandler.ShellResponse execCommand(UUID zoneUUID,
+  protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
                                                           List<String> commandArgs) {
-    return execCommand(zoneUUID, commandArgs, Collections.emptyList());
+    return execCommand(regionUUID, commandArgs, Collections.emptyList());
   }
 
-  protected ShellProcessHandler.ShellResponse execCommand(UUID zoneUUID,
+  protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
                                                           List<String> commandArgs,
                                                           List<String> cloudArgs) {
-    AvailabilityZone az = AvailabilityZone.get(zoneUUID);
-    Provider provider = az.getProvider();
-    List<String> command = getBaseCommand(provider, az);
+    Region region = Region.get(regionUUID);
+    List<String> command = getBaseCommand(region);
     command.addAll(cloudArgs);
     command.add(getCommandType().toLowerCase());
     command.addAll(commandArgs);
 
     LOG.info("Command to run: [" + String.join(" ", command) + "]");
-    return shellProcessHandler.run(command, provider.getConfig());
+    return shellProcessHandler.run(command, region.provider.getConfig());
   }
 }

@@ -52,6 +52,9 @@ public class NodeManager extends DevopsBase {
 
   private List<String> getCloudArgs(NodeTaskParams nodeTaskParam) {
     List<String> command = new ArrayList<String>();
+    command.add("--zone");
+    command.add(nodeTaskParam.getAZ().code);
+
     // Right now for docker we grab the network from application conf.
     if (nodeTaskParam.cloud == Common.CloudType.docker) {
       String networkName = appConfig.getString("yb.docker.network");
@@ -95,6 +98,9 @@ public class NodeManager extends DevopsBase {
         if (params instanceof AnsibleSetupServer.Params) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
+          // Also we will add the security group name
+          subCommand.add("--security_group");
+          subCommand.add("yb-" + params.getRegion().code + "-sg");
         }
       }
     }
@@ -251,6 +257,6 @@ public class NodeManager extends DevopsBase {
 
     command.add(nodeTaskParam.nodeName);
 
-    return execCommand(nodeTaskParam.azUuid, command, getCloudArgs(nodeTaskParam));
+    return execCommand(nodeTaskParam.getRegion().uuid, command, getCloudArgs(nodeTaskParam));
   }
 }

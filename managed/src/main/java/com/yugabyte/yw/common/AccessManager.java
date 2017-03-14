@@ -5,7 +5,6 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -160,16 +159,7 @@ public class AccessManager extends DevopsBase {
     }
 
     private JsonNode executeCommand(UUID regionUUID, List<String> commandArgs) {
-        // Since our YBCloud api calls we provider zones, we will just one of the AZ for the
-        // given region.
-        List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(regionUUID);
-        if (zones.isEmpty()) {
-            String errMsg = "No Zones found for Region UUID: " + regionUUID;
-            LOG.error(errMsg);
-            return ApiResponse.errorJSON(errMsg);
-        }
-
-        ShellProcessHandler.ShellResponse response = execCommand(zones.get(0).uuid, commandArgs);
+        ShellProcessHandler.ShellResponse response = execCommand(regionUUID, commandArgs);
         if (response.code == 0) {
             return Json.parse(response.message);
         } else {
