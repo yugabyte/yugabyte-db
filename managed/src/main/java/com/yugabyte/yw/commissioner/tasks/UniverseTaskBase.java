@@ -145,6 +145,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     TaskList taskList = new TaskList("AnsibleDestroyServers", executor);
     for (NodeDetails node : nodes) {
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
+      // Set the device information (numVolumes, volumeSize, etc.)
+      params.deviceInfo = taskParams().deviceInfo;
       // Set the cloud name.
       params.cloud = taskParams().cloud;
       // Set the region name to the proper provider code so we can use it in the cloud API calls.

@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -33,7 +34,6 @@ import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskType.Software;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,6 +55,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private final String MASTER_ADDRESSES = "host-n1:7100,host-n2:7100,host-n3:7100";
   private final String fakeMountPath1 = "/fake/path/d0";
   private final String fakeMountPath2 = "/fake/path/d1";
+  private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
 
   private class TestData {
     public Common.CloudType cloudType;
@@ -81,27 +82,6 @@ public class NodeManagerTest extends FakeDBApplication {
       // Update name.
       node.setNodeName("fake_name:" + provider.code);
       node.save();
-
-      // Add custom volumes mount paths
-      InstanceType.VolumeDetails volume1 = new InstanceType.VolumeDetails();
-      volume1.volumeType = InstanceType.VolumeType.SSD;
-      volume1.volumeSizeGB = 100;
-      volume1.mountPath = fakeMountPath1;
-      InstanceType.VolumeDetails volume2 = new InstanceType.VolumeDetails();
-      volume2.volumeType = InstanceType.VolumeType.SSD;
-      volume2.volumeSizeGB = 100;
-      volume2.mountPath = fakeMountPath2;
-      InstanceType.InstanceTypeDetails instanceTypeDetails = new InstanceType.InstanceTypeDetails();
-      instanceTypeDetails.volumeDetailsList.add(volume1);
-      instanceTypeDetails.volumeDetailsList.add(volume2);
-      InstanceType.upsert(provider.code,
-                          instanceTypeCode,
-                          0,
-                          0.0,
-                          0,
-                          0,
-                          InstanceType.VolumeType.SSD,
-                          instanceTypeDetails);
 
       baseCommand.add("bin/ybcloud.sh");
       baseCommand.add(provider.code);
@@ -135,6 +115,16 @@ public class NodeManagerTest extends FakeDBApplication {
     params.instanceType = testData.node.instanceTypeCode;
     params.nodeName = testData.node.getNodeName();
     params.universeUUID = universe.universeUUID;
+  }
+
+  private void addValidDeviceInfo(NodeTaskParams params) {
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.mountPoints = fakeMountPaths;
+    params.deviceInfo.volumeSize = 200;
+    params.deviceInfo.numVolumes = 2;
+    if (params.cloud.equals(Common.CloudType.aws)) {
+      params.deviceInfo.diskIops = 240;
+    }
   }
 
   private NodeTaskParams createInvalidParams(TestData testData) {
@@ -219,9 +209,23 @@ public class NodeManagerTest extends FakeDBApplication {
         }
         break;
     }
-    if (params.instanceType.equals(TestData.instanceTypeCode)) {
-      expectedCommand.add("--mount_points");
-      expectedCommand.add(fakeMountPath1 + "," + fakeMountPath2);
+    if (params.deviceInfo != null) {
+      DeviceInfo deviceInfo = params.deviceInfo;
+      if (deviceInfo.numVolumes != null) {
+        expectedCommand.add("--num_volumes");
+        expectedCommand.add(Integer.toString(deviceInfo.numVolumes));
+      } else if (deviceInfo.mountPoints != null) {
+        expectedCommand.add("--mount_points");
+        expectedCommand.add(fakeMountPaths);
+      }
+      if (deviceInfo.volumeSize != null) {
+        expectedCommand.add("--volume_size");
+        expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
+      }
+      if (deviceInfo.diskIops != null) {
+        expectedCommand.add("--disk_iops");
+        expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+      }
     }
 
     expectedCommand.add(params.nodeName);
@@ -229,50 +233,11 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddMountPathsInvalidParamsFail() {
-    String invalidInstanceType = "invalidType";
-    try {
-      AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      buildValidParams(testData.get(0), params, createUniverse());
-      params.instanceType = invalidInstanceType;
-
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-      fail();
-    } catch (RuntimeException re) {
-      String errMsg = "No InstanceType exists for provider code " + testData.get(0).provider.code +
-          " and instance type code " + invalidInstanceType;
-      assertThat(re.getMessage(), is(errMsg));
-    }
-  }
-
-  @Test
-  public void testAddMountPathsNoPathSpecified() {
-    TestData t = testData.get(0);
-    AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-    buildValidParams(t, params, createUniverse());
-    params.subnetId = t.zone.subnet;
-    params.instanceType = "fake_instance_type_2";
-    InstanceType.upsert(t.provider.code,
-                        params.instanceType,
-                        0,
-                        0.0,
-                        0,
-                        0,
-                        InstanceType.VolumeType.SSD,
-                        new InstanceType.InstanceTypeDetails());
-
-    List<String> expectedCommand = t.baseCommand;
-    expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
-
-    nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
-  }
-
-  @Test
   public void testProvisionNodeCommand() {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(t, params, createUniverse());
+      addValidDeviceInfo(params);
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
@@ -282,7 +247,6 @@ public class NodeManagerTest extends FakeDBApplication {
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
     }
   }
-
 
   @Test
   public void testProvisionNodeCommandWithAccessKey() {
@@ -303,15 +267,17 @@ public class NodeManagerTest extends FakeDBApplication {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater(userIntent)));
+      addValidDeviceInfo(params);
 
       // Set up expected command
+      int accessKeyIndexOffset = (params.cloud.equals(Common.CloudType.aws)) ? 7 : 5;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
       List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
           "/path/to/private.key", "--key_pair_name", userIntent.accessKeyCode,
           "--security_group", "yb-" +  t.region.code + "-sg");
-      expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
@@ -346,6 +312,7 @@ public class NodeManagerTest extends FakeDBApplication {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
+      addValidDeviceInfo(params);
       params.isMasterInShellMode = true;
       params.ybServerPackage = "yb-server-pkg";
       List<String> expectedCommand = t.baseCommand;
@@ -375,16 +342,18 @@ public class NodeManagerTest extends FakeDBApplication {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater(userIntent)));
+      addValidDeviceInfo(params);
       params.isMasterInShellMode = true;
       params.ybServerPackage = "yb-server-pkg";
 
       // Set up expected command
+      int accessKeyIndexOffset = (params.cloud.equals(Common.CloudType.aws)) ? 7 : 5;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
           "/path/to/private.key");
-      expectedCommand.addAll(expectedCommand.size() - 3, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
