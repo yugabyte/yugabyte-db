@@ -1015,10 +1015,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   }
 
-  // If they didn't specify a num_replicas, set it based on the default.
+  // If they didn't specify a num_replicas, set it based on the universe, or else default.
   if (!req.has_replication_info()) {
-    req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(
-        FLAGS_default_num_replicas);
+    int num_replicas = 0;
+    {
+      ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::READ);
+      num_replicas = l.data().pb.replication_info().live_replicas().num_replicas();
+    }
+
+    num_replicas = num_replicas > 0 ? num_replicas : FLAGS_default_num_replicas;
+    req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(num_replicas);
   }
 
   // Verify that the total number of tablets is reasonable, relative to the number

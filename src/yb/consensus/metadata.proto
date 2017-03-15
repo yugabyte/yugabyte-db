@@ -102,7 +102,7 @@ message RaftConfigPB {
   optional int64 opid_index = 1;
 
   // The set of peers in the configuration.
-  repeated RaftPeerPB peers = 3;
+  repeated RaftPeerPB peers = 2;
 }
 
 // Represents a snapshot of a configuration at a given moment in time.
