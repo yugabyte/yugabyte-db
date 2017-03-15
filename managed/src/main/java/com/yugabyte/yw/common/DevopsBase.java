@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,21 +35,31 @@ public abstract class DevopsBase {
     return baseCommand;
   }
 
-  protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
-                                                          List<String> commandArgs) {
-    return execCommand(regionUUID, commandArgs, Collections.emptyList());
+  protected JsonNode execCommand(UUID regionUUID, String command, List<String> commandArgs) {
+    ShellProcessHandler.ShellResponse response = execCommand(regionUUID,
+                                                             command,
+                                                             commandArgs,
+                                                             Collections.emptyList());
+    if (response.code == 0) {
+      return Json.parse(response.message);
+    } else {
+      LOG.error(response.message);
+      return ApiResponse.errorJSON("YBCloud command " + getCommandType() + " (" + command + ") failed to execute.");
+    }
   }
 
   protected ShellProcessHandler.ShellResponse execCommand(UUID regionUUID,
+                                                          String command,
                                                           List<String> commandArgs,
                                                           List<String> cloudArgs) {
     Region region = Region.get(regionUUID);
-    List<String> command = getBaseCommand(region);
-    command.addAll(cloudArgs);
-    command.add(getCommandType().toLowerCase());
-    command.addAll(commandArgs);
+    List<String> commandList = getBaseCommand(region);
+    commandList.addAll(cloudArgs);
+    commandList.add(getCommandType().toLowerCase());
+    commandList.add(command);
+    commandList.addAll(commandArgs);
 
-    LOG.info("Command to run: [" + String.join(" ", command) + "]");
-    return shellProcessHandler.run(command, region.provider.getConfig());
+    LOG.info("Command to run: [" + String.join(" ", commandList) + "]");
+    return shellProcessHandler.run(commandList, region.provider.getConfig());
   }
 }

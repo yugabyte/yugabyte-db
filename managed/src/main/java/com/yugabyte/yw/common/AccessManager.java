@@ -8,7 +8,6 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Region;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 
 import javax.inject.Singleton;
 import java.io.File;
@@ -17,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -104,23 +104,22 @@ public class AccessManager extends DevopsBase {
     // the provider cloud account. And store the credentials file in the keyFilePath
     // and return the file names. It will also create the vault file
     public AccessKey addKey(UUID regionUUID, String keyCode) {
-        List<String> command = new ArrayList<String>();
+        List<String> commandArgs = new ArrayList<String>();
         Region region = Region.get(regionUUID);
         String keyFilePath = getKeyFilePath(region.provider.uuid);
         AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
 
-        command.add("add-key");
-        command.add("--key_pair_name");
-        command.add(keyCode);
-        command.add("--key_file_path");
-        command.add(keyFilePath);
+        commandArgs.add("--key_pair_name");
+        commandArgs.add(keyCode);
+        commandArgs.add("--key_file_path");
+        commandArgs.add(keyFilePath);
 
         if (accessKey != null && accessKey.getKeyInfo().privateKey != null) {
-            command.add("--private_key_file");
-            command.add(accessKey.getKeyInfo().privateKey);
+            commandArgs.add("--private_key_file");
+            commandArgs.add(accessKey.getKeyInfo().privateKey);
         }
 
-        JsonNode response = executeCommand(regionUUID, command);
+        JsonNode response = execCommand(regionUUID, "add-key", commandArgs);
         if (response.has("error")) {
             throw new RuntimeException(response.get("error").asText());
         }
@@ -141,31 +140,18 @@ public class AccessManager extends DevopsBase {
     }
 
     public JsonNode createVault(UUID regionUUID, String privateKeyFile) {
-        List<String> command = new ArrayList<String>();
+        List<String> commandArgs = new ArrayList<String>();
 
         if (!new File(privateKeyFile).exists()) {
             throw new RuntimeException("File " + privateKeyFile + " doesn't exists.");
         }
-        command.add("create-vault");
-        command.add("--private_key_file");
-        command.add(privateKeyFile);
-        return executeCommand(regionUUID, command);
+        commandArgs.add("--private_key_file");
+        commandArgs.add(privateKeyFile);
+        return execCommand(regionUUID, "create-vault", commandArgs);
     }
     
     public JsonNode listKeys(UUID regionUUID) {
-        List<String> command = new ArrayList<String>();
-        command.add("list-keys");
-        return executeCommand(regionUUID, command);
-    }
-
-    private JsonNode executeCommand(UUID regionUUID, List<String> commandArgs) {
-        ShellProcessHandler.ShellResponse response = execCommand(regionUUID, commandArgs);
-        if (response.code == 0) {
-            return Json.parse(response.message);
-        } else {
-            LOG.error(response.message);
-            return ApiResponse.errorJSON("AccessManager failed to execute");
-        }
+        return execCommand(regionUUID, "list-keys", Collections.emptyList());
     }
 }
 

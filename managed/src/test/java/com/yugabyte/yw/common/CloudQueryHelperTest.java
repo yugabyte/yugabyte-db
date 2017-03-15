@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.junit.Before;
@@ -15,9 +15,7 @@ import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
@@ -26,11 +24,11 @@ import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Mockito.when;
 
-
 @RunWith(MockitoJUnitRunner.class)
-public class NetworkManagerTest extends FakeDBApplication {
+public class CloudQueryHelperTest extends FakeDBApplication {
+
   @InjectMocks
-  NetworkManager networkManager;
+  CloudQueryHelper cloudQueryHelper;
 
   @Mock
   ShellProcessHandler shellProcessHandler;
@@ -38,7 +36,6 @@ public class NetworkManagerTest extends FakeDBApplication {
   private Region defaultRegion;
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> cloudCredentials;
-
 
   @Before
   public void beforeTest() {
@@ -48,7 +45,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
   }
 
-  private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {
+  private JsonNode runCommand(UUID regionUUID, boolean mimicError) {
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
     if (mimicError) {
       response.message = "{\"error\": \"Unknown Error\"}";
@@ -58,32 +55,18 @@ public class NetworkManagerTest extends FakeDBApplication {
       response.message = "{\"foo\": \"bar\"}";
     }
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
-
-    if (commandType.equals("bootstrap")) {
-      return networkManager.bootstrap(regionUUID);
-    } else if (commandType.equals("query")) {
-      return networkManager.query(regionUUID);
-    } else if (commandType.equals("cleanup")) {
-      return networkManager.cleanup(regionUUID);
-    }
-    return null;
+    return cloudQueryHelper.currentHostInfo(regionUUID, ImmutableList.of("vpc-id"));
   }
 
   @Test
-  public void testCommandSuccess() {
-    List<String> commandTypes = Arrays.asList("bootstrap", "query", "cleanup");
-    commandTypes.forEach(commandType -> {
-      JsonNode json = runCommand(defaultRegion.uuid, commandType, false);
-      assertValue(json, "foo", "bar");
-    });
+  public void testGetHostInfoSuccess() {
+    JsonNode json = runCommand(defaultRegion.uuid, false);
+    assertValue(json, "foo", "bar");
   }
 
   @Test
-  public void testCommandFailure() {
-    List<String> commandTypes = Arrays.asList("bootstrap", "query", "cleanup");
-    commandTypes.forEach(commandType -> {
-      JsonNode json = runCommand(defaultRegion.uuid, commandType, true);
-      assertErrorNodeValue(json, "YBCloud command network (" + commandType + ") failed to execute.");
-    });
+  public void testGetHostInfoFailure() {
+    JsonNode json = runCommand(defaultRegion.uuid, true);
+    assertErrorNodeValue(json, "YBCloud command query (current-host) failed to execute.");
   }
 }

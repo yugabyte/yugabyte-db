@@ -185,7 +185,7 @@ public class AccessManagerTest extends FakeDBApplication {
       runCommand(defaultRegion.uuid, "add-key", true);
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(),
-          equalTo("AccessManager failed to execute")));
+          equalTo("YBCloud command access (add-key) failed to execute.")));
     }
     Mockito.verify(shellProcessHandler, times(1)).run(anyList(), anyMap());
   }
@@ -239,7 +239,7 @@ public class AccessManagerTest extends FakeDBApplication {
     String commandStr = String.join(" ", command.getValue());
     String expectedCmd = getBaseCommand(defaultRegion, "list-keys");
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertValue(result, "error", "AccessManager failed to execute");
+    assertValue(result, "error", "YBCloud command access (list-keys) failed to execute.");
   }
 
   @Test
