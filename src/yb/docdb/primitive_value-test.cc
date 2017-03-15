@@ -86,12 +86,15 @@ TEST(PrimitiveValueTest, TestToString) {
   ASSERT_EQ("SystemColumnId(0)",
             PrimitiveValue::SystemColumnId(ColumnId(0)).ToString());
 
+#ifndef NDEBUG
+  // These have DCHECK() and hence triggered only in DEBUG MODE.
   // Negative column ids are not allowed.
   EXPECT_EXIT(ColumnId(-1), ::testing::KilledBySignal(SIGABRT), "Check failed.*");
 
   ColumnId col;
   EXPECT_EXIT({col = static_cast<ColumnIdRep>(-1);}, ::testing::KilledBySignal(SIGABRT),
               "Check failed.*");
+#endif
 }
 
 TEST(PrimitiveValueTest, TestRoundTrip) {
