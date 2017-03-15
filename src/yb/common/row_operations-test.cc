@@ -177,7 +177,8 @@ void AddFuzzedColumn(SchemaBuilder* builder,
     t = rand_types[random() % arraysize(rand_types)];
   }
   bool nullable = random() & 1;
-  CHECK_OK(builder->AddColumn(name, t, nullable, false, NULL, NULL));
+  CHECK_OK(builder->AddColumn(name, t, nullable, false, ColumnSchema::SortingType::kNotSpecified,
+                              NULL, NULL));
 }
 
 // Generate a randomized schema, where some columns might be missing,
@@ -275,12 +276,20 @@ TEST_F(RowOperationsTest, SchemaFuzz) {
 // One case from SchemaFuzz which failed previously.
 TEST_F(RowOperationsTest, TestFuzz1) {
   SchemaBuilder client_schema_builder;
-  ASSERT_OK(client_schema_builder.AddColumn("c1", INT32, false, false, nullptr, nullptr));
-  ASSERT_OK(client_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr));
+  ASSERT_OK(client_schema_builder.AddColumn("c1", INT32, false, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
+  ASSERT_OK(client_schema_builder.AddColumn("c2", STRING, false, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
   Schema client_schema = client_schema_builder.BuildWithoutIds();
   SchemaBuilder server_schema_builder;
-  ASSERT_OK(server_schema_builder.AddColumn("c1", INT32, false, false, nullptr, nullptr));
-  ASSERT_OK(server_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr));
+  ASSERT_OK(server_schema_builder.AddColumn("c1", INT32, false, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
+  ASSERT_OK(server_schema_builder.AddColumn("c2", STRING, false, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
   Schema server_schema = server_schema_builder.Build();
   YBPartialRow row(&client_schema);
   CHECK_OK(row.SetInt32(0, 12345));
@@ -291,12 +300,20 @@ TEST_F(RowOperationsTest, TestFuzz1) {
 // Another case from SchemaFuzz which failed previously.
 TEST_F(RowOperationsTest, TestFuzz2) {
   SchemaBuilder client_schema_builder;
-  ASSERT_OK(client_schema_builder.AddColumn("c1", STRING, true, false, nullptr, nullptr));
-  ASSERT_OK(client_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr));
+  ASSERT_OK(client_schema_builder.AddColumn("c1", STRING, true, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
+  ASSERT_OK(client_schema_builder.AddColumn("c2", STRING, false, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
   Schema client_schema = client_schema_builder.BuildWithoutIds();
   SchemaBuilder server_schema_builder;
-  ASSERT_OK(server_schema_builder.AddColumn("c1", STRING, true, false, nullptr, nullptr));
-  ASSERT_OK(server_schema_builder.AddColumn("c2", STRING, false, false, nullptr, nullptr));
+  ASSERT_OK(server_schema_builder.AddColumn("c1", STRING, true, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
+  ASSERT_OK(server_schema_builder.AddColumn("c2", STRING, false, false,
+                                            ColumnSchema::SortingType::kNotSpecified, nullptr,
+                                            nullptr));
   Schema server_schema = server_schema_builder.Build();
   YBPartialRow row(&client_schema);
   CHECK_OK(row.SetNull(0));
@@ -382,9 +399,11 @@ TEST_F(RowOperationsTest, ProjectionTestWithDefaults) {
   SchemaBuilder b;
   CHECK_OK(b.AddKeyColumn("key", INT32));
   CHECK_OK(b.AddColumn("nullable_with_default", INT32, true, false,
-                       &nullable_default, &nullable_default));
+                       ColumnSchema::SortingType::kNotSpecified, &nullable_default,
+                       &nullable_default));
   CHECK_OK(b.AddColumn("non_null_with_default", INT32, false, false,
-                       &non_null_default, &non_null_default));
+                       ColumnSchema::SortingType::kNotSpecified, &non_null_default,
+                       &non_null_default));
   Schema server_schema = b.Build();
 
   // Clients may not have the defaults specified.
@@ -436,7 +455,8 @@ TEST_F(RowOperationsTest, ProjectionTestWithClientHavingValidSubset) {
   CHECK_OK(b.AddKeyColumn("key", INT32));
   CHECK_OK(b.AddColumn("int_val", INT32));
   CHECK_OK(b.AddColumn("new_int_with_default", INT32, false, false,
-                       &nullable_default, &nullable_default));
+                       ColumnSchema::SortingType::kNotSpecified, &nullable_default,
+                       &nullable_default));
   CHECK_OK(b.AddNullableColumn("new_nullable_int", INT32));
   Schema server_schema = b.Build();
 
@@ -502,7 +522,6 @@ TEST_F(RowOperationsTest, TestProjectUpdates) {
   ASSERT_OK(client_row.SetInt32("key", 12345));
   EXPECT_EQ("error: Invalid argument: No fields updated, key is: (int32 key=12345)",
             TestProjection(RowOperationsPB::UPDATE, client_row, server_schema));
-
 
   // Specify the key and update one column.
   ASSERT_OK(client_row.SetInt32("int_val", 12345));

@@ -134,6 +134,12 @@ struct ColumnStorageAttributes {
 // In the future, it may hold information about annotations, etc.
 class ColumnSchema {
  public:
+  enum SortingType : uint8_t {
+    kNotSpecified = 0,
+    kAscending,
+    kDescending
+  };
+
   // name: column name
   // type: column type (e.g. UINT8, INT32, STRING, ...)
   // is_nullable: true if a row value can be null
@@ -154,6 +160,7 @@ class ColumnSchema {
   ColumnSchema(string name, DataType type,
                bool is_nullable = false,
                bool is_hash_key = false,
+               SortingType sorting_type = SortingType::kNotSpecified,
                const void* read_default = NULL,
                const void* write_default = NULL,
                ColumnStorageAttributes attributes = ColumnStorageAttributes())
@@ -161,6 +168,7 @@ class ColumnSchema {
         type_info_(GetTypeInfo(type)),
         is_nullable_(is_nullable),
         is_hash_key_(is_hash_key),
+        sorting_type_(sorting_type),
         read_default_(read_default ? new Variant(type, read_default) : NULL),
         attributes_(std::move(attributes)) {
     if (write_default == read_default) {
@@ -181,6 +189,10 @@ class ColumnSchema {
 
   bool is_hash_key() const {
     return is_hash_key_;
+  }
+
+  SortingType sorting_type() const {
+    return sorting_type_;
   }
 
   const string &name() const {
@@ -236,6 +248,7 @@ class ColumnSchema {
   bool EqualsType(const ColumnSchema &other) const {
     return is_nullable_ == other.is_nullable_ &&
            is_hash_key_ == other.is_hash_key_ &&
+           sorting_type_ == other.sorting_type_ &&
            type_info()->type() == other.type_info()->type();
   }
 
@@ -316,6 +329,7 @@ class ColumnSchema {
   const TypeInfo *type_info_;
   bool is_nullable_;
   bool is_hash_key_;
+  SortingType sorting_type_;
   // use shared_ptr since the ColumnSchema is always copied around.
   std::shared_ptr<Variant> read_default_;
   std::shared_ptr<Variant> write_default_;
@@ -375,7 +389,6 @@ class TableProperties {
   static const int kNoDefaultTtl = -1;
   int64_t default_time_to_live_;
 };
-
 
 // The schema for a set of rows.
 //
@@ -991,17 +1004,19 @@ class SchemaBuilder {
   CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
   CHECKED_STATUS AddColumn(const string& name, DataType type) {
-    return AddColumn(name, type, false, false, NULL, NULL);
+    return AddColumn(name, type, false, false, ColumnSchema::SortingType::kNotSpecified, NULL,
+                     NULL);
   }
 
   CHECKED_STATUS AddNullableColumn(const string& name, DataType type) {
-    return AddColumn(name, type, true, false, NULL, NULL);
+    return AddColumn(name, type, true, false, ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
   }
 
   CHECKED_STATUS AddColumn(const string& name,
                    DataType type,
                    bool is_nullable,
                    bool is_hash_key,
+                   yb::ColumnSchema::SortingType sorting_type,
                    const void *read_default,
                    const void *write_default);
 

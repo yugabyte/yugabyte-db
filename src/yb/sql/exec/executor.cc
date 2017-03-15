@@ -131,18 +131,29 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
 
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (const auto& column : hash_columns) {
+    if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
+      return exec_context_->Error(tnode->columns_loc(),
+                                  exec_status.ToString().c_str(),
+                                  ErrorCode::INVALID_TABLE_DEFINITION);
+    }
     b.AddColumn(column->yb_name())->Type(column->sql_type())
-                                  ->HashPrimaryKey()
-                                  ->Order(column->order());
+        ->HashPrimaryKey()
+        ->Order(column->order());
   }
   const MCList<PTColumnDefinition *>& primary_columns = tnode->primary_columns();
   for (const auto& column : primary_columns) {
     b.AddColumn(column->yb_name())->Type(column->sql_type())
-                                  ->PrimaryKey()
-                                  ->Order(column->order());
+        ->PrimaryKey()
+        ->Order(column->order())
+        ->SetSortingType(column->sorting_type());
   }
   const MCList<PTColumnDefinition *>& columns = tnode->columns();
   for (const auto& column : columns) {
+    if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
+      return exec_context_->Error(tnode->columns_loc(),
+                                  exec_status.ToString().c_str(),
+                                  ErrorCode::INVALID_TABLE_DEFINITION);
+    }
     b.AddColumn(column->yb_name())->Type(column->sql_type())
                                   ->Nullable()
                                   ->Order(column->order());

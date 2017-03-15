@@ -20,6 +20,13 @@ do {                                                                            
   EXPECT_FALSE(s.ToString().find("Duplicate Table - Already present") == string::npos);            \
 } while (false)
 
+#define EXEC_INVALID_TABLE_CREATE_STMT(sql_stmt, msg)                                              \
+do {                                                                                               \
+  Status s = processor->Run(sql_stmt);                                                             \
+  ASSERT_FALSE(s.ok());                                                                            \
+  ASSERT_FALSE(s.ToString().find(msg) == string::npos);                                            \
+} while (false)
+
 class YbSqlCreateTable : public YbSqlTestBase {
  public:
   YbSqlCreateTable() : YbSqlTestBase() {
@@ -153,6 +160,75 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableWithTTL) {
   EXPECT_TRUE(properties_pb.has_default_time_to_live());
   // We store ttl in milliseconds internally.
   EXPECT_EQ(1000, properties_pb.default_time_to_live());
+}
+
+TEST_F(YbSqlCreateTable, TestSqlCreateTableWithClusteringOrderBy) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  const string table1 = "human_resource1(id int, first_name varchar, last_name varchar, "
+      "primary key(id, first_name, last_name)) WITH CLUSTERING ORDER BY(first_name ASC);";
+  const string table2 = "human_resource2(id int, first_name varchar, last_name varchar, "
+      "primary key(id, first_name, last_name)) WITH CLUSTERING ORDER BY(first_name ASC) AND "
+      "CLUSTERING ORDER BY (last_name DESC);";
+  const string table3 = "human_resource3(id int, first_name varchar, last_name varchar, "
+      "primary key(id, first_name, last_name)) "
+      "WITH CLUSTERING ORDER BY(first_name ASC, last_name DESC);";
+  const string table4 = "human_resource4(id int, first_name varchar, last_name varchar, "
+      "primary key(id, last_name, first_name)) "
+      "WITH CLUSTERING ORDER BY(last_name ASC, last_name DESC);";
+  const string table5 = "human_resource5(id int, first_name varchar, last_name varchar, "
+      "primary key(id, last_name, first_name)) "
+      "WITH CLUSTERING ORDER BY(last_name ASC, first_name DESC, last_name DESC);";
+  const string table6 = "human_resource6(id int, first_name varchar, last_name varchar, "
+      "primary key(id, first_name, last_name)) "
+      "WITH CLUSTERING ORDER BY(last_name DESC, first_name DESC);";
+  const string table7 = "human_resource7(id int, first_name varchar, last_name varchar, "
+      "primary key(id, first_name, last_name)) "
+      "WITH CLUSTERING ORDER BY(last_name DESC) AND "
+      "CLUSTERING ORDER BY (first_name DESC);";
+  const string table8 = "human_resource8(id int, first_name varchar, last_name varchar, "
+      "primary key(id, first_name, last_name)) "
+      "WITH CLUSTERING ORDER BY(last_name DESC, last_name DESC);";
+  const string table9 = "human_resource9(id int, first_name varchar, last_name varchar, "
+      "primary key(id, first_name, last_name)) "
+      "WITH CLUSTERING ORDER BY(first_name DESC, last_name DESC, something DESC);";
+  const string table10 = "human_resource10(id int, first_name varchar, last_name varchar, "
+      "primary key(id, last_name, first_name)) "
+      "WITH CLUSTERING ORDER BY(something ASC);";
+  const string table11 = "human_resource10(id int, first_name varchar, last_name varchar, age int, "
+      "primary key(id, last_name, first_name)) "
+      "WITH CLUSTERING ORDER BY(age ASC);";
+  const string table12 = "human_resource10(id int, first_name varchar, last_name varchar, "
+      "primary key(id, last_name, first_name)) "
+      "WITH CLUSTERING ORDER BY(id);";
+  // Create the table 1.
+  EXEC_VALID_STMT(CreateStmt(table1));
+  EXEC_VALID_STMT(CreateStmt(table2));
+  EXEC_VALID_STMT(CreateStmt(table3));
+  EXEC_VALID_STMT(CreateStmt(table4));
+  EXEC_VALID_STMT(CreateStmt(table5));
+
+  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
+      "Invalid Table Property - Bad Request: The order of columns in the CLUSTERING ORDER "
+      "directive must be the one of the clustering key (first_name must appear before last_name)");
+  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
+      "Invalid Table Property - Bad Request: The order of columns in the CLUSTERING ORDER "
+      "directive must be the one of the clustering key (first_name must appear before last_name)");
+  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table8),
+      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column first_name");
+  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table9),
+      "Invalid Table Property - Bad Request: Only clustering key columns can be defined in "
+      "CLUSTERING ORDER directive");
+  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table10),
+      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column last_name");
+  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table11),
+      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column last_name");
+  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table12),
+      "Invalid Table Property - Bad Request: Missing CLUSTERING ORDER for column last_name");
 }
 
 } // namespace sql

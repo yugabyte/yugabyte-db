@@ -8,10 +8,17 @@
 #include "yb/master/master.pb.h"
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/pt_expr.h"
+#include "yb/sql/ptree/pt_name.h"
+#include "yb/sql/ptree/pt_select.h"
 #include "yb/sql/ptree/tree_node.h"
 
 namespace yb {
 namespace sql {
+
+enum class PropertyType : int {
+  kTableProperty = 0,
+  kClusteringOrder,
+};
 
 class PTTableProperty : public TreeNode {
  public:
@@ -23,10 +30,18 @@ class PTTableProperty : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
+  // Constructor for PropertyType::kTableProperty.
   PTTableProperty(MemoryContext *memctx,
            YBLocation::SharedPtr loc,
            const MCString::SharedPtr& lhs_,
            const PTExpr::SharedPtr& rhs_);
+
+  // Constructor for PropertyType::kClusteringOrder.
+  PTTableProperty(MemoryContext *memctx,
+                  YBLocation::SharedPtr loc,
+                  const MCString::SharedPtr& name,
+                  const PTOrderBy::Direction direction);
+
   virtual ~PTTableProperty();
 
   template<typename... TypeArgs>
@@ -48,21 +63,38 @@ class PTTableProperty : public TreeNode {
   }
 
   CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const {
-    if (strcmp(lhs_->c_str(), kDefaultTimeToLive) == 0) {
-      // TTL value is entered by user in seconds, but we store internally in milliseconds.
-      table_property->SetDefaultTimeToLive(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval() *
-          MonoTime::kMillisecondsPerSecond);
-    } else {
-      return STATUS(InvalidArgument, strings::Substitute("$0 is not a valid table property",
-                    lhs_->c_str()));
+    if (property_type_ == PropertyType::kTableProperty) {
+      if (strcmp(lhs_->c_str(), kDefaultTimeToLive) == 0) {
+        // TTL value is entered by user in seconds, but we store internally in milliseconds.
+        table_property->SetDefaultTimeToLive(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval() *
+                                             MonoTime::kMillisecondsPerSecond);
+      } else {
+        return STATUS(InvalidArgument, strings::Substitute("$0 is not a valid table property",
+                                                           lhs_->c_str()));
+      }
     }
     return Status::OK();
+  }
+
+  PropertyType property_type() const {
+    return property_type_;
+  }
+
+  const MCString& name() const {
+    return *name_;
+  }
+
+  PTOrderBy::Direction direction() const {
+    return direction_;
   }
 
  private:
   static const std::map<std::string, DataType> kPropertyDataTypes;
   MCString::SharedPtr lhs_;
   PTExpr::SharedPtr rhs_;
+  MCString::SharedPtr name_;
+  PTOrderBy::Direction direction_;
+  PropertyType property_type_;
 };
 
 class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
@@ -79,6 +111,16 @@ class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
   }
 
   virtual ~PTTablePropertyListNode() {
+  }
+
+  // Append a PTTablePropertyList to this list.
+  void AppendList(const MCSharedPtr<PTTablePropertyListNode>& tnode_list) {
+    if (tnode_list == nullptr) {
+      return;
+    }
+    for (const auto tnode : tnode_list->node_list()) {
+      Append(tnode);
+    }
   }
 
   template<typename... TypeArgs>

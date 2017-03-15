@@ -105,6 +105,7 @@ message ColumnSchemaPB {
   optional bool is_key = 4 [default = false];
   optional bool is_hash_key = 11 [default = false];
   optional bool is_nullable = 5 [default = false];
+  optional uint32 sorting_type = 12 [default = 0];
   optional bytes read_default_value = 6;
   optional bytes write_default_value = 7;
 

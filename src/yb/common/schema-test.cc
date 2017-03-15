@@ -184,7 +184,8 @@ TEST(TestSchema, TestProjectMissingColumn) {
   Schema schema3({ ColumnSchema("val", UINT32), ColumnSchema("non_present", UINT32, true) }, 0);
   uint32_t default_value = 15;
   Schema schema4({ ColumnSchema("val", UINT32),
-                   ColumnSchema("non_present", UINT32, false, false, &default_value) },
+                   ColumnSchema("non_present", UINT32, false, false,
+                                ColumnSchema::SortingType::kNotSpecified, &default_value) },
                  0);
 
   RowProjector row_projector(&schema1, &schema2);

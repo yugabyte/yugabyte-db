@@ -279,7 +279,6 @@ Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
   return Status::OK();
 }
 
-
 Status Schema::GetMappedReadProjection(const Schema& projection,
                                        Schema *mapped_projection) const {
   // - The user projection may have different columns from the ones on the tablet
@@ -432,10 +431,11 @@ Status SchemaBuilder::AddColumn(const string& name,
                                 DataType type,
                                 bool is_nullable,
                                 bool is_hash_key,
+                                ColumnSchema::SortingType sorting_type,
                                 const void *read_default,
                                 const void *write_default) {
-  return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key,
-                                read_default, write_default), false);
+  return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key, sorting_type, read_default,
+                                write_default), false);
 }
 
 Status SchemaBuilder::RemoveColumn(const string& name) {

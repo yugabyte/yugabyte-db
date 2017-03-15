@@ -45,11 +45,6 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   // Processing table elements.
   RETURN_NOT_OK(elements_->Analyze(sem_context));
 
-  if (table_properties_ != nullptr) {
-    // Process table properties.
-    RETURN_NOT_OK(table_properties_->Analyze(sem_context));
-  }
-
   // Move the all partition and primary columns from columns list to appropriate list.
   int32_t order = 0;
   MCList<PTColumnDefinition *>::iterator iter = columns_.begin();
@@ -77,6 +72,11 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
       // ERROR: Primary key is not defined.
       return sem_context->Error(elements_->loc(), ErrorCode::MISSING_PRIMARY_KEY);
     }
+  }
+
+  if (table_properties_ != nullptr) {
+    // Process table properties.
+    RETURN_NOT_OK(table_properties_->Analyze(sem_context));
   }
 
   // Restore the context value as we are done with this table.
@@ -172,7 +172,8 @@ PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
       constraints_(constraints),
       is_primary_key_(false),
       is_hash_key_(false),
-      order_(-1) {
+      order_(-1),
+      sorting_type_(ColumnSchema::SortingType::kNotSpecified) {
 }
 
 PTColumnDefinition::~PTColumnDefinition() {

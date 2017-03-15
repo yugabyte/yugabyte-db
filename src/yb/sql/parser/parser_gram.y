@@ -245,8 +245,8 @@ using namespace yb::sql;
 %type <PAssignListNode>   set_clause_list
 
 %type <objtype>           drop_type cql_drop_type sql_drop_type
-%type <PTableProperty>           table_property
-%type <PTablePropertyListNode>   opt_table_options table_properties
+%type <PTableProperty>    column_ordering
+%type <PTablePropertyListNode>   opt_table_options table_property table_properties orderingList
 
 // Name nodes.
 %type <PName>             indirection_el columnElem
@@ -469,7 +469,7 @@ using namespace yb::sql;
                           BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT BOOLEAN_P BOTH BY
 
                           CACHE CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
-                          CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER
+                          CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER CLUSTERING
                           COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT COMMITTED
                           CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT CONSTRAINTS
                           CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE CROSS CSV CUBE
@@ -1171,10 +1171,10 @@ opt_table_options:
 
 table_properties:
   table_property {
-    $$ = MAKE_NODE(@1, PTTablePropertyListNode, $1);
+    $$ = $1;
   }
   | table_properties AND table_property {
-    $1->Append($3);
+    $1->AppendList($3);
     $$ = $1;
   }
 ;
@@ -1182,7 +1182,27 @@ table_properties:
 table_property:
   property_name '=' Iconst {
     PTConstInt::SharedPtr pt_constint = MAKE_NODE(@3, PTConstInt, $3);
-    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constint);
+    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1, pt_constint);
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
+  }
+  | CLUSTERING ORDER BY '(' orderingList ')' {
+    $$ = $5;
+  }
+;
+
+orderingList:
+  column_ordering {
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, $1);
+  }
+  | orderingList ',' column_ordering {
+    $1->Append($3);
+    $$ = $1;
+  }
+;
+
+column_ordering:
+  ColId opt_asc_desc {
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, PTOrderBy::Direction($2));
   }
 ;
 

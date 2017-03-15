@@ -26,13 +26,13 @@ namespace yb {
 namespace client {
 
 // Helper functions that convert between client-facing and internal PB enums.
-
 class YBColumnSpec::Data {
  public:
   explicit Data(std::string name)
       : name(std::move(name)),
         has_type(false),
         has_order(false),
+        sorting_type(ColumnSchema::SortingType::kNotSpecified),
         has_encoding(false),
         has_compression(false),
         has_block_size(false),
@@ -56,6 +56,8 @@ class YBColumnSpec::Data {
 
   bool has_order;
   int32_t order;
+
+  ColumnSchema::SortingType sorting_type;
 
   bool has_encoding;
   EncodingType encoding;

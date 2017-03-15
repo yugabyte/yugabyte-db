@@ -660,7 +660,6 @@ TEST_F(TestCompaction, TestKUDU102) {
   ASSERT_OK(ReupdateMissedDeltas(dummy_name, input.get(), snap, snap2, { rs, rs_b }));
 }
 
-
 // Test compacting when all of the inputs and the output have the same schema
 TEST_F(TestCompaction, TestMerge) {
   vector<Schema> schemas;
@@ -678,12 +677,14 @@ TEST_F(TestCompaction, TestMergeMultipleSchemas) {
 
   // Add an int column with default
   int32_t default_c2 = 10;
-  CHECK_OK(builder.AddColumn("c2", INT32, false, false, &default_c2, &default_c2));
+  CHECK_OK(builder.AddColumn("c2", INT32, false, false, ColumnSchema::SortingType::kNotSpecified,
+                             &default_c2, &default_c2));
   schemas.push_back(builder.Build());
 
   // add a string column with default
   Slice default_c3("Hello World");
-  CHECK_OK(builder.AddColumn("c3", STRING, false, false, &default_c3, &default_c3));
+  CHECK_OK(builder.AddColumn("c3", STRING, false, false, ColumnSchema::SortingType::kNotSpecified,
+                             &default_c3, &default_c3));
   schemas.push_back(builder.Build());
 
   DoMerge(schemas.back(), schemas);

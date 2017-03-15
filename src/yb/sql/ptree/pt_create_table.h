@@ -16,7 +16,6 @@
 #include "yb/sql/ptree/pt_name.h"
 #include "yb/sql/ptree/pt_update.h"
 
-
 namespace yb {
 namespace sql {
 
@@ -131,6 +130,14 @@ class PTColumnDefinition : public TreeNode {
     order_ = order;
   }
 
+  ColumnSchema::SortingType sorting_type() {
+    return sorting_type_;
+  }
+
+  void set_sorting_type(ColumnSchema::SortingType sorting_type) {
+    sorting_type_ = sorting_type;
+  }
+
   const char *yb_name() const {
     return name_->c_str();
   }
@@ -150,6 +157,8 @@ class PTColumnDefinition : public TreeNode {
   bool is_primary_key_;
   bool is_hash_key_;
   int32_t order_;
+  // Sorting order. Only relevant when this key is a primary key.
+  ColumnSchema::SortingType sorting_type_;
 };
 
 //--------------------------------------------------------------------------------------------------

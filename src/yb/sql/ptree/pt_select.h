@@ -90,6 +90,10 @@ class PTOrderBy : public TreeNode {
     return MCMakeShared<PTOrderBy>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  Direction direction() {
+    return direction_;
+  }
+
  private:
   PTExpr::SharedPtr name_;
   Direction direction_;

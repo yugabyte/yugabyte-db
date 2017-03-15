@@ -37,7 +37,8 @@ class TestCFileSet : public YBRowSetTest {
   TestCFileSet() :
     YBRowSetTest(Schema(
       { ColumnSchema("c0", UINT32),
-        ColumnSchema("c1", UINT32, false, false, nullptr, nullptr, GetRLEStorage()),
+        ColumnSchema("c1", UINT32, false, false, ColumnSchema::SortingType::kNotSpecified, nullptr,
+                     nullptr, GetRLEStorage()),
         ColumnSchema("c2", UINT32)},
       1)) {
   }
@@ -312,7 +313,6 @@ TEST_F(TestCFileSet, TestRangePredicates2) {
   // Range scan with lower bound coming after end of data
   DoTestRangeScan(fileset, kNumRows * 10, kNoBound);
 }
-
 
 } // namespace tablet
 } // namespace yb

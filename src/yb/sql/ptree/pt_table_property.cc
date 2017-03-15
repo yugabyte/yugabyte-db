@@ -21,8 +21,16 @@ PTTableProperty::PTTableProperty(MemoryContext *memctx,
                    const PTExpr::SharedPtr& rhs)
     : TreeNode(memctx, loc),
       lhs_(lhs),
-      rhs_(rhs) {
+      rhs_(rhs),
+      property_type_(PropertyType::kTableProperty) {
 }
+
+PTTableProperty::PTTableProperty(MemoryContext *memctx,
+                                 YBLocation::SharedPtr loc,
+                                 const MCString::SharedPtr& name,
+                                 const PTOrderBy::Direction direction)
+    : TreeNode(memctx, loc), name_(name), direction_(direction),
+      property_type_(PropertyType::kClusteringOrder) {}
 
 PTTableProperty::~PTTableProperty() {
 }
@@ -60,13 +68,59 @@ void PTTableProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
 CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate table properties.
   std::set<string> table_properties;
+  unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
+  vector<string> order_columns;
   for (PTTableProperty::SharedPtr tnode : node_list()) {
-    string table_property_name = tnode->lhs()->c_str();
-    if (table_properties.find(table_property_name) != table_properties.end()) {
-      return sem_context->Error(loc(), ErrorCode::DUPLICATE_TABLE_PROPERTY);
+    if (tnode->property_type() == PropertyType::kTableProperty) {
+      string table_property_name = tnode->lhs()->c_str();
+      if (table_properties.find(table_property_name) != table_properties.end()) {
+        return sem_context->Error(loc(), ErrorCode::DUPLICATE_TABLE_PROPERTY);
+      }
+      RETURN_NOT_OK(tnode->Analyze(sem_context));
+      table_properties.insert(table_property_name);
+    } else if (tnode->property_type() == PropertyType::kClusteringOrder) {
+      const auto& column_name = tnode->name().c_str();
+      // Insert column_name only the first time we see it.
+      if (order_tnodes.find(column_name) == order_tnodes.end()) {
+        order_columns.push_back(tnode->name().c_str());
+      }
+      // If a column ordering was set more than once, we use the last order provided.
+      order_tnodes[column_name] = tnode;
     }
-    RETURN_NOT_OK(tnode->Analyze(sem_context));
-    table_properties.insert(table_property_name);
+  }
+
+  auto order_column_iter = order_columns.begin();
+  for (auto &pc : sem_context->current_table()->primary_columns()) {
+    if (order_column_iter == order_columns.end()) {
+      break;
+    }
+    const auto &tnode = order_tnodes[*order_column_iter];
+    if (strcmp(pc->yb_name(), order_column_iter->c_str()) != 0) {
+      string msg;
+      // If we can bind pc->yb_name() in the order by list, it means the order of the columns is
+      // incorrect.
+      if (order_tnodes.find(pc->yb_name()) != order_tnodes.end()) {
+        msg = strings::Substitute("Bad Request: The order of columns in the CLUSTERING "
+            "ORDER directive must be the one of the clustering key ($0 must appear before $1)",
+            pc->yb_name(), *order_column_iter);
+      } else {
+        msg = strings::Substitute("Bad Request: Missing CLUSTERING ORDER for column $0",
+                                  pc->yb_name());
+      }
+      return sem_context->Error(tnode->loc(), msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
+    }
+    if(tnode->direction() == PTOrderBy::Direction::kASC) {
+      pc->set_sorting_type(ColumnSchema::SortingType::kAscending);
+    } else if (tnode->direction() == PTOrderBy::Direction::kDESC) {
+      pc->set_sorting_type(ColumnSchema::SortingType::kDescending);
+    }
+    ++order_column_iter;
+  }
+  if (order_column_iter != order_columns.end()) {
+    const auto &tnode = order_tnodes[*order_column_iter];
+    auto msg = strings::Substitute(
+        "Bad Request: Only clustering key columns can be defined in CLUSTERING ORDER directive");
+    return sem_context->Error(tnode->loc(), msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
   }
   return Status::OK();
 }

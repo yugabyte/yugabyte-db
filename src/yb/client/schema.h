@@ -1,4 +1,3 @@
-
 //
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
@@ -37,10 +36,10 @@
 #include <vector>
 
 #include "yb/client/value.h"
-#include "yb/util/yb_export.h"
-#include "yb/util/status.h"
 #include "yb/common/schema.h"
 #include "yb/common/yql_value.h"
+#include "yb/util/yb_export.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -162,6 +161,7 @@ class YB_EXPORT YBColumnSchema {
                  DataType type,
                  bool is_nullable = false,
                  bool is_hash_key = false,
+                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
                  const void* default_value = NULL,
                  YBColumnStorageAttributes attributes = YBColumnStorageAttributes());
   YBColumnSchema(const YBColumnSchema& other);
@@ -178,6 +178,7 @@ class YB_EXPORT YBColumnSchema {
   DataType type() const;
   bool is_hash_key() const;
   bool is_nullable() const;
+  yb::ColumnSchema::SortingType sorting_type() const;
 
   // TODO: Expose default column value and attributes?
 
@@ -269,7 +270,11 @@ class YB_EXPORT YBColumnSpec {
   // Specify the user-defined order of the column.
   YBColumnSpec* Order(int32_t order);
 
-  // Operations only relevant for Alter Table
+  // Specify the user-defined sorting direction.
+
+  YBColumnSpec* SetSortingType(ColumnSchema::SortingType sorting_type);
+
+    // Operations only relevant for Alter Table
   // ------------------------------------------------------------
 
   // Remove the default value for this column. Without a default, clients must
@@ -400,7 +405,6 @@ class YB_EXPORT YBSchema {
   friend class yb::tools::TsAdminClient;
 
   friend YBSchema YBSchemaFromSchema(const Schema& schema);
-
 
   // For use by yb tests.
   explicit YBSchema(const Schema& schema);

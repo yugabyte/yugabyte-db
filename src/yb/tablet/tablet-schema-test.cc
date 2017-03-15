@@ -135,7 +135,8 @@ TEST_F(TestTabletSchema, TestWrite) {
   const int32_t c2_read_default = 7;
 
   SchemaBuilder builder(tablet()->metadata()->schema());
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, &c2_read_default, &c2_write_default));
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, ColumnSchema::SortingType::kNotSpecified,
+                              &c2_read_default, &c2_write_default));
   AlterSchema(builder.Build());
   Schema s2 = builder.BuildWithoutIds();
 
@@ -178,7 +179,8 @@ TEST_F(TestTabletSchema, TestReInsert) {
   const int32_t c2_read_default = 7;
 
   SchemaBuilder builder(tablet()->metadata()->schema());
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, &c2_read_default, &c2_write_default));
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, ColumnSchema::SortingType::kNotSpecified,
+                              &c2_read_default, &c2_write_default));
   AlterSchema(builder.Build());
   Schema s2 = builder.BuildWithoutIds();
 

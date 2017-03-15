@@ -189,7 +189,6 @@ TEST_F(TabletServerTest, TestWebPages) {
     ASSERT_STR_CONTAINS(buf.ToString(), "\"id\": \"TestTablet\"");
     ASSERT_STR_CONTAINS(buf.ToString(), "\"partition\": \"range: [(<start>), (<end>))\"");
 
-
     // Check entity attributes.
     ASSERT_STR_CONTAINS(buf.ToString(), "\"table_name\": \"TestTable\"");
 
@@ -450,7 +449,6 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_CommitWait) {
     ASSERT_GE(write_took, error_before);
   }
 }
-
 
 TEST_F(TabletServerTest, TestInsertAndMutate) {
 
@@ -1124,7 +1122,6 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureFails) {
   }
 }
 
-
 // Test tserver shutdown with an active scanner open.
 TEST_F(TabletServerTest, TestSnapshotScan_OpenScanner) {
   vector<uint64_t> write_hybrid_times_collector;
@@ -1156,7 +1153,6 @@ TEST_F(TabletServerTest, TestSnapshotScan_OpenScanner) {
   // Intentionally do not drain the scanner at the end, to leave it open.
   // This tests tablet server shutdown with an active scanner.
 }
-
 
 // Test retrying a snapshot scan using last_row.
 TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
@@ -1241,7 +1237,6 @@ TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
   }
 }
 
-
 // Tests that a read in the future succeeds if a propagated_hybrid_time (that is even
 // further in the future) follows along. Also tests that the clock was updated so
 // that no writes will ever have a hybrid_time post this snapshot.
@@ -1299,7 +1294,6 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedHybri
   ASSERT_EQ(1, results.size());
   ASSERT_EQ("(int32 key=0, int32 int_val=0, string string_val=original0)", results[0]);
 }
-
 
 // Test that a read in the future fails, even if a propagated_hybrid_time is sent along,
 // if the read_hybrid_time is beyond the propagated_hybrid_time.
@@ -1473,7 +1467,6 @@ TEST_F(TabletServerTest, TestScanWithEncodedPredicates) {
             results.back());
 }
 
-
 // Test requesting more rows from a scanner which doesn't exist
 TEST_F(TabletServerTest, TestBadScannerID) {
   ScanRequestPB req;
@@ -1505,7 +1498,6 @@ TEST_F(TabletServerTest, TestInvalidScanRequest_NewScanAndScannerID) {
   ASSERT_FALSE(s.ok());
   ASSERT_STR_CONTAINS(s.ToString(), "Must not pass both a scanner_id and new_scan_request");
 }
-
 
 // Test that passing a projection with fields not present in the tablet schema
 // throws an exception.
@@ -1721,7 +1713,8 @@ TEST_F(TabletServerTest, TestAlterSchema) {
   const int32_t c2_write_default = 5;
   const int32_t c2_read_default = 7;
   SchemaBuilder builder(schema_);
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, &c2_read_default, &c2_write_default));
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, ColumnSchema::SortingType::kNotSpecified,
+                              &c2_read_default, &c2_write_default));
   Schema s2 = builder.Build();
 
   req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
@@ -1776,7 +1769,8 @@ TEST_F(TabletServerTest, TestAlterSchema_AddColWithoutWriteDefault) {
   // Add a column with a read-default but no write-default.
   const uint32_t c2_read_default = 7;
   SchemaBuilder builder(schema_);
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, &c2_read_default, nullptr));
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, ColumnSchema::SortingType::kNotSpecified,
+                              &c2_read_default, nullptr));
   Schema s2 = builder.Build();
 
   req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
