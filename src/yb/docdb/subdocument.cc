@@ -213,5 +213,122 @@ void SubDocument::EnsureContainerAllocated() {
   }
 }
 
+SubDocument SubDocument::FromYQLValuePB(YQLType yql_type, const YQLValuePB& value,
+                                        ColumnSchema::SortingType sorting_type) {
+  if (YQLValue::IsNull(value)) {
+    return SubDocument(ValueType::kTombstone);
+  }
+
+  switch (yql_type.main()) {
+    case MAP: {
+      YQLMapValuePB map = YQLValue::map_value(value);
+      // this equality should be ensured by checks before getting here
+      DCHECK_EQ(map.keys_size(), map.values_size());
+
+      YQLType keys_type = yql_type.params()->at(0);
+      YQLType values_type = yql_type.params()->at(1);
+      SubDocument map_doc;
+      for (int i = 0; i < map.keys_size(); i++) {
+        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(keys_type, map.keys(i),
+            sorting_type);
+        SubDocument pv_value = SubDocument::FromYQLValuePB(values_type, map.values(i),
+            sorting_type);
+        map_doc.SetChild(pv_key, std::move(pv_value));
+      }
+      // ensure container allocated even if map is empty
+      map_doc.EnsureContainerAllocated();
+      return map_doc;
+    }
+    case SET: {
+      YQLSeqValuePB set = YQLValue::set_value(value);
+      YQLType elems_type = yql_type.params()->at(0);
+      SubDocument set_doc;
+      for (auto& elem : set.elems()) {
+        // representing sets elems as keys pointing to empty (null) values
+        PrimitiveValue pv_key = PrimitiveValue::FromYQLValuePB(elems_type, elem, sorting_type);
+        set_doc.SetChildPrimitive(pv_key, PrimitiveValue());
+      }
+      // ensure container allocated even if set is empty
+      set_doc.EnsureContainerAllocated();
+      return set_doc;
+    }
+    case LIST: {
+      YQLSeqValuePB list = YQLValue::list_value(value);
+      YQLType elems_type = yql_type.params()->at(0);
+      SubDocument list_doc;
+      for (int i = 0; i < list.elems_size(); i++) {
+        // representing list elems as values with generated indexes as keys for preserving ordering
+        // TODO (mihnea) for now we use list position as key (index), but this is just temporary
+        // It will need to be changed when we start supporting append/prepend operations later
+        PrimitiveValue pv_key = PrimitiveValue(i, SortOrder::kAscending);
+        SubDocument pv_value = SubDocument::FromYQLValuePB(elems_type, list.elems(i),
+            sorting_type);
+        list_doc.SetChild(pv_key, std::move(pv_value));
+      }
+      // ensure container allocated even if list is empty
+      list_doc.EnsureContainerAllocated();
+      return list_doc;
+    }
+    case TUPLE:
+      break;
+
+    default:
+      return SubDocument(PrimitiveValue::FromYQLValuePB(yql_type, value, sorting_type));
+  }
+  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type.ToString();
+}
+
+void SubDocument::ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* yql_value) {
+  // interpreting empty collections as null values following Cassandra semantics
+  if (yql_type.IsParametric() && (!doc.has_valid_object_container() ||
+                                  doc.object_num_keys() == 0)) {
+    YQLValue::SetNull(yql_value);
+    return;
+  }
+
+  switch (yql_type.main()) {
+    case MAP: {
+      YQLType keys_type = yql_type.params()->at(0);
+      YQLType values_type = yql_type.params()->at(1);
+      YQLValue::set_map_value(yql_value);
+      for (auto &pair : doc.object_container()) {
+        YQLValuePB *key = YQLValue::add_map_key(yql_value);
+        PrimitiveValue::ToYQLValuePB(pair.first, keys_type, key);
+        YQLValuePB *value = YQLValue::add_map_value(yql_value);
+        SubDocument::ToYQLValuePB(pair.second, values_type, value);
+      }
+      return;
+    }
+    case SET: {
+      YQLType elems_type = yql_type.params()->at(0);
+      YQLValue::set_set_value(yql_value);
+      for (auto &pair : doc.object_container()) {
+        YQLValuePB *elem = YQLValue::add_set_elem(yql_value);
+        PrimitiveValue::ToYQLValuePB(pair.first, elems_type, elem);
+        // set elems are represented as subdocument keys so we ignore the (empty) values
+      }
+      return;
+    }
+    case LIST: {
+      YQLType elems_type = yql_type.params()->at(0);
+      YQLValue::set_list_value(yql_value);
+      for (auto &pair : doc.object_container()) {
+        // list elems are represented as subdocument values with keys only used for ordering
+        YQLValuePB *elem = YQLValue::add_list_elem(yql_value);
+        SubDocument::ToYQLValuePB(pair.second, elems_type, elem);
+      }
+      return;
+    }
+    case TUPLE:
+      break;
+
+    default: {
+      return PrimitiveValue::ToYQLValuePB(doc, yql_type, yql_value);
+    }
+  }
+  LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type.ToString();
+}
+
+
 }  // namespace docdb
 }  // namespace yb

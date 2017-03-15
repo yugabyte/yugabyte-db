@@ -12,7 +12,7 @@ namespace sql {
 //--------------------------------------------------------------------------------------------------
 
 PTFloat::PTFloat(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTPrimitiveType<InternalType::kFloatValue, DataType::FLOAT>(memctx, loc),
+    : PTSimpleType<InternalType::kFloatValue, DataType::FLOAT>(memctx, loc),
       precision_(precision) {
 }
 
@@ -20,7 +20,7 @@ PTFloat::~PTFloat() {
 }
 
 PTDouble::PTDouble(MemoryContext *memctx, YBLocation::SharedPtr loc, int8_t precision)
-    : PTPrimitiveType<InternalType::kDoubleValue, DataType::DOUBLE>(memctx, loc),
+    : PTSimpleType<InternalType::kDoubleValue, DataType::DOUBLE>(memctx, loc),
       precision_(precision) {
 }
 
@@ -32,7 +32,7 @@ PTDouble::~PTDouble() {
 PTCharBaseType::PTCharBaseType(MemoryContext *memctx,
                                YBLocation::SharedPtr loc,
                                int32_t max_length)
-    : PTPrimitiveType<InternalType::kStringValue, DataType::STRING>(memctx, loc),
+    : PTSimpleType<InternalType::kStringValue, DataType::STRING>(memctx, loc),
       max_length_(max_length) {
 }
 
@@ -54,7 +54,7 @@ PTVarchar::~PTVarchar() {
 }
 
 PTTimestamp::PTTimestamp(MemoryContext *memctx, YBLocation::SharedPtr loc)
-    : PTPrimitiveType<InternalType::kTimestampValue, DataType::TIMESTAMP>(memctx, loc) {
+    : PTSimpleType<InternalType::kTimestampValue, DataType::TIMESTAMP>(memctx, loc) {
 }
 
 PTTimestamp::~PTTimestamp() {
@@ -65,6 +65,34 @@ PTInet::PTInet(MemoryContext *memctx, YBLocation::SharedPtr loc)
 }
 
 PTInet::~PTInet() {
+}
+
+PTMap::PTMap(MemoryContext *memctx, YBLocation::SharedPtr loc,
+    YQLType keys_type, YQLType values_type)
+    : PTPrimitiveType<InternalType::kMapValue, DataType::MAP>(memctx, loc) {
+  type_params_.push_back(keys_type);
+  type_params_.push_back(values_type);
+}
+
+PTMap::~PTMap() {
+}
+
+
+PTSet::PTSet(MemoryContext *memctx, YBLocation::SharedPtr loc, YQLType elems_type)
+    : PTPrimitiveType<InternalType::kSetValue, DataType::SET>(memctx, loc) {
+  type_params_.push_back(elems_type);
+}
+
+PTSet::~PTSet() {
+}
+
+
+PTList::PTList(MemoryContext *memctx, YBLocation::SharedPtr loc, YQLType elems_type)
+    : PTPrimitiveType<InternalType::kListValue, DataType::LIST>(memctx, loc) {
+  type_params_.push_back(elems_type);
+}
+
+PTList::~PTList() {
 }
 
 }  // namespace sql

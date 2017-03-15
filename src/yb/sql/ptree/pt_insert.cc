@@ -101,11 +101,11 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       }
 
       // If argument is a bind variable, set up the column description. Else check that the
-      // datatypes are convertible.
+      // expression can be converted to the expected datatype.
       if ((*iter)->expr_op() == ExprOperator::kBindVar) {
         PTBindVar *var = static_cast<PTBindVar*>((*iter).get());
         var->set_desc(col_desc);
-      } else if (!sem_context->IsConvertible(col_desc->sql_type(), (*iter)->sql_type())) {
+      } else if (!sem_context->IsConvertible(*iter, col_desc->yql_type())) {
         return sem_context->Error((*iter)->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
@@ -136,7 +136,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       if (expr->expr_op() == ExprOperator::kBindVar) {
         PTBindVar *var = static_cast<PTBindVar*>(expr.get());
         var->set_desc(col_desc);
-      } else if (!sem_context->IsConvertible(col_desc->sql_type(), expr->sql_type())) {
+      } else if (!sem_context->IsConvertible(expr, col_desc->yql_type())) {
         return sem_context->Error(expr->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
@@ -176,8 +176,8 @@ void PTInsertStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
       VLOG(3) << "ARG: " << col_desc->id()
               << ", Hash: " << col_desc->is_hash()
               << ", Primary: " << col_desc->is_primary()
-              << ", Expected Type: " << col_desc->type_id()
-              << ", Expr Type: " << arg.expr()->sql_type();
+              << ", Expected Type: " << col_desc->yql_type().ToString()
+              << ", Expr Type: " << arg.expr()->yql_type_id();
     }
   }
 }

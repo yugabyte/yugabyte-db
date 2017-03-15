@@ -61,6 +61,7 @@ enum class ExprOperator : int {
   // Operators that take unspecified number of operands.
   kIn,
   kNotIn,
+  kCollection,
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -79,33 +80,34 @@ class PTExpr : public TreeNode {
       MemoryContext *memctx,
       YBLocation::SharedPtr loc,
       ExprOperator op = ExprOperator::kNoOp,
-      InternalType type_id = InternalType::VALUE_NOT_SET,
-      DataType sql_type = DataType::UNKNOWN_DATA)
+      InternalType internal_type = InternalType::VALUE_NOT_SET,
+      DataType yql_type_id = DataType::UNKNOWN_DATA)
       : TreeNode(memctx, loc),
         op_(op),
-        type_id_(type_id),
-        sql_type_(sql_type) {
+        internal_type_(internal_type),
+        yql_type_id_(yql_type_id) {
   }
   virtual ~PTExpr() {
   }
 
-  // Expression return type in Cassandra format.
-  virtual InternalType type_id() const {
-    return type_id_;
-  }
-
-  bool has_valid_type_id() {
-    // type_id_ is not set in case of PTNull.
-    return sql_type_ == DataType::NULL_VALUE_TYPE || type_id_ != InternalType::VALUE_NOT_SET;
-  }
-
   // Expression return type in DocDB format.
-  virtual DataType sql_type() const {
-    return sql_type_;
+  virtual InternalType internal_type() const {
+    return internal_type_;
   }
 
-  bool has_valid_sql_type() {
-    return sql_type_ != DataType::UNKNOWN_DATA;
+  bool has_valid_internal_type() {
+    // internal_type_ is not set in case of PTNull.
+    return yql_type_id_ == DataType::NULL_VALUE_TYPE ||
+           internal_type_ != InternalType::VALUE_NOT_SET;
+  }
+
+  // Expression return type in Cassandra format.
+  virtual DataType yql_type_id() const {
+    return yql_type_id_;
+  }
+
+  bool has_valid_yql_type_id() {
+    return yql_type_id_ != DataType::UNKNOWN_DATA;
   }
 
   // Node type.
@@ -120,7 +122,7 @@ class PTExpr : public TreeNode {
 
   // Predicate for null.
   virtual bool is_null() {
-    return sql_type_ == DataType::NULL_VALUE_TYPE;
+    return yql_type_id_ == DataType::NULL_VALUE_TYPE;
   }
 
   // Returns the operands of an expression.
@@ -142,7 +144,7 @@ class PTExpr : public TreeNode {
   //   parse tree to run semantic analysis on them.
   // - Run semantic analysis on this node.
   // - The main job of semantics analysis is to run type resolution to find the correct values for
-  //   sql_type_ and type_id_ for expressions.
+  //   yql_type_id_ and internal_type_ for expressions.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE = 0;
 
   // These functions are called by analyze to run type resolution on this expression.
@@ -171,15 +173,15 @@ class PTExpr : public TreeNode {
   static void SetVariableName(MemoryContext *memctx, const PTRef *ref, PTBindVar *var);
 
   ExprOperator op_;
-  InternalType type_id_;
-  DataType sql_type_;
+  InternalType internal_type_;
+  DataType yql_type_id_;
 };
 
 using PTExprListNode = TreeListNode<PTExpr>;
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with no operand (0 input).
-template<InternalType itype, DataType stype>
+template<InternalType itype, DataType ytype>
 class PTExpr0 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -192,7 +194,7 @@ class PTExpr0 : public PTExpr {
   PTExpr0(MemoryContext *memctx,
           YBLocation::SharedPtr loc,
           ExprOperator op)
-      : PTExpr(memctx, loc, op, itype, stype) {
+      : PTExpr(memctx, loc, op, itype, ytype) {
   }
   virtual ~PTExpr0() {
   }
@@ -204,18 +206,18 @@ class PTExpr0 : public PTExpr {
   }
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
-    // Analyze this node operator and setup its sql_type_ and type_id_.
+    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
     RETURN_NOT_OK(AnalyzeOperator(sem_context));
 
     // Make sure that it has valid data type.
-    CHECK(has_valid_type_id() && has_valid_sql_type());
+    CHECK(has_valid_internal_type() && has_valid_yql_type_id());
     return Status::OK();
   }
 };
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with one operand (1 input).
-template<InternalType itype, DataType stype>
+template<InternalType itype, DataType ytype>
 class PTExpr1 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -229,7 +231,7 @@ class PTExpr1 : public PTExpr {
           YBLocation::SharedPtr loc,
           ExprOperator op,
           PTExpr::SharedPtr op1)
-      : PTExpr(memctx, loc, op, itype, stype),
+      : PTExpr(memctx, loc, op, itype, ytype),
         op1_(op1) {
   }
   virtual ~PTExpr1() {
@@ -249,11 +251,11 @@ class PTExpr1 : public PTExpr {
     // Run semantic analysis on child nodes.
     RETURN_NOT_OK(op1_->Analyze(sem_context));
 
-    // Analyze this node operator and setup its sql_type_ and type_id_.
+    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
     RETURN_NOT_OK(AnalyzeOperator(sem_context, op1_));
 
     // Make sure that it has valid data type.
-    CHECK(has_valid_type_id() && has_valid_sql_type());
+    CHECK(has_valid_internal_type() && has_valid_yql_type_id());
     return Status::OK();
   }
 
@@ -265,7 +267,7 @@ class PTExpr1 : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with two operands (2 inputs).
-template<InternalType itype, DataType stype>
+template<InternalType itype, DataType ytype>
 class PTExpr2 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -280,7 +282,7 @@ class PTExpr2 : public PTExpr {
           ExprOperator op,
           const PTExpr::SharedPtr& op1,
           const PTExpr::SharedPtr& op2)
-      : PTExpr(memctx, loc, op, itype, stype),
+      : PTExpr(memctx, loc, op, itype, ytype),
         op1_(op1),
         op2_(op2) {
     // Set the name of unnamed bind marker for "... WHERE <column> <op> ? ..."
@@ -313,11 +315,11 @@ class PTExpr2 : public PTExpr {
     RETURN_NOT_OK(op1_->Analyze(sem_context));
     RETURN_NOT_OK(op2_->Analyze(sem_context));
 
-    // Analyze this node operator and setup its sql_type_ and type_id_.
+    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
     RETURN_NOT_OK(AnalyzeOperator(sem_context, op1_, op2_));
 
     // Make sure that it has valid data type.
-    CHECK(has_valid_type_id() && has_valid_sql_type());
+    CHECK(has_valid_internal_type() && has_valid_yql_type_id());
     return Status::OK();
   }
 
@@ -330,7 +332,7 @@ class PTExpr2 : public PTExpr {
 
 //--------------------------------------------------------------------------------------------------
 // Template for expression with two operands (3 inputs).
-template<InternalType itype, DataType stype>
+template<InternalType itype, DataType ytype>
 class PTExpr3 : public PTExpr {
  public:
   //------------------------------------------------------------------------------------------------
@@ -346,7 +348,7 @@ class PTExpr3 : public PTExpr {
           const PTExpr::SharedPtr& op1,
           const PTExpr::SharedPtr& op2,
           const PTExpr::SharedPtr& op3)
-      : PTExpr(memctx, loc, op, itype, stype),
+      : PTExpr(memctx, loc, op, itype, ytype),
         op1_(op1),
         op2_(op2),
         op3_(op3) {
@@ -388,11 +390,11 @@ class PTExpr3 : public PTExpr {
     RETURN_NOT_OK(op2_->Analyze(sem_context));
     RETURN_NOT_OK(op3_->Analyze(sem_context));
 
-    // Analyze this node operator and setup its sql_type_ and type_id_.
+    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
     RETURN_NOT_OK(AnalyzeOperator(sem_context, op1_, op2_, op3_));
 
     // Make sure that it has valid data type.
-    CHECK(has_valid_type_id() && has_valid_sql_type());
+    CHECK(has_valid_internal_type() && has_valid_yql_type_id());
     return Status::OK();
   }
 
@@ -409,9 +411,9 @@ class PTExpr3 : public PTExpr {
 //--------------------------------------------------------------------------------------------------
 // Template for constant expressions.
 template<InternalType itype,
-    DataType stype,
+    DataType ytype,
     typename ReturnType>
-class PTExprConst : public PTExpr0<itype, stype> {
+class PTExprConst : public PTExpr0<itype, ytype> {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -423,7 +425,7 @@ class PTExprConst : public PTExpr0<itype, stype> {
   PTExprConst(MemoryContext *memctx,
               YBLocation::SharedPtr loc,
               ReturnType value)
-      : PTExpr0<itype, stype>(memctx, loc, ExprOperator::kConst),
+      : PTExpr0<itype, ytype>(memctx, loc, ExprOperator::kConst),
         value_(value) {
   }
   virtual ~PTExprConst() {
@@ -446,7 +448,7 @@ class PTExprConst : public PTExpr0<itype, stype> {
     return value_;
   }
 
- private:
+ protected:
   //------------------------------------------------------------------------------------------------
   // Constant value.
   ReturnType value_;
@@ -471,6 +473,156 @@ using PTConstText = PTExprConst<InternalType::kStringValue,
 using PTConstBool = PTExprConst<InternalType::kBoolValue,
                                 DataType::BOOL,
                                 bool>;
+
+//--------------------------------------------------------------------------------------------------
+// Tree Nodes for Collections -- treated as expressions with flexible arity
+//--------------------------------------------------------------------------------------------------
+
+class PTMapExpr : public PTExpr {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTMapExpr> SharedPtr;
+  typedef MCSharedPtr<const PTMapExpr> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTMapExpr(MemoryContext *memctx, YBLocation::SharedPtr loc)
+      : PTExpr(memctx, loc, ExprOperator::kCollection, InternalType::kMapValue, DataType::MAP),
+        keys_(memctx), values_(memctx) { }
+  virtual ~PTMapExpr() { }
+
+  void Insert(PTExpr::SharedPtr key, PTExpr::SharedPtr value) {
+    keys_.emplace_back(key);
+    values_.emplace_back(value);
+  }
+
+  int size() const {
+    DCHECK_EQ(keys_.size(), values_.size());
+    return static_cast<int>(keys_.size());
+  }
+
+  const MCList<PTExpr::SharedPtr> keys() const {
+    return keys_;
+  }
+
+  const MCList<PTExpr::SharedPtr> values() const {
+    return values_;
+  }
+
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Run semantic analysis on collection elements.
+    for (auto& key : keys_) {
+      RETURN_NOT_OK(key->Analyze(sem_context));
+    }
+    for (auto& value : values_) {
+      RETURN_NOT_OK(value->Analyze(sem_context));
+    }
+    // We don't know the expected type parameters yet so we check convertability during execution
+
+    return Status::OK();
+  }
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTMapExpr::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTMapExpr>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+ private:
+  // this is intentionally not MCMap because we don't have the right equality relation for keys at
+  // this point which can lead to subtle bugs later
+  MCList<PTExpr::SharedPtr> keys_;
+  MCList<PTExpr::SharedPtr> values_;
+
+};
+
+class PTSetExpr : public PTExpr {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTSetExpr> SharedPtr;
+  typedef MCSharedPtr<const PTSetExpr> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTSetExpr(MemoryContext *memctx,
+             YBLocation::SharedPtr loc)
+      : PTExpr(memctx, loc, ExprOperator::kCollection, InternalType::kSetValue, DataType::SET),
+        value_(memctx) { }
+
+  virtual ~PTSetExpr() { }
+
+  void Insert(PTExpr::SharedPtr elem) {
+    value_.emplace_back(elem);
+  }
+
+  const MCList<PTExpr::SharedPtr> elems() const {
+    return value_;
+  }
+
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Run semantic analysis on collection elements.
+    for (auto& elem : value_) {
+      RETURN_NOT_OK(elem->Analyze(sem_context));
+    }
+    // We don't know the expected type parameter yet so we check convertability during execution
+
+    return Status::OK();
+  }
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTSetExpr::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTSetExpr>(memctx, std::forward<TypeArgs>(args)...);
+  }
+ private:
+  // this is intentionally not MCSet because we don't have the right equality relation at this point
+  // e.g. 0 and '1970-1-1' are different expressions but would represent same value as Timestamps
+  MCList<PTExpr::SharedPtr> value_;
+};
+
+
+class PTListExpr : public PTExpr {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTListExpr> SharedPtr;
+  typedef MCSharedPtr<const PTListExpr> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTListExpr(MemoryContext *memctx, YBLocation::SharedPtr loc)
+      : PTExpr(memctx, loc, ExprOperator::kCollection, InternalType::kListValue, DataType::LIST),
+        value_(memctx) { }
+  virtual ~PTListExpr() { }
+
+  void Append(PTExpr::SharedPtr elem) {
+    value_.emplace_back(elem);
+  }
+
+  const MCList<PTExpr::SharedPtr> elems() const {
+    return value_;
+  }
+
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+    // Run semantic analysis on collection elements.
+    for (auto& elem : value_) {
+      RETURN_NOT_OK(elem->Analyze(sem_context));
+    }
+    // We don't know the expected type parameter yet so we check convertability during execution
+
+    return Status::OK();
+  }
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTListExpr::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTListExpr>(memctx, std::forward<TypeArgs>(args)...);
+  }
+ private:
+  MCList<PTExpr::SharedPtr> value_;
+};
 
 // Tree node for comparisons.
 using PTPredicate0 = PTExpr0<InternalType::kBoolValue, DataType::BOOL>;
@@ -634,19 +786,24 @@ class PTBindVar : public PTExpr {
   }
   void set_desc(const ColumnDesc * desc) {
     desc_ = desc;
-    sql_type_ = desc->sql_type();
-  }
-
-  // Expression return type in Cassandra format.
-  virtual InternalType type_id() const OVERRIDE {
-    DCHECK(desc_ != nullptr);
-    return desc_->type_id();
+    yql_type_id_ = desc->yql_type().main();
   }
 
   // Expression return type in DocDB format.
-  virtual DataType sql_type() const OVERRIDE {
+  virtual InternalType internal_type() const OVERRIDE {
     DCHECK(desc_ != nullptr);
-    return desc_->sql_type();
+    return desc_->internal_type();
+  }
+
+  // Expression return type in Cassandra format.
+  YQLType yql_type() const {
+    DCHECK(desc_ != nullptr);
+    return desc_->yql_type();
+  }
+
+  virtual DataType yql_type_id() const OVERRIDE {
+    DCHECK(desc_ != nullptr);
+    return desc_->yql_type().main();
   }
 
   // Node type.

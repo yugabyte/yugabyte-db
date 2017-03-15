@@ -35,14 +35,6 @@ struct SymbolEntry {
 
 //--------------------------------------------------------------------------------------------------
 
-enum class ConversionMode : int {
-  kImplicit = 0,                // Implicit conversion (automatic).
-  kExplicit = 1,                // Explicit conversion is available.
-  kNotAllowed = 2,              // Not available.
-};
-
-//--------------------------------------------------------------------------------------------------
-
 class SemContext : public ProcessContext {
  public:
   //------------------------------------------------------------------------------------------------
@@ -103,9 +95,11 @@ class SemContext : public ProcessContext {
   // Find column descriptor from symbol table.
   const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
 
-  // Check if the rhs and lhs datatypes are compatible. Their conversion mode must be implicit.
-  bool IsConvertible(DataType lhs_type, DataType rhs_type) const;
+  // Check if the expression `expr` can be implicitly converted to type `type`
+  bool IsConvertible(PTExpr::SharedPtr expr, YQLType type) const;
 
+  // Check if two types are comparable -- parametric types are never comparable so we only take
+  // DataType not YQLType as arguments
   bool IsComparable(DataType lhs_type, DataType rhs_type) const;
 
   std::string CurrentKeyspace() const {

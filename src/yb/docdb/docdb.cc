@@ -237,29 +237,27 @@ Status DocWriteBatch::ExtendSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
+    InitMarkerBehavior use_init_marker,
+    MonoDelta ttl) {
   if (value.value_type() == ValueType::kObject) {
     const auto& map = value.object_container();
-    if (map.empty()) {
-      return SetPrimitive(doc_path,
-          Value(PrimitiveValue(ValueType::kObject)), hybrid_time, use_init_marker);
-    }
     for (const auto& ent : map) {
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(ent.first);
-      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second, hybrid_time, use_init_marker));
+      RETURN_NOT_OK(
+          ExtendSubDocument(child_doc_path, ent.second, hybrid_time, use_init_marker, ttl));
     }
   } else if (value.value_type() == ValueType::kArray) {
     // In future ExtendSubDocument will also support List types, will call ExtendList in this case.
     // For now it is not supported because it's clunky to pass monotonic counters in every function.
     return STATUS(InvalidArgument, "Cannot insert subdocument of list type");
   } else {
-    if (!IsPrimitiveValueType(value.value_type())) {
+    if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
       return STATUS_SUBSTITUTE(InvalidArgument,
-          "Found unexpected value type $0. Expecting a PrimitiveType",
+          "Found unexpected value type $0. Expecting a PrimitiveType or a Tombstone",
           ValueTypeToStr(value.value_type()));
     }
-    RETURN_NOT_OK(SetPrimitive(doc_path, Value(value), hybrid_time, use_init_marker));
+    RETURN_NOT_OK(SetPrimitive(doc_path, Value(value, ttl), hybrid_time, use_init_marker));
   }
   return Status::OK();
 }
@@ -268,10 +266,13 @@ Status DocWriteBatch::InsertSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     HybridTime hybrid_time,
-    InitMarkerBehavior use_init_marker) {
-  RETURN_NOT_OK(SetPrimitive(
-      doc_path, Value(PrimitiveValue(ValueType::kTombstone)), hybrid_time, use_init_marker));
-  return ExtendSubDocument(doc_path, value, hybrid_time, use_init_marker);
+    InitMarkerBehavior use_init_marker,
+    MonoDelta ttl) {
+  if (!value.IsPrimitive() && value.value_type() != ValueType::kTombstone) {
+    RETURN_NOT_OK(SetPrimitive(
+        doc_path, Value(PrimitiveValue(ValueType::kTombstone)), hybrid_time, use_init_marker));
+  }
+  return ExtendSubDocument(doc_path, value, hybrid_time, use_init_marker, ttl);
 }
 
 Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const HybridTime hybrid_time,
@@ -515,7 +516,7 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
   Status s = SeekToValidKvAtTs(
       rocksdb_iter.get(), seek_key.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found);
 
-  if (!is_found || !subdocument_key.OnlyLacksTimeStampFrom(rocksdb_iter->key())) {
+  if (!is_found || !subdocument_key.OnlyLacksHybridTimeFrom(rocksdb_iter->key())) {
     // This could happen when we are trying to scan at an old hybrid_time at which the subdocument
     // does not exist yet. In that case we'll jump directly into the section of the RocksDB key
     // space that contains deeper levels of the document.
@@ -683,7 +684,8 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
     const SubDocKey &subdocument_key,
     SubDocument* subdocument,
     HybridTime high_ts,
-    HybridTime low_ts) {
+    HybridTime low_ts,
+    MonoDelta table_ttl) {
   DCHECK(!subdocument_key.has_hybrid_time());
   const KeyBytes encoded_key = subdocument_key.Encode();
 
@@ -716,6 +718,7 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
 
     MonoDelta ttl;
     RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
+    ttl = ComputeTTL(ttl, table_ttl);
 
     if (!ttl.Equals(Value::kMaxTtl)) {
       const HybridTime expiry =
@@ -737,7 +740,7 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
     }
 
     RETURN_NOT_OK(doc_value.Decode(value));
-    if (encoded_key.OnlyLacksTimeStampFrom(iter->key())) {
+    if (encoded_key.OnlyLacksHybridTimeFrom(iter->key())) {
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
       if (doc_value.value_type() == ValueType::kObject ||
@@ -763,7 +766,7 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
     SubDocument descendant = SubDocument(PrimitiveValue(ValueType::kInvalidValueType));
     found_key.remove_hybrid_time();
 
-    RETURN_NOT_OK(BuildSubDocument(iter, found_key, &descendant, high_ts, low_ts));
+    RETURN_NOT_OK(BuildSubDocument(iter, found_key, &descendant, high_ts, low_ts, table_ttl));
     if (descendant.value_type() == ValueType::kInvalidValueType) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
@@ -787,7 +790,8 @@ yb::Status GetSubDocument(rocksdb::DB *rocksdb,
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
-    HybridTime scan_ht) {
+    HybridTime scan_ht,
+    MonoDelta table_ttl) {
   DOCDB_DEBUG_LOG("GetSubDocument for key $0", subdocument_key.ToString());
 
   auto iter = CreateRocksDBIterator(rocksdb);
@@ -802,7 +806,7 @@ yb::Status GetSubDocument(rocksdb::DB *rocksdb,
   for (const PrimitiveValue& subkey : subdocument_key.subkeys()) {
     RETURN_NOT_OK(SeekToValidKvAtTs(
         iter.get(), key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
-    if (is_found && key_bytes.OnlyLacksTimeStampFrom(iter->key()) &&
+    if (is_found && key_bytes.OnlyLacksHybridTimeFrom(iter->key()) &&
         max_deleted_ts < found_subdoc_key.hybrid_time() && max_deleted_ts <= scan_ht) {
       max_deleted_ts = found_subdoc_key.hybrid_time();
       SeekPastSubKey(found_subdoc_key, iter.get());
@@ -812,7 +816,8 @@ yb::Status GetSubDocument(rocksdb::DB *rocksdb,
   RETURN_NOT_OK(SeekToValidKvAtTs(
       iter.get(), key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
   *result = SubDocument(ValueType::kInvalidValueType);
-  RETURN_NOT_OK(BuildSubDocument(iter.get(), subdocument_key, result, scan_ht, max_deleted_ts));
+  RETURN_NOT_OK(BuildSubDocument(iter.get(), subdocument_key, result, scan_ht, max_deleted_ts,
+                                 table_ttl));
   *doc_found = result->value_type() != ValueType::kInvalidValueType;
   return Status::OK();
 }

@@ -66,6 +66,9 @@ class MCAllocator : public MCAllocatorBase<MCObject> {
   //   system will crash immediately due to nullptr memory manager. Our tests will catch it.
   MCAllocator() __attribute__((deprecated)) : MCAllocatorBase<MCObject>() {
   }
+  explicit MCAllocator(ArenaAllocator<MCObject, false> arena_allocator)
+      : MCAllocatorBase<MCObject>(arena_allocator) {
+  }
   MCAllocator(MemoryContext *memory_context, ArenaBase<false> *a) : MCAllocatorBase<MCObject>(a) {
   }
 

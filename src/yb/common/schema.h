@@ -141,7 +141,7 @@ class ColumnSchema {
   };
 
   // name: column name
-  // type: column type (e.g. UINT8, INT32, STRING, ...)
+  // type: column type (e.g. UINT8, INT32, STRING, MAP<INT32, STRING> ...)
   // is_nullable: true if a row value can be null
   // is_hash_key: true if a column's hash value can be used for partitioning.
   // read_default: default value used on read if the column was not present before alter.
@@ -157,7 +157,8 @@ class ColumnSchema {
   //   ColumnSchema col_c("c", INT32, false, &default_i32);
   //   Slice default_str("Hello");
   //   ColumnSchema col_d("d", STRING, false, &default_str);
-  ColumnSchema(string name, DataType type,
+  ColumnSchema(string name,
+               YQLType type,
                bool is_nullable = false,
                bool is_hash_key = false,
                SortingType sorting_type = SortingType::kNotSpecified,
@@ -165,22 +166,38 @@ class ColumnSchema {
                const void* write_default = NULL,
                ColumnStorageAttributes attributes = ColumnStorageAttributes())
       : name_(std::move(name)),
-        type_info_(GetTypeInfo(type)),
+        type_(type),
         is_nullable_(is_nullable),
         is_hash_key_(is_hash_key),
         sorting_type_(sorting_type),
-        read_default_(read_default ? new Variant(type, read_default) : NULL),
+        read_default_(read_default ? new Variant(type.main(), read_default) : NULL),
         attributes_(std::move(attributes)) {
     if (write_default == read_default) {
       write_default_ = read_default_;
     } else if (write_default != NULL) {
       DCHECK(read_default != NULL) << "Must have a read default";
-      write_default_.reset(new Variant(type, write_default));
+      write_default_.reset(new Variant(type.main(), write_default));
     }
   }
 
+  // convenience constructor for creating columns with simple (non-parametric) data types
+  ColumnSchema(string name,
+               DataType type,
+               bool is_nullable = false,
+               bool is_hash_key = false,
+               SortingType sorting_type = SortingType::kNotSpecified,
+               const void* read_default = NULL,
+               const void* write_default = NULL,
+               ColumnStorageAttributes attributes = ColumnStorageAttributes())
+      : ColumnSchema(name, YQLType(type), is_nullable, is_hash_key, sorting_type,
+                     read_default, write_default, attributes) { }
+
+  const YQLType type() const {
+    return type_;
+  }
+
   const TypeInfo* type_info() const {
-    return type_info_;
+    return type_.type_info();
   }
 
   bool is_nullable() const {
@@ -284,14 +301,14 @@ class ColumnSchema {
   }
 
   int Compare(const void *lhs, const void *rhs) const {
-    return type_info_->Compare(lhs, rhs);
+    return type_info()->Compare(lhs, rhs);
   }
 
   // Stringify the given cell. This just stringifies the cell contents,
   // and doesn't include the column name or type.
   string Stringify(const void *cell) const {
     string ret;
-    type_info_->AppendDebugStringForValue(cell, &ret);
+    type_info()->AppendDebugStringForValue(cell, &ret);
     return ret;
   }
 
@@ -299,14 +316,14 @@ class ColumnSchema {
   // in that it also includes the column info, for example 'STRING foo=bar'.
   template<class CellType>
   void DebugCellAppend(const CellType& cell, std::string* ret) const {
-    ret->append(type_info_->name());
+    ret->append(type_info()->name());
     ret->append(" ");
     ret->append(name_);
     ret->append("=");
     if (is_nullable_ && cell.is_null()) {
       ret->append("NULL");
     } else {
-      type_info_->AppendDebugStringForValue(cell.ptr(), ret);
+      type_info()->AppendDebugStringForValue(cell.ptr(), ret);
     }
   }
 
@@ -326,7 +343,7 @@ class ColumnSchema {
   }
 
   string name_;
-  const TypeInfo *type_info_;
+  YQLType type_;
   bool is_nullable_;
   bool is_hash_key_;
   SortingType sorting_type_;
@@ -997,28 +1014,54 @@ class SchemaBuilder {
   Schema Build() const { return Schema(cols_, col_ids_, num_key_columns_, table_properties_); }
   Schema BuildWithoutIds() const { return Schema(cols_, num_key_columns_, table_properties_); }
 
+  // assumes type is allowed in primary key -- this should be checked before getting here
+  // using DataType (not YQLType) since primary key columns only support elementary types
   CHECKED_STATUS AddKeyColumn(const string& name, DataType type);
 
+  // assumes type is allowed in hash key -- this should be checked before getting here
+  // using DataType (not YQLType) since hash key columns only support elementary types
   CHECKED_STATUS AddHashKeyColumn(const string& name, DataType type);
 
   CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
-  CHECKED_STATUS AddColumn(const string& name, DataType type) {
+  CHECKED_STATUS AddColumn(const string& name, YQLType type) {
     return AddColumn(name, type, false, false, ColumnSchema::SortingType::kNotSpecified, NULL,
                      NULL);
   }
 
-  CHECKED_STATUS AddNullableColumn(const string& name, DataType type) {
+  // convenience function for adding columns with simple (non-parametric) data types
+  CHECKED_STATUS AddColumn(const string& name, DataType type) {
+    return AddColumn(name, YQLType(type));
+  }
+
+  CHECKED_STATUS AddNullableColumn(const string& name, YQLType type) {
     return AddColumn(name, type, true, false, ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
   }
 
+  // convenience function for adding columns with simple (non-parametric) data types
+  CHECKED_STATUS AddNullableColumn(const string& name, DataType type) {
+    return AddNullableColumn(name, YQLType(type));
+  }
+
   CHECKED_STATUS AddColumn(const string& name,
-                   DataType type,
-                   bool is_nullable,
-                   bool is_hash_key,
-                   yb::ColumnSchema::SortingType sorting_type,
-                   const void *read_default,
-                   const void *write_default);
+                           YQLType type,
+                           bool is_nullable,
+                           bool is_hash_key,
+                           yb::ColumnSchema::SortingType sorting_type,
+                           const void *read_default,
+                           const void *write_default);
+
+  // convenience function for adding columns with simple (non-parametric) data types
+  CHECKED_STATUS AddColumn(const string& name,
+                           DataType type,
+                           bool is_nullable,
+                           bool is_hash_key,
+                           yb::ColumnSchema::SortingType sorting_type,
+                           const void *read_default,
+                           const void *write_default) {
+    return AddColumn(name, YQLType(type), is_nullable, is_hash_key, sorting_type, read_default,
+        write_default);
+  }
 
   CHECKED_STATUS RemoveColumn(const string& name);
   CHECKED_STATUS RenameColumn(const string& old_name, const string& new_name);

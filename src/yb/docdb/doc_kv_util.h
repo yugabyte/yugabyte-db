@@ -178,8 +178,10 @@ CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta&
 // Computes the table level TTL, given a schema.
 const MonoDelta TableTTL(const Schema& schema);
 
-// Computes the effective TTL for a given value and schema by combining the column level TTL with
-// the table level TTL.
+// Computes the effective TTL by combining the column level TTL with the table level TTL.
+const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& table_ttl);
+
+// Utility function that computes the effective TTL directly given a schema
 const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema);
 
 // Cassandra considers a TTL of zero as resetting the TTL.

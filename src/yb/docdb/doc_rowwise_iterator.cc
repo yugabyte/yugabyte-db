@@ -9,6 +9,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/docdb/subdocument.h"
 
 using std::string;
 
@@ -78,7 +79,7 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
 }
 
 Status DocRowwiseIterator::Init(const YQLScanSpec& spec) {
-  // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
+  // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   DocKey lower_doc_key;
   DocKey upper_doc_key;
   RETURN_NOT_OK(spec.lower_bound(&lower_doc_key));
@@ -320,7 +321,7 @@ Status DocRowwiseIterator::ProcessValues(const Value& value, const SubDocKey& su
 }
 
 // Get the non-key column values of a YQL row and advance to the next row before return.
-Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveValue>* values) {
+Status DocRowwiseIterator::GetValues(const Schema& projection, vector<SubDocument>* values) {
 
   values->reserve(projection.num_columns() - projection.num_key_columns());
 
@@ -348,6 +349,7 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
   // Remove the last subkey, to allow searches for the next column.
   subdoc_key_.RemoveLastSubKey();
 
+  MonoDelta table_ttl = TableTTL(schema_);
   for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
     const auto& column_id = projection.column_id(i);
     if (column_id == column_id_processed) {
@@ -356,24 +358,15 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<PrimitiveV
       continue;
     }
     subdoc_key_.RemoveHybridTime();
-    subdoc_key_.AppendSubKeysAndMaybeHybridTime(
-        PrimitiveValue(column_id), hybrid_time_);
-
-    const KeyBytes key_for_column = subdoc_key_.Encode();
-    ROCKSDB_SEEK(db_iter_.get(), key_for_column.AsSlice());
-
-    bool is_null = true;
-    if (db_iter_->Valid() && key_for_column.OnlyDiffersByLastHybridTimeFrom(db_iter_->key())) {
-      // Add the correct hybrid time found in the DB.
-      subdoc_key_.set_hybrid_time(DecodeHybridTimeFromKey(db_iter_->key()));
-      Value value;
-      RETURN_NOT_OK(value.Decode(db_iter_->value()));
-      RETURN_NOT_OK(ProcessValues(value, subdoc_key_, values, &is_null));
-    }
-    if (is_null) {
+    subdoc_key_.AppendSubKeysAndMaybeHybridTime(PrimitiveValue(column_id));
+    SubDocument sub_doc;
+    bool doc_found;
+    RETURN_NOT_OK(GetSubDocument(db_, subdoc_key_, &sub_doc, &doc_found, hybrid_time_, table_ttl));
+    if (doc_found) {
+      values->emplace_back(std::move(sub_doc));
+    } else {
       values->emplace_back(PrimitiveValue(ValueType::kNull));
     }
-
     subdoc_key_.RemoveLastSubKey();
   }
 
@@ -485,8 +478,8 @@ CHECKED_STATUS SetYQLPrimaryKeyColumnValues(const Schema& schema,
   }
   for (size_t i = 0, j = begin_index; i < column_count; i++, j++) {
     const auto column_id = schema.column_id(j);
-    const auto data_type = schema.column(j).type_info()->type();
-    values[i].ToYQLValuePB(data_type, &(*value_map)[column_id]);
+    const auto yql_type = schema.column(j).type();
+    PrimitiveValue::ToYQLValuePB(values[i], yql_type, &(*value_map)[column_id]);
   }
   return Status::OK();
 }
@@ -534,7 +527,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   }
 
   // Get the non-key column values of a row.
-  vector<PrimitiveValue> values;
+  vector<SubDocument> values;
   RETURN_NOT_OK(GetValues(projection_, &values));
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& value = values[i - projection_.num_key_columns()];
@@ -575,12 +568,13 @@ Status DocRowwiseIterator::NextRow(YQLValueMap* value_map) {
       "range", subdoc_key_.doc_key().range_group(), value_map));
 
   // Get the non-key column values of a YQL row.
-  vector<PrimitiveValue> values;
+  vector<SubDocument> values;
   RETURN_NOT_OK(GetValues(projection_, &values));
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& column_id = projection_.column_id(i);
-    const auto data_type = projection_.column(i).type_info()->type();
-    values[i - projection_.num_key_columns()].ToYQLValuePB(data_type, &(*value_map)[column_id]);
+    const auto yql_type = projection_.column(i).type();
+    SubDocument::ToYQLValuePB(values[i - projection_.num_key_columns()], yql_type,
+                              &(*value_map)[column_id]);
   }
   return Status::OK();
 }

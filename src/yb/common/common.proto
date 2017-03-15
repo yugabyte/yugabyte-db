@@ -94,6 +94,20 @@ enum TableType {
   DEFAULT_TABLE_TYPE = 1;
 }
 
+// the type used in column schemas, which may have type parameters (i.e. for collections)
+// if types have parameters they are stored in the params field, otherwise params is empty
+// e.g.:
+//   STRING                     --> {main = STRING, params = []}
+//   SET<INT>                   --> {main = SET, params = [INT]}
+//   MAP<INT, STRING>           --> {main = MAP, params = [INT, STRING]}
+//   LIST<SET<STRING>>          --> {main = LIST, params = [ {main = SET, params = [STRING]} ]}
+// later (not implemented yet):
+//   TUPLE<INT, STRING, DOUBLE> --> {main = TUPLE, params = [INT, STRING, DOUBLE]}
+message YQLTypePB {
+  optional DataType main = 1;
+  repeated YQLTypePB params = 2;
+}
+
 // TODO: Differentiate between the schema attributes
 // that are only relevant to the server (e.g.,
 // encoding and compression) and those that also
@@ -101,7 +115,7 @@ enum TableType {
 message ColumnSchemaPB {
   optional uint32 id = 1;
   required string name = 2;
-  required DataType type = 3;
+  required YQLTypePB type = 3;
   optional bool is_key = 4 [default = false];
   optional bool is_hash_key = 11 [default = false];
   optional bool is_nullable = 5 [default = false];

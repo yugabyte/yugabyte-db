@@ -47,23 +47,23 @@ public class TestYBTable extends BaseYBTest {
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(0)
         .setName("key")
-        .setType(Common.DataType.INT32)
+        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.INT32))
         .setIsKey(true)
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(1)
         .setName("column1_i")
-        .setType(Common.DataType.INT32)
+        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.INT32))
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(2)
         .setName("column2_i")
-        .setType(Common.DataType.INT32)
+        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.INT32))
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(3)
         .setName("column3_s")
-        .setType(Common.DataType.STRING)
+        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.STRING))
         .setIsNullable(true)
         .setCfileBlockSize(4096)
         .setEncoding(Common.EncodingType.DICT_ENCODING)
@@ -72,7 +72,7 @@ public class TestYBTable extends BaseYBTest {
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(4)
         .setName("column4_b")
-        .setType(Common.DataType.BOOL)
+        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.BOOL))
         .build());
     if (!defaultTTL) {
       pb.setTableProperties(Common.TablePropertiesPB.newBuilder()

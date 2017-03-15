@@ -62,7 +62,7 @@ string ColumnSchema::ToString() const {
 
 string ColumnSchema::TypeToString() const {
   return strings::Substitute("$0 $1",
-                             type_info_->name(),
+                             type_info()->name(),
                              is_nullable_ ? "NULLABLE" : "NOT NULL",
                              is_hash_key_ ? "PARTITION KEY" : "NOT A PARTITION KEY");
 }
@@ -420,15 +420,15 @@ void SchemaBuilder::Reset(const Schema& schema) {
 }
 
 Status SchemaBuilder::AddKeyColumn(const string& name, DataType type) {
-  return AddColumn(ColumnSchema(name, type), true);
+  return AddColumn(ColumnSchema(name, YQLType(type)), /* is_nullable */ true);
 }
 
 Status SchemaBuilder::AddHashKeyColumn(const string& name, DataType type) {
-  return AddColumn(ColumnSchema(name, type, false, true), true);
+  return AddColumn(ColumnSchema(name, YQLType(type), false, true), true);
 }
 
 Status SchemaBuilder::AddColumn(const string& name,
-                                DataType type,
+                                YQLType type,
                                 bool is_nullable,
                                 bool is_hash_key,
                                 ColumnSchema::SortingType sorting_type,

@@ -96,6 +96,9 @@ typedef PTListNode::SharedPtr          PListNode;
 typedef PTExpr::SharedPtr              PExpr;
 typedef PTExprListNode::SharedPtr      PExprListNode;
 typedef PTConstInt::SharedPtr          PConstInt;
+typedef PTMapExpr::SharedPtr           PMapExpr;
+typedef PTSetExpr::SharedPtr           PSetExpr;
+typedef PTListExpr::SharedPtr          PListExpr;
 typedef PTCollection::SharedPtr        PCollection;
 typedef PTValues::SharedPtr            PValues;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
@@ -220,17 +223,26 @@ using namespace yb::sql;
 
 %type <PExpr>             // Expressions.
                           a_expr b_expr ctext_expr c_expr AexprConst columnref bindvar
-                          target_el in_expr
+                          collection_expr target_el in_expr
                           inactive_a_expr inactive_c_expr
 
 %type <PConstInt>         // Const Int.
                           using_ttl_clause opt_using_ttl_clause
 
-%type <PExprListNode>     // Expression list.
+%type <PMapExpr>          // An expression of type Map.
+                          map_elems map_expr
+
+%type <PSetExpr>          // An expression of type Set.
+                          set_elems set_expr
+
+%type <PListExpr>         // An expression of type List.
+                          list_elems list_expr
+
+%type <PExprListNode>     // A list of expressions.
                           ctext_row ctext_expr_list
 
 %type <PType>             // Datatype nodes.
-                          Typename SimpleTypename Numeric
+                          Typename SimpleTypename ParametricTypename Numeric
 
 %type <PTableRef>         // Name node that represents table.
                           table_ref relation_expr_opt_alias
@@ -389,7 +401,7 @@ using namespace yb::sql;
                           columnOptions
                           def_elem reloption_elem old_aggr_elem
                           def_arg
-                          func_table array_expr
+                          func_table
                           ExclusionWhereClause
                           func_arg_expr
                           case_expr case_arg when_clause case_default
@@ -448,7 +460,7 @@ using namespace yb::sql;
                           trim_list opt_interval interval_second OptSeqOptList SeqOptList
                           rowsfrom_item rowsfrom_list opt_col_def_list ExclusionConstraintList
                           ExclusionConstraintElem func_arg_list row explicit_row implicit_row
-                          type_list array_expr_list when_clause_list NumericOnly_list
+                          type_list when_clause_list NumericOnly_list
                           func_alias_clause generic_option_list alter_generic_option_list
                           explain_option_list copy_generic_opt_list copy_generic_opt_arg_list
                           copy_options constraints_set_list xml_attribute_list
@@ -503,10 +515,10 @@ using namespace yb::sql;
                           KEY KEYSPACE
 
                           LABEL LANGUAGE LARGE_P LAST_P LATERAL_P LEADING LEAKPROOF LEAST LEFT
-                          LEVEL LIKE LIMIT LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
+                          LEVEL LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
                           LOCK_P LOCKED LOGGED
 
-                          MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P
+                          MAP MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P
                           MOVE
 
                           NAME_P NAMES NATIONAL NATURAL NCHAR NEXT NO NONE NOT NOTHING NOTIFY
@@ -2673,7 +2685,9 @@ a_expr:
     $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotIn, $1, $4);
     PARSER_UNSUPPORTED(@3);
   }
-
+  | collection_expr {
+    $$ = $1;
+  }
   | inactive_a_expr {
     PARSER_CQL_INVALID(@1);
   }
@@ -2871,8 +2885,10 @@ inactive_c_expr:
   }
   | ARRAY select_with_parens {
   }
-  | ARRAY array_expr {
-  }
+  // (PostgreSQL) this array case is disabled as the syntax conflicts with (Cassandra) lists
+  // TODO (mihnea) clean up array use in the grammar (either by removing or changing the syntax)
+  //  | ARRAY array_expr {
+  //  }
   | explicit_row {
   }
   | implicit_row {
@@ -3324,6 +3340,9 @@ type_list:
   }
 ;
 
+// (PostgreSQL) array expressions are disabled as their syntax conflicts with (Cassandra) lists
+// TODO (mihnea) clean up array use in the grammar (either by removing or changing the syntax)
+/*
 array_expr:
   '[' expr_list ']' {
   }
@@ -3342,7 +3361,7 @@ array_expr_list:
     // $$ = lappend($1, $3);
   }
 ;
-
+*/
 
 extract_list:
   extract_arg FROM a_expr {
@@ -3639,6 +3658,78 @@ func_name:
   }
 ;
 
+map_elems:
+  map_elems ',' a_expr ':' a_expr {
+    $1->Insert($3, $5);
+    $$ = $1;
+  }
+  | a_expr ':' a_expr {
+    $$ = MAKE_NODE(@1, PTMapExpr);
+    $$->Insert($1, $3);
+  }
+;
+
+map_expr:
+  '{' map_elems '}' {
+    $$ = $2;
+  }
+  // we don't allow empty maps in the grammar so that '{ }' gets parsed as a set (set_expr) which is
+  // the more specific type. Then, the executor does the type conversion when appropriate.
+;
+
+set_elems:
+  set_elems ',' a_expr {
+    $1->Insert($3);
+    $$ = $1;
+  }
+  | a_expr {
+    $$ = MAKE_NODE(@1, PTSetExpr);
+    $$->Insert($1);
+  }
+;
+
+set_expr:
+  '{' set_elems '}' {
+    $$ = $2;
+  }
+  | '{' '}' {
+      $$ = MAKE_NODE(@1, PTSetExpr);
+  }
+;
+
+list_elems:
+  list_elems ',' a_expr {
+    $1->Append($3);
+    $$ = $1;
+  }
+  | a_expr {
+    $$ = MAKE_NODE(@1, PTListExpr);
+    $$->Append($1);
+  }
+;
+
+list_expr:
+  '[' list_elems ']' {
+    $$ = $2;
+  }
+  | '[' ']' {
+    $$ = MAKE_NODE(@1, PTListExpr);
+  }
+;
+
+collection_expr:
+  map_expr {
+    $$ = $1;
+  }
+  | set_expr {
+    $$ = $1;
+  }
+  | list_expr {
+    $$ = $1;
+  }
+;
+
+
 // Constants.
 AexprConst:
   Iconst {
@@ -3765,6 +3856,10 @@ Typename:
   SimpleTypename opt_array_bounds {
     $$ = $1;
   }
+  |
+  ParametricTypename {
+    $$ = $1;
+  }
   | SETOF SimpleTypename opt_array_bounds {
     PARSER_UNSUPPORTED(@1);
   }
@@ -3780,6 +3875,18 @@ Typename:
   }
   | SETOF SimpleTypename ARRAY {
     PARSER_UNSUPPORTED(@1);
+  }
+;
+
+ParametricTypename:
+  MAP '<' Typename ',' Typename '>' {
+    $$ = MAKE_NODE(@1, PTMap, $3->yql_type(), $5->yql_type());
+  }
+  | SET '<' Typename '>' {
+    $$ = MAKE_NODE(@1, PTSet, $3->yql_type());
+  }
+  | LIST '<' Typename '>' {
+    $$ = MAKE_NODE(@1, PTList, $3->yql_type());
   }
 ;
 

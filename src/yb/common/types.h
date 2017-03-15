@@ -360,6 +360,39 @@ struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY>{
   }
 };
 
+template<>
+struct DataTypeTraits<MAP> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "map";
+  }
+
+  // using the default implementation inherited from BINARY for AppendDebugStringForValue
+  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // of Kudu Slice [ENG-1235]
+};
+
+template<>
+struct DataTypeTraits<SET> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "set";
+  }
+
+  // using the default implementation inherited from BINARY for AppendDebugStringForValue
+  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // of Kudu Slice [ENG-1235]
+};
+
+template<>
+struct DataTypeTraits<LIST> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "list";
+  }
+
+  // using the default implementation inherited from BINARY for AppendDebugStringForValue
+  // TODO much of this codepath should be retired and we should systematically use YQLValue instead
+  // of Kudu Slice [ENG-1235]
+};
+
 static const char* kDateFormat = "%Y-%m-%d %H:%M:%S";
 static const char* kDateMicrosAndTzFormat = "%s.%06d GMT";
 
@@ -481,7 +514,13 @@ class Variant {
           }
         }
         break;
-      default: LOG(FATAL) << "Unknown data type: " << type_;
+      case MAP: FALLTHROUGH_INTENDED;
+      case SET: FALLTHROUGH_INTENDED;
+      case LIST:
+        LOG(FATAL) << "Default values for collection types not supported, found: "
+                   << DataType_Name(type_);
+
+      default: LOG(FATAL) << "Unknown data type: " << DataType_Name(type_);
     }
   }
 
@@ -530,6 +569,12 @@ class Variant {
       case STRING:       FALLTHROUGH_INTENDED;
       case INET:       FALLTHROUGH_INTENDED;
       case BINARY:       return &vstr_;
+      case MAP: FALLTHROUGH_INTENDED;
+      case SET: FALLTHROUGH_INTENDED;
+      case LIST:
+        LOG(FATAL) << "Default values for collection types not supported, found: "
+                   << DataType_Name(type_);
+
       default: LOG(FATAL) << "Unknown data type: " << type_;
     }
     CHECK(false) << "not reached!";
@@ -570,6 +615,7 @@ class Variant {
   DataType type_;
   NumericValue numeric_;
   Slice vstr_;
+
   DISALLOW_COPY_AND_ASSIGN(Variant);
 };
 

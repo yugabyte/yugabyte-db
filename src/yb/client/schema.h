@@ -100,8 +100,8 @@ class YB_EXPORT YBColumnStorageAttributes {
 class YB_EXPORT YBColumnSchema {
  public:
 
-  static InternalType ToInternalDataType(DataType data_type) {
-    switch (data_type) {
+  static InternalType ToInternalDataType(YQLType yql_type) {
+    switch (yql_type.main()) {
       case INT8:
         return InternalType::kInt8Value;
       case INT16:
@@ -122,14 +122,17 @@ class YB_EXPORT YBColumnSchema {
         return InternalType::kInetaddressValue;
       case BOOL:
         return InternalType::kBoolValue;
+      case MAP:
+        return InternalType::kMapValue;
+      case SET:
+        return InternalType::kSetValue;
+      case LIST:
+        return InternalType::kListValue;
 
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case BINARY: FALLTHROUGH_INTENDED;
       case DECIMAL: FALLTHROUGH_INTENDED;
       case VARINT: FALLTHROUGH_INTENDED;
-      case LIST: FALLTHROUGH_INTENDED;
-      case MAP: FALLTHROUGH_INTENDED;
-      case SET: FALLTHROUGH_INTENDED;
       case UUID: FALLTHROUGH_INTENDED;
       case TIMEUUID: FALLTHROUGH_INTENDED;
       case TUPLE: FALLTHROUGH_INTENDED;
@@ -142,24 +145,17 @@ class YB_EXPORT YBColumnSchema {
       case UNKNOWN_DATA:
         break;
     }
-    LOG(FATAL) << "Internal error: unsupported sql type " << data_type;
+    LOG(FATAL) << "Internal error: unsupported type " << yql_type.ToString();
     return InternalType::VALUE_NOT_SET;
   }
 
-  static bool IsInteger(DataType t) {
-    return (t >= INT8 && t <= INT64);
-  }
-
-  static bool IsNumeric(DataType t) {
-    return IsInteger(t) || t == FLOAT || t == DOUBLE;
-  }
   static std::string DataTypeToString(DataType type);
 
   // DEPRECATED: use YBSchemaBuilder instead.
   // TODO(KUDU-809): make this hard-to-use constructor private. Clients should use
   // the Builder API. Currently only the Python API uses this old API.
   YBColumnSchema(const std::string &name,
-                 DataType type,
+                 YQLType type,
                  bool is_nullable = false,
                  bool is_hash_key = false,
                  ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
@@ -176,7 +172,7 @@ class YB_EXPORT YBColumnSchema {
 
   // Getters to expose column schema information.
   const std::string& name() const;
-  DataType type() const;
+  YQLType type() const;
   bool is_hash_key() const;
   bool is_nullable() const;
   yb::ColumnSchema::SortingType sorting_type() const;
@@ -266,7 +262,12 @@ class YB_EXPORT YBColumnSpec {
 
   // Set the type of this column.
   // Column types may not be changed once a table is created.
-  YBColumnSpec* Type(DataType type);
+  YBColumnSpec* Type(YQLType type);
+
+  // Convenience function for setting a simple (i.e. non-parametric) data type.
+  YBColumnSpec* Type(DataType type) {
+    return Type(YQLType(type));
+  }
 
   // Specify the user-defined order of the column.
   YBColumnSpec* Order(int32_t order);

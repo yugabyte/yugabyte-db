@@ -29,7 +29,7 @@ using strings::Substitute;
   } while (0)
 
 Status CQLMessage::QueryParameters::GetBindVariable(
-    const std::string& name, const int64_t pos, const DataType type, YQLValue* value) const {
+    const std::string& name, const int64_t pos, const YQLType type, YQLValue* value) const {
   const Value* v = nullptr;
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
@@ -971,8 +971,8 @@ ResultResponse::RowsMetadata::Type::Type(const Type& t) : id(t.id) {
   LOG(ERROR) << "Internal error: unknown type id " << static_cast<uint32_t>(id);
 }
 
-ResultResponse::RowsMetadata::Type::Type(const DataType type) {
-  switch (type) {
+ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
+  switch (type.main()) {
     case DataType::INT8:
       id = Id::TINYINT;
       return;
@@ -1003,14 +1003,28 @@ ResultResponse::RowsMetadata::Type::Type(const DataType type) {
     case DataType::INET:
       id = Id::INET;
       return;
+    case DataType::LIST:
+      id = Id::LIST;
+      new (&element_type) shared_ptr<const Type>(
+          std::make_shared<const Type>(Type(type.params()->at(0))));
+      return;
+    case DataType::SET:
+      id = Id::SET;
+      new (&element_type) shared_ptr<const Type>(
+          std::make_shared<const Type>(Type(type.params()->at(0))));
+      return;
+    case DataType::MAP: {
+      id = Id::MAP;
+      auto key = std::make_shared<const Type>(Type(type.params()->at(0)));
+      auto value = std::make_shared<const Type>(Type(type.params()->at(1)));
+      new (&map_type) shared_ptr<const MapType>(std::make_shared<MapType>(MapType{key, value}));
+      return;
+    }
 
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
     case DataType::DECIMAL: FALLTHROUGH_INTENDED;
     case DataType::VARINT: FALLTHROUGH_INTENDED;
-    case DataType::LIST: FALLTHROUGH_INTENDED;
-    case DataType::MAP: FALLTHROUGH_INTENDED;
-    case DataType::SET: FALLTHROUGH_INTENDED;
     case DataType::UUID: FALLTHROUGH_INTENDED;
     case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
@@ -1026,7 +1040,7 @@ ResultResponse::RowsMetadata::Type::Type(const DataType type) {
     // default: fall through
   }
 
-  LOG(ERROR) << "Internal error: invalid/unsupported type " << static_cast<uint32_t>(type);
+  LOG(ERROR) << "Internal error: invalid/unsupported type " << type.ToString();
 }
 
 ResultResponse::RowsMetadata::Type::~Type() {
@@ -1094,7 +1108,7 @@ ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name
   if (!no_metadata) {
     col_specs.reserve(col_count);
     for (const auto column : columns) {
-      col_specs.emplace_back(column.name(), Type(column.type_info()->type()));
+      col_specs.emplace_back(column.name(), Type(column.type()));
     }
   }
 }
@@ -1235,7 +1249,7 @@ PreparedResultResponse::PreparedMetadata::PreparedMetadata(
   // TODO(robert): populate primary-key indices.
   col_specs.reserve(bind_variable_schemas.size());
   for (const auto var : bind_variable_schemas) {
-    col_specs.emplace_back(var.name(), RowsMetadata::Type(var.type_info()->type()));
+    col_specs.emplace_back(var.name(), RowsMetadata::Type(var.type()));
   }
 }
 

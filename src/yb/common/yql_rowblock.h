@@ -28,8 +28,8 @@ class YQLRow {
   size_t column_count() const { return schema_->num_columns(); }
 
   // Column's datatype
-  DataType column_type(const size_t col_idx) const {
-    return schema_->column(col_idx).type_info()->type();
+  YQLType column_type(const size_t col_idx) const {
+    return schema_->column(col_idx).type();
   }
 
   // Get a mutable/non-mutable column value.

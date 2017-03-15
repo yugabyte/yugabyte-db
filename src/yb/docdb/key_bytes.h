@@ -115,7 +115,7 @@ class KeyBytes {
   }
 
   // Checks whether the other slice can be obtained by adding a hybrid_time.
-  bool OnlyLacksTimeStampFrom(const rocksdb::Slice& other_slice) const {
+  bool OnlyLacksHybridTimeFrom(const rocksdb::Slice& other_slice) const {
     if (size() + 1 + kBytesPerHybridTime != other_slice.size()) {
       return false;
     }

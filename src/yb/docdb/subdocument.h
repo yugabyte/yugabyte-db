@@ -121,6 +121,13 @@ class SubDocument : public PrimitiveValue {
     return static_cast<int>(object_container().size());
   }
 
+  // Construct a SubDocument from a YQLValuePB.
+  static SubDocument FromYQLValuePB(YQLType yql_type, const YQLValuePB& value,
+                                       ColumnSchema::SortingType sorting_type);
+
+  // Construct a YQLValuePB from a SubDocument.
+  static void ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* v);
+
  private:
 
   // Common code used by move constructor and move assignment.

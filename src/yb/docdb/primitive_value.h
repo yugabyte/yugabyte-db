@@ -145,11 +145,11 @@ class PrimitiveValue {
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
   // Construct a primitive value from a YQLValuePB.
-  static PrimitiveValue FromYQLValuePB(DataType data_type, const YQLValuePB& value,
+  static PrimitiveValue FromYQLValuePB(const YQLType& yql_type, const YQLValuePB& value,
                                        ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a YQLValuePB.
-  void ToYQLValuePB(DataType data_type, YQLValuePB* v) const;
+  static void ToYQLValuePB(const PrimitiveValue& pv, const YQLType& yql_type, YQLValuePB* yql_val);
 
   ValueType value_type() const { return type_; }
 
@@ -259,7 +259,7 @@ class PrimitiveValue {
 
   ValueType type_;
 
-  // TOOD: do we have to worry about alignment here?
+  // TODO: do we have to worry about alignment here?
   union {
     int64_t int64_val_;
     uint16_t uint16_val_;

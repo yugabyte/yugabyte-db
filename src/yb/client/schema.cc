@@ -45,7 +45,7 @@ YBColumnSpec::~YBColumnSpec() {
   delete data_;
 }
 
-YBColumnSpec* YBColumnSpec::Type(DataType type) {
+YBColumnSpec* YBColumnSpec::Type(YQLType type) {
   data_->has_type = true;
   data_->type = type;
   return this;
@@ -345,7 +345,7 @@ std::string YBColumnSchema::DataTypeToString(DataType type) {
 }
 
 YBColumnSchema::YBColumnSchema(const std::string &name,
-                               DataType type,
+                               YQLType type,
                                bool is_nullable,
                                bool is_hash_key,
                                ColumnSchema::SortingType sorting_type,
@@ -404,8 +404,8 @@ bool YBColumnSchema::is_hash_key() const {
   return DCHECK_NOTNULL(col_)->is_hash_key();
 }
 
-DataType YBColumnSchema::type() const {
-  return DCHECK_NOTNULL(col_)->type_info()->type();
+YQLType YBColumnSchema::type() const {
+  return DCHECK_NOTNULL(col_)->type();
 }
 ColumnSchema::SortingType YBColumnSchema::sorting_type() const {
   return DCHECK_NOTNULL(col_)->sorting_type();
@@ -466,7 +466,7 @@ bool YBSchema::Equals(const YBSchema& other) const {
 YBColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
   YBColumnStorageAttributes attrs(col.attributes().encoding, col.attributes().compression);
-  return YBColumnSchema(col.name(), col.type_info()->type(), col.is_nullable(), col.is_hash_key(),
+  return YBColumnSchema(col.name(), col.type(), col.is_nullable(), col.is_hash_key(),
                         col.sorting_type(), col.read_default_value(), attrs);
 }
 

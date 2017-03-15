@@ -146,8 +146,8 @@ class PTColumnDefinition : public TreeNode {
     return datatype_;
   }
 
-  DataType sql_type() const {
-    return datatype_->sql_type();
+  YQLType yql_type() const {
+    return datatype_->yql_type();
   }
 
  private:
@@ -219,7 +219,11 @@ class PTCreateTable : public TreeNode {
 
   CHECKED_STATUS AppendHashColumn(SemContext *sem_context, PTColumnDefinition *column);
 
+  CHECKED_STATUS CheckType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
+
   CHECKED_STATUS CheckPrimaryType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
+
+  bool IsValidPrimaryType(DataType type) const;
 
   // Table name.
   client::YBTableName yb_table_name() const {

@@ -220,7 +220,7 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
 void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int flags) {
   pb->Clear();
   pb->set_name(col_schema.name());
-  pb->set_type(col_schema.type_info()->type());
+  col_schema.type().ToYQLTypePB(pb->mutable_type());
   pb->set_is_nullable(col_schema.is_nullable());
   pb->set_sorting_type(col_schema.sorting_type());
   // We only need to process the *hash* primary key here. The regular primary key is set by the
@@ -261,7 +261,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   const void *read_default_ptr = nullptr;
   Slice write_default;
   Slice read_default;
-  const TypeInfo* typeinfo = GetTypeInfo(pb.type());
+  const TypeInfo* typeinfo = GetTypeInfo(pb.type().main());
   if (pb.has_read_default_value()) {
     read_default = Slice(pb.read_default_value());
     if (typeinfo->physical_type() == BINARY) {
@@ -291,7 +291,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   }
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
-  return ColumnSchema(pb.name(), pb.type(), pb.is_nullable(), pb.is_hash_key(),
+  return ColumnSchema(pb.name(), YQLType(pb.type()), pb.is_nullable(), pb.is_hash_key(),
                       ColumnSchema::SortingType(pb.sorting_type()), read_default_ptr,
                       write_default_ptr, attributes);
 }

@@ -96,13 +96,15 @@ class DocWriteBatch {
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time = HybridTime::kMax,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional,
+      MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time = HybridTime::kMax,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional,
+      MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, HybridTime hybrid_time = HybridTime::kMax,
                               InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
@@ -232,7 +234,8 @@ yb::Status GetSubDocument(rocksdb::DB *rocksdb,
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
-    HybridTime scan_ts = HybridTime::kMax);
+    HybridTime scan_ts = HybridTime::kMax,
+    MonoDelta table_ttl = Value::kMaxTtl);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

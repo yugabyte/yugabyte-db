@@ -19,7 +19,7 @@
 
 #include <string>
 
-#include "yb/common/types.h"
+#include "yb/common/schema.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -52,7 +52,7 @@ class YBValue::Data {
   // The returned pointer in *val_void is only guaranteed to live as long
   // as this YBValue object.
   CHECKED_STATUS CheckTypeAndGetPointer(const std::string& col_name,
-                                DataType t,
+                                YQLType tp,
                                 void** val_void);
 
  private:

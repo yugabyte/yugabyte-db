@@ -645,5 +645,140 @@ TEST_F(YbSqlQuery, TestUpdateWithTTL) {
   CHECK(!s.ok());
 }
 
+// The main goal of this test is to check that the serialization/deserialization operations match
+// The Java tests are more comprehensive but do not test the deserialization -- since they use the
+// Cassandra deserializer instead
+TEST_F(YbSqlQuery, TestCollectionTypes) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Map type
+  //------------------------------------------------------------------------------------------------
+
+  // Create table.
+  const char *map_create_stmt =
+      "CREATE TABLE map_test (id int PRIMARY KEY, v int, mp map<int, varchar>, c varchar);";
+  Status s = processor->Run(map_create_stmt);
+  CHECK(s.ok());
+
+  // Insert Values
+  std::string map_insert_stmt("INSERT INTO map_test (id, v, mp, c) values "
+      "(1, 3, {21 : 'a', 22 : 'b', 23 : 'c'}, 'x');");
+  s = processor->Run(map_insert_stmt);
+  CHECK_OK(s);
+
+  // Check Select
+  auto map_select_stmt = "SELECT * FROM map_test WHERE id = 1";
+  s = processor->Run(map_select_stmt);
+  CHECK(s.ok());
+  auto map_row_block = processor->row_block();
+  EXPECT_EQ(1, map_row_block->row_count());
+  YQLRow& map_row = map_row_block->row(0);
+
+  // check row
+  EXPECT_EQ(1, map_row.column(0).int32_value());
+  EXPECT_EQ(3, map_row.column(1).int32_value());
+  EXPECT_EQ("x", map_row.column(3).string_value());
+  // check map
+  EXPECT_EQ(YQLValue::InternalType::kMapValue, map_row.column(2).type());
+  YQLMapValuePB map_value = map_row.column(2).map_value();
+  // check keys
+  EXPECT_EQ(3, map_value.keys_size());
+  EXPECT_EQ(21, map_value.keys(0).int32_value());
+  EXPECT_EQ(22, map_value.keys(1).int32_value());
+  EXPECT_EQ(23, map_value.keys(2).int32_value());
+  // check values
+  EXPECT_EQ(3, map_value.values_size());
+  EXPECT_EQ("a", map_value.values(0).string_value());
+  EXPECT_EQ("b", map_value.values(1).string_value());
+  EXPECT_EQ("c", map_value.values(2).string_value());
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Set type
+  //------------------------------------------------------------------------------------------------
+
+  // Create table.
+  const char *set_create_stmt =
+      "CREATE TABLE set_test (id int PRIMARY KEY, v int, st set<int>, c varchar);";
+  s = processor->Run(set_create_stmt);
+  CHECK(s.ok());
+
+  // Insert Values
+  std::string set_insert_stmt("INSERT INTO set_test (id, v, st, c) values "
+      "(1, 3, {3, 4, 1, 1, 2, 4, 2}, 'x');");
+  s = processor->Run(set_insert_stmt);
+  CHECK_OK(s);
+
+  // Check Select
+  auto set_select_stmt = "SELECT * FROM set_test WHERE id = 1";
+  s = processor->Run(set_select_stmt);
+  CHECK(s.ok());
+  auto set_row_block = processor->row_block();
+  EXPECT_EQ(1, set_row_block->row_count());
+  YQLRow& set_row = set_row_block->row(0);
+
+  // check row
+  EXPECT_EQ(1, set_row.column(0).int32_value());
+  EXPECT_EQ(3, set_row.column(1).int32_value());
+  EXPECT_EQ("x", set_row.column(3).string_value());
+  // check set
+  EXPECT_EQ(YQLValue::InternalType::kSetValue, set_row.column(2).type());
+  YQLSeqValuePB set_value = set_row.column(2).set_value();
+  // check elems
+  // returned set should have no duplicates
+  EXPECT_EQ(4, set_value.elems_size());
+  // set elements should be in default (ascending) order
+  EXPECT_EQ(1, set_value.elems(0).int32_value());
+  EXPECT_EQ(2, set_value.elems(1).int32_value());
+  EXPECT_EQ(3, set_value.elems(2).int32_value());
+  EXPECT_EQ(4, set_value.elems(3).int32_value());
+
+  //------------------------------------------------------------------------------------------------
+  // Testing List type
+  //------------------------------------------------------------------------------------------------
+
+  // Create table.
+  const char *list_create_stmt =
+      "CREATE TABLE list_test (id int PRIMARY KEY, v int, ls list<varchar>, c varchar);";
+  s = processor->Run(list_create_stmt);
+  CHECK(s.ok());
+
+  // Insert Values
+  std::string list_insert_stmt("INSERT INTO list_test (id, v, ls, c) values "
+      "(1, 3, ['c', 'd', 'a', 'b', 'd', 'b'], 'x');");
+  s = processor->Run(list_insert_stmt);
+  CHECK_OK(s);
+
+  // Check Select
+  auto list_select_stmt = "SELECT * FROM list_test WHERE id = 1";
+  s = processor->Run(list_select_stmt);
+  CHECK(s.ok());
+  auto list_row_block = processor->row_block();
+  EXPECT_EQ(1, list_row_block->row_count());
+  YQLRow& list_row = list_row_block->row(0);
+
+  // check row
+  EXPECT_EQ(1, list_row.column(0).int32_value());
+  EXPECT_EQ(3, list_row.column(1).int32_value());
+  EXPECT_EQ("x", list_row.column(3).string_value());
+  // check set
+  EXPECT_EQ(YQLValue::InternalType::kListValue, list_row.column(2).type());
+  YQLSeqValuePB list_value = list_row.column(2).list_value();
+  // check elems
+  // lists should preserve input length (keep duplicates if any)
+  EXPECT_EQ(6, list_value.elems_size());
+  // list elements should preserve input order
+  EXPECT_EQ("c", list_value.elems(0).string_value());
+  EXPECT_EQ("d", list_value.elems(1).string_value());
+  EXPECT_EQ("a", list_value.elems(2).string_value());
+  EXPECT_EQ("b", list_value.elems(3).string_value());
+  EXPECT_EQ("d", list_value.elems(4).string_value());
+  EXPECT_EQ("b", list_value.elems(5).string_value());
+}
+
 } // namespace sql
 } // namespace yb

@@ -197,15 +197,19 @@ const MonoDelta TableTTL(const Schema& schema) {
   return ttl;
 }
 
-const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema) {
+const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& table_ttl) {
   MonoDelta ttl;
   if (!value_ttl.Equals(Value::kMaxTtl)) {
     ttl = value_ttl.ToMilliseconds() == kResetTTL ? Value::kMaxTtl : value_ttl;
   } else {
     // This is the default.
-    ttl = TableTTL(schema);
+    ttl = table_ttl;
   }
   return ttl;
+}
+
+const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema) {
+  return ComputeTTL(value_ttl, TableTTL(schema));
 }
 
 }  // namespace docdb

@@ -28,7 +28,20 @@ message YQLValuePB {
     bytes binary_value = 10;
     // raw bytes for inet address in network byte order.
     bytes inetaddress_value = 11;
+    YQLMapValuePB map_value = 12;
+    YQLSeqValuePB set_value = 13;
+    YQLSeqValuePB list_value = 14;
   }
+}
+
+// Sequence of values used to represent Lists and Sets (and later Tuples)
+message YQLSeqValuePB {
+  repeated YQLValuePB elems = 1;
+}
+
+message YQLMapValuePB {
+  repeated YQLValuePB keys = 1;
+  repeated YQLValuePB values = 2;
 }
 
 // A column value

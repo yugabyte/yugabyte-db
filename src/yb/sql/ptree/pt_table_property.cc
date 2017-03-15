@@ -43,7 +43,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     return sem_context->Error(loc(), ErrorCode::INVALID_TABLE_PROPERTY);
   }
 
-  if (!sem_context->IsConvertible(iterator->second, rhs_->sql_type())) {
+  if (!sem_context->IsConvertible(rhs_, YQLType(iterator->second))) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 

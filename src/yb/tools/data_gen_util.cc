@@ -29,7 +29,7 @@ void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
                         YBPartialRow* row) {
-  DataType type = schema.Column(col_idx).type();
+  DataType type = schema.Column(col_idx).type().main();
   char buf[kFastToBufferSize];
   switch (type) {
     case INT8:

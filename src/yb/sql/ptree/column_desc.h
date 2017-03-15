@@ -30,22 +30,22 @@ class ColumnDesc {
         id_(-1),
         is_hash_(false),
         is_primary_(false),
-        sql_type_(DataType::UNKNOWN_DATA),
-        type_id_(InternalType::VALUE_NOT_SET) {
+        yql_type_(DataType::UNKNOWN_DATA),
+        internal_type_(InternalType::VALUE_NOT_SET) {
   }
 
   void Init(int index,
             int id,
             bool is_hash,
             bool is_primary,
-            DataType sql_type,
-            InternalType type_id) {
+            YQLType yql_type,
+            InternalType internal_type) {
     index_ = index,
     id_ = id;
     is_hash_ = is_hash;
     is_primary_ = is_primary;
-    sql_type_ = sql_type;
-    type_id_ = type_id;
+    yql_type_ = yql_type;
+    internal_type_ = internal_type;
   }
 
   bool IsInitialized() const {
@@ -68,12 +68,12 @@ class ColumnDesc {
     return is_primary_;
   }
 
-  DataType sql_type() const {
-    return sql_type_;
+  YQLType yql_type() const {
+    return yql_type_;
   }
 
-  InternalType type_id() const {
-    return type_id_;
+  InternalType internal_type() const {
+    return internal_type_;
   }
 
  private:
@@ -81,8 +81,8 @@ class ColumnDesc {
   int id_;
   bool is_hash_;
   bool is_primary_;
-  DataType sql_type_;
-  InternalType type_id_;
+  YQLType yql_type_;
+  InternalType internal_type_;
 };
 
 }  // namespace sql

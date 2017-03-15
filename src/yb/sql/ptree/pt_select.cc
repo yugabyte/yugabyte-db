@@ -121,7 +121,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   if (limit_clause_ == nullptr) {
     return Status::OK();
   }
-  if (!YBColumnSchema::IsInteger(limit_clause_->sql_type())) {
+  if (!YQLType::IsInteger(limit_clause_->yql_type_id())) {
     return sem_context->Error(loc(), "Only integer limit is allowed.",
                               ErrorCode::INVALID_DATATYPE);
   }

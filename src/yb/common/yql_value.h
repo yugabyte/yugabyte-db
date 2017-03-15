@@ -10,6 +10,7 @@
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
+#include "yb/common/yql_type.h"
 
 namespace yb {
 
@@ -48,6 +49,9 @@ class YQLValue {
   virtual Timestamp timestamp_value() const = 0;
   virtual const std::string& binary_value() const = 0;
   virtual InetAddress inetaddress_value() const = 0;
+  virtual const YQLMapValuePB map_value() const = 0;
+  virtual const YQLSeqValuePB set_value() const = 0;
+  virtual const YQLSeqValuePB list_value() const = 0;
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
@@ -66,6 +70,17 @@ class YQLValue {
   virtual void set_binary_value(const std::string& val) = 0;
   virtual void set_binary_value(const void* val, size_t size) = 0;
   virtual void set_inetaddress_value(const InetAddress& val) = 0;
+
+  // for collections the setters just allocate the message and set the correct value type
+  virtual void set_map_value() = 0;
+  virtual void set_set_value() = 0;
+  virtual void set_list_value() = 0;
+  // the `add_foo` methods append a new element to the corresponding collection and return a pointer
+  // so that its value can be set by the caller
+  virtual YQLValuePB* add_map_key() = 0;
+  virtual YQLValuePB* add_map_value() = 0;
+  virtual YQLValuePB* add_set_elem() = 0;
+  virtual YQLValuePB* add_list_elem() = 0;
 
   //----------------------------------- assignment methods ----------------------------------
   virtual YQLValue& operator=(const YQLValuePB& other) = 0;
@@ -89,8 +104,8 @@ class YQLValue {
   virtual bool operator !=(const YQLValue& v) const { return BothNotNull(v) && CompareTo(v) != 0; }
 
   //----------------------------- serializer / deserializer ---------------------------------
-  virtual void Serialize(DataType sql_type, YQLClient client, faststring* buffer) const;
-  virtual CHECKED_STATUS Deserialize(DataType sql_type, YQLClient client, Slice* data);
+  virtual void Serialize(YQLType yql_type, YQLClient client, faststring* buffer) const;
+  virtual CHECKED_STATUS Deserialize(YQLType yql_type, YQLClient client, Slice* data);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
@@ -135,6 +150,18 @@ class YQLValue {
     CHECK(v.has_binary_value());
     return v.binary_value();
   }
+  static YQLMapValuePB map_value(const YQLValuePB& v) {
+    CHECK(v.has_map_value());
+    return v.map_value();
+  }
+  static YQLSeqValuePB set_value(const YQLValuePB& v) {
+    CHECK(v.has_set_value());
+    return v.set_value();
+  }
+  static YQLSeqValuePB list_value(const YQLValuePB& v) {
+    CHECK(v.has_list_value());
+    return v.list_value();
+  }
 
   static InetAddress inetaddress_value(const YQLValuePB& v) {
     CHECK(v.has_inetaddress_value());
@@ -173,6 +200,26 @@ class YQLValue {
   static void set_binary_value(const std::string& val, YQLValuePB *v) { v->set_binary_value(val); }
   static void set_binary_value(const void* val, const size_t size, YQLValuePB *v) {
     v->set_string_value(static_cast<const char *>(val), size);
+  }
+
+  // For collections, the call to `mutable_foo` takes care of setting the correct type to `foo`
+  // internally and allocating the message if needed
+  static void set_map_value(YQLValuePB *v) {v->mutable_map_value();}
+  static void set_set_value(YQLValuePB *v) {v->mutable_set_value();}
+  static void set_list_value(YQLValuePB *v) {v->mutable_list_value();}
+
+  // To extend/construct collections we return freshly allocated elements for the caller to set.
+  static YQLValuePB* add_map_key(YQLValuePB *v) {
+    return v->mutable_map_value()->add_keys();
+  }
+  static YQLValuePB* add_map_value(YQLValuePB *v) {
+    return v->mutable_map_value()->add_values();
+  }
+  static YQLValuePB* add_set_elem(YQLValuePB *v) {
+    return v->mutable_set_value()->add_elems();
+  }
+  static YQLValuePB* add_list_elem(YQLValuePB *v) {
+    return v->mutable_list_value()->add_elems();
   }
 
   //----------------------------------- comparison methods -----------------------------------
@@ -234,9 +281,12 @@ bool operator !=(const YQLValuePB& lhs, const YQLValuePB& rhs);
 class YQLValueWithPB : public YQLValue {
  public:
   YQLValueWithPB() { }
+  explicit YQLValueWithPB(const YQLValuePB& val) : value_(val) { }
   virtual ~YQLValueWithPB() { }
 
   virtual InternalType type() const override { return YQLValue::type(value_); }
+
+  const YQLValuePB& value() const { return value_; }
 
   //------------------------------------ Nullness methods -----------------------------------
   virtual bool IsNull() const override { return YQLValue::IsNull(value_); }
@@ -259,6 +309,15 @@ class YQLValueWithPB : public YQLValue {
   }
   virtual InetAddress inetaddress_value() const override {
     return YQLValue::inetaddress_value(value_);
+  }
+  virtual const YQLMapValuePB map_value() const override {
+    return YQLValue::map_value(value_);
+  }
+  virtual const YQLSeqValuePB set_value() const override {
+    return YQLValue::set_value(value_);
+  }
+  virtual const YQLSeqValuePB list_value() const override {
+    return YQLValue::list_value(value_);
   }
 
   //----------------------------------- set value methods -----------------------------------
@@ -292,6 +351,27 @@ class YQLValueWithPB : public YQLValue {
   }
   virtual void set_binary_value(const void* val, const size_t size) override {
     YQLValue::set_binary_value(val, size, &value_);
+  }
+  virtual void set_map_value() override {
+    YQLValue::set_map_value(&value_);
+  }
+  virtual void set_set_value() override {
+    YQLValue::set_set_value(&value_);
+  }
+  virtual void set_list_value() override {
+    YQLValue::set_list_value(&value_);
+  }
+  virtual YQLValuePB* add_map_key() override {
+    return YQLValue::add_map_key(&value_);
+  }
+  virtual YQLValuePB* add_map_value() override {
+    return YQLValue::add_map_value(&value_);
+  }
+  virtual YQLValuePB* add_set_elem() override {
+    return YQLValue::add_set_elem(&value_);
+  }
+  virtual YQLValuePB* add_list_elem() override {
+    return YQLValue::add_list_elem(&value_);
   }
 
   //----------------------------------- assignment methods ----------------------------------

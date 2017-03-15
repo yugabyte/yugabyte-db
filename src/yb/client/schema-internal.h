@@ -52,7 +52,7 @@ class YBColumnSpec::Data {
   const std::string name;
 
   bool has_type;
-  DataType type;
+  YQLType type;
 
   bool has_order;
   int32_t order;

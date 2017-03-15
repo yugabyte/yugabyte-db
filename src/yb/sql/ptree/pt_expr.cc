@@ -44,22 +44,22 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
         return sem_context->Error(loc(), "Only numeric constant is allowed in this context",
                                   ErrorCode::FEATURE_NOT_SUPPORTED);
       }
-      if (!YBColumnSchema::IsNumeric(op1->sql_type())) {
+      if (!YQLType::IsNumeric(op1->yql_type_id())) {
         return sem_context->Error(loc(), "Only numeric data type is allowed in this context",
                                   ErrorCode::INVALID_DATATYPE);
       }
 
       // Type resolution: (-x) should have the same datatype as (x).
-      sql_type_ = op1->sql_type();
-      type_id_ = op1->type_id();
+      yql_type_id_ = op1->yql_type_id();
+      internal_type_ = op1->internal_type();
       break;
     case ExprOperator::kNot:
-      if (op1->sql_type_ != BOOL) {
+      if (op1->yql_type_id_ != BOOL) {
         return sem_context->Error(loc(), "Only boolean data type is allowed in this context",
             ErrorCode::INVALID_DATATYPE);
       }
-      sql_type_ = yb::DataType::BOOL;
-      type_id_ = yb::InternalType::kBoolValue;
+      yql_type_id_ = yb::DataType::BOOL;
+      internal_type_ = yb::InternalType::kBoolValue;
       break;
     case ExprOperator::kIsNull: FALLTHROUGH_INTENDED;
     case ExprOperator::kIsNotNull: FALLTHROUGH_INTENDED;
@@ -88,17 +88,21 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
       RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op2));
-      sql_type_ = yb::DataType::BOOL;
-      type_id_ = yb::InternalType::kBoolValue;
+      if (!sem_context->IsComparable(op1->yql_type_id(), op2->yql_type_id())) {
+        return sem_context->Error(loc(), "Cannot compare values of these datatypes",
+            ErrorCode::INCOMPARABLE_DATATYPES);
+      }
+      yql_type_id_ = yb::DataType::BOOL;
+      internal_type_ = yb::InternalType::kBoolValue;
       break;
     case ExprOperator::kAND: FALLTHROUGH_INTENDED;
     case ExprOperator::kOR:
-      if (op1->sql_type_ != BOOL || op2->sql_type_ != BOOL) {
+      if (op1->yql_type_id_ != BOOL || op2->yql_type_id_ != BOOL) {
         return sem_context->Error(loc(), "Only boolean data type is allowed in this context",
             ErrorCode::INVALID_DATATYPE);
       }
-      sql_type_ = yb::DataType::BOOL;
-      type_id_ = yb::InternalType::kBoolValue;
+      yql_type_id_ = yb::DataType::BOOL;
+      internal_type_ = yb::InternalType::kBoolValue;
       break;
     case ExprOperator::kLike: FALLTHROUGH_INTENDED;
     case ExprOperator::kNotLike: FALLTHROUGH_INTENDED;
@@ -126,8 +130,8 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
       RETURN_NOT_OK(op3->CheckRhsExpr(sem_context));
       RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op2));
       RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op3));
-      sql_type_ = yb::DataType::BOOL;
-      type_id_ = yb::InternalType::kBoolValue;
+      yql_type_id_ = yb::DataType::BOOL;
+      internal_type_ = yb::InternalType::kBoolValue;
       break;
     default:
       LOG(FATAL) << "Invalid operator";
@@ -146,7 +150,7 @@ CHECKED_STATUS PTExpr::AnalyzeLeftRightOperands(SemContext *sem_context,
     var->set_desc(ref->desc());
     return Status::OK();
   }
-  if (!sem_context->IsComparable(lhs->sql_type(), rhs->sql_type())) {
+  if (!sem_context->IsComparable(lhs->yql_type_id(), rhs->yql_type_id())) {
     return sem_context->Error(loc(), "Cannot compare values of these datatypes",
                               ErrorCode::INCOMPARABLE_DATATYPES);
   }
@@ -166,7 +170,8 @@ CHECKED_STATUS PTExpr::CheckLhsExpr(SemContext *sem_context) {
 CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
   // Check for limitation in YQL (Not all expressions are acceptable).
   switch (op_) {
-    case ExprOperator::kConst:  FALLTHROUGH_INTENDED;
+    case ExprOperator::kConst: FALLTHROUGH_INTENDED;
+    case ExprOperator::kCollection: FALLTHROUGH_INTENDED;
     case ExprOperator::kUMinus: FALLTHROUGH_INTENDED;
     case ExprOperator::kBindVar:
       break;
@@ -205,8 +210,9 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
   }
 
   // Type resolution: Ref(x) should have the same datatype as (x).
-  type_id_ = desc_->type_id();
-  sql_type_ = desc_->sql_type();
+  internal_type_ = desc_->internal_type();
+  yql_type_id_ = desc_->yql_type().main();
+
   return Status::OK();
 }
 
@@ -229,8 +235,8 @@ PTExprAlias::~PTExprAlias() {
 
 CHECKED_STATUS PTExprAlias::AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) {
   // Type resolution: Alias of (x) should have the same datatype as (x).
-  sql_type_ = op1->sql_type();
-  type_id_ = op1->type_id();
+  yql_type_id_ = op1->yql_type_id();
+  internal_type_ = op1->internal_type();
 
   return Status::OK();
 }
@@ -259,11 +265,11 @@ PTBindVar::~PTBindVar() {
 }
 
 CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
-  // Initialize the bind variable's sql_type to "NULL". The actual sql_type will be resolved to
+  // Initialize the bind variable's yql_type to "NULL". The actual yql_type will be resolved to
   // the column it is associated with afterward (e.g. in "... WHERE <column> < <bindvar>",
   // "UPDATE table SET <column> = <bindvar> ..." or "INSERT INTO table (<column>, ...) VALUES
   // (<bindvar>, ...)").
-  sql_type_ = DataType::NULL_VALUE_TYPE;
+  yql_type_id_ = DataType::NULL_VALUE_TYPE;
   return Status::OK();
 }
 

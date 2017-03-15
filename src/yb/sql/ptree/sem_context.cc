@@ -92,8 +92,72 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
 
 //--------------------------------------------------------------------------------------------------
 
-bool SemContext::IsConvertible(DataType lhs_type, DataType rhs_type) const {
-  return YQLType::IsImplicitlyConvertible(lhs_type, rhs_type);
+bool SemContext::IsConvertible(PTExpr::SharedPtr expr, YQLType type) const {
+  switch (type.main()) {
+    // Collection types : we only use conversion table for their elements
+    case MAP: {
+      // the empty set "{}" is a valid map expression
+      if (expr->yql_type_id() == SET) {
+        PTSetExpr *set_expr = static_cast<PTSetExpr *>(expr.get());
+        return set_expr->elems().empty();
+      }
+
+      if (expr->yql_type_id() != MAP) {
+        return expr->yql_type_id() == NULL_VALUE_TYPE;
+      }
+      YQLType keys_type = type.params()->at(0);
+      YQLType values_type = type.params()->at(1);
+      PTMapExpr *map_expr = static_cast<PTMapExpr *>(expr.get());
+      for (auto &key : map_expr->keys()) {
+        if (!IsConvertible(key, keys_type)) {
+          return false;
+        }
+      }
+      for (auto &value : map_expr->values()) {
+        if (!IsConvertible(value, values_type)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    case SET: {
+      if (expr->yql_type_id() != SET) {
+        return expr->yql_type_id() == NULL_VALUE_TYPE;
+      }
+      YQLType elem_type = type.params()->at(0);
+      PTSetExpr *set_expr = static_cast<PTSetExpr*>(expr.get());
+      for (auto &elem : set_expr->elems()) {
+        if (!IsConvertible(elem, elem_type)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    case LIST: {
+      if (expr->yql_type_id() != LIST) {
+        return expr->yql_type_id() == NULL_VALUE_TYPE;
+      }
+      YQLType elem_type = type.params()->at(0);
+      PTListExpr *list_expr = static_cast<PTListExpr*>(expr.get());
+      for (auto &elem : list_expr->elems()) {
+        if (!IsConvertible(elem, elem_type)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    case TUPLE:
+      LOG(FATAL) << "Tuple type not support yet";
+      return false;
+
+    // Elementary types : we directly check conversion table
+    default:
+      return YQLType::IsImplicitlyConvertible(type.main(), expr->yql_type_id());
+  }
 }
 
 bool SemContext::IsComparable(DataType lhs_type, DataType rhs_type) const {

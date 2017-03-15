@@ -68,7 +68,7 @@ class DocRowwiseIterator : public RowwiseIterator {
   }
 
   // Get the non-key column values of a YQL row.
-  CHECKED_STATUS GetValues(const Schema& projection, vector<PrimitiveValue>* values);
+  CHECKED_STATUS GetValues(const Schema& projection, vector<SubDocument>* values);
 
   // Processes a value for a column(subdoc_key) and determines if the value is valid or not based on
   // the hybrid time of subdoc_key. If valid, it is added to the values vector and is_null is set

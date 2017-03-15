@@ -109,7 +109,7 @@ class Executor {
   // Convert expression to protobuf.
   template<typename PBType>
   CHECKED_STATUS ExprToPB(const PTExpr::SharedPtr& expr,
-                          InternalType col_type,
+                          YQLType col_type,
                           PBType* col_pb,
                           YBPartialRow *row = nullptr,
                           int col_index = -1);
@@ -132,7 +132,7 @@ class Executor {
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops);
 
-  // Convert an expression op in where claluse to protobuf.
+  // Convert an expression op in where clause to protobuf.
   CHECKED_STATUS WhereOpToPB(YQLConditionPB *condition, const ColumnOp& col_op);
 
   // Convert a bool expression to protobuf.

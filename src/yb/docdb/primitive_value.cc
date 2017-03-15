@@ -11,6 +11,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/docdb/subdocument.h"
 
 using std::string;
 using strings::Substitute;
@@ -609,7 +610,7 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQLValuePB& value,
+PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQLValuePB& value,
                                               ColumnSchema::SortingType sorting_type) {
   if (YQLValue::IsNull(value)) {
     return PrimitiveValue(ValueType::kTombstone);
@@ -617,7 +618,7 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
 
   const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
 
-  switch (data_type) {
+  switch (yql_type.main()) {
     case INT8:    return PrimitiveValue(YQLValue::int8_value(value), sort_order);
     case INT16:   return PrimitiveValue(YQLValue::int16_value(value), sort_order);
     case INT32:   return PrimitiveValue(YQLValue::int32_value(value), sort_order);
@@ -645,12 +646,13 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
       return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
     case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
     case INET: return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
+
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
-    case LIST: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
     case UUID: FALLTHROUGH_INTENDED;
     case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
@@ -665,56 +667,57 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype " << data_type;
+  LOG(FATAL) << "Unsupported datatype in PrimitiveValue: " << yql_type.ToString();
 }
 
-void PrimitiveValue::ToYQLValuePB(const DataType data_type, YQLValuePB* v) const {
-  if (value_type() == ValueType::kNull) {
-    YQLValue::SetNull(v);
+void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const YQLType& yql_type,
+                                  YQLValuePB* yql_value) {
+  if (primitive_value.value_type() == ValueType::kNull) {
+    YQLValue::SetNull(yql_value);
     return;
   }
 
-  switch (data_type) {
+  switch (yql_type.main()) {
     case INT8:
-      YQLValue::set_int8_value(static_cast<int8_t>(GetInt64()), v);
+      YQLValue::set_int8_value(static_cast<int8_t>(primitive_value.GetInt64()), yql_value);
       return;
     case INT16:
-      YQLValue::set_int16_value(static_cast<int16_t>(GetInt64()), v);
+      YQLValue::set_int16_value(static_cast<int16_t>(primitive_value.GetInt64()), yql_value);
       return;
     case INT32:
-      YQLValue::set_int32_value(static_cast<int32_t>(GetInt64()), v);
+      YQLValue::set_int32_value(static_cast<int32_t>(primitive_value.GetInt64()), yql_value);
       return;
     case INT64:
-      YQLValue::set_int64_value(static_cast<int64_t>(GetInt64()), v);
+      YQLValue::set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()), yql_value);
       return;
     case FLOAT:
-      YQLValue::set_float_value(static_cast<float>(GetDouble()), v);
+      YQLValue::set_float_value(static_cast<float>(primitive_value.GetDouble()), yql_value);
       return;
     case DOUBLE:
-      YQLValue::set_double_value(GetDouble(), v);
+      YQLValue::set_double_value(primitive_value.GetDouble(), yql_value);
       return;
     case BOOL:
-      YQLValue::set_bool_value((value_type() == ValueType::kTrue), v);
+      YQLValue::set_bool_value((primitive_value.value_type() == ValueType::kTrue), yql_value);
       return;
     case TIMESTAMP:
-      YQLValue::set_timestamp_value(GetTimestamp(), v);
+      YQLValue::set_timestamp_value(primitive_value.GetTimestamp(), yql_value);
       return;
     case INET:
-      YQLValue::set_inetaddress_value(*GetInetaddress(), v);
+      YQLValue::set_inetaddress_value(*primitive_value.GetInetaddress(), yql_value);
       return;
     case STRING:
-      YQLValue::set_string_value(GetString(), v);
+      YQLValue::set_string_value(primitive_value.GetString(), yql_value);
       return;
     case BINARY:
-      YQLValue::set_binary_value(GetString(), v);
+      YQLValue::set_binary_value(primitive_value.GetString(), yql_value);
       return;
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
-    case LIST: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
     case UUID: FALLTHROUGH_INTENDED;
     case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
@@ -730,7 +733,7 @@ void PrimitiveValue::ToYQLValuePB(const DataType data_type, YQLValuePB* v) const
     // default: fall through
   }
 
-  LOG(FATAL) << "Unsupported datatype " << data_type;
+  LOG(FATAL) << "Unsupported datatype " << yql_type.ToString();
 }
 
 }  // namespace docdb

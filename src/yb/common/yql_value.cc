@@ -19,9 +19,6 @@
   case BINARY: FALLTHROUGH_INTENDED;    \
   case DECIMAL: FALLTHROUGH_INTENDED;   \
   case VARINT: FALLTHROUGH_INTENDED;    \
-  case LIST: FALLTHROUGH_INTENDED;      \
-  case MAP: FALLTHROUGH_INTENDED;       \
-  case SET: FALLTHROUGH_INTENDED;       \
   case UUID: FALLTHROUGH_INTENDED;      \
   case TIMEUUID: FALLTHROUGH_INTENDED;  \
   case TUPLE: FALLTHROUGH_INTENDED;     \
@@ -71,6 +68,11 @@ int YQLValue::CompareTo(const YQLValue& other) const {
     case InternalType::kBinaryValue: return binary_value().compare(other.binary_value());
     case InternalType::kInetaddressValue:
       return GenericCompare(inetaddress_value(), other.inetaddress_value());
+    case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kListValue:
+      LOG(FATAL) << "Internal error: collection types are not comparable";
+      return 0;
 
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
@@ -84,14 +86,14 @@ int YQLValue::CompareTo(const YQLValue& other) const {
 }
 
 void YQLValue::Serialize(
-    const DataType sql_type, const YQLClient client, faststring* buffer) const {
+    const YQLType yql_type, const YQLClient client, faststring* buffer) const {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   if (IsNull()) {
     CQLEncodeLength(-1, buffer);
     return;
   }
 
-  switch (sql_type) {
+  switch (yql_type.main()) {
     case INT8:
       CQLEncodeNum(Store8, int8_value(), buffer);
       return;
@@ -129,6 +131,45 @@ void YQLValue::Serialize(
       CQLEncodeBytes(bytes, buffer);
       return;
     }
+    case MAP: {
+      YQLMapValuePB map = map_value();
+      DCHECK_EQ(map.keys_size(), map.values_size());
+      int32_t start_pos = CQLStartCollection(buffer);
+      int32_t length = static_cast<int32_t>(map.keys_size());
+      CQLEncodeLength(length, buffer);
+      YQLType keys_type = yql_type.params()->at(0);
+      YQLType values_type = yql_type.params()->at(1);
+      for (int i = 0; i < length; i++) {
+        YQLValueWithPB(map.keys(i)).Serialize(keys_type, client, buffer);
+        YQLValueWithPB(map.values(i)).Serialize(values_type, client, buffer);
+      }
+      CQLFinishCollection(start_pos, buffer);
+      return;
+    }
+    case SET: {
+      YQLSeqValuePB set = set_value();
+      int32_t start_pos = CQLStartCollection(buffer);
+      int32_t length = static_cast<int32_t>(set.elems_size());
+      CQLEncodeLength(length, buffer); // number of elements in collection
+      YQLType elems_type = yql_type.params()->at(0);
+      for (auto& elem : set.elems()) {
+        YQLValueWithPB(elem).Serialize(elems_type, client, buffer);
+      }
+      CQLFinishCollection(start_pos, buffer);
+      return;
+    }
+    case LIST: {
+      YQLSeqValuePB list = list_value();
+      int32_t start_pos = CQLStartCollection(buffer);
+      int32_t length = static_cast<int32_t>(list.elems_size());
+      CQLEncodeLength(length, buffer);
+      YQLType elems_type = yql_type.params()->at(0);
+      for (auto& elem : list.elems()) {
+        YQLValueWithPB(elem).Serialize(elems_type, client, buffer);
+      }
+      CQLFinishCollection(start_pos, buffer);
+      return;
+    }
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -138,10 +179,10 @@ void YQLValue::Serialize(
     // default: fall through
   }
 
-  LOG(FATAL) << "Internal error: unsupported type " << sql_type;
+  LOG(FATAL) << "Internal error: unsupported type " << yql_type.ToString();
 }
 
-Status YQLValue::Deserialize(const DataType sql_type, const YQLClient client, Slice* data) {
+Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Slice* data) {
   CHECK_EQ(client, YQL_CLIENT_CQL);
   int32_t len = 0;
   RETURN_NOT_OK(CQLDecodeNum(sizeof(len), NetworkByteOrder::Load32, data, &len));
@@ -150,7 +191,7 @@ Status YQLValue::Deserialize(const DataType sql_type, const YQLClient client, Sl
     return Status::OK();
   }
 
-  switch (sql_type) {
+  switch (yql_type.main()) {
     case INT8:
       return CQLDeserializeNum(
           len, Load8, static_cast<void (YQLValue::*)(int8_t)>(&YQLValue::set_int8_value), data);
@@ -202,6 +243,47 @@ Status YQLValue::Deserialize(const DataType sql_type, const YQLClient client, Sl
       set_inetaddress_value(addr);
       return Status::OK();
     }
+    case MAP: {
+      YQLType keys_type = yql_type.params()->at(0);
+      YQLType values_type = yql_type.params()->at(1);
+      set_map_value();
+      int32_t nr_elems = 0;
+      RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
+      for (int i = 0; i < nr_elems; i++) {
+        YQLValueWithPB key;
+        RETURN_NOT_OK(key.Deserialize(keys_type, client, data));
+        // TODO (mihnea) refactor YQLValue to avoid copying here and below
+        add_map_key()->CopyFrom(key.value());
+        YQLValueWithPB value;
+        RETURN_NOT_OK(value.Deserialize(values_type, client, data));
+        add_map_value()->CopyFrom(value.value());
+      }
+      return Status::OK();
+    }
+    case SET: {
+      YQLType elems_type = yql_type.params()->at(0);
+      set_set_value();
+      int32_t nr_elems = 0;
+      RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
+      for (int i = 0; i < nr_elems; i++) {
+        YQLValueWithPB elem;
+        RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+        add_set_elem()->CopyFrom(elem.value());
+      }
+      return Status::OK();
+    }
+    case LIST: {
+      YQLType elems_type = yql_type.params()->at(0);
+      set_list_value();
+      int32_t nr_elems = 0;
+      RETURN_NOT_OK(CQLDecodeNum(sizeof(nr_elems), NetworkByteOrder::Load32, data, &nr_elems));
+      for (int i = 0; i < nr_elems; i++) {
+        YQLValueWithPB elem;;
+        RETURN_NOT_OK(elem.Deserialize(elems_type, client, data));
+        add_list_elem()->CopyFrom(elem.value());
+      }
+      return Status::OK();
+    }
 
     YQL_UNSUPPORTED_TYPES_IN_SWITCH:
       break;
@@ -212,10 +294,9 @@ Status YQLValue::Deserialize(const DataType sql_type, const YQLClient client, Sl
     // default: fall through
   }
 
-  LOG(FATAL) << "Internal error: unsupported type " << sql_type;
+  LOG(FATAL) << "Internal error: unsupported type " << yql_type.ToString();
   return STATUS(InternalError, "unsupported type");
 }
-
 
 string YQLValue::ToString() const {
   if (IsNull()) {
@@ -226,14 +307,56 @@ string YQLValue::ToString() const {
     case InternalType::kInt8Value: return "int8:" + to_string(int8_value());
     case InternalType::kInt16Value: return "int16:" + to_string(int16_value());
     case InternalType::kInt32Value: return "int32:" + to_string(int32_value());
-    case InternalType::kInt64Value: return "int64" + to_string(int64_value());
-    case InternalType::kFloatValue: return "float" + to_string(float_value());
+    case InternalType::kInt64Value: return "int64:" + to_string(int64_value());
+    case InternalType::kFloatValue: return "float:" + to_string(float_value());
     case InternalType::kDoubleValue: return "double:" + to_string(double_value());
     case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
     case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
     case InternalType::kBinaryValue: return "binary:" + b2a_hex(binary_value());
+    case InternalType::kMapValue: {
+      std::stringstream ss;
+      YQLMapValuePB map = map_value();
+      DCHECK_EQ(map.keys_size(), map.values_size());
+      ss << "map:{";
+      for (int i = 0; i < map.keys_size(); i++) {
+        if (i > 0) {
+          ss << ", ";
+        }
+        ss << YQLValueWithPB(map.keys(i)).ToString() << " -> "
+           << YQLValueWithPB(map.values(i)).ToString();
+      }
+      ss << "}";
+      return ss.str();
+    }
+    case InternalType::kSetValue: {
+      std::stringstream ss;
+      YQLSeqValuePB set = set_value();
+      ss << "set:{";
+      for (int i = 0; i < set.elems_size(); i++) {
+        if (i > 0) {
+          ss << ", ";
+        }
+        ss << YQLValueWithPB(set.elems(i)).ToString();
+      }
+      ss << "}";
+      return ss.str();
+    }
+    case InternalType::kListValue: {
+      std::stringstream ss;
+      YQLSeqValuePB list = list_value();
+      ss << "list:[";
+      for (int i = 0; i < list.elems_size(); i++) {
+        if (i > 0) {
+          ss << ", ";
+        }
+        ss << YQLValueWithPB(list.elems(i)).ToString();
+      }
+      ss << "]";
+      return ss.str();
+    }
+
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       return "null";
@@ -258,6 +381,10 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kTimestampValue: v->clear_timestamp_value(); return;
     case YQLValuePB::kBinaryValue: v->clear_binary_value(); return;
     case YQLValuePB::kInetaddressValue: v->clear_inetaddress_value(); return;
+    case YQLValuePB::kMapValue:    v->clear_map_value(); return;
+    case YQLValuePB::kSetValue:    v->clear_set_value(); return;
+    case YQLValuePB::kListValue:   v->clear_list_value(); return;
+
     case YQLValuePB::VALUE_NOT_SET: return;
   }
   LOG(FATAL) << "Internal error: unknown or unsupported type " << v->value_case();
@@ -282,6 +409,12 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     case YQLValuePB::kBinaryValue: return lhs.binary_value().compare(rhs.binary_value());
     case YQLValuePB::kInetaddressValue:
       return GenericCompare(lhs.inetaddress_value(), rhs.inetaddress_value());
+    case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kListValue:
+      LOG(FATAL) << "Internal error: collection types are not comparable";
+      return 0;
+
     case YQLValuePB::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;

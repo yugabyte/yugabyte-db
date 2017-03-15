@@ -49,7 +49,7 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
     // For "<column> = <bindvar>", set up the bind var column description.
     PTBindVar *var = static_cast<PTBindVar*>(rhs_.get());
     var->set_desc(col_desc_);
-  } else if (!sem_context->IsConvertible(col_desc_->sql_type(), rhs_->sql_type())) {
+  } else if (!sem_context->IsConvertible(rhs_, col_desc_->yql_type())) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 

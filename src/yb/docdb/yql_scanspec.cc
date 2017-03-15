@@ -287,7 +287,7 @@ DocKey YQLScanSpec::bound_key(const bool lower_bound) const {
     for (const auto& value : range_values) {
       const auto& column = schema_.column(column_idx);
       range_components.emplace_back(PrimitiveValue::FromYQLValuePB(
-          column.type_info()->type(), value, column.sorting_type()));
+          column.type(), value, column.sorting_type()));
       column_idx++;
     }
   }

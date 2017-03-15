@@ -102,19 +102,19 @@ TEST_F(WireProtocolTest, TestSchemaRoundTrip) {
   // Column 0.
   EXPECT_TRUE(pbs.Get(0).is_key());
   EXPECT_EQ("col1", pbs.Get(0).name());
-  EXPECT_EQ(STRING, pbs.Get(0).type());
+  EXPECT_EQ(YQLType(STRING), YQLType(pbs.Get(0).type()));
   EXPECT_FALSE(pbs.Get(0).is_nullable());
 
   // Column 1.
   EXPECT_FALSE(pbs.Get(1).is_key());
   EXPECT_EQ("col2", pbs.Get(1).name());
-  EXPECT_EQ(STRING, pbs.Get(1).type());
+  EXPECT_EQ(YQLType(STRING), YQLType(pbs.Get(1).type()));
   EXPECT_FALSE(pbs.Get(1).is_nullable());
 
   // Column 2.
   EXPECT_FALSE(pbs.Get(2).is_key());
   EXPECT_EQ("col3", pbs.Get(2).name());
-  EXPECT_EQ(UINT32, pbs.Get(2).type());
+  EXPECT_EQ(YQLType(UINT32), YQLType(pbs.Get(2).type()));
   EXPECT_TRUE(pbs.Get(2).is_nullable());
 
   // Convert back to a Schema object and verify they're identical.
@@ -132,19 +132,19 @@ TEST_F(WireProtocolTest, TestBadSchema_NonContiguousKey) {
   // Column 0: key
   ColumnSchemaPB* col_pb = pbs.Add();
   col_pb->set_name("c0");
-  col_pb->set_type(STRING);
+  YQLType(STRING).ToYQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   // Column 1: not a key
   col_pb = pbs.Add();
   col_pb->set_name("c1");
-  col_pb->set_type(STRING);
+  YQLType(STRING).ToYQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   // Column 2: marked as key. This is an error.
   col_pb = pbs.Add();
   col_pb->set_name("c2");
-  col_pb->set_type(STRING);
+  YQLType(STRING).ToYQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   Schema schema;
@@ -160,19 +160,19 @@ TEST_F(WireProtocolTest, TestBadSchema_DuplicateColumnName) {
   // Column 0:
   ColumnSchemaPB* col_pb = pbs.Add();
   col_pb->set_name("c0");
-  col_pb->set_type(STRING);
+  YQLType(STRING).ToYQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   // Column 1:
   col_pb = pbs.Add();
   col_pb->set_name("c1");
-  col_pb->set_type(STRING);
+  YQLType(STRING).ToYQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   // Column 2: same name as column 0
   col_pb = pbs.Add();
   col_pb->set_name("c0");
-  col_pb->set_type(STRING);
+  YQLType(STRING).ToYQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   Schema schema;

@@ -62,7 +62,7 @@ ComparisonPredicateData::~ComparisonPredicateData() {
 Status ComparisonPredicateData::AddToScanSpec(ScanSpec* spec) {
   void* val_void;
   RETURN_NOT_OK(val_->data_->CheckTypeAndGetPointer(col_.name(),
-                                                    col_.type_info()->physical_type(),
+                                                    col_.type(),
                                                     &val_void));
 
   void* lower_bound = nullptr;

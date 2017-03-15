@@ -63,11 +63,21 @@ public class ProtobufHelper {
     return columnToPb(Common.ColumnSchemaPB.newBuilder(), column);
   }
 
+  public static Common.YQLTypePB typeToPb(Type type) {
+    return dataTypeToPb(type.getDataType());
+  }
+
+  public static Common.YQLTypePB dataTypeToPb(Common.DataType dataType) {
+    Common.YQLTypePB.Builder typeBuilder = Common.YQLTypePB.newBuilder();
+    typeBuilder.setMain(dataType);
+    return typeBuilder.build();
+  }
+
   public static Common.ColumnSchemaPB
   columnToPb(Common.ColumnSchemaPB.Builder schemaBuilder, ColumnSchema column) {
     schemaBuilder
         .setName(column.getName())
-        .setType(column.getType().getDataType())
+        .setType(typeToPb(column.getType()))
         .setIsKey(column.isKey())
         .setIsHashKey(column.isHashKey())
         .setIsNullable(column.isNullable())
@@ -100,7 +110,7 @@ public class ProtobufHelper {
                                            columnPb.getName());
       }
       columnIds.add(id);
-      Type type = Type.getTypeForDataType(columnPb.getType());
+      Type type = Type.getTypeForDataType(columnPb.getType().getMain());
       Object defaultValue = columnPb.hasReadDefaultValue() ? byteStringToObject(type,
           columnPb.getReadDefaultValue()) : null;
       ColumnSchema.Encoding encoding = ColumnSchema.Encoding.valueOf(columnPb.getEncoding().name());

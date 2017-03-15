@@ -196,6 +196,30 @@ static inline void Store8(void* p, uint8_t v) {
   *static_cast<uint8_t*>(p) = v;
 }
 
+//--------------------------------------------------------------------------------------------------
+// For collections the serialized length (size in bytes -- not number of elements) depends on the
+// size of their (possibly variable-length) elements so cannot be pre-computed efficiently.
+// Therefore CQLStartCollection and CQLFinishCollection should be called before and, respectively,
+// after serializing collection elements to set the correct value
+
+// Allocates the space in the buffer for writing the correct length later and returns the buffer
+// position after (i.e. where the serialization for the collection value will begin)
+static inline int32_t CQLStartCollection(faststring* buffer) {
+  CQLEncodeLength(0, buffer);
+  return static_cast<int32_t>(buffer->size());
+}
+
+// Sets the value for the serialized size of a collection by subtracting the start position to
+// compute length and writing it at the right position in the buffer
+static inline void CQLFinishCollection(int32_t start_pos, faststring* buffer) {
+  // computing collection size (in bytes)
+  int32_t coll_size = static_cast<int32_t>(buffer->size()) - start_pos;
+
+  // writing the collection size in bytes to the length component of the CQL value
+  int32_t pos = start_pos - sizeof(int32_t); // subtracting size of length component
+  NetworkByteOrder::Store32(&(*buffer)[pos], static_cast<uint32_t>(coll_size));
+}
+
 //----------------------------------- CQL value decode functions ---------------------------------
 #define RETURN_NOT_ENOUGH(data, sz)                         \
   do {                                                      \

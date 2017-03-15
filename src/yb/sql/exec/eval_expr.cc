@@ -16,13 +16,13 @@ EvalValue::~EvalValue() {}
 Status Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) const {
   return params_->GetBindVariable(string(var->name()->c_str()),
                                   var->pos(),
-                                  var->sql_type(),
+                                  var->yql_type(),
                                   value);
 }
 
 Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
 
-  switch (expr->type_id()) {
+  switch (expr->internal_type()) {
     case InternalType::VALUE_NOT_SET: {
       // This is a null node.
       result->set_null();
@@ -98,7 +98,7 @@ Status Executor::EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      switch (var->sql_type()) {
+      switch (var->yql_type_id()) {
         case DataType::INT8:
           result->value_ = value.int8_value();
           break;
@@ -112,7 +112,7 @@ Status Executor::EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result
           result->value_ = value.int64_value();
           break;
         default:
-          LOG(FATAL) << "Unexpected integer type " << var->sql_type();
+          LOG(FATAL) << "Unexpected integer type " << var->yql_type_id();
       }
       break;
     }
@@ -143,7 +143,7 @@ Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      switch (var->sql_type()) {
+      switch (var->yql_type_id()) {
         case DataType::FLOAT:
           result->value_ = value.float_value();
           break;
@@ -151,7 +151,7 @@ Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *
           result->value_ = value.double_value();
           break;
         default:
-          LOG(FATAL) << "Unexpected floating point type " << var->sql_type();
+          LOG(FATAL) << "Unexpected floating point type " << var->yql_type_id();
       }
       break;
     }
