@@ -192,8 +192,7 @@ public class NodeManager extends DevopsBase {
 
   public ShellProcessHandler.ShellResponse nodeCommand(NodeCommandType type,
                                                        NodeTaskParams nodeTaskParam) throws RuntimeException {
-    List<String> command = new ArrayList<>();
-    command.add(type.toString().toLowerCase());
+    List<String> commandArgs = new ArrayList<>();
 
     switch (type) {
       case Provision:
@@ -203,15 +202,15 @@ public class NodeManager extends DevopsBase {
         }
         AnsibleSetupServer.Params taskParam = (AnsibleSetupServer.Params)nodeTaskParam;
         if (nodeTaskParam.cloud != Common.CloudType.onprem) {
-          command.add("--instance_type");
-          command.add(taskParam.instanceType);
-          command.add("--cloud_subnet");
-          command.add(taskParam.subnetId);
-          command.add("--machine_image");
-          command.add(taskParam.getRegion().ybImage);
-          command.add("--assign_public_ip");
+          commandArgs.add("--instance_type");
+          commandArgs.add(taskParam.instanceType);
+          commandArgs.add("--cloud_subnet");
+          commandArgs.add(taskParam.subnetId);
+          commandArgs.add("--machine_image");
+          commandArgs.add(taskParam.getRegion().ybImage);
+          commandArgs.add("--assign_public_ip");
         }
-        command.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
       case Configure:
@@ -220,8 +219,8 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not AnsibleConfigureServers.Params");
         }
         AnsibleConfigureServers.Params taskParam = (AnsibleConfigureServers.Params)nodeTaskParam;
-        command.addAll(getConfigureSubCommand(taskParam));
-        command.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.addAll(getConfigureSubCommand(taskParam));
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
       case List:
@@ -229,7 +228,7 @@ public class NodeManager extends DevopsBase {
         if (!(nodeTaskParam instanceof AnsibleUpdateNodeInfo.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleUpdateNodeInfo.Params");
         }
-        command.add("--as_json");
+        commandArgs.add("--as_json");
         break;
       }
       case Destroy:
@@ -245,18 +244,19 @@ public class NodeManager extends DevopsBase {
           throw new RuntimeException("NodeTaskParams is not AnsibleClusterServerCtl.Params");
         }
         AnsibleClusterServerCtl.Params taskParam = (AnsibleClusterServerCtl.Params)nodeTaskParam;
-        command.add(taskParam.process);
-        command.add(taskParam.command);
-        command.addAll(getAccessKeySpecificCommand(taskParam));
+        commandArgs.add(taskParam.process);
+        commandArgs.add(taskParam.command);
+        commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         break;
       }
     }
     if (!(nodeTaskParam.instanceType == null || nodeTaskParam.instanceType.isEmpty())) {
-      addMountPaths(nodeTaskParam.getProvider().code, nodeTaskParam.instanceType, command);
+      addMountPaths(nodeTaskParam.getProvider().code, nodeTaskParam.instanceType, commandArgs);
     }
 
-    command.add(nodeTaskParam.nodeName);
+    commandArgs.add(nodeTaskParam.nodeName);
 
-    return execCommand(nodeTaskParam.getRegion().uuid, command, getCloudArgs(nodeTaskParam));
+    return execCommand(nodeTaskParam.getRegion().uuid, type.toString().toLowerCase(),
+        commandArgs, getCloudArgs(nodeTaskParam));
   }
 }
