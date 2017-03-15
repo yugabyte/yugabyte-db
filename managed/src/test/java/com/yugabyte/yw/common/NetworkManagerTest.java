@@ -4,6 +4,8 @@ package com.yugabyte.yw.common;
 
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.junit.Before;
@@ -12,18 +14,23 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
+import play.libs.Json;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 
@@ -34,11 +41,14 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Mock
   ShellProcessHandler shellProcessHandler;
+
+  @Mock
+  CloudQueryHelper cloudQueryHelper;
+
   private Provider defaultProvider;
   private Region defaultRegion;
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> cloudCredentials;
-
 
   @Before
   public void beforeTest() {
@@ -71,7 +81,7 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Test
   public void testCommandSuccess() {
-    List<String> commandTypes = Arrays.asList("bootstrap", "query", "cleanup");
+    List<String> commandTypes = Arrays.asList("query", "cleanup");
     commandTypes.forEach(commandType -> {
       JsonNode json = runCommand(defaultRegion.uuid, commandType, false);
       assertValue(json, "foo", "bar");
@@ -80,10 +90,37 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Test
   public void testCommandFailure() {
-    List<String> commandTypes = Arrays.asList("bootstrap", "query", "cleanup");
+    List<String> commandTypes = Arrays.asList("query", "cleanup");
     commandTypes.forEach(commandType -> {
       JsonNode json = runCommand(defaultRegion.uuid, commandType, true);
       assertErrorNodeValue(json, "YBCloud command network (" + commandType + ") failed to execute.");
     });
+  }
+
+  @Test
+  public void testBootstrapCommandWithoutHostVPC() {
+    when(cloudQueryHelper.currentHostInfo(
+        defaultRegion.uuid, ImmutableList.of("vpc-id"))).thenReturn(Json.newObject());
+    JsonNode json = runCommand(defaultRegion.uuid, "bootstrap", false);
+    Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
+        (Map<String, String>) cloudCredentials.capture());
+    assertEquals(String.join(" ", command.getValue()),
+        "bin/ybcloud.sh aws --region us-west-2 network bootstrap");
+    assertValue(json, "foo", "bar");
+  }
+
+
+  @Test
+  public void testBootstrapCommandWithHostVPC() {
+    ObjectNode response = Json.newObject();
+    response.put("vpc-id", "host-vpc-id");
+    when(cloudQueryHelper.currentHostInfo(
+        defaultRegion.uuid, ImmutableList.of("vpc-id"))).thenReturn(response);
+    JsonNode json = runCommand(defaultRegion.uuid, "bootstrap", false);
+    Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
+        (Map<String, String>) cloudCredentials.capture());
+    assertEquals(String.join(" ", command.getValue()),
+        "bin/ybcloud.sh aws --region us-west-2 network bootstrap --host_vpc_id host-vpc-id");
+    assertValue(json, "foo", "bar");
   }
 }
