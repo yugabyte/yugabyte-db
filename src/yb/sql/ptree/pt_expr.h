@@ -91,7 +91,8 @@ class PTExpr : public TreeNode {
   }
 
   bool has_valid_type_id() {
-    return type_id_ != InternalType::VALUE_NOT_SET;
+    // type_id_ is not set in case of PTNull.
+    return sql_type_ == DataType::NULL_VALUE_TYPE || type_id_ != InternalType::VALUE_NOT_SET;
   }
 
   // Expression return type in DocDB format.

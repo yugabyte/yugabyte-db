@@ -573,8 +573,6 @@ Status YQLWriteOperation::Apply(
           for (const auto& column_value : request_.column_values()) {
             CHECK(column_value.has_column_id())
                 << "column id missing: " << column_value.DebugString();
-            CHECK(column_value.has_value())
-                << "column value missing: " << column_value.DebugString();;
             const DocPath sub_path(doc_key_.Encode(),
                                    PrimitiveValue(ColumnId(column_value.column_id())));
             const auto& column = schema_.column_by_id(ColumnId(column_value.column_id()));
