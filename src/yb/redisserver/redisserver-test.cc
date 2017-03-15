@@ -55,7 +55,7 @@ class TestRedisService : public RedisTableTestBase {
   int server_port() { return redis_server_port_; }
 
   Status SendCommandAndGetResponse(
-      const string& cmd, int expected_resp_length, int timeout_in_millis = 1000);
+      const string& cmd, int expected_resp_length, int timeout_in_millis = 10000);
 
  private:
   RedisClient test_client_;
