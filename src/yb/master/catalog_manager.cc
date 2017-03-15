@@ -1259,8 +1259,9 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
             table_identifier.namespace_().name());
 
         if (ns == nullptr) {
-          return STATUS(InvalidArgument,
-              Substitute("Namespace $0 does not exist", table_identifier.namespace_().name()));
+          // The namespace was not found. This is a correct case. Just return NULL.
+          *table_info = nullptr;
+          return Status::OK();
         }
 
         namespace_id = ns->id();

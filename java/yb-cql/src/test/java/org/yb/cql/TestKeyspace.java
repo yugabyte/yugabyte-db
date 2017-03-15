@@ -55,6 +55,11 @@ public class TestKeyspace extends TestBase {
   public void createKeyspace(String test_keyspace) throws Exception {
     String createKeyspaceStmt = "CREATE KEYSPACE " + test_keyspace + ";";
     execute(createKeyspaceStmt);
+
+    // Supposing the create operation is asyncronous.
+    // That's why let the system finish the operation to prevent races.
+    // TODO: Check ENG-985 and try to remove all sleeps.
+    Thread.sleep(200);
   }
 
   public void dropKeyspace(String test_keyspace) throws Exception {
@@ -175,14 +180,10 @@ public class TestKeyspace extends TestBase {
     checkTable(tableName); // Check short table name.
     checkTable(longTableName1); // Check long name.
 
-    // TODO: Fix SQL engine & uncomment the following test lines.
-    //       SQL must NOT fail if the table name is invalid (like here).
-    //       Stack: yb::sql::PTSelectStmt::Analyze() -> yb::sql::PTDmlStmt::LookupTable()
-    //              -> yb::sql::SemContext::GetTableDesc() -> yb::sql::SqlEnv::GetTableDesc()
     // Table2 has NOT been created yet.
     String invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';",
         longTableName2);
-    //RunInvalidStmt(invalidStmt);
+    RunInvalidStmt(invalidStmt);
 
     // Using Keyspace2.
     createKeyspace(keyspaceName2);

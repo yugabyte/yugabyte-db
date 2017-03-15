@@ -354,5 +354,18 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
 
 }
 
+TEST_F(YbSqlKeyspace, TestSqlSelectInvalidTable) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  const string select_stmt = "SELECT * FROM my_keyspace1.test_table WHERE h1 = 1 AND h2 = 'h1';";
+
+  LOG(INFO) << "Exec SQL: " << select_stmt;
+  EXEC_INVALID_STMT_WITH_ERROR(select_stmt, "Table Not Found", "");
+}
+
 } // namespace sql
 } // namespace yb
