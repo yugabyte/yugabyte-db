@@ -158,8 +158,6 @@ class StackTrace {
   void* frames_[kMaxFrames];
 };
 
-void PrintLoadedDynamicLibraries();
-
 } // namespace yb
 
 #endif  // YB_UTIL_DEBUG_UTIL_H

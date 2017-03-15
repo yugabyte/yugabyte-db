@@ -1308,6 +1308,13 @@ ADD_THIRDPARTY_LIB(libev
   STATIC_LIB "${LIBEV_STATIC_LIB}"
   SHARED_LIB "${LIBEV_SHARED_LIB}")
 
+## libbacktrace
+find_package(LibBacktrace REQUIRED)
+include_directories(SYSTEM ${LIBBACKTRACE_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(libbacktrace
+  STATIC_LIB "${LIBBACKTRACE_STATIC_LIB}"
+  SHARED_LIB "${LIBBACKTRACE_SHARED_LIB}")
+
 ## LZ4
 find_package(Lz4 REQUIRED)
 include_directories(SYSTEM ${LZ4_INCLUDE_DIR})

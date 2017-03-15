@@ -194,7 +194,8 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
-  zlib)
+  zlib
+  libbacktrace)
 
 if(NOT APPLE)
   set(UTIL_LIBS

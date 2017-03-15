@@ -292,6 +292,7 @@ F_SNAPPY=""
 F_SQUEASEL=""
 F_TRACE=""
 F_TRACE_VIEWER=""
+F_LIBBACKTRACE=""
 
 if is_linux; then
   F_TSAN=1
@@ -346,6 +347,7 @@ while [[ $# -gt 0 ]]; do
     "libstdcxx")    F_ALL=""; F_LIBSTDCXX=1 ;;
     "trace-viewer") F_ALL=""; F_TRACE_VIEWER=1 ;;
     "nvml")         F_ALL=""; F_NVML=1 ;;
+    "libbacktrace") F_ALL=""; F_LIBBACKTRACE=1 ;;
     *)
       echo "Invalid option: $1" >&2
       exit 1
@@ -479,10 +481,9 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
     fi
   fi
 
-  # Enable debug symbols so that stacktraces and linenumbers are available at
-  # runtime. CMake and LLVM are compiled without debug symbols since CMake is a
-  # compile-time only tool, and the LLVM debug symbols take up more than 20GiB of
-  # disk space.
+  # Enable debug symbols so that stacktraces and linenumbers are available at runtime. CMake and
+  # LLVM are compiled without debug symbols since CMake is a compile-time only tool, and the LLVM
+  # debug symbols take up more than 20GiB of disk space.
   EXTRA_CFLAGS="-g $EXTRA_CFLAGS"
   EXTRA_CXXFLAGS="-g $EXTRA_CXXFLAGS"
 
@@ -534,6 +535,10 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
 
   if is_linux && [ -n "$F_ALL" -o -n "$F_NVML" ]; then
     do_build_if_necessary nvml
+  fi
+
+  if [ -n "$F_ALL" -o -n "$F_LIBBACKTRACE" ]; then
+    do_build_if_necessary libbacktrace
   fi
 
   ### Build C++ dependencies

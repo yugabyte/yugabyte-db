@@ -55,11 +55,24 @@ delete_if_wrong_patchlevel() {
   fi
 }
 
+verify_archive_checksum() {
+  expect_num_args 2 "$@"
+  local file_name=$1
+  local expected_checksum=$2
+  verify_sha256sum <( echo "$expected_checksum  $file_name" )
+}
+
 fetch_and_expand() {
+  if [[ $# -lt 1 || $# -gt 3 ]]; then
+    fatal "One or two arguments expected (archive name and optionally download URL)"
+  fi
+
   local FILENAME=$1
   if [ -z "$FILENAME" ]; then
     fatal "Error: Must specify file to fetch"
   fi
+
+  local download_url=${2:-${CLOUDFRONT_URL_PREFIX}/${FILENAME}}
 
   set +u
   local expected_checksum=${expected_checksums_by_name[$FILENAME]}
@@ -70,12 +83,21 @@ fetch_and_expand() {
 
   mkdir -p "$TP_DOWNLOAD_DIR"
   pushd "$TP_DOWNLOAD_DIR"
-  if [[ -f $FILENAME ]] && \
-    verify_sha256sum <( echo "$expected_checksum  $FILENAME" ); then
+  if [[ -f $FILENAME ]] && verify_archive_checksum "$FILENAME" "$expected_checksum"; then
     log "No need to re-download $FILENAME: checksum already correct"
   else
+    if [[ -f $FILENAME ]]; then
+      log "File $PWD/$FILENAME already exists but has wrong checksum, removing"
+      ( set -x; rm -f "$FILENAME" )
+    fi
     log "Fetching $FILENAME"
-    curl --remote-name "${CLOUDFRONT_URL_PREFIX}/${FILENAME}"
+    curl "$download_url" --location --output "$FILENAME"
+    if [[ ! -f $FILENAME ]] ;then
+      fatal "Downloaded '$download_url' but remote header name did not match '$FILENAME'.."
+    fi
+    if ! verify_archive_checksum "$FILENAME" "$expected_checksum"; then
+      fatal "File '$PWD/$FILENAME' has wrong checksum after downloading from '$download_url'."
+    fi
   fi
   popd
 
@@ -335,6 +357,10 @@ fi
 
 if is_linux && [[ ! -d $NVML_DIR ]]; then
   fetch_and_expand "nvml-${NVML_VERSION}.tar.gz"
+fi
+
+if is_linux && [[ ! -d $LIBBACKTRACE_DIR ]]; then
+  fetch_and_expand "libbacktrace-$LIBBACKTRACE_VERSION.zip" "$LIBBACKTRACE_URL"
 fi
 
 echo "---------------"

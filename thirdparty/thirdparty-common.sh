@@ -205,20 +205,30 @@ create_build_dir_and_prepare() {
       log "$build_dir does not exist, bootstrapping it from $src_dir"
       mkdir -p "$build_dir"
       rsync -a "$src_dir/" "$build_dir"
-      (
-        cd "$build_run_dir"
-        log "Running 'make distclean' and 'autoreconf' and removing CMake cache files in $PWD," \
-            "ignoring errors."
+      # Provide an option to skip the cleanup we normally do in the build directory, because some
+      # libraries (e.g. libbacktrace) come with an existing configure script, and these cleanup
+      # steps may disrupt it. This will normally be set as a local variable by a build_... function,
+      # (e.g. build_libbacktrace in build_libbacktrace.sh) so it will only affect one third-party
+      # dependency at a time.
+      if [[ -z ${yb_skip_build_dir_cleanup:-} ]]; then
         (
-          set -x +e
-          # Ignore errors here, because not all projects are autotools projects.
-          make distclean
-          autoreconf --force --verbose --install
-          remove_cmake_cache
-          exit 0
+          cd "$build_run_dir"
+          log "Running 'make distclean' and 'autoreconf' and removing CMake cache files in $PWD," \
+              "ignoring errors."
+          (
+            set -x +e
+            # Ignore errors here, because not all projects are autotools projects.
+            make distclean
+            autoreconf --force --verbose --install
+            remove_cmake_cache
+            exit 0
+          )
+          log "Finished running 'make distclean' and 'autoreconf' and removing CMake cache."
         )
-        log "Finished running 'make distclean' and 'autoreconf' and removing CMake cache."
-      )
+      else
+        log "Not running cleanup steps in $PWD -- it looks like we should keeping the existing" \
+            "configure script."
+      fi
     fi
   fi
   log "Running build in $build_run_dir"

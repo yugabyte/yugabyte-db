@@ -375,7 +375,9 @@ set_build_env_vars
 if "$build_cxx"; then
   if ( "$force_run_cmake" || [[ ! -f Makefile ]] ) && \
      ! "$force_no_run_cmake"; then
-    build_compiler_if_necessary
+    if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
+      build_compiler_if_necessary
+    fi
     log "Using cmake binary: $( which cmake )"
     log "Running cmake in $PWD"
     ( set -x; cmake "${cmake_opts[@]}" "$YB_SRC_ROOT" )
@@ -406,7 +408,9 @@ if "$build_cxx"; then
 
     exit_code=$?
     set -u -e
-    log "Non-java build finished with exit code $exit_code. Timing information is available above."
+    log "Non-java build finished with exit code $exit_code" \
+        "(build type: $build_type, compiler: $YB_COMPILER_TYPE)." \
+        "Timing information is available above."
     if [ "$exit_code" -ne 0 ]; then
       exit "$exit_code"
     fi

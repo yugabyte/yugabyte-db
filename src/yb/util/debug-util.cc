@@ -21,9 +21,12 @@
 #include <dirent.h>
 #include <signal.h>
 #include <sys/syscall.h>
+
 #ifdef __linux__
 #include <link.h>
-#endif
+#include <backtrace.h>
+#include <cxxabi.h>
+#endif  // __linux__
 
 #include <string>
 #include <iostream>
@@ -72,6 +75,8 @@ static int g_stack_trace_signum = SIGUSR2;
 //
 // This lock also protects changes to the signal handler.
 static base::SpinLock g_dumper_thread_lock(base::LINKER_INITIALIZED);
+
+using std::string;
 
 namespace yb {
 
@@ -186,7 +191,91 @@ bool InitSignalHandlerUnlocked(int signum) {
   return state == INITIALIZED;
 }
 
-} // namespace
+const char kStackTraceEntryFormat[] = "    @ %*p  %s";
+const char kUnknownSymbol[] = "(unknown)";
+
+// Remove path prefixes up to what looks like the root of the YB source tree.
+const char* NormalizeSourceFilePath(const char* file_path) {
+  if (file_path == nullptr) {
+    return file_path;
+  }
+  const char* const src_yb_subpath = strstr(file_path, "/src/yb/");
+  if (src_yb_subpath != nullptr) {
+    return src_yb_subpath + 5;
+  }
+  const char* const src_rocksdb_subpath = strstr(file_path, "/src/rocksdb/");
+  if (src_rocksdb_subpath != nullptr) {
+    return src_rocksdb_subpath + 5;
+  }
+  const char* const thirdparty_subpath = strstr(file_path, "/thirdparty/");
+  if (thirdparty_subpath != nullptr) {
+    return thirdparty_subpath + 1;
+  }
+  return file_path;
+}
+
+#ifdef __linux__
+
+void BacktraceErrorCallback(void* data, const char* msg, int errnum) {
+  string* const buf = reinterpret_cast<string*>(data);
+  buf->append(StringPrintf("Backtrace error: %s (errnum=%d)\n", msg, errnum));
+}
+
+int BacktraceFullCallback(void *const data, const uintptr_t pc,
+                          const char* const filename, const int lineno,
+                          const char* const original_function_name) {
+
+  string* const buf = reinterpret_cast<string*>(data);
+  int demangle_status = 0;
+  char* const demangled_function_name =
+      original_function_name != nullptr ?
+      abi::__cxa_demangle(original_function_name, 0, 0, &demangle_status) :
+      nullptr;
+  const char* function_name_to_use = original_function_name;
+  if (original_function_name != nullptr) {
+    if (demangle_status != 0) {
+      if (demangle_status != -2) {
+        // -2 means the mangled name is not a valid name under the C++ ABI mangling rules.
+        // This happens when the name is e.g. "main", so we don't report the error.
+        StringAppendF(buf, "Error: __cxa_demangle failed for '%s' with error code %d\n",
+            original_function_name, demangle_status);
+      }
+      // Regardless of the exact reason for demangle failure, we use the original function name
+      // provided by libbacktrace.
+    } else if (demangled_function_name != nullptr) {
+      // If __cxa_demangle returns 0 and a non-null string, we use that instead of the original
+      // function name.
+      function_name_to_use = demangled_function_name;
+    } else {
+      StringAppendF(buf,
+          "Error: __cxa_demangle returned zero status but nullptr demangled function for '%s'\n",
+          original_function_name);
+    }
+  }
+
+  if (function_name_to_use == nullptr) {
+    function_name_to_use = kUnknownSymbol;
+  }
+
+  StringAppendF(buf, kStackTraceEntryFormat, kPrintfPointerFieldWidth,
+      reinterpret_cast<void*>(pc), function_name_to_use);
+  // We have not appended an end-of-line character yet. Let's see if we have file name / line number
+  // information first. BTW kStackTraceEntryFormat is used both here and in glog-based
+  // symbolization.
+  if (filename != nullptr) {
+    // Got filename and line number from libbacktrace! No need to filter the output through
+    // addr2line, etc.
+    StringAppendF(buf, " (%s:%d)", NormalizeSourceFilePath(filename), lineno);
+  }
+  buf->push_back('\n');
+  // No need to check for nullptr, free is a no-op in that case.
+  free(demangled_function_name);
+  return 0;
+}
+
+#endif  // __linux__
+
+}  // namespace
 
 Status SetStackTraceSignal(int signum) {
   base::SpinLockHolder h(&g_dumper_thread_lock);
@@ -281,7 +370,18 @@ Status ListThreads(vector<pid_t> *tids) {
 
 std::string GetStackTrace() {
   std::string s;
+#ifdef __linux__
+  // Use libbacktrace on Linux because that gives us file names and line numbres.
+  struct backtrace_state* const backtrace_state = backtrace_create_state(
+      nullptr, /* threaded = */ 0, BacktraceErrorCallback, &s);
+  const int backtrace_full_rv = backtrace_full(backtrace_state, /* skip = */ 1,
+      BacktraceFullCallback, BacktraceErrorCallback, &s);
+  if (backtrace_full_rv != 0) {
+    StringAppendF(&s, "Error: backtrace_full returned eeit code %d", backtrace_full_rv);
+  }
+#else
   google::glog_internal_namespace_::DumpStackTraceToString(&s);
+#endif
   return s;
 }
 
@@ -340,11 +440,22 @@ string StackTrace::ToHexString(int flags) const {
 // Symbolization function borrowed from glog.
 string StackTrace::Symbolize() const {
   string ret;
-  for (int i = 0; i < num_frames_; i++) {
-    void* pc = frames_[i];
+#ifdef __linux__
+  // Use libbacktrace for symbolization.
+  struct backtrace_state* const backtrace_state = backtrace_create_state(
+      nullptr, /* threaded = */ 0, BacktraceErrorCallback, &ret);
+  if (!ret.empty()) {
+    // backtrace_create_state must have called our error handler which logged the error into the
+    // result string.
+    return ret;
+  }
+  if (backtrace_state == nullptr) {
+    return "Error: backtrace_create_state() returned nullptr\n";
+  }
+#endif
 
-    char tmp[1024];
-    const char* symbol = "(unknown)";
+  for (int i = 0; i < num_frames_; i++) {
+    void* const pc = frames_[i];
 
     // The return address 'pc' on the stack is the address of the instruction
     // following the 'call' instruction. In the case of calling a function annotated
@@ -371,12 +482,27 @@ string StackTrace::Symbolize() const {
     //
     // This also ensures that we point at the correct line number when using addr2line
     // on logged stacks.
-    if (google::Symbolize(
-            reinterpret_cast<char *>(pc) - 1, tmp, sizeof(tmp))) {
+    void* const adjusted_pc = reinterpret_cast<char *>(pc) - 1;
+
+#ifdef __linux__
+    backtrace_pcinfo(backtrace_state, reinterpret_cast<uintptr_t>(adjusted_pc),
+        BacktraceFullCallback, BacktraceErrorCallback, &ret);
+#else
+    char tmp[1024];
+    const char* symbol = kUnknownSymbol;
+
+    if (google::Symbolize(adjusted_pc, tmp, sizeof(tmp))) {
       symbol = tmp;
     }
-    StringAppendF(&ret, "    @ %*p  %s\n", kPrintfPointerFieldWidth, pc, symbol);
+    StringAppendF(&ret, kStackTraceEntryFormat, kPrintfPointerFieldWidth, adjusted_pc, symbol);
+    // We are appending the end-of-line character separately because we want to reuse the same
+    // format string for libbacktrace callback and glog-based symbolization, and we have an extra
+    // file name / line number component before the end-of-line in the libbacktrace case.
+    ret.push_back('\n');
+#endif  // Non-linux implementation
   }
+
+  // TODO: what do we need to do to free the backtrace state?
   return ret;
 }
 
@@ -393,38 +519,5 @@ uint64_t StackTrace::HashCode() const {
   return util_hash::CityHash64(reinterpret_cast<const char*>(frames_),
                                sizeof(frames_[0]) * num_frames_);
 }
-
-namespace {
-#ifdef __linux__
-int DynamcLibraryListCallback(struct dl_phdr_info *info, size_t size, void *data) {
-  if (*info->dlpi_name != '\0') {
-    // We can't use LOG(...) yet because Google Logging might not be initialized.
-    // It is also important to write the entire line at once so that it is less likely to be
-    // interleaved with pieces of similar lines from other processes.
-    std::cerr << StringPrintf(
-        "Shared library '%s' loaded at address 0x%" PRIx64 "\n", info->dlpi_name, info->dlpi_addr);
-  }
-  return 0;
-}
-#endif
-
-bool PrintLoadedDynamicLibrariesOnceHelper() {
-  const char* list_dl_env_var = std::getenv("YB_LIST_LOADED_DYNAMIC_LIBS");
-  if (list_dl_env_var != nullptr && *list_dl_env_var != '\0') {
-    PrintLoadedDynamicLibraries();
-  }
-  return true;
-}
-}  // anonymous namespace
-
-void PrintLoadedDynamicLibraries() {
-#ifdef __linux__
-  // Supported on Linux only.
-  dl_iterate_phdr(DynamcLibraryListCallback, nullptr);
-#endif
-}
-
-// List the load addresses of dynamic libraries once on process startup if required.
-const bool kPrintedLoadedDynamicLibraries = PrintLoadedDynamicLibrariesOnceHelper();
 
 }  // namespace yb

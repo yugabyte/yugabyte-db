@@ -239,7 +239,10 @@ while [[ $# -gt 0 ]]; do
       fi
     ;;
     *.cc|*.h|*.o|*.a|*.so|*.dylib)
-      input_files+=( "$1" )
+      # Skip arguments that look like compiler options.
+      if [[ ! $1 =~ ^[-] ]]; then
+        input_files+=( "$1" )
+      fi
     ;;
     *)
     ;;
@@ -310,7 +313,9 @@ exit_handler() {
               if [[ ${#input_files[@]} -gt 0 ]]; then
                 echo "Input files:"
                 for input_file in "${input_files[@]}"; do
-                  if [[ -f /usr/bin/realpath ]]; then
+                  # Only resolve paths for files that exists (and therefore are more likely to
+                  # actually be files).
+                  if [[ -f "/usr/bin/realpath" && -e "$input_file" ]]; then
                     input_file=$( realpath "$input_file" )
                   fi
                   echo "  $input_file"
