@@ -59,7 +59,11 @@ class CuckooTableBuilder: public TableBuilder {
 
   // Size of the file generated so far.  If invoked after a successful
   // Finish() call, returns the size of the final generated file.
-  uint64_t FileSize() const override;
+  uint64_t TotalFileSize() const override;
+
+  // For cuckoo table SST file format - the same as TotalFileSize, since it uses the only base file
+  // for both data and metadata.
+  uint64_t BaseFileSize() const override;
 
   TableProperties GetTableProperties() const override { return properties_; }
 

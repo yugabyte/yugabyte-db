@@ -42,7 +42,8 @@ class BlockBasedTableBuilder : public TableBuilder {
       const InternalKeyComparator& internal_comparator,
       const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
           int_tbl_prop_collector_factories,
-      uint32_t column_family_id, WritableFileWriter* file,
+      uint32_t column_family_id, WritableFileWriter* metadata_file,
+      WritableFileWriter* data_file,
       const CompressionType compression_type,
       const CompressionOptions& compression_opts, const bool skip_filters);
 
@@ -72,9 +73,16 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Number of calls to Add() so far.
   uint64_t NumEntries() const override;
 
-  // Size of the file generated so far.  If invoked after a successful
-  // Finish() call, returns the size of the final generated file.
-  uint64_t FileSize() const override;
+  // Total size of the file(s) generated so far.  If invoked after a successful
+  // Finish() call, returns the total size of the final generated file(s).
+  uint64_t TotalFileSize() const override;
+
+  // Size of the base file generated so far.  If invoked after a successful Finish() call, returns
+  // the size of the final generated base file. SST is either stored in single base file, or
+  // metadata is stored in base file while data is split among data files (S-Blocks).
+  // Block-based SST are always stored in separate files, other SST types are stored in one file
+  // each.
+  uint64_t BaseFileSize() const override;
 
   bool NeedCompact() const override;
 
@@ -82,16 +90,24 @@ class BlockBasedTableBuilder : public TableBuilder {
   TableProperties GetTableProperties() const override;
 
  private:
+  struct FileWriterWithOffsetAndCachePrefix;
+
   bool ok() const { return status().ok(); }
   // Call block's Finish() method and then write the finalize block contents to
   // file.
-  void WriteBlock(BlockBuilder* block, BlockHandle* handle);
+  void WriteBlock(BlockBuilder* block, BlockHandle* handle,
+      FileWriterWithOffsetAndCachePrefix* writer_info);
   // Directly write block content to the file.
-  void WriteBlock(const Slice& block_contents, BlockHandle* handle);
-  void WriteRawBlock(const Slice& data, CompressionType, BlockHandle* handle);
+  void WriteBlock(const Slice& block_contents, BlockHandle* handle,
+      FileWriterWithOffsetAndCachePrefix* writer_info);
+  void WriteRawBlock(const Slice& data, CompressionType,
+      BlockHandle* handle,
+      FileWriterWithOffsetAndCachePrefix* writer_info);
   Status InsertBlockInCache(const Slice& block_contents,
                             const CompressionType type,
-                            const BlockHandle* handle);
+                            const BlockHandle* handle,
+                            FileWriterWithOffsetAndCachePrefix* writer_info);
+
   struct Rep;
   class BlockBasedTablePropertiesCollectorFactory;
   class BlockBasedTablePropertiesCollector;
@@ -101,7 +117,7 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Can be used to ensure that two adjacent entries never live in
   // the same data block.  Most clients should not need to use this method.
   // REQUIRES: Finish(), Abandon() have not been called
-  void Flush();
+  void FlushDataBlock();
 
   // Some compression libraries fail when the raw size is bigger than int. If
   // uncompressed size is bigger than kCompressionSizeLimit, don't compress it

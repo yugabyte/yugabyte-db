@@ -395,7 +395,7 @@ uint64_t CuckooTableBuilder::NumEntries() const {
   return num_entries_;
 }
 
-uint64_t CuckooTableBuilder::FileSize() const {
+uint64_t CuckooTableBuilder::TotalFileSize() const {
   if (closed_) {
     return file_->GetFileSize();
   } else if (num_entries_ == 0) {
@@ -417,6 +417,10 @@ uint64_t CuckooTableBuilder::FileSize() const {
     }
     return (key_size_ + value_size_) * expected_hash_table_size - 1;
   }
+}
+
+uint64_t CuckooTableBuilder::BaseFileSize() const {
+  return TotalFileSize();
 }
 
 // This method is invoked when there is no place to insert the target key.

@@ -698,6 +698,7 @@ void DBImpl::PurgeObsoleteFiles(const JobContext& state) {
   // We may ignore the dbname when generating the file names.
   const char* kDumbDbName = "";
   for (auto file : state.sst_delete_files) {
+    // We only put base SST file in candidate_files
     candidate_files.emplace_back(
         MakeTableFileName(kDumbDbName, file->fd.GetNumber()),
         file->fd.GetPathId());
@@ -748,6 +749,11 @@ void DBImpl::PurgeObsoleteFiles(const JobContext& state) {
         // DontDeletePendingOutputs fail
         keep = (sst_live_map.find(number) != sst_live_map.end()) ||
                number >= state.min_pending_output;
+        break;
+      case kTableSBlockFile:
+        // Just skip, since we will process SST data file during processing of corresponding
+        // SST base file.
+        keep = true;
         break;
       case kTempFile:
         // Any temp files that are currently being written to must
@@ -801,6 +807,16 @@ void DBImpl::PurgeObsoleteFiles(const JobContext& state) {
     Status file_deletion_status;
     if (type == kTableFile) {
       file_deletion_status = DeleteSSTFile(&db_options_, fname, path_id);
+      const std::string data_fname = TableBaseToDataFileName(fname);
+      if (file_deletion_status.ok()) {
+        // Delete corresponding data file if exists.
+        Status s = db_options_.env->FileExists(data_fname);
+        if (s.ok()) {
+          file_deletion_status = DeleteSSTFile(&db_options_, data_fname, path_id);
+        } else if (!s.IsNotFound()) {
+          file_deletion_status = s;
+        }
+      }
     } else {
       file_deletion_status = env_->DeleteFile(fname);
     }
@@ -1413,7 +1429,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   FileMetaData meta;
   auto pending_outputs_inserted_elem =
       CaptureCurrentFileNumberInPendingOutputs();
-  meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
+  meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0, 0);
   ReadOptions ro;
   ro.total_order_seek = true;
   Arena arena;
@@ -1448,7 +1464,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
       RLOG(InfoLogLevel::DEBUG_LEVEL, db_options_.info_log,
           "[%s] [WriteLevel0TableForRecovery]"
           " Level-0 table #%" PRIu64 ": %" PRIu64 " bytes %s",
-          cfd->GetName().c_str(), meta.fd.GetNumber(), meta.fd.GetFileSize(),
+          cfd->GetName().c_str(), meta.fd.GetNumber(), meta.fd.GetTotalFileSize(),
           s.ToString().c_str());
 
       // output to event logger
@@ -1458,7 +1474,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
         info.file_path = TableFileName(db_options_.db_paths,
                                        meta.fd.GetNumber(),
                                        meta.fd.GetPathId());
-        info.file_size = meta.fd.GetFileSize();
+        info.file_size = meta.fd.GetTotalFileSize();
         info.job_id = job_id;
         EventHelpers::LogAndNotifyTableFileCreation(
             &event_logger_, db_options_.listeners, meta.fd, info);
@@ -1471,21 +1487,21 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   // Note that if file_size is zero, the file has been deleted and
   // should not be added to the manifest.
   int level = 0;
-  if (s.ok() && meta.fd.GetFileSize() > 0) {
+  if (s.ok() && meta.fd.GetTotalFileSize() > 0) {
     edit->AddFile(level, meta.fd.GetNumber(), meta.fd.GetPathId(),
-                  meta.fd.GetFileSize(), meta.smallest, meta.largest,
+        meta.fd.GetTotalFileSize(), meta.fd.GetBaseFileSize(), meta.smallest, meta.largest,
                   meta.smallest_seqno, meta.largest_seqno,
                   meta.marked_for_compaction);
   }
 
   InternalStats::CompactionStats stats(1);
   stats.micros = env_->NowMicros() - start_micros;
-  stats.bytes_written = meta.fd.GetFileSize();
+  stats.bytes_written = meta.fd.GetTotalFileSize();
   stats.num_output_files = 1;
   cfd->internal_stats()->AddCompactionStats(level, stats);
   cfd->internal_stats()->AddCFStats(
-      InternalStats::BYTES_FLUSHED, meta.fd.GetFileSize());
-  RecordTick(stats_, COMPACT_WRITE_BYTES, meta.fd.GetFileSize());
+      InternalStats::BYTES_FLUSHED, meta.fd.GetTotalFileSize());
+  RecordTick(stats_, COMPACT_WRITE_BYTES, meta.fd.GetTotalFileSize());
   return s;
 }
 
@@ -1548,6 +1564,9 @@ Status DBImpl::FlushMemTableToOutputFile(
       std::string file_path = MakeTableFileName(db_options_.db_paths[0].path,
                                                 file_meta.fd.GetNumber());
       sfm->OnAddFile(file_path);
+      if (cfd->ioptions()->table_factory->IsSplitSstForWriteSupported()) {
+        sfm->OnAddFile(TableBaseToDataFileName(file_path));
+      }
       if (sfm->IsMaxAllowedSpaceReached() && bg_error_.ok()) {
         bg_error_ = Status::IOError("Max allowed space was reached");
         TEST_SYNC_POINT(
@@ -2142,7 +2161,7 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
     for (const auto& f : vstorage->LevelFiles(level)) {
       edit.DeleteFile(level, f->fd.GetNumber());
       edit.AddFile(to_level, f->fd.GetNumber(), f->fd.GetPathId(),
-                   f->fd.GetFileSize(), f->smallest, f->largest,
+          f->fd.GetTotalFileSize(), f->fd.GetBaseFileSize(), f->smallest, f->largest,
                    f->smallest_seqno, f->largest_seqno,
                    f->marked_for_compaction);
     }
@@ -3003,16 +3022,16 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
         FileMetaData* f = c->input(l, i);
         c->edit()->DeleteFile(c->level(l), f->fd.GetNumber());
         c->edit()->AddFile(c->output_level(), f->fd.GetNumber(),
-                           f->fd.GetPathId(), f->fd.GetFileSize(), f->smallest,
-                           f->largest, f->smallest_seqno, f->largest_seqno,
+                           f->fd.GetPathId(), f->fd.GetTotalFileSize(), f->fd.GetBaseFileSize(),
+                           f->smallest, f->largest, f->smallest_seqno, f->largest_seqno,
                            f->marked_for_compaction);
 
         LOG_TO_BUFFER(log_buffer,
                     "[%s] Moving #%" PRIu64 " to level-%d %" PRIu64 " bytes\n",
                     c->column_family_data()->GetName().c_str(),
-                    f->fd.GetNumber(), c->output_level(), f->fd.GetFileSize());
+                    f->fd.GetNumber(), c->output_level(), f->fd.GetTotalFileSize());
         ++moved_files;
-        moved_bytes += f->fd.GetFileSize();
+        moved_bytes += f->fd.GetTotalFileSize();
       }
     }
 
@@ -3531,26 +3550,27 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
 
   ExternalSstFileInfo file_info;
   file_info.file_path = file_path;
-  status = env_->GetFileSize(file_path, &file_info.file_size);
+  status = env_->GetFileSize(file_path, &file_info.base_file_size);
   if (!status.ok()) {
     return status;
   }
 
   // Access the file using TableReader to extract
   // version, number of entries, smallest user key, largest user key
-  std::unique_ptr<RandomAccessFile> sst_file;
-  status = env_->NewRandomAccessFile(file_path, &sst_file, env_options_);
+  std::unique_ptr<RandomAccessFile> base_sst_file;
+  status = env_->NewRandomAccessFile(file_path, &base_sst_file, env_options_);
   if (!status.ok()) {
     return status;
   }
-  std::unique_ptr<RandomAccessFileReader> sst_file_reader;
-  sst_file_reader.reset(new RandomAccessFileReader(std::move(sst_file)));
+  std::unique_ptr<RandomAccessFileReader> base_sst_file_reader;
+  base_sst_file_reader.reset(new RandomAccessFileReader(std::move(base_sst_file)));
 
   std::unique_ptr<TableReader> table_reader;
   status = cfd->ioptions()->table_factory->NewTableReader(
       TableReaderOptions(*cfd->ioptions(), env_options_,
                          cfd->internal_comparator()),
-      std::move(sst_file_reader), file_info.file_size, &table_reader);
+      std::move(base_sst_file_reader), file_info.base_file_size,
+      &table_reader);
   if (!status.ok()) {
     return status;
   }
@@ -3563,6 +3583,22 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   if (external_sst_file_version_iter == user_collected_properties.end()) {
     return Status::InvalidArgument("Generated table version not found");
   }
+
+  file_info.is_split_sst = table_reader->IsSplitSst();
+  if (file_info.is_split_sst) {
+    std::unique_ptr<RandomAccessFile> data_sst_file;
+    status = env_->NewRandomAccessFile(TableBaseToDataFileName(file_path), &data_sst_file,
+        env_options_);
+    if (!status.ok()) {
+      return status;
+    }
+    std::unique_ptr<RandomAccessFileReader> data_sst_file_reader;
+    data_sst_file_reader.reset(new RandomAccessFileReader(std::move(data_sst_file)));
+    table_reader->SetDataFileReader(std::move(data_sst_file_reader));
+  }
+
+  file_info.file_size = file_info.base_file_size +
+      (file_info.is_split_sst ? table_reader->GetTableProperties()->data_size : 0);
 
   file_info.version =
       DecodeFixed32(external_sst_file_version_iter->second.c_str());
@@ -3603,6 +3639,37 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   return AddFile(column_family, &file_info, move_file);
 }
 
+namespace {
+
+// Helper function for copying file from src_path to dst_path. If try_hard_link is true it tries
+// to make a hard link instead of copyging if possible.
+Status AddFile(Env* env, const std::string& src_path, const std::string& dst_path,
+    bool try_hard_link) {
+  Status status;
+  if (try_hard_link) {
+    status = env->LinkFile(src_path, dst_path);
+    if (status.IsNotSupported()) {
+      // Original file is on a different FS, use copy instead of hard linking
+      status = CopyFile(env, src_path, dst_path, 0);
+    }
+  } else {
+    status = CopyFile(env, src_path, dst_path, 0);
+  }
+  return status;
+}
+
+// Deletes file and logs error message in case of failure. error_format should have format
+// specifications exactly for 2 string arguments: path and status.
+void DeleteFile(Env* env, const std::string& path, const shared_ptr<Logger>& info_log,
+    const char* error_format) {
+  Status s = env->DeleteFile(path);
+  if (!s.ok()) {
+    RLOG(InfoLogLevel::WARN_LEVEL, info_log, error_format, path.c_str(), s.ToString().c_str());
+  }
+}
+
+} // namespace
+
 Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
                        const ExternalSstFileInfo* file_info, bool move_file) {
   Status status;
@@ -3638,22 +3705,26 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   {
     InstrumentedMutexLock l(&mutex_);
     pending_outputs_inserted_elem = CaptureCurrentFileNumberInPendingOutputs();
-    meta.fd =
-        FileDescriptor(versions_->NewFileNumber(), 0, file_info->file_size);
+    meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, file_info->file_size,
+            file_info->base_file_size);
   }
 
-  std::string db_fname = TableFileName(
+  const std::string db_base_fname = TableFileName(
       db_options_.db_paths, meta.fd.GetNumber(), meta.fd.GetPathId());
+  status = ::rocksdb::AddFile(env_, file_info->file_path, db_base_fname, move_file);
 
-  if (move_file) {
-    status = env_->LinkFile(file_info->file_path, db_fname);
-    if (status.IsNotSupported()) {
-      // Original file is on a different FS, use copy instead of hard linking
-      status = CopyFile(env_, file_info->file_path, db_fname, 0);
+  std::string db_data_fname;
+  std::string data_file_path;
+  if (status.ok() && file_info->is_split_sst) {
+    data_file_path = TableBaseToDataFileName(file_info->file_path);
+    db_data_fname = TableBaseToDataFileName(db_base_fname);
+    status = ::rocksdb::AddFile(env_, data_file_path, db_data_fname, move_file);
+    if (!status.ok()) {
+      ::rocksdb::DeleteFile(env_, db_base_fname, db_options_.info_log,
+          "AddFile() clean up for file %s failed : %s");
     }
-  } else {
-    status = CopyFile(env_, file_info->file_path, db_fname, 0);
   }
+
   TEST_SYNC_POINT("DBImpl::AddFile:FileCopied");
   if (!status.ok()) {
     return status;
@@ -3705,7 +3776,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
       VersionEdit edit;
       edit.SetColumnFamily(cfd->GetID());
       edit.AddFile(0, meta.fd.GetNumber(), meta.fd.GetPathId(),
-                   meta.fd.GetFileSize(), meta.smallest, meta.largest,
+          meta.fd.GetTotalFileSize(), meta.fd.GetBaseFileSize(), meta.smallest, meta.largest,
                    meta.smallest_seqno, meta.largest_seqno,
                    meta.marked_for_compaction);
 
@@ -3723,20 +3794,18 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
 
   if (!status.ok()) {
     // We failed to add the file to the database
-    Status s = env_->DeleteFile(db_fname);
-    if (!s.ok()) {
-      RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
-          "AddFile() clean up for file %s failed : %s", db_fname.c_str(),
-          s.ToString().c_str());
+    const char* error_format = "AddFile() clean up for file %s failed : %s";
+    ::rocksdb::DeleteFile(env_, db_base_fname, db_options_.info_log, error_format);
+    if (file_info->is_split_sst) {
+      ::rocksdb::DeleteFile(env_, db_data_fname, db_options_.info_log, error_format);
     }
   } else if (status.ok() && move_file) {
     // The file was moved and added successfully, remove original file link
-    Status s = env_->DeleteFile(file_info->file_path);
-    if (!s.ok()) {
-      RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
-          "%s was added to DB successfully but failed to remove original file "
-          "link : %s",
-          file_info->file_path.c_str(), s.ToString().c_str());
+    const char* error_format = "%s was added to DB successfully but failed to remove original file "
+        "link : %s";
+    ::rocksdb::DeleteFile(env_, file_info->file_path, db_options_.info_log, error_format);
+    if (file_info->is_split_sst) {
+      ::rocksdb::DeleteFile(env_, data_file_path, db_options_.info_log, error_format);
     }
   }
   return status;
@@ -5302,22 +5371,36 @@ Status DBImpl::CheckConsistency() {
   std::string corruption_messages;
   for (const auto& md : metadata) {
     // md.name has a leading "/".
-    std::string file_path = md.db_path + md.name;
-
-    uint64_t fsize = 0;
-    Status s = env_->GetFileSize(file_path, &fsize);
+    std::string base_file_path = md.db_path + md.name;
+    uint64_t base_fsize = 0;
+    Status s = env_->GetFileSize(base_file_path, &base_fsize);
     if (!s.ok() &&
-        env_->GetFileSize(Rocks2LevelTableFileName(file_path), &fsize).ok()) {
+        env_->GetFileSize(Rocks2LevelTableFileName(base_file_path), &base_fsize).ok()) {
       s = Status::OK();
     }
     if (!s.ok()) {
       corruption_messages +=
           "Can't access " + md.name + ": " + s.ToString() + "\n";
-    } else if (fsize != md.size) {
-      corruption_messages += "Sst file size mismatch: " + file_path +
+    } else if (base_fsize != md.base_size) {
+      corruption_messages += "Sst base file size mismatch: " + base_file_path +
                              ". Size recorded in manifest " +
-                             ToString(md.size) + ", actual size " +
-                             ToString(fsize) + "\n";
+                             ToString(md.base_size) + ", actual size " +
+                             ToString(base_fsize) + "\n";
+    }
+    if (md.total_size > md.base_size) {
+      const std::string data_file_path = TableBaseToDataFileName(base_file_path);
+      uint64_t data_fsize = 0;
+      s = env_->GetFileSize(data_file_path, &data_fsize);
+      const uint64_t md_data_size = md.total_size - md.base_size;
+      if (!s.ok()) {
+        corruption_messages +=
+            "Can't access " + TableBaseToDataFileName(md.name) + ": " + s.ToString() + "\n";
+      } else if (data_fsize != md_data_size) {
+        corruption_messages += "Sst data file size mismatch: " + data_file_path +
+            ". Data size based on total and base size recorded in manifest " +
+            ToString(md_data_size) + ", actual data size " +
+            ToString(data_fsize) + "\n";
+      }
     }
   }
   if (corruption_messages.size() == 0) {
@@ -5598,7 +5681,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
       FileType file_type;
       std::string file_path = db_path.path + "/" + file_name;
       if (ParseFileName(file_name, &file_number, &file_type) &&
-          file_type == kTableFile) {
+          (file_type == kTableFile || file_type == kTableSBlockFile)) {
         sfm->OnAddFile(file_path);
       }
     }
@@ -5662,7 +5745,7 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
         std::string path_to_delete = dbname + "/" + filenames[i];
         if (type == kMetaDatabase) {
           del = DestroyDB(path_to_delete, options);
-        } else if (type == kTableFile) {
+        } else if (type == kTableFile || type == kTableSBlockFile) {
           del = DeleteSSTFile(&options, path_to_delete, 0);
         } else {
           del = env->DeleteFile(path_to_delete);
@@ -5678,7 +5761,8 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
       env->GetChildren(db_path.path, &filenames);
       for (size_t i = 0; i < filenames.size(); i++) {
         if (ParseFileName(filenames[i], &number, &type) &&
-            type == kTableFile) {  // Lock file will be deleted at end
+            // Lock file will be deleted at end
+            (type == kTableFile || type == kTableSBlockFile)) {
           std::string table_path = db_path.path + "/" + filenames[i];
           Status del = DeleteSSTFile(&options, table_path,
                                      static_cast<uint32_t>(path_id));

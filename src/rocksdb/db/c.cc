@@ -2305,7 +2305,7 @@ int rocksdb_livefiles_level(
 size_t rocksdb_livefiles_size(
   const rocksdb_livefiles_t* lf,
   int index) {
-  return lf->rep[index].size;
+  return lf->rep[index].total_size;
 }
 
 const char* rocksdb_livefiles_smallestkey(

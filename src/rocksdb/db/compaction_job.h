@@ -97,6 +97,9 @@ class CompactionJob {
                                     SubcompactionState* sub_compact);
   Status InstallCompactionResults(const MutableCFOptions& mutable_cf_options);
   void RecordCompactionIOStats();
+  Status OpenFile(const std::string table_name, uint64_t file_number,
+      const std::string file_type_label, const std::string fname,
+      std::unique_ptr<WritableFile>* writable_file);
   Status OpenCompactionOutputFile(SubcompactionState* sub_compact);
   void CleanupCompaction();
   void UpdateCompactionJobStats(
@@ -109,6 +112,8 @@ class CompactionJob {
       int* num_files, uint64_t* bytes_read, int input_level);
 
   void LogCompaction();
+
+  void CloseFile(Status* status, std::unique_ptr<WritableFileWriter>* writer);
 
   int job_id_;
 

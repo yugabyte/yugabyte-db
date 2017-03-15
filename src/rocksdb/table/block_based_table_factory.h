@@ -48,9 +48,14 @@ class BlockBasedTableFactory : public TableFactory {
                         unique_ptr<TableReader>* table_reader,
                         bool prefetch_index_and_filter) const;
 
+  bool IsSplitSstForWriteSupported() const override { return true; }
+
+  // base_file should be not nullptr, data_file should either point to different file writer
+  // or be nullptr in order to produce single SST file containing both data and metadata.
   TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      uint32_t column_family_id, WritableFileWriter* file) const override;
+      uint32_t column_family_id, WritableFileWriter* base_file,
+      WritableFileWriter* data_file = nullptr) const override;
 
   // Sanitizes the specified DB Options.
   Status SanitizeOptions(const DBOptions& db_opts,

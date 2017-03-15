@@ -53,23 +53,27 @@ struct LevelMetaData {
   const std::vector<SstFileMetaData> files;
 };
 
-// The metadata that describes a SST file.
+// The metadata that describes a SST fileset.
 struct SstFileMetaData {
   SstFileMetaData() {}
   SstFileMetaData(const std::string& _file_name,
-                  const std::string& _path, uint64_t _size,
+                  const std::string& _path, uint64_t _total_size, uint64_t _base_size,
                   SequenceNumber _smallest_seqno,
                   SequenceNumber _largest_seqno,
                   const std::string& _smallestkey,
                   const std::string& _largestkey,
                   bool _being_compacted) :
-    size(_size), name(_file_name),
+    total_size(_total_size), base_size(_base_size), name(_file_name),
     db_path(_path), smallest_seqno(_smallest_seqno), largest_seqno(_largest_seqno),
     smallestkey(_smallestkey), largestkey(_largestkey),
-    being_compacted(_being_compacted) {}
+    being_compacted(_being_compacted) {
 
-  // File size in bytes.
-  uint64_t size;
+  }
+
+  // Total file(s) (metadata and data (aka s-block) files) size in bytes.
+  uint64_t total_size;
+  // Base file size in bytes.
+  uint64_t base_size;
   // The name of the file.
   std::string name;
   // The full path where the file locates.

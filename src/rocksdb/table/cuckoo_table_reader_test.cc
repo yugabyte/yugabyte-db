@@ -108,7 +108,7 @@ class CuckooReaderTest : public testing::Test {
     }
     ASSERT_OK(builder.Finish());
     ASSERT_EQ(num_items, builder.NumEntries());
-    file_size = builder.FileSize();
+    file_size = builder.TotalFileSize();
     ASSERT_OK(file_writer->Close());
 
     // Check reader now.

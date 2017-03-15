@@ -107,16 +107,17 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
       break;
     }
     // we should only get sst, manifest and current files here
-    assert(type == kTableFile || type == kDescriptorFile ||
+    assert(type == kTableFile || type == kTableSBlockFile || type == kDescriptorFile ||
            type == kCurrentFile);
     assert(live_files[i].size() > 0 && live_files[i][0] == '/');
     std::string src_fname = live_files[i];
 
     // rules:
-    // * if it's kTableFile, then it's shared
+    // * if it's kTableFile or kTableSBlockFile, then it's shared
     // * if it's kDescriptorFile, limit the size to manifest_file_size
     // * always copy if cross-device link
-    if ((type == kTableFile) && same_fs) {
+    bool is_table_file = type == kTableFile || type == kTableSBlockFile;
+    if (is_table_file && same_fs) {
       RLOG(db_->GetOptions().info_log, "Hard Linking %s", src_fname.c_str());
       s = db_->GetEnv()->LinkFile(db_->GetName() + src_fname,
                                   full_private_path + src_fname);
@@ -125,7 +126,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
         s = Status::OK();
       }
     }
-    if ((type != kTableFile) || (!same_fs)) {
+    if (!is_table_file || (!same_fs)) {
       RLOG(db_->GetOptions().info_log, "Copying %s", src_fname.c_str());
       s = CopyFile(db_->GetEnv(), db_->GetName() + src_fname,
                    full_private_path + src_fname,

@@ -83,7 +83,8 @@ struct CompactionJob::SubcompactionState {
 
   // State kept for output being generated
   std::vector<Output> outputs;
-  std::unique_ptr<WritableFileWriter> outfile;
+  std::unique_ptr<WritableFileWriter> base_outfile;
+  std::unique_ptr<WritableFileWriter> data_outfile;
   std::unique_ptr<TableBuilder> builder;
   Output* current_output() {
     if (outputs.empty()) {
@@ -110,7 +111,8 @@ struct CompactionJob::SubcompactionState {
       : compaction(c),
         start(_start),
         end(_end),
-        outfile(nullptr),
+        base_outfile(nullptr),
+        data_outfile(nullptr),
         builder(nullptr),
         total_bytes(0),
         num_input_records(0),
@@ -127,7 +129,8 @@ struct CompactionJob::SubcompactionState {
     end = std::move(o.end);
     status = std::move(o.status);
     outputs = std::move(o.outputs);
-    outfile = std::move(o.outfile);
+    base_outfile = std::move(o.base_outfile);
+    data_outfile = std::move(o.data_outfile);
     builder = std::move(o.builder);
     total_bytes = std::move(o.total_bytes);
     num_input_records = std::move(o.num_input_records);
@@ -703,7 +706,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // during subcompactions (i.e. if output size, estimated by input size, is
     // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
     // and 0.6MB instead of 1MB and 0.2MB)
-    if (sub_compact->builder->FileSize() >=
+    if (sub_compact->builder->TotalFileSize() >=
         sub_compact->compaction->max_output_file_size()) {
       status = FinishCompactionOutputFile(input->status(), sub_compact);
     }
@@ -782,12 +785,27 @@ void CompactionJob::RecordDroppedKeys(
   }
 }
 
+void CompactionJob::CloseFile(Status* status, std::unique_ptr<WritableFileWriter>* writer) {
+  if (status->ok() && !db_options_.disableDataSync) {
+    StopWatch sw(env_, stats_, COMPACTION_OUTFILE_SYNC_MICROS);
+    *status = (*writer)->Sync(db_options_.use_fsync);
+  }
+  if (status->ok()) {
+    *status = (*writer)->Close();
+  }
+  writer->reset();
+
+}
+
 Status CompactionJob::FinishCompactionOutputFile(
     const Status& input_status, SubcompactionState* sub_compact) {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_SYNC_FILE);
   assert(sub_compact != nullptr);
-  assert(sub_compact->outfile);
+  assert(sub_compact->base_outfile);
+  const bool is_split_sst = sub_compact->compaction->column_family_data()->ioptions()
+      ->table_factory->IsSplitSstForWriteSupported();
+  assert((sub_compact->data_outfile != nullptr) == is_split_sst);
   assert(sub_compact->builder != nullptr);
   assert(sub_compact->current_output() != nullptr);
 
@@ -805,20 +823,18 @@ Status CompactionJob::FinishCompactionOutputFile(
   } else {
     sub_compact->builder->Abandon();
   }
-  const uint64_t current_bytes = sub_compact->builder->FileSize();
-  meta->fd.file_size = current_bytes;
+
+  const uint64_t current_total_bytes = sub_compact->builder->TotalFileSize();
+  meta->fd.total_file_size = current_total_bytes;
+  meta->fd.base_file_size = sub_compact->builder->BaseFileSize();
   sub_compact->current_output()->finished = true;
-  sub_compact->total_bytes += current_bytes;
+  sub_compact->total_bytes += current_total_bytes;
 
   // Finish and check for file errors
-  if (s.ok() && !db_options_.disableDataSync) {
-    StopWatch sw(env_, stats_, COMPACTION_OUTFILE_SYNC_MICROS);
-    s = sub_compact->outfile->Sync(db_options_.use_fsync);
+  if (sub_compact->data_outfile) {
+    CloseFile(&s, &sub_compact->data_outfile);
   }
-  if (s.ok()) {
-    s = sub_compact->outfile->Close();
-  }
-  sub_compact->outfile.reset();
+  CloseFile(&s, &sub_compact->base_outfile);
 
   if (s.ok() && current_entries > 0) {
     // Verify that the table is usable
@@ -846,13 +862,13 @@ Status CompactionJob::FinishCompactionOutputFile(
       info.file_path =
           TableFileName(cfd->ioptions()->db_paths, meta->fd.GetNumber(),
                         meta->fd.GetPathId());
-      info.file_size = meta->fd.GetFileSize();
+      info.file_size = meta->fd.GetTotalFileSize();
       info.job_id = job_id_;
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
           " keys, %" PRIu64 " bytes%s",
           cfd->GetName().c_str(), job_id_, output_number, current_entries,
-          current_bytes,
+          current_total_bytes,
           meta->marked_for_compaction ? " (need compaction)" : "");
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, cfd->ioptions()->listeners, meta->fd, info);
@@ -867,6 +883,9 @@ Status CompactionJob::FinishCompactionOutputFile(
     auto fn = TableFileName(cfd->ioptions()->db_paths, meta->fd.GetNumber(),
                             meta->fd.GetPathId());
     sfm->OnAddFile(fn);
+    if (is_split_sst) {
+      sfm->OnAddFile(TableBaseToDataFileName(fn));
+    }
     if (sfm->IsMaxAllowedSpaceReached()) {
       InstrumentedMutexLock l(db_mutex_);
       if (db_bg_error_->ok()) {
@@ -933,39 +952,74 @@ void CompactionJob::RecordCompactionIOStats() {
   IOSTATS_RESET(bytes_written);
 }
 
+Status CompactionJob::OpenFile(const std::string table_name, uint64_t file_number,
+    const std::string file_type_label, const std::string fname,
+    std::unique_ptr<WritableFile>* writable_file) {
+  Status s = NewWritableFile(env_, fname, writable_file, env_options_);
+  if (!s.ok()) {
+    RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
+        "[%s] [JOB %d] OpenCompactionOutputFiles for table #%" PRIu64
+        " fails at NewWritableFile for %s file with status %s", table_name.c_str(),
+        job_id_, file_number, file_type_label.c_str(), s.ToString().c_str());
+    LogFlush(db_options_.info_log);
+  }
+  return s;
+}
+
 Status CompactionJob::OpenCompactionOutputFile(
     SubcompactionState* sub_compact) {
   assert(sub_compact != nullptr);
   assert(sub_compact->builder == nullptr);
   // no need to lock because VersionSet::next_file_number_ is atomic
   uint64_t file_number = versions_->NewFileNumber();
+
   // Make the output file
-  unique_ptr<WritableFile> writable_file;
-  std::string fname = TableFileName(db_options_.db_paths, file_number,
+  unique_ptr<WritableFile> base_writable_file;
+  unique_ptr<WritableFile> data_writable_file;
+  const std::string base_fname = TableFileName(db_options_.db_paths, file_number,
                                     sub_compact->compaction->output_path_id());
-  Status s = NewWritableFile(env_, fname, &writable_file, env_options_);
+  const std::string data_fname = TableBaseToDataFileName(base_fname);
+  const std::string table_name = sub_compact->compaction->column_family_data()->GetName();
+  Status s = OpenFile(table_name, file_number, "base", base_fname, &base_writable_file);
   if (!s.ok()) {
-    RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
-        "[%s] [JOB %d] OpenCompactionOutputFiles for table #%" PRIu64
-        " fails at NewWritableFile with status %s",
-        sub_compact->compaction->column_family_data()->GetName().c_str(),
-        job_id_, file_number, s.ToString().c_str());
-    LogFlush(db_options_.info_log);
     return s;
   }
+  s = OpenFile(table_name, file_number, "data", data_fname, &data_writable_file);
+  if (!s.ok()) {
+    return s;
+  }
+
   SubcompactionState::Output out;
   out.meta.fd =
-      FileDescriptor(file_number, sub_compact->compaction->output_path_id(), 0);
+      FileDescriptor(file_number, sub_compact->compaction->output_path_id(), 0, 0);
   out.finished = false;
 
   sub_compact->outputs.push_back(out);
-  writable_file->SetIOPriority(Env::IO_LOW);
-  writable_file->SetPreallocationBlockSize(static_cast<size_t>(
-      sub_compact->compaction->OutputFilePreallocationSize()));
-  sub_compact->outfile.reset(
-      new WritableFileWriter(std::move(writable_file), env_options_));
 
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
+
+  {
+    auto setup_outfile = [] (const EnvOptions& env_options, size_t preallocation_block_size,
+        std::unique_ptr<WritableFile>* writable_file, std::unique_ptr<WritableFileWriter>* writer) {
+      (*writable_file)->SetIOPriority(Env::IO_LOW);
+      if (preallocation_block_size > 0) {
+        (*writable_file)->SetPreallocationBlockSize(preallocation_block_size);
+      }
+      writer->reset(new WritableFileWriter(std::move(*writable_file), env_options));
+    };
+
+    const bool is_split_sst = cfd->ioptions()->table_factory->IsSplitSstForWriteSupported();
+    const size_t preallocation_data_block_size = static_cast<size_t>(
+        sub_compact->compaction->OutputFilePreallocationSize());
+    // if we don't have separate data file - preallocate size for base file
+    setup_outfile(env_options_, is_split_sst ? 0 : preallocation_data_block_size,
+        &base_writable_file, &sub_compact->base_outfile);
+    if (is_split_sst) {
+      setup_outfile(env_options_, preallocation_data_block_size, &data_writable_file,
+          &sub_compact->data_outfile);
+    }
+  }
+
   // If the Column family flag is to only optimize filters for hits,
   // we can skip creating filters if this is the bottommost_level where
   // data is going to be found
@@ -974,8 +1028,9 @@ Status CompactionJob::OpenCompactionOutputFile(
   sub_compact->builder.reset(NewTableBuilder(
       *cfd->ioptions(), cfd->internal_comparator(),
       cfd->int_tbl_prop_collector_factories(), cfd->GetID(),
-      sub_compact->outfile.get(), sub_compact->compaction->output_compression(),
-      cfd->ioptions()->compression_opts, skip_filters));
+      sub_compact->base_outfile.get(), sub_compact->data_outfile.get(),
+      sub_compact->compaction->output_compression(), cfd->ioptions()->compression_opts,
+      skip_filters));
   LogFlush(db_options_.info_log);
   return s;
 }
@@ -988,8 +1043,16 @@ void CompactionJob::CleanupCompaction() {
       // May happen if we get a shutdown call in the middle of compaction
       sub_compact.builder->Abandon();
       sub_compact.builder.reset();
-    } else {
-      assert(!sub_status.ok() || sub_compact.outfile == nullptr);
+    } else if (sub_status.ok() &&
+        (sub_compact.base_outfile != nullptr || sub_compact.data_outfile != nullptr)) {
+      std::string log_message;
+      log_message.append("sub_status.ok(), but: sub_compact.base_outfile ");
+      log_message.append(sub_compact.base_outfile == nullptr ? "==" : "!=");
+      log_message.append(" nullptr, sub_compact.data_outfile ");
+      log_message.append(sub_compact.data_outfile == nullptr ? "==" : "!=");
+      log_message.append(" nullptr");
+      RLOG(InfoLogLevel::FATAL_LEVEL, db_options_.info_log, log_message.c_str());
+      assert(!"If sub_status is OK, sub_compact.*_outfile should be nullptr");
     }
     for (const auto& out : sub_compact.outputs) {
       // If this file was inserted into the table cache then remove
@@ -1046,7 +1109,7 @@ void CompactionJob::UpdateCompactionStats() {
     compaction_stats_.num_output_files += static_cast<int>(num_output_files);
 
     for (const auto& out : sub_compact.outputs) {
-      compaction_stats_.bytes_written += out.meta.fd.file_size;
+      compaction_stats_.bytes_written += out.meta.fd.total_file_size;
     }
     if (sub_compact.num_input_records > sub_compact.num_output_records) {
       compaction_stats_.num_dropped_records +=
@@ -1063,7 +1126,7 @@ void CompactionJob::UpdateCompactionInputStatsHelper(
 
   for (size_t i = 0; i < num_input_files; ++i) {
     const auto* file_meta = compaction->input(input_level, i);
-    *bytes_read += file_meta->fd.GetFileSize();
+    *bytes_read += file_meta->fd.GetTotalFileSize();
     compaction_stats_.num_input_records +=
         static_cast<uint64_t>(file_meta->num_entries);
   }

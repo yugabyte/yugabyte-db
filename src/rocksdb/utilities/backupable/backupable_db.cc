@@ -719,7 +719,7 @@ Status BackupEngineImpl::CreateNewBackup(
       return Status::Corruption("Can't parse file name. This is very bad");
     }
     // we should only get sst, manifest and current files here
-    assert(type == kTableFile || type == kDescriptorFile ||
+    assert(type == kTableFile || type == kTableSBlockFile || type == kDescriptorFile ||
            type == kCurrentFile);
     if (type == kCurrentFile) {
       // We will craft the current file manually to ensure it's consistent with
@@ -738,14 +738,15 @@ Status BackupEngineImpl::CreateNewBackup(
                               : data_path_to_size_iter->second;
 
     // rules:
-    // * if it's kTableFile, then it's shared
+    // * if it's kTableFile or kTableSBlockFile, then it's shared
     // * if it's kDescriptorFile, limit the size to manifest_file_size
+    const bool is_table_file = type == kTableFile || type == kTableSBlockFile;
     s = AddBackupFileWorkItem(
         &live_dst_paths, &backup_items_to_finish, new_backup_id,
-        options_.share_table_files && type == kTableFile, db->GetName(),
+        options_.share_table_files && is_table_file, db->GetName(),
         live_files[i], rate_limiter.get(), size_bytes,
         (type == kDescriptorFile) ? manifest_file_size : 0,
-        options_.share_files_with_checksum && type == kTableFile,
+        options_.share_files_with_checksum && is_table_file,
         progress_callback);
   }
   if (s.ok() && !current_fname.empty() && !manifest_fname.empty()) {

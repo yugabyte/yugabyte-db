@@ -100,9 +100,14 @@ class TableBuilder {
   // Number of calls to Add() so far.
   virtual uint64_t NumEntries() const = 0;
 
-  // Size of the file generated so far.  If invoked after a successful
-  // Finish() call, returns the size of the final generated file.
-  virtual uint64_t FileSize() const = 0;
+  // Total size of the file(s) generated so far.  If invoked after a successful
+  // Finish() call, returns the total size of the final generated file(s).
+  virtual uint64_t TotalFileSize() const = 0;
+
+  // Size of the base file generated so far.  If invoked after a successful Finish() call, returns
+  // the size of the final generated base file. SST is either stored in single base file, or
+  // metadata is stored in base file while data is split among data files (S-Blocks).
+  virtual uint64_t BaseFileSize() const = 0;
 
   // If the user defined table properties collector suggest the file to
   // be further compacted.

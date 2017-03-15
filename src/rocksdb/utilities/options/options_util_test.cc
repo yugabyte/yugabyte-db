@@ -100,27 +100,29 @@ class DummyTableFactory : public TableFactory {
   DummyTableFactory() {}
   virtual ~DummyTableFactory() {}
 
-  virtual const char* Name() const { return "DummyTableFactory"; }
+  virtual const char* Name() const override { return "DummyTableFactory"; }
 
   virtual Status NewTableReader(const TableReaderOptions& table_reader_options,
                                 unique_ptr<RandomAccessFileReader>&& file,
                                 uint64_t file_size,
-                                unique_ptr<TableReader>* table_reader) const {
+                                unique_ptr<TableReader>* table_reader) const override  {
     return Status::NotSupported();
   }
 
+  virtual bool IsSplitSstForWriteSupported() const override { return false; }
+
   virtual TableBuilder* NewTableBuilder(
-      const TableBuilderOptions& table_builder_options,
-      uint32_t column_family_id, WritableFileWriter* file) const {
+      const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
+      WritableFileWriter* metadata_file, WritableFileWriter* data_file = nullptr) const override {
     return nullptr;
   }
 
   virtual Status SanitizeOptions(const DBOptions& db_opts,
-                                 const ColumnFamilyOptions& cf_opts) const {
+                                 const ColumnFamilyOptions& cf_opts) const override {
     return Status::NotSupported();
   }
 
-  virtual std::string GetPrintableTableOptions() const { return ""; }
+  virtual std::string GetPrintableTableOptions() const override { return ""; }
 };
 
 class DummyMergeOperator : public MergeOperator {

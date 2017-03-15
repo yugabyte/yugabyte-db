@@ -124,7 +124,7 @@ class Repairer {
     if (status.ok()) {
       uint64_t bytes = 0;
       for (size_t i = 0; i < tables_.size(); i++) {
-        bytes += tables_[i].meta.fd.GetFileSize();
+        bytes += tables_[i].meta.fd.GetTotalFileSize();
       }
       RLOG(InfoLogLevel::WARN_LEVEL, options_.info_log,
           "**** Repaired rocksdb %s; "
@@ -191,7 +191,7 @@ class Repairer {
               logs_.push_back(number);
             } else if (type == kTableFile) {
               table_fds_.emplace_back(number, static_cast<uint32_t>(path_id),
-                                      0);
+                                      0, 0);
             } else {
               // Ignore other files
             }
@@ -285,7 +285,7 @@ class Repairer {
     // Do not record a version edit for this conversion to a Table
     // since ExtractMetaData() will also generate edits.
     FileMetaData meta;
-    meta.fd = FileDescriptor(next_file_number_++, 0, 0);
+    meta.fd = FileDescriptor(next_file_number_++, 0, 0, 0);
     {
       ReadOptions ro;
       ro.total_order_seek = true;
@@ -302,7 +302,7 @@ class Repairer {
     delete cf_mems_default;
     mem = nullptr;
     if (status.ok()) {
-      if (meta.fd.GetFileSize() > 0) {
+      if (meta.fd.GetTotalFileSize() > 0) {
         table_fds_.push_back(meta.fd);
       }
     }
@@ -337,13 +337,16 @@ class Repairer {
     std::string fname = TableFileName(options_.db_paths, t->meta.fd.GetNumber(),
                                       t->meta.fd.GetPathId());
     int counter = 0;
-    uint64_t file_size;
-    Status status = env_->GetFileSize(fname, &file_size);
+    uint64_t base_file_size;
+    Status status = env_->GetFileSize(fname, &base_file_size);
     t->meta.fd = FileDescriptor(t->meta.fd.GetNumber(), t->meta.fd.GetPathId(),
-                                file_size);
+                                t->meta.fd.total_file_size, base_file_size);
     if (status.ok()) {
+      TableReader* reader;
       InternalIterator* iter = table_cache_->NewIterator(
-          ReadOptions(), env_options_, icmp_, t->meta.fd);
+          ReadOptions(), env_options_, icmp_, t->meta.fd, &reader);
+      t->meta.fd.total_file_size = base_file_size +
+          (reader->IsSplitSst() ? reader->GetTableProperties()->data_size : 0);
       bool empty = true;
       ParsedInternalKey parsed;
       t->min_sequence = 0;
@@ -406,7 +409,8 @@ class Repairer {
       // TODO(opt): separate out into multiple levels
       const TableInfo& t = tables_[i];
       edit_->AddFile(0, t.meta.fd.GetNumber(), t.meta.fd.GetPathId(),
-                     t.meta.fd.GetFileSize(), t.meta.smallest, t.meta.largest,
+          t.meta.fd.GetTotalFileSize(), t.meta.fd.GetBaseFileSize(),
+                     t.meta.smallest, t.meta.largest,
                      t.min_sequence, t.max_sequence,
                      t.meta.marked_for_compaction);
     }

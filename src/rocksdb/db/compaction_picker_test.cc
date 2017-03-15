@@ -84,7 +84,12 @@ class CompactionPickerTest : public testing::Test {
            SequenceNumber largest_seq = 100) {
     assert(level < vstorage_->num_levels());
     FileMetaData* f = new FileMetaData;
-    f->fd = FileDescriptor(file_number, path_id, file_size);
+    // For large SST use 512 bytes as base file size, for files smaller than 512 bytes use half of
+    // total size as a base file size.
+    // Some compaction picker tests are using small files (<512 and even 1-3) bytes, so for these
+    // files we split them into (file_size / 2) bytes base file and the rest goes to data file.
+    const uint64_t base_file_size = file_size > 512 ? 512 : (file_size / 2);
+    f->fd = FileDescriptor(file_number, path_id, file_size, base_file_size);
     f->smallest = InternalKey(smallest, smallest_seq, kTypeValue);
     f->largest = InternalKey(largest, largest_seq, kTypeValue);
     f->smallest_seqno = smallest_seq;

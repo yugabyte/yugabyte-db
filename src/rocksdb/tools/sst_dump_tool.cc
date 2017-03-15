@@ -99,6 +99,13 @@ Status SstFileReader::GetTableReader(const std::string& file_path) {
   if (s.ok()) {
     s = NewTableReader(ioptions_, soptions_, internal_comparator_, file_size,
                        &table_reader_);
+    if (s.ok() && table_reader_->IsSplitSst()) {
+      unique_ptr<RandomAccessFile> data_file;
+      options_.env->NewRandomAccessFile(TableBaseToDataFileName(file_path), &data_file, soptions_);
+      unique_ptr<RandomAccessFileReader> data_file_reader(
+          new RandomAccessFileReader(std::move(data_file)));
+      table_reader_->SetDataFileReader(std::move(data_file_reader));
+    }
   }
   return s;
 }
@@ -164,7 +171,7 @@ uint64_t SstFileReader::CalculateCompressedTableSize(
     fputs(s.ToString().c_str(), stderr);
     exit(1);
   }
-  uint64_t size = table_builder->FileSize();
+  uint64_t size = table_builder->TotalFileSize();
   env->DeleteFile(testFileName);
   return size;
 }

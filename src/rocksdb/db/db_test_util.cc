@@ -673,7 +673,7 @@ uint64_t DBTestBase::SizeAtLevel(int level) {
   uint64_t sum = 0;
   for (const auto& m : metadata) {
     if (m.level == level) {
-      sum += m.size;
+      sum += m.total_size;
     }
   }
   return sum;
@@ -1031,7 +1031,8 @@ std::unordered_map<std::string, uint64_t> DBTestBase::GetAllSSTFiles(
     uint64_t number;
     FileType type;
     std::string file_path = dbname_ + "/" + file_name;
-    if (ParseFileName(file_name, &number, &type) && type == kTableFile) {
+    if (ParseFileName(file_name, &number, &type) &&
+        (type == kTableFile || type == kTableSBlockFile)) {
       uint64_t file_size = 0;
       env_->GetFileSize(file_path, &file_size);
       res[file_path] = file_size;

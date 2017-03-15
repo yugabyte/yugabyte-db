@@ -32,7 +32,7 @@ TEST_F(VersionEditTest, EncodeDecode) {
   VersionEdit edit;
   for (int i = 0; i < 4; i++) {
     TestEncodeDecode(edit);
-    edit.AddFile(3, kBig + 300 + i, kBig32Bit + 400 + i, 0,
+    edit.AddFile(3, kBig + 300 + i, kBig32Bit + 400 + i, 0, 0,
                  InternalKey("foo", kBig + 500 + i, kTypeValue),
                  InternalKey("zoo", kBig + 600 + i, kTypeDeletion),
                  kBig + 500 + i, kBig + 600 + i, false);
@@ -50,13 +50,13 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
   static const uint64_t kBig = 1ull << 50;
 
   VersionEdit edit;
-  edit.AddFile(3, 300, 3, 100, InternalKey("foo", kBig + 500, kTypeValue),
+  edit.AddFile(3, 300, 3, 100, 30, InternalKey("foo", kBig + 500, kTypeValue),
                InternalKey("zoo", kBig + 600, kTypeDeletion), kBig + 500,
                kBig + 600, true);
-  edit.AddFile(4, 301, 3, 100, InternalKey("foo", kBig + 501, kTypeValue),
+  edit.AddFile(4, 301, 3, 100, 30, InternalKey("foo", kBig + 501, kTypeValue),
                InternalKey("zoo", kBig + 601, kTypeDeletion), kBig + 501,
                kBig + 601, false);
-  edit.AddFile(5, 302, 0, 100, InternalKey("foo", kBig + 502, kTypeValue),
+  edit.AddFile(5, 302, 0, 100, 30, InternalKey("foo", kBig + 502, kTypeValue),
                InternalKey("zoo", kBig + 602, kTypeDeletion), kBig + 502,
                kBig + 602, true);
 
@@ -85,10 +85,10 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
 TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
   static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
-  edit.AddFile(3, 300, 3, 100, InternalKey("foo", kBig + 500, kTypeValue),
+  edit.AddFile(3, 300, 3, 100, 30, InternalKey("foo", kBig + 500, kTypeValue),
                InternalKey("zoo", kBig + 600, kTypeDeletion), kBig + 500,
                kBig + 600, true);
-  edit.AddFile(4, 301, 3, 100, InternalKey("foo", kBig + 501, kTypeValue),
+  edit.AddFile(4, 301, 3, 100, 30, InternalKey("foo", kBig + 501, kTypeValue),
                InternalKey("zoo", kBig + 601, kTypeDeletion), kBig + 501,
                kBig + 601, false);
   edit.DeleteFile(4, 700);
@@ -134,7 +134,7 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
 TEST_F(VersionEditTest, NewFile4NotSupportedField) {
   static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
-  edit.AddFile(3, 300, 3, 100, InternalKey("foo", kBig + 500, kTypeValue),
+  edit.AddFile(3, 300, 3, 100, 30, InternalKey("foo", kBig + 500, kTypeValue),
                InternalKey("zoo", kBig + 600, kTypeDeletion), kBig + 500,
                kBig + 600, true);
 
@@ -163,7 +163,7 @@ TEST_F(VersionEditTest, NewFile4NotSupportedField) {
 
 TEST_F(VersionEditTest, EncodeEmptyFile) {
   VersionEdit edit;
-  edit.AddFile(0, 0, 0, 0, InternalKey(), InternalKey(), 0, 0, false);
+  edit.AddFile(0, 0, 0, 0, 0, InternalKey(), InternalKey(), 0, 0, false);
   std::string buffer;
   ASSERT_TRUE(!edit.EncodeTo(&buffer));
 }

@@ -54,6 +54,21 @@ uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id) {
   return number | (path_id * (kFileNumberMask + 1));
 }
 
+FileMetaData::FileMetaData()
+    : refs(0),
+    being_compacted(false),
+    smallest_seqno(kMaxSequenceNumber),
+    largest_seqno(0),
+    table_reader_handle(nullptr),
+    compensated_file_size(0),
+    num_entries(0),
+    num_deletions(0),
+    raw_key_size(0),
+    raw_value_size(0),
+    init_stats_from_file(false),
+    marked_for_compaction(false) {
+}
+
 void VersionEdit::Clear() {
   comparator_.clear();
   max_level_ = 0;
@@ -130,7 +145,8 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       // kNewFile3
       PutVarint32(dst, f.fd.GetPathId());
     }
-    PutVarint64(dst, f.fd.GetFileSize());
+    PutVarint64(dst, f.fd.GetTotalFileSize());
+    PutVarint64(dst, f.fd.GetBaseFileSize());
     PutLengthPrefixedSlice(dst, f.smallest.Encode());
     PutLengthPrefixedSlice(dst, f.largest.Encode());
     PutVarint64(dst, f.smallest_seqno);
@@ -226,8 +242,10 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
   uint64_t number;
   uint32_t path_id = 0;
   uint64_t file_size;
+  uint64_t base_file_size;
   if (GetLevel(input, &level, &msg) && GetVarint64(input, &number) &&
-      GetVarint64(input, &file_size) && GetInternalKey(input, &f.smallest) &&
+      GetVarint64(input, &file_size) && GetVarint64(input, &base_file_size) &&
+      GetInternalKey(input, &f.smallest) &&
       GetInternalKey(input, &f.largest) &&
       GetVarint64(input, &f.smallest_seqno) &&
       GetVarint64(input, &f.largest_seqno)) {
@@ -271,7 +289,7 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
   } else {
     return "new-file4 entry";
   }
-  f.fd = FileDescriptor(number, path_id, file_size);
+  f.fd = FileDescriptor(number, path_id, file_size, base_file_size);
   new_files_.push_back(std::make_pair(level, f));
   return nullptr;
 }
@@ -367,11 +385,13 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
       case kNewFile: {
         uint64_t number;
         uint64_t file_size;
+        uint64_t base_file_size;
         if (GetLevel(&input, &level, &msg) && GetVarint64(&input, &number) &&
             GetVarint64(&input, &file_size) &&
+            GetVarint64(&input, &base_file_size) &&
             GetInternalKey(&input, &f.smallest) &&
             GetInternalKey(&input, &f.largest)) {
-          f.fd = FileDescriptor(number, 0, file_size);
+          f.fd = FileDescriptor(number, 0, file_size, base_file_size);
           new_files_.push_back(std::make_pair(level, f));
         } else {
           if (!msg) {
@@ -383,13 +403,15 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
       case kNewFile2: {
         uint64_t number;
         uint64_t file_size;
+        uint64_t base_file_size;
         if (GetLevel(&input, &level, &msg) && GetVarint64(&input, &number) &&
             GetVarint64(&input, &file_size) &&
+            GetVarint64(&input, &base_file_size) &&
             GetInternalKey(&input, &f.smallest) &&
             GetInternalKey(&input, &f.largest) &&
             GetVarint64(&input, &f.smallest_seqno) &&
             GetVarint64(&input, &f.largest_seqno)) {
-          f.fd = FileDescriptor(number, 0, file_size);
+          f.fd = FileDescriptor(number, 0, file_size, base_file_size);
           new_files_.push_back(std::make_pair(level, f));
         } else {
           if (!msg) {
@@ -403,13 +425,15 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         uint64_t number;
         uint32_t path_id;
         uint64_t file_size;
+        uint64_t base_file_size;
         if (GetLevel(&input, &level, &msg) && GetVarint64(&input, &number) &&
             GetVarint32(&input, &path_id) && GetVarint64(&input, &file_size) &&
+            GetVarint64(&input, &base_file_size) &&
             GetInternalKey(&input, &f.smallest) &&
             GetInternalKey(&input, &f.largest) &&
             GetVarint64(&input, &f.smallest_seqno) &&
             GetVarint64(&input, &f.largest_seqno)) {
-          f.fd = FileDescriptor(number, path_id, file_size);
+          f.fd = FileDescriptor(number, path_id, file_size, base_file_size);
           new_files_.push_back(std::make_pair(level, f));
         } else {
           if (!msg) {
@@ -502,7 +526,7 @@ std::string VersionEdit::DebugString(bool hex_key) const {
     r.append(" ");
     AppendNumberTo(&r, f.fd.GetNumber());
     r.append(" ");
-    AppendNumberTo(&r, f.fd.GetFileSize());
+    AppendNumberTo(&r, f.fd.GetTotalFileSize());
     r.append(" ");
     r.append(f.smallest.DebugString(hex_key));
     r.append(" .. ");
@@ -570,7 +594,7 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
       jw << "Level" << new_files_[i].first;
       const FileMetaData& f = new_files_[i].second;
       jw << "FileNumber" << f.fd.GetNumber();
-      jw << "FileSize" << f.fd.GetFileSize();
+      jw << "FileSize" << f.fd.GetTotalFileSize();
       jw << "SmallestIKey" << f.smallest.DebugString(hex_key);
       jw << "LargestIKey" << f.largest.DebugString(hex_key);
       jw.EndArrayedObject();

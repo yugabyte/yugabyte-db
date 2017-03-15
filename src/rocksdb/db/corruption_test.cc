@@ -144,26 +144,54 @@ class CorruptionTest : public testing::Test {
     ASSERT_GE(max_expected, correct);
   }
 
-  void CorruptFile(const std::string& fname, int offset, int bytes_to_corrupt) {
-    struct stat sbuf;
-    if (stat(fname.c_str(), &sbuf) != 0) {
-      const char* msg = strerror(errno);
-      ASSERT_TRUE(false) << fname << ": " << msg;
-    }
+  // Corrupts specified number of bytes in SST starting at specified offset.
+  // If SST is split into base and data files, then we treat offset as offset in composite data
+  // space where data files go first and metadata file goes after data files.
+  // This method doesn't support the case when area to be corrupted spans both base and data file.
+  // We have assert to avoid such cases, since they are not required for tests as of 2017-03-09.
+  void CorruptFile(const std::string& base_fname, int offset, int bytes_to_corrupt) {
+    std::string fname;
 
-    if (offset < 0) {
-      // Relative to end of file; make it absolute
-      if (-offset > sbuf.st_size) {
-        offset = 0;
-      } else {
-        offset = static_cast<int>(sbuf.st_size + offset);
+    {
+      struct stat base_sbuf;
+      if (stat(base_fname.c_str(), &base_sbuf) != 0) {
+        const char *msg = strerror(errno);
+        ASSERT_TRUE(false) << base_fname << ": " << msg;
       }
-    }
-    if (offset > sbuf.st_size) {
-      offset = static_cast<int>(sbuf.st_size);
-    }
-    if (offset + bytes_to_corrupt > sbuf.st_size) {
-      bytes_to_corrupt = static_cast<int>(sbuf.st_size - offset);
+
+      struct stat data_sbuf;
+      const std::string data_fname = TableBaseToDataFileName(base_fname);
+      const bool is_split_sst = stat(data_fname.c_str(), &data_sbuf) == 0;
+      const auto total_size = base_sbuf.st_size + (is_split_sst ? data_sbuf.st_size : 0);
+
+      if (offset < 0) {
+        // Relative to end of file; make it absolute
+        if (-offset > total_size) {
+          offset = 0;
+        } else {
+          offset = static_cast<int>(total_size + offset);
+        }
+      }
+      if (offset > total_size) {
+        offset = static_cast<int>(total_size);
+      }
+      if (offset + bytes_to_corrupt > total_size) {
+        bytes_to_corrupt = static_cast<int>(total_size - offset);
+      }
+
+      if (is_split_sst) {
+        if (offset >= data_sbuf.st_size) {
+          // Offset is beyond data file, we need to corrupt base file.
+          offset -= data_sbuf.st_size;
+          fname = base_fname;
+        } else {
+          // Ensure area to be corrupted does not span both data and base file.
+          assert(offset + bytes_to_corrupt <= data_sbuf.st_size);
+          fname = data_fname;
+        }
+      } else {
+        fname = base_fname;
+      }
     }
 
     // Do it

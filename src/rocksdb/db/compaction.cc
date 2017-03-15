@@ -26,7 +26,7 @@ namespace rocksdb {
 uint64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
   uint64_t sum = 0;
   for (size_t i = 0; i < files.size() && files[i]; i++) {
-    sum += files[i]->fd.GetFileSize();
+    sum += files[i]->fd.GetTotalFileSize();
   }
   return sum;
 }
@@ -297,7 +297,7 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
       icmp->Compare(internal_key,
                     grandparents_[grandparent_index_]->largest.Encode()) > 0) {
     if (seen_key_.load(std::memory_order_acquire)) {
-      overlapped_bytes_ += grandparents_[grandparent_index_]->fd.GetFileSize();
+      overlapped_bytes_ += grandparents_[grandparent_index_]->fd.GetTotalFileSize();
     }
     assert(grandparent_index_ + 1 >= grandparents_.size() ||
            icmp->Compare(grandparents_[grandparent_index_]->largest.Encode(),
@@ -358,7 +358,7 @@ uint64_t Compaction::CalculateTotalInputSize() const {
   uint64_t size = 0;
   for (auto& input_level : inputs_) {
     for (auto f : input_level.files) {
-      size += f->fd.GetFileSize();
+      size += f->fd.GetTotalFileSize();
     }
   }
   return size;
@@ -383,7 +383,7 @@ int InputSummary(const std::vector<FileMetaData*>& files, char* output,
     int sz = len - write;
     int ret;
     char sztxt[16];
-    AppendHumanBytes(files.at(i)->fd.GetFileSize(), sztxt, 16);
+    AppendHumanBytes(files.at(i)->fd.GetTotalFileSize(), sztxt, 16);
     ret = snprintf(output + write, sz, "%" PRIu64 "(%s) ",
                    files.at(i)->fd.GetNumber(), sztxt);
     if (ret < 0 || ret >= sz) break;
@@ -431,7 +431,7 @@ uint64_t Compaction::OutputFilePreallocationSize() {
     // output_level() == 0
     assert(num_input_levels() > 0);
     for (const auto& f : inputs_[0].files) {
-      preallocation_size += f->fd.GetFileSize();
+      preallocation_size += f->fd.GetTotalFileSize();
     }
   }
   // Over-estimate slightly so we don't end up just barely crossing

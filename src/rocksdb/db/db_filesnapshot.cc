@@ -126,12 +126,20 @@ Status DBImpl::GetLiveFiles(std::vector<std::string> &ret,
   }
 
   ret.clear();
-  ret.reserve(live.size() + 2); // *.sst + CURRENT + MANIFEST
+  // For each block-based split SST table we expect one base file and one data file.
+  // So, we reserve space in `ret` for this number of SST files.
+  // Since we will be using block-based split SST for YB, we don't care about reserving more
+  // memory for other types of SST, which are still supported as a legacy functionality.
+  ret.reserve(live.size() * 2 + 2); // *.sst + *.sst.sblock + CURRENT + MANIFEST
 
   // create names of the live files. The names are not absolute
   // paths, instead they are relative to dbname_;
   for (auto live_file : live) {
-    ret.push_back(MakeTableFileName("", live_file.GetNumber()));
+    const std::string base_fname = MakeTableFileName("", live_file.GetNumber());
+    ret.push_back(base_fname);
+    if (live_file.total_file_size > live_file.base_file_size) {
+      ret.push_back(TableBaseToDataFileName(base_fname));
+    }
   }
 
   ret.push_back(CurrentFileName(""));

@@ -30,6 +30,12 @@ class TableReader {
  public:
   virtual ~TableReader() {}
 
+  // Returns whether SST is split into data and metadata files.
+  virtual bool IsSplitSst() const = 0;
+
+  // Set data file reader for SST split into data and metadata files.
+  virtual void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) = 0;
+
   // Returns a new iterator over the table contents.
   // The result of NewIterator() is initially invalid (caller must
   // call one of the Seek methods on the iterator before using it).

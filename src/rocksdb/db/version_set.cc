@@ -432,7 +432,7 @@ class LevelFileNumIterator : public InternalIterator {
       : icmp_(icmp),
         flevel_(flevel),
         index_(static_cast<uint32_t>(flevel->num_files)),
-        current_value_(0, 0, 0) {  // Marks as invalid
+        current_value_(0, 0, 0, 0) {  // Marks as invalid
   }
   virtual bool Valid() const override { return index_ < flevel_->num_files; }
   virtual void Seek(const Slice& target) override {
@@ -587,7 +587,7 @@ Status Version::GetTableProperties(std::shared_ptr<const TableProperties>* tp,
   std::unique_ptr<RandomAccessFileReader> file_reader(
       new RandomAccessFileReader(std::move(file)));
   s = ReadTableProperties(
-      file_reader.get(), file_meta->fd.GetFileSize(),
+      file_reader.get(), file_meta->fd.GetBaseFileSize(),
       Footer::kInvalidTableMagicNumber /* table's magic number */, vset_->env_,
       ioptions->info_log, &raw_table_properties);
   if (!s.ok()) {
@@ -724,13 +724,14 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
       files.emplace_back(
           MakeTableFileName("", file->fd.GetNumber()),
           file_path,
-          file->fd.GetFileSize(),
+          file->fd.GetTotalFileSize(),
+          file->fd.GetBaseFileSize(),
           file->smallest_seqno,
           file->largest_seqno,
           file->smallest.user_key().ToString(),
           file->largest.user_key().ToString(),
           file->being_compacted);
-      level_size += file->fd.GetFileSize();
+      level_size += file->fd.GetTotalFileSize();
     }
     cf_meta->levels.emplace_back(
         level, level_size, std::move(files));
@@ -1017,7 +1018,7 @@ bool Version::MaybeInitializeFileMetaData(FileMetaData* file_meta) {
 
 void VersionStorageInfo::UpdateAccumulatedStats(FileMetaData* file_meta) {
   assert(file_meta->init_stats_from_file);
-  accumulated_file_size_ += file_meta->fd.GetFileSize();
+  accumulated_file_size_ += file_meta->fd.GetTotalFileSize();
   accumulated_raw_key_size_ += file_meta->raw_key_size;
   accumulated_raw_value_size_ += file_meta->raw_value_size;
   accumulated_num_non_deletions_ +=
@@ -1097,7 +1098,7 @@ void VersionStorageInfo::ComputeCompensatedSizes() {
       // for files that have been created right now and no other thread has
       // access to them. That's why we can safely mutate compensated_file_size.
       if (file_meta->compensated_file_size == 0) {
-        file_meta->compensated_file_size = file_meta->fd.GetFileSize();
+        file_meta->compensated_file_size = file_meta->fd.GetTotalFileSize();
         // Here we only boost the size of deletion entries of a file only
         // when the number of deletion entries is greater than the number of
         // non-deletion entries in the file.  The motivation here is that in
@@ -1148,7 +1149,7 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
       mutable_cf_options.level0_file_num_compaction_trigger) {
     level0_compact_triggered = true;
     for (auto* f : files_[0]) {
-      bytes_compact_to_next_level += f->fd.GetFileSize();
+      bytes_compact_to_next_level += f->fd.GetTotalFileSize();
     }
     estimated_compaction_needed_bytes_ = bytes_compact_to_next_level;
   } else {
@@ -1159,7 +1160,7 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
   for (int level = base_level(); level <= MaxInputLevel(); level++) {
     uint64_t level_size = 0;
     for (auto* f : files_[level]) {
-      level_size += f->fd.GetFileSize();
+      level_size += f->fd.GetTotalFileSize();
     }
     if (level == base_level() && level0_compact_triggered) {
       // Add base level size to compaction if level0 compaction triggered.
@@ -1395,7 +1396,7 @@ void SortFileByOverlappingRatio(
 
     while (next_level_it != next_level_files.end() &&
            icmp.Compare((*next_level_it)->smallest, file->largest) < 0) {
-      overlapping_bytes += (*next_level_it)->fd.file_size;
+      overlapping_bytes += (*next_level_it)->fd.total_file_size;
 
       if (icmp.Compare((*next_level_it)->largest, file->largest) > 0) {
         // next level file cross large boundary of current file.
@@ -1404,9 +1405,9 @@ void SortFileByOverlappingRatio(
       next_level_it++;
     }
 
-    assert(file->fd.file_size != 0);
+    assert(file->fd.total_file_size != 0);
     file_to_order[file->fd.GetNumber()] =
-        overlapping_bytes * 1024u / file->fd.file_size;
+        overlapping_bytes * 1024u / file->fd.total_file_size;
   }
 
   std::sort(temp->begin(), temp->end(),
@@ -1793,7 +1794,7 @@ const char* VersionStorageInfo::LevelFileSummary(FileSummaryStorage* scratch,
   for (const auto& f : files_[level]) {
     int sz = sizeof(scratch->buffer) - len;
     char sztxt[16];
-    AppendHumanBytes(f->fd.GetFileSize(), sztxt, sizeof(sztxt));
+    AppendHumanBytes(f->fd.GetTotalFileSize(), sztxt, sizeof(sztxt));
     int ret = snprintf(scratch->buffer + len, sz,
                        "#%" PRIu64 "(seq=%" PRIu64 ",sz=%s,%d) ",
                        f->fd.GetNumber(), f->smallest_seqno, sztxt,
@@ -1877,7 +1878,7 @@ void VersionStorageInfo::CalculateBaseBytes(const ImmutableCFOptions& ioptions,
     for (int i = 1; i < num_levels_; i++) {
       uint64_t total_size = 0;
       for (const auto& f : files_[i]) {
-        total_size += f->fd.GetFileSize();
+        total_size += f->fd.GetTotalFileSize();
       }
       if (total_size > 0 && first_non_empty_level == -1) {
         first_non_empty_level = i;
@@ -1975,7 +1976,7 @@ uint64_t VersionStorageInfo::EstimateLiveDataSize() const {
       if (found_end || internal_comparator_->Compare(
             file->largest, (*lb).second->smallest) < 0) {
           ranges.emplace_hint(lb, &file->largest, file);
-          size += file->fd.file_size;
+          size += file->fd.total_file_size;
       }
     }
   }
@@ -2009,7 +2010,7 @@ std::string Version::DebugString(bool hex) const {
       r.push_back(' ');
       AppendNumberTo(&r, files[i]->fd.GetNumber());
       r.push_back(':');
-      AppendNumberTo(&r, files[i]->fd.GetFileSize());
+      AppendNumberTo(&r, files[i]->fd.GetTotalFileSize());
       r.append("[");
       r.append(files[i]->smallest.DebugString(hex));
       r.append(" .. ");
@@ -3071,7 +3072,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         for (const auto& f :
              cfd->current()->storage_info()->LevelFiles(level)) {
           edit.AddFile(level, f->fd.GetNumber(), f->fd.GetPathId(),
-                       f->fd.GetFileSize(), f->smallest, f->largest,
+              f->fd.GetTotalFileSize(), f->fd.GetBaseFileSize(), f->smallest, f->largest,
                        f->smallest_seqno, f->largest_seqno,
                        f->marked_for_compaction);
         }
@@ -3183,7 +3184,7 @@ uint64_t VersionSet::ApproximateSize(Version* v, const FdWithKeyRange& f,
   uint64_t result = 0;
   if (v->cfd_->internal_comparator().Compare(f.largest_key, key) <= 0) {
     // Entire file is before "key", so just add the file size
-    result = f.fd.GetFileSize();
+    result = f.fd.GetTotalFileSize();
   } else if (v->cfd_->internal_comparator().Compare(f.smallest_key, key) > 0) {
     // Entire file is after "key", so ignore
     result = 0;
@@ -3376,7 +3377,8 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
         }
         filemetadata.name = MakeTableFileName("", file->fd.GetNumber());
         filemetadata.level = level;
-        filemetadata.size = file->fd.GetFileSize();
+        filemetadata.total_size = file->fd.GetTotalFileSize();
+        filemetadata.base_size = file->fd.GetBaseFileSize();
         filemetadata.smallestkey = file->smallest.user_key().ToString();
         filemetadata.largestkey = file->largest.user_key().ToString();
         filemetadata.smallest_seqno = file->smallest_seqno;
@@ -3447,7 +3449,7 @@ uint64_t VersionSet::GetTotalSstFilesSize(Version* dummy_versions) {
         if (unique_files.find(file_meta->fd.packed_number_and_path_id) ==
             unique_files.end()) {
           unique_files.insert(file_meta->fd.packed_number_and_path_id);
-          total_files_size += file_meta->fd.GetFileSize();
+          total_files_size += file_meta->fd.GetTotalFileSize();
         }
       }
     }

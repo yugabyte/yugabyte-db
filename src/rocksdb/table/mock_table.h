@@ -41,6 +41,10 @@ class MockTableReader : public TableReader {
  public:
   explicit MockTableReader(const stl_wrappers::KVMap& table) : table_(table) {}
 
+  bool IsSplitSst() const override { return false; }
+
+  void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena,
                                 bool skip_filters = false) override;
 
@@ -132,7 +136,9 @@ class MockTableBuilder : public TableBuilder {
 
   uint64_t NumEntries() const override { return table_.size(); }
 
-  uint64_t FileSize() const override { return table_.size(); }
+  uint64_t TotalFileSize() const override { return table_.size(); }
+
+  uint64_t BaseFileSize() const override { return table_.size(); }
 
   TableProperties GetTableProperties() const override {
     return TableProperties();
@@ -152,9 +158,12 @@ class MockTableFactory : public TableFactory {
                         unique_ptr<RandomAccessFileReader>&& file,
                         uint64_t file_size,
                         unique_ptr<TableReader>* table_reader) const override;
+
+  bool IsSplitSstForWriteSupported() const override { return false; }
+
   TableBuilder* NewTableBuilder(
-      const TableBuilderOptions& table_builder_options,
-      uint32_t column_familly_id, WritableFileWriter* file) const override;
+      const TableBuilderOptions& table_builder_options, uint32_t column_familly_id,
+      WritableFileWriter* base_file, WritableFileWriter* data_file = nullptr) const override;
 
   // This function will directly create mock table instead of going through
   // MockTableBuilder. file_contents has to have a format of <internal_key,

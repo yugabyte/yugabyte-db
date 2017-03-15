@@ -29,12 +29,15 @@ struct ExternalSstFileInfo {
                       const std::string& _smallest_key,
                       const std::string& _largest_key,
                       SequenceNumber _sequence_number, uint64_t _file_size,
-                      int32_t _num_entries, int32_t _version)
+                      uint64_t _base_file_size, bool _is_split_sst, int32_t _num_entries,
+                      int32_t _version)
       : file_path(_file_path),
         smallest_key(_smallest_key),
         largest_key(_largest_key),
         sequence_number(_sequence_number),
         file_size(_file_size),
+        base_file_size(_base_file_size),
+        is_split_sst(_is_split_sst),
         num_entries(_num_entries),
         version(_version) {}
 
@@ -42,7 +45,9 @@ struct ExternalSstFileInfo {
   std::string smallest_key;        // smallest user key in file
   std::string largest_key;         // largest user key in file
   SequenceNumber sequence_number;  // sequence number of all keys in file
-  uint64_t file_size;              // file size in bytes
+  uint64_t file_size;              // total file(s) size in bytes
+  uint64_t base_file_size;         // base file size in bytes
+  bool is_split_sst;               // is SST split into metadata and data file(s)
   uint64_t num_entries;            // number of entries in file
   int32_t version;                 // file version
 };

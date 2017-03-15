@@ -190,7 +190,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
   db_mutex_->AssertHeld();
   const uint64_t start_micros = db_options_.env->NowMicros();
   // path 0 for level 0 file.
-  meta->fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
+  meta->fd = FileDescriptor(versions_->NewFileNumber(), 0, 0, 0);
 
   Version* base = cfd_->current();
   base->Ref();  // it is likely that we do not need this reference
@@ -250,7 +250,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
         " bytes %s"
         "%s",
         cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber(),
-        meta->fd.GetFileSize(), s.ToString().c_str(),
+        meta->fd.GetTotalFileSize(), s.ToString().c_str(),
         meta->marked_for_compaction ? " (needs compaction)" : "");
 
     // output to event logger
@@ -260,7 +260,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
       info.file_path = TableFileName(db_options_.db_paths,
                                      meta->fd.GetNumber(),
                                      meta->fd.GetPathId());
-      info.file_size = meta->fd.GetFileSize();
+      info.file_size = meta->fd.GetTotalFileSize();
       info.job_id = job_context_->job_id;
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, db_options_.listeners,
@@ -279,27 +279,27 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
   // re-acquire the most current version
   base = cfd_->current();
 
-  // Note that if file_size is zero, the file has been deleted and
+  // Note that if total_file_size is zero, the file has been deleted and
   // should not be added to the manifest.
-  if (s.ok() && meta->fd.GetFileSize() > 0) {
+  if (s.ok() && meta->fd.GetTotalFileSize() > 0) {
     // if we have more than 1 background thread, then we cannot
     // insert files directly into higher levels because some other
     // threads could be concurrently producing compacted files for
     // that key range.
     // Add file to L0
     edit->AddFile(0 /* level */, meta->fd.GetNumber(), meta->fd.GetPathId(),
-                  meta->fd.GetFileSize(), meta->smallest, meta->largest,
+        meta->fd.GetTotalFileSize(), meta->fd.GetBaseFileSize(), meta->smallest, meta->largest,
                   meta->smallest_seqno, meta->largest_seqno,
                   meta->marked_for_compaction);
   }
 
   InternalStats::CompactionStats stats(1);
   stats.micros = db_options_.env->NowMicros() - start_micros;
-  stats.bytes_written = meta->fd.GetFileSize();
+  stats.bytes_written = meta->fd.GetTotalFileSize();
   cfd_->internal_stats()->AddCompactionStats(0 /* level */, stats);
   cfd_->internal_stats()->AddCFStats(InternalStats::BYTES_FLUSHED,
-                                     meta->fd.GetFileSize());
-  RecordTick(stats_, COMPACT_WRITE_BYTES, meta->fd.GetFileSize());
+      meta->fd.GetTotalFileSize());
+  RecordTick(stats_, COMPACT_WRITE_BYTES, meta->fd.GetTotalFileSize());
   return s;
 }
 

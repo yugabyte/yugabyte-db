@@ -58,23 +58,27 @@ Status BlockBasedTableFactory::NewTableReader(
 
 Status BlockBasedTableFactory::NewTableReader(
     const TableReaderOptions& table_reader_options,
-    unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
+    unique_ptr<RandomAccessFileReader>&& base_file, uint64_t base_file_size,
     unique_ptr<TableReader>* table_reader, const bool prefetch_enabled) const {
   return BlockBasedTable::Open(
       table_reader_options.ioptions, table_reader_options.env_options,
-      table_options_, table_reader_options.internal_comparator, std::move(file),
-      file_size, table_reader, prefetch_enabled,
+      table_options_, table_reader_options.internal_comparator, std::move(base_file),
+      base_file_size, table_reader, prefetch_enabled,
       table_reader_options.skip_filters);
 }
 
 TableBuilder* BlockBasedTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
-    WritableFileWriter* file) const {
+    WritableFileWriter* base_file, WritableFileWriter* data_file) const {
+  // base_file should be not nullptr, data_file should either point to different file writer
+  // or be nullptr in order to produce single SST file containing both data and metadata.
+  assert(base_file);
+  assert(base_file != data_file);
   auto table_builder = new BlockBasedTableBuilder(
       table_builder_options.ioptions, table_options_,
       table_builder_options.internal_comparator,
       table_builder_options.int_tbl_prop_collector_factories, column_family_id,
-      file, table_builder_options.compression_type,
+      base_file, data_file, table_builder_options.compression_type,
       table_builder_options.compression_opts,
       table_builder_options.skip_filters);
 

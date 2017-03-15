@@ -26,16 +26,15 @@ Status CuckooTableFactory::NewTableReader(
   return s;
 }
 
-TableBuilder* CuckooTableFactory::NewTableBuilder(
-    const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
-    WritableFileWriter* file) const {
+TableBuilder *CuckooTableFactory::NewTableBuilder(const TableBuilderOptions &table_builder_options,
+    uint32_t column_family_id, WritableFileWriter *base_file,
+    WritableFileWriter *data_file) const {
+  // This table factory doesn't support separate files for metadata and data.
+  assert(data_file == nullptr);
   // Ignore the skipFIlters flag. Does not apply to this file format
-  //
-
   // TODO: change builder to take the option struct
   return new CuckooTableBuilder(
-      file, table_options_.hash_table_ratio, 64,
-      table_options_.max_search_depth,
+      base_file, table_options_.hash_table_ratio, 64, table_options_.max_search_depth,
       table_builder_options.internal_comparator.user_comparator(),
       table_options_.cuckoo_block_size, table_options_.use_module_hash,
       table_options_.identity_as_first_hash, nullptr);

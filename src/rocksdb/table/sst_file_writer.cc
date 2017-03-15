@@ -7,6 +7,7 @@
 
 #include <vector>
 #include "db/dbformat.h"
+#include "db/filename.h"
 #include "rocksdb/table.h"
 #include "table/block_based_table_builder.h"
 #include "util/file_reader_writer.h"
@@ -77,7 +78,8 @@ struct SstFileWriter::Rep {
         ioptions(_ioptions),
         internal_comparator(_user_comparator) {}
 
-  std::unique_ptr<WritableFileWriter> file_writer;
+  std::unique_ptr<WritableFileWriter> base_file_writer;
+  std::unique_ptr<WritableFileWriter> data_file_writer;
   std::unique_ptr<TableBuilder> builder;
   EnvOptions env_options;
   ImmutableCFOptions ioptions;
@@ -95,10 +97,19 @@ SstFileWriter::~SstFileWriter() { delete rep_; }
 Status SstFileWriter::Open(const std::string& file_path) {
   Rep* r = rep_;
   Status s;
-  std::unique_ptr<WritableFile> sst_file;
-  s = r->ioptions.env->NewWritableFile(file_path, &sst_file, r->env_options);
+  const bool is_split_sst = r->ioptions.table_factory->IsSplitSstForWriteSupported();
+  std::unique_ptr<WritableFile> base_sst_file;
+  std::unique_ptr<WritableFile> data_sst_file;
+  s = r->ioptions.env->NewWritableFile(file_path, &base_sst_file, r->env_options);
   if (!s.ok()) {
     return s;
+  }
+  if (is_split_sst) {
+    s = r->ioptions.env->NewWritableFile(TableBaseToDataFileName(file_path), &data_sst_file,
+        r->env_options);
+    if (!s.ok()) {
+      return s;
+    }
   }
 
   CompressionType compression_type = r->ioptions.compression;
@@ -115,15 +126,21 @@ Status SstFileWriter::Open(const std::string& file_path) {
   TableBuilderOptions table_builder_options(
       r->ioptions, r->internal_comparator, &int_tbl_prop_collector_factories,
       compression_type, r->ioptions.compression_opts, false);
-  r->file_writer.reset(
-      new WritableFileWriter(std::move(sst_file), r->env_options));
+  r->base_file_writer.reset(
+      new WritableFileWriter(std::move(base_sst_file), r->env_options));
+  if (is_split_sst) {
+    r->data_file_writer.reset(
+        new WritableFileWriter(std::move(data_sst_file), r->env_options));
+  }
   r->builder.reset(r->ioptions.table_factory->NewTableBuilder(
       table_builder_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      r->file_writer.get()));
+      r->base_file_writer.get(), r->data_file_writer.get()));
 
   r->file_info.file_path = file_path;
   r->file_info.file_size = 0;
+  r->file_info.base_file_size = 0;
+  r->file_info.is_split_sst = is_split_sst;
   r->file_info.num_entries = 0;
   r->file_info.sequence_number = 0;
   r->file_info.version = 1;
@@ -149,7 +166,7 @@ Status SstFileWriter::Add(const Slice& user_key, const Slice& value) {
   // update file info
   r->file_info.num_entries++;
   r->file_info.largest_key = user_key.ToString();
-  r->file_info.file_size = r->builder->FileSize();
+  r->file_info.file_size = r->builder->TotalFileSize();
 
   InternalKey ikey(user_key, 0 /* Sequence Number */,
                    ValueType::kTypeValue /* Put */);
@@ -170,10 +187,16 @@ Status SstFileWriter::Finish(ExternalSstFileInfo* file_info) {
   Status s = r->builder->Finish();
   if (s.ok()) {
     if (!r->ioptions.disable_data_sync) {
-      s = r->file_writer->Sync(r->ioptions.use_fsync);
+      s = r->base_file_writer->Sync(r->ioptions.use_fsync);
+      if (s.ok() && r->data_file_writer) {
+        s = r->data_file_writer->Sync(r->ioptions.use_fsync);
+      }
     }
     if (s.ok()) {
-      s = r->file_writer->Close();
+      s = r->base_file_writer->Close();
+    }
+    if (s.ok() && r->data_file_writer) {
+      s = r->data_file_writer->Close();
     }
   } else {
     r->builder->Abandon();
@@ -184,7 +207,8 @@ Status SstFileWriter::Finish(ExternalSstFileInfo* file_info) {
   }
 
   if (s.ok() && file_info != nullptr) {
-    r->file_info.file_size = r->builder->FileSize();
+    r->file_info.file_size = r->builder->TotalFileSize();
+    r->file_info.base_file_size = r->builder->BaseFileSize();
     *file_info = r->file_info;
   }
 

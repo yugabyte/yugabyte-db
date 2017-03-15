@@ -814,7 +814,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveOneFile) {
   db_->GetLiveFilesMetaData(&metadata);
   ASSERT_EQ(metadata.size(), 1U);
   ASSERT_EQ(metadata[0].name /* level1_file.name */, level0_file.name);
-  ASSERT_EQ(metadata[0].size /* level1_file.size */, level0_file.size);
+  ASSERT_EQ(metadata[0].total_size /* level1_file.size */, level0_file.total_size);
 
   for (int i = 0; i < num_keys; i++) {
     ASSERT_EQ(Get(Key(i)), values[i]);

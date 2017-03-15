@@ -27,17 +27,17 @@ Status PlainTableFactory::NewTableReader(
       table_options_.full_scan_mode);
 }
 
-TableBuilder* PlainTableFactory::NewTableBuilder(
-    const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
-    WritableFileWriter* file) const {
+TableBuilder* PlainTableFactory::NewTableBuilder(const TableBuilderOptions &table_builder_options,
+    uint32_t column_family_id, WritableFileWriter *base_file, WritableFileWriter *data_file) const {
+  // This table factory doesn't support separate files for metadata and data.
+  assert(data_file == nullptr);
   // Ignore the skip_filters flag. PlainTable format is optimized for small
   // in-memory dbs. The skip_filters optimization is not useful for plain
   // tables
   //
   return new PlainTableBuilder(
-      table_builder_options.ioptions,
-      table_builder_options.int_tbl_prop_collector_factories, column_family_id,
-      file, table_options_.user_key_len, table_options_.encoding_type,
+      table_builder_options.ioptions, table_builder_options.int_tbl_prop_collector_factories,
+      column_family_id, base_file, table_options_.user_key_len, table_options_.encoding_type,
       table_options_.index_sparseness, table_options_.bloom_bits_per_key, 6,
       table_options_.huge_page_tlb_size, table_options_.hash_table_ratio,
       table_options_.store_index_in_file);

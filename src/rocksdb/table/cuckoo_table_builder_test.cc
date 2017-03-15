@@ -150,7 +150,7 @@ TEST_F(CuckooBuilderTest, SuccessWithEmptyFile) {
                              BytewiseComparator(), 1, false, false,
                              GetSliceHash);
   ASSERT_OK(builder.status());
-  ASSERT_EQ(0UL, builder.FileSize());
+  ASSERT_EQ(0UL, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
   CheckFileContents({}, {}, {}, "", 2, 2, false);
@@ -191,10 +191,10 @@ TEST_F(CuckooBuilderTest, WriteSuccessNoCollisionFullKey) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = GetInternalKey("key00", true);
   expected_unused_bucket += std::string(values[0].size(), 'a');
@@ -238,10 +238,10 @@ TEST_F(CuckooBuilderTest, WriteSuccessWithCollisionFullKey) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = GetInternalKey("key00", true);
   expected_unused_bucket += std::string(values[0].size(), 'a');
@@ -286,10 +286,10 @@ TEST_F(CuckooBuilderTest, WriteSuccessWithCollisionAndCuckooBlock) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = GetInternalKey("key00", true);
   expected_unused_bucket += std::string(values[0].size(), 'a');
@@ -338,10 +338,10 @@ TEST_F(CuckooBuilderTest, WithCollisionPathFullKey) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = GetInternalKey("key00", true);
   expected_unused_bucket += std::string(values[0].size(), 'a');
@@ -387,10 +387,10 @@ TEST_F(CuckooBuilderTest, WithCollisionPathFullKeyAndCuckooBlock) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = GetInternalKey("key00", true);
   expected_unused_bucket += std::string(values[0].size(), 'a');
@@ -429,10 +429,10 @@ TEST_F(CuckooBuilderTest, WriteSuccessNoCollisionUserKey) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = user_keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = "key00";
   expected_unused_bucket += std::string(values[0].size(), 'a');
@@ -472,10 +472,10 @@ TEST_F(CuckooBuilderTest, WriteSuccessWithCollisionUserKey) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = user_keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = "key00";
   expected_unused_bucket += std::string(values[0].size(), 'a');
@@ -517,10 +517,10 @@ TEST_F(CuckooBuilderTest, WithCollisionPathUserKey) {
     ASSERT_OK(builder.status());
   }
   size_t bucket_size = user_keys[0].size() + values[0].size();
-  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.FileSize());
+  ASSERT_EQ(expected_table_size * bucket_size - 1, builder.TotalFileSize());
   ASSERT_OK(builder.Finish());
   ASSERT_OK(file_writer->Close());
-  ASSERT_LE(expected_table_size * bucket_size, builder.FileSize());
+  ASSERT_LE(expected_table_size * bucket_size, builder.TotalFileSize());
 
   std::string expected_unused_bucket = "key00";
   expected_unused_bucket += std::string(values[0].size(), 'a');

@@ -38,7 +38,7 @@ class TableCache {
   ~TableCache();
 
   // Return an iterator for the specified file number (the corresponding
-  // file length must be exactly "file_size" bytes).  If "tableptr" is
+  // file length must be exactly "total_file_size" bytes).  If "tableptr" is
   // non-nullptr, also sets "*tableptr" to point to the Table object
   // underlying the returned iterator, or nullptr if no Table object underlies
   // the returned iterator.  The returned "*tableptr" object is owned by

@@ -85,7 +85,7 @@ class CompactionJobTest : public testing::Test {
     FileMetaData meta;
     std::vector<DbPath> db_paths;
     db_paths.emplace_back(dbname_, std::numeric_limits<uint64_t>::max());
-    meta.fd = FileDescriptor(file_number, 0, 0);
+    meta.fd = FileDescriptor(file_number, 0, 0, 0);
     return TableFileName(db_paths, meta.fd.GetNumber(), meta.fd.GetPathId());
   }
 
@@ -131,7 +131,7 @@ class CompactionJobTest : public testing::Test {
         env_, GenerateFileName(file_number), std::move(contents)));
 
     VersionEdit edit;
-    edit.AddFile(level, file_number, 0, 10, smallest_key, largest_key,
+    edit.AddFile(level, file_number, 0, 10, 10, smallest_key, largest_key,
         smallest_seqno, largest_seqno, false);
 
     mutex_.Lock();

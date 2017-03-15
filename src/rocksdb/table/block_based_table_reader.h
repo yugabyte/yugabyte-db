@@ -56,28 +56,32 @@ class BlockBasedTable : public TableReader {
   static const char kFilterBlockPrefix[];
   static const char kFullFilterBlockPrefix[];
 
-  // Attempt to open the table that is stored in bytes [0..file_size)
-  // of "file", and read the metadata entries necessary to allow
-  // retrieving data from the table.
+  // Attempt to open the table that is stored in bytes [0..base_file_size) of "base_file" (may be
+  // only metadata and data will be read from separate file passed via SetDataFileReader), and read
+  // the metadata entries necessary to allow retrieving data from the table.
   //
-  // If successful, returns ok and sets "*table_reader" to the newly opened
-  // table.  The client should delete "*table_reader" when no longer needed.
-  // If there was an error while initializing the table, sets "*table_reader"
-  // to nullptr and returns a non-ok status.
+  // If successful, returns ok and sets "*table_reader" to the newly opened table. The client
+  // should delete "*table_reader" when no longer needed. If there was an error while initializing
+  // the table, sets "*table_reader" to nullptr and returns a non-ok status.
   //
-  // @param file must remain live while this Table is in use.
-  // @param prefetch_index_and_filter can be used to disable prefetching of
-  //    index and filter blocks at startup
+  // @param base_file must remain live while this Table is in use.
+  // @param prefetch_index_and_filter can be used to disable prefetching of index and filter blocks
+  //    at startup
   // @param skip_filters Disables loading/accessing the filter block. Overrides
-  //    prefetch_index_and_filter, so filter will be skipped if both are set.
+  //   prefetch_index_and_filter, so filter will be skipped if both are set.
   static Status Open(const ImmutableCFOptions& ioptions,
                      const EnvOptions& env_options,
                      const BlockBasedTableOptions& table_options,
                      const InternalKeyComparator& internal_key_comparator,
-                     unique_ptr<RandomAccessFileReader>&& file,
-                     uint64_t file_size, unique_ptr<TableReader>* table_reader,
+                     unique_ptr<RandomAccessFileReader>&& base_file,
+                     uint64_t base_file_size,
+                     unique_ptr<TableReader>* table_reader,
                      bool prefetch_index_and_filter = true,
                      bool skip_filters = false);
+
+  bool IsSplitSst() const override { return true; }
+
+  void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) override;
 
   bool PrefixMayMatch(const Slice& internal_key);
 
@@ -130,6 +134,8 @@ class BlockBasedTable : public TableReader {
  private:
   template <class TValue>
   struct CachableEntry;
+
+  struct FileReaderWithCachePrefix;
 
   struct Rep;
   Rep* rep_;
@@ -208,21 +214,29 @@ class BlockBasedTable : public TableReader {
   // Create the filter from the filter block.
   static FilterBlockReader* ReadFilter(Rep* rep, size_t* filter_size = nullptr);
 
-  static void SetupCacheKeyPrefix(Rep* rep);
+  // Helper function to setup the cache key's prefix for block of file passed within a reader
+  // instance. Used for both data and metadata files.
+  static void SetupCacheKeyPrefix(Rep* rep, FileReaderWithCachePrefix* reader_with_cache_prefix);
 
   explicit BlockBasedTable(Rep* rep)
       : rep_(rep) {
   }
 
-  // Generate a cache key prefix from the file
-  static void GenerateCachePrefix(Cache* cc,
-    RandomAccessFile* file, char* buffer, size_t* size);
-  static void GenerateCachePrefix(Cache* cc,
-    WritableFile* file, char* buffer, size_t* size);
-
   // The longest prefix of the cache key used to identify blocks.
   // For Posix files the unique ID is three varints.
-  static const size_t kMaxCacheKeyPrefixSize = kMaxVarint64Length*3+1;
+  static constexpr const size_t kMaxCacheKeyPrefixSize = kMaxVarint64Length*3+1;
+
+  struct CacheKeyBuffer {
+    char data[kMaxCacheKeyPrefixSize];
+    size_t size;
+  };
+
+  // Generate a cache key prefix from the file. Used for both data and metadata files.
+  static void GenerateCachePrefix(Cache* cc, File* file,
+      CacheKeyBuffer* prefix);
+
+  static Slice GetCacheKey(const CacheKeyBuffer& cache_key_prefix, const BlockHandle& handle,
+      char* cache_key);
 
   // Helper functions for DumpTable()
   Status DumpIndexBlock(WritableFile* out_file);

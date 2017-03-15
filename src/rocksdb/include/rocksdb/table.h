@@ -372,15 +372,24 @@ class TableFactory {
   //
   // table_reader_options is a TableReaderOptions which contain all the
   //    needed parameters and configuration to open the table.
-  // file is a file handler to handle the file for the table.
-  // file_size is the physical file size of the file.
+  // base_file is a file handler to handle the base file for the table.
+  // base_file_size is the physical file size of the base file.
   // table_reader is the output table reader.
   virtual Status NewTableReader(
       const TableReaderOptions& table_reader_options,
-      unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
+      unique_ptr<RandomAccessFileReader>&& base_file, uint64_t base_file_size,
       unique_ptr<TableReader>* table_reader) const = 0;
 
-  // Return a table builder to write to a file for this table type.
+  // Whether SST split into metadata and data file(s) is supported for writing.
+  // There is a AdaptiveTableFactory inheriting common TableFactory interface. AdaptiveTableFactory
+  // can delegate reads to one type of table factory and writes to another type of table factory
+  // and in that case it can only support split SST either for read or write.
+  virtual bool IsSplitSstForWriteSupported() const = 0;
+
+  // Return a table builder to write to file(s) for this table type.
+  // Particular table factory implementations can support either writing whole SST to a single file
+  // (passed in base_file parameter, data_file should be nullptr in that case) or support separate
+  // files for data (data_file) and metadata (base_file).
   //
   // It is called in several places:
   // (1) When flushing memtable to a level-0 output file, it creates a table
@@ -401,7 +410,8 @@ class TableFactory {
   // to use in this table.
   virtual TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      uint32_t column_family_id, WritableFileWriter* file) const = 0;
+      uint32_t column_family_id, WritableFileWriter* base_file,
+      WritableFileWriter* data_file = nullptr) const = 0;
 
   // Sanitizes the specified DB Options and ColumnFamilyOptions.
   //

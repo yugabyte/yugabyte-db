@@ -24,8 +24,8 @@
 namespace rocksdb {
 
 // The maximum length of a varint in bytes for 32 and 64 bits respectively.
-const unsigned int kMaxVarint32Length = 5;
-const unsigned int kMaxVarint64Length = 10;
+constexpr const unsigned int kMaxVarint32Length = 5;
+constexpr const unsigned int kMaxVarint64Length = 10;
 
 // Standard Put... routines append to a string
 extern void PutFixed32(std::string* dst, uint32_t value);

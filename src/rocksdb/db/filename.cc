@@ -28,6 +28,8 @@ namespace rocksdb {
 
 static const char kRocksDbTFileExt[] = "sst";
 static const char kLevelDbTFileExt[] = "ldb";
+static const char kRocksDbTSBlockExtSuffix[] = "sblock";
+static const char kRocksDbTSBlockFileExt[] = "sst.sblock.0";
 
 // Given a path, flatten the path name by replacing all chars not in
 // {[0-9,a-z,A-Z,-,_,.]} with _. And append '_LOG\0' at the end.
@@ -115,6 +117,10 @@ std::string TableFileName(const std::vector<DbPath>& db_paths, uint64_t number,
     path = db_paths[path_id].path;
   }
   return MakeTableFileName(path, number);
+}
+
+extern std::string TableBaseToDataFileName(const std::string& base_fname) {
+  return base_fname + "." + kRocksDbTSBlockExtSuffix + ".0";
 }
 
 void FormatFileNumber(uint64_t number, uint32_t path_id, char* out_buf,
@@ -332,6 +338,8 @@ bool ParseFileName(const std::string& fname, uint64_t* number,
     } else if (suffix == Slice(kRocksDbTFileExt) ||
                suffix == Slice(kLevelDbTFileExt)) {
       *type = kTableFile;
+    } else if (suffix == Slice(kRocksDbTSBlockFileExt)) {
+      *type = kTableSBlockFile;
     } else if (suffix == Slice(kTempFileNameSuffix)) {
       *type = kTempFile;
     } else {

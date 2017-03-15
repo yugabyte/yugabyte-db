@@ -33,23 +33,32 @@ extern uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id);
 // file number and size, which can be used to create a new table reader for it.
 // The behavior is undefined when a copied of the structure is used when the
 // file is not in any live version any more.
+// SST can be either one file containing both meta data and data or it can be split into
+// multiple files: one metadata file and number of data files (S-Blocks aka storage-blocks).
+// As of 2017-03-10 there is at most one data file.
+// Base file is a file which contains SST metadata. So, if SST is either one base file, or
+// in case SST is split into multiple files, base file is a metadata file.
 struct FileDescriptor {
   // Table reader in table_reader_handle
   TableReader* table_reader;
   uint64_t packed_number_and_path_id;
-  uint64_t file_size;  // File size in bytes
+  uint64_t total_file_size;  // total file(s) size in bytes
+  uint64_t base_file_size;  // base file size in bytes
 
-  FileDescriptor() : FileDescriptor(0, 0, 0) {}
+  FileDescriptor() : FileDescriptor(0, 0, 0, 0) {}
 
-  FileDescriptor(uint64_t number, uint32_t path_id, uint64_t _file_size)
+  FileDescriptor(uint64_t number, uint32_t path_id, uint64_t _total_file_size,
+      uint64_t _base_file_size)
       : table_reader(nullptr),
         packed_number_and_path_id(PackFileNumberAndPathId(number, path_id)),
-        file_size(_file_size) {}
+        total_file_size(_total_file_size),
+        base_file_size(_base_file_size) {}
 
   FileDescriptor& operator=(const FileDescriptor& fd) {
     table_reader = fd.table_reader;
     packed_number_and_path_id = fd.packed_number_and_path_id;
-    file_size = fd.file_size;
+    total_file_size = fd.total_file_size;
+    base_file_size = fd.base_file_size;
     return *this;
   }
 
@@ -60,7 +69,8 @@ struct FileDescriptor {
     return static_cast<uint32_t>(
         packed_number_and_path_id / (kFileNumberMask + 1));
   }
-  uint64_t GetFileSize() const { return file_size; }
+  uint64_t GetTotalFileSize() const { return total_file_size; }
+  uint64_t GetBaseFileSize() const { return base_file_size; }
 };
 
 struct FileMetaData {
@@ -93,19 +103,7 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 
-  FileMetaData()
-      : refs(0),
-        being_compacted(false),
-        smallest_seqno(kMaxSequenceNumber),
-        largest_seqno(0),
-        table_reader_handle(nullptr),
-        compensated_file_size(0),
-        num_entries(0),
-        num_deletions(0),
-        raw_key_size(0),
-        raw_value_size(0),
-        init_stats_from_file(false),
-        marked_for_compaction(false) {}
+  FileMetaData();
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
@@ -183,13 +181,13 @@ class VersionEdit {
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
   void AddFile(int level, uint64_t file, uint32_t file_path_id,
-               uint64_t file_size, const InternalKey& smallest,
+               uint64_t file_size, uint64_t base_file_size, const InternalKey& smallest,
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
                const SequenceNumber& largest_seqno,
                bool marked_for_compaction) {
     assert(smallest_seqno <= largest_seqno);
     FileMetaData f;
-    f.fd = FileDescriptor(file, file_path_id, file_size);
+    f.fd = FileDescriptor(file, file_path_id, file_size, base_file_size);
     f.smallest = smallest;
     f.largest = largest;
     f.smallest_seqno = smallest_seqno;

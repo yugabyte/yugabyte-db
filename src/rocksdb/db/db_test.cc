@@ -2499,7 +2499,7 @@ void CheckColumnFamilyMeta(const ColumnFamilyMetaData& cf_meta) {
     uint64_t level_csize = 0;
     file_count += level_meta.files.size();
     for (auto file_meta : level_meta.files) {
-      level_size += file_meta.size;
+      level_size += file_meta.total_size;
     }
     ASSERT_EQ(level_meta.size, level_size);
     cf_size += level_size;
@@ -3930,8 +3930,8 @@ TEST_F(DBTest, SnapshotFiles) {
     dbfull()->DisableFileDeletions();
     dbfull()->GetLiveFiles(files, &manifest_size);
 
-    // CURRENT, MANIFEST, *.sst files (one for each CF)
-    ASSERT_EQ(files.size(), 4U);
+    // CURRENT, MANIFEST, *.sst, *.sst.sblock files (one for each CF)
+    ASSERT_EQ(files.size(), 6U);
 
     uint64_t number = 0;
     FileType type;
@@ -3990,6 +3990,7 @@ TEST_F(DBTest, SnapshotFiles) {
     std::string val;
     for (unsigned int i = 0; i < 80; i++) {
       stat = snapdb->Get(roptions, cf_handles[i < 40], Key(i), &val);
+      ASSERT_OK(stat);
       ASSERT_EQ(values[i].compare(val), 0);
     }
     for (auto cfh : cf_handles) {
@@ -7034,8 +7035,8 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   ASSERT_EQ(1U, metadata.size());
-  ASSERT_LE(metadata[0].size, k64KB + k4KB);
-  ASSERT_GE(metadata[0].size, k64KB - k4KB);
+  ASSERT_LE(metadata[0].total_size, k64KB + k4KB);
+  ASSERT_GE(metadata[0].total_size, k64KB - k4KB);
 
   // Test compaction trigger and target_file_size_base
   // Reduce compaction trigger to 2, and reduce L1 file size to 32KB.
@@ -7055,10 +7056,10 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   metadata.clear();
   db_->GetLiveFilesMetaData(&metadata);
   ASSERT_EQ(2U, metadata.size());
-  ASSERT_LE(metadata[0].size, k32KB + k4KB);
-  ASSERT_GE(metadata[0].size, k32KB - k4KB);
-  ASSERT_LE(metadata[1].size, k32KB + k4KB);
-  ASSERT_GE(metadata[1].size, k32KB - k4KB);
+  ASSERT_LE(metadata[0].total_size, k32KB + k4KB);
+  ASSERT_GE(metadata[0].total_size, k32KB - k4KB);
+  ASSERT_LE(metadata[1].total_size, k32KB + k4KB);
+  ASSERT_GE(metadata[1].total_size, k32KB - k4KB);
 
   // Test max_bytes_for_level_base
   // Increase level base size to 256KB and write enough data that will
@@ -8776,11 +8777,11 @@ TEST_F(DBTest, RateLimitedDelete) {
 
   uint64_t total_files_size = 0;
   uint64_t expected_penlty = 0;
-  ASSERT_EQ(penalties.size(), metadata.size());
+  ASSERT_EQ(penalties.size(), metadata.size() * 2);
   for (size_t i = 0; i < metadata.size(); i++) {
-    total_files_size += metadata[i].size;
+    total_files_size += metadata[i].total_size;
     expected_penlty = ((total_files_size * 1000000) / rate_bytes_per_sec);
-    ASSERT_EQ(expected_penlty, penalties[i]);
+    ASSERT_EQ(expected_penlty, penalties[i * 2 + 1]);
   }
   ASSERT_GT(time_spent_deleting, expected_penlty * 0.9);
 
@@ -8845,7 +8846,7 @@ TEST_F(DBTest, DeleteSchedulerMultipleDBPaths) {
   ASSERT_EQ("0,2", FilesPerLevel(0));
 
   sfm->WaitForEmptyTrash();
-  ASSERT_EQ(bg_delete_file, 8);
+  ASSERT_EQ(bg_delete_file, 16);
 
   compact_options.bottommost_level_compaction =
       BottommostLevelCompaction::kForce;
@@ -8853,7 +8854,7 @@ TEST_F(DBTest, DeleteSchedulerMultipleDBPaths) {
   ASSERT_EQ("0,1", FilesPerLevel(0));
 
   sfm->WaitForEmptyTrash();
-  ASSERT_EQ(bg_delete_file, 8);
+  ASSERT_EQ(bg_delete_file, 16);
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
@@ -8890,8 +8891,8 @@ TEST_F(DBTest, DestroyDBWithRateLimitedDelete) {
 
   auto sfm = static_cast<SstFileManagerImpl*>(options.sst_file_manager.get());
   sfm->WaitForEmptyTrash();
-  // We have deleted the 4 sst files in the delete_scheduler
-  ASSERT_EQ(bg_delete_file, 4);
+  // We have deleted the 4*2 sst files in the delete_scheduler
+  ASSERT_EQ(bg_delete_file, 8);
 }
 #endif  // ROCKSDB_LITE
 
@@ -9073,12 +9074,12 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
   std::vector<LiveFileMetaData> live_files_meta;
   dbfull()->GetLiveFilesMetaData(&live_files_meta);
   ASSERT_EQ(live_files_meta.size(), 5);
-  uint64_t single_file_size = live_files_meta[0].size;
+  uint64_t single_file_size = live_files_meta[0].total_size;
 
   uint64_t live_sst_files_size = 0;
   uint64_t total_sst_files_size = 0;
   for (const auto& file_meta : live_files_meta) {
-    live_sst_files_size += file_meta.size;
+    live_sst_files_size += file_meta.total_size;
   }
 
   ASSERT_TRUE(dbfull()->GetIntProperty("rocksdb.total-sst-files-size",
@@ -9102,7 +9103,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
   live_sst_files_size = 0;
   total_sst_files_size = 0;
   for (const auto& file_meta : live_files_meta) {
-    live_sst_files_size += file_meta.size;
+    live_sst_files_size += file_meta.total_size;
   }
   ASSERT_TRUE(dbfull()->GetIntProperty("rocksdb.total-sst-files-size",
                                        &total_sst_files_size));
@@ -9162,12 +9163,12 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
   std::vector<LiveFileMetaData> live_files_meta;
   dbfull()->GetLiveFilesMetaData(&live_files_meta);
   ASSERT_EQ(live_files_meta.size(), 5);
-  uint64_t single_file_size = live_files_meta[0].size;
+  uint64_t single_file_size = live_files_meta[0].total_size;
 
   uint64_t live_sst_files_size = 0;
   uint64_t total_sst_files_size = 0;
   for (const auto& file_meta : live_files_meta) {
-    live_sst_files_size += file_meta.size;
+    live_sst_files_size += file_meta.total_size;
   }
 
   ASSERT_TRUE(dbfull()->GetIntProperty("rocksdb.total-sst-files-size",
@@ -9192,7 +9193,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
   live_sst_files_size = 0;
   total_sst_files_size = 0;
   for (const auto& file_meta : live_files_meta) {
-    live_sst_files_size += file_meta.size;
+    live_sst_files_size += file_meta.total_size;
   }
   ASSERT_TRUE(dbfull()->GetIntProperty("rocksdb.total-sst-files-size",
                                        &total_sst_files_size));

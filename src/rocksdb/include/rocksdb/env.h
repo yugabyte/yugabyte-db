@@ -25,6 +25,7 @@
 #include <vector>
 #include "rocksdb/status.h"
 #include "rocksdb/thread_status.h"
+#include "rocksdb/file.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -422,7 +423,7 @@ class SequentialFile {
 };
 
 // A file abstraction for randomly reading the contents of a file.
-class RandomAccessFile {
+class RandomAccessFile : public File {
  public:
   RandomAccessFile() { }
   virtual ~RandomAccessFile();
@@ -449,22 +450,8 @@ class RandomAccessFile {
   // layer
   virtual void EnableReadAhead() {}
 
-  // Tries to get an unique ID for this file that will be the same each time
-  // the file is opened (and will stay the same while the file is open).
-  // Furthermore, it tries to make this ID at most "max_size" bytes. If such an
-  // ID can be created this function returns the length of the ID and places it
-  // in "id"; otherwise, this function returns 0, in which case "id"
-  // may not have been modified.
-  //
-  // This function guarantees, for IDs from a given environment, two unique ids
-  // cannot be made equal to eachother by adding arbitrary bytes to one of
-  // them. That is, no unique ID is the prefix of another.
-  //
-  // This function guarantees that the returned ID will not be interpretable as
-  // a single varint.
-  //
-  // Note: these IDs are only valid for the duration of the process.
-  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+  // For documentation, refer to File::GetUniqueId()
+  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
     return 0; // Default implementation to prevent issues with backwards
               // compatibility.
   }
@@ -484,7 +471,7 @@ class RandomAccessFile {
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
 // at a time to the file.
-class WritableFile {
+class WritableFile : public File {
  public:
   WritableFile()
     : last_preallocated_block_(0),
@@ -579,8 +566,8 @@ class WritableFile {
     *block_size = preallocation_block_size_;
   }
 
-  // For documentation, refer to RandomAccessFile::GetUniqueId()
-  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+  // For documentation, refer to File::GetUniqueId()
+  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
     return 0; // Default implementation to prevent issues with backwards
   }
 
@@ -673,7 +660,9 @@ class Logger {
   size_t kDoNotSupportGetLogFileSize = std::numeric_limits<size_t>::max();
 
   explicit Logger(const InfoLogLevel log_level = InfoLogLevel::INFO_LEVEL)
-      : log_level_(log_level) {}
+      : log_level_(log_level) {
+
+  }
   virtual ~Logger();
 
   // Write a header to the log file with the specified format

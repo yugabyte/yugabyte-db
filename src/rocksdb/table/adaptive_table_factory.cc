@@ -66,10 +66,14 @@ Status AdaptiveTableFactory::NewTableReader(
 }
 
 TableBuilder* AdaptiveTableFactory::NewTableBuilder(
-    const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
-    WritableFileWriter* file) const {
+    const TableBuilderOptions &table_builder_options, uint32_t column_family_id,
+    WritableFileWriter* base_file, WritableFileWriter* data_file) const {
   return table_factory_to_write_->NewTableBuilder(table_builder_options,
-                                                  column_family_id, file);
+      column_family_id, base_file, data_file);
+}
+
+bool AdaptiveTableFactory::IsSplitSstForWriteSupported() const {
+  return table_factory_to_write_->IsSplitSstForWriteSupported();
 }
 
 std::string AdaptiveTableFactory::GetPrintableTableOptions() const {

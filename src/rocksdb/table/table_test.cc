@@ -292,7 +292,7 @@ class TableConstructor: public Constructor {
     file_writer_->Flush();
     EXPECT_TRUE(s.ok()) << s.ToString();
 
-    EXPECT_EQ(GetSink()->contents().size(), builder->FileSize());
+    EXPECT_EQ(GetSink()->contents().size(), builder->TotalFileSize());
 
     // Open the table
     uniq_id_ = cur_uniq_id_++;

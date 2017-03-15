@@ -33,6 +33,7 @@ enum FileType {
   kLogFile,
   kDBLockFile,
   kTableFile,
+  kTableSBlockFile,
   kDescriptorFile,
   kCurrentFile,
   kTempFile,
@@ -71,6 +72,9 @@ extern uint64_t TableFileNameToNumber(const std::string& name);
 // "dbname".
 extern std::string TableFileName(const std::vector<DbPath>& db_paths,
                                  uint64_t number, uint32_t path_id);
+
+// Return data file name of the sstable for specific base file name.
+extern std::string TableBaseToDataFileName(const std::string& base_fname);
 
 // Sufficient buffer size for FormatFileNumber.
 const size_t kFormatFileNumberBufSize = 38;

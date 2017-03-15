@@ -76,8 +76,13 @@ Status MockTableFactory::NewTableReader(
 
 TableBuilder* MockTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
-    WritableFileWriter* file) const {
-  uint32_t id = GetAndWriteNextID(file);
+    WritableFileWriter* base_file, WritableFileWriter* data_file) const {
+  // This table factory doesn't support separate files for metadata and data, because tests using
+  // mock tables don't assume separate data file since they are intended for unit testing features
+  // which are independent of SST storage format.
+  assert(data_file == nullptr);
+
+  uint32_t id = GetAndWriteNextID(base_file);
 
   return new MockTableBuilder(id, &file_system_);
 }

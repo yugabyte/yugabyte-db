@@ -60,7 +60,7 @@ class VersionBuilderTest : public testing::Test {
            SequenceNumber largest_seqno = 0) {
     assert(level < vstorage_.num_levels());
     FileMetaData* f = new FileMetaData;
-    f->fd = FileDescriptor(file_number, path_id, file_size);
+    f->fd = FileDescriptor(file_number, path_id, file_size, 64);
     f->smallest = GetInternalKey(smallest, smallest_seq);
     f->largest = GetInternalKey(largest, largest_seq);
     f->smallest_seqno = smallest_seqno;
@@ -114,7 +114,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveTo) {
   UpdateVersionStorageInfo();
 
   VersionEdit version_edit;
-  version_edit.AddFile(2, 666, 0, 100U, GetInternalKey("301"),
+  version_edit.AddFile(2, 666, 0, 100U, 30U, GetInternalKey("301"),
                        GetInternalKey("350"), 200, 200, false);
   version_edit.DeleteFile(3, 27U);
 
@@ -148,7 +148,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic) {
   UpdateVersionStorageInfo();
 
   VersionEdit version_edit;
-  version_edit.AddFile(3, 666, 0, 100U, GetInternalKey("301"),
+  version_edit.AddFile(3, 666, 0, 100U, 30U, GetInternalKey("301"),
                        GetInternalKey("350"), 200, 200, false);
   version_edit.DeleteFile(0, 1U);
   version_edit.DeleteFile(0, 88U);
@@ -185,7 +185,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic2) {
   UpdateVersionStorageInfo();
 
   VersionEdit version_edit;
-  version_edit.AddFile(4, 666, 0, 100U, GetInternalKey("301"),
+  version_edit.AddFile(4, 666, 0, 100U, 30U, GetInternalKey("301"),
                        GetInternalKey("350"), 200, 200, false);
   version_edit.DeleteFile(0, 1U);
   version_edit.DeleteFile(0, 88U);
@@ -213,15 +213,15 @@ TEST_F(VersionBuilderTest, ApplyMultipleAndSaveTo) {
   UpdateVersionStorageInfo();
 
   VersionEdit version_edit;
-  version_edit.AddFile(2, 666, 0, 100U, GetInternalKey("301"),
+  version_edit.AddFile(2, 666, 0, 100U, 30U, GetInternalKey("301"),
                        GetInternalKey("350"), 200, 200, false);
-  version_edit.AddFile(2, 676, 0, 100U, GetInternalKey("401"),
+  version_edit.AddFile(2, 676, 0, 100U, 30U, GetInternalKey("401"),
                        GetInternalKey("450"), 200, 200, false);
-  version_edit.AddFile(2, 636, 0, 100U, GetInternalKey("601"),
+  version_edit.AddFile(2, 636, 0, 100U, 30U, GetInternalKey("601"),
                        GetInternalKey("650"), 200, 200, false);
-  version_edit.AddFile(2, 616, 0, 100U, GetInternalKey("501"),
+  version_edit.AddFile(2, 616, 0, 100U, 30U, GetInternalKey("501"),
                        GetInternalKey("550"), 200, 200, false);
-  version_edit.AddFile(2, 606, 0, 100U, GetInternalKey("701"),
+  version_edit.AddFile(2, 606, 0, 100U, 30U, GetInternalKey("701"),
                        GetInternalKey("750"), 200, 200, false);
 
   EnvOptions env_options;
@@ -247,24 +247,24 @@ TEST_F(VersionBuilderTest, ApplyDeleteAndSaveTo) {
                                   kCompactionStyleLevel, nullptr);
 
   VersionEdit version_edit;
-  version_edit.AddFile(2, 666, 0, 100U, GetInternalKey("301"),
+  version_edit.AddFile(2, 666, 0, 100U, 30U, GetInternalKey("301"),
                        GetInternalKey("350"), 200, 200, false);
-  version_edit.AddFile(2, 676, 0, 100U, GetInternalKey("401"),
+  version_edit.AddFile(2, 676, 0, 100U, 30U, GetInternalKey("401"),
                        GetInternalKey("450"), 200, 200, false);
-  version_edit.AddFile(2, 636, 0, 100U, GetInternalKey("601"),
+  version_edit.AddFile(2, 636, 0, 100U, 30U, GetInternalKey("601"),
                        GetInternalKey("650"), 200, 200, false);
-  version_edit.AddFile(2, 616, 0, 100U, GetInternalKey("501"),
+  version_edit.AddFile(2, 616, 0, 100U, 30U, GetInternalKey("501"),
                        GetInternalKey("550"), 200, 200, false);
-  version_edit.AddFile(2, 606, 0, 100U, GetInternalKey("701"),
+  version_edit.AddFile(2, 606, 0, 100U, 30U, GetInternalKey("701"),
                        GetInternalKey("750"), 200, 200, false);
   version_builder.Apply(&version_edit);
 
   VersionEdit version_edit2;
-  version_edit.AddFile(2, 808, 0, 100U, GetInternalKey("901"),
+  version_edit.AddFile(2, 808, 0, 100U, 30U, GetInternalKey("901"),
                        GetInternalKey("950"), 200, 200, false);
   version_edit2.DeleteFile(2, 616);
   version_edit2.DeleteFile(2, 636);
-  version_edit.AddFile(2, 806, 0, 100U, GetInternalKey("801"),
+  version_edit.AddFile(2, 806, 0, 100U, 30U, GetInternalKey("801"),
                        GetInternalKey("850"), 200, 200, false);
   version_builder.Apply(&version_edit2);
 

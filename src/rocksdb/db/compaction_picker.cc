@@ -1183,7 +1183,7 @@ void UniversalCompactionPicker::SortedRun::DumpSizeInfo(
              "file %" PRIu64 "[%" ROCKSDB_PRIszt
              "] "
              "with size %" PRIu64 " (compensated size %" PRIu64 ")",
-             file->fd.GetNumber(), sorted_run_count, file->fd.GetFileSize(),
+             file->fd.GetNumber(), sorted_run_count, file->fd.GetTotalFileSize(),
              file->compensated_file_size);
   } else {
     snprintf(out_buf, out_buf_size,
@@ -1199,7 +1199,7 @@ UniversalCompactionPicker::CalculateSortedRuns(
     const VersionStorageInfo& vstorage, const ImmutableCFOptions& ioptions) {
   std::vector<UniversalCompactionPicker::SortedRun> ret;
   for (FileMetaData* f : vstorage.LevelFiles(0)) {
-    ret.emplace_back(0, f, f->fd.GetFileSize(), f->compensated_file_size,
+    ret.emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
                      f->being_compacted);
   }
   for (int level = 1; level < vstorage.num_levels(); level++) {
@@ -1209,7 +1209,7 @@ UniversalCompactionPicker::CalculateSortedRuns(
     bool is_first = true;
     for (FileMetaData* f : vstorage.LevelFiles(level)) {
       total_compensated_size += f->compensated_file_size;
-      total_size += f->fd.GetFileSize();
+      total_size += f->fd.GetTotalFileSize();
       if (ioptions.compaction_options_universal.allow_trivial_move == true) {
         if (f->being_compacted) {
           being_compacted = f->being_compacted;
@@ -1783,7 +1783,7 @@ Compaction* FIFOCompactionPicker::PickCompaction(
   const std::vector<FileMetaData*>& level_files = vstorage->LevelFiles(kLevel0);
   uint64_t total_size = 0;
   for (const auto& file : level_files) {
-    total_size += file->fd.file_size;
+    total_size += file->fd.total_file_size;
   }
 
   if (total_size <= ioptions_.compaction_options_fifo.max_table_files_size ||
@@ -1814,7 +1814,7 @@ Compaction* FIFOCompactionPicker::PickCompaction(
     total_size -= f->compensated_file_size;
     inputs[0].files.push_back(f);
     char tmp_fsize[16];
-    AppendHumanBytes(f->fd.GetFileSize(), tmp_fsize, sizeof(tmp_fsize));
+    AppendHumanBytes(f->fd.GetTotalFileSize(), tmp_fsize, sizeof(tmp_fsize));
     LOG_TO_BUFFER(log_buffer, "[%s] FIFO compaction: picking file %" PRIu64
                             " with size %s for deletion",
                 cf_name.c_str(), f->fd.GetNumber(), tmp_fsize);

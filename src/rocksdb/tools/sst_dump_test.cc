@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include "rocksdb/sst_dump_tool.h"
 
+#include "db/filename.h"
 #include "rocksdb/filter_policy.h"
 #include "table/block_based_table_factory.h"
 #include "table/table_builder.h"
@@ -38,12 +39,12 @@ static std::string MakeValue(int i) {
   return key.Encode().ToString();
 }
 
-void createSST(const std::string& file_name,
+void createSST(const std::string& base_file_name,
                const BlockBasedTableOptions& table_options) {
   std::shared_ptr<rocksdb::TableFactory> tf;
   tf.reset(new rocksdb::BlockBasedTableFactory(table_options));
 
-  unique_ptr<WritableFile> file;
+  unique_ptr<WritableFile> base_file;
   Env* env = Env::Default();
   EnvOptions env_options;
   ReadOptions read_options;
@@ -52,18 +53,24 @@ void createSST(const std::string& file_name,
   rocksdb::InternalKeyComparator ikc(opts.comparator);
   unique_ptr<TableBuilder> tb;
 
-  env->NewWritableFile(file_name, &file, env_options);
+  env->NewWritableFile(base_file_name, &base_file, env_options);
   opts.table_factory = tf;
   std::vector<std::unique_ptr<IntTblPropCollectorFactory> >
       int_tbl_prop_collector_factories;
-  unique_ptr<WritableFileWriter> file_writer(
-      new WritableFileWriter(std::move(file), EnvOptions()));
+  unique_ptr<WritableFileWriter> base_file_writer(
+      new WritableFileWriter(std::move(base_file), EnvOptions()));
+  unique_ptr<WritableFileWriter> data_file_writer;
+  if (opts.table_factory->IsSplitSstForWriteSupported()) {
+    unique_ptr<WritableFile> data_file;
+    env->NewWritableFile(TableBaseToDataFileName(base_file_name), &data_file, env_options);
+    data_file_writer.reset(new WritableFileWriter(std::move(data_file), EnvOptions()));
+  }
   tb.reset(opts.table_factory->NewTableBuilder(
       TableBuilderOptions(imoptions, ikc, &int_tbl_prop_collector_factories,
                           CompressionType::kNoCompression, CompressionOptions(),
                           false),
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      file_writer.get()));
+      base_file_writer.get(), data_file_writer.get()));
 
   // Populate slightly more than 1K keys
   uint32_t num_keys = 1024;
@@ -71,7 +78,7 @@ void createSST(const std::string& file_name,
     tb->Add(MakeKey(i), MakeValue(i));
   }
   tb->Finish();
-  file_writer->Close();
+  base_file_writer->Close();
 }
 
 void cleanup(const std::string& file_name) {

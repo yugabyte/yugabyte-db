@@ -37,6 +37,10 @@ class CuckooTableReader: public TableReader {
                                                uint64_t));
   ~CuckooTableReader() {}
 
+  bool IsSplitSst() const override { return false; }
+
+  void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+
   std::shared_ptr<const TableProperties> GetTableProperties() const override {
     return table_props_;
   }
