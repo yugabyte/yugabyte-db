@@ -36,7 +36,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   CHECK_VALID_STMT(create_stmt);
 
   // Test NOTFOUND. Select from empty table for all types.
-  CHECK_INVALID_STMT("SELECT * FROM test_table");
+  CHECK_VALID_STMT("SELECT * FROM test_table");
   CHECK_VALID_STMT("SELECT * FROM test_table"
                    "  WHERE h0 = 0 AND h1 = 0 AND h2 = 0 AND h3 = 0 AND h4 = 'zero';");
   std::shared_ptr<YQLRowBlock> empty_row_block = processor->row_block();

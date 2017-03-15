@@ -513,7 +513,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
                                          YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
                                          const MCList<ColumnOp>& where_ops) {
-  // Setup the hash key columns.
+
+  // Setup the hash key columns. This may be empty
   for (const auto& op : key_where_ops) {
     const ColumnDesc *col_desc = op.desc();
     YQLColumnValuePB *col_pb;
@@ -775,9 +776,10 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
   RETURN_NOT_OK(exec_context_->ApplyRead(select_op, tnode));
   paging_state_pb->set_table_id(table->id());
   if ((tnode->has_limit() && limit_value.value_ <= paging_state_pb->total_num_rows_read()) ||
-      paging_state_pb->next_row_key_to_read().empty()) {
+      paging_state_pb->next_partition_key().empty()) {
     exec_context_->ClearPagingState();
     select_op->mutable_response()->clear_paging_state();
+    VLOG(3) << "End of read, clearing paging state";
   }
   return Status::OK();
 }

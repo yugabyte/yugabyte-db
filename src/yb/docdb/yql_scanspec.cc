@@ -278,6 +278,10 @@ YQLScanSpec::YQLScanSpec(
 }
 
 DocKey YQLScanSpec::bound_key(const bool lower_bound) const {
+  // If no hashed_component, start from the beginning.
+  if (hashed_components_->empty()) {
+    return DocKey();
+  }
   vector<PrimitiveValue> range_components;
   if (range_.get() != nullptr) {
     const vector<YQLValuePB> range_values = range_->range_values(lower_bound);

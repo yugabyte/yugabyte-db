@@ -57,6 +57,10 @@ Status YBOperation::SetKey(const string& string_key) {
   return mutable_row()->SetBinaryCopy(kRedisKeyColumnName, string_key);
 }
 
+Status YBOperation::GetPartitionKey(std::string *partition_key) const {
+  return table_->partition_schema().EncodeKey(row_, partition_key);
+}
+
 int64_t YBOperation::SizeInBuffer() const {
   const Schema* schema = row_.schema();
   int size = 1; // for the operation type
@@ -309,6 +313,19 @@ Status YBqlReadOp::SetKey() {
 
 void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
   yql_read_request_->set_hash_code(hash_code);
+}
+
+Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
+  if (yql_read_request_->has_paging_state() &&
+      yql_read_request_->paging_state().has_next_partition_key() &&
+      !yql_read_request_->paging_state().next_partition_key().empty()) {
+    *partition_key = yql_read_request_->paging_state().next_partition_key();
+    return Status::OK();
+  } else if (yql_read_request_->hashed_column_values().empty()) {
+    partition_key->clear();
+    return Status::OK();
+  }
+  return YBOperation::GetPartitionKey(partition_key);
 }
 
 }  // namespace client

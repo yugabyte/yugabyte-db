@@ -85,27 +85,49 @@ CHECKED_STATUS PTDmlStmt::Analyze(SemContext *sem_context) {
 CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
                                              const PTExpr::SharedPtr& where_clause) {
   if (where_clause == nullptr) {
-    return sem_context->Error(loc(), "Missing partition key",
-                              ErrorCode::CQL_STATEMENT_INVALID);
+    if (write_only_) {
+      return sem_context->Error(loc(), "Missing partition key",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+    }
+    return Status::OK();
   }
 
   MCVector<WhereSemanticStats> col_stats(sem_context->PTempMem());
   col_stats.resize(num_columns());
 
   // Analyze where expression.
-  const int key_count = write_only_ ? num_key_columns_ : num_hash_key_columns_;
-  key_where_ops_.resize(key_count);
-  RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats));
 
-  // Make sure that all hash entries are referenced in where expression.
-  for (int idx = 0; idx < key_count; idx++) {
-    if (!col_stats[idx].has_eq_) {
-      return sem_context->Error(where_clause->loc(),
-                                "Missing condition on key columns in WHERE clause",
-                                ErrorCode::CQL_STATEMENT_INVALID);
+  if (write_only_) {
+    // Make sure that all hash entries are referenced in where expression.
+    key_where_ops_.resize(num_key_columns_);
+    RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats));
+    for (int idx = 0; idx < num_key_columns_; idx++) {
+      if (!col_stats[idx].has_eq_) {
+        return sem_context->Error(where_clause->loc(),
+                                  "Missing condition on key columns in WHERE clause",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
+      }
+    }
+  } else {
+    // Add the hash to the where clause if the list is incomplete.
+    bool has_incomplete_hash = false;
+    key_where_ops_.resize(num_hash_key_columns_);
+    RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats));
+    for (int idx = 0; idx < num_hash_key_columns_; idx++) {
+      if (!key_where_ops_[idx].IsInitialized()) {
+        has_incomplete_hash = true;
+        break;
+      }
+    }
+    if (has_incomplete_hash) {
+      for (int idx = num_hash_key_columns_ - 1; idx >= 0; idx--) {
+        if (key_where_ops_[idx].IsInitialized()) {
+          where_ops_.push_front(key_where_ops_[idx]);
+        }
+      }
+      key_where_ops_.clear();
     }
   }
-
   return Status::OK();
 }
 
@@ -170,7 +192,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
           return sem_context->Error(expr->loc(), "Range expression is not yet supported",
                                     ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
         } else if ((*col_stats)[col_desc->index()].has_eq_ ||
-                   (*col_stats)[col_desc->index()].has_lt_) {
+          (*col_stats)[col_desc->index()].has_lt_) {
           return sem_context->Error(expr->loc(), "Illogical range condition",
                                     ErrorCode::CQL_STATEMENT_INVALID);
         }
@@ -197,7 +219,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
           return sem_context->Error(expr->loc(), "Range expression is not yet supported",
                                     ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
         } else if ((*col_stats)[col_desc->index()].has_eq_ ||
-                   (*col_stats)[col_desc->index()].has_gt_) {
+          (*col_stats)[col_desc->index()].has_gt_) {
           return sem_context->Error(expr->loc(), "Illogical range condition",
                                     ErrorCode::CQL_STATEMENT_INVALID);
         }

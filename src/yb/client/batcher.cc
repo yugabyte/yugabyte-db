@@ -229,22 +229,24 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   // As soon as we get the op, start looking up where it belongs,
   // so that when the user calls Flush, we are ready to go.
   unique_ptr<InFlightOp> in_flight_op(new InFlightOp());
-  RETURN_NOT_OK(
-    yb_op->table_->partition_schema().EncodeKey(yb_op->row(), &in_flight_op->partition_key));
+  RETURN_NOT_OK(yb_op->GetPartitionKey(&in_flight_op->partition_key));
   in_flight_op->yb_op = yb_op;
   in_flight_op->state = InFlightOp::kLookingUpTablet;
 
-  // For YQL read and write ops, populate the hash code of this op.
-  if (yb_op->type() == YBOperation::Type::YQL_READ ||
-      yb_op->type() == YBOperation::Type::YQL_WRITE) {
-    down_cast<YBqlOp*>(yb_op.get())->SetHashCode(
+  if (yb_op->type() == YBOperation::Type::YQL_READ) {
+    if (!in_flight_op->partition_key.empty()) {
+      down_cast<YBqlOp *>(yb_op.get())->SetHashCode(
         PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+    }
+  } else if (yb_op->type() == YBOperation::Type::YQL_WRITE) {
+    down_cast<YBqlOp*>(yb_op.get())->SetHashCode(
+      PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
   } else if (yb_op->type() == YBOperation::Type::REDIS_READ) {
     down_cast<YBRedisReadOp*>(yb_op.get())->SetHashCode(
-        PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+      PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
   } else if (yb_op->type() == YBOperation::Type::REDIS_WRITE) {
     down_cast<YBRedisWriteOp*>(yb_op.get())->SetHashCode(
-        PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
+      PartitionSchema::DecodeMultiColumnHashValue(in_flight_op->partition_key));
   }
 
   AddInFlightOp(in_flight_op.get());

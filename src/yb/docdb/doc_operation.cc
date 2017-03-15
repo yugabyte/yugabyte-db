@@ -395,7 +395,6 @@ void YQLColumnValuesToPrimitiveValues(
     const google::protobuf::RepeatedPtrField<YQLColumnValuePB>& column_values,
     const Schema& schema, size_t column_idx, const size_t column_count,
     vector<PrimitiveValue>* components) {
-  CHECK_EQ(column_values.size(), column_count) << "Primary key column count mismatch";
   for (const auto& column_value : column_values) {
     CHECK_EQ(schema.column_id(column_idx), column_value.column_id())
         << "Primary key column id mismatch";
@@ -408,9 +407,7 @@ void YQLColumnValuesToPrimitiveValues(
 }
 
 // Populate dockey from YQL key columns.
-DocKey DocKeyFromYQLKey(
-    const Schema& schema,
-    const YQLWriteRequestPB& request) {
+DocKey DocKeyFromYQLKey(const Schema& schema, const YQLWriteRequestPB& request) {
   vector<PrimitiveValue> hashed_components;
   vector<PrimitiveValue> range_components;
 
@@ -454,7 +451,7 @@ CHECKED_STATUS GetNonKeyColumns(
         continue;
       case YQLExpressionPB::ExprCase::kColumnId: {
         const auto column_id = ColumnId(operand.column_id());
-        if (!schema.is_key_column(column_id)) {
+        if (!schema.is_key_column(column_id) && !schema.is_hash_key_column(column_id)) {
           non_key_columns->insert(column_id);
         }
         continue;
@@ -658,7 +655,7 @@ Status YQLReadOperation::Execute(
   set<ColumnId> non_key_columns;
   for (size_t idx = 0; idx < rowblock->schema().num_columns(); idx++) {
     const auto column_id = rowblock->schema().column_id(idx);
-    if (!schema.is_key_column(column_id)) {
+    if (!schema.is_key_column(column_id) && !schema.is_hash_key_column(column_id)) {
       non_key_columns.insert(column_id);
     }
   }

@@ -69,6 +69,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
 
+  LOG(INFO) << "Running simple query test.";
   // Create the table 1.
   const char *create_stmt =
     "CREATE TABLE test_table(h1 int, h2 varchar, "
@@ -78,9 +79,11 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   CHECK_VALID_STMT(create_stmt);
 
   // Test NOTFOUND. Select from empty table.
-  CHECK_INVALID_STMT("SELECT * FROM test_table");
-  CHECK_VALID_STMT("SELECT * FROM test_table WHERE h1 = 0 AND h2 = ''");
+  CHECK_VALID_STMT("SELECT * FROM test_table");
   std::shared_ptr<YQLRowBlock> empty_row_block = processor->row_block();
+  CHECK_EQ(empty_row_block->row_count(), 0);
+  CHECK_VALID_STMT("SELECT * FROM test_table WHERE h1 = 0 AND h2 = ''");
+  empty_row_block = processor->row_block();
   CHECK_EQ(empty_row_block->row_count(), 0);
 
   // Insert 100 rows into the table.
@@ -182,7 +185,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     CHECK_EQ(row.column(5).string_value(), Substitute("v$0", idx + 1000));
   }
 
-  // Select all 2 rows and check the values.
+  // Select only 2 rows and check the values.
   int limit = 2;
   const string limit_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
                                            "WHERE h1 = $0 AND h2 = '$1' LIMIT $2;",
@@ -207,6 +210,213 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     prev_r1 = row.column(2).int32_value();
     prev_r2 = row.column(3).string_value();
   }
+
+  const string drop_stmt = "DROP TABLE test_table;";
+  EXEC_VALID_STMT(drop_stmt);
+}
+
+TEST_F(YbSqlQuery, TestSqlQueryPartialHash) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  SqlProcessor *processor = GetSqlProcessor();
+
+  LOG(INFO) << "Running partial hash test.";
+  // Create the table 1.
+  const char *create_stmt =
+    "CREATE TABLE test_table(h1 int, h2 varchar, "
+                            "h3 bigint, h4 varchar, "
+                            "r1 int, r2 varchar, "
+                            "v1 int, v2 varchar, "
+                            "primary key((h1, h2, h3, h4), r1, r2));";
+  CHECK_VALID_STMT(create_stmt);
+
+  // Test NOTFOUND. Select from empty table.
+  CHECK_VALID_STMT("SELECT * FROM test_table");
+  std::shared_ptr<YQLRowBlock> empty_row_block = processor->row_block();
+  CHECK_EQ(empty_row_block->row_count(), 0);
+  CHECK_VALID_STMT("SELECT * FROM test_table WHERE h1 = 0 AND h2 = ''");
+  empty_row_block = processor->row_block();
+  CHECK_EQ(empty_row_block->row_count(), 0);
+
+  // Insert 100 rows into the table.
+  static const int kNumRows = 100;
+  for (int idx = 0; idx < kNumRows; idx++) {
+    // INSERT: Valid statement with column list.
+    string stmt = Substitute("INSERT INTO test_table(h1, h2, h3, h4, r1, r2, v1, v2) "
+                             "VALUES($0, 'h$1', $2, 'h$3', $4, 'r$5', $6, 'v$7');",
+                             idx, idx, idx+100, idx+100, idx+1000, idx+1000, idx+10000, idx+10000);
+    CHECK_VALID_STMT(stmt);
+  }
+  LOG(INFO) << kNumRows << " rows inserted";
+
+  //------------------------------------------------------------------------------------------------
+  // Basic negative cases.
+  // Test simple query and result.
+  CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                     "  WHERE h1 = 7 AND h2 = 'h7' AND v1 = 10007;");
+  CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                     "  WHERE h1 = 7 AND h2 = 'h7' AND v2 = 'v10007';");
+
+  //------------------------------------------------------------------------------------------------
+  // Check invalid case for using other operators for hash keys.
+  CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                     "  WHERE h1 < 7;");
+  CHECK_INVALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                     "  WHERE h1 > 7 AND h2 > 'h7';");
+
+
+  //------------------------------------------------------------------------------------------------
+  // Test partial hash keys and results.
+  LOG(INFO) << "Testing 3 out of 4 keys";
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "  WHERE h1 = 7 AND h2 = 'h7' AND h3 = 107;");
+  std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& no_hash_row1 = row_block->row(0);
+  CHECK_EQ(no_hash_row1.column(0).int32_value(), 7);
+  CHECK_EQ(no_hash_row1.column(1).string_value(), "h7");
+  CHECK_EQ(no_hash_row1.column(2).int64_value(), 107);
+  CHECK_EQ(no_hash_row1.column(3).string_value(), "h107");
+  CHECK_EQ(no_hash_row1.column(4).int32_value(), 1007);
+  CHECK_EQ(no_hash_row1.column(5).string_value(), "r1007");
+  CHECK_EQ(no_hash_row1.column(6).int32_value(), 10007);
+  CHECK_EQ(no_hash_row1.column(7).string_value(), "v10007");
+
+  LOG(INFO) << "Testing 2 out of 4 keys";
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "  WHERE h1 = 7 AND h2 = 'h7';");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& no_hash_row2 = row_block->row(0);
+  CHECK_EQ(no_hash_row2.column(0).int32_value(), 7);
+  CHECK_EQ(no_hash_row2.column(1).string_value(), "h7");
+  CHECK_EQ(no_hash_row2.column(2).int64_value(), 107);
+  CHECK_EQ(no_hash_row2.column(3).string_value(), "h107");
+  CHECK_EQ(no_hash_row2.column(4).int32_value(), 1007);
+  CHECK_EQ(no_hash_row2.column(5).string_value(), "r1007");
+  CHECK_EQ(no_hash_row2.column(6).int32_value(), 10007);
+  CHECK_EQ(no_hash_row2.column(7).string_value(), "v10007");
+
+  LOG(INFO) << "Testing 1 out of 4 keys";
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "  WHERE h1 = 7;");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& no_hash_row3 = row_block->row(0);
+  CHECK_EQ(no_hash_row3.column(0).int32_value(), 7);
+  CHECK_EQ(no_hash_row3.column(1).string_value(), "h7");
+  CHECK_EQ(no_hash_row3.column(2).int64_value(), 107);
+  CHECK_EQ(no_hash_row3.column(3).string_value(), "h107");
+  CHECK_EQ(no_hash_row3.column(4).int32_value(), 1007);
+  CHECK_EQ(no_hash_row3.column(5).string_value(), "r1007");
+  CHECK_EQ(no_hash_row3.column(6).int32_value(), 10007);
+  CHECK_EQ(no_hash_row3.column(7).string_value(), "v10007");
+
+  // Test simple query with only range key and check result.
+  LOG(INFO) << "Testing 0 out of 4 keys";
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "WHERE r1 = 1007;");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& no_hash_row4 = row_block->row(0);
+  CHECK_EQ(no_hash_row4.column(0).int32_value(), 7);
+  CHECK_EQ(no_hash_row4.column(1).string_value(), "h7");
+  CHECK_EQ(no_hash_row4.column(2).int64_value(), 107);
+  CHECK_EQ(no_hash_row4.column(3).string_value(), "h107");
+  CHECK_EQ(no_hash_row4.column(4).int32_value(), 1007);
+  CHECK_EQ(no_hash_row4.column(5).string_value(), "r1007");
+  CHECK_EQ(no_hash_row4.column(6).int32_value(), 10007);
+  CHECK_EQ(no_hash_row4.column(7).string_value(), "v10007");
+
+  LOG(INFO) << "Testing 1 of every key each.";
+  // Test simple query with partial hash key and check result.
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "WHERE h1 = 7;");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& h1_hash_row = row_block->row(0);
+  CHECK_EQ(h1_hash_row.column(0).int32_value(), 7);
+  CHECK_EQ(h1_hash_row.column(1).string_value(), "h7");
+  CHECK_EQ(h1_hash_row.column(2).int64_value(), 107);
+  CHECK_EQ(h1_hash_row.column(3).string_value(), "h107");
+  CHECK_EQ(h1_hash_row.column(4).int32_value(), 1007);
+  CHECK_EQ(h1_hash_row.column(5).string_value(), "r1007");
+  CHECK_EQ(h1_hash_row.column(6).int32_value(), 10007);
+  CHECK_EQ(h1_hash_row.column(7).string_value(), "v10007");
+
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "  WHERE h2 = 'h7';");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& h2_hash_row = row_block->row(0);
+  CHECK_EQ(h2_hash_row.column(0).int32_value(), 7);
+  CHECK_EQ(h2_hash_row.column(1).string_value(), "h7");
+  CHECK_EQ(h2_hash_row.column(2).int64_value(), 107);
+  CHECK_EQ(h2_hash_row.column(3).string_value(), "h107");
+  CHECK_EQ(h2_hash_row.column(4).int32_value(), 1007);
+  CHECK_EQ(h2_hash_row.column(5).string_value(), "r1007");
+  CHECK_EQ(h2_hash_row.column(6).int32_value(), 10007);
+  CHECK_EQ(h2_hash_row.column(7).string_value(), "v10007");
+
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "  WHERE h3 = 107;");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& h3_hash_row = row_block->row(0);
+  CHECK_EQ(h3_hash_row.column(0).int32_value(), 7);
+  CHECK_EQ(h3_hash_row.column(1).string_value(), "h7");
+  CHECK_EQ(h3_hash_row.column(2).int64_value(), 107);
+  CHECK_EQ(h3_hash_row.column(3).string_value(), "h107");
+  CHECK_EQ(h3_hash_row.column(4).int32_value(), 1007);
+  CHECK_EQ(h3_hash_row.column(5).string_value(), "r1007");
+  CHECK_EQ(h3_hash_row.column(6).int32_value(), 10007);
+  CHECK_EQ(h3_hash_row.column(7).string_value(), "v10007");
+
+  CHECK_VALID_STMT("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                   "  WHERE h4 = 'h107';");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& h4_hash_row = row_block->row(0);
+  CHECK_EQ(h4_hash_row.column(0).int32_value(), 7);
+  CHECK_EQ(h4_hash_row.column(1).string_value(), "h7");
+  CHECK_EQ(h4_hash_row.column(2).int64_value(), 107);
+  CHECK_EQ(h4_hash_row.column(3).string_value(), "h107");
+  CHECK_EQ(h4_hash_row.column(4).int32_value(), 1007);
+  CHECK_EQ(h4_hash_row.column(5).string_value(), "r1007");
+  CHECK_EQ(h4_hash_row.column(6).int32_value(), 10007);
+  CHECK_EQ(h4_hash_row.column(7).string_value(), "v10007");
+
+
+  // Test multi row query for the whole table.
+  // Insert 20 rows of the same hash key into the table.
+  static const int kHashNumRows = 20;
+  static const int kNumFilterRows = 10;
+  int32 h1_shared = 1111111;
+  const string h2_shared = "h2_shared_key";
+  int64 h3_shared = 111111111;
+  const string h4_shared = "h4_shared_key";
+  for (int idx = 0; idx < kHashNumRows; idx++) {
+    // INSERT: Valid statement with column list.
+    string stmt = Substitute("INSERT INTO test_table(h1, h2, h3, h4, r1, r2, v1, v2) "
+                             "VALUES($0, '$1', $2, '$3', $4, 'r$5', $6, 'v$7');",
+                             h1_shared, h2_shared, h3_shared, h4_shared,
+                             idx+100, idx+100, idx+1000, idx+1000);
+    CHECK_VALID_STMT(stmt);
+  }
+
+  // Select select rows and check the values.
+  // This test scans multiple tservers. Query result tested in java.
+  // TODO: Make YBSQL understand paging states and continue.
+  LOG(INFO) << "Testing filter with partial hash keys.";
+  const string multi_select = Substitute("SELECT h1, h2, h3, h4, r1, r2, v1, v2 FROM test_table "
+                                         "WHERE h1 = $0 AND h2 = '$1' AND r1 > $2;",
+                                         h1_shared, h2_shared, kNumFilterRows + 100);
+  CHECK_VALID_STMT(multi_select);
+
+  const string drop_stmt = "DROP TABLE test_table;";
+  EXEC_VALID_STMT(drop_stmt);
 }
 
 TEST_F(YbSqlQuery, TestInsertWithTTL) {

@@ -83,17 +83,24 @@ Status DocRowwiseIterator::Init(const YQLScanSpec& spec) {
   DocKey upper_doc_key;
   RETURN_NOT_OK(spec.lower_bound(&lower_doc_key));
   RETURN_NOT_OK(spec.upper_bound(&upper_doc_key));
-  const bool is_fixed_point_get = upper_doc_key == lower_doc_key;
+  const bool is_fixed_point_get = !lower_doc_key.empty() && upper_doc_key == lower_doc_key;
   db_iter_ = CreateRocksDBIterator(db_, is_fixed_point_get /* use_bloom_on_scan */);
 
   // Start scan with the lower bound doc key.
-  const DocKey& lower_bound = lower_doc_key;
-  ROCKSDB_SEEK(db_iter_.get(), SubDocKey(lower_bound, hybrid_time_).Encode().AsSlice());
+  // If there is no lower bound, start from the beginning.
+  if (!lower_doc_key.empty()) {
+    ROCKSDB_SEEK(db_iter_.get(), SubDocKey(lower_doc_key, hybrid_time_).Encode().AsSlice());
+  } else {
+    ROCKSDB_SEEK(db_iter_.get(), "");
+  }
 
   // End scan with the upper bound key bytes.
-  has_upper_bound_key_ = true;
-  exclusive_upper_bound_key_ = SubDocKey(upper_doc_key).AdvanceOutOfDocKeyPrefix();
-
+  if (!upper_doc_key.empty()) {
+    has_upper_bound_key_ = true;
+    exclusive_upper_bound_key_ = SubDocKey(upper_doc_key).AdvanceOutOfDocKeyPrefix();
+  } else {
+    has_upper_bound_key_ = false;
+  }
   return Status::OK();
 }
 

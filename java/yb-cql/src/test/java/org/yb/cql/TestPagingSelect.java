@@ -67,6 +67,7 @@ public class TestPagingSelect extends TestBase {
       assertEquals(row_count + 1000, row.getInt(4));
       assertEquals(String.format("v%d", row_count + 1000), row.getString(5));
       row_count++;
+      assert(row_count <= num_rows);
     }
     assertEquals(num_rows, row_count);
     LOG.info("TEST CQL CONTINUOUS SELECT QUERY - end");

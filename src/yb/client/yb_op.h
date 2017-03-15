@@ -21,6 +21,7 @@
 #include <string>
 
 #include "yb/common/partial_row.h"
+#include "yb/common/partition.h"
 #include "yb/util/yb_export.h"
 
 namespace yb {
@@ -81,6 +82,9 @@ class YB_EXPORT YBOperation {
   virtual bool read_only() = 0;
 
   virtual void SetHashCode(uint16_t hash_code) = 0;
+
+  // Returns the partition key of the operation.
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const;
 
  protected:
   explicit YBOperation(const std::shared_ptr<YBTable>& table);
@@ -314,6 +318,9 @@ class YB_EXPORT YBqlReadOp : public YBqlOp {
   virtual CHECKED_STATUS SetKey() OVERRIDE;
 
   virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
+
+  // Returns the partition key of the read request if it exists.
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const OVERRIDE;
 
  protected:
   virtual Type type() const OVERRIDE { return YQL_READ; }
