@@ -194,14 +194,14 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
-  zlib
-  libbacktrace)
+  zlib)
 
 if(NOT APPLE)
   set(UTIL_LIBS
     ${UTIL_LIBS}
     rt
-    vmem)
+    vmem
+    libbacktrace)
 endif()
 
 # We use MallocExtension, but not in the exported version of the library.

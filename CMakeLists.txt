@@ -1309,11 +1309,13 @@ ADD_THIRDPARTY_LIB(libev
   SHARED_LIB "${LIBEV_SHARED_LIB}")
 
 ## libbacktrace
+if(NOT APPLE)
 find_package(LibBacktrace REQUIRED)
 include_directories(SYSTEM ${LIBBACKTRACE_INCLUDE_DIR})
 ADD_THIRDPARTY_LIB(libbacktrace
   STATIC_LIB "${LIBBACKTRACE_STATIC_LIB}"
   SHARED_LIB "${LIBBACKTRACE_SHARED_LIB}")
+endif()
 
 ## LZ4
 find_package(Lz4 REQUIRED)

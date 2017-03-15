@@ -537,7 +537,7 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
     do_build_if_necessary nvml
   fi
 
-  if [ -n "$F_ALL" -o -n "$F_LIBBACKTRACE" ]; then
+  if is_linux && [ -n "$F_ALL" -o -n "$F_LIBBACKTRACE" ]; then
     do_build_if_necessary libbacktrace
   fi
 
