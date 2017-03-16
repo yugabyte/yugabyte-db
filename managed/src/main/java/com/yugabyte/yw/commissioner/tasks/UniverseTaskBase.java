@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -119,6 +120,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // catch as we want to fail.
     Universe.saveDetails(taskParams().universeUUID, updater);
     LOG.debug("Unlocked universe {} for updates.", taskParams().universeUUID);
+  }
+
+  /**
+   * Create a task to mark the change on a universe as success.
+   */
+  public TaskList createMarkUniverseUpdateSuccessTasks() {
+    TaskList taskList = new TaskList("FinalizeUniverseUpdate", executor);
+    UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
+    params.universeUUID = taskParams().universeUUID;
+    UniverseUpdateSucceeded task = new UniverseUpdateSucceeded();
+    task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
   }
 
   /**
