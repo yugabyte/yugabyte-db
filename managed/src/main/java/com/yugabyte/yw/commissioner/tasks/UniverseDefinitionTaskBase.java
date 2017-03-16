@@ -364,20 +364,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Create a task to mark the change on a universe as success.
-   */
-  public TaskList createMarkUniverseUpdateSuccessTasks() {
-    TaskList taskList = new TaskList("FinalizeUniverseUpdate", executor);
-    UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
-    params.universeUUID = taskParams().universeUUID;
-    UniverseUpdateSucceeded task = new UniverseUpdateSucceeded();
-    task.initialize(params);
-    taskList.addTask(task);
-    taskListQueue.add(taskList);
-    return taskList;
-  }
-
-  /**
    * Verify that the task params are valid.
    */
   public void verifyParams() {
