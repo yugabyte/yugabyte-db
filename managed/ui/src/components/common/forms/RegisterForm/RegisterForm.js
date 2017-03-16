@@ -1,8 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
+import { PageHeader } from 'react-bootstrap';
 import { Field } from 'redux-form';
 import { YBInputField } from '../fields';
+import YBLogo from '../../YBLogo/YBLogo';
 
 class RegisterForm extends Component {
   constructor(props) {
@@ -27,27 +29,28 @@ class RegisterForm extends Component {
   render() {
     const { handleSubmit, submitting } = this.props;
     return (
-      <div className="container">
-        <div className="col-sm-6 col-sm-offset-3">
-          <div className="panel panel-default login-panel">
-            <div className="panel-heading">
-              <h3 className="panel-title">Register Customer</h3>
+      <div className="container full-height dark-background flex-vertical-middle">
+        <div className="col-sm-6">
+          <PageHeader bsClass="login-heading">
+            <YBLogo />
+            <span>Admin Console Registration</span>
+          </PageHeader>
+          <form onSubmit={handleSubmit(this.props.registerCustomer.bind(this))}>
+            <div className={`alert alert-danger form-error-alert
+              ${this.props.customer.error ? '': 'hide'}`}>
+                {<strong>{this.props.customer.error}</strong>}
             </div>
-            <div className="panel-body">
-              <div className={`alert alert-danger form-error-alert
-                ${this.props.customer.error ? '': 'hide'}`}>
-                  {<strong>{this.props.customer.error}</strong>}
-              </div>
-              <form onSubmit={handleSubmit(this.props.registerCustomer.bind(this))}>
-                <Field name="name" type="text" component={YBInputField} label="Full Name"/>
-                <Field name="email" type="email" component={YBInputField} label="Email"/>
-                <Field name="password" type="password" component={YBInputField} label="Password"/>
-                <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password"/>
-                <button type="submit" className="btn btn-lg btn-success btn-block"
-                        disabled={submitting} >Submit</button>
-              </form>
+            <div className="form-right-aligned-labels">
+              <Field name="name" type="text" component={YBInputField} label="Full Name"/>
+              <Field name="email" type="email" component={YBInputField} label="Email"/>
+              <Field name="password" type="password" component={YBInputField} label="Password"/>
+              <Field name="confirmPassword" type="password" component={YBInputField} label="Confirm Password"/>
             </div>
-          </div>
+            <div className="clearfix">
+              <button type="submit" className="btn btn-default bg-orange pull-right"
+                      disabled={submitting} >Submit</button>
+            </div>
+          </form>
         </div>
       </div>
     );
