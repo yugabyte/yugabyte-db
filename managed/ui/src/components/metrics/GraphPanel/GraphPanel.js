@@ -5,6 +5,7 @@ import { Accordion, Panel } from 'react-bootstrap';
 import Dimensions from 'react-dimensions';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
+import {YBLoadingIcon} from '../../common/indicators';
 import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 
 const RESIZE_DEBOUNCE_MS = 100;
@@ -48,6 +49,7 @@ class GraphPanel extends Component {
     // Perform metric query only if the graph filter has changed.
     // TODO: add the nodePrefixes to the queryParam
     if(nextProps.graph.graphFilter !== this.props.graph.graphFilter) {
+      this.props.resetMetrics();
       this.queryMetricsType(nextProps.graph.graphFilter);
     }
   }
@@ -81,7 +83,8 @@ class GraphPanel extends Component {
   render() {
     const { type, graph: { loading, metrics }} = this.props;
 
-    if (!loading && Object.keys(metrics).length > 0 && isValidObject(metrics[type])) {
+    var panelItem = <YBLoadingIcon />;
+    if (Object.keys(metrics).length > 0 && isValidObject(metrics[type])) {
       /* Logic here is, since there will be multiple instances of GraphPanel
        we basically would have metrics data keyed off panel type. So we
        loop through all the possible panel types in the metric data fetched
@@ -97,16 +100,14 @@ class GraphPanel extends Component {
                         containerWidth={containerWidth} />
           : null;
       });
-      return (
-        <Accordion>
-          <Panel header={panelTypes[type].title} key={panelTypes[type]} className="metrics-container">
-            {panelItem}
-          </Panel>
-        </Accordion>
-      );
     }
-
-    return (<div />)
+    return (
+      <Accordion>
+        <Panel header={panelTypes[type].title} key={panelTypes[type]} className="metrics-container">
+        {panelItem}
+        </Panel>
+      </Accordion>
+    )
   }
 }
 
