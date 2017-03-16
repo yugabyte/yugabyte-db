@@ -22,6 +22,8 @@ import org.yb.client.MiniYBCluster;
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
+import org.yb.master.Master;
+
 import java.util.Iterator;
 import java.util.Date;
 import java.util.Calendar;
@@ -146,8 +148,12 @@ public class TestBase {
   }
 
   protected void DropTables() throws Exception {
-    for (String table : miniCluster.getClient().getTablesList().getTablesList()) {
-      DropTable(table);
+    for (Master.ListTablesResponsePB.TableInfo tableInfo :
+        miniCluster.getClient().getTablesList().getTableInfoList()) {
+      // Drop all non-system tables.
+      if (!tableInfo.getNamespace().getName().equals("system")) {
+        DropTable(tableInfo.getName());
+      }
     }
   }
 

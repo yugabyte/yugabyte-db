@@ -32,6 +32,7 @@
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/master/master_defaults.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/curl_util.h"
@@ -270,7 +271,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   // 1) Should not list it in ListTables.
   vector<YBTableName> table_names;
   ASSERT_OK(client_->ListTables(&table_names));
-  ASSERT_TRUE(table_names.empty()) << "table still exposed in ListTables";
+  ASSERT_EQ(master::kNumSystemTables, table_names.size());
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
@@ -297,7 +298,8 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/dump-entities",
                                   cluster_->master()->bound_http_hostport().ToString()),
                        &entities_buf));
-  ASSERT_EQ("{\"tables\":[],\"tablets\":[]}", entities_buf.ToString());
+  ASSERT_TRUE(entities_buf.ToString().find(
+      TestWorkload::kDefaultTableName.table_name()) == std::string::npos);
 }
 
 // Test that a DeleteTable RPC is rejected without a matching destination UUID.

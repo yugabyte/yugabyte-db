@@ -63,6 +63,7 @@ ADD_YB_TEST(client-stress-test
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
 ADD_YB_TEST(master_replication-itest RESOURCE_LOCK "master-rpc-ports" RUN_SERIAL true)
 
+ADD_YB_TEST(master_sysnamespace-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_failover-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(master_config-itest RESOURCE_LOCK "master-rpc-ports")
 ADD_YB_TEST(raft_consensus-itest RUN_SERIAL true)

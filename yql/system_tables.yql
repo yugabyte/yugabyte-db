@@ -1,11 +1,3 @@
-CREATE TABLE system.peers (
-    peer inet PRIMARY KEY,
-    data_center text,
-    preferred_ip inet,
-    rack text,
-    release_version text,
-    rpc_address inet);
-
 CREATE TABLE system.local (
     key text PRIMARY KEY,
     bootstrapped text,

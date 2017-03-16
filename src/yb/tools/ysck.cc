@@ -291,6 +291,10 @@ Status Ysck::ChecksumData(const vector<string>& tables,
 
   int num_tablet_replicas = 0;
   for (const shared_ptr<YsckTable>& table : cluster_->tables()) {
+    if (table->name().is_system()) {
+      // Skip the system namespace with virtual tables, since they are not assigned to tservers.
+      continue;
+    }
     VLOG(1) << "Table: " << table->name().ToString();
     if (!tables_filter.empty() && !ContainsKey(tables_filter, table->name().table_name())) continue;
     // TODO: remove once we have scan implemented for Redis.

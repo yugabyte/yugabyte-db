@@ -12,21 +12,21 @@ DEFINE_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only."
 using std::string;
 
 void YBTableName::SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const {
-    id->set_table_name(table_name());
-    id->mutable_namespace_()->set_name(resolved_namespace_name());
+  id->set_table_name(table_name());
+  id->mutable_namespace_()->set_name(resolved_namespace_name());
 }
 
 const string& YBTableName::default_namespace() {
-    static const string defalt_namespace_name(master::kDefaultNamespaceName);
-    return defalt_namespace_name;
+  static const string defalt_namespace_name(master::kDefaultNamespaceName);
+  return defalt_namespace_name;
 }
 
 bool YBTableName::IsSystemNamespace(const std::string& namespace_name) {
-  return (namespace_name == "system"             ||
-          namespace_name == "system_auth"        ||
-          namespace_name == "system_distributed" ||
-          namespace_name == "system_schema"      ||
-          namespace_name == "system_traces");
+  return (namespace_name == master::kSystemNamespaceName            ||
+          namespace_name == master::kSystemAuthNamespaceName        ||
+          namespace_name == master::kSystemDistributedNamespaceName ||
+          namespace_name == master::kSystemSchemaNamespaceName      ||
+          namespace_name == master::kSystemTracesNamespaceName);
 }
 
 } // namespace client

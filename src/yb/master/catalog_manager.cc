@@ -689,9 +689,13 @@ Status CatalogManager::VisitSysCatalog() {
       sys_catalog_->Visit(namespace_loader.get()),
       "Failed while visiting namespaces in sys catalog");
 
-  if (namespace_ids_map_.empty()) {
-    RETURN_NOT_OK(PrepareDefaultNamespace());
-    RETURN_NOT_OK(PrepareSystemNamespace());
+  // These are only created if they don't already exist.
+  RETURN_NOT_OK(PrepareDefaultNamespace());
+  RETURN_NOT_OK(PrepareSystemNamespace());
+
+  if (table_ids_map_.empty()) {
+    // Create the system tables.
+    RETURN_NOT_OK(PrepareSystemTables());
   }
 
   // Clear current config.
@@ -737,7 +741,82 @@ Status CatalogManager::PrepareSystemNamespace() {
   return PrepareNamespace(kSystemNamespaceName, kSystemNamespaceId);
 }
 
+Status CatalogManager::PrepareSystemTables() {
+  // Create the required system tables here.
+  return PrepareSystemPeersTable();
+}
+
+Status CatalogManager::CreateSystemPeersSchema(Schema* schema) {
+  SchemaBuilder builder;
+  // Using STRING here for some datatypes that are not yet supported.
+  RETURN_NOT_OK(builder.AddKeyColumn("peer", DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn("data_center", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("host_id", DataType::STRING)); // This should be UUID.
+  RETURN_NOT_OK(builder.AddColumn("preferred_ip", DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn("rack", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::STRING)); // This should be UUID.
+  RETURN_NOT_OK(builder.AddColumn("tokens", DataType::STRING)); // This should be SET<TEXT>.
+  *schema = builder.Build();
+  return Status::OK();
+}
+
+Status CatalogManager::PrepareSystemPeersTable() {
+  scoped_refptr<TableInfo> table;
+  vector<TabletInfo*> tablets;
+
+  // Verify we have catalog manager lock.
+  DCHECK(lock_.is_locked());
+
+  // Fill in details for system.peers table.
+  CreateTableRequestPB req;
+  req.set_name(kSystemPeersTableName);
+  req.set_table_type(TableType::YQL_TABLE_TYPE);
+
+  // Create schema for peers table.
+  Schema schema;
+  RETURN_NOT_OK(CreateSystemPeersSchema(&schema));
+
+  // Create partitions.
+  vector <Partition> partitions;
+  PartitionSchema partition_schema;
+  RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
+
+  RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, kSystemNamespaceId, partitions,
+                    &tablets, nullptr, &table));
+  LOG (INFO) << "Inserted new table and tablet info into CatalogManager maps";
+
+  // Write Tablets to sys-tablets (in "running" state since we don't want the loadbalancer to
+  // assign these tablets since this table is virtual)
+  for (TabletInfo *tablet : tablets) {
+    tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::RUNNING);
+  }
+  RETURN_NOT_OK(sys_catalog_->AddTablets(tablets));
+  LOG (INFO) << "Wrote tablets to system catalog";
+
+  // Update the on-disk table state to "running".
+  table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
+  RETURN_NOT_OK(sys_catalog_->AddTable(table.get()));
+  LOG (INFO) << "Wrote table to system catalog";
+
+  // Commit the in-memory state.
+  table->mutable_metadata()->CommitMutation();
+
+  for (TabletInfo *tablet : tablets) {
+    tablet->mutable_metadata()->CommitMutation();
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::PrepareNamespace(const NamespaceName& name, const NamespaceId& id) {
+  if (FindPtrOrNull(namespace_names_map_, name) != nullptr) {
+    LOG(INFO) << strings::Substitute("Namespace $0 already created, skipping initialization",
+                                     name);
+    return Status::OK();
+  }
+
   // Create entry.
   SysNamespaceEntryPB ns_entry;
   ns_entry.set_name(name);
@@ -1127,24 +1206,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       return s;
     }
 
-    // Add the new table in "preparing" state.
-    table = CreateTableInfo(req, schema, partition_schema, namespace_id);
-    table_ids_map_[table->id()] = table;
-    table_names_map_[{namespace_id, req.name()}] = table;
-
-    // Create the TabletInfo objects in state PREPARING.
-    for (const Partition& partition : partitions) {
-      PartitionPB partition_pb;
-      partition.ToPB(&partition_pb);
-      tablets.push_back(CreateTabletInfo(table.get(), partition_pb));
-    }
-
-    // Add the table/tablets to the in-memory map for the assignment.
-    resp->set_table_id(table->id());
-    table->AddTablets(tablets);
-    for (TabletInfo* tablet : tablets) {
-      InsertOrDie(&tablet_map_, tablet->tablet_id(), tablet);
-    }
+    RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
+                      &tablets, resp, &table));
   }
   TRACE("Inserted new table and tablet info into CatalogManager maps");
 
@@ -1193,6 +1256,44 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   LOG(INFO) << "Successfully created table " << table->ToString()
             << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
+  return Status::OK();
+}
+
+Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
+                                           const Schema& schema,
+                                           const PartitionSchema& partition_schema,
+                                           const NamespaceId& namespace_id,
+                                           const vector<Partition>& partitions,
+                                           vector<TabletInfo*>* tablets,
+                                           CreateTableResponsePB* resp,
+                                           scoped_refptr<TableInfo>* table) {
+  // Verify we have catalog manager lock.
+  if (!lock_.is_locked()) {
+    return STATUS(IllegalState, "We don't have the catalog manager lock!");
+  }
+
+  // Add the new table in "preparing" state.
+  table->reset(CreateTableInfo(req, schema, partition_schema, namespace_id));
+  table_ids_map_[(*table)->id()] = *table;
+  table_names_map_[{namespace_id, req.name()}] = *table;
+
+  // Create the TabletInfo objects in state PREPARING.
+  for (const Partition& partition : partitions) {
+    PartitionPB partition_pb;
+    partition.ToPB(&partition_pb);
+    tablets->push_back(CreateTabletInfo((*table).get(), partition_pb));
+  }
+
+  // Add the table/tablets to the in-memory map for the assignment.
+  if (resp != nullptr) {
+    resp->set_table_id((*table)->id());
+  }
+
+  (*table)->AddTablets(*tablets);
+  for (TabletInfo* tablet : *tablets) {
+    InsertOrDie(&tablet_map_, tablet->tablet_id(), tablet);
+  }
+
   return Status::OK();
 }
 
@@ -4186,8 +4287,34 @@ void CatalogManager::SelectReplicas(
   }
 }
 
+Status CatalogManager::ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
+                                                       TabletLocationsPB* locs_pb) {
+  for (const consensus::RaftPeerPB& peer : cstate.config().peers()) {
+    TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
+    if (!peer.has_permanent_uuid()) {
+      return STATUS_SUBSTITUTE(IllegalState, "Missing UUID $0", peer.ShortDebugString());
+    }
+    replica_pb->set_role(GetConsensusRole(peer.permanent_uuid(), cstate));
+
+    TSInfoPB* tsinfo_pb = replica_pb->mutable_ts_info();
+    tsinfo_pb->set_permanent_uuid(peer.permanent_uuid());
+    tsinfo_pb->add_rpc_addresses()->CopyFrom(peer.last_known_addr());
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                                TabletLocationsPB* locs_pb) {
+  // For system tables, the set of replicas is always the set of masters.
+  if (tablet->IsSupportedSystemTable()) {
+    consensus::ConsensusStatePB master_consensus;
+    RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
+    locs_pb->set_tablet_id(tablet->tablet_id());
+    locs_pb->set_stale(false);
+    RETURN_NOT_OK(ConsensusStateToTabletLocations(master_consensus, locs_pb));
+    return Status::OK();
+  }
+
   TSRegistrationPB reg;
 
   TabletInfo::ReplicaMap locs;
@@ -4231,15 +4358,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   // If the locations were not cached.
   // TODO: Why would this ever happen? See KUDU-759.
   if (cstate.IsInitialized()) {
-    for (const consensus::RaftPeerPB& peer : cstate.config().peers()) {
-      TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
-      CHECK(peer.has_permanent_uuid()) << "Missing UUID: " << peer.ShortDebugString();
-      replica_pb->set_role(GetConsensusRole(peer.permanent_uuid(), cstate));
-
-      TSInfoPB* tsinfo_pb = replica_pb->mutable_ts_info();
-      tsinfo_pb->set_permanent_uuid(peer.permanent_uuid());
-      tsinfo_pb->add_rpc_addresses()->CopyFrom(peer.last_known_addr());
-    }
+    RETURN_NOT_OK(ConsensusStateToTabletLocations(cstate, locs_pb));
   }
 
   return Status::OK();
@@ -4829,6 +4948,10 @@ uint32_t TabletInfo::reported_schema_version() const {
   return reported_schema_version_;
 }
 
+bool TabletInfo::IsSupportedSystemTable() const {
+  return table_->IsSupportedSystemTable();
+}
+
 std::string TabletInfo::ToString() const {
   return Substitute("$0 (table $1)", tablet_id_,
                     (table_ != nullptr ? table_->ToString() : "MISSING"));
@@ -4848,9 +4971,19 @@ TableInfo::TableInfo(TableId table_id) : table_id_(std::move(table_id)) {}
 TableInfo::~TableInfo() {
 }
 
+bool TableInfo::IsSupportedSystemTable() const {
+  return (namespace_id() == kSystemNamespaceId &&
+      kMasterSupportedSystemTables.find(name()) != kMasterSupportedSystemTables.end());
+}
+
 std::string TableInfo::ToString() const {
   TableMetadataLock l(this, TableMetadataLock::READ);
   return Substitute("$0 [id=$1]", l.data().pb.name(), table_id_);
+}
+
+const TableName TableInfo::name() const {
+  TableMetadataLock l(this, TableMetadataLock::READ);
+  return l.data().name();
 }
 
 const NamespaceId& TableInfo::namespace_id() const {

@@ -100,6 +100,8 @@ class RowsResult : public ExecutedResult {
 
   // Constructors.
   explicit RowsResult(client::YBqlOp *op);
+  // Used only to mock empty rows for system tables.
+  explicit RowsResult(client::YBTable* table, const std::string& rows_data);
   virtual ~RowsResult() override;
 
   // Result type.

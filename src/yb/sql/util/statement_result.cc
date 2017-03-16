@@ -132,6 +132,13 @@ RowsResult::RowsResult(YBqlOp *op)
   }
 }
 
+RowsResult::RowsResult(client::YBTable* table, const std::string& rows_data)
+    : table_name_(table->name()),
+      column_schemas_(table->schema().columns()),
+      rows_data_(rows_data),
+      client_(YQLClient::YQL_CLIENT_CQL) {
+}
+
 RowsResult::~RowsResult() {
 }
 

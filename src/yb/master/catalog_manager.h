@@ -211,6 +211,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // No synchronization needed.
   std::string ToString() const;
 
+  // Determines whether or not this tablet belongs to a system table.
+  bool IsSupportedSystemTable() const;
+
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
   ~TabletInfo();
@@ -285,6 +288,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
 class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<PersistentTableInfo> {
  public:
   explicit TableInfo(TableId table_id);
+
+  // Determines whether or not this table is a system table supported by the master
+  bool IsSupportedSystemTable() const;
+
+  const TableName name() const;
 
   std::string ToString() const;
 
@@ -793,7 +801,27 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemNamespace();
 
+  CHECKED_STATUS PrepareSystemTables();
+
+  CHECKED_STATUS PrepareSystemPeersTable();
+
+  CHECKED_STATUS CreateSystemPeersSchema(Schema* schema);
+
   CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
+
+  CHECKED_STATUS ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
+                                                 TabletLocationsPB* locs_pb);
+
+  // Creates the table and associated tablet objects in-memory and updates the appropriate
+  // catalog manager maps.
+  CHECKED_STATUS CreateTableInMemory(const CreateTableRequestPB& req,
+                                     const Schema& schema,
+                                     const PartitionSchema& partition_schema,
+                                     const NamespaceId& namespace_id,
+                                     const vector<Partition>& partitions,
+                                     vector<TabletInfo*>* tablets,
+                                     CreateTableResponsePB* resp,
+                                     scoped_refptr<TableInfo>* table);
 
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_

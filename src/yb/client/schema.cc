@@ -482,6 +482,10 @@ YBPartialRow* YBSchema::NewRow() const {
   return new YBPartialRow(schema_);
 }
 
+const std::vector<ColumnSchema>& YBSchema::columns() const {
+  return schema_->columns();
+}
+
 size_t YBSchema::num_columns() const {
   return schema_->num_columns();
 }

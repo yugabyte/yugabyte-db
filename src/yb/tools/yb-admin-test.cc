@@ -184,7 +184,8 @@ TEST_F(AdminCliTest, TestDeleteTable) {
 
   vector<YBTableName> tables;
   ASSERT_OK(client->ListTables(&tables));
-  ASSERT_TRUE(tables.empty());
+  // system.peers table would be present.
+  ASSERT_EQ(1, tables.size());
 }
 
 }  // namespace tools

@@ -393,6 +393,8 @@ class YB_EXPORT YBSchema {
   // The caller takes ownership of the created row.
   YBPartialRow* NewRow() const;
 
+  const std::vector<ColumnSchema>& columns() const;
+
  private:
   friend class YBClient;
   friend class YBScanner;
