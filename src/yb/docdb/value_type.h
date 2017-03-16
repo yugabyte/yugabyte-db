@@ -38,14 +38,18 @@ enum class ValueType : char {
   kTrue = 'T',  // ASCII code 84
   kTombstone = 'X',  // ASCII code 88
   kArrayIndex = '[',  // ASCII code 91. TODO: do we need this at this layer?
+
   // We allow putting a 32-bit hash in front of the document key. This hash is computed based on
   // the "hashed" components of the document key that precede "range" components.
 
-  // Timestamp value in microseconds
-  kTimestamp = 's', // ASCII code 115
+  kStringDescending = 'a',  // ASCII code 97
+  kInt64Descending = 'b',  // ASCII code 98
+  kTimestampDescending = 'c',  // ASCII code 99
 
+  // Timestamp value in microseconds
+  kTimestamp = 's',  // ASCII code 115
   // TTL value in milliseconds, optionally present at the start of a value.
-  kTtl = 't', // ASCII code 116
+  kTtl = 't',  // ASCII code 116
 
   kObject = '{',  // ASCII code 123
 

@@ -16,6 +16,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/util/timestamp.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/common/yql_rowblock.h"
 
@@ -34,6 +35,11 @@ int GenericCompare(const T& a, const T& b) {
 
 enum class SystemColumnIds : int32_t {
   kLivenessColumn = 0 // Stores the TTL for the row.
+};
+
+enum class SortOrder : int8_t {
+  kAscending = 0,
+  kDescending
 };
 
 class PrimitiveValue {
@@ -68,21 +74,42 @@ class PrimitiveValue {
     return *this;
   }
 
-  explicit PrimitiveValue(const std::string& s) : type_(ValueType::kString) {
+  explicit PrimitiveValue(const std::string& s, SortOrder sort_order = SortOrder::kAscending) {
+    if (sort_order == SortOrder::kDescending) {
+      type_ = ValueType::kStringDescending;
+    } else {
+      type_ = ValueType::kString;
+    }
     new(&str_val_) std::string(s);
   }
 
-  explicit PrimitiveValue(const char* s) : type_(ValueType::kString) {
+  explicit PrimitiveValue(const char* s, SortOrder sort_order = SortOrder::kAscending) {
+    if (sort_order == SortOrder::kDescending) {
+      type_ = ValueType::kStringDescending;
+    } else {
+      type_ = ValueType::kString;
+    }
     new(&str_val_) std::string(s);
   }
 
-  explicit PrimitiveValue(int64_t v) : type_(ValueType::kInt64) {
+  explicit PrimitiveValue(int64_t v, SortOrder sort_order = SortOrder::kAscending) {
+    if (sort_order == SortOrder::kDescending) {
+      type_ = ValueType::kInt64Descending;
+    } else {
+      type_ = ValueType::kInt64;
+    }
     // Avoid using an initializer for a union field (got surprising and unexpected results with
     // that approach). Use a direct assignment instead.
     int64_val_ = v;
   }
 
-  explicit PrimitiveValue(const Timestamp& timestamp) : type_(ValueType::kTimestamp) {
+  explicit PrimitiveValue(const Timestamp& timestamp,
+                          SortOrder sort_order = SortOrder::kAscending) {
+    if (sort_order == SortOrder::kDescending) {
+      type_ = ValueType::kTimestampDescending;
+    } else {
+      type_ = ValueType::kTimestamp;
+    }
     timestamp_val_ = timestamp;
   }
 
@@ -94,11 +121,18 @@ class PrimitiveValue {
     column_id_val_ = column_id;
   }
 
+  // Converts a ColumnSchema::SortingType to its SortOrder equivalent.
+  // ColumnSchema::SortingType::kAscending and ColumnSchema::SortingType::kNotSpecified get
+  // converted to SortOrder::kAscending.
+  // ColumnSchema::SortingType::kDescending gets converted to SortOrder::kDescending.
+  static SortOrder SortOrderFromColumnSchemaSortingType(ColumnSchema::SortingType sorting_type);
+
   // Construct a primitive value from a Slice containing a Kudu value.
   static PrimitiveValue FromKuduValue(DataType data_type, Slice slice);
 
   // Construct a primitive value from a YQLValuePB.
-  static PrimitiveValue FromYQLValuePB(DataType data_type, const YQLValuePB& value);
+  static PrimitiveValue FromYQLValuePB(DataType data_type, const YQLValuePB& value,
+                                       ColumnSchema::SortingType sorting_type);
 
   // Set a primitive value in a YQLValuePB.
   void ToYQLValuePB(DataType data_type, YQLValuePB* v) const;
@@ -159,17 +193,17 @@ class PrimitiveValue {
   }
 
   const std::string& GetString() const {
-    DCHECK_EQ(ValueType::kString, type_);
+    DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
     return str_val_;
   }
 
   void SwapStringValue(std::string *other) {
-    DCHECK_EQ(ValueType::kString, type_);
+    DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
     str_val_.swap(*other);
   }
 
   int64_t GetInt64() const {
-    DCHECK_EQ(ValueType::kInt64, type_);
+    DCHECK(ValueType::kInt64 == type_ || ValueType::kInt64Descending == type_);
     return int64_val_;
   }
 
@@ -179,7 +213,7 @@ class PrimitiveValue {
   }
 
   Timestamp GetTimestamp() const {
-    DCHECK_EQ(ValueType::kTimestamp, type_);
+    DCHECK(ValueType::kTimestamp == type_ || ValueType::kTimestampDescending == type_);
     return timestamp_val_;
   }
 
@@ -248,6 +282,12 @@ class PrimitiveValue {
 
 inline std::ostream& operator<<(std::ostream& out, const PrimitiveValue& primitive_value) {
   out << primitive_value.ToString();
+  return out;
+}
+
+inline std::ostream& operator<<(std::ostream& out, const SortOrder sort_order) {
+  string sort_order_name = sort_order == SortOrder::kAscending ? "kAscending" : "kDescending";
+  out << sort_order_name;
   return out;
 }
 

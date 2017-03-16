@@ -40,8 +40,10 @@ string PrimitiveValue::ToString() const {
       return "false";
     case ValueType::kTrue:
       return "true";
+    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       return FormatBytesAsStr(str_val_);
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64:
       return std::to_string(int64_val_);
     case ValueType::kDouble: {
@@ -59,6 +61,7 @@ string PrimitiveValue::ToString() const {
       }
       return s;
     }
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
       return timestamp_val_.ToString();
     case ValueType::kArrayIndex:
@@ -98,8 +101,16 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendString(str_val_);
       return;
 
+    case ValueType::kStringDescending:
+      key_bytes->AppendDescendingString(str_val_);
+      return;
+
     case ValueType::kInt64:
       key_bytes->AppendInt64(int64_val_);
+      return;
+
+    case ValueType::kInt64Descending:
+      key_bytes->AppendDescendingInt64(int64_val_);
       return;
 
     case ValueType::kDouble:
@@ -108,6 +119,10 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kTimestamp:
       key_bytes->AppendInt64(timestamp_val_.ToInt64());
+      return;
+
+    case ValueType::kTimestampDescending:
+      key_bytes->AppendDescendingInt64(timestamp_val_.ToInt64());
       return;
 
     case ValueType::kArrayIndex:
@@ -142,11 +157,13 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kTombstone: return result;
     case ValueType::kObject: return result;
 
+    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       // No zero encoding necessary when storing the string in a value.
       result.append(str_val_);
       return result;
 
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64:
       AppendBigEndianUInt64(int64_val_, &result);
       return result;
@@ -162,6 +179,7 @@ string PrimitiveValue::ToValue() const {
       AppendBigEndianUInt64(int64_val_, &result);
       return result;
 
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
       AppendBigEndianUInt64(timestamp_val_.ToInt64(), &result);
       return result;
@@ -209,15 +227,24 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       type_ = value_type;
       return Status::OK();
 
+    case ValueType::kStringDescending: {
+      new (&str_val_) string();
+      RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &str_val_));
+      // Only set type to string after string field initialization succeeds.
+      type_ = value_type;
+      return Status::OK();
+    }
+
     case ValueType::kString: {
       string result;
       RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result));
       new(&str_val_) string(result);
       // Only set type to string after string field initialization succeeds.
-      type_ = ValueType::kString;
+      type_ = value_type;
       return Status::OK();
     }
 
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       if (slice->size() < sizeof(int64_t)) {
@@ -226,6 +253,9 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
             slice->size());
       }
       int64_val_ = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
+      if (value_type == ValueType::kInt64Descending) {
+        int64_val_ = ~int64_val_;
+      }
       slice->remove_prefix(sizeof(int64_t));
       type_ = value_type;
       return Status::OK();
@@ -240,16 +270,25 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       type_ = value_type;
       return Status::OK();
 
-    case ValueType::kTimestamp:
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTimestamp: {
       if (slice->size() < sizeof(Timestamp)) {
         return STATUS(Corruption,
             Substitute("Not enough bytes to decode a Timestamp: $0, need $1",
                 slice->size(), sizeof(Timestamp)));
       }
-      timestamp_val_ = Timestamp(BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask);
+      const auto uint64_timestamp = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
+      if (value_type == ValueType::kTimestampDescending) {
+        // Flip all the bits after loading the integer.
+        timestamp_val_ = Timestamp(~uint64_timestamp);
+      } else {
+        timestamp_val_ = Timestamp(uint64_timestamp);
+      }
+
       slice->remove_prefix(sizeof(Timestamp));
       type_ = value_type;
       return Status::OK();
+    }
 
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: {
@@ -354,7 +393,10 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
-    case ValueType::kHybridTime:
+    case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
+    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kTimestampDescending:
       return STATUS(Corruption,
           Substitute("$0 is not allowed in a RocksDB PrimitiveValue", ValueTypeToStr(value_type)));
   }
@@ -408,13 +450,17 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kNull: return true;
     case ValueType::kFalse: return true;
     case ValueType::kTrue: return true;
+    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return str_val_ == other.str_val_;
 
+    case ValueType ::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
 
     case ValueType::kDouble: return double_val_ == other.double_val_;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
+
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
 
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
@@ -434,8 +480,10 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kNull: return 0;
     case ValueType::kFalse: return 0;
     case ValueType::kTrue: return 0;
+    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       return str_val_.compare(other.str_val_);
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       return GenericCompare(int64_val_, other.int64_val_);
@@ -443,6 +491,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return GenericCompare(double_val_, other.double_val_);
     case ValueType::kUInt16Hash:
       return GenericCompare(uint16_val_, other.uint16_val_);
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
       return GenericCompare(timestamp_val_, other.timestamp_val_);
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
@@ -462,6 +511,14 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
   if (value_type == ValueType::kString) {
     new(&str_val_) std::string();
   }
+}
+
+SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
+    ColumnSchema::SortingType sorting_type) {
+  if (sorting_type == ColumnSchema::SortingType::kDescending) {
+    return SortOrder::kDescending;
+  }
+  return SortOrder::kAscending;
 }
 
 PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
@@ -486,23 +543,41 @@ PrimitiveValue PrimitiveValue::FromKuduValue(DataType data_type, Slice slice) {
     }
 }
 
-PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQLValuePB& value) {
+PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQLValuePB& value,
+                                              ColumnSchema::SortingType sorting_type) {
   if (YQLValue::IsNull(value)) {
     return PrimitiveValue(ValueType::kTombstone);
   }
-  switch (data_type) {
-    case INT8:    return PrimitiveValue(YQLValue::int8_value(value));
-    case INT16:   return PrimitiveValue(YQLValue::int16_value(value));
-    case INT32:   return PrimitiveValue(YQLValue::int32_value(value));
-    case INT64:   return PrimitiveValue(YQLValue::int64_value(value));
-    case FLOAT:   return PrimitiveValue::Double(YQLValue::float_value(value));
-    case DOUBLE:  return PrimitiveValue::Double(YQLValue::double_value(value));
-    case STRING:  return PrimitiveValue(YQLValue::string_value(value));
-    case BINARY:  return PrimitiveValue(YQLValue::binary_value(value));
-    case BOOL:
-      return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
-    case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value));
 
+  const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
+
+  switch (data_type) {
+    case INT8:    return PrimitiveValue(YQLValue::int8_value(value), sort_order);
+    case INT16:   return PrimitiveValue(YQLValue::int16_value(value), sort_order);
+    case INT32:   return PrimitiveValue(YQLValue::int32_value(value), sort_order);
+    case INT64:   return PrimitiveValue(YQLValue::int64_value(value), sort_order);
+    case FLOAT:
+      if (sort_order != SortOrder::kAscending) {
+        LOG(ERROR) << "Ignoring invalid sort order for FLOAT. Using SortOrder::kAscending.";
+      }
+      return PrimitiveValue::Double(YQLValue::float_value(value));
+    case DOUBLE:
+      if (sort_order != SortOrder::kAscending) {
+        LOG(ERROR) << "Ignoring invalid sort order for DOUBLE. Using SortOrder::kAscending.";
+      }
+      return PrimitiveValue::Double(YQLValue::double_value(value));
+    case STRING:  return PrimitiveValue(YQLValue::string_value(value), sort_order);
+    case BINARY:
+      if (sort_order != SortOrder::kAscending) {
+        LOG(ERROR) << "Ignoring invalid sort order for BINARY. Using SortOrder::kAscending.";
+      }
+      return PrimitiveValue(YQLValue::binary_value(value));
+    case BOOL:
+      if (sort_order != SortOrder::kAscending) {
+        LOG(ERROR) << "Ignoring invalid sort order for BOOL. Using SortOrder::kAscending.";
+      }
+      return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
+    case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
@@ -514,7 +589,6 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const DataType data_type, const YQ
     case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;
-
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
     case UINT32: FALLTHROUGH_INTENDED;

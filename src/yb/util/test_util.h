@@ -30,6 +30,10 @@
 
 namespace yb {
 
+// Our test string literals contain "\x00" that is treated as a C-string null-terminator.
+// So we need to call the std::string constructor that takes the length argument.
+#define BINARY_STRING(s) string((s), sizeof(s) - 1)
+
 class YBTest : public ::testing::Test {
  public:
   YBTest();

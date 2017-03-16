@@ -4,6 +4,7 @@
 
 #include <glog/logging.h>
 
+#include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 
 namespace yb {
@@ -15,9 +16,12 @@ string ValueTypeToStr(ValueType value_type) {
     case ValueType::kNull: return "Null";
     case ValueType::kFalse: return "False";
     case ValueType::kTrue: return "True";
+    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return "String";
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: return "Int64";
     case ValueType::kDouble: return "Double";
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;;
     case ValueType::kTimestamp: return "Timestamp";
     case ValueType::kHybridTime: return "HybridTime";
     case ValueType::kUInt16Hash: return "UInt16Hash";

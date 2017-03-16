@@ -399,8 +399,10 @@ void YQLColumnValuesToPrimitiveValues(
   for (const auto& column_value : column_values) {
     CHECK_EQ(schema.column_id(column_idx), column_value.column_id())
         << "Primary key column id mismatch";
+
     components->push_back(PrimitiveValue::FromYQLValuePB(
-        schema.column(column_idx).type_info()->type(), column_value.value()));
+        schema.column(column_idx).type_info()->type(), column_value.value(),
+        schema.column(column_idx).sorting_type()));
     column_idx++;
   }
 }
@@ -575,10 +577,10 @@ Status YQLWriteOperation::Apply(
                 << "column value missing: " << column_value.DebugString();;
             const DocPath sub_path(doc_key_.Encode(),
                                    PrimitiveValue(ColumnId(column_value.column_id())));
-            const auto data_type =
-                schema_.column_by_id(ColumnId(column_value.column_id())).type_info()->type();
+            const auto& column = schema_.column_by_id(ColumnId(column_value.column_id()));
+            const auto data_type = column.type_info()->type();
             const auto value = Value(PrimitiveValue::FromYQLValuePB(
-                data_type, column_value.value()), ttl);
+                data_type, column_value.value(), column.sorting_type()), ttl);
             RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value, HybridTime::kMax,
                                                         InitMarkerBehavior::kNeverUse));
           }
@@ -642,7 +644,6 @@ Status YQLReadOperation::Execute(
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
     req_hybrid_time = start_sub_doc_key.hybrid_time();
   }
-
 
   // Construct the scan spec basing on the WHERE condition.
   YQLScanSpec spec(

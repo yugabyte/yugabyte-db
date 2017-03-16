@@ -58,54 +58,93 @@ Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, HybridTime* hybrid_time) 
   return Status::OK();
 }
 
-void AppendZeroEncodedStrToKey(const string &s, string *dest) {
-  if (s.find('\0') == string::npos) {
+template <char END_OF_STRING>
+void AppendEncodedStrToKey(const string &s, string *dest) {
+  static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
+                "Only characters '\0' and '\xff' allowed as a template parameter");
+  if (END_OF_STRING == '\0' && s.find('\0') == string::npos) {
     // Fast path: no zero characters, nothing to encode.
     dest->append(s);
   } else {
     for (char c : s) {
       if (c == '\0') {
-        dest->push_back('\0');
-        dest->push_back('\x01');
+        dest->push_back(END_OF_STRING);
+        dest->push_back(END_OF_STRING ^ 1);
       } else {
-        dest->push_back(c);
+        dest->push_back(END_OF_STRING ^ c);
       }
     }
   }
 }
 
-Status DecodeZeroEncodedStr(rocksdb::Slice* slice, string* result) {
+void AppendZeroEncodedStrToKey(const string &s, string *dest) {
+  AppendEncodedStrToKey<'\0'>(s, dest);
+}
+
+void AppendComplementZeroEncodedStrToKey(const string &s, string *dest) {
+  AppendEncodedStrToKey<'\xff'>(s, dest);
+}
+
+template <char A>
+inline void TerminateEncodedKeyStr(string *dest) {
+  dest->push_back(A);
+  dest->push_back(A);
+}
+
+void TerminateZeroEncodedKeyStr(string *dest) {
+  TerminateEncodedKeyStr<'\0'>(dest);
+}
+
+void TerminateComplementZeroEncodedKeyStr(string *dest) {
+  TerminateEncodedKeyStr<'\xff'>(dest);
+}
+
+template<char END_OF_STRING>
+Status DecodeEncodedStr(rocksdb::Slice* slice, string* result) {
+  static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
+                "Invalid END_OF_STRING character. Only '\0' and '\xff' accepted");
+  constexpr char END_OF_STRING_ESCAPE = END_OF_STRING ^ 1;
   const char* p = slice->data();
   const char* end = p + slice->size();
 
   while (p != end) {
-    if (*p == '\0') {
+    if (*p == END_OF_STRING) {
       ++p;
       if (p == end) {
-        return STATUS(Corruption, "Zero-encoded string ends with only one zero");
+        return STATUS(Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ",
+                                               END_OF_STRING));
       }
-      if (*p == '\0') {
-        // Found two zero characters, this is the end of the encoded string.
+      if (*p == END_OF_STRING) {
+        // Found two END_OF_STRING characters, this is the end of the encoded string.
         ++p;
         break;
       }
-      if (*p == '\x01') {
-        // Zero character is encoded as \x00\x01.
-        result->push_back('\0');
+      if (*p == END_OF_STRING_ESCAPE) {
+        // Character END_OF_STRING is encoded as AB.
+        result->push_back(END_OF_STRING ^ END_OF_STRING);
         ++p;
       } else {
         return STATUS(Corruption, StringPrintf(
-            "Invalid sequence in a zero-encoded string: \\0x00\\0x%02x "
-            "(must be either \\0x00\\x00 or \\0x00\\0x01)", *p));
+            "Invalid sequence in encoded string: "
+            R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
+            END_OF_STRING, *p, END_OF_STRING, END_OF_STRING, END_OF_STRING, END_OF_STRING_ESCAPE));
       }
     } else {
-      result->push_back(*p);
+      result->push_back((*p) ^ END_OF_STRING);
       ++p;
     }
   }
   result->shrink_to_fit();
   slice->remove_prefix(p - slice->data());
   return Status::OK();
+}
+
+Status DecodeComplementZeroEncodedStr(rocksdb::Slice* slice, std::string* result) {
+  return DecodeEncodedStr<'\xff'>(slice, result);
+}
+
+Status DecodeZeroEncodedStr(rocksdb::Slice* slice, string* result) {
+  return DecodeEncodedStr<'\0'>(slice, result);
 }
 
 string DecodeZeroEncodedStr(string encoded_str) {

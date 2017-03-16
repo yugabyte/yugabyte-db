@@ -100,15 +100,26 @@ inline void AppendColumnIdToKey(ColumnId val, std::string* dest) {
 // destination string.
 void AppendZeroEncodedStrToKey(const std::string &s, std::string *dest);
 
-// Appends two zero characters to the given string.
-inline void TerminateZeroEncodedKeyStr(std::string *dest) {
-  dest->push_back('\0');
-  dest->push_back('\0');
-}
+// Encodes the given string by replacing '\xff' with "\xff\xfe" and appends it to the given
+// destination string.
+void AppendComplementZeroEncodedStrToKey(const string &s, string *dest);
+
+// Appends two zero characters to the given string. We don't add final end-of-string characters in
+// this function.
+void TerminateZeroEncodedKeyStr(std::string *dest);
+
+// Appends two '\0xff' characters to the given string. We don't add final end-of-string characters
+// in this function.
+void TerminateComplementZeroEncodedKeyStr(std::string *dest);
 
 inline void ZeroEncodeAndAppendStrToKey(const std::string &s, std::string *dest) {
   AppendZeroEncodedStrToKey(s, dest);
   TerminateZeroEncodedKeyStr(dest);
+}
+
+inline void ComplementZeroEncodeAndAppendStrToKey(const std::string &s, std::string *dest) {
+  AppendComplementZeroEncodedStrToKey(s, dest);
+  TerminateComplementZeroEncodedKeyStr(dest);
 }
 
 inline std::string ZeroEncodeStr(std::string s) {
@@ -129,6 +140,17 @@ yb::Status DecodeZeroEncodedStr(rocksdb::Slice* slice, std::string* result);
 // A version of the above function that ensures the encoding is correct and all characters are
 // consumed.
 std::string DecodeZeroEncodedStr(std::string encoded_str);
+
+// Reverses the encoding for a string that was encoded with ComplementZeroEncodeAndAppendStrToKey.
+// In this representation the string termination changes from \x00\x00 to
+// \xFF\xFF.
+// Input/output:
+//   slice - a slice containing an encoded string, optionally terminated by \xFF\xFF. A prefix of
+//           this slice is consumed.
+// Output (undefined in case of an error):
+//   result - the resulting decoded string
+yb::Status DecodeComplementZeroEncodedStr(rocksdb::Slice* slice, std::string* result);
+
 
 // We try to use up to this number of characters when converting raw bytes to strings for debug
 // purposes.

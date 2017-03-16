@@ -49,8 +49,33 @@ class KeyBytes {
     ZeroEncodeAndAppendStrToKey(raw_string, &data_);
   }
 
+  void AppendDescendingString(const std::string &raw_string) {
+    ComplementZeroEncodeAndAppendStrToKey(raw_string, &data_);
+  }
+
   void AppendInt64(int64_t x) {
     AppendInt64ToKey(x, &data_);
+  }
+
+  void AppendDescendingInt64(int64_t x) {
+    // AppendInt64ToKey flips the highest bit. We flip all the x's bits before calling
+    // AppendInt64ToKey, but the order of the operations (FLIP_HIGHEST_BIT and FLIP_ALL_BITS)
+    // doesn't matter because they are commutative operations.
+    // Example for an 8-bit integer (works the same for 64-bit integers):
+    //    normal encoding (flip first bit)
+    //    -128 = 0x80 -> 0x00
+    //    -1   = 0xFF -> 0x7F
+    //    0    = 0x00 -> 0x80
+    //    127  = 0x7F -> 0xFF
+    //    (everything compares correctly)
+    //
+    //    descending encoding (flip all bits, then first, or flip first bit, then all, doesn't
+    //    matter which)
+    //    -128 = 0x80 -> 0x7F -> 0xFF
+    //    -1   = 0xFF -> 0x00 -> 0x80
+    //    0    = 0x00 -> 0xFF -> 0x7F
+    //    127  = 0x7F -> 0x80 -> 0x00
+    AppendInt64ToKey(~x, &data_);
   }
 
   void AppendUInt32(uint32_t x) {

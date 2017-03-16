@@ -163,6 +163,23 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
+          R"#(
+            "a\x89\x9e\x93\xce\xff\xff\
+             I\x80\x00\x00\x00\x00\x00\x03\xe8\
+             b\x7f\xff\xff\xff\xff\xff\xfc\x17\
+             a\x89\x9e\x93\xce\xff\xfe\xff\xff\
+             c\x7f\xff\xff\xff\xff\xff\xfc\x17\
+             !"
+        )#"),
+      FormatBytesAsStr(DocKey({
+          PrimitiveValue("val1", SortOrder::kDescending),
+          PrimitiveValue(1000),
+          PrimitiveValue(1000, SortOrder::kDescending),
+          PrimitiveValue(BINARY_STRING("val1""\x00"), SortOrder::kDescending),
+          PrimitiveValue(Timestamp(1000), SortOrder::kDescending)}).Encode().data()));
+
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      ApplyEagerLineContinuation(
           R"#("G\
                \xca\xfe\
                $hashed1\x00\x00\
@@ -183,6 +200,7 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   const SubDocKey subdoc_key(DocKey({PrimitiveValue("some_doc_key")}),
                              PrimitiveValue("sk1"),
                              PrimitiveValue("sk2"),
+                             PrimitiveValue(BINARY_STRING("sk3""\x00"), SortOrder::kDescending),
                              HybridTime(1000));
   const KeyBytes encoded_subdoc_key(subdoc_key.Encode());
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
@@ -191,6 +209,7 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
                !\
                $sk1\x00\x00\
                $sk2\x00\x00\
+               a\x8c\x94\xcc\xff\xfe\xff\xff\
                #\xff\xff\xff\xff\xff\xff\xfc\x17"
           )#"
       ),

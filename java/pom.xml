@@ -38,7 +38,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Maven plugins -->
-        <maven-antrun-plugin.version>1.7</maven-antrun-plugin.version>
+        <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
         <maven-assembly-plugin.version>2.2.1</maven-assembly-plugin.version>
         <maven-enforcer-plugin.version>1.4</maven-enforcer-plugin.version>
         <maven-protoc-plugin.version>0.1.10</maven-protoc-plugin.version>
@@ -95,7 +95,7 @@
                                 <version>[3.0.2,)</version>
                             </requireMavenVersion>
                             <requireJavaVersion>
-                                <version>[1.7,)</version>
+                                <version>[1.8,)</version>
                             </requireJavaVersion>
                         </rules>
                     </configuration>
@@ -179,7 +179,7 @@
                               maven-antrun-plugin
                             </artifactId>
                             <versionRange>
-                              [1.7,)
+                              [1.8,)
                             </versionRange>
                             <goals>
                               <goal>run</goal>
@@ -230,8 +230,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>2.3.2</version>
                 <configuration>
-                    <source>1.7</source>
-                    <target>1.7</target>
+                    <source>1.8</source>
+                    <target>1.8</target>
                 </configuration>
             </plugin>
             <plugin>
