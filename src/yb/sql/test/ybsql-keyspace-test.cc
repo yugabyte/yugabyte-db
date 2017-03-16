@@ -306,8 +306,8 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
 
   // 'system' keyspace (not supported yet)
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(system_table2);
-  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(system_table2), "Invalid Table Definition",
-      "Invalid namespace id or namespace name");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(system_table2),
+                               ErrorText(ErrorCode::SYSTEM_NAMESPACE_READONLY), "");
 
   // 'default' keyspace is always available.
   // TODO: It's failed now because 'DEFAULT' is a reserved keyword. Discuss & fix the case.

@@ -645,6 +645,13 @@ void CatalogManager::LoadSysCatalogDataTask() {
   LOG(INFO) << "Completed load of sys catalog in term " << term;
 }
 
+CHECKED_STATUS CatalogManager::WaitForWorkerPoolTests(const MonoDelta& timeout) const {
+  if (!worker_pool_->WaitFor(timeout)) {
+    return STATUS(TimedOut, "Worker Pool hasn't finished processing tasks");
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::VisitSysCatalog() {
 
   // Block new catalog operations, and wait for existing operations to finish.
@@ -684,6 +691,7 @@ Status CatalogManager::VisitSysCatalog() {
 
   if (namespace_ids_map_.empty()) {
     RETURN_NOT_OK(PrepareDefaultNamespace());
+    RETURN_NOT_OK(PrepareSystemNamespace());
   }
 
   // Clear current config.
@@ -722,18 +730,26 @@ Status CatalogManager::PrepareDefaultClusterConfig() {
 }
 
 Status CatalogManager::PrepareDefaultNamespace() {
+  return PrepareNamespace(kDefaultNamespaceName, kDefaultNamespaceId);
+}
+
+Status CatalogManager::PrepareSystemNamespace() {
+  return PrepareNamespace(kSystemNamespaceName, kSystemNamespaceId);
+}
+
+Status CatalogManager::PrepareNamespace(const NamespaceName& name, const NamespaceId& id) {
   // Create default
   SysNamespaceEntryPB ns_entry;
-  ns_entry.set_name(kDefaultNamespaceName);
+  ns_entry.set_name(name);
 
   // Create in memory object
-  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(kDefaultNamespaceId);
+  scoped_refptr<NamespaceInfo> ns = new NamespaceInfo(id);
 
   // Prepare write
   NamespaceMetadataLock l(ns.get(), NamespaceMetadataLock::WRITE);
   l.mutable_data()->pb = std::move(ns_entry);
 
-  namespace_ids_map_[kDefaultNamespaceId] = ns;
+  namespace_ids_map_[id] = ns;
   namespace_names_map_[ns_entry.name()] = ns;
 
   // Write to sys_catalog and in memory

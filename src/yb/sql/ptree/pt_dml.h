@@ -129,6 +129,8 @@ class PTDmlStmt : public PTCollection {
   // Reset to clear and release previous semantics analysis results.
   virtual void Reset() OVERRIDE;
 
+  virtual bool is_system() const = 0;
+
  protected:
   // Data types.
   struct WhereSemanticStats {

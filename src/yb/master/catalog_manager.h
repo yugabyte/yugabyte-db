@@ -706,6 +706,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // loads the tablets metadata.
   CHECKED_STATUS VisitSysCatalog();
 
+  // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
+  // the provided timeout, TimedOut Status otherwise.
+  CHECKED_STATUS WaitForWorkerPoolTests(
+      const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
+
  private:
   friend class TableLoader;
   friend class TabletLoader;
@@ -745,6 +750,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS PrepareDefaultClusterConfig();
 
   CHECKED_STATUS PrepareDefaultNamespace();
+
+  CHECKED_STATUS PrepareSystemNamespace();
+
+  CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
 
   // Helper for initializing 'sys_catalog_'. After calling this
   // method, the caller should call WaitUntilRunning() on sys_catalog_

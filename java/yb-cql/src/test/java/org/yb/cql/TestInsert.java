@@ -225,4 +225,10 @@ public class TestInsert extends TestBase {
     RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (true, " +
       "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
   }
+
+  @Test
+  public void testInsertIntoSystemNamespace() throws Exception {
+    RunInvalidStmt("INSERT INTO system.peers (h1, h2, r1, r2) VALUES (1, '1', 1, '1');");
+    RunInvalidStmt("DELETE FROM system.peers WHERE h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1';");
+  }
 }

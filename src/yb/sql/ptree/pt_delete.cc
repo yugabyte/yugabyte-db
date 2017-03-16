@@ -32,6 +32,12 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
 
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
+  RETURN_NOT_OK(relation_->Analyze(sem_context));
+
+  if (is_system()) {
+    return sem_context->Error(relation_->loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
+  }
+
   // Collect table's schema for semantic analysis.
   RETURN_NOT_OK(LookupTable(sem_context));
 

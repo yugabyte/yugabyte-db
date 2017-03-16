@@ -71,4 +71,9 @@ public class TestCreateTable extends TestBase {
 
     LOG.info("End test");
   }
+
+  @Test
+  public void testCreateTableSystemNamespace() throws Exception {
+    RunInvalidStmt("CREATE TABLE system.abc (c1 int, PRIMARY KEY(c1));");
+  }
 }

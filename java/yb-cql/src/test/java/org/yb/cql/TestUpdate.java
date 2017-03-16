@@ -194,4 +194,9 @@ public class TestUpdate extends TestBase {
     assertEquals(3, row.getInt(4));
     assertEquals(InetAddress.getByName("1.2.3.5"), row.getInet(5));
   }
+
+  @Test
+  public void testUpdateSystemNamespace() throws Exception {
+    RunInvalidStmt("UPDATE system.peers SET h1 = 1, h2 = '1', r1 = 1, r2 = '1';");
+  }
 }

@@ -53,6 +53,7 @@ class MiniMaster {
   CHECKED_STATUS StartDistributedMaster(const std::vector<uint16_t>& peer_ports);
 
   CHECKED_STATUS WaitForCatalogManagerInit();
+  CHECKED_STATUS WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 
   void Shutdown();
 

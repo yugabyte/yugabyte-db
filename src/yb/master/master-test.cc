@@ -578,9 +578,14 @@ TEST_F(MasterTest, TestNamespaces) {
   // Check default namespace.
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Create a new namespace.
@@ -595,13 +600,14 @@ TEST_F(MasterTest, TestNamespaces) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Try to create the existing namespace twice.
@@ -616,13 +622,14 @@ TEST_F(MasterTest, TestNamespaces) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Delete the namespace (by ID).
@@ -636,9 +643,14 @@ TEST_F(MasterTest, TestNamespaces) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Re-create the namespace once again.
@@ -651,13 +663,14 @@ TEST_F(MasterTest, TestNamespaces) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Delete the namespace (by NAME).
@@ -671,9 +684,14 @@ TEST_F(MasterTest, TestNamespaces) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Try to create the 'default' namespace.
@@ -686,9 +704,14 @@ TEST_F(MasterTest, TestNamespaces) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Try to delete the 'default' namespace - by ID.
@@ -707,9 +730,14 @@ TEST_F(MasterTest, TestNamespaces) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Try to delete the 'default' namespace - by NAME.
@@ -728,9 +756,14 @@ TEST_F(MasterTest, TestNamespaces) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Try to delete a non-existing namespace - by NAME.
@@ -749,9 +782,14 @@ TEST_F(MasterTest, TestNamespaces) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    // Including system namespace.
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 }
 
@@ -771,13 +809,13 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Create a table.
@@ -811,13 +849,13 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Try to delete the non-empty namespace - by ID.
@@ -838,13 +876,13 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Delete the table.
@@ -865,9 +903,13 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 }
 
@@ -933,13 +975,13 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Create a table with the defined new namespace.
@@ -1031,9 +1073,13 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 }
 
@@ -1065,13 +1111,13 @@ TEST_F(MasterTest, TestFullTableName) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
-
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(1).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(1).id());
-
-    ASSERT_EQ(other_ns_name, namespaces.namespaces(0).name());
-    ASSERT_EQ(other_ns_id, namespaces.namespaces(0).id());
+    ASSERT_EQ(3, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName, other_ns_name};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId, other_ns_id};
+    for (int i = 0; i < 3; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 
   // Create a table with the defined new namespace.
@@ -1169,9 +1215,13 @@ TEST_F(MasterTest, TestFullTableName) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(1, namespaces.namespaces_size());
-    ASSERT_EQ(kDefaultNamespaceName, namespaces.namespaces(0).name());
-    ASSERT_EQ(kDefaultNamespaceId, namespaces.namespaces(0).id());
+    ASSERT_EQ(2, namespaces.namespaces_size());
+    std::set<string> namespace_names {kDefaultNamespaceName, kSystemNamespaceName};
+    std::set<string> namespace_ids {kDefaultNamespaceId, kSystemNamespaceId};
+    for (int i = 0; i < 2; i++) {
+      ASSERT_TRUE(namespace_names.find(namespaces.namespaces(i).name()) != namespace_names.end());
+      ASSERT_TRUE(namespace_ids.find(namespaces.namespaces(i).id()) != namespace_ids.end());
+    }
   }
 }
 

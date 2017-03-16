@@ -25,6 +25,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
@@ -132,7 +133,12 @@ Status MiniMaster::Restart() {
 }
 
 Status MiniMaster::WaitForCatalogManagerInit() {
+  RETURN_NOT_OK(master_->catalog_manager()->WaitForWorkerPoolTests());
   return master_->WaitForCatalogManagerInit();
+}
+
+Status MiniMaster::WaitUntilCatalogManagerIsLeaderAndReadyForTests() {
+  return master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
 const Sockaddr MiniMaster::bound_rpc_addr() const {

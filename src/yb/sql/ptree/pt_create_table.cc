@@ -38,6 +38,10 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
   // Processing table name.
   RETURN_NOT_OK(relation_->Analyze(sem_context));
 
+  if (is_system()) {
+    return sem_context->Error(relation_->loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
+  }
+
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
   sem_context->set_current_table(this);

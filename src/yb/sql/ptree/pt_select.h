@@ -214,7 +214,7 @@ class PTSelectStmt : public PTDmlStmt {
     return from_clause_->loc();
   }
 
-  bool is_system() const {
+  bool is_system() const OVERRIDE {
     return from_clause_->element(0)->is_system();
   }
 

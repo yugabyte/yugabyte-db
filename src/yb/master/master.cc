@@ -197,6 +197,7 @@ Status Master::WaitForCatalogManagerInit() {
 }
 
 Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& timeout) {
+  RETURN_NOT_OK(catalog_manager_->WaitForWorkerPoolTests(timeout));
   Status s;
   MonoTime start = MonoTime::Now(MonoTime::FINE);
   int backoff_ms = 1;

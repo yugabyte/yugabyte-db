@@ -68,6 +68,10 @@ class PTInsertStmt : public PTDmlStmt {
     return if_clause_.get();
   }
 
+  bool is_system() const OVERRIDE {
+    return relation_->is_system();
+  }
+
  private:
   // The parser will constructs the following tree nodes.
   PTQualifiedName::SharedPtr relation_;
