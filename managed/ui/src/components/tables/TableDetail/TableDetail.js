@@ -102,9 +102,11 @@ export default class TableDetail extends Component {
           </Col>
         </Row>
         <Row>
-          <YBTabsPanel activeTab={"schema"} id={"universe-tab-panel"}>
-            { tabElements }
-          </YBTabsPanel>
+          <Col lg={12}>
+            <YBTabsPanel activeTab={"schema"} id={"universe-tab-panel"}>
+              { tabElements }
+            </YBTabsPanel>
+          </Col>
         </Row>
       </Grid>
     );

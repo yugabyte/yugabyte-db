@@ -28,13 +28,13 @@ class KeyColumnList extends Component {
   columnListSort(item) {
     const {columnType} = this.props;
     var sortOrderOptions = [<option key={"ascending"} value={"asc"}>
-                              asc
+                              ASC
                             </option>,
                             <option key={"descending"} value={"desc"}>
-                              desc
+                              DESC
                             </option>];
     if (columnType === "clustering") {
-      return <Col lg={1}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
+      return <Col lg={2}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
     }
   }
 
@@ -90,7 +90,7 @@ class KeyColumnList extends Component {
                 name={`${item}.name`} component={YBInputField} placeHolder={"Column Name"}
                 checkState={true} />
             </Col>
-            <Col lg={5}>
+            <Col lg={4}>
               <Field
                 name={`${item}.selected`} options={typeOptions}
                 component={YBSelect} placeHolder={"Type"}
