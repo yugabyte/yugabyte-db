@@ -124,7 +124,7 @@ if [[ $DONT_DELETE_BUILD_ROOT == "0" ]]; then
     build_root_real_path=$( readlink "$BUILD_ROOT" )
     log "BUILD_ROOT ('$BUILD_ROOT') is a symlink to '$build_root_real_path'"
     rm -rf "$build_root_real_path"
-    unlink "$BULLD_ROOT"
+    unlink "$BUILD_ROOT"
     build_root_deleted=true
   else
     log "Deleting BUILD_ROOT ('$BUILD_ROOT')."
