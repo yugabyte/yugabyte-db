@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
-import { UniverseInfoPanel, ConnectStringPanel } from '../../panels'
+import { UniverseInfoPanel, ConnectStringPanel, ResourceStringPanel } from '../../panels'
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
@@ -51,7 +51,11 @@ export default class UniverseDetail extends Component {
             <UniverseInfoPanel universeInfo={currentUniverse}
                                customerId={localStorage.getItem("customer_id")} />
           </Col>
-          <Col lg={8}>
+          <Col lg={3}>
+            <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
+                                universeInfo={currentUniverse} />
+          </Col>
+          <Col lg={5}>
             <ConnectStringPanel customerId={localStorage.getItem("customer_id")}
                                 universeInfo={currentUniverse} />
           </Col>

@@ -2,6 +2,8 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -12,9 +14,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import org.junit.Before;
 import org.junit.Test;
+import play.libs.Json;
 
 import java.util.*;
 
+import static com.yugabyte.yw.models.Universe.getUniverseResourcesUtil;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.anyList;
@@ -245,6 +249,16 @@ public class UniverseTest extends FakeDBApplication {
 
     JsonNode universeJson = u.toJson();
     assertThat(universeJson.get("universeUUID").asText(), allOf(notNullValue(), equalTo(u.universeUUID.toString())));
+    assertThat(universeJson.get("resources").asText(), is(notNullValue()));
+    JsonNode resources = null;
+    Exception ex = null;
+    try {
+      resources = Json.toJson(getUniverseResourcesUtil(u.getNodes(), u.getUniverseDetails().userIntent.providerType));
+    }catch (Exception e) {
+      ex = e;
+    }
+    assertEquals(null, ex);
+    assertThat(universeJson.get("resources").asText(), allOf(notNullValue(), equalTo(resources.asText())));
     JsonNode userIntentJson =
       universeJson.get("universeDetails").get("userIntent");
     assertTrue(userIntentJson.get("regionList").isArray());
