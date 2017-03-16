@@ -92,6 +92,7 @@ export default class UniverseForm extends Component {
   }
 
   componentWillMount() {
+    this.props.resetConfig();
     if (this.props.type === "Edit") {
       const {universe: {currentUniverse}, universe: {currentUniverse: {universeDetails: {userIntent}}}} = this.props;
       var providerUUID = currentUniverse.provider.uuid;
