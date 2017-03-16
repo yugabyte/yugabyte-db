@@ -20,6 +20,10 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
+import com.yugabyte.yw.cloud.AWSConstants;
+import com.yugabyte.yw.cloud.AWSResourceUtil;
+import com.yugabyte.yw.cloud.UniverseResourceDetails;
+import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,6 +91,11 @@ public class Universe extends Model {
     json.put("creationDate", creationDate.toString());
     json.set("universeDetails", Json.parse(universeDetailsJson));
     json.put("version", version);
+    try {
+      json.set("resources", Json.toJson(getUniverseResourcesUtil(getNodes(), getUniverseDetails().userIntent.providerType)));
+    } catch (Exception e) {
+      json.set("resources", null);
+    }
     if (getUniverseDetails().userIntent != null &&
         getUniverseDetails().userIntent.regionList != null &&
         !getUniverseDetails().userIntent.regionList.isEmpty()) {
@@ -453,5 +462,17 @@ public class Universe extends Model {
     // Update and return the current version number.
     this.version = newVersion;
     return this.version;
+  }
+
+  public static UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, Common.CloudType cloudType) throws Exception {
+    UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
+    for (NodeDetails node : nodes) {
+      if (node.isActive() && cloudType == Common.CloudType.aws) {
+        AWSResourceUtil.mergeResourceDetails(node.cloudInfo.instance_type, node.cloudInfo.az,
+          AvailabilityZone.find.byId(node.azUuid).region.code,
+          AWSConstants.Tenancy.Shared, universeResourceDetails);
+      }
+    }
+    return universeResourceDetails;
   }
 }
