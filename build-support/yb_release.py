@@ -57,7 +57,7 @@ def main():
 
     build_dir = build_desc['build_root']
     release_manager = ReleaseManager({"repository": repository_root,
-                                      "name": "yb-server",
+                                      "name": "yugabyte",
                                       "type": args.build_type,
                                       "force_yes": args.force})
 

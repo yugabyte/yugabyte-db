@@ -82,7 +82,7 @@ Options:
  --tserver_ips <ips>       - space separated IP of tserver (e.g., '10.a.b.c 10.d.e.f 10.g.h.i')
  --port <port>             - ssh port (default: 54422)
  --repo <repo base>        - repository base (default: ~/code/yugabyte) used to pick up TAR file
- --tar_prefix <tar_prefix> - tar file prefix (e.g., yb-server-0.0.1-SNAPSHOT.0c5fca01051baed142592cf79d937e3eb0e152b0)
+ --tar_prefix <tar_prefix> - tar file prefix (e.g., yugabyte-0.0.1-SNAPSHOT.0c5fca01051baed142592cf79d937e3eb0e152b0)
 Commands:
   masters_create           - Start the YB master processes for the cluster in cluster create mode.
   masters_start            - Start the YB master processes in normal mode.
