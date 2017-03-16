@@ -163,7 +163,8 @@ public class UniverseControllerTest extends WithApplication {
 
     JsonNode nodeDetailsMap = universeDetails.get("nodeDetailsSet");
     assertThat(nodeDetailsMap, is(notNullValue()));
-
+    JsonNode resources = json.get("resources");
+    assertThat(resources, is(notNullValue()));
     int idx = 1;
     for (Iterator<Map.Entry<String, JsonNode>> nodeInfo = nodeDetailsMap.fields(); nodeInfo.hasNext(); ) {
       Map.Entry<String, JsonNode> node = nodeInfo.next();

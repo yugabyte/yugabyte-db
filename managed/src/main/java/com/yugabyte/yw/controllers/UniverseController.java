@@ -45,6 +45,8 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.mvc.Results;
 
+import static com.yugabyte.yw.models.Universe.getUniverseResourcesUtil;
+
 
 public class UniverseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
@@ -440,18 +442,6 @@ public class UniverseController extends AuthenticatedController {
       LOG.error("Error updating universe", t);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
     }
-  }
-
-  private UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, CloudType cloudType) throws Exception {
-    UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
-    for (NodeDetails node : nodes) {
-      if (node.isActive() && cloudType == CloudType.aws) {
-        AWSResourceUtil.mergeResourceDetails(node.cloudInfo.instance_type, node.cloudInfo.az,
-          AvailabilityZone.find.byId(node.azUuid).region.code,
-          AWSConstants.Tenancy.Shared, universeResourceDetails);
-      }
-    }
-    return universeResourceDetails;
   }
 
   private UniverseDefinitionTaskParams bindFormDataToTaskParams(ObjectNode formData) throws Exception {
