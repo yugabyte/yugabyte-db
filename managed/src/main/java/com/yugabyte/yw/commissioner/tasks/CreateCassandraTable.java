@@ -32,6 +32,9 @@ public class CreateCassandraTable extends UniverseTaskBase {
 
       // TODO: wait for table creation
 
+      // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks();
+
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {
