@@ -56,5 +56,5 @@ dockerCommands ++= Seq(
   Cmd("ADD", "packages/devops*.tar.gz /opt/yugabyte/devops"),
   Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_python_requirements.sh"),
   Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_ansible_requirements.sh"),
-  Cmd("COPY", "packages/yb-server*.tar.gz /opt/yugabyte/")
+  Cmd("COPY", "packages/yugabyte*.tar.gz /opt/yugabyte/")
 )
