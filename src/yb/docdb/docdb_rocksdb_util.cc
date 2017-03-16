@@ -14,6 +14,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/trace.h"
 
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
@@ -35,6 +36,8 @@ DEFINE_int64(db_block_size_bytes, 64 * 1024,
 
 DEFINE_bool(use_docdb_aware_bloom_filter, false,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
+DEFINE_int32(max_nexts_to_avoid_seek, 8,
+             "The number of next calls to try before doing resorting to do a rocksdb seek.");
 
 using std::shared_ptr;
 using std::string;
@@ -80,8 +83,21 @@ void PerformRocksDBSeek(
     int line) {
   if (key.size() == 0) {
     iter->SeekToFirst();
-  } else {
+  } else if (!iter->Valid() || iter->key().compare(key) > 0) {
     iter->Seek(key);
+  } else {
+    for (int nexts = 0; nexts <= FLAGS_max_nexts_to_avoid_seek; nexts++) {
+      if (!iter->Valid() || iter->key().compare(key) >= 0) {
+          TRACE("Did $0 Next(s) instead of a Seek", nexts);
+          break;
+      }
+      if (nexts < FLAGS_max_nexts_to_avoid_seek) {
+        iter->Next();
+      } else {
+        TRACE("Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
+        iter->Seek(key);
+      }
+    }
   }
   VLOG(4) << Substitute(
       "RocksDB seek:\n"
