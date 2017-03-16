@@ -3,7 +3,6 @@ import { FETCH_TASK_PROGRESS, FETCH_TASK_PROGRESS_SUCCESS,
          FETCH_TASK_PROGRESS_FAILURE, RESET_TASK_PROGRESS, FETCH_CURRENT_TASK_PROGRESS_FAILURE,
          FETCH_CURRENT_TASK_PROGRESS_SUCCESS, FETCH_CUSTOMER_TASKS, FETCH_CUSTOMER_TASKS_SUCCESS,
          FETCH_CUSTOMER_TASKS_FAILURE, RESET_CUSTOMER_TASKS } from '../actions/tasks';
-import _ from 'lodash';
 
 const INITIAL_STATE = {taskProgressData: [], currentTaskList: {}, customerTaskList: []};
 
@@ -36,7 +35,7 @@ export default function(state = INITIAL_STATE, action) {
           taskListResultArray.push(taskItem);
         })
       });
-      return {...state, customerTaskList: _.sortBy(taskListResultArray, "createTime" , ['desc'])}
+      return {...state, customerTaskList: taskListResultArray.sort((a, b) => b.createTime - a.createTime)}
     case FETCH_CUSTOMER_TASKS_FAILURE:
       return {...state, customerTaskList: action.payload.error}
     case RESET_CUSTOMER_TASKS:
