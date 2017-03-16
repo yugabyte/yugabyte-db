@@ -2581,7 +2581,10 @@ class RetryingTSRpcTask : public MonitoredTask {
            prev_state == MonitoredTask::kStateWaiting) {
       auto expected = prev_state;
       if (state_.compare_exchange_strong(expected, kStateAborted)) {
-        master_->messenger()->AbortOnReactor(reactor_task_id_);
+        // Only abort this task on reactor if it has been scheduled.
+        if (reactor_task_id_ != -1) {
+          master_->messenger()->AbortOnReactor(reactor_task_id_);
+        }
         return prev_state;
       }
       prev_state = state();
@@ -2623,7 +2626,10 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   void AbortTask() {
     if (PerformStateTransition(kStateRunning, kStateAborted)) {
-      master_->messenger()->AbortOnReactor(reactor_task_id_);
+      // Only abort this task on reactor if it has been scheduled.
+      if (reactor_task_id_ != -1) {
+        master_->messenger()->AbortOnReactor(reactor_task_id_);
+      }
     }
   }
 
@@ -2680,7 +2686,9 @@ class RetryingTSRpcTask : public MonitoredTask {
   // Returns true if rescheduling the task was successful.
   bool RescheduleWithBackoffDelay() {
     if (state() != kStateRunning) {
-      LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
+      if (state() != kStateComplete) {
+        LOG_WITH_PREFIX(INFO) << "No reschedule for this task";
+      }
       return false;
     }
 
