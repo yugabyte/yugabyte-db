@@ -11,7 +11,8 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog,
   configureUniverseTemplate, configureUniverseTemplateSuccess, configureUniverseTemplateFailure,
   configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
-  checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration } from 'actions/universe';
+  checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
+  fetchUniverseInfoFailure } from 'actions/universe';
 import { isDefinedNotNull, isValidArray } from 'utils/ObjectUtils';
 import { SOFTWARE_PACKAGE } from 'config';
 
@@ -63,15 +64,22 @@ const mapDispatchToProps = (dispatch) => {
         if (response.payload.status !== 200) {
           dispatch(editUniverseFailure(response.payload));
         } else {
+          dispatch(closeDialog());
           dispatch(editUniverseSuccess(response.payload));
-          dispatch(fetchUniverseList())
+          dispatch(fetchUniverseInfo(universeUUID))
             .then((response) => {
-              if (response.payload.status !== 200) {
-                dispatch(fetchUniverseListFailure(response.payload));
-                //Add Error message state to modal
+              if (!response.error) {
+                dispatch(fetchUniverseInfoSuccess(response.payload));
+                dispatch(fetchUniverseList())
+                  .then((response) => {
+                    if (response.payload.status !== 200) {
+                      dispatch(fetchUniverseListFailure(response.payload));
+                    } else {
+                      dispatch(fetchUniverseListSuccess(response.payload));
+                    }
+                  });
               } else {
-                dispatch(fetchUniverseListSuccess(response.payload));
-                dispatch(closeDialog());
+                dispatch(fetchUniverseInfoFailure(response.payload));
               }
             });
         }
