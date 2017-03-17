@@ -213,7 +213,13 @@ public class UniverseController extends AuthenticatedController {
       // for this customer id.
       Universe universe = Universe.get(universeUUID);
       LOG.info("Found universe {} : name={} at version={}.",
-        universe.universeUUID, universe.name, universe.version);
+               universe.universeUUID, universe.name, universe.version);
+      // TODO: the accesskey code should be sent from the UI.
+      Provider provider = Provider.find.byId(UUID.fromString(taskParams.userIntent.provider));
+      List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
+      if (accessKeys.size() > 0) {
+        taskParams.userIntent.accessKeyCode = accessKeys.get(0).getKeyCode();
+      }
       UUID taskUUID = commissioner.submit(TaskInfo.Type.EditUniverse, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
         universe.universeUUID, universe.name, taskUUID);
