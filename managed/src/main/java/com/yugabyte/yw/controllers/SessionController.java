@@ -9,6 +9,7 @@ import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.models.Customer;
 
+import play.Configuration;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
@@ -20,6 +21,9 @@ public class SessionController extends Controller {
 
   @Inject
   FormFactory formFactory;
+
+  @Inject
+  Configuration appConfig;
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String CUSTOMER_UUID = "customerUUID";
@@ -54,6 +58,11 @@ public class SessionController extends Controller {
 
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+    boolean multiTenant = appConfig.getBoolean("yb.multiTenant", false);
+    int customerCount = Customer.find.all().size();
+    if (!multiTenant && customerCount >= 1) {
+      return ApiResponse.error(BAD_REQUEST, "Cannot register multiple accounts in Single tenancy.");
     }
 
     CustomerRegisterFormData data = formData.get();
