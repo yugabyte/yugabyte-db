@@ -2,7 +2,7 @@
 +++ sql/pgtap.sql
 @@ -781,10 +781,6 @@
      RETURN ok( TRUE, descr );
- EXCEPTION WHEN OTHERS THEN
+ EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
      -- There should have been no exception.
 -    GET STACKED DIAGNOSTICS
 -        detail  = PG_EXCEPTION_DETAIL,
