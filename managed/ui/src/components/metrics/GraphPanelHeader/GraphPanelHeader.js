@@ -78,7 +78,6 @@ class GraphPanelHeader extends Component {
     var currentQuery = location.query;
     var currentFilters = this.state;
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
-      var currentLabel = decodeURIComponent(currentQuery.filterLabel);
       var filterParams = {
         nodePrefix: currentQuery.nodePrefix,
         nodeName: currentQuery.nodeName,
@@ -106,8 +105,12 @@ class GraphPanelHeader extends Component {
   componentWillReceiveProps(nextProps) {
     const {location, universe: {universeList}} = nextProps;
     if (this.props.location !== nextProps.location || this.props.universe.universeList !== universeList) {
+      var nodePrefix = this.state.nodePrefix;
+      if (location.query.nodePrefix) {
+        nodePrefix = location.query.nodePrefix;
+      }
       var currentUniverse = universeList.find(function (item) {
-        return item.universeDetails.nodePrefix === location.query.nodePrefix;
+        return item.universeDetails.nodePrefix === nodePrefix;
       })
       if (!isValidObject(currentUniverse) || !isValidArray(Object.keys(currentUniverse))) {
         currentUniverse = "all";
@@ -117,10 +120,6 @@ class GraphPanelHeader extends Component {
         currentSelectedNode = location.query.nodeName;
       }
       this.setState({currentSelectedUniverse: currentUniverse, currentSelectedNode: currentSelectedNode});
-      if (Object.keys(nextProps.location.query).length <= 1) {
-        this.setState({...DEFAULT_GRAPH_FILTER})
-        this.props.changeGraphQueryFilters(DEFAULT_GRAPH_FILTER);
-      }
     }
   }
 
