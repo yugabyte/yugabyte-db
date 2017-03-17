@@ -32,8 +32,8 @@ class UniverseDisplayItem extends Component {
     if (!isValidObject(universe)) {
       return <span/>;
     }
-    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}x`}</span>
-    var numNodes = <span>{universe.universeDetails.userIntent.replicationFactor}</span>
+    var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>
+    var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>
     if (isValidObject(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>
     }
