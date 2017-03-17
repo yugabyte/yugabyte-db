@@ -14,10 +14,10 @@
 @import "./tabs.scss";
 @import "./modals.scss";
 @import "./spinners.scss";
-
+@import "../../_style/colors";
 
 .progress {
-  border: 1px solid #CD6500;
+  border: 1px solid $YB_ORANGE;
   width:100%;
 }
 
@@ -28,4 +28,20 @@
 .text-bold {
   text-align: center;
   font-size: 1.4em;
+}
+
+.btn-primary {
+  background-color: $YB_ORANGE ;
+  border-color: $YB_ORANGE;
+}
+
+.btn-primary:hover {
+  background-color: #fff ;
+  border-color: #ccc;
+  color: $YB_ORANGE;
+}
+.btn-primary:active:focus {
+  background-color: #fff ;
+  border-color: #ccc;
+  color: $YB_ORANGE;
 }
