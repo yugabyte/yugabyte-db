@@ -10,6 +10,7 @@ import argparse
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
     generate_checksum, latest_release, download_release, docker_push_to_replicated
+from ybops.utils.release import get_package_info, S3_RELEASE_BUCKET
 from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
@@ -43,30 +44,45 @@ try:
         # TODO, make these params, so we can specify which version of devops
         # and yugabyte software we want to be bundled, also be able to specify
         # local builds
-        log_message(logging.INFO, "Download latest devops and yugabyte packages")
-        devops_release = latest_release("snapshots.yugabyte.com", "devops")
-        yugabyte_release = latest_release("snapshots.yugabyte.com", "yugabyte")
+        if not args.tag:
+            raise YBOpsRuntimeError("--tag is required for docker release.")
+
         packages_folder = os.path.join(script_dir, "target", "docker", "stage", "packages")
         if not os.path.exists(packages_folder):
             os.makedirs(packages_folder)
+        package_infos = None
+        try:
+            log_message(logging.INFO, "Download packages based on the release tag")
+            package_infos = get_package_info(args.tag)
+            yugaware_commit_hash = None
+            for package_info in package_infos:
+                if package_info.get('repo') == 'yugaware':
+                    yugaware_commit_hash = package_info.get('commit')
+                    continue
 
-        download_release("snapshots.yugabyte.com", "devops", devops_release, packages_folder)
-        download_release("snapshots.yugabyte.com", "yugabyte", yugabyte_release, packages_folder)
+                download_release(args.tag,
+                                 package_info.get('package'),
+                                 packages_folder,
+                                 S3_RELEASE_BUCKET)
+            if not yugaware_commit_hash:
+                raise YBOpsRuntimeError("Unable to fetch yugaware commit hash.")
+            output = check_output(["git", "checkout", yugaware_commit_hash])
+            log_message(logging.INFO, "Package and publish yugaware docker image locally")
+            output = check_output(["sbt", "docker:publishLocal"])
+            log_message(logging.INFO, "Package and publish yugaware-ui docker image locally")
+            output = check_output(["docker", "build", "-t", "yugaware-ui", "ui"])
 
-        log_message(logging.INFO, "Package and publish yugaware docker image locally")
-        output = check_output(["sbt", "docker:publishLocal"])
-        log_message(logging.INFO, "Package and publish yugaware-ui docker image locally")
-        output = check_output(["docker", "build", "-t", "yugaware-ui", "ui"])
+            if args.publish:
+                log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
+                docker_push_to_replicated("yugaware", "1.0-SNAPSHOT", args.tag)
+                docker_push_to_replicated("yugaware-ui", "latest", args.tag)
 
-        if args.publish:
-            if not args.tag:
-                args.tag = check_output(["git", "rev-parse", "HEAD"]).strip()[:6]
-            log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
-            docker_push_to_replicated("yugaware", "1.0-SNAPSHOT", args.tag)
-            docker_push_to_replicated("yugaware-ui", "latest", args.tag)
-
-        log_message(logging.INFO, "Cleanup the packages folder")
-        shutil.rmtree(packages_folder)
+        except YBOpsRuntimeError as ye:
+            log_message(logging.ERROR, ye)
+            log_message(logging.ERROR, "Invalid release tag provided.")
+        finally:
+            output = check_output(["git", "checkout", "master"])
+            shutil.rmtree(packages_folder)
 
     else:
         log_message(logging.INFO, "Building/Packaging UI code")
