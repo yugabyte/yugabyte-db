@@ -13,9 +13,9 @@ export default class UniverseStatus extends Component {
     var updateSucceeded = universeDetails.updateSucceeded;
     var statusClassName = "";
     var statusText = "";
-    var universePendingTask = customerTaskList.find(function(taskItem){
-      return (taskItem.universeUUID === universeUUID && (taskItem.status === "Running"
-          ||  taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
+    var universePendingTask = customerTaskList.find(function(taskItem) {
+      return (taskItem.universeUUID === universeUUID && (taskItem.status === "Running" ||
+        taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
     });
     var statusDisplay = <span/>;
     if (updateSucceeded) {
@@ -24,9 +24,9 @@ export default class UniverseStatus extends Component {
         statusText = 'Ready';
       }
       statusDisplay =
-        <div> <i className="fa fa-check-circle" />
+        <div><i className="fa fa-check-circle" />
           {statusText && <span>{statusText}</span>}
-        </div>
+        </div>;
     } else {
       if (updateInProgress && isValidObject(universePendingTask) && isValidArray(Object.keys(universePendingTask))) {
         if (showLabelText) {
@@ -42,7 +42,7 @@ export default class UniverseStatus extends Component {
               <Row className={"status-pending-progress-container "}>
                 <ProgressBar className={"pending-action-progress"} now={universePendingTask.percentComplete}/>
               </Row>
-            </div>
+            </div>;
         } else {
            statusDisplay = <div className={"yb-orange"}><i className={"fa fa fa-spinner fa-spin"}/></div>;
         }
@@ -53,9 +53,9 @@ export default class UniverseStatus extends Component {
           statusText = 'Error';
         }
         statusDisplay =
-          <div> <i className="fa fa-warning" />
+          <div><i className="fa fa-warning" />
             {statusText && <span>{statusText}</span>}
-          </div>
+          </div>;
       }
     }
 

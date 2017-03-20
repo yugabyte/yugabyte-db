@@ -49,11 +49,9 @@ export default class UniverseTable extends Component {
                                taskId={universeTaskUUIDs} universeReadWriteData={universeReadWriteData} />
       });
     return (
-      <div className="row">
-        <ListGroup>
-          {universeRowItem}
-        </ListGroup>
-      </div>
+      <ListGroup>
+        {universeRowItem}
+      </ListGroup>
     )
   }
 }
@@ -77,16 +75,16 @@ class YBUniverseItem extends Component {
             </Col>
           </Row>
           <Row className={"universe-list-detail-item"}>
-            <Col lg={8}>
+            <Col lg={7}>
               <CellLocationPanel {...this.props}/>
             </Col>
-            <Col lg={4}>
+            <Col lg={5}>
               <CellResourcesPanel {...this.props}/>
             </Col>
           </Row>
         </ListGroupItem>
       </div>
-    )
+    );
   }
 }
 
@@ -94,7 +92,7 @@ class YBUniverseItem extends Component {
 class CellLocationPanel extends Component {
   render() {
     const {universe, universe: {universeDetails: {userIntent}}} = this.props;
-    var isMultiAz = userIntent.isMultiAZ ? "MutliAZ" : "Single AZ";
+    var isMultiAz = userIntent.isMultiAZ ? "Multi AZ" : "Single AZ";
     var regionList = universe.regions.map(function(regionItem, idx){
       return <span key={idx}>{regionItem.name}</span>
     })
@@ -102,15 +100,15 @@ class CellLocationPanel extends Component {
     return (
       <div >
         <Row className={"cell-position-detail"}>
-          <Col lg={3} className={"cell-num-nodes"}>{userIntent.numNodes} Nodes</Col>
-          <Col lg={9}>
+          <Col lg={2} className={"cell-num-nodes"}>{userIntent.numNodes} Nodes</Col>
+          <Col lg={10}>
             <span className={"cell-provider-name"}>{universe.provider.name}</span>
-            <span className={"cell-multi-az"}>{isMultiAz}</span>
+            <span className={"cell-multi-az"}>({isMultiAz})</span>
           </Col>
         </Row>
         <Row className={"cell-position-detail"}>
-          <Col lg={3} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
-          <Col lg={9}>{regionList}</Col>
+          <Col lg={2} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
+          <Col lg={10}>{regionList}</Col>
         </Row>
       </div>
     )
@@ -145,8 +143,7 @@ class CellResourcesPanel extends Component {
           <div className={"cell-cost-item"}>
             <YBCost value={pricePerHour} multiplier={"month"}/>
           </div>
-          <div>Estimated Cost</div>
-          <div>Per Month</div>
+          Monthly Cost
         </Col>
         <Col lg={8}>
           <Row>
