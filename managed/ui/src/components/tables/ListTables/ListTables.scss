@@ -3,77 +3,81 @@
 @import "_style/colors.scss";
 
 .table-type-logo {
-    width: 30px;
-    height: 30px;
-    margin-bottom: 6px;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 4px;
 }
 
 .table-search-bar {
-    position: relative;
-    top: 1px;
-    width: 200px;
-    height: 30px;
-    border: 1px solid $YB_GRAY_20;
-    border-radius: 15px;
-    padding-left: 10px;
-    margin-right: 10px;
-    font-size: 14px;
-    font-weight: 400;
+  position: relative;
+  top: 1px;
+  width: 200px;
+  height: 30px;
+  border: 1px solid $YB_GRAY_20;
+  border-radius: 15px;
+  padding-left: 10px;
+  margin-right: 10px;
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .table-container {
-    font-size: 16px;
-    font-weight: 600;
-    padding: 2px;
-    margin-bottom: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 2px;
+  margin-bottom: 4px;
 }
 
 .table-container-title {
-    font-size: 20px;
-    font-weight: 500;
-    margin-bottom: 16px;
-}
+  font-size: 20px;
+  font-weight: 500;
+  margin-bottom: 16px;
 
-.table-container-title span {
-    font-size: 14px;
-    font-weight: 500;
-}
+  .table-type-count {
+    display: inline-block;
+    margin-left: 20px;
 
-.table-container-title div {
-    display: inline;
-    float: right;
+    img {
+      margin-right: 4px;
+    }
+
+    span {
+      font-size: 14px;
+      font-weight: 500;
+    }
+  }
 }
 
 .table-row-name-label {
-    font-size: 20px;
-    font-weight: 500;
-    line-height: 1;
-    margin-left: 10px;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1;
+  margin-left: 10px;
 }
 
 .table-name-label {
-    padding-top: 4px;
-    font-size: 18px;
-    font-weight: 500;
-    line-height: 1;
-    margin-left: 10px;
+  padding-top: 4px;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+  margin-left: 10px;
 }
 
 .indicator-orange {
-    color: #CD6500;
-    font-weight: 400;
-    font-size: 20px;
+  color: #CD6500;
+  font-weight: 400;
+  font-size: 20px;
 }
 
 .table-type-image-col {
-    width: 60px;
+  width: 60px;
 }
 
 .table-type-image-header {
-    width: 50px;
+  width: 50px;
 }
 
 .yb-table-cell {
-    border-left-style: none !important;
-    border-right-style: none !important;
+  border-left-style: none !important;
+  border-right-style: none !important;
 }
