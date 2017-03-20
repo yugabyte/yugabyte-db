@@ -2,10 +2,12 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBInputField, YBButton, YBSelect } from '../../common/forms/fields';
+import { YBInputField, YBButton, YBRadioButton, YBSelect } from '../../common/forms/fields';
 import { Field, FieldArray } from 'redux-form';
+import { isValidArray } from '../../../utils/ObjectUtils';
+import cassandraLogo from '../images/cassandra.png';
+import redisLogo from '../images/redis.png';
 import './CreateTables.scss';
-import {isValidArray} from '../../../utils/ObjectUtils';
 
 class KeyColumnList extends Component {
   static propTypes = {
@@ -172,6 +174,8 @@ export default class CreateTable extends Component {
   render() {
     const {handleSubmit} = this.props;
     var onFormSubmit = handleSubmit(this.createTable);
+    var cassandraLabel = <div><img src={cassandraLogo} alt="Cassandra" className="table-type-logo"/> Cassandra</div>;
+    var redisLabel = <div><img src={redisLogo} alt="Redis" className="table-type-logo"/> Redis</div>;
     return (
       <div className="bottom-bar-padding">
         <h3>Create Table</h3>
@@ -181,6 +185,18 @@ export default class CreateTable extends Component {
               <div className="form-right-aligned-labels">
                 <Field name="tableName" component={YBInputField} className={`table-name-cell`}
                        label="Name" placeHolder={"Table Name"}/>
+              </div>
+            </Col>
+            <Col lg={6}>
+              <div className="form-right-aligned-labels">
+                <div className="form-group">
+                  <label className="form-item-label">
+                    Type
+                  </label>
+                  <div className="yb-field-group">
+                    <YBRadioButton name="type" key="cassandra" label={cassandraLabel} fieldValue="cassandra" checkState={true} />
+                  </div>
+                </div>
               </div>
             </Col>
           </Row>
