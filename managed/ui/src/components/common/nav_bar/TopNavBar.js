@@ -8,6 +8,7 @@ import { HighlightedStatsPanelContainer } from '../../panels';
 import { TaskAlertsContainer } from '../../tasks';
 import YBLogo from '../YBLogo/YBLogo';
 import './stylesheets/TopNavBar.scss';
+import {LinkContainer} from 'react-router-bootstrap';
 
 export default class TopNavBar extends Component {
 	constructor(props) {
@@ -33,12 +34,16 @@ export default class TopNavBar extends Component {
 						<TaskAlertsContainer eventKey="1"/>
 					</NavDropdown>
 					<NavDropdown eventKey="2" title={<i className="fa fa-user fa-fw"></i>} id="profile-dropdown">
-						<MenuItem eventKey="2.1" href="/profile">
-							<i className="fa fa-user fa-fw"></i>Profile
-						</MenuItem>
-						<MenuItem eventKey="2.2" href="/login" id="logoutLink" onClick={this.handleLogout}>
-							<i className="fa fa-sign-out fa-fw"></i>Logout
-						</MenuItem>
+						<LinkContainer to="/profile">
+							<MenuItem eventKey="2.1">
+								<i className="fa fa-user fa-fw"></i>Profile
+							</MenuItem>
+						</LinkContainer>
+						<LinkContainer to="/login">
+							<MenuItem eventKey="2.2" id="logoutLink" onClick={this.handleLogout}>
+								<i className="fa fa-sign-out fa-fw"></i>Logout
+							</MenuItem>
+						</LinkContainer>
 					</NavDropdown>
 				</Nav>
 
