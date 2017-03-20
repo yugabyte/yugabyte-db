@@ -9,6 +9,7 @@ import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
 import {YBLoadingIcon} from '../../common/indicators';
+import {UniverseStatusContainer} from '../../universes'
 
 export default class UniverseTable extends Component {
 
@@ -116,8 +117,8 @@ class YBUniverseItem extends Component {
             <Col lg={6}>
               <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
             </Col>
-            <Col lg={6}>
-              {currentStatusItem}
+            <Col lg={6} className={"list-universe-status-container"}>
+              <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
             </Col>
           </Row>
           <Row className={"universe-list-detail-item"}>

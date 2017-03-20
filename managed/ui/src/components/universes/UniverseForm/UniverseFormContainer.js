@@ -2,7 +2,7 @@
 
 import { reduxForm, formValueSelector } from 'redux-form';
 import { connect } from 'react-redux';
-
+import {  fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure, getRegionList,
   getRegionListSuccess, getRegionListFailure } from 'actions/cloud';
@@ -43,7 +43,16 @@ const mapDispatchToProps = (dispatch) => {
           if (response.payload.status !== 200) {
             dispatch(createUniverseFailure(response.payload));
           } else {
+            dispatch(closeDialog());
             dispatch(createUniverseSuccess(response.payload));
+            dispatch(fetchCustomerTasks())
+              .then((response) => {
+                if (!response.error) {
+                  dispatch(fetchCustomerTasksSuccess(response.payload));
+                } else {
+                  dispatch(fetchCustomerTasksFailure(response.payload));
+                }
+              });
             dispatch(fetchUniverseList())
               .then((response) => {
                 if (response.payload.status !== 200) {
@@ -51,7 +60,6 @@ const mapDispatchToProps = (dispatch) => {
                   //Add Error message state to modal
                 } else {
                   dispatch(fetchUniverseListSuccess(response.payload));
-                  dispatch(closeDialog());
                 }
               });
           }
@@ -66,6 +74,14 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(closeDialog());
           dispatch(editUniverseSuccess(response.payload));
+          dispatch(fetchCustomerTasks())
+            .then((response) => {
+              if (!response.error) {
+                dispatch(fetchCustomerTasksSuccess(response.payload));
+              } else {
+                dispatch(fetchCustomerTasksFailure(response.payload));
+              }
+            });
           dispatch(fetchUniverseInfo(universeUUID))
             .then((response) => {
               if (!response.error) {

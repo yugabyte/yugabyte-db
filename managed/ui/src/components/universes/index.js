@@ -10,5 +10,6 @@ export { default as UniverseDetailContainer } from './UniverseDetail/UniverseDet
 export { default as UniverseForm } from './UniverseForm/UniverseForm';
 export { default as UniverseFormContainer } from './UniverseForm/UniverseFormContainer';
 export { default as UniverseStatus } from './UniverseStatus/UniverseStatus';
+export { default as UniverseStatusContainer } from './UniverseStatus/UniverseStatusContainer';
 export { default as UniverseTable } from './UniverseTable/UniverseTable';
 export { default as UniverseTableContainer } from './UniverseTable/UniverseTableContainer';
