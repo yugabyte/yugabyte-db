@@ -27,11 +27,7 @@ export default class ListUniverse extends Component {
                                    onHide={this.props.closeUniverseModal} title="Create Universe" />
           </Col>
         </Row>
-        <Row>
-          <Col lg={12}>
-            <UniverseTableContainer />
-          </Col>
-        </Row>
+        <UniverseTableContainer />
       </div>
     )
   }
