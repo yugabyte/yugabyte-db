@@ -16,13 +16,18 @@ class TableTitle extends Component {
     const {onCreateButtonClick, numCassandraTables, numRedisTables} = this.props;
     return (
       <div className="table-container-title">
-        Tables
-        &nbsp; &nbsp;
-        <Image src={cassandraLogo} className="table-type-logo"/>&nbsp;
-        {numCassandraTables} <span>Cassandra</span>&nbsp;
-        <Image src={redisLogo} className="table-type-logo"/>&nbsp;
-        {numRedisTables} <span>Redis</span> &nbsp; &nbsp;
-        <div>
+        <div className="pull-left">
+          Tables
+          <div className="table-type-count">
+            <Image src={cassandraLogo} className="table-type-logo"/>
+            {numCassandraTables} <span>Cassandra</span>
+          </div>
+          <div className="table-type-count">
+            <Image src={redisLogo} className="table-type-logo"/>
+            {numRedisTables} <span>Redis</span>
+          </div>
+        </div>
+        <div className="pull-right">
           <input type="text" className="table-search-bar" placeholder="Search Tables" />
           <Button bsClass="btn bg-orange" onClick={onCreateButtonClick}>
             Create Table

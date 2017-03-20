@@ -41,3 +41,23 @@ button, .btn {
 .bottom-bar-padding {
   padding-bottom: 60px;
 }
+
+.radio-label {
+  cursor: pointer;
+  line-height: 34px;
+  margin: 0 8px;
+  white-space: nowrap;
+
+  &.disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  div {
+    display: inline-block;
+  }
+
+  input[type=radio] {
+    margin-right: 5px;
+  }
+}
