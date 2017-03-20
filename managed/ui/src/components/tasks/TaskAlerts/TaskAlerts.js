@@ -14,23 +14,23 @@ class AlertItem extends Component {
     var statusVerbClassName = "";
     var statusIconClassName = "";
     if (taskInfo.status === "Initializing") {
-      statusText = 'initializing';
+      statusText = 'Initializing';
       statusVerbClassName = "yb-pending-color";
       statusIconClassName = "fa-spinner fa-spin yb-pending-color";
     } else if (taskInfo.status === "Running") {
-      statusText = 'pending';
+      statusText = 'Pending';
       statusVerbClassName = "yb-pending-color";
       statusIconClassName = "fa-spinner fa-spin yb-pending-color";
     } else if (taskInfo.status === "Success") {
-      statusText = 'completed';
+      statusText = 'Completed';
       statusVerbClassName = "yb-success-color";
       statusIconClassName = "fa-check yb-success-color";
     } else if (taskInfo.status === "Failure"){
-      statusText = 'failed';
+      statusText = 'Failed';
       statusVerbClassName = "yb-fail-color";
       statusIconClassName = "fa-warning yb-fail-color";
     } else {
-      statusText = 'unknown';
+      statusText = 'Unknown';
       statusVerbClassName = "yb-unknown-color";
       statusIconClassName = "fa-exclamation yb-unknown-color";
     }
@@ -83,7 +83,7 @@ export default class TaskAlerts extends Component {
           Tasks
         </div>
         {tasksDisplayList}
-        <Link to="tasks" className="task-cell">Open Tasks</Link>
+        <Link to="tasks" className="task-cell">Show All Tasks</Link>
       </div>
     )
   }

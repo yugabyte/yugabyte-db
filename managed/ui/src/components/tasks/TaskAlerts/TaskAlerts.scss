@@ -65,6 +65,14 @@
     background-color: $YB_HOVER_BACKGROUND_COLOR;
     text-decoration: none;
   }
+
+  .icon-hang-left {
+    top: 7px;
+
+    i {
+      font-size: 20px !important;
+    }
+  }
 }
 
 .task-show-more {
