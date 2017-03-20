@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+import Measure from 'react-measure';
 import { UniverseInfoPanel, ConnectStringPanel, ResourceStringPanel } from '../../panels'
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
@@ -19,6 +20,9 @@ import {YBLoadingIcon} from '../../common/indicators';
 import './UniverseDetail.scss';
 
 export default class UniverseDetail extends Component {
+  state = {
+    dimensions: {},
+  }
 
   componentWillUnmount() {
     this.props.resetUniverseInfo();
@@ -36,6 +40,11 @@ export default class UniverseDetail extends Component {
     this.props.fetchUniverseTasks(uuid);
   }
 
+  onResize(dimensions) {
+    dimensions.width -= 40;
+    this.setState({dimensions});
+  }
+
   render() {
     const { universe: { currentUniverse, loading, showModal, visibleModal }, universe } = this.props;
     if (loading) {
@@ -43,6 +52,13 @@ export default class UniverseDetail extends Component {
     } else if (!currentUniverse) {
       return <span />;
     }
+
+    const width = this.state.dimensions.width;
+    const nodePrefixes = [currentUniverse.universeDetails.nodePrefix];
+    const graphPanelTypes = ['cql', 'redis', 'tserver', 'lsmdb', 'server'];
+    const graphPanelContainers = graphPanelTypes.map(function (type) {
+      return <GraphPanelContainer type={type} width={width} nodePrefixes={nodePrefixes} />
+    });
 
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
@@ -75,27 +91,14 @@ export default class UniverseDetail extends Component {
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
         <GraphPanelHeaderContainer origin={"universe"}>
-          <GraphPanelContainer
-            type={"cql"}
-            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
-          <GraphPanelContainer
-            type={"redis"}
-            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
-          <GraphPanelContainer
-            type={"tserver"}
-            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
-          <GraphPanelContainer
-            type={"lsmdb"}
-            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
-          <GraphPanelContainer
-            type={"server"}
-            nodePrefixes={[currentUniverse.universeDetails.nodePrefix]} />
+          {graphPanelContainers}
         </GraphPanelHeaderContainer>
       </Tab>,
       <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
         <UniverseTaskList universe={universe}/>
 
-      </Tab>]
+      </Tab>
+    ];
 
     return (
       <Grid id="page-wrapper" fluid={true}>
@@ -149,9 +152,12 @@ export default class UniverseDetail extends Component {
           <DeleteUniverseContainer visible={showModal===true && visibleModal==="deleteUniverseModal"}
                                        onHide={this.props.closeModal} title="Delete Universe"/>
         </Row>
-        <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"}>
-          { tabElements }
-        </YBTabsPanel>
+
+        <Measure onMeasure={this.onResize.bind(this)}>
+          <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"}>
+            { tabElements }
+          </YBTabsPanel>
+        </Measure>
       </Grid>
     );
   }

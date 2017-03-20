@@ -6,8 +6,9 @@ var Plotly = require('plotly.js/lib/core');
 import { removeNullProperties, isValidObject, isValidArray } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 
-const WIDTH_OFFSET = 40;
+const WIDTH_OFFSET = 5;
 const MAX_GRAPH_WIDTH_PX = 600;
+const GRAPH_GUTTER_WIDTH_PX = 15;
 
 export default class MetricsPanel extends Component {
   static propTypes = {
@@ -33,7 +34,7 @@ export default class MetricsPanel extends Component {
       });
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
-      metric.layout.width = this.getGraphWidth();
+      metric.layout.width = this.getGraphWidth(this.props.width || 1200);
       metric.layout.height = 360;
       metric.layout.showlegend = true;
       metric.layout.margin = {
@@ -80,11 +81,16 @@ export default class MetricsPanel extends Component {
     }
   }
 
-  getGraphWidth() {
-    var windowWidth = document.documentElement.clientWidth || window.innerWidth;
-    var width = windowWidth - WIDTH_OFFSET;
-    var columnCount = Math.floor(width / MAX_GRAPH_WIDTH_PX);
-    return Math.min(Math.floor(width / columnCount), MAX_GRAPH_WIDTH_PX);
+  componentWillReceiveProps(newProps) {
+    if (newProps.width !== this.props.width) {
+      Plotly.relayout(this.props.metricKey, {width: this.getGraphWidth(newProps.width)});
+    }
+  }
+
+  getGraphWidth(containerWidth) {
+    var width = containerWidth - WIDTH_OFFSET;
+    var columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX);
+    return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   }
 
   render() {

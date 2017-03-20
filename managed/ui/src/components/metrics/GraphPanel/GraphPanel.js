@@ -82,25 +82,26 @@ class GraphPanel extends Component {
 
     var panelItem = <YBLoadingIcon />;
     if (Object.keys(metrics).length > 0 && isValidObject(metrics[type])) {
-       /* Logic here is, since there will be multiple instances of GraphPanel
-       we basically would have metrics data keyed off panel type. So we
-       loop through all the possible panel types in the metric data fetched
-       and group metrics by panel type and filter out anything that is empty.
-       */
-       panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
+      /* Logic here is, since there will be multiple instances of GraphPanel
+      we basically would have metrics data keyed off panel type. So we
+      loop through all the possible panel types in the metric data fetched
+      and group metrics by panel type and filter out anything that is empty.
+      */
+      const width = this.props.width;
+      panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
         // if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
         return (isValidObject(metrics[type][metricKey])) ?
           <MetricsPanel metricKey={metricKey} key={idx}
                         metric={metrics[type][metricKey]}
                         className={"metrics-panel-container"}
-                         />
+                        width={width} />
           : null;
       });
     }
     return (
       <Accordion>
         <Panel header={panelTypes[type].title} key={panelTypes[type]} className="metrics-container">
-        {panelItem}
+          {panelItem}
         </Panel>
       </Accordion>
     )

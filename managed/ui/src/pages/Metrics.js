@@ -7,9 +7,7 @@ import { CustomerMetricsPanelContainer } from '../components/metrics';
 class Metrics extends Component {
   render() {
     return (
-      <div>
-        <CustomerMetricsPanelContainer origin={"customer"}/>
-      </div>
+      <CustomerMetricsPanelContainer origin={"customer"}/>
     );
   }
 }
