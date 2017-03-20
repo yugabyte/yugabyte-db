@@ -58,6 +58,7 @@
     "react-gauge": "0.0.5",
     "react-highlight": "^0.9.0",
     "react-leaflet": "^1.1.0",
+    "react-measure": "^1.4.6",
     "react-modal": "^1.4.0",
     "react-numeric-input": "^2.0.5",
     "react-redux": "^4.0.0",

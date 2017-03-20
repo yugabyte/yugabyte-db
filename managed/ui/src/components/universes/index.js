@@ -6,6 +6,7 @@ export { default as ListUniverse } from './ListUniverse/ListUniverse';
 export { default as ListUniverseContainer } from './ListUniverse/ListUniverseContainer';
 export { default as NodeDetails } from './NodeDetails/NodeDetails';
 export { default as UniverseDetail } from './UniverseDetail/UniverseDetail';
+export { default as UniverseDetailMetrics } from './UniverseDetail/UniverseDetail';
 export { default as UniverseDetailContainer } from './UniverseDetail/UniverseDetailContainer';
 export { default as UniverseForm } from './UniverseForm/UniverseForm';
 export { default as UniverseFormContainer } from './UniverseForm/UniverseFormContainer';
