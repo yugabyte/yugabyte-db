@@ -450,9 +450,10 @@ void ConnectionId::CopyFrom(const ConnectionId& other) {
 
 string ConnectionId::ToString() const {
   // Does not print the password.
-  return StringPrintf("{remote=%s, user_credentials=%s}",
+  return StringPrintf("{remote=%s, user_credentials=%s, idx=%d}",
       remote_.ToString().c_str(),
-      user_credentials_.ToString().c_str());
+      user_credentials_.ToString().c_str(),
+      idx_);
 }
 
 void ConnectionId::DoCopyFrom(const ConnectionId& other) {
@@ -471,7 +472,8 @@ size_t ConnectionId::HashCode() const {
 
 bool ConnectionId::Equals(const ConnectionId& other) const {
   return (remote() == other.remote()
-       && user_credentials().Equals(other.user_credentials()));
+       && user_credentials().Equals(other.user_credentials()))
+       && idx_ == other.idx_;
 }
 
 size_t ConnectionIdHash::operator() (const ConnectionId& conn_id) const {

@@ -405,7 +405,8 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
   RETURN_NOT_OK_PREPEND(s, "Unable to start connection negotiation thread");
 
   // Insert into the client connection map to avoid duplicate connection requests.
-  client_conns_.insert(conn_map_t::value_type(conn_id, *conn));
+  client_conns_.emplace(conn_id, *conn);
+
   return Status::OK();
 }
 
@@ -476,6 +477,8 @@ void ReactorThread::DestroyConnection(Connection *conn,
                                       const Status &conn_status) {
   DCHECK(IsCurrentThread());
 
+  VLOG(3) << "DestroyConnection(" << conn->ToString() << ", " << conn_status.ToString() << ")";
+
   conn->Shutdown(conn_status);
 
   // Unlink connection from lists.
@@ -488,6 +491,14 @@ void ReactorThread::DestroyConnection(Connection *conn,
       if (it != client_conns_.end() && it->second.get() == conn) {
         client_conns_.erase(it);
         erased = true;
+      }
+    }
+    if (!erased) {
+      LOG(WARNING) << "Looking for " << conn->ToString() << ", "
+                   << conn->user_credentials().ToString();
+      for (auto &p : client_conns_) {
+        LOG(WARNING) << "  Client connection: " << p.first.ToString() << ", "
+                     << p.second->ToString();
       }
     }
     CHECK(erased) << "Couldn't find connection for any index to " << conn->ToString();
