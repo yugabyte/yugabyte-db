@@ -23,6 +23,11 @@ export const LOGOUT = 'LOGOUT';
 export const LOGOUT_SUCCESS = 'LOGOUT_SUCCESS';
 export const LOGOUT_FAILURE = 'LOGOUT_FAILURE';
 
+// Update Customer Profile
+export const UPDATE_PROFILE = 'UPDATE_PROFILE';
+export const UPDATE_PROFILE_SUCCESS = 'UPDATE_PROFILE_SUCCESS';
+export const UPDATE_PROFILE_FAILURE = 'UPDATE_PROFILE_FAILURE';
+
 export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");
   var auth_token = localStorage.getItem("customer_token");
@@ -111,6 +116,29 @@ export function logoutSuccess() {
 export function logoutFailure(error) {
   return {
     type: LOGOUT_FAILURE,
+    payload: error
+  }
+}
+
+export function updateProfile(values) {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.put(`${ROOT_URL}/customers/${cUUID}`, values);
+  return {
+    type: UPDATE_PROFILE,
+    payload: request
+  }
+}
+
+export function updateProfileSuccess(response) {
+  return {
+    type: UPDATE_PROFILE_SUCCESS,
+    payload: response
+  }
+}
+
+export function updateProfileFailure(error) {
+  return {
+    type: UPDATE_PROFILE_FAILURE,
     payload: error
   }
 }

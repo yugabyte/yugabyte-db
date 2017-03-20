@@ -18,7 +18,7 @@ export default function(state = INITIAL_STATE, action) {
     case VALIDATE_FROM_TOKEN:
       return { ...state, customer: null, status: 'authenticate', error: null, loading: true};
     case VALIDATE_FROM_TOKEN_SUCCESS:
-      return { ...state, customer: action.payload.name, universes: action.payload.universes, status: 'authenticated', error: null, loading: false}; //<-- authenticated
+      return { ...state, customer: action.payload, universes: action.payload.universes, status: 'authenticated', error: null, loading: false}; //<-- authenticated
     case VALIDATE_FROM_TOKEN_FAILURE:// return error and make loading = false
       error = "Unable to Authenticate Customer"
       return { ...state, customer: null, status: 'authenticate_failure', error: error, loading: false};
