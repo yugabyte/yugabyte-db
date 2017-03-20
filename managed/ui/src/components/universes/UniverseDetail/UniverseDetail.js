@@ -7,7 +7,7 @@ import { UniverseInfoPanel, ConnectStringPanel, ResourceStringPanel } from '../.
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
-import { UniverseFormContainer, UniverseStatus, NodeDetails, DeleteUniverseContainer } from '..';
+import { UniverseFormContainer, UniverseStatusContainer, NodeDetails, DeleteUniverseContainer } from '../../universes';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel } from '../../panels';
@@ -16,7 +16,7 @@ import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
 import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
 import {YBLoadingIcon} from '../../common/indicators';
-
+import './UniverseDetail.scss';
 
 export default class UniverseDetail extends Component {
 
@@ -108,11 +108,11 @@ export default class UniverseDetail extends Component {
                 </YBLabelWithIcon>
               </Link>
             </div>
-            <div>
+            <div className="universe-detail-status-container">
               <h2>
                 { currentUniverse.name }
-                <UniverseStatus universe={currentUniverse} showLabelText={true} />
               </h2>
+              <UniverseStatusContainer currentUniverse={currentUniverse} showLabelText={true} />
             </div>
           </Col>
           <Col lg={2} className="page-action-buttons">
