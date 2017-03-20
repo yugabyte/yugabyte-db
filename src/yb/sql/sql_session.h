@@ -38,6 +38,9 @@ class SqlSession {
     boost::lock_guard<boost::shared_mutex> l(current_keyspace_mutex_);
     current_keyspace_ = keyspace;
   }
+  void reset_current_keyspace() {
+    set_current_keyspace(yb::master::kDefaultNamespaceName);
+  }
 
  private:
   // Mutex to protect access to current_keyspace_.

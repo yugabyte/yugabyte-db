@@ -644,7 +644,8 @@ Status YBTableCache::GetTable(
     bool* cache_used) {
   if (!force_refresh) {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    auto itr = cached_tables_.find(table_name.ToString());
+    auto itr = cached_tables_.find(
+        YBTableMap::key_type(table_name.namespace_name(), table_name.table_name()));
     if (itr != cached_tables_.end()) {
       *table = itr->second;
       *cache_used = true;
@@ -655,7 +656,8 @@ Status YBTableCache::GetTable(
   *cache_used = false;
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    cached_tables_[table_name.ToString()] = *table;
+    cached_tables_[YBTableMap::key_type(table_name.namespace_name(), table_name.table_name())]
+        = *table;
   }
   return Status::OK();
 }

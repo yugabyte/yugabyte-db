@@ -23,6 +23,11 @@ public class TestKeyspace extends TestBase {
   public void setupTable(String test_table) throws Exception {
     LOG.info("Create & setup table: " + test_table);
     super.SetupTable(test_table, 2 /* num_rows */);
+
+    // Supposing the create operation is asyncronous.
+    // That's why let the system finish the creation to prevent races.
+    // TODO: Check ENG-985 and try to remove all sleeps.
+    Thread.sleep(500);
   }
 
   public void dropTable(String test_table) throws Exception {
@@ -35,7 +40,7 @@ public class TestKeyspace extends TestBase {
     Thread.sleep(500);
   }
 
-  public void checkTable(String test_table) throws Exception {
+  public void checkTableRows(String test_table, int[] ids) throws Exception {
     // Select data from the test table.
     String selectStmt = "SELECT * FROM " + test_table + " WHERE h1 = 1 AND h2 = 'h1';";
     ResultSet rs = execute(selectStmt);
@@ -46,10 +51,29 @@ public class TestKeyspace extends TestBase {
       Row row = iter.next();
       LOG.info(row.toString());
       // Check default row.
-      assertEquals("Row[1, h1, 101, r101, 1001, v1001]", row.toString());
+      int id = ids[rowCount];
+      String str = String.format("Row[1, h1, %d, r%d, %d, v%d]",
+          id + 100, id + 100, id + 1000, id + 1000);
+      assertEquals(str, row.toString());
       rowCount++;
     }
-    assertEquals(1, rowCount);
+    assertEquals(ids.length, rowCount);
+  }
+
+  public void checkTable(String test_table) throws Exception {
+    checkTableRows(test_table, new int[]{1});
+  }
+
+  public void assertNoTable(String test_table) throws Exception {
+    String invalidStmt = "SELECT * FROM " + test_table + " WHERE h1 = 1 AND h2 = 'h1';";
+    RunInvalidStmt(invalidStmt);
+  }
+
+  public void insertRow(String test_table, int id) throws Exception {
+    String insertStmt = String.format(
+            "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d');",
+            test_table, 1, 1, id + 100, id + 100, id + 1000, id + 1000);
+    execute(insertStmt);
   }
 
   public void createKeyspace(String test_keyspace) throws Exception {
@@ -81,18 +105,31 @@ public class TestKeyspace extends TestBase {
   public void testNoKeyspace() throws Exception {
     LOG.info("--- TEST CQL: NO KEYSPACE - Start");
 
+    String keyspaceName = "my_keyspace";
     String tableName = "test_table";
 
     // The table's NOT been created yet.
-    String invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';", tableName);
-    RunInvalidStmt(invalidStmt);
+    assertNoTable(tableName);
 
     setupTable(tableName);
     checkTable(tableName);
     dropTable(tableName);
 
     // The table's been already deleted.
-    RunInvalidStmt(invalidStmt);
+    assertNoTable(tableName);
+
+    // Create and delete a keyspace.
+    createKeyspace(keyspaceName);
+    useKeyspace(keyspaceName);
+    dropKeyspace(keyspaceName);
+
+    // Test the table with a short name again.
+    setupTable(tableName);
+    checkTable(tableName);
+    dropTable(tableName);
+
+    // The table's been already deleted.
+    assertNoTable(tableName);
 
     LOG.info("--- TEST CQL: NO KEYSPACE - End");
   }
@@ -108,27 +145,22 @@ public class TestKeyspace extends TestBase {
     createKeyspace(keyspaceName);
 
     // The table's NOT been created yet.
-    String invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';",
-        longTableName);
-    RunInvalidStmt(invalidStmt);
+    assertNoTable(longTableName);
 
     setupTable(longTableName);
     checkTable(longTableName);
 
     // Short table name cannot be used without 'USE <keyspace>'.
-    invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';", tableName);
-    RunInvalidStmt(invalidStmt);
+    assertNoTable(tableName);
     // Cannot delete non-empty keyspace.
-    invalidStmt = String.format("DROP KEYSPACE ", keyspaceName);
+    String invalidStmt = String.format("DROP KEYSPACE ", keyspaceName);
     RunInvalidStmt(invalidStmt);
 
     dropTable(longTableName);
 
     // The table's been already deleted.
-    invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';", longTableName);
-    RunInvalidStmt(invalidStmt);
-    invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';", tableName);
-    RunInvalidStmt(invalidStmt);
+    assertNoTable(longTableName);
+    assertNoTable(tableName);
 
     dropKeyspace(keyspaceName);
 
@@ -147,10 +179,8 @@ public class TestKeyspace extends TestBase {
     useKeyspace(keyspaceName);
 
     // The table's NOT been created yet.
-    String invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';", tableName);
-    RunInvalidStmt(invalidStmt);
-    invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';", longTableName);
-    RunInvalidStmt(invalidStmt);
+    assertNoTable(tableName);
+    assertNoTable(longTableName);
 
     setupTable(tableName);
     checkTable(tableName); // Check short table name.
@@ -181,9 +211,7 @@ public class TestKeyspace extends TestBase {
     checkTable(longTableName1); // Check long name.
 
     // Table2 has NOT been created yet.
-    String invalidStmt = String.format("SELECT * FROM %s WHERE h1 = 1 AND h2 = 'h1';",
-        longTableName2);
-    RunInvalidStmt(invalidStmt);
+    assertNoTable(longTableName2);
 
     // Using Keyspace2.
     createKeyspace(keyspaceName2);
@@ -197,90 +225,24 @@ public class TestKeyspace extends TestBase {
     // Insert new rows to the tables.
     useKeyspace(keyspaceName1);
     // Table1 (my_keyspace1.test_table).
-    String insertStmt = String.format(
-            "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d');",
-            tableName, 1, 1, 3+100, 3+100, 3+1000, 3+1000);
-    execute(insertStmt);
+    insertRow(tableName, 3 /* id */);
 
     useKeyspace(keyspaceName2);
     // Table2 (my_keyspace2.test_table).
-    insertStmt = String.format(
-            "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d');",
-            tableName, 1, 1, 5+100, 5+100, 5+1000, 5+1000);
-    execute(insertStmt);
+    insertRow(tableName, 5 /* id */);
 
     // Table1 (my_keyspace1.test_table).
-    insertStmt = String.format(
-            "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d');",
-            longTableName1, 1, 1, 7+100, 7+100, 7+1000, 7+1000);
-    execute(insertStmt);
+    insertRow(longTableName1, 7 /* id */);
 
     // Check the tables.
     // Check Table2 (my_keyspace2.test_table) - using SHORT name.
-    String selectStmt = "SELECT * FROM " + tableName + " WHERE h1 = 1 AND h2 = 'h1';";
-    ResultSet rs = execute(selectStmt);
-
-    int rowCount = 0;
-    Iterator<Row> iter = rs.iterator();
-    while (iter.hasNext()) {
-      Row row = iter.next();
-      LOG.info(row.toString());
-
-      switch (rowCount++) {
-        case 0:
-          assertEquals("Row[1, h1, 101, r101, 1001, v1001]", row.toString());
-          break;
-        case 1:
-          assertEquals("Row[1, h1, 105, r105, 1005, v1005]", row.toString());
-          break;
-      };
-    }
-    assertEquals(2, rowCount);
+    checkTableRows(tableName, new int[]{1, 5});
 
     // Check Table2 (my_keyspace2.test_table) - using LONG name.
-    selectStmt = "SELECT * FROM " + longTableName2 + " WHERE h1 = 1 AND h2 = 'h1';";
-    rs = execute(selectStmt);
-
-    rowCount = 0;
-    iter = rs.iterator();
-    while (iter.hasNext()) {
-      Row row = iter.next();
-      LOG.info(row.toString());
-
-      switch (rowCount++) {
-        case 0:
-          assertEquals("Row[1, h1, 101, r101, 1001, v1001]", row.toString());
-          break;
-        case 1:
-          assertEquals("Row[1, h1, 105, r105, 1005, v1005]", row.toString());
-          break;
-      };
-    }
-    assertEquals(2, rowCount);
+    checkTableRows(longTableName2, new int[]{1, 5});
 
     // Check Table1 (my_keyspace1.test_table) - using LONG name.
-    selectStmt = "SELECT * FROM " + longTableName1 + " WHERE h1 = 1 AND h2 = 'h1';";
-    rs = execute(selectStmt);
-
-    rowCount = 0;
-    iter = rs.iterator();
-    while (iter.hasNext()) {
-      Row row = iter.next();
-      LOG.info(row.toString());
-
-      switch (rowCount++) {
-        case 0:
-          assertEquals("Row[1, h1, 101, r101, 1001, v1001]", row.toString());
-          break;
-        case 1:
-          assertEquals("Row[1, h1, 103, r103, 1003, v1003]", row.toString());
-          break;
-        case 2:
-          assertEquals("Row[1, h1, 107, r107, 1007, v1007]", row.toString());
-          break;
-      };
-    }
-    assertEquals(3, rowCount);
+    checkTableRows(longTableName1, new int[]{1, 3, 7});
 
     dropTable(tableName);
     dropKeyspace(keyspaceName2);
@@ -362,5 +324,52 @@ public class TestKeyspace extends TestBase {
     dropKeyspace(keyspaceName2);
 
     LOG.info("--- TEST CQL: UPDATE & DELETE - End");
+  }
+
+  @Test
+  public void testQuotedNames() throws Exception {
+    LOG.info("--- TEST CQL: QUOTED NAMES - Start");
+
+    // Table1 name: "a" . "b.c"
+    // Table2 name: "a.b" . "c"
+    String keyspaceName1 = "\"a\"";
+    String keyspaceName2 = "\"a.b\"";
+    String longTableName1 = keyspaceName1 + "." + "\"b.c\""; // Table1.
+    String longTableName2 = keyspaceName2 + "." + "\"c\""; // Table2.
+
+    // Table1 has NOT been created yet.
+    assertNoTable(longTableName1);
+
+    // Table2 has NOT been created yet.
+    assertNoTable(longTableName2);
+
+    // Create keyspaces.
+    createKeyspace(keyspaceName1);
+    createKeyspace(keyspaceName2);
+
+    setupTable(longTableName1);
+    checkTable(longTableName1);
+
+    // Table2 has NOT been created yet.
+    assertNoTable(longTableName2);
+
+    setupTable(longTableName2);
+    checkTable(longTableName2); // Check long name.
+    checkTable(longTableName1); // Check table from keyspace1.
+
+    // Insert new rows to the tables.
+    insertRow(longTableName1, 3 /* id */);
+    insertRow(longTableName2, 5 /* id */);
+
+    // Check the tables.
+    checkTableRows(longTableName1, new int[]{1, 3});
+    checkTableRows(longTableName2, new int[]{1, 5});
+
+    dropTable(longTableName2);
+    dropKeyspace(keyspaceName2);
+    dropTable(longTableName1);
+    dropKeyspace(keyspaceName1);
+
+    LOG.info("--- TEST CQL: QUOTED NAMES - End");
   }
 }

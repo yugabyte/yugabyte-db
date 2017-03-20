@@ -22,6 +22,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 #include <mutex>
 
 #include "yb/client/row_result.h"
@@ -404,7 +405,8 @@ class YBTableCache {
   std::shared_ptr<YBClient> client_;
 
   // Map from table-name to YBTable instances.
-  std::map<std::string, std::shared_ptr<YBTable> > cached_tables_;
+  typedef std::map< std::pair<std::string, std::string>, std::shared_ptr<YBTable> > YBTableMap;
+  YBTableMap cached_tables_;
   std::mutex cached_tables_mutex_;
 };
 

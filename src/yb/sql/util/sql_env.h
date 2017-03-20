@@ -55,9 +55,7 @@ class SqlEnv {
   }
 
   // Delete keyspace with the given name.
-  virtual CHECKED_STATUS DeleteKeyspace(const std::string& keyspace_name) {
-    return client_->DeleteNamespace(keyspace_name);
-  }
+  virtual CHECKED_STATUS DeleteKeyspace(const std::string& keyspace_name);
 
   // Use keyspace with the given name.
   virtual CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);

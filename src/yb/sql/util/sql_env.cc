@@ -91,6 +91,18 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool ref
   return yb_table;
 }
 
+CHECKED_STATUS SqlEnv::DeleteKeyspace(const std::string& keyspace_name) {
+  RETURN_NOT_OK(client_->DeleteNamespace(keyspace_name));
+
+  // Reset the current keyspace name if it's dropped.
+  CHECK(sql_session_ != nullptr) << "SQL session is not set";
+  if (sql_session_->current_keyspace() == keyspace_name) {
+    sql_session_->reset_current_keyspace();
+  }
+
+  return Status::OK();
+}
+
 CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
   // Check if a keyspace with the specified name exists.
   bool exists = false;
