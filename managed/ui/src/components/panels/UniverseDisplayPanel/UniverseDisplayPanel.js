@@ -6,8 +6,7 @@ import { Row, Col } from 'react-bootstrap';
 import {YBLoadingIcon} from '../../common/indicators';
 import { isValidObject } from 'utils/ObjectUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
-import { UniverseFormContainer } from 'components/universes/UniverseForm';
-import UniverseStatus from '../../universes/UniverseStatus/UniverseStatus';
+import { UniverseFormContainer, UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
 
 class CreateUniverseButtonComponent extends Component {
@@ -44,7 +43,7 @@ class UniverseDisplayItem extends Component {
             {universe.name}
           </Link>
           <div className="float-right">
-            <UniverseStatus universe={universe} />
+            <UniverseStatusContainer currentUniverse={universe} />
           </div>
         </div>
         <div className="description-item-list">

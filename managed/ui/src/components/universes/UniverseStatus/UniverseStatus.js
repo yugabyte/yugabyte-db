@@ -2,44 +2,68 @@
 
 import React, { Component } from 'react';
 import './UniverseStatus.scss';
+import {Row, Col, ProgressBar} from 'react-bootstrap';
+import {isValidArray} from '../../../utils/ObjectUtils';
 
 export default class UniverseStatus extends Component {
+
   render() {
-    const { universe: {universeDetails}, showLabelText } = this.props;
+    const {currentUniverse: {universeDetails, universeUUID}, showLabelText, tasks: {customerTaskList}} = this.props;
     var updateInProgress = universeDetails.updateInProgress;
     var updateSucceeded = universeDetails.updateSucceeded;
-    var statusIcon = <span/>;
     var statusClassName = "";
     var statusText = "";
+    var universePendingTask = customerTaskList.find(function(taskItem){
+      if (taskItem.universeUUID === universeUUID && (taskItem.status === "Running"
+          ||  taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100) {
+        return taskItem;
+      }
+    });
+    var statusDisplay = <span/>;
     if (updateSucceeded) {
-      statusIcon = <i className="fa fa-check-circle" />;
       statusClassName = 'good';
       if (showLabelText) {
         statusText = 'Ready';
       }
+      statusDisplay =
+        <div> <i className="fa fa-check-circle" />
+          {statusText && <span>{statusText}</span>}
+        </div>
     } else {
-      if (updateInProgress) {
-        statusIcon = <i className="fa fa-spinner fa-spin" />;
-        statusClassName = 'pending';
+      if (updateInProgress && isValidArray(Object.keys(universePendingTask))) {
         if (showLabelText) {
-          statusText = 'Pending';
+          statusDisplay =
+            <div className={"status-pending"}>
+              <Row className={"status-pending-display-container"}>
+                <span className={"status-pending-name"}>{universePendingTask.percentComplete}% complete&nbsp;</span>
+                <i className={"fa fa fa-spinner fa-spin"}/>
+                <Col className={"status-pending-name"}>
+                  Pending...
+                </Col>
+              </Row>
+              <Row className={"status-pending-progress-container "}>
+                <ProgressBar className={"pending-action-progress"} now={universePendingTask.percentComplete}/>
+              </Row>
+            </div>
+        } else {
+           statusDisplay = <div className={"yb-orange"}><i className={"fa fa fa-spinner fa-spin"}/></div>;
         }
+        statusClassName = 'pending';
       } else {
-        statusIcon  = <i className="fa fa-warning" />;
         statusClassName = 'bad';
         if (showLabelText) {
           statusText = 'Error';
         }
+        statusDisplay =
+          <div> <i className="fa fa-warning" />
+            {statusText && <span>{statusText}</span>}
+          </div>
       }
     }
 
-
-
     return (
       <div className={'universe-status ' + statusClassName}>
-
-        {statusIcon}
-        {statusText && <span>{statusText}</span>}
+        {statusDisplay}
       </div>
     );
   }
