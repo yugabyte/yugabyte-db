@@ -17,6 +17,14 @@ export default class TaskListTable extends Component {
   render() {
     const {taskList, title} = this.props;
 
+    function nameFormatter(cell, row) {
+      return <span>{row.title.replace(/.*:\s*/, '')}</span>;
+    }
+
+    function typeFormatter(cell, row) {
+      return <span>{row.type} {row.target}</span>;
+    }
+
     function percentFormatter(cell, row) {
       return <YBFormattedNumber value={cell/100} formattedNumberStyle={"percent"} />;
     }
@@ -33,18 +41,21 @@ export default class TaskListTable extends Component {
                               minute='numeric'/>
       }
     }
+
     function successStringFormatter(cell, row) {
-      switch (cell) {
-        case "Success" :
-          return <span><i className='fa fa-check'/> Succeeded</span>;
-        case "Initializing" :
-          return <span><i className='fa fa-spinner fa-spin'/> Initializing</span>;
-        case "Running" :
-          return <span><i className='fa fa-spinner fa-spin'/> Pending</span>;
-        case "Failure" :
-          return <span><i className='fa fa-times' /> Failed</span> ;
-        default :
-          return <span><i className="fa fa-exclamation" />Unknown</span>;
+      switch (row.status) {
+        case "Success":
+          return <span className="yb-success-color"><i className='fa fa-check'/> Completed</span>;
+        case "Initializing":
+          return <span className="yb-pending-color"><i className='fa fa-spinner fa-spin'/> Initializing</span>;
+        case "Running":
+          return <span className="yb-pending-color">
+            <i className='fa fa-spinner fa-spin'/>Pending ({percentFormatter(row.percentComplete, row)})
+          </span>;
+        case "Failure":
+          return <span className="yb-fail-color"><i className='fa fa-warning' /> Failed</span> ;
+        default:
+          return <span className="yb-fail-color"><i className="fa fa-warning" />Unknown</span>;
       }
     }
 
@@ -52,43 +63,38 @@ export default class TaskListTable extends Component {
       bgColor: "rgb(211,211,211)"
     };
 
-    const tableBodyContainer = {"marginBottom": "1%", "paddingBottom": "1%"}
+    const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
     return (
       <div id="page-wrapper" className="dashboard-widget-container">
-        <h4>{title}</h4>
-          <BootstrapTable data={taskList} selectRow={selectRowProp}
-                          bodyStyle={tableBodyContainer}
-                          pagination={true}>
-            <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
-            <TableHeaderColumn dataField="title"
-                               columnClassName="no-border name-column" className="no-border">
-              Title
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="percentComplete" dataFormat={percentFormatter}
-                               columnClassName="no-border name-column-sm" className="no-border name-column-sm">
-              Progress
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter}
-                               columnClassName="no-border " className="no-border"
-                               dataAlign="left">
-              Start Time
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter}
-                               columnClassName="no-border name-column" className="no-border">
-              End Time
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="type"
-                               columnClassName="no-border name-column" className="no-border">
-              Type
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="status"
-                               columnClassName="no-border name-column" className="no-border"
-                               dataFormat={successStringFormatter}>
-              Status
-            </TableHeaderColumn>
-          </BootstrapTable>
+        <h2>{title}</h2>
+        <BootstrapTable data={taskList} selectRow={selectRowProp}
+                        bodyStyle={tableBodyContainer}
+                        pagination={true}>
+          <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
+          <TableHeaderColumn dataField="type" dataFormat={typeFormatter}
+                             columnClassName="no-border name-column" className="no-border">
+            Type
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="title" dataFormat={nameFormatter}
+                             columnClassName="no-border name-column" className="no-border">
+            Name
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="percentComplete"
+                             columnClassName="no-border name-column" className="no-border"
+                             dataFormat={successStringFormatter}>
+            Status
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter}
+                             columnClassName="no-border " className="no-border"
+                             dataAlign="left">
+            Start Time
+          </TableHeaderColumn>
+          <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter}
+                             columnClassName="no-border name-column" className="no-border">
+            End Time
+          </TableHeaderColumn>
+        </BootstrapTable>
       </div>
-
-    )
+    );
   }
 }
