@@ -23,7 +23,7 @@ export class YBTextInput extends Component {
     }
 
     return (
-      <FormControl {...input} placeholder={placeHolder} type={type} className={className} 
+      <FormControl {...input} placeholder={placeHolder} type={type} className={className}
         onChange={onChange} readOnly={isReadOnly} />
     );
   }
