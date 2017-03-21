@@ -96,7 +96,7 @@ public class ProviderTest extends FakeDBApplication {
   @Test
   public void testGetByNameSuccess() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
-    Provider fetch = Provider.get(defaultCustomer.uuid, "Amazon");
+    Provider fetch = Provider.get(defaultCustomer.uuid, Common.CloudType.aws);
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);
@@ -109,7 +109,7 @@ public class ProviderTest extends FakeDBApplication {
     Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
     Provider.create(defaultCustomer.uuid, Common.CloudType.gcp, "Amazon");
     try {
-      Provider.get(defaultCustomer.uuid, "Amazon");
+      Provider.get(defaultCustomer.uuid, Common.CloudType.aws);
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(),
               equalTo("Found 2 providers with name: Amazon")));

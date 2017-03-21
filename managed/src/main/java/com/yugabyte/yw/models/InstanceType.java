@@ -107,7 +107,6 @@ public class InstanceType extends Model {
       String msg = "Found multiple price details for instance type " +
         ", region " + regionCode;
       LOG.error(msg);
-      throw new RuntimeException(msg);
     }
     return (regionDetails.priceDetailsList.get(0));
   }
