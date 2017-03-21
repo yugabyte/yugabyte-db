@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import './UniverseStatus.scss';
 import {Row, Col, ProgressBar} from 'react-bootstrap';
-import {isValidArray} from '../../../utils/ObjectUtils';
+import {isValidArray, isValidObject} from '../../../utils/ObjectUtils';
 
 export default class UniverseStatus extends Component {
 
@@ -30,7 +30,7 @@ export default class UniverseStatus extends Component {
           {statusText && <span>{statusText}</span>}
         </div>
     } else {
-      if (updateInProgress && isValidArray(Object.keys(universePendingTask))) {
+      if (updateInProgress && isValidObject(universePendingTask) && isValidArray(Object.keys(universePendingTask))) {
         if (showLabelText) {
           statusDisplay =
             <div className={"status-pending"}>
