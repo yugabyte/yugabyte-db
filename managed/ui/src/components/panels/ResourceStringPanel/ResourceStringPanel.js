@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { DescriptionList } from '../../common/descriptors';
-import { YBResourceCount, YBCost } from 'components/common/descriptors';
+import { YBCost } from 'components/common/descriptors';
 
 export default class ResourceStringPanel extends Component {
   render() {

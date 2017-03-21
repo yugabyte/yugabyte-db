@@ -78,17 +78,16 @@ class GraphPanel extends Component {
   }
 
   render() {
-    const { type, graph: { loading, metrics }} = this.props;
+    const { type, graph: { metrics }} = this.props;
 
     var panelItem = <YBLoadingIcon />;
     if (Object.keys(metrics).length > 0 && isValidObject(metrics[type])) {
-      /* Logic here is, since there will be multiple instances of GraphPanel
+       /* Logic here is, since there will be multiple instances of GraphPanel
        we basically would have metrics data keyed off panel type. So we
        loop through all the possible panel types in the metric data fetched
        and group metrics by panel type and filter out anything that is empty.
        */
-
-      var panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
+       panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
         // if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
         return (isValidObject(metrics[type][metricKey])) ?
           <MetricsPanel metricKey={metricKey} key={idx}

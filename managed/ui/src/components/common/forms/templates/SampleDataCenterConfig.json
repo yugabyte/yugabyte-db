@@ -1,2 +1,0 @@
-{"providers": [{ "provider-name": "DC 1", "provider-code": "dc1", "regions": [ {"region-name": "Region 1", "region-code": "region1", "zones" : [ {"zone-name": "Zone 1", "zone-code": "zone1"} ] } ] },
-{ "provider-name": "DC 1", "provider-code": "dc1", "regions": [ {"region-name": "Region 1", "region-code": "region1", "zones" : [ {"zone-name": "Zone 2", "zone-code": "zone2"} ] } ] }]}

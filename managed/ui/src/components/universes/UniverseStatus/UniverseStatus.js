@@ -14,10 +14,8 @@ export default class UniverseStatus extends Component {
     var statusClassName = "";
     var statusText = "";
     var universePendingTask = customerTaskList.find(function(taskItem){
-      if (taskItem.universeUUID === universeUUID && (taskItem.status === "Running"
-          ||  taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100) {
-        return taskItem;
-      }
+      return (taskItem.universeUUID === universeUUID && (taskItem.status === "Running"
+          ||  taskItem.status === "Initializing") && Number(taskItem.percentComplete) !== 100);
     });
     var statusDisplay = <span/>;
     if (updateSucceeded) {
