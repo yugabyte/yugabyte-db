@@ -2,11 +2,11 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
@@ -32,26 +32,38 @@ public class NodeDetailsTest {
 
   @Test
   public void testIsActive() {
-    ArrayList<NodeDetails.NodeState> activeStates = new ArrayList<>();
+    Set<NodeDetails.NodeState> activeStates = new HashSet<>();
     activeStates.add(NodeDetails.NodeState.ToBeAdded);
     activeStates.add(NodeDetails.NodeState.Provisioned);
     activeStates.add(NodeDetails.NodeState.SoftwareInstalled);
     activeStates.add(NodeDetails.NodeState.UpgradeSoftware);
     activeStates.add(NodeDetails.NodeState.UpdateGFlags);
     activeStates.add(NodeDetails.NodeState.Running);
-    activeStates.forEach((state) -> {
+    for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
-      assertTrue(nd.isActive());
-    });
+      if (activeStates.contains(state)) {
+        assertTrue(nd.isActive());
+      } else {
+        assertFalse(nd.isActive());
+      }
+    }
+  }
 
-    ArrayList<NodeDetails.NodeState> inactiveStates = new ArrayList<>();
-    inactiveStates.add(NodeDetails.NodeState.ToBeDecommissioned);
-    inactiveStates.add(NodeDetails.NodeState.BeingDecommissioned);
-    inactiveStates.add(NodeDetails.NodeState.Destroyed);
-    inactiveStates.forEach((state) -> {
+  @Test
+  public void testIsQueryable() {
+    Set<NodeDetails.NodeState> queryableStates = new HashSet<>();
+    queryableStates.add(NodeDetails.NodeState.UpgradeSoftware);
+    queryableStates.add(NodeDetails.NodeState.UpdateGFlags);
+    queryableStates.add(NodeDetails.NodeState.Running);
+    queryableStates.add(NodeDetails.NodeState.ToBeDecommissioned);
+    queryableStates.add(NodeDetails.NodeState.BeingDecommissioned);
+    for (NodeDetails.NodeState state : NodeDetails.NodeState.values()) {
       nd.state = state;
-      assertFalse(nd.isActive());
-    });
-    assertFalse(nd.isActive());
+      if (queryableStates.contains(state)) {
+        assertTrue(nd.isQueryable());
+      } else {
+        assertFalse(nd.isQueryable());
+      }
+    }
   }
 }
