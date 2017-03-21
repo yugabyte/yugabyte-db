@@ -6,7 +6,6 @@ import { YBInputField, YBButton, YBRadioButton, YBSelect } from '../../common/fo
 import { Field, FieldArray } from 'redux-form';
 import { isValidArray } from '../../../utils/ObjectUtils';
 import cassandraLogo from '../images/cassandra.png';
-import redisLogo from '../images/redis.png';
 import './CreateTables.scss';
 
 class KeyColumnList extends Component {
@@ -175,7 +174,6 @@ export default class CreateTable extends Component {
     const {handleSubmit} = this.props;
     var onFormSubmit = handleSubmit(this.createTable);
     var cassandraLabel = <div><img src={cassandraLogo} alt="Cassandra" className="table-type-logo"/> Cassandra</div>;
-    var redisLabel = <div><img src={redisLogo} alt="Redis" className="table-type-logo"/> Redis</div>;
     return (
       <div className="bottom-bar-padding">
         <h3>Create Table</h3>
