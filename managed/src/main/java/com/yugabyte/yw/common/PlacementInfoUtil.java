@@ -497,7 +497,10 @@ public class PlacementInfoUtil {
       while (numMastersChosen < numMasters) {
         // Get one node from each subnet and removes it so that a different node is picked in next.
         for (Entry<String, TreeSet<String>> entry : subnetsToNodenameMap.entrySet()) {
-          TreeSet<String>  value = entry.getValue();
+          TreeSet<String> value = entry.getValue();
+          if (value.isEmpty()) {
+            continue;
+          }
           String nodeName = value.first();
           value.remove(nodeName);
           NodeDetails node = nodesMap.get(nodeName);
