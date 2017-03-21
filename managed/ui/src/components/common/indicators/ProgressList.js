@@ -22,6 +22,8 @@ export default class ProgressList extends Component {
       return "fa fa-check-square-o"
     } else if ( type === "Running" ) {
       return "fa fa-spin fa-refresh"
+    } else if ( type === "Error") {
+      return "fa fa-exclamation-circle"
     }
     return null
   }

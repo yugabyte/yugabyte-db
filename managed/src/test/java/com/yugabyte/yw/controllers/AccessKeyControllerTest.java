@@ -247,7 +247,7 @@ public class AccessKeyControllerTest extends WithApplication {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1"))
         .thenThrow(new RuntimeException("Something went wrong!!"));
     Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false);
-    assertErrorResponse(result, "Something went wrong!!");
+    assertErrorResponse(result, "Unable to create access key: key-code-1");
   }
 
   @Test

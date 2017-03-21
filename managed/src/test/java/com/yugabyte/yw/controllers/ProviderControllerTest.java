@@ -100,7 +100,7 @@ public class ProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
     Result result = createProvider(bodyJson);
-    assertInternalServerError(result, "Unique index or primary key violation:");
+    assertBadRequest(result, "Duplicate provider code: aws");
   }
 
   @Test

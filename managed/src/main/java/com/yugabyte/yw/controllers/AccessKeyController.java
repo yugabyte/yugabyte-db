@@ -89,7 +89,8 @@ public class AccessKeyController extends AuthenticatedController {
           accessKey = accessManager.addKey(region.uuid, keyCode);
         }
       } catch(RuntimeException re) {
-        return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());
+        LOG.error(re.getMessage());
+        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
       }
       return ApiResponse.success(accessKey);
     }
