@@ -58,7 +58,7 @@ var editCustomerProfile = reduxForm({
 
 function mapStateToProps(state) {
   var data = {}
-  const {customer} = this.state.customer;
+  const {customer} = state.customer;
   if (isValidObject(customer)) {
     data = {email: customer.email, name: customer.name}
   }
