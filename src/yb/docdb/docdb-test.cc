@@ -278,6 +278,123 @@ SubDocKey(DocKey([], ["k1"]), ["s2"; HT(1000)]) -> "v21"; ttl: 0.003s
       )#");
 }
 
+TEST_F(DocDBTest, TTLCompactionTest) {
+  const DocKey doc_key(PrimitiveValues("k1"));
+  const MonoDelta one_ms = MonoDelta::FromMilliseconds(1);
+  const HybridTime t0 = HybridTime(1000);
+  HybridTime t1 = server::HybridClock::AddPhysicalTimeToHybridTime(t0, one_ms);
+  HybridTime t2 = server::HybridClock::AddPhysicalTimeToHybridTime(t1, one_ms);
+  HybridTime t3 = server::HybridClock::AddPhysicalTimeToHybridTime(t2, one_ms);
+  HybridTime t4 = server::HybridClock::AddPhysicalTimeToHybridTime(t3, one_ms);
+  KeyBytes encoded_doc_key(doc_key.Encode());
+  // First row.
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key,
+                                 PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+                         Value(PrimitiveValue(), MonoDelta::FromMilliseconds(1)), t0,
+                         nullptr, InitMarkerBehavior::kNeverUse));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(0))),
+                         Value(PrimitiveValue("v1"), MonoDelta::FromMilliseconds(2)), t0, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
+                         Value(PrimitiveValue("v2"), MonoDelta::FromMilliseconds(3)), t0, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+                         Value(PrimitiveValue("v3"), Value::kMaxTtl), t0, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+                         Value(PrimitiveValue("v4"), Value::kMaxTtl), t0, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+  // Second row.
+  const DocKey doc_key_row2(PrimitiveValues("k2"));
+  KeyBytes encoded_doc_key_row2(doc_key_row2.Encode());
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key_row2,
+                                 PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn)),
+                         Value(PrimitiveValue(), MonoDelta::FromMilliseconds(3)), t0,
+                         nullptr, InitMarkerBehavior::kNeverUse));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(0))),
+                         Value(PrimitiveValue("v1"), MonoDelta::FromMilliseconds(2)), t0, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key_row2, PrimitiveValue(ColumnId(1))),
+                         Value(PrimitiveValue("v2"), MonoDelta::FromMilliseconds(1)), t0, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [SystemColumnId(0); HT(1000)]) -> null; ttl: 0.001s
+SubDocKey(DocKey([], ["k1"]), [ColumnId(0); HT(1000)]) -> "v1"; ttl: 0.002s
+SubDocKey(DocKey([], ["k1"]), [ColumnId(1); HT(1000)]) -> "v2"; ttl: 0.003s
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(1000)]) -> "v3"
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(1000)]) -> "v4"
+SubDocKey(DocKey([], ["k2"]), [SystemColumnId(0); HT(1000)]) -> null; ttl: 0.003s
+SubDocKey(DocKey([], ["k2"]), [ColumnId(0); HT(1000)]) -> "v1"; ttl: 0.002s
+SubDocKey(DocKey([], ["k2"]), [ColumnId(1); HT(1000)]) -> "v2"; ttl: 0.001s
+      )#");
+
+  CompactHistoryBefore(t2);
+
+  // Liveness column is gone for row1, v2 gone for row2.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [ColumnId(0); HT(1000)]) -> "v1"; ttl: 0.002s
+SubDocKey(DocKey([], ["k1"]), [ColumnId(1); HT(1000)]) -> "v2"; ttl: 0.003s
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(1000)]) -> "v3"
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(1000)]) -> "v4"
+SubDocKey(DocKey([], ["k2"]), [SystemColumnId(0); HT(1000)]) -> null; ttl: 0.003s
+SubDocKey(DocKey([], ["k2"]), [ColumnId(0); HT(1000)]) -> "v1"; ttl: 0.002s
+      )#");
+
+  CompactHistoryBefore(t3);
+
+  // v1 is gone.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [ColumnId(1); HT(1000)]) -> "v2"; ttl: 0.003s
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(1000)]) -> "v3"
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(1000)]) -> "v4"
+SubDocKey(DocKey([], ["k2"]), [SystemColumnId(0); HT(1000)]) -> null; ttl: 0.003s
+      )#");
+
+  CompactHistoryBefore(t4);
+  // v2 is gone for row 1, liveness column gone for row 2.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(1000)]) -> "v3"
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(1000)]) -> "v4"
+      )#");
+
+  // Delete values.
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+                         Value(PrimitiveValue(ValueType::kTombstone), Value::kMaxTtl), t1, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+                         Value(PrimitiveValue(ValueType::kTombstone), Value::kMaxTtl), t1, nullptr,
+                         InitMarkerBehavior::kNeverUse));
+
+  // Values are now marked with tombstones
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(4097000)]) -> DEL
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(1000)]) -> "v3"
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(4097000)]) -> DEL
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(1000)]) -> "v4"
+      )#");
+
+  CompactHistoryBefore(t0);
+  // Nothing is removed.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(4097000)]) -> DEL
+SubDocKey(DocKey([], ["k1"]), [ColumnId(2); HT(1000)]) -> "v3"
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(4097000)]) -> DEL
+SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT(1000)]) -> "v4"
+      )#");
+
+  CompactHistoryBefore(t1);
+  // Next compactions removes everything.
+  AssertDocDbDebugDumpStrEqVerboseTrimmed(
+      R"#(
+      )#");
+}
+
 TEST_F(DocDBTest, TableTTLCompactionTest) {
   const DocKey doc_key(PrimitiveValues("k1"));
   const MonoDelta one_ms = MonoDelta::FromMilliseconds(1);
@@ -295,7 +412,7 @@ TEST_F(DocDBTest, TableTTLCompactionTest) {
                              Value(PrimitiveValue("v3"), MonoDelta::FromMilliseconds(0)), t1));
       NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s4")),
                              Value(PrimitiveValue("v4"), MonoDelta::FromMilliseconds(3)), t0));
-  // Note: HT(1000) + 2ms = HT(8193000)
+  // Note: HT(1000) + 1ms = HT(4097000)
   AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
 SubDocKey(DocKey([], ["k1"]), [HT(1000)]) -> {}
