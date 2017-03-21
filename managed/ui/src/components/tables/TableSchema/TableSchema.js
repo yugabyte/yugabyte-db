@@ -2,7 +2,6 @@
 
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { DescriptionItem } from '../../common/descriptors';
 import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
 import './TableSchema.scss';
 
