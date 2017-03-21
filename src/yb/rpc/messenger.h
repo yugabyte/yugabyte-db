@@ -17,9 +17,10 @@
 #ifndef YB_RPC_MESSENGER_H_
 #define YB_RPC_MESSENGER_H_
 
+#include <stdint.h>
+
 #include <atomic>
 #include <memory>
-#include <stdint.h>
 #include <unordered_map>
 
 #include <list>
@@ -203,6 +204,8 @@ class Messenger {
 
   scoped_refptr<Histogram> outgoing_queue_time() { return outgoing_queue_time_; }
 
+  size_t number_of_reactors() const { return reactors_.size(); }
+  size_t max_concurrent_requests() const;
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
   friend class DelayedTask;
@@ -301,4 +304,4 @@ class Messenger {
 }  // namespace rpc
 }  // namespace yb
 
-#endif
+#endif  // YB_RPC_MESSENGER_H_

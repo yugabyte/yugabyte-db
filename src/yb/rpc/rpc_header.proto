@@ -94,16 +94,16 @@ message RequestHeader {
   //   -2: Invalid call ID.
   //   -3: Connection context call ID.
   //   -33: SASL negotiation call ID.
-  required int32 call_id = 3;
+  required int32 call_id = 1;
 
   // RPC method being invoked.
   // Not used for "connection setup" calls.
-  optional RemoteMethodPB remote_method = 6;
+  optional RemoteMethodPB remote_method = 2;
 
   // Propagate the timeout as specified by the user. Note that, since there is some
   // transit time between the client and server, if you wait exactly this amount of
   // time and then respond, you are likely to cause a timeout on the client.
-  optional uint32 timeout_millis = 10;
+  optional uint32 timeout_millis = 3;
 }
 
 message ResponseHeader {

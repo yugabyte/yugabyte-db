@@ -152,9 +152,7 @@ class InboundCall {
   // Return true if the deadline set by the client has already elapsed.
   // In this case, the server may stop processing the call, since the
   // call response will be ignored anyway.
-  virtual bool ClientTimedOut() const {
-    return false;
-  }
+  bool ClientTimedOut() const;
 
   // Return an upper bound on the client timeout deadline. This does not
   // account for transmission delays between the client and the server.
@@ -246,8 +244,6 @@ class YBInboundCall : public InboundCall {
   // Return true if the deadline set by the client has already elapsed.
   // In this case, the server may stop processing the call, since the
   // call response will be ignored anyway.
-  bool ClientTimedOut() const override;
-
   virtual MonoTime GetClientDeadline() const override;
  protected:
   scoped_refptr<Connection> get_connection() override;

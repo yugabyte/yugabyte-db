@@ -154,21 +154,21 @@ void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_t
       timing_.time_completed.GetDeltaSince(timing_.time_handled).ToMicroseconds());
 }
 
+bool InboundCall::ClientTimedOut() const {
+  auto deadline = GetClientDeadline();
+  if (deadline.Equals(MonoTime::Max())) {
+    return false;
+  }
+
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  return deadline.ComesBefore(now);
+}
+
 const UserCredentials& InboundCall::user_credentials() const {
   return get_connection()->user_credentials();
 }
 
 YBInboundCall::YBInboundCall(YBConnection* conn) : conn_(conn) {}
-
-bool YBInboundCall::ClientTimedOut() const {
-  if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
-    return false;
-  }
-
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
-  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
-  return total_time > header_.timeout_millis();
-}
 
 MonoTime YBInboundCall::GetClientDeadline() const {
   if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
@@ -193,6 +193,7 @@ Status YBInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
     return STATUS(Corruption, "remote_method in request header is not initialized",
                               header_.remote_method().InitializationErrorString());
   }
+
   remote_method_.FromPB(header_.remote_method());
 
   // Retain the buffer that we have a view into.
@@ -241,15 +242,15 @@ void YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
 
 void YBInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now(MonoTime::FINE);
-  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto total_time = now.GetDeltaSince(timing_.time_received);
 
   if (header_.has_timeout_millis() && header_.timeout_millis() > 0) {
-    double log_threshold = header_.timeout_millis() * 0.75f;
-    if (total_time > log_threshold) {
+    int64_t log_threshold = header_.timeout_millis() * 750LL;
+    if (total_time.ToMicroseconds() > log_threshold) {
       // TODO: consider pushing this onto another thread since it may be slow.
       // The traces may also be too large to fit in a log message.
-      LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
-                   << header_.timeout_millis() << "ms).";
+      LOG(WARNING) << ToString() << " took " << total_time.ToMicroseconds() << "us (client timeout "
+                   << header_.timeout_millis() * 1000 << " us).";
       std::string s = trace_->DumpToString(true);
       if (!s.empty()) {
         LOG(WARNING) << "Trace:\n" << s;
@@ -259,7 +260,7 @@ void YBInboundCall::LogTrace() const {
   }
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
+    LOG(INFO) << ToString() << " took " << total_time.ToMicroseconds() << "us. Trace:";
     trace_->Dump(&LOG(INFO), true);
   }
 }

@@ -183,7 +183,8 @@ TEST_F(RpcStubTest, TestCallWithInvalidParam) {
   Proxy p(client_messenger_, server_addr_, CalculatorService::static_service_name());
 
   AddRequestPartialPB req;
-  req.set_x(rand());
+  unsigned int seed = time(nullptr);
+  req.set_x(rand_r(&seed));
   // AddRequestPartialPB is missing the 'y' field.
   AddResponsePB resp;
   RpcController controller;
@@ -306,12 +307,9 @@ TEST_F(RpcStubTest, TestRpcPanic) {
 }
 
 struct AsyncSleep {
-  AsyncSleep() : latch(1) {}
-
   RpcController rpc;
   SleepRequestPB req;
   SleepResponsePB resp;
-  CountDownLatch latch;
 };
 
 TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
@@ -320,11 +318,12 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
   ElementDeleter d(&sleeps);
 
   // Send enough sleep calls to occupy the worker threads.
-  for (int i = 0; i < n_worker_threads_; i++) {
+  auto count = client_messenger_->max_concurrent_requests() * 4;
+  CountDownLatch latch(count);
+  for (size_t i = 0; i < count; i++) {
     gscoped_ptr<AsyncSleep> sleep(new AsyncSleep);
     sleep->rpc.set_timeout(MonoDelta::FromSeconds(1));
     sleep->req.set_sleep_micros(100*1000); // 100ms
-    auto& latch = sleep->latch;
     p.SleepAsync(sleep->req, &sleep->resp, &sleep->rpc, [&latch]() { latch.CountDown(); });
     sleeps.push_back(sleep.release());
   }
@@ -339,20 +338,19 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
   Status s = p.Sleep(req, &resp, &rpc);
   ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 
-  for (AsyncSleep* s : sleeps) {
-    s->latch.Wait();
-  }
+  latch.Wait();
 
   // Verify that the timedout call got short circuited before being processed.
-  const Counter* timed_out_in_queue = service_pool_->RpcsTimedOutInQueueMetricForTests();
+  const Counter *timed_out_in_queue = service_pool_->RpcsTimedOutInQueueMetricForTests();
   ASSERT_EQ(1, timed_out_in_queue->value());
 }
 
 TEST_F(RpcStubTest, TestDumpCallsInFlight) {
+  CountDownLatch latch(1);
   CalculatorServiceProxy p(client_messenger_, server_addr_);
   AsyncSleep sleep;
   sleep.req.set_sleep_micros(100 * 1000); // 100ms
-  p.SleepAsync(sleep.req, &sleep.resp, &sleep.rpc, [&sleep]() { sleep.latch.CountDown(); });
+  p.SleepAsync(sleep.req, &sleep.resp, &sleep.rpc, [&latch]() { latch.CountDown(); });
 
   // Check the running RPC status on the client messenger.
   DumpRunningRpcsRequestPB dump_req;
@@ -388,7 +386,7 @@ TEST_F(RpcStubTest, TestDumpCallsInFlight) {
   ASSERT_GT(dump_resp.inbound_connections(0).calls_in_flight(0).micros_elapsed(), 0);
   ASSERT_STR_CONTAINS(dump_resp.inbound_connections(0).calls_in_flight(0).trace_buffer(),
                       "Inserting onto call queue");
-  sleep.latch.Wait();
+  latch.Wait();
 }
 
 namespace {

@@ -22,12 +22,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <list>
 #include <mutex>
 #include <set>
 #include <string>
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
@@ -255,6 +256,10 @@ Messenger::~Messenger() {
   std::lock_guard<percpu_rwlock> guard(lock_);
   CHECK(closing_) << "Should have already shut down";
   STLDeleteElements(&reactors_);
+}
+
+size_t Messenger::max_concurrent_requests() const {
+  return FLAGS_num_connections_to_server;
 }
 
 Reactor* Messenger::RemoteToReactor(const Sockaddr &remote, uint32_t idx) {
