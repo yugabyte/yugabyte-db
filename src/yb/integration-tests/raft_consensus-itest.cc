@@ -2651,7 +2651,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
 
   // Configure the first server to fail all on prepare.
   TServerDetails *replica_ts = tservers[0];
-  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0),
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server_by_uuid(replica_ts->uuid()),
                 "follower_fail_all_prepare", "true"));
 
   // Pretend to be the leader and send a request that should return an error.
