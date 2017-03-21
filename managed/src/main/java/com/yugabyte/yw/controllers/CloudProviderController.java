@@ -2,6 +2,7 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.models.Customer;
@@ -27,6 +28,7 @@ import play.data.FormFactory;
 import play.libs.Json;
 import play.mvc.Result;
 
+import javax.persistence.PersistenceException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +60,12 @@ public class CloudProviderController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
 
+    Common.CloudType providerCode = formData.get().code;
+    Provider provider = Provider.get(customerUUID, providerCode);
+    if (provider != null) {
+      return ApiResponse.error(BAD_REQUEST, "Duplicate provider code: " + providerCode);
+    }
+
     // Since the Map<String, String> doesn't get parsed, so for now we would just
     // parse it from the requestBody
     JsonNode requestBody = request().body().asJson();
@@ -66,11 +74,11 @@ public class CloudProviderController extends AuthenticatedController {
       config = Json.fromJson(requestBody.get("config"), Map.class);
     }
     try {
-      Provider p = Provider.create(customerUUID, formData.get().code, formData.get().name, config);
-      return ApiResponse.success(p);
-    } catch (Exception e) {
-      // TODO: Handle exception and print user friendly message
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      provider = Provider.create(customerUUID, providerCode, formData.get().name, config);
+      return ApiResponse.success(provider);
+    } catch (PersistenceException e) {
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create provider: " + providerCode);
     }
   }
 
@@ -103,7 +111,7 @@ public class CloudProviderController extends AuthenticatedController {
                 "<uuid> or <name> and <type>");
       }
 
-      p = Provider.get(customer.uuid, identification.name);
+      p = Provider.get(customer.uuid, identification.type);
       if (p == null) {
         p = Provider.create(customer.uuid, identification.type, identification.name);
       }

@@ -125,21 +125,21 @@ public class Provider extends Model {
   }
 
   /**
-   * Get Provider by name for a given customer uuid. If there is multiple
+   * Get Provider by code for a given customer uuid. If there is multiple
    * providers with the same name, it will raise a exception.
    * @param customerUUID
-   * @param name
+   * @param code
    * @return
    */
-  public static Provider get(UUID customerUUID, String name) {
+  public static Provider get(UUID customerUUID, Common.CloudType code) {
     List<Provider> providerList = find.where().eq("customer_uuid", customerUUID)
-            .eq("name", name).findList();
+            .eq("code", code.toString()).findList();
     int size = providerList.size();
     
     if (size == 0) {
       return null;
     } else if (size > 1) {
-        throw new RuntimeException("Found " + size + " providers with name: " + name);
+        throw new RuntimeException("Found " + size + " providers with code: " + code);
     }
     return providerList.get(0);
   }

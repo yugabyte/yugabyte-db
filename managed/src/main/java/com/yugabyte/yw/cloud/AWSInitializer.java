@@ -85,10 +85,10 @@ public class AWSInitializer extends AuthenticatedController {
       LOG.info("Successfully finished parsing info from {}", awsEc2PriceUrl);
     } catch (Exception e) {
       LOG.error("AWS initialize failed", e);
-      return internalServerError(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    return ok();
+    return ApiResponse.success("AWS Initialized.");
   }
 
   /**
