@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Row, Col, ListGroup, ListGroupItem, ProgressBar } from 'react-bootstrap';
+import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
@@ -64,52 +64,7 @@ class YBUniverseItem extends Component {
     this.props.fetchCurrentTaskList(taskId);
   }
   render() {
-    const {universe, taskId} = this.props;
-    var updateProgressStatus = false;
-    var updateSuccessStatus = false;
-    var currentStatusItem = "";
-    if (isValidObject(universe.universeDetails.updateInProgress)) {
-      updateProgressStatus = universe.universeDetails.updateInProgress;
-    }
-    if (isValidObject(universe.universeDetails.updateSucceeded)) {
-      updateSuccessStatus = universe.universeDetails.updateSucceeded;
-    }
-    var percentComplete = 0 ;
-    if (isValidArray(taskId) && isValidObject(taskId[0].data)) {
-      percentComplete = taskId[0].data.percentComplete;
-    }
-    if (!updateProgressStatus && !updateSuccessStatus) {
-      currentStatusItem = <div className={"status-failure-container"}>
-                            <div className={"status-failure-item"}>
-                              <i className={"fa fa-exclamation fa-fw"}/>
-                            </div>
-                            <div className={"status-failure-name"}>
-                              Provisioning Error
-                            </div>
-                           </div>;
-    } else if (updateSuccessStatus) {
-      currentStatusItem = <div className={"status-success-container"}>
-                            <div className={"status-success-item"}>
-                            <i className={"fa fa-check fa-fw"}/>
-                            </div>
-                            <div className="status-success-label"> Ready</div>
-                          </div>;
-    } else {
-      currentStatusItem =
-        <div className={"status-pending"}>
-          <Row className={"status-pending-display-container"}>
-            <span className={"status-pending-name"}>{percentComplete} % complete&nbsp;</span>
-            <i className={"fa fa fa-spinner fa-spin"}/>
-            <Col className={"status-pending-name"}>
-              Pending...
-            </Col>
-          </Row>
-          <Row  className={"status-pending-progress-container "}>
-            <ProgressBar className={"pending-action-progress"} now={percentComplete}/>
-          </Row>
-        </div>;
-    }
-
+    const {universe} = this.props;
     return (
       <div className={"universe-list-item"}>
         <ListGroupItem >

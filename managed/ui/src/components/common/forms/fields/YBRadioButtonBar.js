@@ -1,9 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import {isValidArray, isValidObject, isProperObject} from '../../../../utils/ObjectUtils';
+import {isValidArray, isProperObject} from '../../../../utils/ObjectUtils';
 import YBRadioButton from './YBRadioButton';
-
 import { YBLabel } from '../../descriptors';
 
 export default class YBRadioButtonBar extends Component {
