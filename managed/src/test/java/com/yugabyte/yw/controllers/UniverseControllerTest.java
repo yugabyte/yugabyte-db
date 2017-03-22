@@ -444,7 +444,7 @@ public class UniverseControllerTest extends WithApplication {
     bodyJson.put("universeUUID", universe.universeUUID.toString());
     bodyJson.put("taskType", "Software");
     bodyJson.put("nodeNames",  "[\"host-n1\",\"host-n3\",\"host-n2\"]");
-    bodyJson.put("ybSofwareVersion", "0.0.1");
+    bodyJson.put("ybSoftwareVersion", "0.0.1");
 
     Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid +
       "/universes/" + universe.universeUUID + "/upgrade")
@@ -481,7 +481,7 @@ public class UniverseControllerTest extends WithApplication {
 
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("error").toString(), is(containsString("ybSofwareVersion param is required for taskType: Software")));
+    assertThat(json.get("error").toString(), is(containsString("ybSoftwareVersion param is required for taskType: Software")));
   }
 
   @Test

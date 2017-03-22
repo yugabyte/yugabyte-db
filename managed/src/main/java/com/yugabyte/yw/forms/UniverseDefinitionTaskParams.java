@@ -96,7 +96,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     // The software version of YB to install.
     @Constraints.Required()
-    public String ybSofwareVersion;
+    public String ybSoftwareVersion;
 
     // TODO: make this required at some point, when we have this coming from UI.
     public String accessKeyCode;
@@ -120,7 +120,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.preferredRegion = preferredRegion;
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
-      newUserIntent.ybSofwareVersion = ybSofwareVersion;
+      newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
       newUserIntent.accessKeyCode = accessKeyCode;
       return newUserIntent;
     }
@@ -135,7 +135,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           Objects.equals(preferredRegion, other.preferredRegion) &&
           instanceType.equals(other.instanceType) &&
           numNodes == other.numNodes &&
-          ybSofwareVersion.equals(other.ybSofwareVersion) &&
+          ybSoftwareVersion.equals(other.ybSoftwareVersion) &&
           (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))) {
          return true;
       }

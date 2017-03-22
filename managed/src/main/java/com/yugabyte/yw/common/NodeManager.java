@@ -146,13 +146,13 @@ public class NodeManager extends DevopsBase {
       subcommand.add(masterAddresses);
     }
 
-    String ybServerPackage = releaseManager.getReleaseByVersion(taskParam.ybSofwareVersion);
+    String ybServerPackage = releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
 
     switch(taskParam.type) {
       case Everything:
         if (ybServerPackage == null) {
           throw new RuntimeException("Unable to fetch yugabyte release for version: " +
-              taskParam.ybSofwareVersion);
+              taskParam.ybSoftwareVersion);
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
@@ -161,7 +161,7 @@ public class NodeManager extends DevopsBase {
         {
           if (ybServerPackage == null) {
             throw new RuntimeException("Unable to fetch yugabyte release for version: " +
-                taskParam.ybSofwareVersion);
+                taskParam.ybSoftwareVersion);
           }
           subcommand.add("--package");
           subcommand.add(ybServerPackage);

@@ -28,7 +28,7 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   var data = {
-    "ybSofwareVersion": SOFTWARE_VERSION,
+    "ybSoftwareVersion": SOFTWARE_VERSION,
 
   };
   return {
