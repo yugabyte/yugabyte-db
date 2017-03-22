@@ -32,6 +32,7 @@ import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.consensus.Metadata;
 import org.yb.master.Master;
+import org.yb.tserver.Tserver;
 
 import com.stumbleupon.async.Deferred;
 
@@ -252,7 +253,9 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Find the uuid of a master using its host/port.
+   * Find the uuid of a master using the given host/port.
+   * @param host Master host that is being queried.
+   * @param port RPC port of the host being queried.
    * @return The uuid of the master, or null if not found.
    * @throws Nothing.
    */
@@ -362,13 +365,12 @@ public class YBClient implements AutoCloseable {
   }
 
  /**
-   * Change master server configuration.
+   * Step down the current master leader and wait for a new leader to be elected.
    *
    * @param  leaderUuid Current master leader's uuid.
-   * @return The new leader uuid, on success.
    * @exception if the new leader is the same as the old leader after certain number of tries.
    */
-  private String stepDownMasterLeaderAndWaitForNewLeader(String leaderUuid) throws Exception {
+  private void stepDownMasterLeaderAndWaitForNewLeader(String leaderUuid) throws Exception {
     String tabletId = getMasterTabletId();
     String newLeader = leaderUuid;
 
@@ -392,13 +394,15 @@ public class YBClient implements AutoCloseable {
           break;
         }
 
+        LOG.info("Tried step down of {}, new leader {}, iter {}.",
+                 leaderUuid, newLeader, numIters);
+
         // Done if we found a new leader.
         if (!newLeader.equals(leaderUuid)) {
           break;
         }
 
         numIters++;
-        LOG.info("Try step down {}, new master {}, iter {}.", leaderUuid, newLeader, numIters);
         if (numIters >= maxNumIters) {
           errorMsg = "Maximum iterations reached trying to step down the " +
                      "leader master with uuid " + leaderUuid;
@@ -411,12 +415,11 @@ public class YBClient implements AutoCloseable {
      // TODO: Ideally we need an error code here, but this is come another layer which
      // eats up the NOT_THE_LEADER code.
      if (e.getMessage().contains("Wrong destination UUID requested")) {
-        LOG.info("Got wrong destination for {} stepdown.", leaderUuid);
+        LOG.info("Got wrong destination for {} stepdown with error '{}'.",
+                 leaderUuid, e.getMessage());
         newLeader = waitAndGetLeaderMasterUUID(getDefaultAdminOperationTimeoutMs());
-        if (newLeader == null || newLeader.equals(leaderUuid)) {
-          errorMsg = "Could not find a valid new leader. Old leader is " + leaderUuid +
-                     ", new leader is " + newLeader;
-        }
+        LOG.info("After wait for leader uuid. Old leader was {}, new leader is {}.",
+                 leaderUuid, newLeader);
       } else {
         LOG.error("Error trying to step down {}. Error: .", leaderUuid, e);
         throw new RuntimeException("Could not step down leader master " + leaderUuid, e);
@@ -429,8 +432,6 @@ public class YBClient implements AutoCloseable {
     }
 
     LOG.info("Step down of {} done, new master uuid={}.", leaderUuid, newLeader);
-
-    return newLeader;
   }
 
   /**
@@ -449,34 +450,36 @@ public class YBClient implements AutoCloseable {
       throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +
                                           port + " - could not get it's uuid.");
     }
-    String leaderUuid = getLeaderMasterUUID();
-    if (leaderUuid == null) {
-      throw new IllegalStateException("Invalid setup - could not find the leader master in " +
-                                      asyncClient.getMasterAddresses());
-    }
 
-    boolean didStepDown = false;
-    // If caller is trying to remove the leader, then step it down first and wait for a new one to
-    // be elected.
-    if (!isAdd && leaderUuid.equals(changeUuid)) {
-      // We just set the leader in this case for tracing purposes, but change config call will
-      // not use it.
-      leaderUuid = stepDownMasterLeaderAndWaitForNewLeader(leaderUuid);
-      didStepDown = true;
-    }
+    LOG.info("Sending changeConfig : Target host:port={}:{} at uuid={}, add={}.",
+             host, port, changeUuid, isAdd);
+    long timeout = getDefaultAdminOperationTimeoutMs();
+    ChangeConfigResponse resp = null;
+    boolean changeConfigDone = true;
+    do {
+      changeConfigDone = true;
+      try {
+        Deferred<ChangeConfigResponse> d =
+            asyncClient.changeMasterConfig(host, port, changeUuid, isAdd);
+        resp = d.join(timeout);
+        if (!resp.hasError()) {
+          asyncClient.updateMasterAdresses(host, port, isAdd);
+        }
+      } catch (TabletServerErrorException tsee) {
+        String leaderUuid = waitAndGetLeaderMasterUUID(timeout);
+        LOG.info("Hit tserver error {}, leader is {}.",
+                 tsee.getTServerError().toString(), leaderUuid);
+        if (tsee.getTServerError().getCode() ==
+            Tserver.TabletServerErrorPB.Code.LEADER_NEEDS_STEP_DOWN) {
+          stepDownMasterLeaderAndWaitForNewLeader(leaderUuid);
+          changeConfigDone = false;
+          LOG.info("Retrying changeConfig because it received LEADER_NEEDS_STEP_DOWN error code.");
+        } else {
+          throw tsee;
+        }
+      }
+    } while (!changeConfigDone);
 
-    LOG.info("Sending changeConfig to leader {}: Target host/port={}/{} at uuid={}, add={}, " +
-             "stepdown={}.", leaderUuid, host, port, changeUuid, isAdd, didStepDown);
-
-    // For a new leader after stepdown, the sendRpcToTablet will retry to get the correct leader.
-    // Seemed very intrusive to change request's uuid contents during rpc retry.
-    // didStepDown can be removed once a "proxy" like concept is added to java client.
-    Deferred<ChangeConfigResponse> d = asyncClient.changeMasterConfig(
-        didStepDown ? "" : leaderUuid, host, port, changeUuid, isAdd);
-    ChangeConfigResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-    if (!resp.hasError()) {
-      asyncClient.updateMasterAdresses(host, port, isAdd);
-    }
     return resp;
   }
 

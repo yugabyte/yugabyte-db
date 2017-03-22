@@ -1721,6 +1721,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
       case REMOVE_SERVER:
         if (server_uuid == peer_uuid()) {
+          *error_code = TabletServerErrorPB::LEADER_NEEDS_STEP_DOWN;
           return STATUS(InvalidArgument,
               Substitute("Cannot remove peer $0 from the config because it is the leader. "
                          "Force another leader to be elected to remove this server. "

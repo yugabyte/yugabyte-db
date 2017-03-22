@@ -20,6 +20,7 @@ import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 import org.yb.rpc.RpcHeader;
+import org.yb.tserver.Tserver;
 
 /**
  * This exception is thrown by Tablet Servers when something goes wrong processing a request.
@@ -28,12 +29,16 @@ import org.yb.rpc.RpcHeader;
 @InterfaceStability.Evolving
 @SuppressWarnings("serial")
 public class TabletServerErrorException extends YBServerException {
+  private Tserver.TabletServerErrorPB tserverError = null;
 
-  TabletServerErrorException(String serverUuid, WireProtocol.AppStatusPB appStatus) {
-    super(serverUuid, appStatus);
+  TabletServerErrorException(String serverUuid, Tserver.TabletServerErrorPB error) {
+    super(serverUuid, error.getStatus());
+    this.tserverError = error;
   }
 
   TabletServerErrorException(String serverUuid, RpcHeader.ErrorStatusPB errorStatus) {
     super(serverUuid, errorStatus);
   }
+
+  public Tserver.TabletServerErrorPB getTServerError() { return tserverError; }
 }

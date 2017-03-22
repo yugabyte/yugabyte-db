@@ -25,7 +25,6 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
     MASTER
   }
 
-  private final String leader_uuid;
   private final String tablet_id;
   private final Consensus.ChangeConfigType changeType;
   private final int port;
@@ -34,13 +33,12 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
   private final ServerType serverType;
 
   public ChangeConfigRequest(
-      String leader_uuid, YBTable masterTable, String host, int port, String uuid, boolean isAdd) {
+      YBTable masterTable, String host, int port, String uuid, boolean isAdd) {
     super(masterTable);
     this.tablet_id = YBClient.getMasterTabletId();
     this.uuid = uuid;
     this.host = host;
     this.port = port;
-    this.leader_uuid = leader_uuid;
     this.changeType = isAdd ? Consensus.ChangeConfigType.ADD_SERVER
                             : Consensus.ChangeConfigType.REMOVE_SERVER;
     this.serverType = ServerType.MASTER;
@@ -71,7 +69,6 @@ class ChangeConfigRequest extends YRpc<ChangeConfigResponse> {
 
     builder.setType(this.changeType)
            .setTabletId(ByteString.copyFromUtf8(tablet_id))
-           .setDestUuid(ByteString.copyFromUtf8(leader_uuid))
            .setServer(pbb.build());
 
     return toChannelBuffer(header, builder.build());

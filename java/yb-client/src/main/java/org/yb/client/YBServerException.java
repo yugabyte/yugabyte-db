@@ -29,7 +29,7 @@ import org.yb.rpc.RpcHeader;
 @SuppressWarnings("serial")
 public class YBServerException extends YBException {
 
-  YBServerException(String serverUuid, RpcHeader.ErrorStatusPB errorStatus) {
+YBServerException(String serverUuid, RpcHeader.ErrorStatusPB errorStatus) {
     this(serverUuid, errorStatus.getMessage(), errorStatus.getCode().toString(),
         errorStatus.getCode().getNumber(), null);
   }

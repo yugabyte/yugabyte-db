@@ -459,7 +459,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
   private Exception dispatchTSErrorOrReturnException(YRpc rpc,
                                                      Tserver.TabletServerErrorPB error) {
     WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
-    TabletServerErrorException ex = new TabletServerErrorException(uuid, error.getStatus());
+    TabletServerErrorException ex = new TabletServerErrorException(uuid, error);
     if (error.getCode() == Tserver.TabletServerErrorPB.Code.TABLET_NOT_FOUND) {
       ybClient.handleTabletNotFound(rpc, ex, this);
       // we're not calling rpc.callback() so we rely on the client to retry that RPC

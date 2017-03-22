@@ -100,6 +100,10 @@ message TabletServerErrorPB {
 
     // Removing a peer which is not present in the current raft config.
     REMOVE_CHANGE_CONFIG_NOT_PRESENT = 21;
+
+    // Leader needs to be stepped down before calling change config. This happens
+    // if the server we are trying to remove from the config is currently the leader.
+    LEADER_NEEDS_STEP_DOWN = 22;
   }
 
   // The error code.

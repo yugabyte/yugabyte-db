@@ -476,7 +476,6 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Change Master Configuration request handler.
    *
-   * @param leaderUuid  Master leader uuid.
    * @param host        Master host that is being added or removed.
    * @param port        RPC port of the host being added or removed.
    * @param changeUuid  uuid of the master that is being added or removed.
@@ -485,11 +484,13 @@ public class AsyncYBClient implements AutoCloseable {
    * @return a deferred object that yields a change config response.
    */
   public Deferred<ChangeConfigResponse> changeMasterConfig(
-      String leaderUuid, String host, int port, String changeUuid, boolean isAdd)
+      String host, int port, String changeUuid, boolean isAdd)
       throws Exception {
     checkIsClosed();
+    // The sendRpcToTablet will retry to get the correct leader, so we do not set dest_uuid
+    // here. Seemed very intrusive to change request's leader uuid contents during rpc retry.
     ChangeConfigRequest rpc = new ChangeConfigRequest(
-        leaderUuid, this.masterTable, host, port, changeUuid, isAdd);
+        this.masterTable, host, port, changeUuid, isAdd);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
