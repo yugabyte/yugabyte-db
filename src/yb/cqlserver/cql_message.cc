@@ -28,6 +28,26 @@ using strings::Substitute;
     }                                                       \
   } while (0)
 
+Status CQLMessage::QueryParameters::GetBindVariable(
+    const std::string& name, const int64_t pos, const DataType type, YQLValue* value) const {
+  const Value* v = nullptr;
+  if (!value_map.empty()) {
+    const auto itr = value_map.find(name);
+    if (itr == value_map.end()) {
+      return STATUS_SUBSTITUTE(RuntimeError, "Bind variable \"$0\" not found", name);
+    }
+    v = &values.at(itr->second);
+  } else {
+    if (pos < 0 || pos >= values.size()) {
+      // Return error with 1-based position.
+      return STATUS_SUBSTITUTE(RuntimeError, "Bind variable at position $0 not found", pos + 1);
+    }
+    v = &values.at(pos);
+  }
+  Slice data(v->value);
+  return value->Deserialize(type, YQL_CLIENT_CQL, &data);
+}
+
 // ------------------------------------ CQL request -----------------------------------
 bool CQLRequest::ParseRequest(
   const Slice& mesg, unique_ptr<CQLRequest>* request, unique_ptr<CQLResponse>* error_response) {
@@ -305,13 +325,15 @@ Status CQLRequest::ParseValue(const bool with_name, Value* value) {
   if (with_name) {
     RETURN_NOT_OK(ParseString(&value->name));
   }
+  // Save data pointer to assign the value with length bytes below.
+  const uint8_t* data = body_.data();
   int32_t length;
   RETURN_NOT_OK(ParseInt(&length));
   if (length >= 0) {
     value->kind = Value::Kind::NOT_NULL;
     if (length > 0) {
       RETURN_NOT_ENOUGH(length);
-      value->value = string(ToChar(body_.data()), length);
+      value->value.assign(ToChar(data), kIntSize + length);
       body_.remove_prefix(length);
       DVLOG(4) << "CQL value bytes " << value->value;
     }
@@ -344,14 +366,21 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
     for (uint16_t i = 0; i < count; ++i) {
       Value value;
       RETURN_NOT_OK(ParseValue(with_name, &value));
+      if (with_name) {
+        params->value_map[value.name] = params->values.size();
+      }
       params->values.push_back(value);
     }
   }
   if (params->flags & CQLMessage::QueryParameters::kWithPageSizeFlag) {
-    RETURN_NOT_OK(ParseInt(&params->page_size));
+    int32_t page_size;
+    RETURN_NOT_OK(ParseInt(&page_size));
+    params->set_page_size(page_size);
   }
   if (params->flags & CQLMessage::QueryParameters::kWithPagingStateFlag) {
-    RETURN_NOT_OK(ParseBytes(&params->paging_state));
+    string paging_state;
+    RETURN_NOT_OK(ParseBytes(&paging_state));
+    RETURN_NOT_OK(params->set_paging_state(paging_state));
   }
   if (params->flags & CQLMessage::QueryParameters::kWithSerialConsistencyFlag) {
     RETURN_NOT_OK(ParseConsistency(&params->serial_consistency));
@@ -1028,8 +1057,10 @@ ResultResponse::RowsMetadata::Type::~Type() {
 }
 
 ResultResponse::RowsMetadata::RowsMetadata()
-    : flags(kNoMetadata), paging_state(""),
-      global_table_spec(GlobalTableSpec("" /* keyspace */, "" /* table_name */)), col_count(0) {
+    : flags(kNoMetadata),
+      paging_state(""),
+      global_table_spec("" /* keyspace */, "" /* table_name */),
+      col_count(0) {
 }
 
 ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name,
@@ -1039,8 +1070,8 @@ ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name
     : flags((no_metadata ? kNoMetadata : kHasGlobalTableSpec) |
             (!paging_state.empty() ? kHasMorePages : 0)),
       paging_state(paging_state),
-      global_table_spec(GlobalTableSpec(no_metadata ? "" : table_name.resolved_namespace_name(),
-                                        no_metadata ? "" : table_name.table_name())),
+      global_table_spec(no_metadata ? "" : table_name.resolved_namespace_name(),
+                        no_metadata ? "" : table_name.table_name()),
       col_count(columns.size()) {
   if (!no_metadata) {
     col_specs.reserve(col_count);
@@ -1179,12 +1210,23 @@ void RowsResultResponse::SerializeResultBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
+PreparedResultResponse::PreparedMetadata::PreparedMetadata(
+    const client::YBTableName& table_name, const vector<ColumnSchema>& bind_variable_schemas)
+    : flags(kHasGlobalTableSpec),
+      global_table_spec(table_name.resolved_namespace_name(), table_name.table_name()) {
+  // TODO(robert): populate primary-key indices.
+  col_specs.reserve(bind_variable_schemas.size());
+  for (const auto var : bind_variable_schemas) {
+    col_specs.emplace_back(var.name(), RowsMetadata::Type(var.type_info()->type()));
+  }
+}
+
 PreparedResultResponse::PreparedResultResponse(
     const CQLRequest& request, const QueryId& query_id,
     const sql::PreparedResult* prepared_result)
     : ResultResponse(request, Kind::PREPARED), query_id_(query_id),
-      prepared_metadata_(PreparedMetadata()),
-      rows_metadata_(prepared_result != nullptr ?
+      prepared_metadata_(prepared_result->table_name(), prepared_result->bind_variable_schemas()),
+      rows_metadata_(prepared_result != nullptr && !prepared_result->column_schemas().empty() ?
                      RowsMetadata(
                          prepared_result->table_name(), prepared_result->column_schemas(),
                          "" /* paging_state */, false /* no_metadata */) :

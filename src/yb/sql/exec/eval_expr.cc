@@ -11,6 +11,13 @@
 namespace yb {
 namespace sql {
 
+Status Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) const {
+  return params_->GetBindVariable(string(var->name()->c_str()),
+                                  var->pos(),
+                                  var->sql_type(),
+                                  value);
+}
+
 Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
 
   switch (expr->type_id()) {
@@ -52,6 +59,11 @@ Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
       break;
     }
 
+    case InternalType::kTimestampValue: {
+      RETURN_NOT_OK(EvalTimestampExpr(expr, static_cast<EvalTimestampValue*>(result)));
+      break;
+    }
+
     default:
       LOG(FATAL) << "Unknown expression datatype";
   }
@@ -72,6 +84,32 @@ Status Executor::EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result
       result->value_ = -static_cast<const PTConstInt*>(e->op1().get())->Eval();
       break;
 
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      switch (var->sql_type()) {
+        case DataType::INT8:
+          result->value_ = value.int8_value();
+          break;
+        case DataType::INT16:
+          result->value_ = value.int16_value();
+          break;
+        case DataType::INT32:
+          result->value_ = value.int32_value();
+          break;
+        case DataType::INT64:
+          result->value_ = value.int64_value();
+          break;
+        default:
+          LOG(FATAL) << "Unexpected integer type " << var->sql_type();
+      }
+      break;
+    }
+
     default:
       LOG(FATAL) << "Not supported operator";
   }
@@ -91,6 +129,26 @@ Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *
       result->value_ = -static_cast<const PTConstDouble*>(e->op1().get())->Eval();
       break;
 
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      switch (var->sql_type()) {
+        case DataType::FLOAT:
+          result->value_ = value.float_value();
+          break;
+        case DataType::DOUBLE:
+          result->value_ = value.double_value();
+          break;
+        default:
+          LOG(FATAL) << "Unexpected floating point type " << var->sql_type();
+      }
+      break;
+    }
+
     default:
       LOG(FATAL) << "Not supported operator";
   }
@@ -105,6 +163,20 @@ Status Executor::EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *
     case ExprOperator::kConst:
       result->value_ = static_cast<const PTConstText*>(e)->Eval();
       break;
+
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      const string& string_value = value.string_value();
+      result->value_ = MCString::MakeShared(exec_context_->PTempMem(),
+                                            string_value.data(),
+                                            string_value.length());
+      break;
+    }
 
     default:
       LOG(FATAL) << "Not supported operator";
@@ -121,6 +193,40 @@ Status Executor::EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *resu
     case ExprOperator::kConst:
       result->value_ = static_cast<const PTConstBool*>(e)->Eval();
       break;
+
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      result->value_ = value.bool_value();
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Not supported operator";
+  }
+
+  return eval_status;
+}
+
+Status Executor::EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampValue *result) {
+  Status eval_status = Status::OK();
+
+  const PTExpr *e = expr.get();
+  switch (expr->expr_op()) {
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      result->value_ = value.timestamp_value().ToInt64();
+      break;
+    }
 
     default:
       LOG(FATAL) << "Not supported operator";

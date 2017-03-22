@@ -22,6 +22,7 @@ using std::string;
 
 ParseContext::ParseContext(const char *stmt, size_t stmt_len, shared_ptr<MemTracker> mem_tracker)
     : ProcessContext(stmt, stmt_len, ParseTree::UniPtr(new ParseTree(mem_tracker))),
+      bind_variables_(PTreeMem()),
       stmt_offset_(0),
       trace_scanning_(false),
       trace_parsing_(false) {
@@ -49,6 +50,20 @@ size_t ParseContext::Read(char* buf, size_t max_size) {
     return copy_size;
   }
   return 0;
+}
+
+void ParseContext::GetBindVariables(MCVector<PTBindVar*> *vars) {
+  vars->clear();
+  int64_t pos = 0;
+  for (auto it = bind_variables_.cbegin(); it != bind_variables_.cend(); it++) {
+    PTBindVar *var = *it;
+    // Set the ordinal position of the bind variable in the statement also.
+    if (var->is_unset_pos()) {
+      var->set_pos(pos);
+    }
+    pos++;
+    vars->push_back(var);
+  }
 }
 
 }  // namespace sql

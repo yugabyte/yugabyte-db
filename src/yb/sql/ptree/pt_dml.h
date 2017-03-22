@@ -113,6 +113,13 @@ class PTDmlStmt : public PTCollection {
     return ttl_seconds_->Eval() * MonoTime::kMillisecondsPerSecond;
   }
 
+  const MCVector<PTBindVar*> &bind_variables() const {
+    return bind_variables_;
+  }
+  MCVector<PTBindVar*> &bind_variables() {
+    return bind_variables_;
+  }
+
   // Access for column_args.
   const MCVector<ColumnArg>& column_args() const {
     CHECK(column_args_ != nullptr) << "column arguments not set up";
@@ -145,12 +152,12 @@ class PTDmlStmt : public PTCollection {
                                     PTExpr::SharedPtr *value = nullptr);
   CHECKED_STATUS AnalyzeBetweenExpr(SemContext *sem_context,
                                     PTExpr *expr);
-  CHECKED_STATUS AnalyzeColumnExpr(SemContext *sem_context,
-                                   PTExpr *expr);
+  CHECKED_STATUS AnalyzeCompareExpr(SemContext *sem_context,
+                                    PTRef *lhs,
+                                    PTExpr *rhs);
 
   // Semantic-analyzing the USING TTL clause.
   CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
-
 
   // The sematic analyzer will decorate this node with the following information.
   std::shared_ptr<client::YBTable> table_;
@@ -173,7 +180,10 @@ class PTDmlStmt : public PTCollection {
   bool write_only_;
   PTConstInt::SharedPtr ttl_seconds_;
 
-  // Semantic phase will decorate the following field.
+  // Bind variables set up by during parsing.
+  MCVector<PTBindVar*> bind_variables_;
+
+  // Semantic phase will decorate the following fields.
   MCUniPtr<MCVector<ColumnArg>> column_args_;
 };
 

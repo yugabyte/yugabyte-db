@@ -13,9 +13,7 @@ using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
 
-StatementParameters::StatementParameters(int64_t page_size, const string& paging_state)
-    : page_size_(page_size) {
-  CHECK(paging_state_pb_.ParseFromString(paging_state));
+StatementParameters::StatementParameters() : page_size_(INT64_MAX) {
 }
 
 StatementParameters::StatementParameters(StatementParameters&& other)
@@ -64,8 +62,11 @@ CHECKED_STATUS Statement::Prepare(SqlProcessor* processor,
         return STATUS(Corruption, "Internal error: only one statement expected");
       }
       const TreeNode* stmt = stmts->element(0).get();
-      if (stmt->opcode() == TreeNodeOpcode::kPTSelectStmt) {
-        prepared_result->reset(new PreparedResult(static_cast<const PTSelectStmt*>(stmt)));
+      if (stmt->opcode() == TreeNodeOpcode::kPTSelectStmt ||
+          stmt->opcode() == TreeNodeOpcode::kPTInsertStmt ||
+          stmt->opcode() == TreeNodeOpcode::kPTUpdateStmt ||
+          stmt->opcode() == TreeNodeOpcode::kPTDeleteStmt) {
+        prepared_result->reset(new PreparedResult(static_cast<const PTDmlStmt*>(stmt)));
       }
     }
   }

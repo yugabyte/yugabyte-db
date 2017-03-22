@@ -59,5 +59,46 @@ TEST_F(YbSqlTestAnalyzer, TestCreateTableAnalyze) {
       "(c1)) WITH default_time_to_live = 1000.1", &parse_tree);
 }
 
+TEST_F(YbSqlTestAnalyzer, TestWhereClauseAnalyzer) {
+  CreateSimulatedCluster();
+  SqlProcessor *processor = GetSqlProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 varchar, c1 varchar, "
+                          "PRIMARY KEY ((h1), r1));"));
+
+  SqlEnv *sql_env = CreateSqlEnv();
+
+  ParseTree::UniPtr parse_tree;
+  // OR and NOT logical operator are not supported yet.
+  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = 1 AND r1 = 2 OR r2 = 3", &parse_tree);
+  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = 1 AND NOT r1 = 2", &parse_tree);
+
+  CHECK_OK(processor->Run("DROP TABLE t;"));
+}
+
+TEST_F(YbSqlTestAnalyzer, TestBindVariableAnalyzer) {
+  CreateSimulatedCluster();
+  SqlProcessor *processor = GetSqlProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 varchar, c1 varchar, "
+                          "PRIMARY KEY ((h1), r1));"));
+
+  SqlEnv *sql_env = CreateSqlEnv();
+
+  // Analyze the sql statement.
+  ParseTree::UniPtr parse_tree;
+  ANALYZE_VALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = ? AND r1 = ?;", &parse_tree);
+  ANALYZE_VALID_STMT(sql_env, "UPDATE t set c1 = :1 WHERE h1 = :2 AND r1 = :3;", &parse_tree);
+  ANALYZE_VALID_STMT(sql_env, "UPDATE t set c1 = ? WHERE h1 = ? AND r1 = ?;", &parse_tree);
+  ANALYZE_VALID_STMT(sql_env, "INSERT INTO t (h1, r1, c1) VALUES (?, ?, ?);", &parse_tree);
+
+  // Bind var cannot be used in a logical boolean context.
+  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE NOT ?", &parse_tree);
+
+  // Bind var not supported in an expression (yet).
+  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = (- ?)", &parse_tree);
+  ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = (- :1)", &parse_tree);
+
+  CHECK_OK(processor->Run("DROP TABLE t;"));
+}
+
 }  // namespace sql
 }  // namespace yb

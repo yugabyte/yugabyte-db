@@ -30,6 +30,27 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
       columns_(columns),
       value_clause_(value_clause),
       if_clause_(if_clause) {
+  // Set the name of unnamed bind markers for "INSERT tab (<column>, ...) VALUES (?, ...)"
+  if (value_clause != nullptr && columns != nullptr) {
+    PTValues *values = static_cast<PTValues *>(value_clause_.get());
+    if (values->TupleCount() > 0) {
+      const MCList<PTExpr::SharedPtr>& exprs = values->Tuple(0)->node_list();
+      const MCList<PTQualifiedName::SharedPtr>& names = columns_->node_list();
+      auto itr = names.cbegin();
+      for (auto& expr : exprs) {
+        if (itr == names.cend()) {
+          break;
+        }
+        if (expr->expr_op() == ExprOperator::kBindVar) {
+          PTBindVar *var = static_cast<PTBindVar*>(expr.get());
+          if (var->name() == nullptr) {
+            var->set_name(memctx, (*itr)->last_name());
+          }
+        }
+        itr++;
+      }
+    }
+  }
 }
 
 PTInsertStmt::~PTInsertStmt() {
@@ -79,8 +100,12 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
         return sem_context->Error(name->loc(), ErrorCode::UNDEFINED_COLUMN);
       }
 
-      // Check that the datatypes are convertible.
-      if (!sem_context->IsConvertible(col_desc->sql_type(), (*iter)->sql_type())) {
+      // If argument is a bind variable, set up the column description. Else check that the
+      // datatypes are convertible.
+      if ((*iter)->expr_op() == ExprOperator::kBindVar) {
+        PTBindVar *var = static_cast<PTBindVar*>((*iter).get());
+        var->set_desc(col_desc);
+      } else if (!sem_context->IsConvertible(col_desc->sql_type(), (*iter)->sql_type())) {
         return sem_context->Error((*iter)->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
@@ -102,17 +127,23 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       }
     }
 
-    // Check that the argument datatypes are convertible with all columns.
+    // If any of the arguments is a bind variable, set up its column description. Else check that
+    // the argument datatypes are convertible with all columns.
     idx = 0;
+    MCList<PTQualifiedName::SharedPtr>::const_iterator iter = columns_->node_list().cbegin();
     for (const auto& expr : exprs) {
       ColumnDesc *col_desc = &table_columns_[idx];
-      if (!sem_context->IsConvertible(col_desc->sql_type(), expr->sql_type())) {
+      if (expr->expr_op() == ExprOperator::kBindVar) {
+        PTBindVar *var = static_cast<PTBindVar*>(expr.get());
+        var->set_desc(col_desc);
+      } else if (!sem_context->IsConvertible(col_desc->sql_type(), expr->sql_type())) {
         return sem_context->Error(expr->loc(), ErrorCode::DATATYPE_MISMATCH);
       }
 
       // Initialize the argument entry.
       column_args_->at(idx).Init(col_desc, expr);
       idx++;
+      iter++;
     }
   }
 

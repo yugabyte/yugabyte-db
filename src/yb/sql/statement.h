@@ -12,6 +12,8 @@
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/sql/ptree/parse_tree.h"
 
+#include "yb/common/yql_value.h"
+
 namespace yb {
 namespace sql {
 
@@ -21,13 +23,19 @@ class PreparedResult;
 // This class represents the parameters for executing a SQL statement.
 class StatementParameters {
  public:
-  StatementParameters(int64_t page_size = INT64_MAX,
-                      const std::string& paging_state = "");
+  StatementParameters();
   StatementParameters(StatementParameters&& other);
 
   // Accessors
   uint64_t page_size() const { return page_size_; }
+  void set_page_size(const uint64_t page_size) { page_size_ = page_size; }
+
   const YQLPagingStatePB& paging_state() const { return paging_state_pb_; }
+  CHECKED_STATUS set_paging_state(const std::string& paging_state) {
+    return paging_state_pb_.ParseFromString(paging_state) ?
+        Status::OK() : STATUS(Corruption, "invalid paging state");
+  }
+
   const std::string& next_row_key_to_read() const {
     return paging_state_pb_.next_row_key_to_read();
   }
@@ -35,9 +43,15 @@ class StatementParameters {
   const std::string& next_partition_key() const { return paging_state_pb_.next_partition_key(); }
   int64_t total_num_rows_read() const { return paging_state_pb_.total_num_rows_read(); }
 
+  // Retrieve a bind variable for the execution of the statement.
+  virtual CHECKED_STATUS GetBindVariable(
+      const std::string& name, int64_t pos, DataType type, YQLValue* value) const {
+    return STATUS(RuntimeError, "no bind variable available");
+  }
+
  private:
   // Limit of the number of rows to return set as page size.
-  const uint64_t page_size_;
+  uint64_t page_size_;
 
   // Paging State.
   YQLPagingStatePB paging_state_pb_;

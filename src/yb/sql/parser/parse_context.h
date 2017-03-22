@@ -9,6 +9,7 @@
 
 #include "yb/sql/parser/location.h"
 #include "yb/sql/ptree/process_context.h"
+#include "yb/sql/ptree/pt_expr.h"
 
 namespace yb {
 namespace sql {
@@ -31,6 +32,14 @@ class ParseContext : public ProcessContext {
   // Read a maximum of 'max_size' bytes from SQL statement of this parsing context into the
   // provided buffer 'buf'. Scanner will call this function when looking for next token.
   size_t Read(char* buf, size_t max_size);
+
+  // Add a bind variable.
+  void AddBindVariable(PTBindVar *var) {
+    bind_variables_.insert(var);
+  }
+
+  // Return the list of bind variables found during parsing.
+  void GetBindVariables(MCVector<PTBindVar*> *vars);
 
   // Handling parsing warning.
   void Warn(const location& l, const char *m, ErrorCode error_code) {
@@ -67,6 +76,10 @@ class ParseContext : public ProcessContext {
   }
 
  private:
+  // List of bind variables in the statement being parsed ordered by the ordinal position in the
+  // statement.
+  MCSet<PTBindVar*, PTBindVar::SetCmp> bind_variables_;
+
   //------------------------------------------------------------------------------------------------
   // We don't use istream (i.e. file) as input when parsing. In the future, if we also support file
   // as an SQL input, we need to define a constructor that takes a file as input and initializes

@@ -95,6 +95,7 @@ class Executor {
   CHECKED_STATUS EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *result);
   CHECKED_STATUS EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *result);
   CHECKED_STATUS EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *result);
+  CHECKED_STATUS EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampValue *result);
 
   CHECKED_STATUS ConvertFromInt(EvalValue *result, const EvalIntValue& int_value);
   CHECKED_STATUS ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value);
@@ -135,20 +136,23 @@ class Executor {
   // Convert a bool expression to protobuf.
   CHECKED_STATUS BoolExprToPB(YQLConditionPB *condition, const PTExpr* expr);
 
-  // Convert a relational op to protobuf
+  // Convert a relational op to protobuf.
   CHECKED_STATUS RelationalOpToPB(YQLConditionPB *condition,
                                   YQLOperator opr,
                                   const PTExpr *relation);
 
-  // Convert a column condition to protobuf
+  // Convert a column condition to protobuf.
   CHECKED_STATUS ColumnConditionToPB(YQLConditionPB *condition,
                                      YQLOperator opr,
                                      const PTExpr *cond);
 
-  // Convert a between (not) to protobuf
+  // Convert a between (not) to protobuf.
   CHECKED_STATUS BetweenToPB(YQLConditionPB *condition,
                              YQLOperator opr,
                              const PTExpr *between);
+
+  // Get a bind variable.
+  CHECKED_STATUS GetBindVariable(const PTBindVar* var, YQLValue *value) const;
 
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.

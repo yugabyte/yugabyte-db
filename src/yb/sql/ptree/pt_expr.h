@@ -15,6 +15,9 @@
 namespace yb {
 namespace sql {
 
+class PTRef;
+class PTBindVar;
+
 //--------------------------------------------------------------------------------------------------
 
 enum class ExprOperator : int {
@@ -24,6 +27,7 @@ enum class ExprOperator : int {
   kConst,
   kAlias,
   kRef,
+  kBindVar,
 
   // Operators that take no operand.
   kExists,
@@ -152,6 +156,9 @@ class PTExpr : public TreeNode {
                                          PTExpr::SharedPtr op1,
                                          PTExpr::SharedPtr op2,
                                          PTExpr::SharedPtr op3);
+  virtual CHECKED_STATUS AnalyzeLeftRightOperands(SemContext *sem_context,
+                                                  PTExpr::SharedPtr lhs,
+                                                  PTExpr::SharedPtr rhs);
 
   // Analyze LHS expression.
   virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context);
@@ -160,6 +167,9 @@ class PTExpr : public TreeNode {
   virtual CHECKED_STATUS CheckRhsExpr(SemContext *sem_context);
 
  protected:
+  // Set the name of unnamed bind marker to the column it is associated with.
+  static void SetVariableName(MemoryContext *memctx, const PTRef *ref, PTBindVar *var);
+
   ExprOperator op_;
   InternalType type_id_;
   DataType sql_type_;
@@ -273,6 +283,13 @@ class PTExpr2 : public PTExpr {
       : PTExpr(memctx, loc, op, itype, stype),
         op1_(op1),
         op2_(op2) {
+    // Set the name of unnamed bind marker for "... WHERE <column> <op> ? ..."
+    if (op1_ != nullptr && op1_->expr_op() == ExprOperator::kRef &&
+        op2_ != nullptr && op2_->expr_op() == ExprOperator::kBindVar) {
+      SetVariableName(memctx,
+                      static_cast<const PTRef*>(op1_.get()),
+                      static_cast<PTBindVar*>(op2_.get()));
+    }
   }
   virtual ~PTExpr2() {
   }
@@ -333,6 +350,16 @@ class PTExpr3 : public PTExpr {
         op1_(op1),
         op2_(op2),
         op3_(op3) {
+    // Set the name of unnamed bind marker for "... WHERE <column> <op> ? ..."
+    if (op1_ != nullptr && op1_->expr_op() == ExprOperator::kRef) {
+      const PTRef *ref = static_cast<const PTRef*>(op1_.get());
+      if (op2_ != nullptr && op2_->expr_op() == ExprOperator::kBindVar) {
+        SetVariableName(memctx, ref, static_cast<PTBindVar*>(op2_.get()));
+      }
+      if (op3_ != nullptr && op3_->expr_op() == ExprOperator::kBindVar) {
+        SetVariableName(memctx, ref, static_cast<PTBindVar*>(op3_.get()));
+      }
+    }
   }
   virtual ~PTExpr3() {
   }
@@ -484,13 +511,14 @@ class PTRef : public PTOperator0 {
   void PrintSemanticAnalysisResult(SemContext *sem_context);
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) OVERRIDE;
 
+  // Access function for name.
+  const PTQualifiedName::SharedPtr& name() const {
+    return name_;
+  }
+
   // Access function for descriptor.
   const ColumnDesc *desc() const {
     return desc_;
-  }
-
-  const PTQualifiedName::SharedPtr name() const {
-    return name_;
   }
 
   // Node type.
@@ -532,6 +560,116 @@ class PTExprAlias : public PTOperator1 {
 
  private:
   MCString::SharedPtr alias_;
+};
+
+//--------------------------------------------------------------------------------------------------
+// Bind variable. The datatype of this expression would need to be resolved by the analyzer.
+class PTBindVar : public PTExpr {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTBindVar> SharedPtr;
+  typedef MCSharedPtr<const PTBindVar> SharedPtrConst;
+
+  // Unset bind position.
+  static constexpr int64_t kUnsetPosition = INT64_MIN;
+
+  // Compare 2 bind variable positions in a statement.
+  struct SetCmp {
+    bool operator() (const PTBindVar* v1, const PTBindVar* v2) const {
+      const YBLocation& l1 = v1->loc();
+      const YBLocation& l2 = v2->loc();
+      if (l1.BeginLine() < l2.BeginLine()) {
+        return true;
+      } else if (l1.BeginLine() == l2.BeginLine()) {
+        return l1.BeginColumn() < l2.BeginColumn();
+      } else {
+        return false;
+      }
+    }
+  };
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTBindVar(MemoryContext *memctx,
+            YBLocation::SharedPtr loc,
+            const MCString::SharedPtr& name = nullptr);
+  PTBindVar(MemoryContext *memctx,
+            YBLocation::SharedPtr loc,
+            int64_t pos);
+  virtual ~PTBindVar();
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTBindVar::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTBindVar>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  void PrintSemanticAnalysisResult(SemContext *sem_context);
+
+  // Access functions for position.
+  int64_t pos() const {
+    return pos_;
+  }
+  void set_pos(const int64_t pos) {
+    pos_ = pos;
+  }
+  bool is_unset_pos() const {
+    return pos_ == kUnsetPosition;
+  }
+
+  // Access functions for name.
+  MCString::SharedPtr name() const {
+    return name_;
+  }
+  void set_name(MemoryContext *memctx, const MCString& name) {
+    name_ = MCString::MakeShared(memctx, name.c_str());
+  }
+
+  // Access functions for descriptor.
+  const ColumnDesc *desc() const {
+    return desc_;
+  }
+  void set_desc(const ColumnDesc * desc) {
+    desc_ = desc;
+    sql_type_ = desc->sql_type();
+  }
+
+  // Expression return type in Cassandra format.
+  virtual InternalType type_id() const OVERRIDE {
+    DCHECK(desc_ != nullptr);
+    return desc_->type_id();
+  }
+
+  // Expression return type in DocDB format.
+  virtual DataType sql_type() const OVERRIDE {
+    DCHECK(desc_ != nullptr);
+    return desc_->sql_type();
+  }
+
+  // Node type.
+  virtual TreeNodeOpcode opcode() const OVERRIDE {
+    return TreeNodeOpcode::kPTBindVar;
+  }
+
+  // Access to op_.
+  virtual ExprOperator expr_op() const OVERRIDE {
+    return ExprOperator::kBindVar;
+  }
+
+  // Reset to clear and release previous semantics analysis results.
+  virtual void Reset() OVERRIDE;
+
+ private:
+  // 0-based position.
+  int64_t pos_;
+  // Variable name.
+  MCString::SharedPtr name_;
+
+  // Fields that should be resolved by semantic analysis.
+  const ColumnDesc *desc_;
 };
 
 }  // namespace sql

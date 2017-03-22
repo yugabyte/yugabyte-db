@@ -46,6 +46,16 @@ class Parser {
     parse_context_->SaveGeneratedParseTree(generated_parse_tree);
   }
 
+  // Add a bind variable.
+  void AddBindVariable(PTBindVar *var) {
+    parse_context_->AddBindVariable(var);
+  }
+
+  // Set the list of bind variables found during parsing in a DML statement.
+  void SetBindVariables(PTDmlStmt *stmt) {
+    parse_context_->GetBindVariables(&stmt->bind_variables());
+  }
+
   // Access function for parse_context_.
   ParseContext *parse_context() const {
     return parse_context_.get();

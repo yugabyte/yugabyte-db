@@ -20,13 +20,15 @@ namespace sql {
 // Result of preparing a statement.
 class PreparedResult {
  public:
-  explicit PreparedResult(const PTSelectStmt *tnode);
+  explicit PreparedResult(const PTDmlStmt *stmt);
 
   const client::YBTableName& table_name() const { return table_name_; }
+  const std::vector<ColumnSchema>& bind_variable_schemas() const { return bind_variable_schemas_; }
   const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
 
  private:
   const client::YBTableName table_name_;
+  const std::vector<ColumnSchema> bind_variable_schemas_;
   const std::vector<ColumnSchema> column_schemas_;
 };
 

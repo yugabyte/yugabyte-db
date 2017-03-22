@@ -82,6 +82,24 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
       "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
       "random_prop = 1000;");
 
+  // Valid statement: SELECT statement with "?" bind marker.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c1 = ? AND c2 = ?;");
+
+  // Valid statement: SELECT statement with ":" named bind marker.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c1 = :v1 AND c2 = :v2;");
+
+  // Valid statement: SELECT statement with ":" named quoted-identifier bind marker.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE c1 = :\"V1\" AND c2 = :\"V2\";");
+
+  // Valid statement: INSERT statement with ":" number bind marker.
+  PARSE_VALID_STMT("INSERT INTO t (c1, c2) VALUES (:1, :2);");
+
+  // Valid statement: SELECT statement with non-positive ":" bind position marker.
+  PARSE_INVALID_STMT("SELECT * from t WHERE C1 = :0;");
+
+  // Invalid statement: CREATE TABLE with "?" bind marker.
+  PARSE_INVALID_STMT("CREATE TABLE t (c int PRIMARY KEY) WITH default_time_to_live = ?;");
+
   // Invalid statement: CREATE with invalid prop value.
   PARSE_INVALID_STMT("CREATE TABLE human_resource"
       "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "

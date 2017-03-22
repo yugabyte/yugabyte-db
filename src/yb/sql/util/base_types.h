@@ -35,6 +35,7 @@
 #define YB_SQL_UTIL_BASE_TYPES_H_
 
 #include <list>
+#include <set>
 #include <map>
 #include <string>
 #include <vector>
@@ -66,6 +67,24 @@ class MCStl : public MCStlBase<StlType, MCObject> {
   }
 };
 
+template<template<class, class, class> class StlType,
+         class MCObject,
+         class Compare = std::less<MCObject>>
+using MCStlBase2 = StlType<MCObject, Compare, MCAllocator<MCObject>>;
+
+template<template<class, class, class> class StlType,
+         class MCObject,
+         class Compare = std::less<MCObject>>
+class MCStl2 : public MCStlBase2<StlType, MCObject, Compare> {
+ public:
+  // Constructor for STL types.
+  explicit MCStl2(MemoryContext *mem_ctx)
+      : MCStlBase2<StlType, MCObject, Compare>(
+          mem_ctx->GetAllocator<MCObject>()) {
+    CHECK(mem_ctx) << "Memory context must be provided";
+  }
+};
+
 template<template<class, class, class, class> class StlType,
          class MCKey,
          class MCObject,
@@ -86,11 +105,15 @@ class MCStl3 : public MCStlBase3<StlType, MCKey, MCObject, Compare> {
   }
 };
 
-// Class MCList
+// Class MCList.
 template<class MCObject> using MCList = MCStl<std::list, MCObject>;
 
 // Class MCVector.
 template<class MCObject> using MCVector = MCStl<std::vector, MCObject>;
+
+// Class MCSet.
+template<class MCObject, class Compare = std::less<MCObject>>
+using MCSet = MCStl2<std::set, MCObject, Compare>;
 
 // Class MCMap.
 template<class MCKey, class MCObject, class Compare = std::less<MCKey>>

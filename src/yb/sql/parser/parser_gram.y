@@ -219,7 +219,7 @@ using namespace yb::sql;
                           ColQualList NestedColumnList columnList
 
 %type <PExpr>             // Expressions.
-                          a_expr b_expr ctext_expr c_expr AexprConst columnref
+                          a_expr b_expr ctext_expr c_expr AexprConst columnref bindvar
                           target_el in_expr
                           inactive_a_expr inactive_c_expr
 
@@ -562,7 +562,7 @@ using namespace yb::sql;
 // Integer constants.
 %token <PInt64>           ICONST
 
-// Integer constants.
+// Character constants.
 %token <PChar>            CCONST
 
 // Multichar operators: "::", "..", ":=", "=>", "<=", ">=", "<>", "!=".
@@ -631,7 +631,8 @@ using namespace yb::sql;
 %left     '(' ')'
 %left     TYPECAST
 %left     '.'
-%nonassoc ','
+%nonassoc ',' '?'
+%right    ':'
 
 // These might seem to be low-precedence, but actually they are not part
 // of the arithmetic hierarchy at all in their use as JOIN operators.
@@ -695,15 +696,19 @@ stmt:
     $$ = $1;
   }
   | SelectStmt {
+    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
     $$ = $1;
   }
   | InsertStmt {
+    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
     $$ = $1;
   }
   | DeleteStmt {
+    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
     $$ = $1;
   }
   | UpdateStmt {
+    parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
     $$ = $1;
   }
   | inactive_stmt {
@@ -2817,6 +2822,12 @@ c_expr:
   columnref {
     $$ = $1;
   }
+  | bindvar {
+    if ($1 != nullptr) {
+      parser_->AddBindVariable(static_cast<PTBindVar*>($1.get()));
+    }
+    $$ = $1;
+  }
   | AexprConst {
     $$ = $1;
   }
@@ -3451,6 +3462,23 @@ case_default:
 case_arg:
   a_expr                        { $$ = nullptr; }
   | /*EMPTY*/                   { $$ = nullptr; }
+;
+
+bindvar:
+  '?' {
+    $$ = MAKE_NODE(@1, PTBindVar);
+  }
+  | ':' IDENT {
+    $$ = MAKE_NODE(@1, PTBindVar, $2);
+  }
+  | ':' ICONST {
+    if ($2 <= 0) {
+      PARSER_CQL_INVALID_MSG(@2, "bind position must be a positive integer");
+      $$ = nullptr;
+    } else {
+      $$ = MAKE_NODE(@1, PTBindVar, $2 - 1); // convert from 1-based to 0-based bind position.
+    }
+  }
 ;
 
 columnref:

@@ -149,14 +149,15 @@ class CQLMessage {
 
     Kind kind = Kind::NOT_NULL;
     std::string name;
-    std::string value;
+    std::string value; // As required by YQLValue::Deserialize() for CQL, the value includes
+                       // the 4-byte length header, i.e. "<4-byte-length><value>".
   };
 
   // Id of a prepared query for PREPARE, EXECUTE and BATCH requests.
   using QueryId = std::string;
 
   // Query parameters for QUERY, EXECUTE and BATCH requests
-  struct QueryParameters {
+  struct QueryParameters : sql::StatementParameters {
     using Flags = uint8_t;
     static constexpr Flags kWithValuesFlag            = 0x01;
     static constexpr Flags kSkipMetadataFlag          = 0x02;
@@ -166,20 +167,17 @@ class CQLMessage {
     static constexpr Flags kWithDefaultTimestampFlag  = 0x20;
     static constexpr Flags kWithNamesForValuesFlag    = 0x40;
 
-    sql::StatementParameters ToStatementParameters() const {
-      if (paging_state.empty()) {
-        return sql::StatementParameters(page_size);
-      }
-      return sql::StatementParameters(page_size, paging_state);
-    }
-
     Consistency consistency = Consistency::ANY;
     Flags flags = 0;
     std::vector<Value> values;
-    int32_t page_size = 0;
-    std::string paging_state;
+    std::unordered_map<std::string, std::vector<Value>::size_type> value_map;
     Consistency serial_consistency = Consistency::ANY;
     int64_t default_timestamp = 0;
+
+    QueryParameters() : sql::StatementParameters() { }
+
+    virtual CHECKED_STATUS GetBindVariable(
+        const std::string& name, int64_t pos, DataType type, YQLValue* value) const override;
   };
 
   // Accessors for header fields
@@ -313,9 +311,7 @@ class QueryRequest : public CQLRequest {
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
   const std::string& query() const { return query_; }
-  sql::StatementParameters GetStatementParameters() const {
-    return params_.ToStatementParameters();
-  }
+  const QueryParameters& params() const { return params_; }
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -351,9 +347,7 @@ class ExecuteRequest : public CQLRequest {
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
 
   const QueryId& query_id() const { return query_id_; }
-  sql::StatementParameters GetStatementParameters() const {
-    return params_.ToStatementParameters();
-  }
+  const QueryParameters& params() const { return params_; }
 
  protected:
   virtual CHECKED_STATUS ParseBody() override;
@@ -762,7 +756,8 @@ class PreparedResultResponse : public ResultResponse {
     RowsMetadata::GlobalTableSpec global_table_spec;
     std::vector<RowsMetadata::ColSpec> col_specs;
 
-    PreparedMetadata() : flags(0), global_table_spec("" /* keyspace */, "" /* table */) { }
+    PreparedMetadata(const client::YBTableName& table_name,
+                     const std::vector<ColumnSchema>& bind_variable_schemas);
   };
 
   void SerializePreparedMetadata(const PreparedMetadata& metadata, faststring* mesg);

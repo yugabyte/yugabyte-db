@@ -144,7 +144,7 @@ CQLResponse *CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
     // the error, the client will reprepare the query and execute again.
     return new UnpreparedErrorResponse(req, req.query_id());
   }
-  Status s = stmt->Execute(this, req.GetStatementParameters());
+  Status s = stmt->Execute(this, req.params());
   if (!s.ok()) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
@@ -159,7 +159,7 @@ CQLResponse *CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
 
 CQLResponse *CQLProcessor::ProcessQuery(const QueryRequest& req) {
   VLOG(1) << "RUN " << req.query();
-  Status s = Run(req.query(), req.GetStatementParameters());
+  Status s = Run(req.query(), req.params());
   if (!s.ok()) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }

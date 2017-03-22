@@ -20,6 +20,13 @@ PTAssign::PTAssign(MemoryContext *memctx,
       lhs_(lhs),
       rhs_(rhs),
       col_desc_(nullptr) {
+  // Set the name of unnamed bind marker for "UPDATE tab SET <column> = ? ..."
+  if (lhs_ != nullptr && rhs_ != nullptr && rhs_->expr_op() == ExprOperator::kBindVar) {
+    PTBindVar *var = static_cast<PTBindVar*>(rhs_.get());
+    if (var->name() == nullptr) {
+      var->set_name(memctx, lhs_->last_name());
+    }
+  }
 }
 
 PTAssign::~PTAssign() {
@@ -34,11 +41,15 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
     return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
-  // Analyze right value (constant).
+  // Analyze right value.
   RETURN_NOT_OK(rhs_->Analyze(sem_context));
   RETURN_NOT_OK(rhs_->CheckRhsExpr(sem_context));
 
-  if (!sem_context->IsConvertible(col_desc_->sql_type(), rhs_->sql_type())) {
+  if (rhs_->expr_op() == ExprOperator::kBindVar) {
+    // For "<column> = <bindvar>", set up the bind var column description.
+    PTBindVar *var = static_cast<PTBindVar*>(rhs_.get());
+    var->set_desc(col_desc_);
+  } else if (!sem_context->IsConvertible(col_desc_->sql_type(), rhs_->sql_type())) {
     return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
   }
 

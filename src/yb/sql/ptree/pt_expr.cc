@@ -13,6 +13,11 @@ namespace sql {
 using client::YBColumnSchema;
 
 //--------------------------------------------------------------------------------------------------
+void PTExpr::SetVariableName(MemoryContext* memctx, const PTRef *ref, PTBindVar *var) {
+  if (var->name() == nullptr) {
+    var->set_name(memctx, ref->name()->last_name());
+  }
+}
 
 CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context) {
   switch (op_) {
@@ -82,10 +87,7 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
     case ExprOperator::kNE:
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
-      if (!sem_context->IsComparable(op1->sql_type(), op2->sql_type())) {
-        return sem_context->Error(loc(), "Cannot compare values of these datatypes",
-            ErrorCode::INCOMPARABLE_DATATYPES);
-      }
+      RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op2));
       sql_type_ = yb::DataType::BOOL;
       type_id_ = yb::InternalType::kBoolValue;
       break;
@@ -122,11 +124,8 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
       RETURN_NOT_OK(op3->CheckRhsExpr(sem_context));
-      if (!sem_context->IsComparable(op1->sql_type(), op2->sql_type()) ||
-          !sem_context->IsComparable(op1->sql_type(), op3->sql_type())) {
-        return sem_context->Error(loc(), "Cannot compare values of these datatypes",
-            ErrorCode::INCOMPARABLE_DATATYPES);
-      }
+      RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op2));
+      RETURN_NOT_OK(AnalyzeLeftRightOperands(sem_context, op1, op3));
       sql_type_ = yb::DataType::BOOL;
       type_id_ = yb::InternalType::kBoolValue;
       break;
@@ -134,6 +133,23 @@ CHECKED_STATUS PTExpr::AnalyzeOperator(SemContext *sem_context,
       LOG(FATAL) << "Invalid operator";
   }
 
+  return Status::OK();
+}
+
+CHECKED_STATUS PTExpr::AnalyzeLeftRightOperands(SemContext *sem_context,
+                                                PTExpr::SharedPtr lhs,
+                                                PTExpr::SharedPtr rhs) {
+  if (lhs->op_ == ExprOperator::kRef && rhs->op_ == ExprOperator::kBindVar) {
+    // For "<column> <op> <bindvar>", set up the bind var column description.
+    const PTRef *ref = static_cast<const PTRef*>(lhs.get());
+    PTBindVar *var = static_cast<PTBindVar*>(rhs.get());
+    var->set_desc(ref->desc());
+    return Status::OK();
+  }
+  if (!sem_context->IsComparable(lhs->sql_type(), rhs->sql_type())) {
+    return sem_context->Error(loc(), "Cannot compare values of these datatypes",
+                              ErrorCode::INCOMPARABLE_DATATYPES);
+  }
   return Status::OK();
 }
 
@@ -150,12 +166,13 @@ CHECKED_STATUS PTExpr::CheckLhsExpr(SemContext *sem_context) {
 CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
   // Check for limitation in YQL (Not all expressions are acceptable).
   switch (op_) {
-    case ExprOperator::kConst: FALLTHROUGH_INTENDED;
-    case ExprOperator::kUMinus:
+    case ExprOperator::kConst:  FALLTHROUGH_INTENDED;
+    case ExprOperator::kUMinus: FALLTHROUGH_INTENDED;
+    case ExprOperator::kBindVar:
       break;
     default:
-      return sem_context->Error(loc(), "Only literal value is allowed for right hand value",
-                                ErrorCode::CQL_STATEMENT_INVALID);
+      return sem_context->Error(loc(), "Only literal value and bind marker are allowed for "
+                                "right hand value", ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
 }
@@ -216,6 +233,46 @@ CHECKED_STATUS PTExprAlias::AnalyzeOperator(SemContext *sem_context, PTExpr::Sha
   type_id_ = op1->type_id();
 
   return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+PTBindVar::PTBindVar(MemoryContext *memctx,
+                     YBLocation::SharedPtr loc,
+                     const MCString::SharedPtr& name)
+    : PTExpr(memctx, loc, ExprOperator::kBindVar),
+      pos_(kUnsetPosition),
+      name_(name),
+      desc_(nullptr) {
+}
+
+PTBindVar::PTBindVar(MemoryContext *memctx,
+                     YBLocation::SharedPtr loc,
+                     int64_t pos)
+    : PTExpr(memctx, loc, ExprOperator::kBindVar),
+      pos_(pos),
+      name_(nullptr),
+      desc_(nullptr) {
+}
+
+PTBindVar::~PTBindVar() {
+}
+
+CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
+  // Initialize the bind variable's sql_type to "NULL". The actual sql_type will be resolved to
+  // the column it is associated with afterward (e.g. in "... WHERE <column> < <bindvar>",
+  // "UPDATE table SET <column> = <bindvar> ..." or "INSERT INTO table (<column>, ...) VALUES
+  // (<bindvar>, ...)").
+  sql_type_ = DataType::NULL_VALUE_TYPE;
+  return Status::OK();
+}
+
+void PTBindVar::PrintSemanticAnalysisResult(SemContext *sem_context) {
+  VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
+}
+
+void PTBindVar::Reset() {
+  desc_ = nullptr;
 }
 
 }  // namespace sql

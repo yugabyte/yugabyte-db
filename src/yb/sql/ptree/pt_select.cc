@@ -108,6 +108,8 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context, where_clause_));
+
+  // Run error checking on the LIMIT clause.
   RETURN_NOT_OK(AnalyzeLimitClause(sem_context));
 
   return Status::OK();

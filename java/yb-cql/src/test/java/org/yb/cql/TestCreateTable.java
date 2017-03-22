@@ -11,9 +11,10 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class TestCreateTable extends TestBase {
+
   @Test
   public void testCreateTable() throws Exception {
-    LOG.info("TEST CQL CREATE TABLE - Start");
+    LOG.info("Begin test");
 
     // Test create table multiple times (ENG-945)
     for (int i = 0; i < 5; i++) {
@@ -21,7 +22,7 @@ public class TestCreateTable extends TestBase {
       // Create table
       String create_stmt = "CREATE TABLE test_create " +
                            "(h1 int, h2 varchar, r1 int, r2 varchar, v1 int, v2 varchar, " +
-                           "primary key((h1, h2), r1, r2));";
+                           "primary key ((h1, h2), r1, r2));";
       session.execute(create_stmt);
 
       // Insert one row. Deliberately insert with same hash key but different range column values.
@@ -47,6 +48,26 @@ public class TestCreateTable extends TestBase {
       session.execute(drop_stmt);
     }
 
-    LOG.info("TEST CQL SIMPLE QUERY - End");
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testCreateTableWithAllDatatypes() throws Exception {
+    LOG.info("Begin test");
+
+    // Create table
+    String create_stmt = "CREATE TABLE test_create " +
+                         "(c1 tinyint, c2 smallint, c3 integer, c4 bigint, " +
+                         "c5 float, c6 double, " +
+                         "c7 varchar, " +
+                         "c8 boolean, " +
+                         "c9 timestamp, " +
+                         "primary key (c1));";
+    session.execute(create_stmt);
+
+    String drop_stmt = "DROP TABLE test_create;";
+    session.execute(drop_stmt);
+
+    LOG.info("End test");
   }
 }

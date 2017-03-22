@@ -25,12 +25,25 @@ using client::YBqlWriteOp;
 //------------------------------------------------------------------------------------------------
 namespace {
 
+// Get bind column schemas for DML.
+vector<ColumnSchema> GetBindVariableSchemasFromDmlStmt(const PTDmlStmt *stmt) {
+  vector<ColumnSchema> bind_variable_schemas;
+  bind_variable_schemas.reserve(stmt->bind_variables().size());
+  const auto& schema = stmt->table()->schema();
+  for (const PTBindVar *var : stmt->bind_variables()) {
+    const ColumnDesc *col_desc = var->desc();
+    const auto column = schema.ColumnById(col_desc->id());
+    bind_variable_schemas.emplace_back(string(var->name()->c_str()), column.type());
+  }
+  return bind_variable_schemas;
+}
+
 // Get column schemas from different statements / YQL ops.
-vector<ColumnSchema> GetColumnSchemasFromSelectStmt(const PTSelectStmt *tnode) {
+vector<ColumnSchema> GetColumnSchemasFromSelectStmt(const PTSelectStmt *stmt) {
   vector<ColumnSchema> column_schemas;
-  column_schemas.reserve(tnode->selected_columns().size());
-  const auto& schema = tnode->table()->schema();
-  for (const ColumnDesc *col_desc : tnode->selected_columns()) {
+  column_schemas.reserve(stmt->selected_columns().size());
+  const auto& schema = stmt->table()->schema();
+  for (const ColumnDesc *col_desc : stmt->selected_columns()) {
     const auto column = schema.ColumnById(col_desc->id());
     column_schemas.emplace_back(column.name(), column.type());
   }
@@ -60,9 +73,12 @@ vector<ColumnSchema> GetColumnSchemasFromWriteOp(const YBqlWriteOp& op) {
 } // namespace
 
 //------------------------------------------------------------------------------------------------
-PreparedResult::PreparedResult(const PTSelectStmt *tnode)
-    : table_name_(tnode->table()->name()),
-      column_schemas_(GetColumnSchemasFromSelectStmt(tnode)) {
+PreparedResult::PreparedResult(const PTDmlStmt *stmt)
+    : table_name_(stmt->table()->name()),
+      bind_variable_schemas_(GetBindVariableSchemasFromDmlStmt(stmt)),
+      column_schemas_(stmt->opcode() == TreeNodeOpcode::kPTSelectStmt ?
+                      GetColumnSchemasFromSelectStmt(static_cast<const PTSelectStmt*>(stmt)) :
+                      vector<ColumnSchema>()) {
 }
 
 //------------------------------------------------------------------------------------------------

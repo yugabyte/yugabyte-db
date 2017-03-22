@@ -31,6 +31,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     where_ops_(memctx),
     write_only_(write_only),
     ttl_seconds_(ttl_seconds),
+    bind_variables_(memctx),
     column_args_(nullptr) {
 }
 
@@ -213,8 +214,8 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context,
     }
 
     default:
-      LOG(FATAL) << "Illegal op = " << int(expr->expr_op());
-      break;
+      return sem_context->Error(expr->loc(), "Operator is not yet supported",
+                                ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   // Check that if where clause is present, it must follow CQL rules.
@@ -264,6 +265,9 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
 }
 
 void PTDmlStmt::Reset() {
+  for (auto itr = bind_variables_.cbegin(); itr != bind_variables_.cend(); itr++) {
+    (*itr)->Reset();
+  }
   column_args_ = nullptr;
 }
 

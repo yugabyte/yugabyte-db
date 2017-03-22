@@ -37,6 +37,7 @@ enum class TreeNodeOpcode {
   kPTExpr,
   kPTRef,
   kPTAssign,
+  kPTBindVar,
 };
 
 // TreeNode base class.
