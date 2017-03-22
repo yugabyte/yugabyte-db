@@ -24,7 +24,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   // Create the table.
   const char *create_stmt = "CREATE TABLE test_table"

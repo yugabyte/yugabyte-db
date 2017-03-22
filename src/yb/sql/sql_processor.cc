@@ -106,7 +106,6 @@ CHECKED_STATUS SqlProcessor::Analyze(const string& sql_stmt,
         sem_errcode == ErrorCode::TABLE_NOT_FOUND ||
         !cache_used) {
       break;
-
     }
 
     // Otherwise, the error can be due to the cached table descriptor being stale. In that case,
@@ -120,11 +119,11 @@ CHECKED_STATUS SqlProcessor::Analyze(const string& sql_stmt,
 CHECKED_STATUS SqlProcessor::Execute(const string& sql_stmt,
                                      const ParseTree& parse_tree,
                                      const StatementParameters& params,
-                                     bool* new_analysis_needed) {
-  sql_env_->Reset();
+                                     bool *new_analysis_needed,
+                                     ExecuteResult::UniPtr *result) {
   // Code execution.
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
-  Status s = executor_->Execute(sql_stmt, parse_tree, params, sql_env_.get());
+  Status s = executor_->Execute(sql_stmt, parse_tree, params, sql_env_.get(), result);
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
@@ -141,9 +140,10 @@ CHECKED_STATUS SqlProcessor::Execute(const string& sql_stmt,
   return s;
 }
 
-CHECKED_STATUS SqlProcessor::Run(const string& sql_stmt, const StatementParameters& params) {
-  sql_env_->Reset();
-  return Statement(sql_env_->CurrentKeyspace(), sql_stmt).Run(this, params);
+CHECKED_STATUS SqlProcessor::Run(const string& sql_stmt,
+                                 const StatementParameters& params,
+                                 ExecuteResult::UniPtr *result) {
+  return Statement(sql_env_->CurrentKeyspace(), sql_stmt).Run(this, params, result);
 }
 
 }  // namespace sql

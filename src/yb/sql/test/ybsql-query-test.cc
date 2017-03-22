@@ -20,7 +20,7 @@ class YbSqlQuery : public YbSqlTestBase {
   YbSqlQuery() : YbSqlTestBase() {
   }
 
-  std::shared_ptr<YQLRowBlock> ExecSelect(SqlProcessor *processor, int expected_rows = 1) {
+  std::shared_ptr<YQLRowBlock> ExecSelect(YbSqlProcessor *processor, int expected_rows = 1) {
     auto select = "SELECT c1, c2, c3 FROM test_table WHERE c1 = 1";
     Status s = processor->Run(select);
     CHECK(s.ok());
@@ -29,11 +29,11 @@ class YbSqlQuery : public YbSqlTestBase {
     return row_block;
   }
 
-  void VerifyExpiry(SqlProcessor *processor) {
+  void VerifyExpiry(YbSqlProcessor *processor) {
     ExecSelect(processor, 0);
   }
 
-  void CreateTableAndInsertRow(SqlProcessor *processor, bool with_ttl = true) {
+  void CreateTableAndInsertRow(YbSqlProcessor *processor, bool with_ttl = true) {
     // Create the table.
     const char *create_stmt =
         "CREATE TABLE test_table(c1 int, c2 int, c3 int, "
@@ -67,7 +67,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   // Create the table 1.
   const char *create_stmt =
@@ -214,7 +214,7 @@ TEST_F(YbSqlQuery, TestInsertWithTTL) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   CreateTableAndInsertRow(processor);
 
@@ -229,7 +229,7 @@ TEST_F(YbSqlQuery, TestUpdateWithTTL) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   CreateTableAndInsertRow(processor, false);
 

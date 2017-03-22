@@ -108,7 +108,7 @@ class SemContext : public ProcessContext {
 
   bool IsComparable(DataType lhs_type, DataType rhs_type) const;
 
-  const std::string& CurrentKeyspace() const {
+  std::string CurrentKeyspace() const {
     return sql_env_->CurrentKeyspace();
   }
 

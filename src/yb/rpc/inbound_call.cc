@@ -470,5 +470,9 @@ const scoped_refptr<Connection> CQLInboundCall::get_connection() const {
   return conn_;
 }
 
+sql::SqlSession::SharedPtr CQLInboundCall::GetSqlSession() const {
+  return conn_->sql_session();
+}
+
 }  // namespace rpc
 }  // namespace yb

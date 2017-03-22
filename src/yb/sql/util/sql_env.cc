@@ -26,9 +26,9 @@ using client::YBqlWriteOp;
 SqlEnv::SqlEnv(shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache)
     : client_(client),
       table_cache_(cache),
-      write_session_(client_->NewSession(false)),
-      read_session_(client->NewSession(true)),
-      current_keyspace_(yb::master::kDefaultNamespaceName) {
+      write_session_(client_->NewSession(false /* read_only */)),
+      read_session_(client->NewSession(true /* read_only */)),
+      sql_session_(nullptr) {
 
   write_session_->SetTimeoutMillis(kSessionTimeoutMs);
   CHECK_OK(write_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
@@ -46,7 +46,7 @@ CHECKED_STATUS SqlEnv::DeleteTable(const YBTableName& name) {
 }
 
 CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
-                                       const Status s,
+                                       const Status& s,
                                        YBSession* session) const {
   // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
   // returns IOError. When it happens, retrieves the error that corresponds to this op and return.
@@ -66,37 +66,17 @@ CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
 }
 
 CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> yb_op) {
-  // The previous result must have been cleared.
-  DCHECK(rows_result_ == nullptr);
-
   // Execute the write.
   RETURN_NOT_OK(write_session_->Apply(yb_op));
   Status s = write_session_->Flush();
-  RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, write_session_.get()));
-
-  // Read the processing result.
-  if (!yb_op->rows_data().empty()) {
-    rows_result_.reset(new RowsResult(yb_op.get()));
-  }
-
-  return Status::OK();
+  return ProcessOpStatus(yb_op.get(), s, write_session_.get());
 }
 
 CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBqlReadOp> yb_op) {
-  // The previous result must have been cleared.
-  DCHECK(rows_result_ == nullptr);
-
-  if (yb_op.get() != nullptr) {
-    // Execute the read.
-    RETURN_NOT_OK(read_session_->Apply(yb_op));
-    Status s = read_session_->Flush();
-    RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, read_session_.get()));
-
-    // Read the processing result.
-    rows_result_.reset(new RowsResult(yb_op.get()));
-  }
-
-  return Status::OK();
+  // Execute the read.
+  RETURN_NOT_OK(read_session_->Apply(yb_op));
+  Status s = read_session_->Flush();
+  return ProcessOpStatus(yb_op.get(), s, read_session_.get());
 }
 
 shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool refresh_cache,
@@ -111,10 +91,6 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool ref
   return yb_table;
 }
 
-void SqlEnv::Reset() {
-  rows_result_ = nullptr;
-}
-
 CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
   // Check if a keyspace with the specified name exists.
   bool exists = false;
@@ -125,9 +101,8 @@ CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
   }
 
   // Set the current keyspace name.
-
-  // TODO(Oleg): Keyspace should be cached in CQL layer. We keep it here only as a workaround.
-  current_keyspace_ = keyspace_name;
+  CHECK(sql_session_ != nullptr) << "SQL session is not set";
+  sql_session_->set_current_keyspace(keyspace_name);
 
   return Status::OK();
 }

@@ -15,9 +15,6 @@ set(CQLSERVER_YRPC_LIBS
   protobuf
   remote_bootstrap_proto
   rpc_header_proto
-  # TODO(robert) - to be done when implementing CQL calls from YBClient to YBServer in
-  # yb/common
-  # cql_protocol_proto
   wire_protocol_proto)
 ADD_EXPORTABLE_LIBRARY(cql_service_proto
   SRCS ${CQLSERVER_YRPC_SRCS}

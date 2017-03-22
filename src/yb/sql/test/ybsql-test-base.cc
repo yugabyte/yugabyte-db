@@ -15,7 +15,7 @@ using client::YBClientBuilder;
 
 //--------------------------------------------------------------------------------------------------
 
-YbSqlTestBase::YbSqlTestBase() {
+YbSqlTestBase::YbSqlTestBase() : sql_session_(new SqlSession()) {
   sql_envs_.reserve(1);
 }
 
@@ -61,12 +61,12 @@ SqlEnv *YbSqlTestBase::GetSqlEnv(int session_id) {
 
 //--------------------------------------------------------------------------------------------------
 
-SqlProcessor *YbSqlTestBase::GetSqlProcessor() {
+YbSqlProcessor *YbSqlTestBase::GetSqlProcessor() {
   if (client_ == nullptr) {
     CreateSimulatedCluster();
   }
 
-  for (const SqlProcessor::UniPtr& processor : sql_processors_) {
+  for (const YbSqlProcessor::UniPtr& processor : sql_processors_) {
     if (!processor->is_used()) {
       return processor.get();
     }
@@ -74,8 +74,10 @@ SqlProcessor *YbSqlTestBase::GetSqlProcessor() {
 
   const int size = sql_processors_.size();
   sql_processors_.reserve(std::max<int>(size * 2, size + 10));
-  sql_processors_.emplace_back(new SqlProcessor(client_, table_cache_));
-  return sql_processors_.back().get();
+  sql_processors_.emplace_back(new YbSqlProcessor(client_, table_cache_));
+  YbSqlProcessor *processor = sql_processors_.back().get();
+  processor->SetSqlSession(sql_session_);
+  return processor;
 }
 
 }  // namespace sql

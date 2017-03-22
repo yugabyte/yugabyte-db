@@ -8,8 +8,9 @@
 #ifndef YB_SQL_EXEC_EXEC_CONTEXT_H_
 #define YB_SQL_EXEC_EXEC_CONTEXT_H_
 
-#include "yb/sql/util/sql_env.h"
 #include "yb/sql/ptree/process_context.h"
+#include "yb/sql/util/sql_env.h"
+#include "yb/sql/util/statement_result.h"
 
 namespace yb {
 namespace sql {
@@ -49,10 +50,12 @@ class ExecContext : public ProcessContextBase {
 
   // Use keyspace with the given name.
   CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
-    return sql_env_->UseKeyspace(keyspace_name);
+    RETURN_NOT_OK(sql_env_->UseKeyspace(keyspace_name));
+    result_.reset(new SetKeyspaceResult(keyspace_name));
+    return Status::OK();
   }
 
-  const std::string& CurrentKeyspace() const {
+  std::string CurrentKeyspace() const {
     return sql_env_->CurrentKeyspace();
   }
 
@@ -66,14 +69,27 @@ class ExecContext : public ProcessContextBase {
 
   // Clears only the paging state of the row result.
   void ClearPagingState() {
-    sql_env_->clear_paging_state();
+    if (result_ != nullptr && result_->type() == ExecuteResult::Type::ROWS) {
+      static_cast<RowsResult*>(result_.get())->clear_paging_state();
+    }
+  }
+
+  // Returns the execution result and release the ownership from this context.
+  ExecuteResult::UniPtr AcquireExecuteResult() {
+    return std::move(result_);
   }
 
  private:
   // Check and return read/write response status.
-  CHECKED_STATUS ProcessResponseStatus(const client::YBqlOp& yb_op, const TreeNode *tnode);
+  CHECKED_STATUS ProcessResponseStatus(const client::YBqlOp& yb_op,
+                                       const TreeNode *tnode,
+                                       const Status& s);
 
+  // SQL environment.
   SqlEnv *sql_env_;
+
+  // Execution result.
+  ExecuteResult::UniPtr result_;
 };
 
 }  // namespace sql

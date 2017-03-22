@@ -76,7 +76,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceSimple) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string keyspace1 = "test;";
 
@@ -132,7 +132,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceIfNotExists) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string keyspace1 = "test;";
 
@@ -167,7 +167,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateSchemaSimple) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string keyspace1 = "test;";
 
@@ -223,7 +223,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateSchemaIfNotExists) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string keyspace1 = "test;";
 
@@ -258,7 +258,7 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceSimple) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string keyspace1 = "test;";
 
@@ -290,7 +290,7 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string keyspace1 = "test;";
   const string keyspace2 = "test2;";
@@ -359,7 +359,7 @@ TEST_F(YbSqlKeyspace, TestSqlSelectInvalidTable) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string select_stmt = "SELECT * FROM my_keyspace1.test_table WHERE h1 = 1 AND h2 = 'h1';";
 

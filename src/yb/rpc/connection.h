@@ -38,6 +38,7 @@
 #include "yb/rpc/sasl_server.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/transfer.h"
+#include "yb/sql/sql_session.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
@@ -344,6 +345,8 @@ class CQLConnection : public Connection {
 
   virtual void RunNegotiation(const MonoTime& deadline) override;
 
+  sql::SqlSession::SharedPtr sql_session() const { return sql_session_; }
+
  protected:
   virtual void CreateInboundTransfer() override;
 
@@ -361,6 +364,14 @@ class CQLConnection : public Connection {
   gscoped_ptr<CQLInboundTransfer> inbound_;
 
   void FinishedHandlingACall();
+
+  // SQL session of this CQL client connection.
+  // TODO(robert): To get around the need for this RPC layer to link with the SQL layer for the
+  // reference to the SqlSession here, the whole SqlSession definition is contained in sql_session.h
+  // and #include'd in connection.h/.cc. When SqlSession gets more complicated (say when we support
+  // Cassandra ROLE), consider adding a CreateNewConnection method in rpc::ServiceIf so that
+  // CQLConnection can be created and returned from CQLServiceImpl.CreateNewConnection().
+  sql::SqlSession::SharedPtr sql_session_;
 };
 
 class YBConnection : public Connection {

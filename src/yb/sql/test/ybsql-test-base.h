@@ -65,6 +65,37 @@ do {                                            \
   CHECK(!s.ok()) << "Expect failure";           \
 } while (false)
 
+class YbSqlProcessor : public SqlProcessor {
+ public:
+  // Public types.
+  typedef std::unique_ptr<YbSqlProcessor> UniPtr;
+  typedef std::unique_ptr<const YbSqlProcessor> UniPtrConst;
+
+  // Constructors.
+  explicit YbSqlProcessor(
+      std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache)
+      : SqlProcessor(client, cache, nullptr /* sql_metrics */) { }
+  virtual ~YbSqlProcessor() { }
+
+  // Execute a SQL statement.
+  CHECKED_STATUS Run(const std::string& sql_stmt) {
+    result_ = nullptr;
+    return SqlProcessor::Run(sql_stmt, StatementParameters(), &result_);
+  }
+
+    // Construct a row_block and send it back.
+  std::shared_ptr<YQLRowBlock> row_block() const {
+    if (result_ != nullptr && result_->type() == ExecuteResult::Type::ROWS) {
+      return std::shared_ptr<YQLRowBlock>(static_cast<RowsResult*>(result_.get())->GetRowBlock());
+    }
+    return nullptr;
+  }
+
+ private:
+  // Execute result.
+  ExecuteResult::UniPtr result_;
+};
+
 // Base class for all SQL test cases.
 class YbSqlTestBase : public YBTest {
  public:
@@ -90,14 +121,14 @@ class YbSqlTestBase : public YBTest {
   CHECKED_STATUS TestParser(const std::string& sql_stmt) {
     SqlProcessor *processor = GetSqlProcessor();
     ParseTree::UniPtr parse_tree;
-    return processor->Parse(sql_stmt, &parse_tree);
+    return processor->Parse(sql_stmt, &parse_tree, nullptr /* mem_tracker */);
   }
 
   // Tests parser and analyzer
   CHECKED_STATUS TestAnalyzer(SqlEnv *sql_env, const string& sql_stmt,
                               ParseTree::UniPtr *parse_tree) {
     SqlProcessor *processor = GetSqlProcessor();
-    RETURN_NOT_OK(processor->Parse(sql_stmt, parse_tree));
+    RETURN_NOT_OK(processor->Parse(sql_stmt, parse_tree, nullptr /* mem_tracker */));
     RETURN_NOT_OK(processor->Analyze(sql_stmt, parse_tree, false /* refresh_cache */));
     return Status::OK();
   }
@@ -107,7 +138,7 @@ class YbSqlTestBase : public YBTest {
   void CreateSimulatedCluster();
 
   // Create sql processor.
-  SqlProcessor *GetSqlProcessor();
+  YbSqlProcessor *GetSqlProcessor();
 
   // Create a session context for client_.
   SqlEnv *CreateSqlEnv();
@@ -125,11 +156,13 @@ class YbSqlTestBase : public YBTest {
   std::shared_ptr<client::YBClient> client_;
   std::shared_ptr<client::YBTableCache> table_cache_;
 
+  SqlSession::SharedPtr sql_session_;
+
   // Contexts to be passed to SQL engine.
   std::vector<SqlEnv::UniPtr> sql_envs_;
 
   // SQL Processor.
-  std::vector<SqlProcessor::UniPtr> sql_processors_;
+  std::vector<YbSqlProcessor::UniPtr> sql_processors_;
 };
 
 }  // namespace sql

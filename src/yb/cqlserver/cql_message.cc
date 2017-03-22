@@ -1188,14 +1188,14 @@ void VoidResultResponse::SerializeResultBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 RowsResultResponse::RowsResultResponse(
-    const QueryRequest& request, const sql::RowsResult& rows_result)
-    : ResultResponse(request, Kind::ROWS), rows_result_(rows_result),
+    const QueryRequest& request, sql::RowsResult::UniPtr result)
+    : ResultResponse(request, Kind::ROWS), result_(std::move(result)),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
 RowsResultResponse::RowsResultResponse(
-    const ExecuteRequest& request, const sql::RowsResult& rows_result)
-    : ResultResponse(request, Kind::ROWS), rows_result_(rows_result),
+    const ExecuteRequest& request, sql::RowsResult::UniPtr result)
+    : ResultResponse(request, Kind::ROWS), result_(std::move(result)),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
@@ -1204,9 +1204,9 @@ RowsResultResponse::~RowsResultResponse() {
 
 void RowsResultResponse::SerializeResultBody(faststring* mesg) {
   SerializeRowsMetadata(
-      RowsMetadata(rows_result_.table_name(), rows_result_.column_schemas(),
-                   rows_result_.paging_state(), skip_metadata_), mesg);
-  mesg->append(rows_result_.rows_data());
+      RowsMetadata(result_->table_name(), result_->column_schemas(),
+                   result_->paging_state(), skip_metadata_), mesg);
+  mesg->append(result_->rows_data());
 }
 
 //----------------------------------------------------------------------------------------
@@ -1222,13 +1222,12 @@ PreparedResultResponse::PreparedMetadata::PreparedMetadata(
 }
 
 PreparedResultResponse::PreparedResultResponse(
-    const CQLRequest& request, const QueryId& query_id,
-    const sql::PreparedResult* prepared_result)
+    const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult* result)
     : ResultResponse(request, Kind::PREPARED), query_id_(query_id),
-      prepared_metadata_(prepared_result->table_name(), prepared_result->bind_variable_schemas()),
-      rows_metadata_(prepared_result != nullptr && !prepared_result->column_schemas().empty() ?
+      prepared_metadata_(result->table_name(), result->bind_variable_schemas()),
+      rows_metadata_(result != nullptr && !result->column_schemas().empty() ?
                      RowsMetadata(
-                         prepared_result->table_name(), prepared_result->column_schemas(),
+                         result->table_name(), result->column_schemas(),
                          "" /* paging_state */, false /* no_metadata */) :
                      RowsMetadata()) {
 }
@@ -1259,8 +1258,8 @@ void PreparedResultResponse::SerializeResultBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 SetKeyspaceResultResponse::SetKeyspaceResultResponse(
-    const CQLRequest& request, const string& keyspace)
-    : ResultResponse(request, Kind::SET_KEYSPACE), keyspace_(keyspace) {
+    const CQLRequest& request, const sql::SetKeyspaceResult& result)
+    : ResultResponse(request, Kind::SET_KEYSPACE), keyspace_(result.keyspace()) {
 }
 
 SetKeyspaceResultResponse::~SetKeyspaceResultResponse() {

@@ -29,6 +29,7 @@
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/transfer.h"
+#include "yb/sql/sql_session.h"
 #include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
@@ -327,6 +328,9 @@ class CQLInboundCall : public InboundCall {
   faststring& response_msg_buf() {
     return response_msg_buf_;
   }
+
+  // Return the SQL session of this CQL call.
+  sql::SqlSession::SharedPtr GetSqlSession() const;
 
  protected:
   scoped_refptr<Connection> get_connection() override;

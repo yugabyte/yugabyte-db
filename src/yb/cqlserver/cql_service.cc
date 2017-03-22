@@ -95,6 +95,7 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
       got_processor.GetDeltaSince(start).ToMicroseconds());
 
   unique_ptr<CQLResponse> response;
+  processor->SetSqlSession(cql_call->GetSqlSession());
   processor->ProcessCall(cql_call->serialized_request(), &response);
 
   // Reply to client.
@@ -103,6 +104,7 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   DVLOG(4) << cql_call->ToString() << " responded.";
 
   // Release the processor.
+  processor->SetSqlSession(nullptr);
   processor->unused();
   MonoTime response_done = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_process_request_->Increment(

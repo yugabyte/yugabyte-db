@@ -7,7 +7,7 @@
 #ifndef YB_SQL_EXEC_EXECUTOR_H_
 #define YB_SQL_EXEC_EXECUTOR_H_
 
-#include "yb/sql/statement.h"
+#include "yb/sql/util/statement_params.h"
 #include "yb/sql/exec/exec_context.h"
 #include "yb/sql/exec/eval_expr.h"
 #include "yb/sql/ptree/pt_create_keyspace.h"
@@ -40,7 +40,8 @@ class Executor {
   CHECKED_STATUS Execute(const std::string& sql_stmt,
                          const ParseTree& ptree,
                          const StatementParameters& params,
-                         SqlEnv *sql_env);
+                         SqlEnv *sql_env,
+                         ExecuteResult::UniPtr *result);
 
   // Complete execution.
   void Done();

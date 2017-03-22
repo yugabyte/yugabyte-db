@@ -750,7 +750,7 @@ CQLConnection::CQLConnection(ReactorThread* reactor_thread,
                              Sockaddr remote,
                              int socket,
                              Direction direction)
-    : Connection(reactor_thread, remote, socket, direction) {}
+    : Connection(reactor_thread, remote, socket, direction), sql_session_(new sql::SqlSession()) {}
 
 void CQLConnection::RunNegotiation(const MonoTime& deadline) {
   Negotiation::CQLNegotiation(this, deadline);

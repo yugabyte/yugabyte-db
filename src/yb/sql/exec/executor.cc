@@ -36,7 +36,8 @@ Executor::~Executor() {
 CHECKED_STATUS Executor::Execute(const string& sql_stmt,
                                  const ParseTree& parse_tree,
                                  const StatementParameters& params,
-                                 SqlEnv *sql_env) {
+                                 SqlEnv *sql_env,
+                                 ExecuteResult::UniPtr *result) {
   // Prepare execution context.
   exec_context_ = ExecContext::UniPtr(new ExecContext(sql_stmt.c_str(),
                                                       sql_stmt.length(),
@@ -47,6 +48,11 @@ CHECKED_STATUS Executor::Execute(const string& sql_stmt,
     // Before leaving the execution step, collect all errors and place them in return status.
     VLOG(3) << "Failed to execute parse-tree <" << &parse_tree << ">";
     return exec_context_->GetStatus();
+  }
+
+  // Return result if requested.
+  if (result != nullptr) {
+    *result = exec_context_->AcquireExecuteResult();
   }
 
   VLOG(3) << "Successfully executed parse-tree <" << &parse_tree << ">";
@@ -754,6 +760,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
   } else if (params_->page_size() > 0) {
     req->set_limit(params_->page_size());
   }
+
   *req->mutable_paging_state() = params_->paging_state();
   string curr_table_id = params_->table_id();
   if (!curr_table_id.empty() && curr_table_id != table->id()) {

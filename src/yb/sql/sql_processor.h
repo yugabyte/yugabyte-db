@@ -38,13 +38,18 @@ class SqlProcessor {
   // Constructors.
   explicit SqlProcessor(
       std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache,
-      SqlMetrics* sql_metrics = nullptr);
+      SqlMetrics* sql_metrics);
   virtual ~SqlProcessor();
+
+  // Set the SQL session to use to process SQL statements.
+  void SetSqlSession(SqlSession::SharedPtr sql_session) {
+    sql_env_->set_sql_session(sql_session);
+  }
 
   // Parse a SQL statement and generate a parse tree.
   CHECKED_STATUS Parse(const string& sql_stmt,
                        ParseTree::UniPtr* parse_tree,
-                       std::shared_ptr<MemTracker> mem_tracker = nullptr);
+                       std::shared_ptr<MemTracker> mem_tracker);
 
   // Semantically analyze a parse tree.
   CHECKED_STATUS Analyze(const string& sql_stmt,
@@ -55,22 +60,13 @@ class SqlProcessor {
   CHECKED_STATUS Execute(const string& sql_stmt,
                          const ParseTree& parse_tree,
                          const StatementParameters& params,
-                         bool* new_analysis_needed);
+                         bool *new_analysis_needed,
+                         ExecuteResult::UniPtr *result);
 
   // Execute a SQL statement.
   CHECKED_STATUS Run(const std::string& sql_stmt,
-                     const StatementParameters& params = StatementParameters());
-
-  // Send the rows_result back for processing. If there's an error, the rows_result is set to
-  // nullptr.
-  const RowsResult* rows_result() const {
-    return sql_env_->rows_result();
-  }
-
-  // Construct a row_block and send it back.
-  std::shared_ptr<YQLRowBlock> row_block() const {
-    return sql_env_->row_block();
-  }
+                     const StatementParameters& params,
+                     ExecuteResult::UniPtr *result);
 
   // Claim this processor for a request.
   void used() {

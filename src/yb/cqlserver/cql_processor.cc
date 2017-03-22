@@ -46,7 +46,10 @@ using std::unique_ptr;
 using client::YBClient;
 using client::YBSession;
 using client::YBTableCache;
+using sql::ExecuteResult;
+using sql::PreparedResult;
 using sql::RowsResult;
+using sql::SetKeyspaceResult;
 using sql::SqlProcessor;
 using sql::Statement;
 
@@ -86,7 +89,8 @@ CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const strin
 
 //------------------------------------------------------------------------------------------------
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl)
-    : SqlProcessor(service_impl->client(), service_impl->table_cache()),
+    : SqlProcessor(
+          service_impl->client(), service_impl->table_cache(), service_impl->cql_metrics().get()),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()) {
 }
@@ -125,15 +129,15 @@ CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   // is already prepared so it will be an no-op (see Statement::Prepare).
   shared_ptr<CQLStatement> stmt = service_impl_->AllocatePreparedStatement(
       query_id, sql_env_->CurrentKeyspace(), req.query());
-  unique_ptr<sql::PreparedResult> prepared_result;
+  PreparedResult::UniPtr result;
   const Status s = stmt->Prepare(
-      this, MonoTime::Min() /* last_prepare_time */, false /* refresh_cache */,
-      service_impl_->prepared_stmts_mem_tracker(), &prepared_result);
+      this, Statement::kNoLastPrepareTime, false /* refresh_cache */,
+      service_impl_->prepared_stmts_mem_tracker(), &result);
   if (!s.ok()) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
 
-  return new PreparedResultResponse(req, query_id, prepared_result.get());
+  return new PreparedResultResponse(req, query_id, result.get());
 }
 
 CQLResponse *CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
@@ -144,33 +148,66 @@ CQLResponse *CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
     // the error, the client will reprepare the query and execute again.
     return new UnpreparedErrorResponse(req, req.query_id());
   }
-  Status s = stmt->Execute(this, req.params());
+  ExecuteResult::UniPtr result;
+  Status s = stmt->Execute(this, req.params(), &result);
   if (!s.ok()) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
-
-  const RowsResult* rows_result = sql_env_->rows_result();
-  if (rows_result == nullptr) {
-    return new VoidResultResponse(req);
-  }
-
-  return new RowsResultResponse(req, *rows_result);
+  return ReturnResult(req, std::move(result));
 }
 
 CQLResponse *CQLProcessor::ProcessQuery(const QueryRequest& req) {
-  VLOG(1) << "RUN " << req.query();
-  Status s = Run(req.query(), req.params());
+  VLOG(1) << "QUERY " << req.query();
+  ExecuteResult::UniPtr result;
+  Status s = Run(req.query(), req.params(), &result);
   if (!s.ok()) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
+  return ReturnResult(req, move(result));
+}
 
-  const RowsResult* rows_result = sql_env_->rows_result();
-  if (rows_result == nullptr) {
+CQLResponse *CQLProcessor::ReturnResult(const CQLRequest& req, ExecuteResult::UniPtr result) {
+  if (result == nullptr) {
     return new VoidResultResponse(req);
   }
+  switch (result->type()) {
+    case ExecuteResult::Type::SET_KEYSPACE: {
+      const SetKeyspaceResult *set_keyspace_result =
+          static_cast<const SetKeyspaceResult*>(result.get());
+      return new SetKeyspaceResultResponse(req, *set_keyspace_result);
+    }
+    case ExecuteResult::Type::ROWS:
+      RowsResult::UniPtr rows_result(static_cast<RowsResult*>(result.release()));
+      cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
+      switch (req.opcode()) {
+        case CQLMessage::Opcode::EXECUTE:
+          return new RowsResultResponse(static_cast<const ExecuteRequest&>(req), move(rows_result));
+        case CQLMessage::Opcode::QUERY:
+          return new RowsResultResponse(static_cast<const QueryRequest&>(req), move(rows_result));
+        case CQLMessage::Opcode::ERROR:   FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::STARTUP: FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::READY:   FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::AUTHENTICATE: FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::OPTIONS:   FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::SUPPORTED: FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::RESULT:    FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::PREPARE:   FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::REGISTER:  FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::EVENT:     FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::BATCH:     FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::AUTH_CHALLENGE: FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::AUTH_RESPONSE:  FALLTHROUGH_INTENDED;
+        case CQLMessage::Opcode::AUTH_SUCCESS:
+          break;
+        // default: fall through
+      }
+      LOG(FATAL) << "Internal error: not a request that returns result "
+                 << static_cast<int>(req.opcode());
+      break;
 
-  cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
-  return new RowsResultResponse(req, *rows_result);
+    // default: fall through
+  }
+  LOG(FATAL) << "Internal error: unknown result type " << static_cast<int>(result->type());
 }
 
 }  // namespace cqlserver

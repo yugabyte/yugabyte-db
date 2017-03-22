@@ -15,13 +15,11 @@
 #include <unordered_map>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/sql/statement.h"
-#include "yb/sql/util/stmt_result.h"
+#include "yb/sql/util/statement_params.h"
+#include "yb/sql/util/statement_result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/gutil/strings/split.h"
-#include "yb/util/pb_util.h"
 
 namespace yb {
 namespace cqlserver {
@@ -712,22 +710,22 @@ class VoidResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class RowsResultResponse : public ResultResponse {
  public:
-  RowsResultResponse(const QueryRequest& request, const sql::RowsResult& rows_result);
-  RowsResultResponse(const ExecuteRequest& request, const sql::RowsResult& rows_result);
+  RowsResultResponse(const QueryRequest& request, sql::RowsResult::UniPtr result);
+  RowsResultResponse(const ExecuteRequest& request, sql::RowsResult::UniPtr result);
   virtual ~RowsResultResponse() override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
 
  private:
-  const sql::RowsResult& rows_result_;
+  const sql::RowsResult::UniPtr result_;
   const bool skip_metadata_;
 };
 
 //------------------------------------------------------------
 class SetKeyspaceResultResponse : public ResultResponse {
  public:
-  SetKeyspaceResultResponse(const CQLRequest& request, const std::string& keyspace);
+  SetKeyspaceResultResponse(const CQLRequest& request, const sql::SetKeyspaceResult& result);
   virtual ~SetKeyspaceResultResponse() override;
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
@@ -739,8 +737,7 @@ class SetKeyspaceResultResponse : public ResultResponse {
 class PreparedResultResponse : public ResultResponse {
  public:
   PreparedResultResponse(
-      const CQLRequest& request, const QueryId& query_id,
-      const sql::PreparedResult* prepared_result);
+      const CQLRequest& request, const QueryId& query_id, const sql::PreparedResult* result);
   virtual ~PreparedResultResponse() override;
 
  protected:

@@ -46,7 +46,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string table1 = "human_resource1(id int, name varchar, primary key(id));";
   const string table2 = "human_resource2(id int primary key, name varchar);";
@@ -138,7 +138,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableWithTTL) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   // Create the table 1.
   const string table1 = "human_resource100(id int, name varchar, PRIMARY KEY(id));";
@@ -167,7 +167,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableWithClusteringOrderBy) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string table1 = "human_resource1(id int, first_name varchar, last_name varchar, "
       "primary key(id, first_name, last_name)) WITH CLUSTERING ORDER BY(first_name ASC);";

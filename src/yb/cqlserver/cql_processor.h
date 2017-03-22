@@ -73,6 +73,8 @@ class CQLProcessor : public sql::SqlProcessor {
   CQLResponse *ProcessQuery(const QueryRequest& req);
 
  private:
+  CQLResponse *ReturnResult(const CQLRequest& req, sql::ExecuteResult::UniPtr result);
+
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* const service_impl_;
 

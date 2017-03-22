@@ -4,7 +4,7 @@
 // Different results of processing a statement.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/util/stmt_result.h"
+#include "yb/sql/util/statement_result.h"
 
 #include "yb/client/client.h"
 #include "yb/client/schema-internal.h"
@@ -81,28 +81,37 @@ PreparedResult::PreparedResult(const PTDmlStmt *stmt)
                       vector<ColumnSchema>()) {
 }
 
+PreparedResult::~PreparedResult() {
+}
+
 //------------------------------------------------------------------------------------------------
-RowsResult::RowsResult(YBqlReadOp* op)
+RowsResult::RowsResult(YBqlReadOp *op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromReadOp(*op)),
       rows_data_(op->rows_data()),
       client_(op->request().client()) {
+  // If there is a paging state in the response, fill in the table ID also and serialize the
+  // paging state as bytes.
   if (op->response().has_paging_state()) {
-    YQLPagingStatePB paging_state_pb = op->response().paging_state();
+    YQLPagingStatePB *paging_state_pb = op->mutable_response()->mutable_paging_state();
+    paging_state_pb->set_table_id(op->table()->id());
     faststring paging_state_str;
-    CHECK(pb_util::SerializeToString(paging_state_pb, &paging_state_str));
+    CHECK(pb_util::SerializeToString(*paging_state_pb, &paging_state_str));
     paging_state_ = paging_state_str.ToString();
   }
 }
 
-RowsResult::RowsResult(YBqlWriteOp* op)
+RowsResult::RowsResult(YBqlWriteOp *op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromWriteOp(*op)),
       rows_data_(op->rows_data()),
       client_(op->request().client()) {
 }
 
-YQLRowBlock* RowsResult::GetRowBlock() const {
+RowsResult::~RowsResult() {
+}
+
+YQLRowBlock *RowsResult::GetRowBlock() const {
   Schema schema(column_schemas_, 0);
   unique_ptr<YQLRowBlock> rowblock(new YQLRowBlock(schema));
   Slice data(rows_data_);

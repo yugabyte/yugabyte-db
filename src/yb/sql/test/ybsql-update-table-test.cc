@@ -28,7 +28,7 @@ TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   // -----------------------------------------------------------------------------------------------
   // Create the table.

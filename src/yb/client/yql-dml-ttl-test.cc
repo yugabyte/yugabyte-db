@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/client/yql-dml-base.h"
-#include "yb/sql/util/stmt_result.h"
+#include "yb/sql/util/statement_result.h"
 
 namespace yb {
 namespace client {

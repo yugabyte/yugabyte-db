@@ -29,7 +29,7 @@ TEST_F(YbSqlDropTable, TestSqlDropTable) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string create_stmt = "CREATE TABLE human_resource1(id int primary key, name varchar);";
   const string drop_stmt = "DROP TABLE human_resource1";
@@ -66,7 +66,7 @@ TEST_F(YbSqlDropTable, TestSqlDropKeyspace) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   vector<string> objects = {"KEYSPACE", "SCHEMA"};
   for (const auto& object : objects) {
@@ -107,7 +107,7 @@ TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   vector<string> objects = {
       "TYPE",
@@ -158,7 +158,7 @@ TEST_F(YbSqlDropTable, TestSqlDropStmtAnalyzer) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   string expected_drop_error = CqlError(strlen("DROP TABLE "),
                                         " - Only one object name is allowed in a drop statement");

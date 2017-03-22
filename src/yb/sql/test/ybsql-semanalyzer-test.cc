@@ -63,7 +63,7 @@ TEST_F(YbSqlTestAnalyzer, TestWhereClauseAnalyzer) {
   CreateSimulatedCluster();
   SqlProcessor *processor = GetSqlProcessor();
   CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 varchar, c1 varchar, "
-                          "PRIMARY KEY ((h1), r1));"));
+                          "PRIMARY KEY ((h1), r1));", StatementParameters(), nullptr /* result */));
 
   SqlEnv *sql_env = CreateSqlEnv();
 
@@ -72,14 +72,14 @@ TEST_F(YbSqlTestAnalyzer, TestWhereClauseAnalyzer) {
   ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = 1 AND r1 = 2 OR r2 = 3", &parse_tree);
   ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = 1 AND NOT r1 = 2", &parse_tree);
 
-  CHECK_OK(processor->Run("DROP TABLE t;"));
+  CHECK_OK(processor->Run("DROP TABLE t;", StatementParameters(), nullptr /* result */));
 }
 
 TEST_F(YbSqlTestAnalyzer, TestBindVariableAnalyzer) {
   CreateSimulatedCluster();
   SqlProcessor *processor = GetSqlProcessor();
   CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 varchar, c1 varchar, "
-                          "PRIMARY KEY ((h1), r1));"));
+                          "PRIMARY KEY ((h1), r1));", StatementParameters(), nullptr /* result */));
 
   SqlEnv *sql_env = CreateSqlEnv();
 
@@ -97,7 +97,7 @@ TEST_F(YbSqlTestAnalyzer, TestBindVariableAnalyzer) {
   ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = (- ?)", &parse_tree);
   ANALYZE_INVALID_STMT(sql_env, "SELECT * FROM t WHERE h1 = (- :1)", &parse_tree);
 
-  CHECK_OK(processor->Run("DROP TABLE t;"));
+  CHECK_OK(processor->Run("DROP TABLE t;", StatementParameters(), nullptr /* result */));
 }
 
 }  // namespace sql

@@ -11,7 +11,8 @@
 #define YB_SQL_UTIL_SQL_ENV_H_
 
 #include "yb/client/client.h"
-#include "yb/sql/util/stmt_result.h"
+
+#include "yb/sql/sql_session.h"
 
 namespace yb {
 namespace sql {
@@ -28,6 +29,11 @@ class SqlEnv {
   // Constructor & desructor.
   SqlEnv(std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache);
 
+  // Set the SQL session to use in this SQL environment.
+  virtual void set_sql_session(SqlSession::SharedPtr sql_session) {
+    sql_session_ = sql_session;
+  }
+
   virtual client::YBTableCreator *NewTableCreator();
 
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
@@ -36,15 +42,10 @@ class SqlEnv {
 
   virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op);
 
+
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
                                                         bool refresh_cache,
-                                                        bool* cache_used);
-
-  // Access function for rows_result. If the statement executed is a regular DML or there's an
-  // error in execution, rows_result would be null.
-  const RowsResult* rows_result() const {
-    return rows_result_.get();
-  }
+                                                        bool *cache_used);
 
   // Keyspace related methods.
 
@@ -61,34 +62,16 @@ class SqlEnv {
   // Use keyspace with the given name.
   virtual CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
 
-  virtual const std::string& CurrentKeyspace() const {
-      return current_keyspace_;
+  virtual std::string CurrentKeyspace() const {
+    CHECK(sql_session_ != nullptr) << "SQL session is not set";
+    return sql_session_->current_keyspace();
   }
-
-  // Construct a row_block and send it back.
-  std::shared_ptr<YQLRowBlock> row_block() const {
-    if (rows_result_ == nullptr) {
-      // There isn't any query result.
-      return nullptr;
-    }
-    return std::shared_ptr<YQLRowBlock>(rows_result_->GetRowBlock());
-  }
-
-  // Clears the paging state from the row block.
-  void clear_paging_state() {
-    if (rows_result_ != nullptr) {
-      rows_result_->clear_paging_state();
-    }
-  }
-
-  // Reset all env states or variables before executing the next statement.
-  void Reset();
 
  private:
   // Process YBOperation status.
   CHECKED_STATUS ProcessOpStatus(const client::YBOperation* op,
-                                 const Status s,
-                                 client::YBSession* session) const;
+                                 const Status& s,
+                                 client::YBSession *session) const;
 
   // Persistent attributes.
 
@@ -104,15 +87,10 @@ class SqlEnv {
   // A specific session (within YBClient) to execute a statement.
   std::shared_ptr<client::YBSession> read_session_;
 
-  // The following attributes are reset implicitly for every execution.
+  // Transient attributes.
 
-  // Rows resulted from executing the last statement.
-  std::shared_ptr<RowsResult> rows_result_;
-
-  // TODO(Oleg): The following attribute must be moved to CQL layer.
-  //             However, CQL is not ready yet, so we leave it here as a workaround.
-
-  std::string current_keyspace_;
+  // SQL session that this SQL environment is using currently.
+  SqlSession::SharedPtr sql_session_;
 };
 
 }  // namespace sql
