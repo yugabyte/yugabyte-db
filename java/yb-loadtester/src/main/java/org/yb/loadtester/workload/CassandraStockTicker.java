@@ -115,9 +115,10 @@ public class CassandraStockTicker extends Workload {
                          "  ticker_id varchar" +
                          ", ts timestamp" +
                          ", value varchar" +
-                         ", primary key ((ticker_id), ts))";
+                         ", primary key ((ticker_id), ts))" +
+                         " WITH CLUSTERING ORDER BY (ts DESC)";
     if (workloadConfig.tableTTLSeconds > 0) {
-      create_stmt += " WITH default_time_to_live = " + workloadConfig.tableTTLSeconds;
+      create_stmt += " AND default_time_to_live = " + workloadConfig.tableTTLSeconds;
     }
     create_stmt += ";";
     try {
@@ -132,9 +133,10 @@ public class CassandraStockTicker extends Workload {
                   "  ticker_id varchar" +
                   ", ts timestamp" +
                   ", value varchar" +
-                  ", primary key ((ticker_id), ts))";
+                  ", primary key ((ticker_id), ts))" +
+                  " WITH CLUSTERING ORDER BY (ts DESC)";
     if (workloadConfig.tableTTLSeconds > 0) {
-    create_stmt += " WITH default_time_to_live = " + (10 * workloadConfig.tableTTLSeconds);
+    create_stmt += " AND default_time_to_live = " + (10 * workloadConfig.tableTTLSeconds);
     }
     create_stmt += ";";
     try {
@@ -144,7 +146,6 @@ public class CassandraStockTicker extends Workload {
     }
     LOG.info("Created a Cassandra table " + tickerTableMin +
              " using query: [" + create_stmt + "]");
-
   }
 
   @Override
@@ -158,9 +159,8 @@ public class CassandraStockTicker extends Workload {
     long startTs = dataSource.getStartTs();
     long endTs = dataSource.getEndTs();
     String select_stmt =
-        String.format("SELECT * from %s WHERE ticker_id='%s'" +
-                      " AND ts>%d AND ts<%d;",
-                      tickerTableRaw, dataSource.getTickerId(), startTs, endTs);
+        String.format("SELECT * from %s WHERE ticker_id='%s' LIMIT 1",
+                      tickerTableRaw, dataSource.getTickerId());
     ResultSet rs = getCassandraClient().execute(select_stmt);
     List<Row> rows = rs.all();
     num_rows_read.addAndGet(rows.size());
