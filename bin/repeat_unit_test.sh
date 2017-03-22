@@ -155,14 +155,17 @@ gtest_filter_arg=""
 if [[ $num_pos_args -eq 2 ]]; then
   test_filter=${positional_args[1]}
   gtest_filter_info="gtest_filter is $test_filter (from the command line)"
-elif [[ -n {$YB_GTEST_FILTER:-} ]]; then
+elif [[ -n ${YB_GTEST_FILTER:-} ]]; then
   test_filter=$YB_GTEST_FILTER
   gtest_filter_info="gtest_filter is $test_filter (from the YB_GTEST_FILTER env var)"
 else
   test_filter="all_tests"
   gtest_filter_info="gtest_filter is not set, running all tests in the test program"
 fi
-gtest_filter_arg="--gtest_filter=$test_filter"
+
+if [[ $test_filter != "all_tests" ]]; then
+  gtest_filter_arg="--gtest_filter=$test_filter"
+fi
 
 abs_test_binary_path=$( find_test_binary "$test_binary_name" )
 rel_test_binary=${abs_test_binary_path#$BUILD_ROOT}

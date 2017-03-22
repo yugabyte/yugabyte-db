@@ -1047,26 +1047,34 @@ did_test_succeed() {
 
 find_test_binary() {
   expect_num_args 1 "$@"
-  local binary_name=$1
+  local test_target_name=$1
+  local binary_name=$test_target_name
   if [[ $binary_name == "client_samples-test" ]]; then
     binary_name+=".sh"
   fi
   expect_vars_to_be_set BUILD_ROOT
   local dirs_tried=""
   local rel_dir
+  local candidates_tried=""
   for rel_dir in "${VALID_TEST_BINARY_DIRS[@]}"; do
     local binary_dir=$BUILD_ROOT/$rel_dir
-    local candidate=$binary_dir/$binary_name
+    local candidate=$binary_dir/
+
+    if [[ $rel_dir == "rocksdb-build" ]]; then
+      candidate+=${test_target_name#rocksdb_}
+    else
+      candidate+=$binary_name
+    fi
     if [[ -f "$candidate" ]]; then
       echo "$candidate"
       return
     fi
-    if [[ -n $dirs_tried ]]; then
-      dirs_tried+=", "
+    if [[ -n $candidates_tried ]]; then
+      candidates_tried+=", "
     fi
-    dirs_tried+="$binary_dir"
+    candidates_tried+=$candidate
   done
-  fatal "Could not find binary $binary_name in any of the directories: $dirs_tried"
+  fatal "Could not find binary for test target $test_target_name: $candidates_tried"
 }
 
 show_disk_usage() {
