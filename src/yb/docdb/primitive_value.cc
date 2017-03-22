@@ -508,7 +508,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
 // This is used to initialize kNull, kTrue, kFalse constants.
 PrimitiveValue::PrimitiveValue(ValueType value_type)
     : type_(value_type) {
-  if (value_type == ValueType::kString) {
+  if (value_type == ValueType::kString || value_type == ValueType::kStringDescending) {
     new(&str_val_) std::string();
   }
 }

@@ -50,7 +50,7 @@ class PrimitiveValue {
   explicit PrimitiveValue(ValueType value_type);
 
   PrimitiveValue(const PrimitiveValue& other) {
-    if (other.type_ == ValueType::kString) {
+    if (other.type_ == ValueType::kString || other.type_ == ValueType::kStringDescending) {
       type_ = other.type_;
       new(&str_val_) std::string(other.str_val_);
     } else {
@@ -147,7 +147,7 @@ class PrimitiveValue {
   std::string ToString() const;
 
   ~PrimitiveValue() {
-    if (type_ == ValueType::kString) {
+    if (type_ == ValueType::kString || type_ == ValueType::kStringDescending) {
       str_val_.~basic_string();
     }
     // HybridTime does not need its destructor to be called, because it is a simple wrapper over an
@@ -188,7 +188,7 @@ class PrimitiveValue {
   // This returns a YB slice, not a RocksDB slice, based on what was needed when this function was
   // implemented. This distinction should go away if we merge RocksDB and YB Slice classes.
   Slice GetStringAsSlice() const {
-    DCHECK_EQ(ValueType::kString, type_);
+    DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
     return Slice(str_val_);
   }
 
@@ -260,7 +260,7 @@ class PrimitiveValue {
       return;
     }
 
-    if (other->type_ == ValueType::kString) {
+    if (other->type_ == ValueType::kString || other->type_ == ValueType::kStringDescending) {
       type_ = other->type_;
       new(&str_val_) std::string(std::move(other->str_val_));
       // The moved-from object should now be in a "valid but unspecified" state as per the standard.
