@@ -89,7 +89,11 @@ public class BaseYBTest {
     masterHostPorts = miniCluster.getMasterHostPorts();
 
     LOG.info("Creating new YB client...");
-    client = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses).build();
+    client = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
+      .defaultAdminOperationTimeoutMs(DEFAULT_SLEEP)
+      .defaultOperationTimeoutMs(DEFAULT_SLEEP)
+      .defaultSocketReadTimeoutMs(DEFAULT_SLEEP)
+      .build();
     syncClient = new YBClient(client);
     LOG.info("Waiting for tablet servers...");
     if (!miniCluster.waitForTabletServers(NUM_TABLET_SERVERS)) {
