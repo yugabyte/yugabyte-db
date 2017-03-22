@@ -58,12 +58,12 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
       if (taskParams().taskType == UpgradeTaskType.Software) {
 
-        if (taskParams().ybServerPackage.equals(universe.getUniverseDetails().userIntent.ybServerPackage)) {
-          throw new RuntimeException("Cluster is already on ybServerPackage: " + taskParams().ybServerPackage);
+        if (taskParams().ybSofwareVersion.equals(universe.getUniverseDetails().userIntent.ybSofwareVersion)) {
+          throw new RuntimeException("Cluster is already on yugabyte software version: " + taskParams().ybSofwareVersion);
         }
 
         LOG.info("Upgrading software version to {} for {} nodes in universe {}",
-                 taskParams().ybServerPackage, taskParams().nodeNames.size(), universe.name);
+                 taskParams().ybSofwareVersion, taskParams().nodeNames.size(), universe.name);
       } else if (taskParams().taskType == UpgradeTaskType.GFlags) {
         LOG.info("Updating gflags: {} for {} nodes in universe {}",
                  taskParams().getGFlagsAsMap(), taskParams().nodeNames.size(), universe.name);
@@ -153,7 +153,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     params.setProperty("taskSubType", taskSubType.toString());
 
     if (type == UpgradeTaskType.Software) {
-      params.ybServerPackage = taskParams().ybServerPackage;
+      params.ybSofwareVersion = taskParams().ybSofwareVersion;
     } else if (type == UpgradeTaskType.GFlags) {
       params.gflags = taskParams().getGFlagsAsMap();
     }

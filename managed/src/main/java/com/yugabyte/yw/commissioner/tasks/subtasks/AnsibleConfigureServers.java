@@ -17,7 +17,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     public UpgradeUniverse.UpgradeTaskType type = UpgradeUniverse.UpgradeTaskType.Everything;
-    public String ybServerPackage;
+    public String ybSofwareVersion;
 
     // Optional params
     public boolean isMasterInShellMode = false;

@@ -14,7 +14,7 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
   fetchUniverseInfoFailure } from 'actions/universe';
 import { isDefinedNotNull, isValidArray } from 'utils/ObjectUtils';
-import { SOFTWARE_PACKAGE } from 'config';
+import { SOFTWARE_VERSION } from 'config';
 
 //For any field errors upon submission (i.e. not instant check)
 
@@ -134,13 +134,13 @@ const mapDispatchToProps = (dispatch) => {
 }
 
 const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
-  'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage', 'azSelectorFields'];
+  'numNodes', 'isMultiAZ', 'instanceType', 'ybSofwareVersion', 'azSelectorFields'];
 
 function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
     "universeName": "",
-    "ybServerPackage": SOFTWARE_PACKAGE,
+    "ybSofwareVersion": SOFTWARE_VERSION,
     "numNodes": 3,
     "isMultiAZ": true,
     "instanceType": "m3.medium",
@@ -154,7 +154,7 @@ function mapStateToProps(state, ownProps) {
     data.numNodes = currentUniverse.universeDetails.userIntent.numNodes;
     data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
     data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
-    data.ybServerPackage = currentUniverse.universeDetails.userIntent.ybServerPackage;
+    data.ybSofwareVersion = currentUniverse.universeDetails.userIntent.ybSofwareVersion;
     if (isDefinedNotNull(currentUniverse.universeDetails)  && currentUniverse.universeDetails.userIntent.isMultiAZ) {
       data.regionList = currentUniverse.regions.map(function (item, idx) {
         return {value: item.uuid, name: item.name, label: item.name};
@@ -177,7 +177,7 @@ function mapStateToProps(state, ownProps) {
     initialValues: data,
     formValues: selector(state,
       'formType', 'universeName', 'provider', 'providerType', 'regionList',
-      'numNodes', 'isMultiAZ', 'instanceType', 'ybServerPackage')
+      'numNodes', 'isMultiAZ', 'instanceType', 'ybSofwareVersion')
   };
 }
 

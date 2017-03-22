@@ -18,7 +18,7 @@ export default class ConnectStringPanel extends Component {
       </a>;
     var connectStringPanelItems = [
       {name: "Meta Masters", data: endpoint},
-      {name: "Server Package", data: userIntent.ybServerPackage},
+      {name: "Server Version", data: userIntent.ybSofwareVersion},
     ];
     return (
       <DescriptionList listItems={connectStringPanelItems} />

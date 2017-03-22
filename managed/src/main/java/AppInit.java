@@ -9,6 +9,7 @@ import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 
@@ -27,7 +28,8 @@ import play.libs.Yaml;
 public class AppInit {
 
   @Inject
-  public AppInit(Environment environment, Application application, ConfigHelper configHelper) {
+  public AppInit(Environment environment, Application application,
+                 ConfigHelper configHelper, ReleaseManager releaseManager) {
     Logger.info("Yugaware Application has started");
 
     Configuration appConfig = application.configuration();
@@ -61,10 +63,11 @@ public class AppInit {
         application.classloader()
       );
       MetricConfig.loadConfig(configs);
-
+      
       // Enter all the configuration data. This is the first thing that should be done as the other
       // init steps may depend on this data.
       configHelper.loadConfigsToDB(application);
+      releaseManager.loadReleasesToDB();
     }
   }
 }

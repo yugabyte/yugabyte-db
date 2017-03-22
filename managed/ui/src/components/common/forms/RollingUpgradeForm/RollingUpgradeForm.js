@@ -5,7 +5,7 @@ import {Field, FieldArray } from 'redux-form';
 import {Row, Col} from 'react-bootstrap';
 
 import { YBButton, YBModal, YBInputField, YBCheckBox } from '../fields';
-import {SOFTWARE_PACKAGE} from '../../../../config';
+import { SOFTWARE_VERSION } from '../../../../config';
 import {isValidObject, isValidArray} from '../../../../utils/ObjectUtils';
 
 class FlagInput extends Component {
@@ -81,7 +81,7 @@ export default class RollingUpgradeForm extends Component {
     } else {
       return;
     }
-    payload.ybServerPackage = values.ybServerPackage;
+    payload.ybSofwareVersion = values.ybSofwareVersion;
     payload.nodeNames = nodeNames;
     payload.universeUUID = universeUUID;
     if (isValidArray(values.gflags)) {
@@ -106,7 +106,7 @@ export default class RollingUpgradeForm extends Component {
                    <Col lg={12} className="form-section-title">
                      Software Package Version
                    </Col>
-                   <Field name="ybServerPackage" component={YBInputField} defaultValue={SOFTWARE_PACKAGE}/>
+                   <Field name="ybSofwareVersion" component={YBInputField} defaultValue={SOFTWARE_VERSION}/>
                  </span>
     } else {
       title = "GFlags";
