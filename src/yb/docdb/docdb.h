@@ -62,8 +62,8 @@ namespace yb {
 namespace docdb {
 
 enum class InitMarkerBehavior {
-  kAlwaysUse = 0,
-  kNeverUse = 1
+  kRequired = 0,
+  kOptional = 1
 };
 
 // The DocWriteBatch class is used to build a RocksDB write batch for a DocDB batch of operations
@@ -79,17 +79,28 @@ class DocWriteBatch {
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
       const DocPath& doc_path, const Value& value, HybridTime hybrid_time = HybridTime::kMax,
-      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse);
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
 
   CHECKED_STATUS SetPrimitive(const DocPath& doc_path,
                               const PrimitiveValue& value,
                               HybridTime hybrid_time = HybridTime::kMax,
-                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse) {
+                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired) {
     return SetPrimitive(doc_path, Value(value), hybrid_time, use_init_marker);
   }
 
+  // Insert the SubDocument in the given key. If existing subkeys need to be removed,
+  // The caller must put a tombstone first (Using SetPrimitive possibly).
+  // TODO(akashnil): 03/20/17 ENG-1107
+  // In each SetPrimitive call, some common work is repeated. It may be made more
+  // efficient by not calling SetPrimitive internally.
+  CHECKED_STATUS InsertSubDocument(
+      const DocPath& doc_path,
+      const SubDocument& value,
+      HybridTime hybrid_time = HybridTime::kMax,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+
   CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, HybridTime hybrid_time = HybridTime::kMax,
-                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse);
+                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
 
   std::string ToDebugString();
   void Clear();
@@ -209,8 +220,11 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
     HybridTime scan_ts = HybridTime::kMax);
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
+// This function works with or without object init markers present.
+// If tombstone and other values are inserted at the same timestamp, it results in undefined
+// behavior. TODO: We should have write-id's to make sure timestamps are always unique.
 yb::Status GetSubDocument(rocksdb::DB *rocksdb,
-    const KeyBytes &subdocument_key,
+    const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
     HybridTime scan_ts = HybridTime::kMax);

@@ -86,8 +86,16 @@ void InMemDocDbState::SetDocument(const KeyBytes& encoded_doc_key, SubDocument&&
   root_.SetChild(PrimitiveValue(encoded_doc_key.AsStringRef()), std::move(doc));
 }
 
-const SubDocument* InMemDocDbState::GetDocument(const KeyBytes& encoded_doc_key) const {
-  return root_.GetChild(PrimitiveValue(encoded_doc_key.AsStringRef()));
+const SubDocument* InMemDocDbState::GetSubDocument(const SubDocKey& subdoc_key) const {
+  const SubDocument* current =
+      root_.GetChild(PrimitiveValue(subdoc_key.doc_key().Encode().AsStringRef()));
+  for (const auto& subkey : subdoc_key.subkeys()) {
+    if (current == nullptr) {
+      return nullptr;
+    }
+    current = current->GetChild(subkey);
+  }
+  return current;
 }
 
 void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
@@ -107,6 +115,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
     CHECK_EQ(0, subdoc_key.num_subkeys())
         << "Expected to be positioned at the first key of a new document with no subkeys, "
         << "but found " << subdoc_key.num_subkeys() << " subkeys: " << subdoc_key.ToString();
+    subdoc_key.remove_hybrid_time();
 
     bool doc_found = false;
     SubDocument subdoc;
@@ -114,7 +123,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
     //       to extract document key out of a subdocument key.
     auto encoded_doc_key = subdoc_key.doc_key().Encode();
     const Status get_doc_status =
-        yb::docdb::GetSubDocument(rocksdb, encoded_doc_key, &subdoc, &doc_found, hybrid_time);
+        yb::docdb::GetSubDocument(rocksdb, subdoc_key, &subdoc, &doc_found, hybrid_time);
     if (!get_doc_status.ok()) {
       // This will help with debugging the GetSubDocument failure.
       LOG(WARNING) << "DocDB state:\n" << DocDBDebugDumpToStr(rocksdb, /* include_binary = */ true);
@@ -124,8 +133,6 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
     if (doc_found) {
       SetDocument(encoded_doc_key, std::move(subdoc));
     }
-
-
     // Go to the next top-level document key.
     ROCKSDB_SEEK(rocksdb_iter.get(), subdoc_key.AdvanceOutOfSubDoc().AsSlice());
 
@@ -172,7 +179,7 @@ bool InMemDocDbState::EqualsAndLogDiff(const InMemDocDbState &expected, bool log
       const SubDocument& expected_doc = expected_kv.second;
       DocKey doc_key;
       CHECK_OK(doc_key.FullyDecodeFrom(encoded_doc_key.AsSlice()));
-      const SubDocument* child_from_this = GetDocument(encoded_doc_key);
+      const SubDocument* child_from_this = GetDocument(doc_key);
       if (child_from_this == nullptr) {
         if (log_diff) {
           LOG(WARNING) << "Document with key " << doc_key.ToString() << " is missing but is "
@@ -196,7 +203,9 @@ bool InMemDocDbState::EqualsAndLogDiff(const InMemDocDbState &expected, bool log
   if (root_.has_valid_object_container()) {
     for (const auto& actual_kv : root_.object_container()) {
       const KeyBytes encoded_doc_key(actual_kv.first.GetString());
-      const SubDocument* child_from_expected = GetDocument(encoded_doc_key);
+      DocKey doc_key;
+      CHECK_OK(doc_key.FullyDecodeFrom(encoded_doc_key.AsSlice()));
+      const SubDocument* child_from_expected = GetDocument(doc_key);
       if (child_from_expected == nullptr) {
         DocKey doc_key;
         CHECK_OK(doc_key.FullyDecodeFrom(encoded_doc_key.AsSlice()));

@@ -132,15 +132,21 @@ class DocDBRocksDBFixture {
                     const Value& value,
                     HybridTime hybrid_time,
                     DocWriteBatch* doc_write_batch = nullptr,
-                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse);
+                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
 
   void SetPrimitive(const DocPath& doc_path,
                     const PrimitiveValue& value,
                     HybridTime hybrid_time,
                     DocWriteBatch* doc_write_batch = nullptr,
-                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kAlwaysUse) {
+                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired) {
     SetPrimitive(doc_path, Value(value), hybrid_time, doc_write_batch, use_init_marker);
   }
+
+  void InsertSubDocument(
+      const DocPath& doc_path,
+      const SubDocument& value,
+      HybridTime hybrid_time,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
 
   void DocDBDebugDumpToConsole();
 

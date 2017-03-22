@@ -137,6 +137,7 @@ pair<SubDocument*, bool> SubDocument::GetOrAddChild(const PrimitiveValue& key) {
 }
 
 void SubDocument::SetChild(const PrimitiveValue& key, SubDocument&& value) {
+  type_ = ValueType::kObject;
   EnsureContainerAllocated();
   auto& obj_container = object_container();
   auto existing_element = obj_container.find(key);

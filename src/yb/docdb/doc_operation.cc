@@ -25,7 +25,7 @@ DocPath KuduWriteOperation::DocPathToLock() const {
 Status KuduWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
   return doc_write_batch->SetPrimitive(doc_path_, value_, HybridTime::kMax,
-                                       InitMarkerBehavior::kNeverUse);
+                                       InitMarkerBehavior::kOptional);
 }
 
 DocPath RedisWriteOperation::DocPathToLock() const {
@@ -41,15 +41,14 @@ Status GetRedisValue(
   if (!key_value_pb.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
-  KeyBytes doc_key = DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()).Encode();
+  SubDocKey doc_key(DocKey::FromRedisKey(key_value_pb.hash_code(), key_value_pb.key()));
 
   if (!key_value_pb.subkey().empty()) {
     if (key_value_pb.subkey().size() != 1) {
       return STATUS_SUBSTITUTE(Corruption,
           "Expected at most one subkey, got $0", key_value_pb.subkey().size());
     }
-    doc_key.AppendValueType(ValueType::kString);
-    doc_key.AppendString(key_value_pb.subkey(0));
+    doc_key.AppendSubKeysAndMaybeHybridTime(PrimitiveValue(key_value_pb.subkey(0)));
   }
 
   SubDocument doc;
@@ -564,7 +563,7 @@ Status YQLWriteOperation::Apply(
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
           const auto value = Value(PrimitiveValue(), ttl);
           RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value, HybridTime::kMax,
-                                                      InitMarkerBehavior::kNeverUse));
+                                                      InitMarkerBehavior::kOptional));
         }
         if (request_.column_values_size() > 0) {
           for (const auto& column_value : request_.column_values()) {
@@ -577,7 +576,7 @@ Status YQLWriteOperation::Apply(
             const auto value = Value(PrimitiveValue::FromYQLValuePB(
                 data_type, column_value.value(), column.sorting_type()), ttl);
             RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value, HybridTime::kMax,
-                                                        InitMarkerBehavior::kNeverUse));
+                                                        InitMarkerBehavior::kOptional));
           }
         }
         break;
@@ -592,11 +591,11 @@ Status YQLWriteOperation::Apply(
             const DocPath sub_path(doc_key_.Encode(),
                                    PrimitiveValue(ColumnId(column_value.column_id())));
             RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, HybridTime::kMax,
-                                                        InitMarkerBehavior::kNeverUse));
+                                                        InitMarkerBehavior::kOptional));
           }
         } else {
           RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_, HybridTime::kMax,
-                                                      InitMarkerBehavior::kNeverUse));
+                                                      InitMarkerBehavior::kOptional));
         }
         break;
       }

@@ -185,6 +185,11 @@ class SubDocKey {
     AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
+  // Return the subkeys within this SubDocKey
+  const std::vector<PrimitiveValue>& subkeys() const {
+    return subkeys_;
+  }
+
   // Append a sequence of sub-keys to this key. We require that the hybrid_time is not set, because
   // we append it last.
   template<class ...T>
@@ -212,6 +217,10 @@ class SubDocKey {
   void RemoveLastSubKey() {
     DCHECK(!subkeys_.empty());
     subkeys_.pop_back();
+  }
+
+  void remove_hybrid_time() {
+    hybrid_time_ = HybridTime::kInvalidHybridTime;
   }
 
   void Clear();

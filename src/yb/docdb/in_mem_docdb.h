@@ -23,7 +23,10 @@ class InMemDocDbState {
   CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path);
 
   void SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc);
-  const SubDocument* GetDocument(const KeyBytes& encoded_doc_key) const;
+  const SubDocument* GetSubDocument(const SubDocKey &subdoc_key) const;
+  const SubDocument* GetDocument(const DocKey& doc_key) const {
+    return GetSubDocument(SubDocKey(doc_key));
+  }
 
   // Capture all documents present in the given RocksDB database at the given hybrid_time and save
   // them into this in-memory DocDB. All current contents of this object are overwritten.

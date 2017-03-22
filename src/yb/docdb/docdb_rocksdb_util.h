@@ -12,7 +12,7 @@
 namespace yb {
 namespace docdb {
 
-// Find a docdb value at a given key and hybrid_time while ignoring expired values.
+// Seek to a given prefix and max_hybrid_time while ignoring expired values.
 Status SeekToValidKvAtTs(
     rocksdb::Iterator *iter,
     const rocksdb::Slice &search_key,

@@ -364,6 +364,17 @@ void DocDBRocksDBFixture::SetPrimitive(const DocPath& doc_path,
   ASSERT_OK(WriteToRocksDB(*doc_write_batch));
 }
 
+void DocDBRocksDBFixture::InsertSubDocument(
+    const DocPath& doc_path,
+    const SubDocument& value,
+    HybridTime hybrid_time,
+    InitMarkerBehavior use_init_marker) {
+  DocWriteBatch local_doc_write_batch(rocksdb_.get());
+  local_doc_write_batch.Clear();
+  ASSERT_OK(local_doc_write_batch.InsertSubDocument(doc_path, value, hybrid_time, use_init_marker));
+  ASSERT_OK(WriteToRocksDB(local_doc_write_batch));
+}
+
 void DocDBRocksDBFixture::DocDBDebugDumpToConsole() {
   ASSERT_OK(DocDBDebugDump(rocksdb_.get(), std::cerr));
 }
@@ -409,7 +420,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   const auto& doc_key = RandomElementOf(doc_keys_, &random_);
   const KeyBytes encoded_doc_key(doc_key.Encode());
 
-  const SubDocument* current_doc = in_mem_docdb_.GetDocument(encoded_doc_key);
+  const SubDocument* current_doc = in_mem_docdb_.GetDocument(doc_key);
 
   bool is_deletion = false;
   if (current_doc != nullptr &&
@@ -444,7 +455,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   }
 
   const bool doc_already_exists_in_mem =
-      in_mem_docdb_.GetDocument(encoded_doc_key) != nullptr;
+      in_mem_docdb_.GetDocument(doc_key) != nullptr;
 
   if (is_deletion) {
     DOCDB_DEBUG_LOG("Iteration $0: deleting doc path $1", current_iteration, doc_path.ToString());
@@ -466,7 +477,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   // sitting on top of RocksDB, and on the in-memory single-threaded debug version used for
   // validation.
   fixture_->WriteToRocksDB(dwb);
-  const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(encoded_doc_key);
+  const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
 
   // In case we are asked to compact history, we read the document from RocksDB before and after the
   // compaction, and expect to get the same result in both cases.
@@ -478,7 +489,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     }
     SubDocument doc_from_rocksdb;
     bool doc_found_in_rocksdb = false;
-    ASSERT_OK(GetSubDocument(rocksdb(), encoded_doc_key, &doc_from_rocksdb, &doc_found_in_rocksdb));
+    ASSERT_OK(
+        GetSubDocument(rocksdb(), SubDocKey(doc_key), &doc_from_rocksdb, &doc_found_in_rocksdb));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.

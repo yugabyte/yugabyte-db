@@ -67,6 +67,20 @@ class SubDocument : public PrimitiveValue {
   bool operator==(const SubDocument& other) const;
   bool operator!=(const SubDocument& other) const { return !(*this == other); }
 
+  // "using" did not let us use the alias when instantiating these classes, so we're using typedef.
+  typedef std::map<PrimitiveValue, SubDocument> ObjectContainer;
+  typedef std::vector<SubDocument> ArrayContainer;
+
+  ObjectContainer& object_container() const {
+    assert(has_valid_object_container());
+    return *reinterpret_cast<ObjectContainer*>(complex_data_structure_);
+  }
+
+  ArrayContainer& array_container() const {
+    assert(has_valid_array_container());
+    return *reinterpret_cast<ArrayContainer*>(complex_data_structure_);
+  }
+
   // @return The child subdocument of an object at the given key, or nullptr if this subkey does not
   //         exist or this subdocument is not an object.
   SubDocument* GetChild(const PrimitiveValue& key);
@@ -138,10 +152,6 @@ class SubDocument : public PrimitiveValue {
     return complex_data_structure_ != nullptr;
   }
 
-  // "using" did not let us use the alias when instantiating these classes, so we're using typedef.
-  typedef std::map<PrimitiveValue, SubDocument> ObjectContainer;
-  typedef std::vector<SubDocument> ArrayContainer;
-
   bool has_valid_container() const {
     return complex_data_structure_ != nullptr;
   }
@@ -152,16 +162,6 @@ class SubDocument : public PrimitiveValue {
 
   bool has_valid_array_container() const {
     return type_ == ValueType::kArray && has_valid_container();
-  }
-
-  ObjectContainer& object_container() const {
-    assert(has_valid_object_container());
-    return *reinterpret_cast<ObjectContainer*>(complex_data_structure_);
-  }
-
-  ArrayContainer& array_container() const {
-    assert(has_valid_array_container());
-    return *reinterpret_cast<ArrayContainer*>(complex_data_structure_);
   }
 
   friend void SubDocumentToStreamInternal(ostream& out, const SubDocument& subdoc, int indent);

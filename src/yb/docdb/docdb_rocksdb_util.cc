@@ -55,10 +55,29 @@ Status SeekToValidKvAtTs(
     Value *found_value,
     bool *is_found) {
   *is_found = true;
-  ROCKSDB_SEEK(iter, search_key);
-  if (!iter->Valid()) {
-    *is_found = false;
-    return Status::OK();
+  KeyBytes seek_key_bytes = KeyBytes(search_key);
+  seek_key_bytes.AppendValueType(ValueType::kHybridTime);
+  seek_key_bytes.AppendHybridTime(hybrid_time);
+
+  // If we end up at a descendant of the search key, the timestamp may be > hybrid_time,
+  // In a loop we want to skip over those cases.
+  while (true) {
+    ROCKSDB_SEEK(iter, seek_key_bytes.AsSlice());
+    if (!iter->Valid() || !iter->key().starts_with(search_key)) {
+      *is_found = false;
+      return Status::OK();
+    }
+    if (iter->key().size() < kBytesPerHybridTime) {
+      return STATUS_SUBSTITUTE(Corruption, "Keys from rocksdb must have $0 bytes, found $1",
+          kBytesPerHybridTime, iter->key().size());
+    }
+    HybridTime ht_from_found_key = DecodeHybridTimeFromKey(
+        iter->key(), iter->key().size() - kBytesPerHybridTime);
+    if (ht_from_found_key <= hybrid_time) {
+      break;
+    }
+    seek_key_bytes = KeyBytes(iter->key());
+    seek_key_bytes.ReplaceLastHybridTime(hybrid_time);
   }
   rocksdb::Slice value = iter->value();
   RETURN_NOT_OK(found_key->FullyDecodeFrom(iter->key()));
@@ -68,7 +87,8 @@ Status SeekToValidKvAtTs(
     const HybridTime expiry =
         server::HybridClock::AddPhysicalTimeToHybridTime(found_key->hybrid_time(), ttl);
     if (hybrid_time.CompareTo(expiry) > 0) {
-      *is_found = false;
+      *found_value = Value(PrimitiveValue(ValueType::kTombstone));
+      found_key->ReplaceMaxHybridTimeWith(expiry);
       return Status::OK();
     }
   }

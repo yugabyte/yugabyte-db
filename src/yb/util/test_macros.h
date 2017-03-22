@@ -94,6 +94,17 @@
         << "\n\nExpected (trimmed):\n" << expected_tmp; \
   } while(0)
 
+// A wrapper around EXPECT_EQ that trims expected and actual strings and outputs expected and actual
+// values without any escaping.
+#define EXPECT_STR_EQ_VERBOSE_TRIMMED(expected, actual) \
+  do { \
+    const auto expected_tmp = yb::util::TrimStr(expected); \
+    const auto actual_tmp = yb::util::TrimStr(actual); \
+    EXPECT_EQ(expected_tmp, actual_tmp) \
+        << "\nActual (trimmed):\n" << actual_tmp \
+        << "\n\nExpected (trimmed):\n" << expected_tmp; \
+  } while(0)
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 
