@@ -47,4 +47,12 @@ public class YugawarePropertyTest extends FakeDBApplication {
     YugawareProperty p = YugawareProperty.get("unknown-config");
     assertNull(p);
   }
+
+  @Test
+  public void testUpdateExistingProperty() {
+    YugawareProperty.addConfigProperty("existing-config",
+        Json.toJson(ImmutableMap.of("foo", "bar2")), "Sample data");
+    YugawareProperty property = YugawareProperty.get("existing-config");
+    assertValue(property.getValue(), "foo", "bar2");
+  }
 }
