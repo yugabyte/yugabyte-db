@@ -26,8 +26,8 @@ public class RollingRestartParams extends UniverseTaskParams {
   @Constraints.Required()
   public UpgradeUniverse.UpgradeTaskType taskType;
 
-  // The software package to install. Do not set this value if no software needs to be installed.
-  public String ybServerPackage;
+  // The software version to install. Do not set this value if no software needs to be installed.
+  public String ybSofwareVersion;
 
   // The new gflag values to update on the desired set of nodes.
   public List<GFlag> gflags;

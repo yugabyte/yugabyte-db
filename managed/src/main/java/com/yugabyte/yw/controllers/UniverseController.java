@@ -402,10 +402,10 @@ public class UniverseController extends AuthenticatedController {
       switch(taskParams.taskType) {
         case Software:
           customerTaskType = CustomerTask.TaskType.UpgradeSoftware;
-          if (taskParams.ybServerPackage == null || taskParams.ybServerPackage.isEmpty()) {
+          if (taskParams.ybSofwareVersion == null || taskParams.ybSofwareVersion.isEmpty()) {
             return ApiResponse.error(
               BAD_REQUEST,
-              "ybServerPackage param is required for taskType: " + taskParams.taskType);
+              "ybSofwareVersion param is required for taskType: " + taskParams.taskType);
           }
           break;
         case GFlags:

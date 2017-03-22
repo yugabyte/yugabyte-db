@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -12,12 +10,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.models.Customer;
 
-import com.yugabyte.yw.models.Universe;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
@@ -31,6 +29,9 @@ public class CustomerController extends AuthenticatedController {
 
   @Inject
   MetricQueryHelper metricQueryHelper;
+
+  @Inject
+  ReleaseManager releaseManager;
 
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
@@ -116,5 +117,16 @@ public class CustomerController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     }
+  }
+
+  public Result releases(UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
+
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+
+    Map<String, String> releases = releaseManager.getReleases();
+    return ApiResponse.success(releases.keySet());
   }
 }

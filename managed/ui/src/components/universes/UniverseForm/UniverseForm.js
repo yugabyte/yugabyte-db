@@ -25,7 +25,7 @@ export default class UniverseForm extends Component {
     this.createUniverse = this.createUniverse.bind(this);
     this.editUniverse = this.editUniverse.bind(this);
     this.universeNameChanged = this.universeNameChanged.bind(this);
-    this.serverPackageChanged = this.serverPackageChanged.bind(this);
+    this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
     this.azChanged = this.azChanged.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.numNodesClicked = this.numNodesClicked.bind(this);
@@ -143,8 +143,8 @@ export default class UniverseForm extends Component {
     this.configureUniverseNodeList("isMultiAZ", !JSON.parse(event.target.value), false);
   }
 
-  serverPackageChanged(packageName) {
-    this.configureUniverseNodeList("ybServerPackage", packageName, false);
+  softwareVersionChanged(version) {
+    this.configureUniverseNodeList("ybSofwareVersion", version, false);
   }
 
   replicationFactorChanged(value) {
@@ -252,9 +252,9 @@ export default class UniverseForm extends Component {
           <div className="form-right-aligned-labels">
             <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
                    label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged}/>
-            <Field name="ybServerPackage" type="text" component={YBTextInputWithLabel}
-                   label="Server Package" defaultValue={this.state.ybServerPackage}
-                   onValueChanged={this.serverPackageChanged} />
+            <Field name="ybSofwareVersion" type="text" component={YBTextInputWithLabel}
+                   label="Server Version" defaultValue={this.state.ybSofwareVersion}
+                   onValueChanged={this.softwareVersionChanged} />
           </div>
         </Col>
         <Col lg={6} className={"universe-az-selector-container"}>
