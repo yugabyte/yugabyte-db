@@ -220,7 +220,7 @@ TEST_F(YbSqlQuery, TestSqlQueryPartialHash) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   LOG(INFO) << "Running partial hash test.";
   // Create the table 1.
