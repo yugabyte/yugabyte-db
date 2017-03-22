@@ -255,6 +255,7 @@ done
 
 unset cmake_opts
 set_cmake_build_type_and_compiler_type
+log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
 if "$verbose"; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"

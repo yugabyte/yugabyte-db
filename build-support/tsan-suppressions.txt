@@ -89,7 +89,7 @@ race:gutil::SubmitSpinLockProfileData
 race:std::ios_base::width
 
 # ------------------------------------------------------------------------------------------------
-# Bugs in Kudu's MemoRowSet and related code (which we need to get rid of):
+# Bugs in Kudu's MemRowSet and related code (which we need to get rid of):
 
 # https://jenkins.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/42/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__alter_table-test/AlterTableTest_TestAlterUnderWriteLoad.log
 race:yb::tablet::MemRowSet::Iterator::FetchRows
@@ -101,3 +101,10 @@ race:yb::tablet::MemRowSet::MutateRow
 # And another one:
 # https://detective.dev.yugabyte.com/job/yugabyte-centos-phabricator-clang-tsan/66/artifact/build/tsan-clang-dynamic/yb-test-logs/bin__mt-tablet-test/MultiThreadedTabletTest__4_DeleteAndReinsert.log
 race:yb::tablet::MemRowSet::Reinsert
+
+# -------------------------------------------------------------------------------------------------
+# Known YB concurrency issues
+
+# There are some race conditions in shutting down ExternalMiniCluster's log tailer threads, e.g.
+# https://goo.gl/jWwsRY.
+race:yb::ExternalDaemon::LogTailerThread::LogTailerThread

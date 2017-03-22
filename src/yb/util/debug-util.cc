@@ -37,6 +37,7 @@
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/singleton.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/monotime.h"
@@ -368,16 +369,34 @@ Status ListThreads(vector<pid_t> *tids) {
   return Status::OK();
 }
 
+#ifdef __linux__
+namespace {
+
+class GlobalBacktraceState {
+ public:
+  GlobalBacktraceState() {
+    bt_state_ = backtrace_create_state(
+        nullptr, /* threaded = */ 1, BacktraceErrorCallback, nullptr);
+  }
+
+  backtrace_state* GetState() { return bt_state_; }
+ private:
+  struct backtrace_state* bt_state_;
+};
+
+}  // anonymous namespace
+#endif
+
 std::string GetStackTrace() {
   std::string s;
 #ifdef __linux__
-  // Use libbacktrace on Linux because that gives us file names and line numbres.
-  struct backtrace_state* const backtrace_state = backtrace_create_state(
-      nullptr, /* threaded = */ 0, BacktraceErrorCallback, &s);
+  // Use libbacktrace on Linux because that gives us file names and line numbers.
+  struct backtrace_state* const backtrace_state =
+    Singleton<GlobalBacktraceState>::get()->GetState();
   const int backtrace_full_rv = backtrace_full(backtrace_state, /* skip = */ 1,
       BacktraceFullCallback, BacktraceErrorCallback, &s);
   if (backtrace_full_rv != 0) {
-    StringAppendF(&s, "Error: backtrace_full returned eeit code %d", backtrace_full_rv);
+    StringAppendF(&s, "Error: backtrace_full return value is %d", backtrace_full_rv);
   }
 #else
   google::glog_internal_namespace_::DumpStackTraceToString(&s);
@@ -442,16 +461,8 @@ string StackTrace::Symbolize() const {
   string ret;
 #ifdef __linux__
   // Use libbacktrace for symbolization.
-  struct backtrace_state* const backtrace_state = backtrace_create_state(
-      nullptr, /* threaded = */ 0, BacktraceErrorCallback, &ret);
-  if (!ret.empty()) {
-    // backtrace_create_state must have called our error handler which logged the error into the
-    // result string.
-    return ret;
-  }
-  if (backtrace_state == nullptr) {
-    return "Error: backtrace_create_state() returned nullptr\n";
-  }
+  struct backtrace_state* const backtrace_state =
+      Singleton<GlobalBacktraceState>::get()->GetState();
 #endif
 
   for (int i = 0; i < num_frames_; i++) {

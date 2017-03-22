@@ -15,10 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <glog/stl_logging.h>
 #include <signal.h>
+
 #include <string>
 #include <vector>
+
+#include <glog/stl_logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/countdown_latch.h"
@@ -150,6 +152,16 @@ TEST_F(DebugUtilTest, TestDumpAllThreads) {
     LOG(INFO) << DumpThreadStack(tid);
   }
 }
+
+#ifdef __linux__
+// This will probably be really slow on Mac OS X, so only enabling on Linux.
+TEST_F(DebugUtilTest, TestGetStackTraceInALoop) {
+  for (int i = 1; i <= 10000; ++i) {
+    GetStackTrace();
+  }
+}
+#endif
+
 #endif
 
 } // namespace yb
