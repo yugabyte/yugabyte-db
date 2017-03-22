@@ -55,9 +55,6 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
 // This test is only enabled on Kudu tables, because YB tables don't use local COMMIT messages.
 TEST_F(TsRecoveryITest, TestRestartWithOrphanedReplicates) {
   NO_FATALS(StartCluster());
-  ASSERT_OK(
-      cluster_->SetFlag(cluster_->tablet_server(0),
-                        "fault_crash_before_append_commit", "0.05"));
 
   TestWorkload work(cluster_.get());
   work.set_num_replicas(1);
@@ -66,6 +63,10 @@ TEST_F(TsRecoveryITest, TestRestartWithOrphanedReplicates) {
   work.set_timeout_allowed(true);
   work.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
   work.Start();
+
+  ASSERT_OK(
+      cluster_->SetFlag(cluster_->tablet_server(0),
+                        "fault_crash_before_append_commit", "0.05"));
 
   // Wait for the process to crash due to the injected fault.
   while (cluster_->tablet_server(0)->IsProcessAlive()) {
