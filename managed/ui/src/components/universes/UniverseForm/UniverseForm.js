@@ -144,7 +144,7 @@ export default class UniverseForm extends Component {
   }
 
   softwareVersionChanged(version) {
-    this.configureUniverseNodeList("ybSofwareVersion", version, false);
+    this.configureUniverseNodeList("ybSoftwareVersion", version, false);
   }
 
   replicationFactorChanged(value) {
@@ -252,8 +252,8 @@ export default class UniverseForm extends Component {
           <div className="form-right-aligned-labels">
             <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
                    label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged}/>
-            <Field name="ybSofwareVersion" type="text" component={YBTextInputWithLabel}
-                   label="Server Version" defaultValue={this.state.ybSofwareVersion}
+            <Field name="ybSoftwareVersion" type="text" component={YBTextInputWithLabel}
+                   label="Server Version" defaultValue={this.state.ybSoftwareVersion}
                    onValueChanged={this.softwareVersionChanged} />
           </div>
         </Col>

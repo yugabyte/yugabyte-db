@@ -185,7 +185,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
         }
-        if (configureParams.ybSofwareVersion != null) {
+        if (configureParams.ybSoftwareVersion != null) {
           expectedCommand.add("--package");
           expectedCommand.add("/yb/release.tar.gz");
         }
@@ -318,7 +318,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ApiUtils.mockUniverseUpdater()));
       addValidDeviceInfo(params);
       params.isMasterInShellMode = true;
-      params.ybSofwareVersion = "0.0.1";
+      params.ybSoftwareVersion = "0.0.1";
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
 
@@ -334,7 +334,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.isMasterInShellMode = false;
-      params.ybSofwareVersion = "0.0.2";
+      params.ybSoftwareVersion = "0.0.2";
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       } catch (RuntimeException re) {
@@ -365,7 +365,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ApiUtils.mockUniverseUpdater(userIntent)));
       addValidDeviceInfo(params);
       params.isMasterInShellMode = true;
-      params.ybSofwareVersion = "0.0.1";
+      params.ybSoftwareVersion = "0.0.1";
 
       // Set up expected command
       int accessKeyIndexOffset = (params.cloud.equals(Common.CloudType.aws)) ? 7 : 5;
@@ -388,7 +388,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.isMasterInShellMode = false;
-      params.ybSofwareVersion = "0.0.1";
+      params.ybSoftwareVersion = "0.0.1";
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
@@ -404,7 +404,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.type = Software;
-      params.ybSofwareVersion = "0.0.1";
+      params.ybSoftwareVersion = "0.0.1";
 
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -422,7 +422,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.type = Software;
-      params.ybSofwareVersion = "0.0.1";
+      params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Download.toString());
 
@@ -440,7 +440,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.type = Software;
-      params.ybSofwareVersion = "0.0.1";
+      params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Install.toString());
 
@@ -458,7 +458,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.type = Software;
-      params.ybSofwareVersion = "0.0.2";
+      params.ybSoftwareVersion = "0.0.2";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Install.toString());
       try {

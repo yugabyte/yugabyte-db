@@ -81,7 +81,7 @@ export default class RollingUpgradeForm extends Component {
     } else {
       return;
     }
-    payload.ybSofwareVersion = values.ybSofwareVersion;
+    payload.ybSoftwareVersion = values.ybSoftwareVersion;
     payload.nodeNames = nodeNames;
     payload.universeUUID = universeUUID;
     if (isValidArray(values.gflags)) {
@@ -106,7 +106,7 @@ export default class RollingUpgradeForm extends Component {
                    <Col lg={12} className="form-section-title">
                      Software Package Version
                    </Col>
-                   <Field name="ybSofwareVersion" component={YBInputField} defaultValue={SOFTWARE_VERSION}/>
+                   <Field name="ybSoftwareVersion" component={YBInputField} defaultValue={SOFTWARE_VERSION}/>
                  </span>
     } else {
       title = "GFlags";

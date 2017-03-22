@@ -74,12 +74,13 @@ public class YugawareProperty extends Model {
    * @param description is a description of the property
    */
   public static void addConfigProperty(String name, JsonNode value, String description) {
-    if (find.byId(name) != null) {
-      LOG.warn("Property " + name + " already present, skipping.");
-      return;
+    YugawareProperty entry = find.byId(name);
+    if (entry == null) {
+      entry = new YugawareProperty(name, PropertyEntryType.Config, value, description);
+      entry.save();
+    } else {
+      entry.value = value;
+      entry.update();
     }
-    YugawareProperty entry =
-        new YugawareProperty(name, PropertyEntryType.Config, value, description);
-    entry.save();
   }
 }
