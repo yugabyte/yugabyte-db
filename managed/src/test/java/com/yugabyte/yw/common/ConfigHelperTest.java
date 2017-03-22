@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.*;
@@ -59,7 +60,11 @@ public class ConfigHelperTest extends FakeDBApplication {
     configHelper.loadConfigsToDB(application);
 
     for (ConfigHelper.ConfigType configType: ConfigHelper.ConfigType.values()) {
-      assertEquals(map, configHelper.getConfig(configType));
+      if (configType.getConfigFile() != null) {
+        assertEquals(map, configHelper.getConfig(configType));
+      } else {
+        assertTrue(configHelper.getConfig(configType).isEmpty());
+      }
     }
   }
 
@@ -67,6 +72,16 @@ public class ConfigHelperTest extends FakeDBApplication {
   public void testLoadConfigsToDBWithoutFile() {
     when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
     configHelper.loadConfigsToDB(application);
+  }
+
+  @Test
+  public void testLoadConfigToDB() {
+    Map<String, Object> map = new HashMap();
+    map.put("config-1", "foo");
+    map.put("config-2", "bar");
+    ConfigHelper.ConfigType configType = ConfigHelper.ConfigType.SoftwareReleases;
+    configHelper.loadConfigToDB(configType, map);
+    assertEquals(map, configHelper.getConfig(configType));
   }
 
   @Test

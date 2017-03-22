@@ -5,8 +5,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static org.hamcrest.CoreMatchers.*;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
@@ -301,5 +304,37 @@ public class CustomerControllerTest extends WithApplication {
     JsonNode filters = Json.parse(queryParams.getValue().get("filters").toString());
     String nodeName = filters.get("exported_instance").asText();
     assertThat(nodeName, allOf(notNullValue(), equalTo("host-n1")));
+  }
+
+  private Result getReleases(UUID customerUUID) {
+    String uri = "/api/customers/" + customerUUID + "/releases";
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, customer.createAuthToken());
+  }
+
+  @Test
+  public void testCustomerReleases() {
+    ConfigHelper configHelper = new ConfigHelper();
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases,
+        ImmutableMap.of("0.0.1", "yugabyte-0.0.1.tar.gz"));
+    Result result = getReleases(customer.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertEquals(1, json.size());
+    assertEquals("0.0.1", json.get(0).asText());
+  }
+
+  @Test
+  public void testCustomerReleasesWithoutConfig() {
+    Result result = getReleases(customer.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertEquals(0, json.size());
+  }
+
+  @Test
+  public void testCustomerReleasesWithInvalidCustomer() {
+    UUID randomUUID = UUID.randomUUID();
+    Result result = getReleases(randomUUID);
+    assertBadRequest(result, "Invalid Customer UUID: " + randomUUID);
   }
 }

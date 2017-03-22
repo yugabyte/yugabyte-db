@@ -66,7 +66,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       userIntent.provider = provider.code;
       userIntent.regionList = regionList;
       userIntent.instanceType = "m3.medium";
-      userIntent.ybServerPackage = "random_pkg";
+      userIntent.ybSofwareVersion = "0.0.1";
       userIntent.accessKeyCode = "akc";
       userIntent.providerType = CloudType.aws;
       userIntent.preferredRegion = r1.uuid;
@@ -242,7 +242,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       ud.universeUUID = univUuid;
       ud.userIntent.numNodes = INITIAL_NUM_NODES - 2;
       ud.userIntent.instanceType = "m3.medium";
-      ud.userIntent.ybServerPackage = "random_pkg";
+      ud.userIntent.ybSofwareVersion = "0.0.1";
       PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
       Set<NodeDetails> nodes = ud.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());

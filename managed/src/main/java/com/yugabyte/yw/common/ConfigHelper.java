@@ -3,7 +3,6 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
 import play.Application;
@@ -23,7 +22,8 @@ public class ConfigHelper {
     GCPRegionMetadata,
     GCPInstanceTypeMetadata,
     DockerRegionMetadata,
-    DockerInstanceTypeMetadata;
+    DockerInstanceTypeMetadata,
+    SoftwareReleases;
 
     public String getConfigFile() {
       switch (this) {
@@ -55,6 +55,8 @@ public class ConfigHelper {
           return "GCP Region Metadata";
         case DockerRegionMetadata:
           return "Docker Region Metadata";
+        case SoftwareReleases:
+          return "Software Releases";
         default:
           return null;
       }
@@ -84,11 +86,18 @@ public class ConfigHelper {
 
   public void loadConfigsToDB(Application app) {
     for (ConfigType type: ConfigType.values()) {
+      if (type.getConfigFile() == null) {
+        continue;
+      }
       Map<String, Object> config = (HashMap<String, Object>) Yaml.load(
           app.resourceAsStream(type.getConfigFile()),
           app.classloader()
       );
-      YugawareProperty.addConfigProperty(type.toString(), Json.toJson(config), type.getDescription());
+      loadConfigToDB(type, config);
     }
+  }
+
+  public void loadConfigToDB(ConfigType type, Map<String, Object> config) {
+    YugawareProperty.addConfigProperty(type.toString(), Json.toJson(config), type.getDescription());
   }
 }

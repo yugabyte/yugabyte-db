@@ -4,6 +4,7 @@ import com.google.inject.AbstractModule;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -35,5 +36,6 @@ public class Module extends AbstractModule {
     bind(ShellProcessHandler.class).asEagerSingleton();
     bind(NetworkManager.class).asEagerSingleton();
     bind(AccessManager.class).asEagerSingleton();
+    bind(ReleaseManager.class).asEagerSingleton();
   }
 }

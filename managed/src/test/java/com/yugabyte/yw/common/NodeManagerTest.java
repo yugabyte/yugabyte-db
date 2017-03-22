@@ -48,6 +48,9 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock
   ShellProcessHandler shellProcessHandler;
 
+  @Mock
+  ReleaseManager releaseManager;
+
   @InjectMocks
   NodeManager nodeManager;
 
@@ -144,6 +147,7 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.add(new TestData(customer, Common.CloudType.aws));
     testData.add(new TestData(customer, Common.CloudType.onprem));
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
+    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn("/yb/release.tar.gz");
   }
 
   private List<String> nodeCommand(NodeManager.NodeCommandType type, NodeTaskParams params) {
@@ -181,9 +185,9 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
         }
-        if (configureParams.ybServerPackage != null) {
+        if (configureParams.ybSofwareVersion != null) {
           expectedCommand.add("--package");
-          expectedCommand.add(configureParams.ybServerPackage);
+          expectedCommand.add("/yb/release.tar.gz");
         }
 
         if (configureParams.getProperty("taskSubType") != null) {
@@ -314,12 +318,29 @@ public class NodeManagerTest extends FakeDBApplication {
           ApiUtils.mockUniverseUpdater()));
       addValidDeviceInfo(params);
       params.isMasterInShellMode = true;
-      params.ybServerPackage = "yb-server-pkg";
+      params.ybSofwareVersion = "0.0.1";
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testConfigureNodeCommandWithoutReleasePackage() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
+      params.isMasterInShellMode = false;
+      params.ybSofwareVersion = "0.0.2";
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(),
+            is("Unable to fetch yugabyte release for version: 0.0.2")));
+      }
     }
   }
 
@@ -344,7 +365,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ApiUtils.mockUniverseUpdater(userIntent)));
       addValidDeviceInfo(params);
       params.isMasterInShellMode = true;
-      params.ybServerPackage = "yb-server-pkg";
+      params.ybSofwareVersion = "0.0.1";
 
       // Set up expected command
       int accessKeyIndexOffset = (params.cloud.equals(Common.CloudType.aws)) ? 7 : 5;
@@ -367,7 +388,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.isMasterInShellMode = false;
-      params.ybServerPackage = "yb-server-pkg";
+      params.ybSofwareVersion = "0.0.1";
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
@@ -383,7 +404,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.type = Software;
-      params.ybServerPackage = "yb-server-pkg";
+      params.ybSofwareVersion = "0.0.1";
 
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
@@ -401,7 +422,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.type = Software;
-      params.ybServerPackage = "yb-server-pkg";
+      params.ybSofwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Download.toString());
 
@@ -419,7 +440,7 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
       params.type = Software;
-      params.ybServerPackage = "yb-server-pkg";
+      params.ybSofwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
       params.setProperty("taskSubType", Install.toString());
 
@@ -427,6 +448,25 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+    }
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithoutReleasePackage() {
+    for (TestData t : testData) {
+      AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+      buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
+          ApiUtils.mockUniverseUpdater()));
+      params.type = Software;
+      params.ybSofwareVersion = "0.0.2";
+      params.isMasterInShellMode = true;
+      params.setProperty("taskSubType", Install.toString());
+      try {
+        nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
+      } catch (RuntimeException re) {
+        assertThat(re.getMessage(), allOf(notNullValue(),
+            is("Unable to fetch yugabyte release for version: 0.0.2")));
+      }
     }
   }
 

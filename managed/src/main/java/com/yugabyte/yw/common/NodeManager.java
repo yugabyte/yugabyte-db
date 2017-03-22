@@ -35,6 +35,9 @@ import java.util.stream.Collectors;
 public class NodeManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
 
+  @Inject
+  ReleaseManager releaseManager;
+
   @Override
   protected String getCommandType() {
     return YB_CLOUD_COMMAND_TYPE;
@@ -143,15 +146,25 @@ public class NodeManager extends DevopsBase {
       subcommand.add(masterAddresses);
     }
 
+    String ybServerPackage = releaseManager.getReleaseByVersion(taskParam.ybSofwareVersion);
+
     switch(taskParam.type) {
       case Everything:
+        if (ybServerPackage == null) {
+          throw new RuntimeException("Unable to fetch yugabyte release for version: " +
+              taskParam.ybSofwareVersion);
+        }
         subcommand.add("--package");
-        subcommand.add(taskParam.ybServerPackage);
+        subcommand.add(ybServerPackage);
         break;
       case Software:
         {
+          if (ybServerPackage == null) {
+            throw new RuntimeException("Unable to fetch yugabyte release for version: " +
+                taskParam.ybSofwareVersion);
+          }
           subcommand.add("--package");
-          subcommand.add(taskParam.ybServerPackage);
+          subcommand.add(ybServerPackage);
           String taskSubType = taskParam.getProperty("taskSubType");
           if (taskSubType == null) {
             throw new RuntimeException("Invalid taskSubType property: " + taskSubType);

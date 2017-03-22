@@ -3,7 +3,7 @@
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
 
-import { SOFTWARE_PACKAGE } from '../../../../config';
+import { SOFTWARE_VERSION } from '../../../../config';
 import { RollingUpgradeForm }  from '../../../common/forms';
 import { rollingUpgrade, rollingUpgradeSuccess, rollingUpgradeFailure,
   closeDialog, resetRollingUpgrade } from '../../../../actions/universe';
@@ -28,8 +28,8 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   var data = {
-    "ybServerPackage": SOFTWARE_PACKAGE,
-    
+    "ybSofwareVersion": SOFTWARE_VERSION,
+
   };
   return {
     universe: state.universe,
