@@ -27,7 +27,7 @@ namespace docdb {
 Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValue>* result) {
   const auto initial_slice(*slice);  // For error reporting.
   while (true) {
-    if (slice->empty()) {
+    if (PREDICT_FALSE(slice->empty())) {
       return STATUS(Corruption, "Unexpected end of key when decoding document key");
     }
     ValueType current_value_type = static_cast<ValueType>(*slice->data());
@@ -35,8 +35,11 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValu
       slice->ConsumeByte();
       return Status::OK();
     }
-    DCHECK(IsPrimitiveValueType(current_value_type))
-        << "Expected a primitive value type, got " << ValueTypeToStr(current_value_type);
+    if (PREDICT_FALSE(!IsPrimitiveValueType(current_value_type))) {
+      return STATUS_SUBSTITUTE(Corruption,
+          "Expected a primitive value type, got $0",
+          ValueTypeToStr(current_value_type));
+    }
     result->emplace_back();
     RETURN_NOT_OK_PREPEND(result->back().DecodeFromKey(slice),
                           Substitute("while consuming primitive values from $0",
@@ -238,21 +241,12 @@ KeyBytes SubDocKey::Encode(bool include_hybrid_time) const {
   return key_bytes;
 }
 
-Status SubDocKey::DecodeFrom(rocksdb::Slice* slice,
-                             const bool require_hybrid_time) {
+Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_time) {
   const rocksdb::Slice original_bytes(*slice);
 
   Clear();
   RETURN_NOT_OK(doc_key_.DecodeFrom(slice));
-  while (!slice->empty() &&
-         *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
-    if (*slice->data() == '\xff' && !require_hybrid_time) {
-      // A special case for easier debugging. In SubDocKey::AdvanceOutOfSubDoc we add '\xff' after
-      // the last subkey to an encoded SubDocKey without a hybrid_time to seek to the next vector of
-      // subkeys (or "jump out" of the current subdocument). We want such special-case keys to be
-      // successfully decoded here as a SubDocKey with no hybrid_time followed by some raw bytes.
-      return Status::OK();
-    }
+  while (!slice->empty() && *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
     subkeys_.emplace_back();
     auto& current_subkey = subkeys_.back();
     RETURN_NOT_OK_PREPEND(
@@ -367,9 +361,6 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
     }
     return ss.str();
   }
-
-  VLOG(4) << __func__ << ": could not decode " << key_bytes.ToString() << ", error: "
-          << decode_status.ToString();
 
   // We could not decode a SubDocKey at all, even without a hybrid_time.
   return key_bytes.ToString();

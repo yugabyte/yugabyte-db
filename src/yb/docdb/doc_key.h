@@ -366,6 +366,7 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 }
 
 // A best-effort to decode the given sequence of key bytes as either a DocKey or a SubDocKey.
+// If not possible to decode, return the key_bytes directly as a readable string.
 std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
 std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice);
 
