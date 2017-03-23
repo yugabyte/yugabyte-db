@@ -1,0 +1,13 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.universe-resources {
+  margin: -6px 0;
+
+  &.empty {
+    opacity: 0.5;
+  }
+
+  .quantity {
+    padding: 0 14px;
+  }
+}

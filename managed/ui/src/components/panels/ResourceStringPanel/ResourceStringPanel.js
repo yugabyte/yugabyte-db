@@ -9,15 +9,20 @@ export default class ResourceStringPanel extends Component {
     const { universeInfo } = this.props;
     const { universeDetails, resources } = universeInfo;
     const { userIntent } = universeDetails;
-    var pricePerMonth = <YBCost value={resources.pricePerHour ? resources.pricePerHour : 0} multiplier={"month"}/> ;
+    var azString = universeInfo.universeDetails.placementInfo.cloudList.map(function(cloudItem, idx){
+      return cloudItem.regionList.map(function(regionItem, regionIdx){
+        return regionItem.azList.map(function(azItem, azIdx){
+          return azItem.name;
+        }).join(", ")
+      }).join(", ")
+    }).join(", ");
+    var regionList = universeInfo.regions.map(function(region) { return region.name; }).join(", ");
     var connectStringPanelItems = [
-      {name: "Nodes", data: userIntent.numNodes, nameClass: ""},
+      {name: "Provider", data: universeInfo.provider.name},
+      {name: "Regions", data: regionList},
+      {name: "Instance Type", data: userIntent.instanceType},
+      {name: "Availability Zones", data: azString},
       {name: "Replication Factor", data: userIntent.replicationFactor},
-      {name: "Memory", data: (resources.memSizeGB || 0) + " GB"},
-      {name: "Cores", data: (resources.numCores || 0)},
-      {name: "Storage", data: (resources.volumeSizeGB || 0) + " GB"},
-      {name: "Volumes", data: (resources.volumeCount || 0)},
-      {name: "Price Per Month", data: pricePerMonth}
     ];
     return (
       <DescriptionList listItems={connectStringPanelItems} />

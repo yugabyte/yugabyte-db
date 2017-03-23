@@ -1,17 +1,5 @@
 /* Copyright (c) YugaByte, Inc. */
 
-.universe-resource-preview {
-  margin: -6px 0;
-
-  &.empty {
-    opacity: 0.5;
-  }
-
-  .quantity {
-    padding: 0 14px;
-  }
-}
-
 .preview-row {
   margin-top: 15px;
   border-top: 1px solid #e8e9e9;
