@@ -84,30 +84,36 @@ export default class AZSelectorTable extends Component {
       });
     }
     var groupsArray = [];
+    var uniqueRegions = [];
     if (isValidObject(universeConfigTemplate.placementInfo)) {
       universeConfigTemplate.placementInfo.cloudList[0].regionList.forEach(function(regionItem){
         regionItem.azList.forEach(function(azItem){
            uniConfigArray.forEach(function(configArrayItem){
              if(configArrayItem.value === azItem.uuid) {
                groupsArray.push({value: azItem.uuid, count: configArrayItem.count})
+               if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
+                 uniqueRegions.push(regionItem.uuid);
+               }
              }
            });
         });
       });
     }
-    return groupsArray;
-  }
+    return ({groups: groupsArray, uniqueRegions: uniqueRegions.length, uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length})
+  };
 
   componentWillMount() {
     const {universe: {universeConfigTemplate, currentUniverse}, type} = this.props;
     if (type === "Edit" &&  isValidObject(currentUniverse)) {
-      var azGroups = this.getGroupWithCounts(universeConfigTemplate);
+      var azGroups = this.getGroupWithCounts(universeConfigTemplate).groups;
       this.setState({azItemState: azGroups});
     }
   }
   componentWillReceiveProps(nextProps) {
     const {universe: {universeConfigTemplate}} = nextProps;
-    var azGroups = this.getGroupWithCounts(universeConfigTemplate);
+    var placementInfo = this.getGroupWithCounts(universeConfigTemplate);
+    var azGroups = placementInfo.groups;
+
     if (this.props.universe.universeConfigTemplate !== universeConfigTemplate
       && isValidObject(universeConfigTemplate.placementInfo) && !universeConfigTemplate.placementInfo.isCustom) {
         this.setState({azItemState: azGroups});
@@ -115,7 +121,12 @@ export default class AZSelectorTable extends Component {
     if (isValidObject(universeConfigTemplate) && isValidObject(universeConfigTemplate.placementInfo)) {
         const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
         if (isValidObject(uniqueAZs)) {
-          this.props.setPlacementStatus(uniqueAZs.length > 2 ? "optimal" : "suboptimal");
+          var placementStatusObject = {
+            numUniqueRegions: placementInfo.uniqueRegions,
+            numUniqueAzs: placementInfo.uniqueAzs,
+            replicationFactor: universeConfigTemplate.userIntent.replicationFactor
+          }
+          this.props.setPlacementStatus(placementStatusObject);
         }
     }
   }
