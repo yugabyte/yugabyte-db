@@ -7,7 +7,7 @@ import { YBModal, YBTextInputWithLabel, YBControlledNumericInputWithLabel, YBSel
   YBMultiSelectWithLabel, YBRadioButtonBarWithLabel, YBControlledTextInput } from 'components/common/forms/fields';
 
 import AZSelectorTable from './AZSelectorTable';
-import UniverseConfigDetail from './UniverseConfigDetail';
+import { UniverseResources } from '../UniverseResources';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
 
@@ -255,7 +255,7 @@ export default class UniverseForm extends Component {
 
     var configDetailItem = "";
     if (isDefinedNotNull(universe.universeResourceTemplate) && isDefinedNotNull(universe.universeConfigTemplate)) {
-      configDetailItem = <UniverseConfigDetail universe={universe}/>
+      configDetailItem = <UniverseResources resources={universe.universeResourceTemplate} />
     }
 
     // Hide modal when close is clicked, it also resets the form state and sets it to pristine
