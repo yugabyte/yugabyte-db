@@ -94,7 +94,9 @@ export default class ListTables extends Component {
 class ListTableGrid extends Component {
   componentWillMount() {
     var universeUUID = this.props.universe.currentUniverse.universeUUID;
-    this.props.fetchUniverseTables(universeUUID);
+    if (this.props.universe.currentUniverse.universeDetails.updateSucceeded) {
+      this.props.fetchUniverseTables(universeUUID);
+    }
   }
   render(){
     var self = this;
