@@ -9,6 +9,7 @@ import { YBModal, YBTextInputWithLabel, YBControlledNumericInputWithLabel, YBSel
 import AZSelectorTable from './AZSelectorTable';
 import UniverseConfigDetail from './UniverseConfigDetail';
 import './UniverseForm.scss';
+import AZPlacementInfo from './AZPlacementInfo';
 
 export default class UniverseForm extends Component {
   static propTypes = {
@@ -41,7 +42,8 @@ export default class UniverseForm extends Component {
       providerSelected: '',
       numNodes: 3,
       isCustom: false,
-      replicationFactor: 3
+      replicationFactor: 3,
+      placementInfo: {}
     };
   }
 
@@ -205,26 +207,10 @@ export default class UniverseForm extends Component {
       self.props.reset();
       onHide();
     }
-
-    var currentStatusIcon = <span/>;
-    var currentStatusString = "";
-    var currentStatusClass = "";
-    if (isValidObject(self.props.universe) ) {
-      if (self.props.universe.currentPlacementStatus === "suboptimal") {
-        currentStatusIcon = <i className="fa fa-exclamation"/>;
-        currentStatusString = "Sub-Optimal Placement Of Data";
-        currentStatusClass = "yb-warn-color";
-      } else if (self.props.universe.currentPlacementStatus === "optimal") {
-        currentStatusIcon = <i className="fa fa-check"/>;
-        currentStatusString = "Optimal Placement Of Data";
-        currentStatusClass = "yb-success-color";
-      } else if (self.props.universe.currentPlacementStatus === "invalid") {
-        currentStatusIcon = <i className="fa fa-times"/>;
-        currentStatusString = "Invalid Placement Of Data";
-        currentStatusClass = "yb-fail-color";
-      }
+    var placementStatus = <span/>;
+    if (self.props.universe.currentPlacementStatus) {
+      placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>
     }
-
     return (
       <YBModal visible={visible} onHide={hideModal} title={title} error={universe.error}
         submitLabel={submitLabel} showCancelButton={true}
@@ -259,8 +245,8 @@ export default class UniverseForm extends Component {
         </Col>
         <Col lg={6} className={"universe-az-selector-container"}>
           <h4>Availability Zones</h4>
-          <span className={currentStatusClass}>&nbsp;{currentStatusIcon}&nbsp;{currentStatusString}</span>
-          <AZSelectorTable {...this.props} numNodesChanged={this.numNodesChangedViaAzList}/>
+          {placementStatus}
+          <AZSelectorTable {...this.props} numNodesChanged={this.numNodesChangedViaAzList} setPlacementInfo={this.setPlacementInfo}/>
         </Col>
       </YBModal>
     );
