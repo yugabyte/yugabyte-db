@@ -55,12 +55,12 @@ try:
             package_infos = get_package_info(args.tag)
             yugaware_commit_hash = None
             for package_info in package_infos:
-                package_name = package_info.get('package')
+                package_name = package_info.get("package")
                 repo, commit, version = _extract_components_from_package_name(package_name, True)
-                if repo == 'yugaware':
+                if repo == "yugaware":
                     yugaware_commit_hash = commit
                     continue
-                elif repo == 'yugabyte':
+                elif repo == "yugabyte":
                     download_folder = os.path.join(packages_folder, repo, version)
                 else:
                     download_folder = os.path.join(packages_folder, repo)
