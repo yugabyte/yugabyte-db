@@ -9,6 +9,7 @@ import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetails, DeleteUniverseContainer } from '../../universes';
+import { UniverseResources } from '../UniverseResources';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel } from '../../panels';
@@ -62,17 +63,17 @@ export default class UniverseDetail extends Component {
 
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
+        <div className="universe-detail-resources">
+          <UniverseResources resources={currentUniverse.resources} />
+        </div>
+        <hr/>
         <Row>
-          <Col lg={4}>
+          <Col lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse}
                                customerId={localStorage.getItem("customer_id")} />
           </Col>
-          <Col lg={3}>
+          <Col lg={7}>
             <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
-                                universeInfo={currentUniverse} />
-          </Col>
-          <Col lg={5}>
-            <ConnectStringPanel customerId={localStorage.getItem("customer_id")}
                                 universeInfo={currentUniverse} />
           </Col>
         </Row>
@@ -96,7 +97,6 @@ export default class UniverseDetail extends Component {
       </Tab>,
       <Tab eventKey={"tasks"} title="Tasks" key="tasks-tab">
         <UniverseTaskList universe={universe}/>
-
       </Tab>
     ];
 

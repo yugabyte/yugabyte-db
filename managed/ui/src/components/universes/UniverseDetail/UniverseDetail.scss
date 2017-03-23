@@ -3,27 +3,32 @@
 @import "_style/colors.scss";
 
 .detail-label-small {
-    margin:0 0 6px 6px;
-    color: $YB_DARK_GREY;
-    padding-left: 4px;
+  margin:0 0 6px 6px;
+  color: $YB_DARK_GREY;
+  padding-left: 4px;
 }
 
 .universe-detail-btn-group .dropdown {
-    padding: 0;
+  padding: 0;
 }
 
 .universe-detail-status-container {
-    h2 {
-      display: inline;
-      float: left;
-    }
+  h2 {
+    display: inline;
+    float: left;
+  }
 }
 .universe-detail-status-container {
-    float: left;
-    .progress {
-        margin-bottom: 0px;
-    }
+  float: left;
+  .progress {
+    margin-bottom: 0px;
+  }
 .status-pending {
-    margin-top: -30px;
-    }
+  margin-top: -30px;
+  }
+}
+
+.universe-detail-resources {
+  padding-left: 14px;
+  text-align: center;
 }
