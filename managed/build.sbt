@@ -53,8 +53,8 @@ dockerCommands ++= Seq(
   Cmd("USER", "root"),
   Cmd("RUN", "apt-get update && apt-get install -y python-dev libffi-dev " +
     "openssl libssl-dev python-pip git"),
-  Cmd("ADD", "packages/devops*.tar.gz /opt/yugabyte/devops"),
+  Cmd("ADD", "packages/devops/devops*.tar.gz /opt/yugabyte/devops"),
   Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_python_requirements.sh"),
   Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_ansible_requirements.sh"),
-  Cmd("COPY", "packages/yugabyte*.tar.gz /opt/yugabyte/releases/")
+  Cmd("ADD", "packages/yugabyte /opt/yugabyte/releases/")
 )

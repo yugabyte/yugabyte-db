@@ -10,7 +10,8 @@ import argparse
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
     generate_checksum, latest_release, download_release, docker_push_to_replicated
-from ybops.utils.release import get_package_info, S3_RELEASE_BUCKET
+from ybops.utils.release import get_package_info, S3_RELEASE_BUCKET, \
+    _extract_components_from_package_name
 from ybops.common.exceptions import YBOpsRuntimeError
 
 """This script is basically builds and packages yugaware application.
@@ -48,22 +49,27 @@ try:
             raise YBOpsRuntimeError("--tag is required for docker release.")
 
         packages_folder = os.path.join(script_dir, "target", "docker", "stage", "packages")
-        if not os.path.exists(packages_folder):
-            os.makedirs(packages_folder)
         package_infos = None
         try:
             log_message(logging.INFO, "Download packages based on the release tag")
             package_infos = get_package_info(args.tag)
             yugaware_commit_hash = None
             for package_info in package_infos:
-                if package_info.get('repo') == 'yugaware':
-                    yugaware_commit_hash = package_info.get('commit')
+                package_name = package_info.get('package')
+                repo, commit, version = _extract_components_from_package_name(package_name, True)
+                if repo == 'yugaware':
+                    yugaware_commit_hash = commit
                     continue
+                elif repo == 'yugabyte':
+                    download_folder = os.path.join(packages_folder, repo, version)
+                else:
+                    download_folder = os.path.join(packages_folder, repo)
 
-                download_release(args.tag,
-                                 package_info.get('package'),
-                                 packages_folder,
-                                 S3_RELEASE_BUCKET)
+                if not os.path.exists(download_folder):
+                    os.makedirs(download_folder)
+
+                download_release(args.tag, package_name, download_folder, S3_RELEASE_BUCKET)
+
             if not yugaware_commit_hash:
                 raise YBOpsRuntimeError("Unable to fetch yugaware commit hash.")
             output = check_output(["git", "checkout", yugaware_commit_hash])
