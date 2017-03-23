@@ -40,7 +40,7 @@ export default class MetricsPanel extends Component {
       metric.layout.margin = {
         l: 45,
         r: 25,
-        b: 45,
+        b: 0,
         t: 70,
         pad: 4,
       };
@@ -56,11 +56,10 @@ export default class MetricsPanel extends Component {
       metric.layout.legend = {
         orientation: "h",
         xanchor: "center",
-        yanchor: "top",
+        yanchor: "bottom",
         x: 0.5,
-        y: -0.3,
+        y: -0.5,
       };
-
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
@@ -73,8 +72,9 @@ export default class MetricsPanel extends Component {
           x: 1,
           y: 1
         }];
-        metric.layout["xaxis"] = {range: [0, 2]}
-        metric.layout["yaxis"] = {range: [0, 2]}
+        metric.layout.margin.b = 105;
+        metric.layout.xaxis = {range: [0, 2]}
+        metric.layout.yaxis = {range: [0, 2]}
       }
 
       Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});
