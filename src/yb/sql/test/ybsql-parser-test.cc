@@ -94,6 +94,18 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
   // Valid statement: INSERT statement with ":" number bind marker.
   PARSE_VALID_STMT("INSERT INTO t (c1, c2) VALUES (:1, :2);");
 
+  // Valid statement: SELECT statement with "<unreserved-word>" bind marker.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE C1 = :KEY;");
+
+  // Valid statement: SELECT statement with "=" and "?" with no space in between.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE C1=?;");
+
+  // Valid statement: SELECT statement with "=" and ":id" with no space in between.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE C1=:c1;");
+
+  // Valid statement: SELECT statement with "=" and ":number" with no space in between.
+  PARSE_VALID_STMT("SELECT * FROM t WHERE C1=:1;");
+
   // Valid statement: SELECT statement with non-positive ":" bind position marker.
   PARSE_INVALID_STMT("SELECT * from t WHERE C1 = :0;");
 

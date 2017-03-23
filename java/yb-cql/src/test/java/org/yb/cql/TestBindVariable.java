@@ -768,7 +768,7 @@ public class TestBindVariable extends TestBase {
     SetupTable("test_bind", 10 /* num_rows */);
 
     {
-      // Select position bind marker with mixed order.
+      // Position bind marker with mixed order.
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = :2 AND h2 = :3 AND r1 = :1;";
       ResultSet rs = session.execute(select_stmt, new Integer(107), new Integer(7), "h7");
@@ -786,7 +786,7 @@ public class TestBindVariable extends TestBase {
     }
 
     {
-      // Select named markers with quoted identifier and space between colon and id.
+      // Named markers with quoted identifier and space between colon and id.
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
                            " WHERE h1 = :\"Bind1\" AND h2 = :  \"Bind2\" AND r1 = :  \"Bind3\";";
       ResultSet rs = session.execute(select_stmt,
@@ -805,6 +805,130 @@ public class TestBindVariable extends TestBase {
       assertEquals(1007, row.getInt(4));
       assertEquals("v1007", row.getString(5));
       row = rs.one();
+      assertNull(row);
+    }
+
+    {
+      // Named bind marker with unreserved keywords ("key", "type" and "partition").
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                           " WHERE h1=:key AND h2=:type AND r1=:partition;";
+      ResultSet rs = session.execute(select_stmt,
+                                     new HashMap<String, Object>() {{
+                                         put("key", new Integer(7));
+                                         put("type", "h7");
+                                         put("partition", new Integer(107));
+                                       }});
+      Row row = rs.one();
+      // Assert exactly 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+      row = rs.one();
+      assertNull(row);
+    }
+
+    {
+      // Position bind marker no space between "col=?".
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                           " WHERE h1=? AND h2=? AND r1=?;";
+      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+      Row row = rs.one();
+      // Assert exactly 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+      row = rs.one();
+      assertNull(row);
+    }
+
+    {
+      // Number bind marker no space between "col=:number".
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                           " WHERE h1=:1 AND h2=:2 AND r1=:3;";
+      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+      Row row = rs.one();
+      // Assert exactly 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+      row = rs.one();
+      assertNull(row);
+    }
+
+    {
+      // Named bind marker no space between "col=:id".
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                           " WHERE h1=:b1 AND h2=:b2 AND r1=:b3;";
+      ResultSet rs = session.execute(select_stmt,
+                                     new HashMap<String, Object>() {{
+                                         put("b1", new Integer(7));
+                                         put("b2", "h7");
+                                         put("b", new Integer(107));
+                                       }});
+      Row row = rs.one();
+      // Assert exactly 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+      row = rs.one();
+      assertNull(row);
+    }
+
+    {
+      // Bind marker with ">=" and "<=" and no space in between column, operator and bind marker.
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                           " WHERE h1=? AND h2=? AND r1>=? AND r1<=?;";
+      ResultSet rs = session.execute(select_stmt,
+                                     new Integer(7), "h7",
+                                     new Integer(107), new Integer(107));
+      Row row = rs.one();
+      // Assert exactly 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+      row = rs.one();
+      assertNull(row);
+    }
+
+    {
+      // Bind marker with ">" and "<" and no space in between column, operator and bind marker.
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                           " WHERE h1=? AND h2=? AND r1>? AND r1<?;";
+      ResultSet rs = session.execute(select_stmt,
+                                     new Integer(7), "h7",
+                                     new Integer(107), new Integer(107));
+      Row row = rs.one();
+      // Assert no row is returned.
+      assertNull(row);
+    }
+
+    {
+      // Bind marker with "<>" and no space in between column, operator and bind marker.
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                           " WHERE h1=:1 AND h2=:2 AND r1<>:3;";
+      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+      Row row = rs.one();
+      // Assert no row is returned.
       assertNull(row);
     }
 

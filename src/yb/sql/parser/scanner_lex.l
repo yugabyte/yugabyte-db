@@ -860,9 +860,12 @@ other                     .
    * contains chars that are not in SQL operators.
    * The idea is to lex '=-' as two operators, but not
    * to forbid operator names like '?-' that could not be
-   * sequences of SQL operators.
+   * sequences of SQL operators. Similarly for '?' to allow
+   * "... where c=?".
    */
-  while (nchars > 1 && (yytext[nchars-1] == '+' || yytext[nchars-1] == '-')) {
+  while (nchars > 1 && (yytext[nchars-1] == '+' ||
+                        yytext[nchars-1] == '-' ||
+                        yytext[nchars-1] == '?')) {
     int   ic;
 
     for (ic = nchars-2; ic >= 0; ic--) {

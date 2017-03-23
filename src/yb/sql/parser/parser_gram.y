@@ -3484,6 +3484,9 @@ bindvar:
   | ':' IDENT {
     $$ = MAKE_NODE(@1, PTBindVar, $2);
   }
+  | ':' unreserved_keyword {
+    $$ = MAKE_NODE(@1, PTBindVar, parser_->MakeString($2));
+  }
   | ':' ICONST {
     if ($2 <= 0) {
       PARSER_CQL_INVALID_MSG(@2, "bind position must be a positive integer");
