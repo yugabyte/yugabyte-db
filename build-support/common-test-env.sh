@@ -54,6 +54,8 @@ readonly RELEVANT_LOG_LINES_RE
 # Some functions use this to output to stdout/stderr along with a file.
 append_output_to=/dev/null
 
+readonly ADDRESS_ALREADY_IN_USE_PATTERN="Address already in use"
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------
@@ -750,49 +752,70 @@ run_one_test() {
     "$BUILD_ROOT"/bin/run-with-timeout $(( $timeout_sec + 1 )) "${test_cmd_line[@]}"
   )
   pushd "$TEST_TMPDIR" >/dev/null
-  set +e
-  (
-    # Setting the ulimit may fail with an error message, and that's what we want. We will still run
-    # the test.  In case we do manage to set the core file size limit, we will restore the previous
-    # limit after we exit the subshell.
-    ulimit -c unlimited
-    if [[ $? -ne 0 ]]; then
-      # Print some diagnostics if we fail to set core file size limit.
-      log "Command 'ulimit -c unlimited' failed. Current 'ulimit -c' output: $( ulimit -c )"
-    fi
 
-    # Print the load address of every dynamic library on test startup, so we can add file names and
-    # line numbers to stack traces. This should be unnecessary if we switch to libbacktrace-based
-    # stack traces that would come with line numbers already. Also, one potential problem with this
-    # approach based on dumping load offsets of dynamic libraries is that stacktrace_addr2line.pl
-    # won't be able to match lines specifying library load offsets to processes in multi-process
-    # tests (e.g. mini-cluster based tests), potentially resulting in incorrect file names / line
-    # numbers.
-    #
-    # See also https://yugabyte.atlassian.net/browse/ENG-617 for tracking the libbacktrace work.
-    export YB_LIST_LOADED_DYNAMIC_LIBS=1
-
-    # YB_CTEST_VERBOSE makes test output go to stderr, and then we separately make it show up on the
-    # console by giving ctest the --verbose option. This is intended for development. When we run
-    # tests on Jenkins or when running all tests using "ctest -j8" from the build root, one should
-    # leave YB_CTEST_VERBOSE unset.
-    if [[ -n ${YB_CTEST_VERBOSE:-} ]]; then
-      # In the verbose mode we have to perform stack trace filtering / symbolization right away.
-      local stack_trace_filter_cmd=( "$STACK_TRACE_FILTER" )
-      if [[ $STACK_TRACE_FILTER != "cat" ]]; then
-        stack_trace_filter_cmd+=( "$abs_test_binary_path" )
+  local attempts_left
+  for attempts_left in {1..0}; do
+    set +e
+    (
+      # Setting the ulimit may fail with an error message, and that's what we want. We will still
+      # run the test.  In case we do manage to set the core file size limit, we will restore the
+      # previous limit after we exit the subshell.
+      ulimit -c unlimited
+      if [[ $? -ne 0 ]]; then
+        # Print some diagnostics if we fail to set core file size limit.
+        log "Command 'ulimit -c unlimited' failed. Current 'ulimit -c' output: $( ulimit -c )"
       fi
-      ( set -x; "${test_wrapper_cmd_line[@]}" 2>&1 ) | \
-        "${stack_trace_filter_cmd[@]}" | \
-        tee "$test_log_path"
-      # Propagate the exit code of the test process, not any of the filters.
-      exit ${PIPESTATUS[0]}
-    else
-      "${test_wrapper_cmd_line[@]}" &>"$test_log_path"
+
+      # Print the load address of every dynamic library on test startup, so we can add file names
+      # and line numbers to stack traces. This should be unnecessary if we switch to
+      # libbacktrace-based stack traces that would come with line numbers already. Also, one
+      # potential problem with this approach based on dumping load offsets of dynamic libraries is
+      # that stacktrace_addr2line.pl won't be able to match lines specifying library load offsets to
+      # processes in multi-process tests (e.g. mini-cluster based tests), potentially resulting in
+      # incorrect file names / line numbers.
+      #
+      # See also https://yugabyte.atlassian.net/browse/ENG-617 for tracking the libbacktrace work.
+      export YB_LIST_LOADED_DYNAMIC_LIBS=1
+
+      # YB_CTEST_VERBOSE makes test output go to stderr, and then we separately make it show up on
+      # the console by giving ctest the --verbose option. This is intended for development. When we
+      # run tests on Jenkins or when running all tests using "ctest -j8" from the build root, one
+      # should leave YB_CTEST_VERBOSE unset.
+      if [[ -n ${YB_CTEST_VERBOSE:-} ]]; then
+        # In the verbose mode we have to perform stack trace filtering / symbolization right away.
+        local stack_trace_filter_cmd=( "$STACK_TRACE_FILTER" )
+        if [[ $STACK_TRACE_FILTER != "cat" ]]; then
+          stack_trace_filter_cmd+=( "$abs_test_binary_path" )
+        fi
+        ( set -x; "${test_wrapper_cmd_line[@]}" 2>&1 ) | \
+          "${stack_trace_filter_cmd[@]}" | \
+          tee "$test_log_path"
+        # Propagate the exit code of the test process, not any of the filters. This will only exit
+        # this subshell, not the entire script calling this function.
+        exit ${PIPESTATUS[0]}
+      else
+        "${test_wrapper_cmd_line[@]}" &>"$test_log_path"
+      fi
+    )
+    test_exit_code=$?
+    set -e
+
+    # Test did not fail, no need to retry.
+    if [[ $test_exit_code -eq 0 ]]; then
+      break
     fi
-  )
-  test_exit_code=$?
-  set -e
+
+    # See if the test failed due to "Address already in use" and log a message if we still have more
+    # attempts left.
+    if [[ $attempts_left -gt 0 ]] && \
+       egrep -q "$ADDRESS_ALREADY_IN_USE_PATTERN" "$test_log_path"; then
+      log "Found 'Address already in use' in test log, re-running the test:"
+      egrep "$ADDRESS_ALREADY_IN_USE_PATTERN" "$test_log_path" >&2
+    elif [[ $test_exit_code -ne 0 ]]; then
+      # Avoid retrying any other kinds of failures.
+      break
+    fi
+  done
 
   popd >/dev/null
 
