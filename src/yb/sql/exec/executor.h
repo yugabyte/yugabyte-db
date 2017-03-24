@@ -24,6 +24,8 @@
 namespace yb {
 namespace sql {
 
+class SqlMetrics;
+
 class Executor {
  public:
   //------------------------------------------------------------------------------------------------
@@ -33,7 +35,7 @@ class Executor {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  Executor();
+  explicit Executor(const SqlMetrics* sql_metrics);
   virtual ~Executor();
 
   // Execute the given parse tree.
@@ -158,7 +160,7 @@ class Executor {
       ExecutedResult::SharedPtr result);
 
   void ExecuteDone(
-      const ParseTree *ptree, StatementExecutedCallback cb, const Status &s,
+      const ParseTree *ptree, MonoTime start, StatementExecutedCallback cb, const Status &s,
       ExecutedResult::SharedPtr result);
 
   void ApplyReadAsyncDone(
@@ -172,6 +174,9 @@ class Executor {
 
   // Parameters to execute the statement with.
   const StatementParameters *params_ = nullptr;
+
+  // SqlMetrics to keep track of node parsing etc.
+  const SqlMetrics* sql_metrics_;
 };
 
 }  // namespace sql

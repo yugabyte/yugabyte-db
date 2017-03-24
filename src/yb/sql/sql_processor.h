@@ -27,6 +27,12 @@ class SqlMetrics {
   scoped_refptr<yb::Histogram> time_to_execute_sql_query_;
   scoped_refptr<yb::Histogram> num_rounds_to_analyse_sql_;
 
+  scoped_refptr<yb::Histogram> sql_select_;
+  scoped_refptr<yb::Histogram> sql_insert_;
+  scoped_refptr<yb::Histogram> sql_update_;
+  scoped_refptr<yb::Histogram> sql_delete_;
+  scoped_refptr<yb::Histogram> sql_others_;
+
   scoped_refptr<yb::Histogram> sql_response_size_bytes_;
 };
 

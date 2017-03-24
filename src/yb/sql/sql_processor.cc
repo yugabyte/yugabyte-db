@@ -25,6 +25,27 @@ METRIC_DEFINE_histogram(
     "Number of rounds to successfully parse a SQL query", yb::MetricUnit::kOperations,
     "Number of rounds to successfully parse a SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_SelectStmt,
+    "Time spent processing a Select stmt", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a Select stmt", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_InsertStmt,
+    "Time spent processing a Insert stmt", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a Insert stmt", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt,
+    "Time spent processing a Update stmt", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a Update stmt", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt,
+    "Time spent processing a Delete stmt", yb::MetricUnit::kMicroseconds,
+    "Time spent processing a Delete stmt", 60000000LU, 2);
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_SQLProcessor_OtherStmts,
+    "Time spent processing any stmt other than Select/Insert/Update/Delete",
+    yb::MetricUnit::kMicroseconds,
+    "Time spent processing any stmt other than Select/Insert/Update/Delete", 60000000LU, 2);
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ResponseSize,
     "Size of the returned response blob (in bytes)", yb::MetricUnit::kBytes,
     "Size of the returned response blob (in bytes)", 60000000LU, 2);
@@ -48,6 +69,18 @@ SqlMetrics::SqlMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
   num_rounds_to_analyse_sql_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyse.Instantiate(
           metric_entity);
+
+  sql_select_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_SelectStmt.Instantiate(metric_entity);
+  sql_insert_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_InsertStmt.Instantiate(metric_entity);
+  sql_update_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt.Instantiate(metric_entity);
+  sql_delete_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt.Instantiate(metric_entity);
+  sql_others_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_OtherStmts.Instantiate(metric_entity);
+
   sql_response_size_bytes_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ResponseSize.Instantiate(metric_entity);
 }
@@ -57,7 +90,7 @@ SqlProcessor::SqlProcessor(
     shared_ptr<YBTableCache> cache, SqlMetrics* sql_metrics)
     : parser_(new Parser()),
       analyzer_(new Analyzer()),
-      executor_(new Executor()),
+      executor_(new Executor(sql_metrics)),
       sql_env_(new SqlEnv(messenger, client, cache)),
       sql_metrics_(sql_metrics),
       is_used_(false) {}

@@ -6,6 +6,7 @@
 #include "yb/util/logging.h"
 #include "yb/client/callbacks.h"
 #include "yb/common/partition.h"
+#include "yb/sql/sql_processor.h"
 
 namespace yb {
 namespace sql {
@@ -42,7 +43,7 @@ using strings::Substitute;
 
 //--------------------------------------------------------------------------------------------------
 
-Executor::Executor() {
+Executor::Executor(const SqlMetrics* sql_metrics) : sql_metrics_(sql_metrics) {
 }
 
 Executor::~Executor() {
@@ -60,19 +61,38 @@ void Executor::ExecuteAsync(
   params_ = &params;
   // Execute the parse tree.
   ExecPTreeAsync(
-      parse_tree, Bind(&Executor::ExecuteDone, Unretained(this), Unretained(&parse_tree), cb));
+      parse_tree, Bind(&Executor::ExecuteDone, Unretained(this), Unretained(&parse_tree),
+      MonoTime::Now(MonoTime::FINE), cb));
 }
 
 void Executor::ExecuteDone(
-    const ParseTree *ptree, StatementExecutedCallback cb, const Status &s,
+    const ParseTree *ptree, MonoTime start, StatementExecutedCallback cb, const Status &s,
     ExecutedResult::SharedPtr result) {
   if (!s.ok()) {
     // Before leaving the execution step, collect all errors and place them in return status.
     VLOG(3) << "Failed to execute parse-tree <" << ptree << ">";
     CB_RETURN(cb, exec_context_->GetStatus());
+  } else {
+    VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
+    MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
+    switch (static_cast<const PTListNode *>(ptree->root().get())->element(0)->opcode()) {
+      case TreeNodeOpcode::kPTSelectStmt:
+        sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
+        break;
+      case TreeNodeOpcode::kPTInsertStmt:
+        sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
+        break;
+      case TreeNodeOpcode::kPTUpdateStmt:
+        sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
+        break;
+      case TreeNodeOpcode::kPTDeleteStmt:
+        sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
+        break;
+      default:
+        sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+    }
+    cb.Run(Status::OK(), result);
   }
-  VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
-  cb.Run(Status::OK(), result);
 }
 
 void Executor::Done() {
