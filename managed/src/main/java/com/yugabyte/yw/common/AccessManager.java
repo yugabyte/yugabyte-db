@@ -153,5 +153,24 @@ public class AccessManager extends DevopsBase {
     public JsonNode listKeys(UUID regionUUID) {
         return execCommand(regionUUID, "list-keys", Collections.emptyList());
     }
+
+    public JsonNode deleteKey(UUID regionUUID, String keyCode) {
+        List<String> commandArgs = new ArrayList<String>();
+        Region region = Region.get(regionUUID);
+        if (region == null) {
+            throw new RuntimeException("Invalid Region UUID: " + regionUUID);
+        }
+        String keyFilePath = getKeyFilePath(region.provider.uuid);
+
+        commandArgs.add("--key_pair_name");
+        commandArgs.add(keyCode);
+        commandArgs.add("--key_file_path");
+        commandArgs.add(keyFilePath);
+        JsonNode response = execCommand(regionUUID, "delete-key", commandArgs);
+        if (response.has("error")) {
+            throw new RuntimeException(response.get("error").asText());
+        }
+        return response;
+    }
 }
 

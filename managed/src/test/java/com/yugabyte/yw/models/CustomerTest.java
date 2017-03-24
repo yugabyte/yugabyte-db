@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models;
 
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
 
@@ -10,6 +13,9 @@ import com.yugabyte.yw.models.Customer;
 
 import javax.persistence.PersistenceException;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
 import static org.junit.Assert.*;
 
 public class CustomerTest extends FakeDBApplication {
@@ -124,5 +130,19 @@ public class CustomerTest extends FakeDBApplication {
   public void testInvalidCreate() {
     Customer c = Customer.create(null, "foo@bar.com", "password");
     c.save();
+  }
+
+  @Test
+  public void testGetUniversesForProvider() {
+    Customer c = ModelFactory.testCustomer();
+    Provider p = ModelFactory.awsProvider(c);
+    Universe universe = Universe.create("Universe-1", UUID.randomUUID(), c.getCustomerId());
+    UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.provider = p.code;
+    universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+    c.addUniverseUUID(universe.universeUUID);
+    c.save();
+    Set<Universe> universes = c.getUniversesForProvider("aws");
+    assertEquals(1, universes.size());
   }
 }

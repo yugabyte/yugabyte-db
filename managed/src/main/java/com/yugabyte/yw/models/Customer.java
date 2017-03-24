@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.List;
 import java.util.Arrays;
+import java.util.stream.Collectors;
 
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -111,6 +112,14 @@ public class Customer extends Model {
       return new HashSet<>();
     }
     return Universe.get(getUniverseUUIDs());
+  }
+
+  @JsonIgnore
+  public Set<Universe> getUniversesForProvider(String providerCode) {
+    Set<Universe> universes = getUniverses();
+    return universes.stream()
+           .filter(u -> u.getUniverseDetails().userIntent.provider.equals(providerCode))
+           .collect(Collectors.toSet());
   }
 
   public static final Find<UUID, Customer> find = new Find<UUID, Customer>() {

@@ -160,4 +160,12 @@ public class RegionTest extends FakeDBApplication {
     Region fetchedRegion = Region.get(defaultCustomer.uuid, randomUUID, r.uuid);
     assertNull(fetchedRegion);
   }
+
+  @Test
+  public void testCascadeDelete() {
+    Region r = Region.create(defaultProvider, "region-1", "region 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "az 1", "subnet-1");
+    r.delete();
+    assertEquals(0, AvailabilityZone.find.all().size());
+  }
 }
