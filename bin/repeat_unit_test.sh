@@ -32,6 +32,8 @@ Options:
     Use binaries built with Clang (e.g. to distinguish between debug/release builds made with
     gcc vs. clang). If YB_COMPILER_TYPE is set, it will take precedence, and this option will not
     be allowed.
+  --skip-log-compression
+    Don't compress kept logs.
 EOT
 }
 
@@ -40,6 +42,16 @@ delete_tmp_files() {
   if [[ -n ${TEST_TMPDIR:-} && $TEST_TMPDIR =~ ^/tmp/ ]]; then
     rm -rf "$TEST_TMPDIR"
   fi
+}
+
+store_log_file_and_report_result() {
+  if "$skip_log_compression"; then
+    test_log_stored_path="$test_log_path"
+  else
+    gzip "$test_log_path"
+    test_log_stored_path="$test_log_path.gz"
+  fi
+  echo "$1: iteration $iteration (log: $test_log_stored_path)"
 }
 
 set -euo pipefail
@@ -65,6 +77,7 @@ declare -i parallelism=4
 declare -i iteration=0
 declare -i num_iter=1000
 keep_all_logs=false
+skip_log_compression=false
 original_args=( "$@" )
 yb_compiler_type_arg=""
 verbose=false
@@ -111,6 +124,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     -k|--keep-all-logs)
       keep_all_logs=true
+    ;;
+    --skip-log-compression)
+      skip_log_compression=true
     ;;
     --skip-address-already-in-use)
       skip_address_already_in_use=true
@@ -222,15 +238,14 @@ if [[ $iteration -gt 0 ]]; then
       echo "PASSED: iteration $iteration (assuming \"Address already in use\" is a false positive)"
       rm -f "$test_log_path"
     else
-      gzip "$test_log_path"
-      echo "FAILED: iteration $iteration (log: $test_log_path.gz)"
+      store_log_file_and_report_result "FAILED"
     fi
   elif "$keep_all_logs"; then
-    gzip "$test_log_path"
-    echo "PASSED: iteration $iteration (log: $test_log_path.gz)"
+    postprocess_test_log
+    store_log_file_and_report_result "PASSED"
   else
     echo "PASSED: iteration $iteration"
-    rm -f "$test_log_path"
+    rm -f "$raw_test_log_path"
   fi
 else
   if [[ -n $yb_compiler_type_from_env ]]; then

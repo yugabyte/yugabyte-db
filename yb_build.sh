@@ -78,6 +78,8 @@ Options:
     about the build root, compiler used, etc.
   --force, -f, -y
     Run a clean build without asking for confirmation even if a clean build was recently done.
+  --
+    Pass all arguments after -- to repeat_unit_test.
 
 Build types:
   debug (default), fastdebug, release, profile_gen, profile_build, asan, tsan
@@ -110,7 +112,8 @@ ctest_args=""
 num_test_repetitions=1
 build_descriptor_path=""
 export YB_GTEST_FILTER=""
-
+repeat_unit_test_inherited_args=()
+forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
 
 export YB_EXTRA_GTEST_FLAGS=""
@@ -119,6 +122,11 @@ while [ $# -gt 0 ]; do
   if is_valid_build_type "$1"; then
     build_type="$1"
     build_type_specified=true
+    shift
+    continue
+  fi
+  if "$forward_args_to_repeat_unit_test"; then
+    repeat_unit_test_inherited_args+=( "$1" )
     shift
     continue
   fi
@@ -241,6 +249,12 @@ while [ $# -gt 0 ]; do
     --write-build-descriptor)
       build_descriptor_path=$2
       shift
+    ;;
+    --)
+      if [[ $num_test_repetitions -lt 2 ]]; then
+        fatal "Forward to arguments to repeat_unit_test.sh without multiple repetitions"
+      fi
+      forward_args_to_repeat_unit_test=true
     ;;
     rocksdb_*)
       # Assume this is a CMake target we've created for RocksDB tests.
@@ -451,14 +465,13 @@ if [[ -n $cxx_test_name ]]; then
   else
     (
       export YB_COMPILER_TYPE
-      repeat_unit_test_extra_args=""
+      repeat_unit_test_extra_args=( "${repeat_unit_test_inherited_args[@]}" )
       if "$verbose"; then
-        repeat_unit_test_extra_args="--verbose"
+        repeat_unit_test_extra_args+=( --verbose )
       fi
-      set -x
+      set -x +u
       "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$cxx_test_name" \
-         --num-iter "$num_test_repetitions" $repeat_unit_test_extra_args
-      unset repeat_unit_test_extra_args
+         --num-iter "$num_test_repetitions" "${repeat_unit_test_extra_args[@]}"
     )
   fi
 fi
