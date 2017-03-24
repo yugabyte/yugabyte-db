@@ -14,10 +14,10 @@ export class YBControlledNumericInput extends Component {
     maxVal: 32,
   };
   render() {
-    const {input, val, onInputChanged, onInputSelect, onInputBlur, onInputFocus} = this.props;
+    const {input, val, onInputChanged, onInputSelect, onInputBlur, onInputFocus, valueFormat} = this.props;
     return (
       <NumericInput {...input} className="form-control" value={val} onChange={onInputChanged}
-                    onSelect={onInputSelect} onFocus={onInputFocus} onBlur={onInputBlur} />
+                    onSelect={onInputSelect} onFocus={onInputFocus} onBlur={onInputBlur} format={valueFormat}/>
     )
   }
 }
