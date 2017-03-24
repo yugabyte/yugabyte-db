@@ -38,6 +38,48 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return (UniverseTaskParams)taskParams;
   }
 
+  private UniverseUpdater getLockingUniverseUpdater(int expectedUniverseVersion, boolean checkSuccess) {
+    return new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        if (expectedUniverseVersion != -1 &&
+            expectedUniverseVersion != universe.version) {
+          String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
+              ", is different from the expected version of " + expectedUniverseVersion;
+          LOG.error(msg);
+          throw new IllegalStateException(msg);
+        }
+
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+
+        // If this universe is already being edited, fail the request.
+        if (universeDetails.updateInProgress) {
+          String msg = "UserUniverse " + taskParams().universeUUID + " is already being updated.";
+          LOG.error(msg);
+          throw new RuntimeException(msg);
+        }
+
+        // Persist the updated information about the universe. Mark it as being edited.
+        universeDetails.updateInProgress = true;
+        if (checkSuccess) {
+          universeDetails.updateSucceeded = false;
+        }
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
+
+  private Universe lockUniverseForUpdate(int expectedUniverseVersion, UniverseUpdater updater) {
+    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
+    // catch as we want to fail.
+    Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
+    universeLocked = true;
+    LOG.debug("Locked universe {} at version {}.",
+        taskParams().universeUUID, expectedUniverseVersion);
+    // Return the universe object that we have already updated.
+    return universe;
+  }
+
   @Override
   public void initialize(ITaskParams params) {
     super.initialize(params);
@@ -58,41 +100,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *                                version. -1 implies always lock the universe.
    */
   public Universe lockUniverseForUpdate(int expectedUniverseVersion) {
-    // Create the update lambda.
-    UniverseUpdater updater = new UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        if (expectedUniverseVersion != -1 &&
-            expectedUniverseVersion != universe.version) {
-          String msg = "Universe " + taskParams().universeUUID + " version " + universe.version +
-                       ", is different from the expected version of " + expectedUniverseVersion;
-          LOG.error(msg);
-          throw new IllegalStateException(msg);
-        }
+    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, true);
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+  }
 
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-
-        // If this universe is already being edited, fail the request.
-        if (universeDetails.updateInProgress) {
-          String msg = "UserUniverse " + taskParams().universeUUID + " is already being updated.";
-          LOG.error(msg);
-          throw new RuntimeException(msg);
-        }
-
-        // Persist the updated information about the universe. Mark it as being edited.
-        universeDetails.updateInProgress = true;
-        universeDetails.updateSucceeded = false;
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
-    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
-    // catch as we want to fail.
-    Universe universe = Universe.saveDetails(taskParams().universeUUID, updater);
-    universeLocked = true;
-    LOG.debug("Locked universe {} at version {}.",
-              taskParams().universeUUID, expectedUniverseVersion);
-    // Return the universe object that we have already updated.
-    return universe;
+  /**
+   * Locks the universe by setting the 'updateInProgress' flag. If the universe is already being
+   * modified, then throws an exception. Any tasks involving tables should use this method, not any
+   * other.
+   *
+   * @param expectedUniverseVersion Lock only if the current version of the unvierse is at this
+   *                                version. -1 implies always lock the universe.
+   */
+  public Universe lockUniverse(int expectedUniverseVersion) {
+    UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, false);
+    return lockUniverseForUpdate(expectedUniverseVersion, updater);
   }
 
   public void unlockUniverseForUpdate() {
