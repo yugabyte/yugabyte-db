@@ -24,7 +24,7 @@ public class CreateCassandraTable extends UniverseTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      lockUniverse(-1 /* expectedUniverseVersion */);
 
       // Create table task
       createTableTask(Common.TableType.YQL_TABLE_TYPE, taskParams().tableDetails.tableName, -1,
@@ -32,17 +32,14 @@ public class CreateCassandraTable extends UniverseTaskBase {
 
       // TODO: wait for table creation
 
-      // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks();
-
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      // Mark the update of the universe as done. This will allow future edits/updates to the
-      // universe to happen.
+      // Mark the update of the universe as done and successful. This will allow future edits and
+      // updates to the universe to happen.
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
