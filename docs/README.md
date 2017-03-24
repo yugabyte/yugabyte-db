@@ -37,6 +37,7 @@ None
 
 clone the docs project into /code directory
 run "hugo server" to start a high performance web server that continuously watches the entire docs directory
+Go to http://localhost:1313/ to see the docs
 
 * Deployment instructions
 
