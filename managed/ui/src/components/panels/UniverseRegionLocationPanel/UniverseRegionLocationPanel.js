@@ -10,9 +10,7 @@ export default class UniverseRegionLocationPanel extends Component {
 
   render() {
     const { cloud, cloud: {loading}, universe: {universeList} } = this.props;
-    if (loading) {
-      return <YBLoadingIcon/>;
-    }
+
     var completeRegionList = cloud.supportedRegionList;
     var universeListByRegions = {};
     universeList.forEach(function(universeItem, universeIdx){
