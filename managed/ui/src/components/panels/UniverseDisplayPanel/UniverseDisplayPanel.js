@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import {YBLoadingIcon} from '../../common/indicators';
-import { isValidObject } from 'utils/ObjectUtils';
+import { isValidObject, isValidArray } from 'utils/ObjectUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseFormContainer, UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
@@ -73,12 +73,20 @@ class UniverseDisplayItem extends Component {
 export default class UniverseDisplayPanel extends Component {
   render() {
     var self = this;
-    const { universe: {universeList, loading, showModal, visibleModal}} = this.props;
+    const { universe: {universeList, loading, showModal, visibleModal}, cloud} = this.props;
     if (loading) {
       return <YBLoadingIcon/>;
     }
     if (!isValidObject(universeList)) {
       return <span/>;
+    } else if (!isValidArray(cloud.providers)) {
+      return (
+      <div className="get-started-config">
+        <span>Welcome to <div className="yb-data-name">YugaByte Admin Console</div></span>
+        <span>Before you can create a Universe, you must configure a cloud provider.</span>
+        <span><Link to="config">Click Here to Configure A Provider</Link></span>
+      </div>
+      )
     }
     var universeDisplayList = universeList.map(function(universeItem, idx){
       return <UniverseDisplayItem  key={universeItem.name+idx} universe={universeItem}/>
@@ -87,7 +95,6 @@ export default class UniverseDisplayPanel extends Component {
     return (
       <div className="universe-display-panel-container">
         <h2>Universes</h2>
-
         {universeDisplayList}
         {createUniverseButton}
         <UniverseFormContainer type="Create"

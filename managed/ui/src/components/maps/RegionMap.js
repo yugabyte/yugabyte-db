@@ -18,7 +18,7 @@ export default class RegionMap extends Component {
   render() {
     const { regions, type } = this.props;
     var regionMarkers = []
-    var bounds = [[71.96, 175.78], [-71.96, -175.78]];
+    var bounds = [[61.96, 105.78], [-21.96, -95.78]];
     var regionLatLngs = regions.map(function (region, idx) {
       var markerType = type;
       if (isValidObject(region.providerCode)) {
