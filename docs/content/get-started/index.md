@@ -108,7 +108,7 @@ All the containers powering the YugaWare application will be downloaded from the
 
 ![Replicated Dashboard](/images/replicated-dashboard.png)
 
-After starting the YugaWare application, you can register a new customer in YugaWare by following the instructions in the [Admin](/admin/#register-customer) section.
+After starting the YugaWare application, you can register a new customer in YugaWare by following the instructions in the [Admin](/http://localhost:1313/admin/#register-customer) section.
 
 ## Backup
 

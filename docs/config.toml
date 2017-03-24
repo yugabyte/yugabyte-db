@@ -1,3 +1,5 @@
+# Copyright (c) YugaByte, Inc.
+
 baseurl = "https://docs.yugabyte.com/"
 languageCode = "en-us"
 title = "YugaByte Docs"

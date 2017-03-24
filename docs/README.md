@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 # README #
 
 YugaByte Product Documentation
