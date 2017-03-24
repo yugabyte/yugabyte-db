@@ -20,7 +20,9 @@ Example of Material docs theme: http://themes.gohugo.io/theme/material-docs/
 * Summary of set up
 
 On Mac OS X:
+```
 brew update && brew install hugo
+```
 
 Detailed installation instructions: http://gohugo.io/overview/installing/
 
@@ -36,8 +38,13 @@ None
 * How to run tests
 
 clone the docs project into /code directory
-run "hugo server" to start a high performance web server that continuously watches the entire docs directory
-Go to http://localhost:1313/ to see the docs
+
+run the following to start a high performance web server that continuously watches the entire docs directory
+ ```
+ hugo server
+ ```
+
+Go to [http://localhost:1313/] (http://localhost:1313/)to see the docs
 
 * Deployment instructions
 
