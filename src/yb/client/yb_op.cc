@@ -144,7 +144,6 @@ std::string YBRedisReadOp::ToString() const {
 }
 
 const RedisResponsePB& YBRedisReadOp::response() const {
-  // Cannot use CHECK or DCHECK here, or client_samples-test will fail.
   assert(redis_response_ != nullptr);
   return *redis_response_;
 }

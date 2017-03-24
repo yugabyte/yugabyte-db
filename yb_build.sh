@@ -412,23 +412,20 @@ if "$build_cxx"; then
     log_empty_line
   fi
 
-  # The test "client_samples-test" does not have a corresponding target to build.
-  if [[ $cxx_test_name != "client_samples-test" ]]; then
-    log "Running make in $PWD"
-    set +u +e  # "set -u" may cause failures on empty lists
-    time (
-      set -x
-      make -j"$YB_NUM_CPUS" "${make_opts[@]}" "${make_targets[@]}"
-    )
+  log "Running make in $PWD"
+  set +u +e  # "set -u" may cause failures on empty lists
+  time (
+    set -x
+    make -j"$YB_NUM_CPUS" "${make_opts[@]}" "${make_targets[@]}"
+  )
 
-    exit_code=$?
-    set -u -e
-    log "Non-java build finished with exit code $exit_code" \
-        "(build type: $build_type, compiler: $YB_COMPILER_TYPE)." \
-        "Timing information is available above."
-    if [ "$exit_code" -ne 0 ]; then
-      exit "$exit_code"
-    fi
+  exit_code=$?
+  set -u -e
+  log "Non-java build finished with exit code $exit_code" \
+      "(build type: $build_type, compiler: $YB_COMPILER_TYPE)." \
+      "Timing information is available above."
+  if [ "$exit_code" -ne 0 ]; then
+    exit "$exit_code"
   fi
 
   if "$test_existence_check"; then

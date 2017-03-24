@@ -24,8 +24,6 @@
 #include <vector>
 #include <mutex>
 
-// --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
-// --- client_samples-test.sh depends on this --- //
 #include "yb/client/row_result.h"
 #include "yb/client/scan_batch.h"
 #include "yb/client/scan_predicate.h"
@@ -42,7 +40,6 @@
 #include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
-// --- NOTE: DO NOT INCLUDE ANY PROTOBUF HEADERS IN CLIENT --- //
 
 template<class T> class scoped_refptr;
 

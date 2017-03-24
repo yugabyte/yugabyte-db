@@ -225,26 +225,6 @@ target_link_libraries(yb_client_test_util
 
 # Tests
 
-# The OS X system compiler does not support source symbol maps, so the client
-# leaks internal symbols globally.
-#
-# Coverage builds insert gcov-related symbols into the client library. We
-# don't ship such builds, so there's no point in checking symbol visibility.
-if (NOT APPLE AND
-    NOT "${YB_GENERATE_COVERAGE}" AND
-    # This test fails on clang for some reason. We'll enable and fix it when/if we want to release
-    # a clang-built C++ client library.
-    NOT "${COMPILER_FAMILY}" STREQUAL "clang")
-  ADD_YB_TEST(client_symbol-test.sh LABELS no_dist_test)
-endif()
-
-### This test seems redundant in the presence of 'client-test' since we don't intend to support
-### the protobuffer-agnostic clients that Kudu does (otherwise tests the same code paths)
-### TODO: remove entirely or fix
-# The samples are never built with ASAN/TSAN.
-#if(NOT "${YB_USE_ASAN}" AND NOT "${YB_USE_TSAN}")
-#  ADD_YB_TEST(client_samples-test.sh RUN_SERIAL true LABELS no_dist_test)
-#endif()
 set(YB_TEST_LINK_LIBS yb_client ybsql_util integration-tests ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)

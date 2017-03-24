@@ -11,8 +11,6 @@ fi
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 
 NON_GTEST_TESTS_RE=$( regex_from_list "
-  client_samples-test
-  client_symbol-test
   merge-test
   non_gtest_failures-test
 ")
@@ -604,9 +602,6 @@ process_core_file() {
 
   if [[ -f $core_path ]]; then
     local core_binary_path=$abs_test_binary_path
-    if [[ $rel_test_binary =~ /client_samples-test([.]sh)?$ ]]; then
-      core_binary_path=$TEST_TMPDIR/sample
-    fi
     analyze_existing_core_file "$core_path" "$core_binary_path"
     rm -f "$core_path"  # to save disk space
   fi
@@ -1072,9 +1067,6 @@ find_test_binary() {
   expect_num_args 1 "$@"
   local test_target_name=$1
   local binary_name=$test_target_name
-  if [[ $binary_name == "client_samples-test" ]]; then
-    binary_name+=".sh"
-  fi
   expect_vars_to_be_set BUILD_ROOT
   local dirs_tried=""
   local rel_dir

@@ -25,11 +25,7 @@
 
 #include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
-
-// We can't include strings/substitute.h because of client_samples-test: adding this here pulls a
-// lot of dependencies into the client. Therefore, we require that any user of STATUS_SUBSTITUTE
-// include this header on their own.
-// #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/strings/substitute.h"
 
 // Return the given status if it is not OK.
 #define YB_RETURN_NOT_OK(s) do { \
