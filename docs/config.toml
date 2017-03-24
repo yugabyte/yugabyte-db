@@ -1,0 +1,72 @@
+baseurl = "https://docs.yugabyte.com/"
+languageCode = "en-us"
+title = "YugaByte Docs"
+theme = "hugo-material-docs"
+metadataformat = "yaml"
+canonifyurls = true
+# Enable Google Analytics by entering your tracking id
+googleAnalytics = ""
+
+[params]
+	# General information
+	author = "Team YugaByte"
+	description = "YugaByte Product Documentation"
+	# copyright = "Released under the MIT license"
+
+	version = "early release"
+	logo = "/images/logo.png"
+	favicon = "/images/favicon.ico"
+
+	permalink = "#"
+
+	# Custom assets
+	custom_css = []
+	custom_js  = []
+
+	# Syntax highlighting theme
+	highlight_css  = ""
+
+	[params.palette]
+    	primary = "orange"
+    	accent  = "brown"
+
+    [params.font]
+    	text = "Ubuntu"
+    	code = "Ubuntu Mono"
+
+
+[social]
+	# twitter = "YugaByte"
+	email   = "support@yugabyte.com"
+
+
+[[menu.main]]
+	name   = "YugaByte Data Platform"
+	url    = "/"
+	weight = 0
+
+[[menu.main]]
+	name   = "Get started"
+	url    = "get-started/"
+	weight = 10
+
+[[menu.main]]
+	name   = "Administer"
+	url    = "admin/"
+	weight = 20
+
+[[menu.main]]
+	name   = "Develop"
+	url    = "develop/"
+	weight = 30
+
+[[menu.main]]
+	name   = "Learn"
+	url    = "learn/"
+	weight = 40
+
+[blackfriday]
+	smartypants	= true
+	fractions = true
+	smartDashes = true
+	plainIDAnchors = true
