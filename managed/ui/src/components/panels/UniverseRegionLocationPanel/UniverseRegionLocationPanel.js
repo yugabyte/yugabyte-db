@@ -9,9 +9,9 @@ import { RegionMapLegend } from '../../maps';
 export default class UniverseRegionLocationPanel extends Component {
 
   render() {
-    const { cloud, universe: {universeList} } = this.props;
-    if (!isValidArray(cloud.supportedRegionList)) {
-      return <YBLoadingIcon/>
+    const { cloud, cloud: {loading}, universe: {universeList} } = this.props;
+    if (loading) {
+      return <YBLoadingIcon/>;
     }
     var completeRegionList = cloud.supportedRegionList;
     var universeListByRegions = {};
@@ -35,7 +35,7 @@ export default class UniverseRegionLocationPanel extends Component {
     return (
       <div>
         <RegionMap title="All Supported Regions" regions={completeRegionList} type="all"/>
-        <RegionMapLegend />
+        <RegionMapLegend providers={cloud.providers}/>
       </div>
     )
   }
