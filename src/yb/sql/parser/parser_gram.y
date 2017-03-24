@@ -293,7 +293,8 @@ using namespace yb::sql;
                           opt_concurrently opt_verbose opt_full opt_freeze opt_default opt_recheck
                           copy_from opt_program all_or_distinct opt_trusted opt_restart_seqs
                           opt_or_replace opt_grant_grant_option opt_grant_admin_option opt_nowait
-                          opt_if_exists opt_with_data TriggerForSpec TriggerForType
+                          opt_if_exists opt_with_data opt_allow_filtering
+                          TriggerForSpec TriggerForType
 
 %type <PInt64>            TableLikeOptionList TableLikeOption key_actions key_delete key_match
                           key_update key_action ConstraintAttributeSpec ConstraintAttributeElem
@@ -462,7 +463,7 @@ using namespace yb::sql;
 // Search for "Keyword category lists".
 
 // Declarations for ordinary keywords in alphabetical order.
-%token <KeywordType>      ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER  AGGREGATE ALL
+%token <KeywordType>      ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER  AGGREGATE ALL ALLOW
                           ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC ASSERTION
                           ASSIGNMENT ASYMMETRIC AT ATTRIBUTE AUTHORIZATION
 
@@ -485,7 +486,7 @@ using namespace yb::sql;
                           EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTENSION
                           EXTERNAL EXTRACT
 
-                          FALSE_P FAMILY FETCH FILTER FIRST_P FLOAT_P FOLLOWING FOR FORCE
+                          FALSE_P FAMILY FETCH FILTER FILTERING FIRST_P FLOAT_P FOLLOWING FOR FORCE
                           FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
                           GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING
@@ -1494,19 +1495,19 @@ select_no_parens:
   values_clause {
     $$ = $1;
   }
-  | simple_select {
+  | simple_select opt_allow_filtering {
     $$ = $1;
   }
-  | simple_select sort_clause {
+  | simple_select sort_clause opt_allow_filtering {
     $1->SetOrderByClause($2);
     $$ = $1;
   }
-  | simple_select opt_sort_clause select_limit opt_for_locking_clause {
+  | simple_select opt_sort_clause select_limit opt_for_locking_clause opt_allow_filtering {
     $1->SetOrderByClause($2);
     $1->SetLimitClause($3);
     $$ = $1;
   }
-  | simple_select opt_sort_clause for_locking_clause opt_select_limit {
+  | simple_select opt_sort_clause for_locking_clause opt_select_limit opt_allow_filtering {
     PARSER_UNSUPPORTED(@3);
   }
   | with_clause simple_select {
@@ -1515,10 +1516,12 @@ select_no_parens:
   | with_clause simple_select sort_clause {
     PARSER_UNSUPPORTED(@1);
   }
-  | with_clause simple_select opt_sort_clause for_locking_clause opt_select_limit {
+  | with_clause simple_select opt_sort_clause for_locking_clause opt_select_limit
+  opt_allow_filtering {
     PARSER_UNSUPPORTED(@1);
   }
-  | with_clause simple_select opt_sort_clause select_limit opt_for_locking_clause {
+  | with_clause simple_select opt_sort_clause select_limit opt_for_locking_clause
+  opt_allow_filtering {
     PARSER_UNSUPPORTED(@1);
   }
 ;
@@ -1729,6 +1732,16 @@ target_el:
   // IDENT a precedence higher than POSTFIXOP.
   | a_expr IDENT {
     PARSER_UNSUPPORTED(@2);
+  }
+;
+
+// SELECT ALLOW FILTERING.
+opt_allow_filtering:
+  ALLOW FILTERING {
+    $$ = true;
+  }
+  | /*EMPTY*/     {
+    $$ = false;
   }
 ;
 
@@ -4175,6 +4188,7 @@ unreserved_keyword:
   | EXTERNAL { $$ = $1; }
   | FAMILY { $$ = $1; }
   | FILTER { $$ = $1; }
+  | FILTERING { $$ = $1; }
   | FIRST_P { $$ = $1; }
   | FOLLOWING { $$ = $1; }
   | FORCE { $$ = $1; }
@@ -4466,6 +4480,7 @@ type_func_name_keyword:
 // forced to.
 reserved_keyword:
   ALL { $$ = $1; }
+  | ALLOW { $$ = $1; }
   | ANALYSE { $$ = $1; }
   | ANALYZE { $$ = $1; }
   | AND { $$ = $1; }

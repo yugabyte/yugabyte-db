@@ -86,6 +86,11 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   empty_row_block = processor->row_block();
   CHECK_EQ(empty_row_block->row_count(), 0);
 
+  // Check for valid allow filtering clause.
+  CHECK_VALID_STMT("SELECT * FROM test_table WHERE h1 = 0 AND h2 = '' ALLOW FILTERING");
+  empty_row_block = processor->row_block();
+  CHECK_EQ(empty_row_block->row_count(), 0);
+
   // Insert 100 rows into the table.
   static const int kNumRows = 100;
   for (int idx = 0; idx < kNumRows; idx++) {
@@ -187,9 +192,9 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
 
   // Select only 2 rows and check the values.
   int limit = 2;
-  const string limit_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
-                                           "WHERE h1 = $0 AND h2 = '$1' LIMIT $2;",
-                                         h1_shared, h2_shared, limit);
+  string limit_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                                   "WHERE h1 = $0 AND h2 = '$1' LIMIT $2;",
+                                   h1_shared, h2_shared, limit);
   CHECK_VALID_STMT(limit_select);
   row_block = processor->row_block();
 
@@ -210,6 +215,11 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
     prev_r1 = row.column(2).int32_value();
     prev_r2 = row.column(3).string_value();
   }
+
+  limit_select = Substitute("SELECT h1, h2, r1, r2, v1, v2 FROM test_table "
+                            "WHERE h1 = $0 AND h2 = '$1' LIMIT $2 ALLOW FILTERING;",
+                            h1_shared, h2_shared, limit);
+  CHECK_VALID_STMT(limit_select);
 
   const string drop_stmt = "DROP TABLE test_table;";
   EXEC_VALID_STMT(drop_stmt);

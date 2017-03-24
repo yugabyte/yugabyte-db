@@ -101,6 +101,38 @@ public class TestSelect extends TestBase {
     }
     assertEquals(row_count, num_rows);
 
+    // Test ALLOW FILTERING clause.
+    multi_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_select" +
+                               "  WHERE h1 = %d AND h2 = '%s' ALLOW FILTERING;",
+                               h1_shared, h2_shared);
+    rs = session.execute(multi_stmt);
+    row_count = 0;
+    iter = rs.iterator();
+    while (iter.hasNext()) {
+      if (rs.getAvailableWithoutFetching() == 100 && !rs.isFullyFetched()) {
+        rs.fetchMoreResults();
+      }
+
+      Row row = iter.next();
+      String result = String.format("Result = %d, %s, %d, %s, %d, %s",
+                                    row.getInt(0),
+                                    row.getString(1),
+                                    row.getInt(2),
+                                    row.getString(3),
+                                    row.getInt(4),
+                                    row.getString(5));
+      LOG.info(result);
+
+      assertEquals(row.getInt(0), h1_shared);
+      assertEquals(row.getString(1), h2_shared);
+      assertEquals(row.getInt(2), row_count + 100);
+      assertEquals(row.getString(3), String.format("r%d", row_count + 100));
+      assertEquals(row.getInt(4), row_count + 1000);
+      assertEquals(row.getString(5), String.format("v%d", row_count + 1000));
+      row_count++;
+    }
+    assertEquals(row_count, num_rows);
+
     LOG.info("TEST CQL SIMPLE QUERY - End");
   }
 
@@ -132,6 +164,34 @@ public class TestSelect extends TestBase {
 
     int row_count = 0;
     Iterator<Row> iter = rs.iterator();
+    while (iter.hasNext()) {
+      Row row = iter.next();
+      String result = String.format("Result = %d, %s, %d, %s, %d, %s",
+                                    row.getInt(0),
+                                    row.getString(1),
+                                    row.getInt(2),
+                                    row.getString(3),
+                                    row.getInt(4),
+                                    row.getString(5));
+      LOG.info(result);
+
+      assertEquals(row.getInt(0), h1_shared);
+      assertEquals(row.getString(1), h2_shared);
+      assertEquals(row.getInt(2), row_count + 100);
+      assertEquals(row.getString(3), String.format("r%d", row_count + 100));
+      assertEquals(row.getInt(4), row_count + 1000);
+      assertEquals(row.getString(5), String.format("v%d", row_count + 1000));
+      row_count++;
+    }
+    assertEquals(row_count, num_limit_rows);
+
+    // Test allow filtering.
+    multi_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM test_select" +
+                               "  WHERE h1 = %d AND h2 = '%s' LIMIT %d ALLOW FILTERING;",
+                               h1_shared, h2_shared, num_limit_rows);
+    rs = session.execute(multi_stmt);
+    row_count = 0;
+    iter = rs.iterator();
     while (iter.hasNext()) {
       Row row = iter.next();
       String result = String.format("Result = %d, %s, %d, %s, %d, %s",
