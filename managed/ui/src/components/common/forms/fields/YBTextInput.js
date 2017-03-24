@@ -40,5 +40,17 @@ export default class YBTextInputWithLabel extends Component {
   }
 }
 
+export class YBControlledTextInput extends Component {
+  render() {
+    const { label, meta, input, type, className, placeHolder, onValueChanged, isReadOnly, val } = this.props;
+    return (
+      <YBLabel label={label} meta={meta}>
+        <FormControl {...input} placeholder={placeHolder} type={type} className={className}
+                     onChange={onValueChanged} readOnly={isReadOnly} value={val}/>
+      </YBLabel>
+    )
+  }
+}
+
 // TODO: Deprecated. Rename all YBInputField references to YBTextInputWithLabel.
 export var YBInputField = YBTextInputWithLabel;
