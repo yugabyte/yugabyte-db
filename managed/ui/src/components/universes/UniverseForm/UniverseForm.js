@@ -1,10 +1,10 @@
 import React, { Component, PropTypes } from 'react';
-import { Col } from 'react-bootstrap';
+import { Row, Col, Button } from 'react-bootstrap';
 import { Field } from 'redux-form';
 
 import { isDefinedNotNull, isValidArray, isValidObject } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInputWithLabel, YBSelectWithLabel,
-  YBMultiSelectWithLabel, YBRadioButtonBarWithLabel } from 'components/common/forms/fields';
+  YBMultiSelectWithLabel, YBRadioButtonBarWithLabel, YBControlledTextInput } from 'components/common/forms/fields';
 
 import AZSelectorTable from './AZSelectorTable';
 import UniverseConfigDetail from './UniverseConfigDetail';
@@ -31,6 +31,9 @@ export default class UniverseForm extends Component {
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.numNodesClicked = this.numNodesClicked.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
+    this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
+    this.numVolumesChanged = this.numVolumesChanged.bind(this);
+    this.diskIopsChanged = this.diskIopsChanged.bind(this);
     var azInitState = true;
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
     if (isDefinedNotNull(this.props.universe.currentUniverse)) {
@@ -43,6 +46,7 @@ export default class UniverseForm extends Component {
       numNodes: 3,
       isCustom: false,
       replicationFactor: 3,
+      deviceInfo: {},
       placementInfo: {}
     };
   }
@@ -62,6 +66,9 @@ export default class UniverseForm extends Component {
     }
     universeTaskParams.userIntent[fieldName] = fieldVal;
     if (isDefinedNotNull(formValues.instanceType) && isValidArray(universeTaskParams.userIntent.regionList)) {
+      if (isValidArray(Object.keys(this.state.deviceInfo))) {
+        universeTaskParams.userIntent.deviceInfo = this.state.deviceInfo;
+      }
       this.props.cloud.providers.forEach(function(providerItem, idx){
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
           universeTaskParams.userIntent.providerType = providerItem.code;
@@ -125,6 +132,16 @@ export default class UniverseForm extends Component {
   instanceTypeChanged(instanceTypeValue) {
     this.setState({instanceTypeSelected: instanceTypeValue});
     this.configureUniverseNodeList("instanceType", instanceTypeValue, false);
+    var instanceTypeSelected = this.props.cloud.instanceTypes.find(function(item){
+      return item.instanceTypeCode ===  instanceTypeValue;
+    });
+    var deviceInfo = {
+      volumeSize: instanceTypeSelected.volumeSizeGB,
+      numVolumes: instanceTypeSelected.volumeCount,
+      mountPoints: null,
+      diskIops: 1000
+    }
+    this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
   }
 
   numNodesChanged(value) {
@@ -160,9 +177,48 @@ export default class UniverseForm extends Component {
     }
   }
 
-  render() {
+  numVolumesChanged(val) {
+    var currentDeviceInfo = this.state.deviceInfo;
+    currentDeviceInfo.numVolumes = val;
+    this.setState({deviceInfo: currentDeviceInfo});
+  }
+
+  volumeSizeChanged(val) {
+    var currentDeviceInfo = this.state.deviceInfo;
+    currentDeviceInfo.volumeSize = val;
+    this.setState({deviceInfo: currentDeviceInfo});
+  }
+
+  diskIopsChanged(val) {
+    var currentDeviceInfo = this.state.deviceInfo;
+    currentDeviceInfo.diskIops = val;
+    this.setState({deviceInfo: currentDeviceInfo});
+  }
+
+  componentWillReceiveProps(nextProps) {
     var self = this;
-    const { visible, onHide, handleSubmit, title, universe } = this.props;
+    if (nextProps.cloud.instanceTypes !== this.props.cloud.instanceTypes
+       && isValidArray(nextProps.cloud.instanceTypes) && !isValidArray(Object.keys(this.state.deviceInfo))
+       && isValidObject(this.state.instanceTypeSelected)) {
+       var instanceTypeSelected = nextProps.cloud.instanceTypes.find(function(item){
+        return item.instanceTypeCode ===  self.state.instanceTypeSelected;
+      });
+      if (isValidArray(Object.keys(instanceTypeSelected))) {
+        var deviceInfo = {
+          volumeSize: instanceTypeSelected.volumeSizeGB,
+          numVolumes: instanceTypeSelected.volumeCount,
+          mountPoints: null,
+          diskIops: 1000,
+        }
+      }
+      this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
+    }
+  }
+
+  render() {
+
+    var self = this;
+    const { visible, onHide, handleSubmit, title, universe, cloud } = this.props;
     var universeProviderList = [];
     if (isValidArray(this.props.cloud.providers)) {
       universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
@@ -211,12 +267,49 @@ export default class UniverseForm extends Component {
     if (self.props.universe.currentPlacementStatus) {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>
     }
+
+
+    var deviceDetail = <span/>;
+    var currentVolumeType = <span/>;
+    function volumeTypeFormat(num) {
+      return num + ' GB';
+    }
+    if (isValidArray(Object.keys(self.state.deviceInfo))) {
+      if (self.state.volumeType === "EBS") {
+        currentVolumeType =
+          <div className="">
+            <label className="form-item-label"> Volume type</label> <Button className="volume-type">EBS</Button>
+          </div>
+        deviceDetail =
+          <div>
+            <Col lg={5}><Field name="volumeCount" component={YBControlledNumericInputWithLabel} label="No. Of Volumes" val={self.state.deviceInfo.numVolumes}/></Col>
+            <Col lg={1}><i className="fa fa-times volume-multiplier" /></Col>
+            <Col lg={5}><Field name="volumeSize" component={YBControlledNumericInputWithLabel} label="Size Of Volumes" val={self.state.deviceInfo.volumeSize} valueFormat={volumeTypeFormat}/></Col>
+            <div className="form-right-aligned-labels">
+              <Col lg={12}><Field name="diskIops" component={YBControlledTextInput} label="Disk IOPS" val={self.state.deviceInfo.diskIops}/></Col>
+            </div>
+          </div>
+      } else if (self.state.volumeType === "SSD") {
+        currentVolumeType = <div className=""><label className="form-item-label"> Volume type</label> <Button className="volume-type">SSD</Button></div>
+        deviceDetail =
+          <div>
+            <Col lg={5}><Field name="volumeCount" component={YBControlledTextInput} isReadOnly={true} label="No. Of Volumes" val={self.state.deviceInfo.numVolumes}/></Col>
+            <Col lg={1}><i className="fa fa-times volume-multiplier" /></Col>
+            <Col lg={5}><Field name="volumeSize" component={YBControlledTextInput} isReadOnly={true} label="Size Of Volumes" val={`${self.state.deviceInfo.volumeSize} GB`}/></Col>
+            <div className="form-right-aligned-labels">
+              <Col lg={12}><Field name="diskIops" component={YBControlledTextInput} label="Disk IOPS" isReadOnly={true} val={self.state.deviceInfo.diskIops}/></Col>
+            </div>
+          </div>
+      }
+    }
+
     return (
       <YBModal visible={visible} onHide={hideModal} title={title} error={universe.error}
         submitLabel={submitLabel} showCancelButton={true}
           onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large">
+        <Row className={"no-margin-row"}>
         <Col lg={6}>
-          <h4>General Info</h4>
+          <h4>Cloud Configuration</h4>
           <div className="form-right-aligned-labels">
             <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
                    onValueChanged={this.universeNameChanged} isReadOnly={isDefinedNotNull(universe.currentUniverse)} />
@@ -229,18 +322,6 @@ export default class UniverseForm extends Component {
                     providerSelected={this.state.providerSelected}/>
             <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
                    label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}/>
-            <Field name="instanceType" type="select" component={YBSelectWithLabel} label="Instance Type"
-                   options={universeInstanceTypeList}
-                   defaultValue={this.state.instanceTypeSelected} onInputChanged={this.instanceTypeChanged}
-            />
-          </div>
-          <h4>Advanced</h4>
-          <div className="form-right-aligned-labels">
-            <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                   label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged}/>
-            <Field name="ybSoftwareVersion" type="text" component={YBTextInputWithLabel}
-                   label="Server Version" defaultValue={this.state.ybSoftwareVersion}
-                   onValueChanged={this.softwareVersionChanged} />
           </div>
         </Col>
         <Col lg={6} className={"universe-az-selector-container"}>
@@ -248,6 +329,34 @@ export default class UniverseForm extends Component {
           {placementStatus}
           <AZSelectorTable {...this.props} numNodesChanged={this.numNodesChangedViaAzList} setPlacementInfo={this.setPlacementInfo}/>
         </Col>
+        </Row>
+        <Row className={"no-margin-row top-border-row"}>
+          <Col lg={6}>
+            <h4>Instance Configuration</h4>
+            <div className="form-right-aligned-labels">
+              <Field name="instanceType" type="select" component={YBSelectWithLabel} label="Instance Type"
+                     options={universeInstanceTypeList}
+                     defaultValue={this.state.instanceTypeSelected} onInputChanged={this.instanceTypeChanged}
+              />
+            </div>
+            {currentVolumeType}
+          </Col>
+          <Col lg={6}>
+            {deviceDetail}
+          </Col>
+        </Row>
+        <Row className={"no-margin-row top-border-row"}>
+          <Col lg={6}>
+            <h4>Advanced</h4>
+            <div className="form-right-aligned-labels">
+              <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
+                     label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged}/>
+              <Field name="ybServerPackage" type="text" component={YBTextInputWithLabel}
+                     label="Server Package" defaultValue={this.state.ybServerPackage}
+                     onValueChanged={this.serverPackageChanged} />
+            </div>
+          </Col>
+       </Row>
       </YBModal>
     );
   }

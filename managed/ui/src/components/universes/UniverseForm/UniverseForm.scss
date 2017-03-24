@@ -75,3 +75,25 @@
     width: 100%;
   }
 }
+
+.no-margin-row {
+  margin-left: 0;
+  margin-right: 0;
+  padding-bottom: 10px;
+}
+
+.top-border-row {
+  border-top: solid #eee 1px;
+  padding-top: 10px;
+
+}
+
+.volume-type {
+  background-color: #eee;
+  margin-left: 14px;
+}
+
+.volume-multiplier {
+  margin-top: 34px;
+}
+
