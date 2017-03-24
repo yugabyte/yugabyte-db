@@ -3,9 +3,12 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.forms.CloudProviderFormData;
+import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +43,9 @@ public class CloudProviderController extends AuthenticatedController {
   @Inject
   FormFactory formFactory;
 
+  @Inject
+  AccessManager accessManager;
+
   /**
    * GET endpoint for listing providers
    * @return JSON response with provider's
@@ -47,6 +53,36 @@ public class CloudProviderController extends AuthenticatedController {
   public Result list(UUID customerUUID) {
     List<Provider> providerList = Provider.getAll(customerUUID);
     return ok(Json.toJson(providerList));
+  }
+
+  public Result delete(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
+
+    if (provider == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+
+    Customer customer = Customer.get(customerUUID);
+    if (customer.getUniversesForProvider(provider.code).size() > 0) {
+      return ApiResponse.error(BAD_REQUEST, "Cannot delete Provider with Universes");
+    }
+
+    // TODO: move this to task framework
+    try {
+      List<AccessKey> accessKeys = AccessKey.getAll(providerUUID);
+      accessKeys.forEach((accessKey) -> {
+        provider.regions.forEach((region) -> {
+          accessManager.deleteKey(region.uuid, accessKey.getKeyCode());
+        });
+        accessKey.delete();
+      });
+
+      provider.delete();
+      return ApiResponse.success("Deleted provider: " + providerUUID);
+    } catch (PersistenceException e) {
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
+    }
   }
 
   /**

@@ -7,7 +7,9 @@ import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
   GET_SUPPORTED_REGION_DATA_FAILURE, CREATE_PROVIDER, CREATE_PROVIDER_SUCCESS,
   CREATE_PROVIDER_FAILURE, CREATE_REGION, CREATE_REGION_SUCCESS, CREATE_REGION_FAILURE,
   CREATE_ACCESS_KEY, CREATE_ACCESS_KEY_SUCCESS, CREATE_ACCESS_KEY_FAILURE,
-  INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS, INITIALIZE_PROVIDER_FAILURE } from '../actions/cloud';
+  INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS, INITIALIZE_PROVIDER_FAILURE,
+  DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE, RESET_PROVIDER_BOOTSTRAP
+} from '../actions/cloud';
 
 import _ from 'lodash';
 
@@ -70,6 +72,14 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, bootstrap: {type: 'initialize', response: action.payload.data, loading: false}};
     case INITIALIZE_PROVIDER_FAILURE:
       return { ...state, bootstrap: {type: 'initialize', error: action.payload.data.error, loading: false}};
+    case DELETE_PROVIDER:
+      return { ...state, bootstrap: {type: 'cleanup', response: null, loading: true}};
+    case DELETE_PROVIDER_SUCCESS:
+      return { ...state, bootstrap: {type: 'cleanup', response: action.payload.data, loading: false}};
+    case DELETE_PROVIDER_FAILURE:
+      return { ...state, bootstrap: {type: 'cleanup', error: action.payload.data.error, loading: false}};
+    case RESET_PROVIDER_BOOTSTRAP:
+      return { ...state, bootstrap: {}};
     default:
       return state;
   }

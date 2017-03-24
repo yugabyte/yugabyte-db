@@ -71,10 +71,6 @@
 
 .save-btn {
   background-color: $YB_ORANGE;
-  width: 120px !important;
-  height: 36px !important;
-  padding: 0;
-  margin: 0px 6px;
   color: white;
   border: none;
   float: right;
@@ -82,11 +78,20 @@
 
 .cancel-btn {
   float: left;
-  width: 120px !important;
-  height: 36px !important;
-  padding: 0;
-  margin: 0px 6px;
+}
 
+.delete-btn {
+  background-color: $YB_FAIL_COLOR;
+  color: white;
+}
+
+.provider-config-container {
+  .save-btn, .cancel-btn, .delete-btn {
+    width: 120px ;
+    height: 36px;
+    padding: 0;
+    margin: 0px 6px;
+  }
 }
 
 .host-item-label {
