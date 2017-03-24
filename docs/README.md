@@ -8,9 +8,11 @@ YugaByte Product Documentation
 
 Our docs are based on the Hugo framework and using the Material Docs theme
 
-Hugo framework: http://gohugo.io/overview/introduction/
-Material Docs theme: http://themes.gohugo.io/material-docs/
-Example of Material docs theme: http://themes.gohugo.io/theme/material-docs/
+** Hugo framework: http://gohugo.io/overview/introduction/
+
+** Material Docs theme: http://themes.gohugo.io/material-docs/
+
+** Example of Material docs theme: http://themes.gohugo.io/theme/material-docs/
 
 * Version
 * [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
@@ -19,7 +21,8 @@ Example of Material docs theme: http://themes.gohugo.io/theme/material-docs/
 
 * Summary of set up
 
-On Mac OS X:
+On Mac OS X
+
 ```
 brew update && brew install hugo
 ```
@@ -40,9 +43,10 @@ None
 clone the docs project into /code directory
 
 run the following to start a high performance web server that continuously watches the entire docs directory
- ```
- hugo server
- ```
+
+```
+hugo server
+```
 
 Go to [http://localhost:1313/] (http://localhost:1313/)to see the docs
 
