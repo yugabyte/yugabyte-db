@@ -4,11 +4,14 @@ package com.yugabyte.yw.models;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
@@ -57,12 +60,15 @@ public class Provider extends Model {
   @Constraints.Required
   @Column(nullable = false)
   @DbJson
-  @JsonBackReference
   private JsonNode config;
+
+  @OneToMany(cascade=CascadeType.ALL)
+  @JsonBackReference(value="regions")
+  public Set<Region> regions;
 
   public void setConfig(Map<String, String> configMap) { this.config = Json.toJson(configMap); }
 
-  @JsonBackReference
+  @JsonBackReference(value="config")
   public Map<String, String> getConfig() {
     if (this.config == null) {
       return new HashMap();

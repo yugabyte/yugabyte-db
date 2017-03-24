@@ -42,6 +42,12 @@ export const INITIALIZE_PROVIDER = 'INITIALIZE_PROVIDER';
 export const INITIALIZE_PROVIDER_SUCCESS = 'INITIALIZE_PROVIDER_SUCCESS';
 export const INITIALIZE_PROVIDER_FAILURE = 'INITIALIZE_PROVIDER_FAILURE';
 
+export const DELETE_PROVIDER = 'DELETE_PROVIDER';
+export const DELETE_PROVIDER_SUCCESS = 'DELETE_PROVIDER_SUCCESS';
+export const DELETE_PROVIDER_FAILURE = 'DELETE_PROVIDER_FAILURE';
+
+export const RESET_PROVIDER_BOOTSTRAP = 'RESET_PROVIDER_BOOTSTRAP';
+
 export function getProviderList() {
   var cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -142,12 +148,12 @@ export function resetProviderList() {
   }
 }
 
-export function createProvider(type, config) {
+export function createProvider(type, name, config) {
   var customerUUID = localStorage.getItem("customer_id");
   var provider = PROVIDER_TYPES.find( (providerType) => providerType.code === type );
   var formValues = {
     'code': provider.code,
-    'name': provider.name,
+    'name': name,
     'config': config
   }
 
@@ -239,5 +245,35 @@ export function initializeProviderFailure(error) {
   return {
     type: INITIALIZE_PROVIDER_FAILURE,
     payload: error
+  }
+}
+
+export function deleteProvider(providerUUID) {
+  var cUUID = localStorage.getItem("customer_id");
+  const request =
+    axios.delete(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}`);
+  return {
+    type: DELETE_PROVIDER,
+    payload: request
+  };
+}
+
+export function deleteProviderSuccess(data) {
+  return {
+    type: DELETE_PROVIDER_SUCCESS,
+    payload: data
+  };
+}
+
+export function deleteProviderFailure(error) {
+  return {
+    type: DELETE_PROVIDER_FAILURE,
+    payload: error
+  };
+}
+
+export function resetProviderBootstrap() {
+  return {
+    type: RESET_PROVIDER_BOOTSTRAP
   }
 }

@@ -115,4 +115,14 @@ public class ProviderTest extends FakeDBApplication {
               equalTo("Found 2 providers with name: Amazon")));
     }
   }
+
+  @Test
+  public void testCascadeDelete() {
+    Provider provider = ModelFactory.awsProvider(defaultCustomer);
+    Region region = Region.create(provider, "region-1", "region 1", "ybImage");
+    AvailabilityZone.create(region, "zone-1", "zone 1", "subnet-1");
+    provider.delete();
+    assertEquals(0, Region.find.all().size());
+    assertEquals(0, AvailabilityZone.find.all().size());
+  }
 }

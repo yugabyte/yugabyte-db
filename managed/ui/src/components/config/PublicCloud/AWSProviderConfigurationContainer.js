@@ -2,19 +2,30 @@
 
 import { connect } from 'react-redux';
 import { AWSProviderConfiguration } from '../../config';
-import { reduxForm } from 'redux-form';
+import { reduxForm, reset } from 'redux-form';
 import { createProvider, createProviderSuccess, createProviderFailure,
   createRegion, createRegionSuccess, createRegionFailure,
   createAccessKey, createAccessKeySuccess, createAccessKeyFailure,
   initializeProvider, initializeProviderSuccess, initializeProviderFailure,
   getSupportedRegionData, getSupportedRegionDataSuccess, getSupportedRegionDataFailure,
   getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
-  getProviderListSuccess, getProviderListFailure,
+  getProviderListSuccess, getProviderListFailure, deleteProvider, deleteProviderSuccess,
+  deleteProviderFailure, resetProviderBootstrap
  } from '../../../actions/cloud';
 
 function validate(values) {
   var errors = {};
   var hasErrors = false;
+  if (!values.accountName) {
+    errors.accountName = 'Account Name is required';
+    hasErrors = true;
+  }
+
+  if (/\s/.test(values.accountName)) {
+    errors.accountName = 'Account Name cannot have spaces';
+    hasErrors = true;
+  }
+
   if (!values.accessKey || values.accessKey.trim() === '') {
     errors.accessKey = 'Access Key is required';
     hasErrors = true;
@@ -29,8 +40,8 @@ function validate(values) {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    createProvider: (type, config) => {
-      dispatch(createProvider(type, config)).then((response) => {
+    createProvider: (type, name, config) => {
+      dispatch(createProvider(type, name, config)).then((response) => {
         if(response.payload.status !== 200) {
           dispatch(createProviderFailure(response.payload));
         } else {
@@ -78,6 +89,17 @@ const mapDispatchToProps = (dispatch) => {
       })
     },
 
+    deleteProviderConfig: (providerUUID) => {
+      dispatch(deleteProvider(providerUUID)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(deleteProviderFailure(response.payload));
+        } else {
+          dispatch(deleteProviderSuccess(response.payload));
+          dispatch(reset('awsConfigForm'));
+        }
+      })
+    },
+
     getProviderListItems: () => {
       dispatch(getProviderList()).then((response) => {
         if (response.payload.status !== 200) {
@@ -95,7 +117,11 @@ const mapDispatchToProps = (dispatch) => {
               });
           })}
       });
-    }
+    },
+
+    resetProviderBootstrap: () => {
+      dispatch(resetProviderBootstrap());
+    },
   }
 
 }
@@ -103,14 +129,16 @@ const mapDispatchToProps = (dispatch) => {
 
 const mapStateToProps = (state) => {
   return {
+    configuredProviders: state.cloud.providers,
     configuredRegions: state.cloud.supportedRegionList,
-    cloudBootstrap: state.cloud.bootstrap
+    cloudBootstrap: state.cloud.bootstrap,
+    initialValues: { accountName: "Amazon" }
   };
 }
 
 var awsConfigForm = reduxForm({
   form: 'awsConfigForm',
-  fields: ['accessKey', 'secretKey'],
+  fields: ['accessKey', 'secretKey', 'accountName'],
   validate
 })
 

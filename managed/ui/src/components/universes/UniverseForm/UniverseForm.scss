@@ -51,7 +51,7 @@
   color: #464c4f;
 }
 
-button[disabled] {
+.bg-orange[disabled] {
   background-color: rgba(205,101,0, 0.8) !important;
   cursor: not-allowed;
 }

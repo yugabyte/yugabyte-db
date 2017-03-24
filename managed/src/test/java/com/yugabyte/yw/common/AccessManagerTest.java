@@ -38,7 +38,7 @@ import static org.mockito.Mockito.when;
 
 
 @RunWith(MockitoJUnitRunner.class)
-public class AccessManagerTest extends FakeDBApplication {
+  public class AccessManagerTest extends FakeDBApplication {
 
   @InjectMocks
   AccessManager accessManager;
@@ -117,6 +117,8 @@ public class AccessManagerTest extends FakeDBApplication {
     } else if (commandType.equals("create-vault")) {
       String tmpPrivateFile = TMP_KEYS_PATH + "/vault-private.key";
       return accessManager.createVault(regionUUID, tmpPrivateFile);
+    } else if (commandType.equals("delete-key")) {
+      return accessManager.deleteKey(regionUUID, "foo");
     }
     return null;
   }
@@ -341,6 +343,41 @@ public class AccessManagerTest extends FakeDBApplication {
       runCommand(defaultRegion.uuid, "add-key", false);
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Key path /foo/keys doesn't exists.")));
+    }
+  }
+
+  @Test
+  public void testDeleteKeyWithInvalidRegion() {
+    UUID regionUUID = UUID.randomUUID();
+    try {
+      runCommand(regionUUID, "delete-key", false);
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(), equalTo("Invalid Region UUID: " + regionUUID)));
+    }
+  }
+
+  @Test
+  public void testDeleteKeyWithValidRegion() {
+    JsonNode result = runCommand(defaultRegion.uuid, "delete-key", false);
+    Mockito.verify(shellProcessHandler, times(1)).run(command.capture(),
+        cloudCredentials.capture());
+    String expectedCmd = getBaseCommand(defaultRegion, "delete-key") +
+        " --key_pair_name foo --key_file_path " + TMP_KEYS_PATH + "/" +
+        defaultProvider.uuid;
+    String commandStr = String.join(" ", command.getValue());
+    assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
+    assertTrue(cloudCredentials.getValue().isEmpty());
+    assertValue(result, "foo", "bar");
+  }
+
+  @Test
+  public void testDeleteKeyWithErrorResponse() {
+    try {
+      runCommand(defaultRegion.uuid, "delete-key", true);
+      Mockito.verify(shellProcessHandler, times(0)).run(command.capture(), anyMap());
+    } catch (RuntimeException re) {
+      assertThat(re.getMessage(), allOf(notNullValue(),
+          equalTo("YBCloud command access (delete-key) failed to execute.")));
     }
   }
 }
