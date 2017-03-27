@@ -47,7 +47,8 @@ export default class UniverseForm extends Component {
       isCustom: false,
       replicationFactor: 3,
       deviceInfo: {},
-      placementInfo: {}
+      placementInfo: {},
+      ybSoftwareVersion: ''
     };
   }
 
@@ -63,6 +64,9 @@ export default class UniverseForm extends Component {
     universeTaskParams.userIntent = formSubmitVals;
     if (fieldName !== "replicationFactor") {
       universeTaskParams.userIntent["replicationFactor"] = this.state.replicationFactor;
+    }
+    if (fieldName !== "ybSoftwareVersion") {
+      universeTaskParams.userIntent["ybSoftwareVersion"] = this.state.ybSoftwareVersion;
     }
     universeTaskParams.userIntent[fieldName] = fieldVal;
     if (isDefinedNotNull(formValues.instanceType) && isValidArray(universeTaskParams.userIntent.regionList)) {
@@ -102,12 +106,13 @@ export default class UniverseForm extends Component {
 
   componentWillMount() {
     this.props.resetConfig();
+    this.props.fetchSoftwareVersions();
     if (this.props.type === "Edit") {
       const {universe: {currentUniverse}, universe: {currentUniverse: {universeDetails: {userIntent}}}} = this.props;
       var providerUUID = currentUniverse.provider.uuid;
       var isMultiAZ = userIntent.isMultiAZ;
       this.setState({providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
-      numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor});
+      numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor, ybSoftwareVersion: userIntent.ybSoftwareVersion});
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
       this.props.submitConfigureUniverse({userIntent: userIntent});
@@ -163,6 +168,7 @@ export default class UniverseForm extends Component {
   }
 
   softwareVersionChanged(version) {
+    this.setState({ybSoftwareVersion: version});
     this.configureUniverseNodeList("ybSoftwareVersion", version, false);
   }
 
@@ -213,12 +219,18 @@ export default class UniverseForm extends Component {
       }
       this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
     }
+    // Set Default Software Package in case of Create
+    if (nextProps.softwareVersions !== this.props.softwareVersions &&
+        isValidArray(nextProps.softwareVersions) && !isValidArray(this.props.ybSoftwareVersions)
+        && !isValidObject(this.props.universe.currentUniverse)) {
+        this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
+    }
   }
 
   render() {
 
     var self = this;
-    const { visible, onHide, handleSubmit, title, universe, cloud } = this.props;
+    const { visible, onHide, handleSubmit, title, universe, softwareVersions } = this.props;
     var universeProviderList = [];
     if (isValidArray(this.props.cloud.providers)) {
       universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
@@ -258,6 +270,9 @@ export default class UniverseForm extends Component {
       configDetailItem = <UniverseResources resources={universe.universeResourceTemplate} />
     }
 
+    var softwareVersionOptions = softwareVersions.map(function(item, idx){
+      return <option key={idx} value={item}>{item}</option>
+    })
     // Hide modal when close is clicked, it also resets the form state and sets it to pristine
     var hideModal = function() {
       self.props.reset();
@@ -351,9 +366,8 @@ export default class UniverseForm extends Component {
             <div className="form-right-aligned-labels">
               <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
                      label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged}/>
-              <Field name="ybServerPackage" type="text" component={YBTextInputWithLabel}
-                     label="Server Package" defaultValue={this.state.ybServerPackage}
-                     onValueChanged={this.serverPackageChanged} />
+              <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel} defaultValue={this.state.ybSoftwareVersion}
+                     options={softwareVersionOptions} label="Server Version" onInputChanged={this.softwareVersionChanged}/>
             </div>
           </Col>
        </Row>
