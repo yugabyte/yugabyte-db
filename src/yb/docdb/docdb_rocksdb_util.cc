@@ -31,7 +31,7 @@ DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 3,
 DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 100 * 1024 * 1024,
              "Use to control write rate of flush and compaction.");
 
-DEFINE_int64(db_block_size_bytes, 64 * 1024,
+DEFINE_int64(db_block_size_bytes, 32 * 1024,
              "Size of RocksDB block (in bytes).");
 
 DEFINE_bool(use_docdb_aware_bloom_filter, false,
@@ -143,8 +143,9 @@ void InitRocksDBOptions(
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
     table_options.filter_policy.reset(new DocDbAwareFilterPolicy());
-    options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
   }
+
+  options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
 
   // Compaction related options.
 
