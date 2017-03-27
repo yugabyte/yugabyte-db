@@ -3,9 +3,7 @@
 import React, { Component } from 'react';
 import {Field, FieldArray } from 'redux-form';
 import {Row, Col} from 'react-bootstrap';
-
-import { YBButton, YBModal, YBInputField, YBCheckBox } from '../fields';
-import { SOFTWARE_VERSION } from '../../../../config';
+import { YBButton, YBModal, YBInputField, YBCheckBox, YBSelectWithLabel } from '../fields';
 import {isValidObject, isValidArray} from '../../../../utils/ObjectUtils';
 
 class FlagInput extends Component {
@@ -65,6 +63,7 @@ export default class RollingUpgradeForm extends Component {
     super(props);
     this.setRollingUpgradeProperties = this.setRollingUpgradeProperties.bind(this);
   }
+
   setRollingUpgradeProperties(values) {
     const { universe: {visibleModal, currentUniverse: {universeDetails: {nodeDetailsSet}, universeUUID}}} = this.props;
     var nodeNames = [];
@@ -93,10 +92,13 @@ export default class RollingUpgradeForm extends Component {
   render() {
     var self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
-           error, currentUniverse: {universeDetails: {nodeDetailsSet}}}, resetRollingUpgrade} = this.props;
+           error, currentUniverse: {universeDetails: {nodeDetailsSet}}}, resetRollingUpgrade, softwareVersions} = this.props;
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     var title = "";
     var formBody = <span/>;
+    var softwareVersionOptions = softwareVersions.map(function(item, idx){
+      return <option key={idx} value={item}>{item}</option>
+    })
     var formCloseAction = function() {
       onHide();
     }
@@ -106,7 +108,8 @@ export default class RollingUpgradeForm extends Component {
                    <Col lg={12} className="form-section-title">
                      Software Package Version
                    </Col>
-                   <Field name="ybSoftwareVersion" component={YBInputField} defaultValue={SOFTWARE_VERSION}/>
+                  <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel}
+                         options={softwareVersionOptions} label="Server Version" onInputChanged={this.softwareVersionChanged}/>
                  </span>
     } else {
       title = "GFlags";

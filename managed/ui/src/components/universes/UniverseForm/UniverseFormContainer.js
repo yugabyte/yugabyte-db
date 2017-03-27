@@ -13,7 +13,6 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
   checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
   fetchUniverseInfoFailure } from 'actions/universe';
-import {fetchSoftwareVersions, fetchSoftwareVersionsSuccess, fetchSoftwareVersionsFailure} from 'actions/customers';
 import { isDefinedNotNull, isValidArray } from 'utils/ObjectUtils';
 
 //For any field errors upon submission (i.e. not instant check)
@@ -129,15 +128,6 @@ const mapDispatchToProps = (dispatch) => {
 
     resetConfig: () => {
       dispatch(resetUniverseConfiguration());
-    },
-    fetchSoftwareVersions: () => {
-      dispatch(fetchSoftwareVersions()).then((response)=>{
-        if (response.payload.status !== 200) {
-          dispatch(fetchSoftwareVersionsFailure(response.payload));
-        } else {
-          dispatch(fetchSoftwareVersionsSuccess(response.payload));
-        }
-      })
     }
   }
 }
