@@ -8,8 +8,11 @@ import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -32,6 +35,9 @@ public class CustomerController extends AuthenticatedController {
 
   @Inject
   ReleaseManager releaseManager;
+
+  @Inject
+  CloudQueryHelper cloudQueryHelper;
 
   public Result index(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
@@ -128,5 +134,16 @@ public class CustomerController extends AuthenticatedController {
 
     Map<String, String> releases = releaseManager.getReleases();
     return ApiResponse.success(releases.keySet());
+  }
+
+  public Result getHostInfo(UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    }
+    // TODO: currently we assume the cloudtype to be AWS for fetching host information.
+    JsonNode hostInfo = cloudQueryHelper.currentHostInfo(
+        Common.CloudType.aws, ImmutableList.of("vpc-id", "privateIp", "region"));
+    return ApiResponse.success(hostInfo);
   }
 }

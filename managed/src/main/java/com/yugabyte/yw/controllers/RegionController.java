@@ -115,7 +115,7 @@ public class RegionController extends AuthenticatedController {
         JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
         region = Region.createWithMetadata(provider, regionCode, metaData);
         // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
-        JsonNode vpcInfo = networkManager.bootstrap(region.uuid);
+        JsonNode vpcInfo = networkManager.bootstrap(region.uuid, formData.get().hostVPCId);
         if (vpcInfo.has("error") || !vpcInfo.has(regionCode)) {
           region.delete();
           return ApiResponse.error(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");

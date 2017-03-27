@@ -7,7 +7,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
@@ -35,9 +37,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static org.hamcrest.CoreMatchers.*;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.*;
 import static org.junit.Assert.*;
@@ -46,16 +46,19 @@ import static play.test.Helpers.fakeRequest;
 
 public class CustomerControllerTest extends WithApplication {
   MetricQueryHelper mockMetricQueryHelper;
+  CloudQueryHelper mockCloudQueryHelper;
 
   @Override
   protected Application provideApplication() {
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     Commissioner mockCommissioner = mock(Commissioner.class);
+    mockCloudQueryHelper = mock(CloudQueryHelper.class);
 
     return new GuiceApplicationBuilder()
       .configure((Map) Helpers.inMemoryDatabase())
       .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
       .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
+      .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
       .build();
   }
 
@@ -336,5 +339,28 @@ public class CustomerControllerTest extends WithApplication {
     UUID randomUUID = UUID.randomUUID();
     Result result = getReleases(randomUUID);
     assertBadRequest(result, "Invalid Customer UUID: " + randomUUID);
+  }
+
+  private Result getHostInfo(UUID customerUUID) {
+    String uri = "/api/customers/" + customerUUID + "/host_info";
+    return FakeApiHelper.doRequestWithAuthToken("GET", uri, customer.createAuthToken());
+  }
+
+  @Test
+  public void testCustomerHostInfoWithInvalidCustomer() {
+    UUID randomUUID = UUID.randomUUID();
+    Result result = getHostInfo(randomUUID);
+    assertBadRequest(result, "Invalid Customer UUID: " + randomUUID);
+  }
+
+  @Test
+  public void testCustomerHostInfo() {
+    JsonNode response = Json.parse("{\"foo\": \"bar\"}");
+    when(mockCloudQueryHelper.currentHostInfo(
+        Common.CloudType.aws, ImmutableList.of("vpc-id", "privateIp", "region"))).thenReturn(response);
+    Result result = getHostInfo(customer.uuid);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    assertEquals(json, response);
   }
 }
