@@ -866,12 +866,9 @@ delete_successful_output_if_needed() {
   expect_vars_to_be_set \
     TEST_TMPDIR \
     test_log_path
-  # Mac OS X slaves are having trouble uploading artifacts, so we delete logs and temporary
-  # files for successful tests.
-  if is_mac && ! "$test_failed"; then
-    # This will be shown on console output if the test fails for whatever reason after this point
-    # (that would indicate a bug in test scripts).
-    echo "Deleting '$test_log_path' after a successful test on Mac OS X" >&2
+  if is_jenkins && ! "$test_failed"; then
+    # Delete test output after a successful test run to minimize network traffic and disk usage on
+    # Jenkins master.
     rm -rf "$test_log_path" "$TEST_TMPDIR"
   fi
 }
