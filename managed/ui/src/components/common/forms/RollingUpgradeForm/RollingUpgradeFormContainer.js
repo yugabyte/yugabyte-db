@@ -2,8 +2,6 @@
 
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
-
-import { SOFTWARE_VERSION } from '../../../../config';
 import { RollingUpgradeForm }  from '../../../common/forms';
 import { rollingUpgrade, rollingUpgradeSuccess, rollingUpgradeFailure,
   closeDialog, resetRollingUpgrade } from '../../../../actions/universe';
@@ -27,13 +25,10 @@ const mapDispatchToProps = (dispatch) => {
 }
 
 function mapStateToProps(state, ownProps) {
-  var data = {
-    "ybSoftwareVersion": SOFTWARE_VERSION,
 
-  };
   return {
     universe: state.universe,
-    initialValues: data
+    softwareVersions: state.customer.softwareVersions
   };
 }
 
