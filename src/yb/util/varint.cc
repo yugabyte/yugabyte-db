@@ -55,31 +55,30 @@ string VarInt::ToString() const {
   return output;
 }
 
-const VarInt kInt64Max = VarInt({255, 255, 255, 255, 255, 255, 255, 127}, 256, true);
-const VarInt kInt64Min = VarInt({0, 0, 0, 0, 0, 0, 0, 128}, 256, false);
-
 Status VarInt::ToInt64(int64_t* int64_value) const {
-  const int comparison = CompareTo(is_positive_ ? kInt64Max : kInt64Min);
-  if (PREDICT_FALSE(!is_positive_ && comparison == 0)) {
-    *int64_value = numeric_limits<int64_t>::min();
-    return Status::OK();
-  }
-  if (is_positive_ ? comparison > 0 : comparison < 0) {
-    *int64_value = 0;
-    return STATUS(InvalidArgument, "VarInt cannot be converted to int64 due to overflow");
-  }
-  int64_t output = 0;
+  uint64_t output = 0;
+  const uint64_t overflow_bound = (numeric_limits<uint64_t>::max() / radix_) - 1;
   for (auto itr = digits_.rbegin(); itr != digits_.rend(); ++itr) {
-    output *= static_cast<int64_t> (radix_);
+    if (PREDICT_FALSE(output >= overflow_bound)) {
+      return STATUS(InvalidArgument, "VarInt cannot be converted to int64 due to overflow");
+    }
+    output *= static_cast<uint64_t> (radix_);
     output += *itr;
   }
-  *int64_value = is_positive_ ? output : -output;
+  if (!is_positive_) {
+    output = ~output + 1;
+  }
+  // Negative values should cast correctly because we did two's complement above.
+  *int64_value = static_cast<int64_t> (output);
+  if (PREDICT_FALSE(is_positive_ ? *int64_value < 0 : *int64_value >= 0)) {
+    return STATUS(InvalidArgument, "VarInt cannot be converted to int64 due to overflow");
+  }
   return Status::OK();
 }
 
 Status VarInt::FromString(const Slice &slice) {
   if (slice.empty()) {
-    return STATUS(InvalidArgument, "Cannot parse empty slice to varint");
+    return STATUS(InvalidArgument, "Cannot parse empty slice to VarInt");
   }
   radix_ = 10;
   is_positive_ = true;

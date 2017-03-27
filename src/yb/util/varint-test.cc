@@ -81,6 +81,7 @@ TEST_F(VarIntTest, TestTypeConversions) {
 
   int64_t val;
 
+  // Verify that the largest and smallest values don't cause overflow.
   ASSERT_OK(VarInt(max).ToInt64(&val));
   ASSERT_EQ(max, val);
 
@@ -93,8 +94,8 @@ TEST_F(VarIntTest, TestTypeConversions) {
   ASSERT_OK(VarInt(negative).ToInt64(&val));
   ASSERT_EQ(negative, val);
 
+  // One more and less than largest value should overflow.
   ASSERT_FALSE(VarInt("9223372036854775808").ToInt64(&val).ok());
-
   ASSERT_FALSE(VarInt("-9223372036854775809").ToInt64(&val).ok());
 }
 
