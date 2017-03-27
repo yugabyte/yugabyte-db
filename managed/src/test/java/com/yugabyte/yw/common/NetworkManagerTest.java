@@ -42,9 +42,6 @@ public class NetworkManagerTest extends FakeDBApplication {
   @Mock
   ShellProcessHandler shellProcessHandler;
 
-  @Mock
-  CloudQueryHelper cloudQueryHelper;
-
   private Provider defaultProvider;
   private Region defaultRegion;
   ArgumentCaptor<ArrayList> command;
@@ -58,6 +55,19 @@ public class NetworkManagerTest extends FakeDBApplication {
     cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
   }
 
+  private JsonNode runBootstrap(UUID regionUUID, String hostVPCId, boolean mimicError) {
+    ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
+    if (mimicError) {
+      response.message = "{\"error\": \"Unknown Error\"}";
+      response.code = 99;
+    } else {
+      response.code = 0;
+      response.message = "{\"foo\": \"bar\"}";
+    }
+    when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
+    return networkManager.bootstrap(regionUUID, hostVPCId);
+  }
+
   private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {
     ShellProcessHandler.ShellResponse response = new ShellProcessHandler.ShellResponse();
     if (mimicError) {
@@ -69,9 +79,7 @@ public class NetworkManagerTest extends FakeDBApplication {
     }
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
 
-    if (commandType.equals("bootstrap")) {
-      return networkManager.bootstrap(regionUUID);
-    } else if (commandType.equals("query")) {
+    if (commandType.equals("query")) {
       return networkManager.query(regionUUID);
     } else if (commandType.equals("cleanup")) {
       return networkManager.cleanup(regionUUID);
@@ -99,9 +107,7 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Test
   public void testBootstrapCommandWithoutHostVPC() {
-    when(cloudQueryHelper.currentHostInfo(
-        defaultRegion.uuid, ImmutableList.of("vpc-id"))).thenReturn(Json.newObject());
-    JsonNode json = runCommand(defaultRegion.uuid, "bootstrap", false);
+    JsonNode json = runBootstrap(defaultRegion.uuid, null, false);
     Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
         (Map<String, String>) cloudCredentials.capture());
     assertEquals(String.join(" ", command.getValue()),
@@ -112,11 +118,7 @@ public class NetworkManagerTest extends FakeDBApplication {
 
   @Test
   public void testBootstrapCommandWithHostVPC() {
-    ObjectNode response = Json.newObject();
-    response.put("vpc-id", "host-vpc-id");
-    when(cloudQueryHelper.currentHostInfo(
-        defaultRegion.uuid, ImmutableList.of("vpc-id"))).thenReturn(response);
-    JsonNode json = runCommand(defaultRegion.uuid, "bootstrap", false);
+    JsonNode json = runBootstrap(defaultRegion.uuid, "host-vpc-id", false);
     Mockito.verify(shellProcessHandler, times(1)).run((List<String>) command.capture(),
         (Map<String, String>) cloudCredentials.capture());
     assertEquals(String.join(" ", command.getValue()),

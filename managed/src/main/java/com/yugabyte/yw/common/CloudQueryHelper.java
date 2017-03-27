@@ -3,13 +3,13 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.Common;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Singleton;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Singleton
 public class CloudQueryHelper extends DevopsBase {
@@ -20,10 +20,10 @@ public class CloudQueryHelper extends DevopsBase {
   @Override
   protected String getCommandType() { return YB_CLOUD_COMMAND_TYPE; }
 
-  public JsonNode currentHostInfo(UUID regionUUID, List<String> metadataTypes) {
+  public JsonNode currentHostInfo(Common.CloudType cloudType, List<String> metadataTypes) {
     List<String> commandArgs = new ArrayList<String>();
     commandArgs.add("--metadata_types");
     commandArgs.addAll(metadataTypes);
-    return execCommand(regionUUID, "current-host", commandArgs);
+    return execCommand(cloudType, "current-host", commandArgs);
   }
 }
