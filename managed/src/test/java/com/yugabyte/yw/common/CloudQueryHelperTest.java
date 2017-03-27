@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.junit.Before;
@@ -55,7 +56,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
       response.message = "{\"foo\": \"bar\"}";
     }
     when(shellProcessHandler.run(anyList(), anyMap())).thenReturn(response);
-    return cloudQueryHelper.currentHostInfo(regionUUID, ImmutableList.of("vpc-id"));
+    return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
   }
 
   @Test
