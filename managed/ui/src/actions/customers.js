@@ -28,6 +28,11 @@ export const UPDATE_PROFILE = 'UPDATE_PROFILE';
 export const UPDATE_PROFILE_SUCCESS = 'UPDATE_PROFILE_SUCCESS';
 export const UPDATE_PROFILE_FAILURE = 'UPDATE_PROFILE_FAILURE';
 
+// Fetch Software Versions for Customer
+export const FETCH_SOFTWARE_VERSIONS = 'FETCH_SOFTWARE_VERSIONS';
+export const FETCH_SOFTWARE_VERSIONS_SUCCESS = 'FETCH_SOFTWARE_VERSIONS_SUCCESS';
+export const FETCH_SOFTWARE_VERSIONS_FAILURE = 'FETCH_SOFTWARE_VERSIONS_FAILURE';
+
 export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");
   var auth_token = localStorage.getItem("customer_token");
@@ -139,6 +144,29 @@ export function updateProfileSuccess(response) {
 export function updateProfileFailure(error) {
   return {
     type: UPDATE_PROFILE_FAILURE,
+    payload: error
+  }
+}
+
+export function fetchSoftwareVersions() {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
+  return {
+    type: FETCH_SOFTWARE_VERSIONS,
+    payload: request
+  }
+}
+
+export function fetchSoftwareVersionsSuccess(result) {
+  return {
+    type: FETCH_SOFTWARE_VERSIONS_SUCCESS,
+    payload: result
+  }
+}
+
+export function fetchSoftwareVersionsFailure(error) {
+  return {
+    type: FETCH_SOFTWARE_VERSIONS_FAILURE,
     payload: error
   }
 }

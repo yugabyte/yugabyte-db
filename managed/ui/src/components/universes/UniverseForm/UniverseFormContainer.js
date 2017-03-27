@@ -13,8 +13,8 @@ import { createUniverse, createUniverseSuccess, createUniverseFailure,
   configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
   checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
   fetchUniverseInfoFailure } from 'actions/universe';
+import {fetchSoftwareVersions, fetchSoftwareVersionsSuccess, fetchSoftwareVersionsFailure} from 'actions/customers';
 import { isDefinedNotNull, isValidArray } from 'utils/ObjectUtils';
-import { SOFTWARE_VERSION } from 'config';
 
 //For any field errors upon submission (i.e. not instant check)
 
@@ -129,6 +129,15 @@ const mapDispatchToProps = (dispatch) => {
 
     resetConfig: () => {
       dispatch(resetUniverseConfiguration());
+    },
+    fetchSoftwareVersions: () => {
+      dispatch(fetchSoftwareVersions()).then((response)=>{
+        if (response.payload.status !== 200) {
+          dispatch(fetchSoftwareVersionsFailure(response.payload));
+        } else {
+          dispatch(fetchSoftwareVersionsSuccess(response.payload));
+        }
+      })
     }
   }
 }
@@ -140,7 +149,7 @@ function mapStateToProps(state, ownProps) {
   const {universe: {currentUniverse}} = state;
   var data = {
     "universeName": "",
-    "ybSoftwareVersion": SOFTWARE_VERSION,
+    "ybSoftwareVersion": "",
     "numNodes": 3,
     "isMultiAZ": true,
     "instanceType": "m3.medium",
@@ -165,6 +174,7 @@ function mapStateToProps(state, ownProps) {
         name: currentUniverse.regions[0].name,
         label: currentUniverse.regions[0].name
       }];
+
     }
   }
 
@@ -174,6 +184,7 @@ function mapStateToProps(state, ownProps) {
     universe: state.universe,
     tasks: state.tasks,
     cloud: state.cloud,
+    softwareVersions: state.customer.softwareVersions,
     initialValues: data,
     formValues: selector(state,
       'formType', 'universeName', 'provider', 'providerType', 'regionList',
