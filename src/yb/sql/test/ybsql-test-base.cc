@@ -15,7 +15,7 @@ using client::YBClientBuilder;
 
 //--------------------------------------------------------------------------------------------------
 
-YbSqlTestBase::YbSqlTestBase() : sql_session_(new SqlSession()) {
+YbSqlTestBase::YbSqlTestBase() {
   sql_envs_.reserve(1);
 }
 
@@ -47,7 +47,8 @@ SqlEnv *YbSqlTestBase::CreateSqlEnv() {
     sql_envs_.reserve(max_id + 10);
   }
 
-  SqlEnv *sql_env = new SqlEnv(client_, table_cache_);
+  std::weak_ptr<rpc::Messenger> messenger;
+  SqlEnv *sql_env = new SqlEnv(messenger, client_, table_cache_);
   sql_envs_.emplace_back(sql_env);
   return sql_env;
 }
@@ -72,12 +73,11 @@ YbSqlProcessor *YbSqlTestBase::GetSqlProcessor() {
     }
   }
 
+  std::weak_ptr<rpc::Messenger> messenger;
   const int size = sql_processors_.size();
   sql_processors_.reserve(std::max<int>(size * 2, size + 10));
-  sql_processors_.emplace_back(new YbSqlProcessor(client_, table_cache_));
-  YbSqlProcessor *processor = sql_processors_.back().get();
-  processor->SetSqlSession(sql_session_);
-  return processor;
+  sql_processors_.emplace_back(new YbSqlProcessor(messenger, client_, table_cache_));
+  return sql_processors_.back().get();
 }
 
 }  // namespace sql

@@ -41,7 +41,9 @@ using CQLStatementListPos = CQLStatementList::iterator;
 class CQLServiceImpl : public CQLServerServiceIf {
  public:
   // Constructor.
-  CQLServiceImpl(CQLServer* server, const std::string& yb_tier_master_address);
+  CQLServiceImpl(
+      CQLServer* server, std::shared_ptr<rpc::Messenger> messenger,
+      const std::string& yb_tier_master_address);
 
   // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCall* call) override;
@@ -72,6 +74,9 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Return the CQL metrics.
   std::shared_ptr<CQLMetrics> cql_metrics() const { return cql_metrics_; }
+
+  // Return the messenger.
+  std::weak_ptr<rpc::Messenger> messenger() { return messenger_; }
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
@@ -119,6 +124,8 @@ class CQLServiceImpl : public CQLServerServiceIf {
   yb::rpc::RpcMethodMetrics metrics_;
 
   std::shared_ptr<CQLMetrics> cql_metrics_;
+  // Used to requeue the cql_inbound call to handle the response callback(s).
+  std::weak_ptr<rpc::Messenger> messenger_;
 };
 
 }  // namespace cqlserver

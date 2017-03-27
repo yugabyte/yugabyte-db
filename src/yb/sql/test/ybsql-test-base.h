@@ -73,27 +73,43 @@ class YbSqlProcessor : public SqlProcessor {
 
   // Constructors.
   explicit YbSqlProcessor(
-      std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache)
-      : SqlProcessor(client, cache, nullptr /* sql_metrics */) { }
+      std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
+      std::shared_ptr<client::YBTableCache> cache)
+      : SqlProcessor(messenger, client, cache, nullptr /* sql_metrics */) { }
   virtual ~YbSqlProcessor() { }
+
+  void RunAsyncDone(
+      Callback<void(const Status&)> cb, const Status& s, ExecutedResult::SharedPtr result) {
+    result_ = result;
+    cb.Run(s);
+  }
+
+  void RunAsync(const string& sql_stmt, Callback<void(const Status&)> cb) {
+    result_ = nullptr;
+    SqlProcessor::RunAsync(
+        sql_stmt, StatementParameters(), Bind(&YbSqlProcessor::RunAsyncDone, Unretained(this), cb));
+  }
 
   // Execute a SQL statement.
   CHECKED_STATUS Run(const std::string& sql_stmt) {
-    result_ = nullptr;
-    return SqlProcessor::Run(sql_stmt, StatementParameters(), &result_);
+    Synchronizer s;
+    RunAsync(sql_stmt, Bind(&Synchronizer::StatusCB, Unretained(&s)));
+    return s.Wait();
   }
 
     // Construct a row_block and send it back.
   std::shared_ptr<YQLRowBlock> row_block() const {
-    if (result_ != nullptr && result_->type() == ExecuteResult::Type::ROWS) {
+    if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
       return std::shared_ptr<YQLRowBlock>(static_cast<RowsResult*>(result_.get())->GetRowBlock());
     }
     return nullptr;
   }
 
+  const ExecutedResult::SharedPtr& result() const { return result_; }
+
  private:
   // Execute result.
-  ExecuteResult::UniPtr result_;
+  ExecutedResult::SharedPtr result_;
 };
 
 // Base class for all SQL test cases.
@@ -155,8 +171,6 @@ class YbSqlTestBase : public YBTest {
   // Simulated YB client.
   std::shared_ptr<client::YBClient> client_;
   std::shared_ptr<client::YBTableCache> table_cache_;
-
-  SqlSession::SharedPtr sql_session_;
 
   // Contexts to be passed to SQL engine.
   std::vector<SqlEnv::UniPtr> sql_envs_;

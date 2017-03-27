@@ -3,6 +3,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/cqlserver/cql_processor.h"
+#include <yb/rpc/rpc_context.h>
 
 #include <sasl/md5global.h>
 #include <sasl/md5.h>
@@ -31,11 +32,18 @@ METRIC_DEFINE_histogram(
     "Time spent after computing the CQL response to queue it onto the connection.", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ExecuteRequest,
-    "Time spent executing the CQL query request", yb::MetricUnit::kMicroseconds,
-    "Time spent executing the CQL query request", 60000000LU, 2);
+    "Time spent executing the CQL query request in the handler", yb::MetricUnit::kMicroseconds,
+    "Time spent executing the CQL query request in the handler", 60000000LU, 2);
 METRIC_DEFINE_counter(
     server, yb_cqlserver_CQLServerService_ParsingErrors, "Errors encountered when parsing ",
     yb::MetricUnit::kRequests, "Errors encountered when parsing ");
+METRIC_DEFINE_histogram(
+    server, handler_latency_yb_cqlserver_CQLServerService_Any,
+    "yb.cqlserver.CQLServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
+    "Microseconds spent handling "
+    "yb.cqlserver.CQLServerService.AnyMethod() "
+    "RPC requests",
+    60000000LU, 2);
 
 namespace yb {
 namespace cqlserver {
@@ -46,7 +54,8 @@ using std::unique_ptr;
 using client::YBClient;
 using client::YBSession;
 using client::YBTableCache;
-using sql::ExecuteResult;
+using rpc::RpcContext;
+using sql::ExecutedResult;
 using sql::PreparedResult;
 using sql::RowsResult;
 using sql::SetKeyspaceResult;
@@ -68,6 +77,8 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
           metric_entity);
   time_to_queue_cql_response_ =
       METRIC_handler_latency_yb_cqlserver_CQLServerService_QueueResponse.Instantiate(metric_entity);
+  rpc_method_metrics_.handler_latency =
+      METRIC_handler_latency_yb_cqlserver_CQLServerService_Any.Instantiate(metric_entity);
   num_errors_parsing_cql_ =
       METRIC_yb_cqlserver_CQLServerService_ParsingErrors.Instantiate(metric_entity);
 }
@@ -90,31 +101,65 @@ CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const strin
 //------------------------------------------------------------------------------------------------
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl)
     : SqlProcessor(
-          service_impl->client(), service_impl->table_cache(), service_impl->cql_metrics().get()),
+          service_impl->messenger(), service_impl->client(), service_impl->table_cache(),
+          service_impl->cql_metrics().get()),
       service_impl_(service_impl),
-      cql_metrics_(service_impl->cql_metrics()) {
-}
+      cql_metrics_(service_impl->cql_metrics()) {}
 
 CQLProcessor::~CQLProcessor() {
 }
 
-void CQLProcessor::ProcessCall(const Slice& msg, unique_ptr<CQLResponse> *response) {
+void CQLProcessor::ProcessCall(rpc::CQLInboundCall* cql_call) {
+  const Slice& msg = cql_call->serialized_request();
   unique_ptr<CQLRequest> request;
+  unique_ptr<CQLResponse> response;
 
   // Parse the CQL request. If the parser failed, it sets the error message in response.
   MonoTime start = MonoTime::Now(MonoTime::FINE);
-  if (CQLRequest::ParseRequest(msg, &request, response)) {
-    MonoTime parsed = MonoTime::Now(MonoTime::FINE);
-    cql_metrics_->time_to_parse_cql_wrapper_->Increment(
-        parsed.GetDeltaSince(start).ToMicroseconds());
-    // Execute the request.
-    response->reset(request->Execute(this));
-    MonoTime executed = MonoTime::Now(MonoTime::FINE);
-    cql_metrics_->time_to_execute_cql_request_->Increment(
-        executed.GetDeltaSince(parsed).ToMicroseconds());
-  } else {
+  if (!CQLRequest::ParseRequest(msg, &request, &response)) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
+    SendResponse(cql_call, response.release());
+    SetSqlSession(nullptr);
+    this->unused();
+    return;
   }
+
+  MonoTime parsed = MonoTime::Now(MonoTime::FINE);
+  cql_metrics_->time_to_parse_cql_wrapper_->Increment(parsed.GetDeltaSince(start).ToMicroseconds());
+
+  // Execute the request (perhaps asynchronously). Passing ownership of the request to the callback.
+  SetCurrentCall(cql_call);
+  request->Execute(this, Bind(
+      &CQLProcessor::ProcessCallDone, Unretained(this), cql_call, Owned(request.release()),
+      parsed));
+}
+
+void CQLProcessor::ProcessCallDone(
+    rpc::CQLInboundCall* cql_call, const CQLRequest* request, const MonoTime& start,
+    CQLResponse* response) {
+  // Reply to client.
+  MonoTime begin_response = MonoTime::Now(MonoTime::FINE);
+  cql_metrics_->time_to_execute_cql_request_->Increment(
+      begin_response.GetDeltaSince(start).ToMicroseconds());
+  SendResponse(cql_call, response);
+
+  // Release the processor.
+  MonoTime response_done = MonoTime::Now(MonoTime::FINE);
+  cql_metrics_->time_to_process_request_->Increment(
+      response_done.GetDeltaSince(start_time_).ToMicroseconds());
+  cql_metrics_->time_to_queue_cql_response_->Increment(
+      response_done.GetDeltaSince(begin_response).ToMicroseconds());
+  this->unused();
+}
+
+void CQLProcessor::SendResponse(rpc::CQLInboundCall* cql_call, CQLResponse* response) {
+  CHECK(response != nullptr);
+  // Serialize the response to return to the CQL client. In case of error, an error response
+  // should still be present.
+  response->Serialize(&cql_call->response_msg_buf());
+  delete response;
+  RpcContext* context = new RpcContext(cql_call, cql_metrics_->rpc_method_metrics_);
+  context->RespondSuccess();
 }
 
 CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
@@ -140,50 +185,60 @@ CQLResponse *CQLProcessor::ProcessPrepare(const PrepareRequest& req) {
   return new PreparedResultResponse(req, query_id, result.get());
 }
 
-CQLResponse *CQLProcessor::ProcessExecute(const ExecuteRequest& req) {
+void CQLProcessor::ProcessExecute(const ExecuteRequest& req, Callback<void(CQLResponse*)> cb) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   shared_ptr<CQLStatement> stmt = service_impl_->GetPreparedStatement(req.query_id());
   if (stmt == nullptr) {
     // If the query is not found, it may have been aged out. Return UNPREPARED error. Upon receiving
     // the error, the client will reprepare the query and execute again.
-    return new UnpreparedErrorResponse(req, req.query_id());
+    cb.Run(new UnpreparedErrorResponse(req, req.query_id()));
+    return;
   }
-  ExecuteResult::UniPtr result;
-  Status s = stmt->Execute(this, req.params(), &result);
+  stmt->ExecuteAsync(
+      this, req.params(),
+      Bind(&CQLProcessor::ProcessExecuteDone, Unretained(this), req, stmt, cb));
+}
+
+void CQLProcessor::ProcessExecuteDone(
+    const ExecuteRequest& req, shared_ptr<CQLStatement> stmt, Callback<void(CQLResponse*)> cb,
+    const Status& s, ExecutedResult::SharedPtr result) {
+  cb.Run(ReturnResponse(req, s, result));
+}
+
+void CQLProcessor::ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb) {
+  RunAsync(
+      req.query(), req.params(),
+      Bind(&CQLProcessor::ProcessQueryDone, Unretained(this), req, cb));
+}
+
+void CQLProcessor::ProcessQueryDone(
+    const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
+    ExecutedResult::SharedPtr result) {
+  cb.Run(ReturnResponse(req, s, result));
+}
+
+CQLResponse* CQLProcessor::ReturnResponse(
+    const CQLRequest& req, Status s, ExecutedResult::SharedPtr result) {
   if (!s.ok()) {
     return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
   }
-  return ReturnResult(req, std::move(result));
-}
-
-CQLResponse *CQLProcessor::ProcessQuery(const QueryRequest& req) {
-  VLOG(1) << "QUERY " << req.query();
-  ExecuteResult::UniPtr result;
-  Status s = Run(req.query(), req.params(), &result);
-  if (!s.ok()) {
-    return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
-  }
-  return ReturnResult(req, move(result));
-}
-
-CQLResponse *CQLProcessor::ReturnResult(const CQLRequest& req, ExecuteResult::UniPtr result) {
   if (result == nullptr) {
     return new VoidResultResponse(req);
   }
   switch (result->type()) {
-    case ExecuteResult::Type::SET_KEYSPACE: {
+    case ExecutedResult::Type::SET_KEYSPACE: {
       const SetKeyspaceResult *set_keyspace_result =
           static_cast<const SetKeyspaceResult*>(result.get());
       return new SetKeyspaceResultResponse(req, *set_keyspace_result);
     }
-    case ExecuteResult::Type::ROWS:
-      RowsResult::UniPtr rows_result(static_cast<RowsResult*>(result.release()));
+    case ExecutedResult::Type::ROWS:
+      RowsResult::SharedPtr rows_result = std::static_pointer_cast<RowsResult>(result);
       cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
       switch (req.opcode()) {
         case CQLMessage::Opcode::EXECUTE:
-          return new RowsResultResponse(static_cast<const ExecuteRequest&>(req), move(rows_result));
+          return new RowsResultResponse(static_cast<const ExecuteRequest&>(req), rows_result);
         case CQLMessage::Opcode::QUERY:
-          return new RowsResultResponse(static_cast<const QueryRequest&>(req), move(rows_result));
+          return new RowsResultResponse(static_cast<const QueryRequest&>(req), rows_result);
         case CQLMessage::Opcode::ERROR:   FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::STARTUP: FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::READY:   FALLTHROUGH_INTENDED;
@@ -208,6 +263,8 @@ CQLResponse *CQLProcessor::ReturnResult(const CQLRequest& req, ExecuteResult::Un
     // default: fall through
   }
   LOG(FATAL) << "Internal error: unknown result type " << static_cast<int>(result->type());
+  return new ErrorResponse(
+      req, ErrorResponse::Code::SERVER_ERROR, "Internal error: unknown result type");
 }
 
 }  // namespace cqlserver

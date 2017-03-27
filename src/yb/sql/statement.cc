@@ -15,6 +15,16 @@ using std::unique_ptr;
 
 const MonoTime Statement::kNoLastPrepareTime = MonoTime::Min();
 
+// Runs the StatementExecutedCallback cb and returns if the status s is not OK.
+#define CB_RETURN_NOT_OK(cb, s)    \
+  do {                             \
+    ::yb::Status _s = (s);         \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      (cb).Run(_s, nullptr);       \
+      return;                      \
+    }                              \
+  } while (0)
+
 Statement::Statement(const string& keyspace, const string& text)
     : keyspace_(keyspace), text_(text), prepare_time_(kNoLastPrepareTime) {
 }
@@ -72,51 +82,67 @@ CHECKED_STATUS Statement::Prepare(SqlProcessor *processor,
   return Status::OK();
 }
 
-CHECKED_STATUS Statement::Execute(SqlProcessor *processor,
-                                  const StatementParameters& params,
-                                  ExecuteResult::UniPtr *result) {
-  MonoTime last_prepare_time = kNoLastPrepareTime;
-  bool new_analysis_needed = false;
-  Status s;
-
+void Statement::ExecuteAsync(
+    SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb) {
   // Execute the statement.
-  s = DoExecute(processor, params, &last_prepare_time, &new_analysis_needed, result);
+  DoExecuteAsync(processor, params, kNoLastPrepareTime,
+                 Bind(&Statement::ExecuteAsyncDone, Unretained(this),
+                      Request(processor, &params), cb));
+}
 
+void RedoExecuteAsyncDone(
+    StatementExecutedCallback cb, const MonoTime& ignored1, bool ignored2,
+    const Status& s, ExecutedResult::SharedPtr result) {
+  cb.Run(s, result);
+}
+
+void Statement::ExecuteAsyncDone(
+    Request req, StatementExecutedCallback cb, const MonoTime &updated_last_prepare_time,
+    bool new_analysis_needed, const Status &s, ExecutedResult::SharedPtr result) {
   // If new analysis is needed, reprepare the statement with new metadata and re-execute.
   if (new_analysis_needed) {
-    RETURN_NOT_OK(Prepare(
-        processor, last_prepare_time, true /* refresh_cache */, nullptr /* mem_tracker */,
-        nullptr /* result */));
-    s = DoExecute(processor, params, &last_prepare_time, &new_analysis_needed, result);
+    CB_RETURN_NOT_OK(cb,
+                     Prepare(
+                         req.processor, updated_last_prepare_time, true /* refresh_cache */,
+                         nullptr /* mem_tracker */, nullptr /* result */));
+    // Re-execute the statement.
+    DoExecuteAsync(req.processor, *req.params, updated_last_prepare_time,
+                   Bind(&RedoExecuteAsyncDone, cb));
+  } else {
+    cb.Run(s, result);
   }
-
-  return s;
 }
 
-CHECKED_STATUS Statement::DoExecute(SqlProcessor *processor,
-                                    const StatementParameters& params,
-                                    MonoTime *last_prepare_time,
-                                    bool *new_analysis_needed,
-                                    ExecuteResult::UniPtr *result) {
-  // Save the last prepare time and execute the parse tree. Do so within a shared lock.
+void DoExecuteAsyncDone(
+    Callback<void(const MonoTime&, bool, const Status&, ExecutedResult::SharedPtr)> cb,
+    const MonoTime& last_prepare_time, bool new_analysis_needed, const Status& s,
+    ExecutedResult::SharedPtr result) {
+  cb.Run(last_prepare_time, new_analysis_needed, s, result);
+}
+
+void Statement::DoExecuteAsync(SqlProcessor* processor,
+                               const StatementParameters& params,
+                               const MonoTime &last_prepare_time,
+                               Callback<void(const MonoTime &last_prepare_time,
+                                             bool new_analysis_needed,
+                                             const Status &s,
+                                             ExecutedResult::SharedPtr result)> cb) {
+  // Save the last prepare time and execute the parse tree. Do so within a shared lock until
+  // SqlProcessor::ExecuteAsync() returns by when we are done with the parse tree and the execute
+  // request has been queued.
   boost::shared_lock<boost::shared_mutex> l(lock_);
-  if (parse_tree_ == nullptr) {
-    // CQLProcessor should have ensured the statement has been parsed and analyzed before
-    // attempting execution.
-    return STATUS(Corruption, "Internal error: null parse tree");
-  }
-  *last_prepare_time = prepare_time_;
-  return processor->Execute(text_, *parse_tree_.get(), params, new_analysis_needed, result);
+  // CQLProcessor should have ensured the statement has been parsed and analyzed before
+  // attempting execution.
+  CHECK(parse_tree_ != nullptr) << "Internal error: null parse tree";
+  processor->ExecuteAsync(text_, *parse_tree_.get(), params,
+                          Bind(&DoExecuteAsyncDone, cb, prepare_time_));
 }
 
-
-CHECKED_STATUS Statement::Run(SqlProcessor *processor,
-                              const StatementParameters& params,
-                              ExecuteResult::UniPtr *result) {
-  RETURN_NOT_OK(Prepare(processor));
-  RETURN_NOT_OK(Execute(processor, params, result));
-  return Status::OK();
+void Statement::RunAsync(
+    SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb) {
+  CB_RETURN_NOT_OK(cb, Prepare(processor));
+  ExecuteAsync(processor, params, cb);
 }
 
-} // namespace sql
-} // namespace yb
+}  // namespace sql
+}  // namespace yb

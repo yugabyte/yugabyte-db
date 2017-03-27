@@ -14,12 +14,13 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CLIENT_CALLBACKS_H
-#define YB_CLIENT_CALLBACKS_H
+#ifndef YB_CLIENT_CALLBACKS_H_
+#define YB_CLIENT_CALLBACKS_H_
 
 #ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
+#include "yb/gutil/walltime.h"
 #else
 #include "yb/client/stubs.h"
 #endif
@@ -179,7 +180,7 @@ class YB_EXPORT YBStatusFunctionCallback : public YBStatusCallback {
   T arg_;
 };
 
-} // namespace client
-} // namespace yb
+}  // namespace client
+}  // namespace yb
 
-#endif
+#endif  // YB_CLIENT_CALLBACKS_H_

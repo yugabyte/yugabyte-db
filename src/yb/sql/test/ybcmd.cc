@@ -37,7 +37,7 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
   NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
-  SqlProcessor *processor = GetSqlProcessor();
+  YbSqlProcessor *processor = GetSqlProcessor();
 
   const string exit_cmd = "exit";
   while (1) {
@@ -66,21 +66,23 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
 
     // Execute.
     cout << "\033[1;34mExecute statement: " << sql_stmt << "\033[0m" << endl;
-    ExecuteResult::UniPtr result;
-    Status s = processor->Run(sql_stmt, StatementParameters(), &result);
+    Status s = processor->Run(sql_stmt);
     if (!s.ok()) {
       cout << s.ToString(false);
-    } else if (result != nullptr) {
-      // Check result.
-      switch (result->type()) {
-        case ExecuteResult::Type::SET_KEYSPACE:
-          cout << "Keyspace set to " << static_cast<SetKeyspaceResult*>(result.get())->keyspace();
-          break;
-        case ExecuteResult::Type::ROWS:
-          std::unique_ptr<YQLRowBlock>
-              row_block(static_cast<RowsResult*>(result.get())->GetRowBlock());
-          cout << row_block->ToString();
-          break;
+    } else {
+      ExecutedResult::SharedPtr result = processor->result();
+      if (result != nullptr) {
+        // Check result.
+        switch (result->type()) {
+          case ExecutedResult::Type::SET_KEYSPACE:
+            cout << "Keyspace set to " << static_cast<SetKeyspaceResult*>(result.get())->keyspace();
+            break;
+          case ExecutedResult::Type::ROWS:
+            std::unique_ptr<YQLRowBlock>
+                row_block(static_cast<RowsResult*>(result.get())->GetRowBlock());
+            cout << row_block->ToString();
+            break;
+        }
       }
     }
   }

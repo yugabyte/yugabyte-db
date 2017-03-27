@@ -391,6 +391,10 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   return Status::OK();
 }
 
+void CQLRequest::Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
+  cb.Run(Execute(processor));
+}
+
 // ------------------------------ Individual CQL requests -----------------------------------
 StartupRequest::StartupRequest(const Header& header, const Slice& body)
     : CQLRequest(header, body) {
@@ -464,7 +468,12 @@ Status QueryRequest::ParseBody() {
 }
 
 CQLResponse* QueryRequest::Execute(CQLProcessor *processor) {
-  return processor->ProcessQuery(*this);
+  LOG(FATAL) << "Execute should only be used asynchrounsly on QueryRequest";
+  return nullptr;
+}
+
+void QueryRequest::Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
+  processor->ProcessQuery(*this, cb);
 }
 
 //----------------------------------------------------------------------------------------
@@ -497,7 +506,12 @@ Status ExecuteRequest::ParseBody() {
 }
 
 CQLResponse* ExecuteRequest::Execute(CQLProcessor *processor) {
-  return processor->ProcessExecute(*this);
+  LOG(FATAL) << "Execute should only be used asynchrounsly on ExecuteRequest";
+  return nullptr;
+}
+
+void ExecuteRequest::Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
+  processor->ProcessExecute(*this, cb);
 }
 
 //----------------------------------------------------------------------------------------
@@ -1188,13 +1202,13 @@ void VoidResultResponse::SerializeResultBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 RowsResultResponse::RowsResultResponse(
-    const QueryRequest& request, sql::RowsResult::UniPtr result)
+    const QueryRequest& request, sql::RowsResult::SharedPtr result)
     : ResultResponse(request, Kind::ROWS), result_(std::move(result)),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
 
 RowsResultResponse::RowsResultResponse(
-    const ExecuteRequest& request, sql::RowsResult::UniPtr result)
+    const ExecuteRequest& request, sql::RowsResult::SharedPtr result)
     : ResultResponse(request, Kind::ROWS), result_(std::move(result)),
       skip_metadata_(request.params_.flags & CQLMessage::QueryParameters::kSkipMetadataFlag) {
 }
@@ -1392,5 +1406,5 @@ void AuthSuccessResponse::SerializeBody(faststring* mesg) {
   SerializeBytes(token_, mesg);
 }
 
-} // namespace cqlserver
-} // namespace yb
+}  // namespace cqlserver
+}  // namespace yb

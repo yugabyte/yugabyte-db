@@ -23,6 +23,23 @@ using client::YBqlWriteOp;
 using client::YBqlReadOp;
 using strings::Substitute;
 
+// Runs the StatementExecutedCallback cb with no result and returns.
+#define CB_RETURN(cb, s)  \
+  do {                    \
+    (cb).Run(s, nullptr); \
+    return;               \
+  } while (0)
+
+// Runs the StatementExecutedCallback cb and returns if the status s is not OK.
+#define CB_RETURN_NOT_OK(cb, s)    \
+  do {                             \
+    ::yb::Status _s = (s);         \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      (cb).Run(_s, nullptr);       \
+      return;                      \
+    }                              \
+  } while (0)
+
 //--------------------------------------------------------------------------------------------------
 
 Executor::Executor() {
@@ -33,30 +50,29 @@ Executor::~Executor() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::Execute(const string& sql_stmt,
-                                 const ParseTree& parse_tree,
-                                 const StatementParameters& params,
-                                 SqlEnv *sql_env,
-                                 ExecuteResult::UniPtr *result) {
+void Executor::ExecuteAsync(
+    const string &sql_stmt, const ParseTree &parse_tree, const StatementParameters &params,
+    SqlEnv *sql_env, StatementExecutedCallback cb) {
   // Prepare execution context.
   exec_context_ = ExecContext::UniPtr(new ExecContext(sql_stmt.c_str(),
                                                       sql_stmt.length(),
                                                       sql_env));
   params_ = &params;
   // Execute the parse tree.
-  if (!ExecPTree(parse_tree).ok()) {
+  ExecPTreeAsync(
+      parse_tree, Bind(&Executor::ExecuteDone, Unretained(this), Unretained(&parse_tree), cb));
+}
+
+void Executor::ExecuteDone(
+    const ParseTree *ptree, StatementExecutedCallback cb, const Status &s,
+    ExecutedResult::SharedPtr result) {
+  if (!s.ok()) {
     // Before leaving the execution step, collect all errors and place them in return status.
-    VLOG(3) << "Failed to execute parse-tree <" << &parse_tree << ">";
-    return exec_context_->GetStatus();
+    VLOG(3) << "Failed to execute parse-tree <" << ptree << ">";
+    CB_RETURN(cb, exec_context_->GetStatus());
   }
-
-  // Return result if requested.
-  if (result != nullptr) {
-    *result = exec_context_->AcquireExecuteResult();
-  }
-
-  VLOG(3) << "Successfully executed parse-tree <" << &parse_tree << ">";
-  return Status::OK();
+  VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
+  cb.Run(Status::OK(), result);
 }
 
 void Executor::Done() {
@@ -66,64 +82,78 @@ void Executor::Done() {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTree(const ParseTree& ptree) {
-  return ExecTreeNode(ptree.root().get());
+void Executor::ExecPTreeAsync(const ParseTree &ptree, StatementExecutedCallback cb) {
+  ExecTreeNodeAsync(ptree.root().get(), cb);
 }
 
-CHECKED_STATUS Executor::ExecTreeNode(const TreeNode *tnode) {
+void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(tnode);
 
   switch (tnode->opcode()) {
     case TreeNodeOpcode::kPTListNode:
-      return ExecPTNode(static_cast<const PTListNode*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTListNode *>(tnode), cb);
 
     case TreeNodeOpcode::kPTCreateTable:
-      return ExecPTNode(static_cast<const PTCreateTable*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTCreateTable *>(tnode), cb);
 
     case TreeNodeOpcode::kPTDropStmt:
-      return ExecPTNode(static_cast<const PTDropStmt*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTDropStmt *>(tnode), cb);
 
     case TreeNodeOpcode::kPTSelectStmt:
-      return ExecPTNode(static_cast<const PTSelectStmt*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTSelectStmt *>(tnode), cb);
 
     case TreeNodeOpcode::kPTInsertStmt:
-      return ExecPTNode(static_cast<const PTInsertStmt*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTInsertStmt *>(tnode), cb);
 
     case TreeNodeOpcode::kPTDeleteStmt:
-      return ExecPTNode(static_cast<const PTDeleteStmt*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTDeleteStmt *>(tnode), cb);
 
     case TreeNodeOpcode::kPTUpdateStmt:
-      return ExecPTNode(static_cast<const PTUpdateStmt*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTUpdateStmt *>(tnode), cb);
 
     case TreeNodeOpcode::kPTCreateKeyspace:
-      return ExecPTNode(static_cast<const PTCreateKeyspace*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTCreateKeyspace *>(tnode), cb);
 
     case TreeNodeOpcode::kPTUseKeyspace:
-      return ExecPTNode(static_cast<const PTUseKeyspace*>(tnode));
+      return ExecPTNodeAsync(static_cast<const PTUseKeyspace *>(tnode), cb);
 
     default:
-      return ExecPTNode(tnode);
+      return ExecPTNodeAsync(tnode, cb);
   }
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const TreeNode *tnode) {
-  return exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+void Executor::ExecPTNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb) {
+  CB_RETURN(cb, exec_context_->Error(tnode->loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTListNode *lnode) {
-  for (TreeNode::SharedPtr nodeptr : lnode->node_list()) {
-    RETURN_NOT_OK(ExecTreeNode(nodeptr.get()));
+void Executor::ExecPTNodeAsync(
+    const PTListNode *lnode, StatementExecutedCallback cb, int idx) {
+  DCHECK_LT(idx, lnode->size()) << "idx should be less than the size of the list";
+  DCHECK_EQ(lnode->size(), 1)
+      << "Neil tells me that we expect the list to have only one element. While the async "
+      << "mechanism should work with multiple statements, it has not been tested so far.";
+  ExecTreeNodeAsync(
+      lnode->element(idx).get(),
+      Bind(&Executor::PTNodeAsyncDone, Unretained(this), Unretained(lnode), idx, cb));
+}
+
+void Executor::PTNodeAsyncDone(
+    const PTListNode *lnode, int index, StatementExecutedCallback cb, const Status &s,
+    ExecutedResult::SharedPtr result) {
+  CB_RETURN_NOT_OK(cb, s);
+  cb.Run(Status::OK(), result);
+  if (++index < lnode->size()) {
+    ExecPTNodeAsync(lnode, cb, index);
   }
-  return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
+void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb) {
   YBTableName table_name = tnode->yb_table_name();
 
   if (!table_name.has_namespace()) {
@@ -138,9 +168,10 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
   for (const auto& column : hash_columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      return exec_context_->Error(tnode->columns_loc(),
-                                  exec_status.ToString().c_str(),
-                                  ErrorCode::INVALID_TABLE_DEFINITION);
+      CB_RETURN(
+          cb, exec_context_->Error(
+                  tnode->columns_loc(), exec_status.ToString().c_str(),
+                  ErrorCode::INVALID_TABLE_DEFINITION));
     }
     b.AddColumn(column->yb_name())->Type(column->sql_type())
         ->HashPrimaryKey()
@@ -156,9 +187,10 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
   const MCList<PTColumnDefinition *>& columns = tnode->columns();
   for (const auto& column : columns) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
-      return exec_context_->Error(tnode->columns_loc(),
-                                  exec_status.ToString().c_str(),
-                                  ErrorCode::INVALID_TABLE_DEFINITION);
+      CB_RETURN(
+          cb, exec_context_->Error(
+                  tnode->columns_loc(), exec_status.ToString().c_str(),
+                  ErrorCode::INVALID_TABLE_DEFINITION));
     }
     b.AddColumn(column->yb_name())->Type(column->sql_type())
                                   ->Nullable()
@@ -167,18 +199,20 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
 
   TableProperties table_properties;
   if(!tnode->ToTableProperties(&table_properties).ok()) {
-    return exec_context_->Error(tnode->columns_loc(),
-                                exec_status.ToString().c_str(),
-                                ErrorCode::INVALID_TABLE_DEFINITION);
+    CB_RETURN(
+        cb, exec_context_->Error(
+                tnode->columns_loc(), exec_status.ToString().c_str(),
+                ErrorCode::INVALID_TABLE_DEFINITION));
   }
 
   b.SetTableProperties(table_properties);
 
   exec_status = b.Build(&schema);
   if (!exec_status.ok()) {
-    return exec_context_->Error(tnode->columns_loc(),
-                                exec_status.ToString().c_str(),
-                                ErrorCode::INVALID_TABLE_DEFINITION);
+    CB_RETURN(
+        cb, exec_context_->Error(
+                tnode->columns_loc(), exec_status.ToString().c_str(),
+                ErrorCode::INVALID_TABLE_DEFINITION));
   }
 
   // Create table.
@@ -195,19 +229,18 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateTable *tnode) {
     }
 
     if (tnode->create_if_not_exists() && error_code == ErrorCode::DUPLICATE_TABLE) {
-      return Status::OK();
+      CB_RETURN(cb, Status::OK());
     }
 
-    return exec_context_->Error(tnode->name_loc(),
-                                exec_status.ToString().c_str(),
-                                error_code);
+    CB_RETURN(
+        cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
   }
-  return Status::OK();
+  CB_RETURN(cb, Status::OK());
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTDropStmt *tnode) {
+void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
   Status exec_status;
   ErrorCode error_not_found = ErrorCode::EXEC_ERROR;
@@ -232,7 +265,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDropStmt *tnode) {
       break;
 
     default:
-      return exec_context_->Error(tnode->name_loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
+      CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::FEATURE_NOT_SUPPORTED));
   }
 
   if (!exec_status.ok()) {
@@ -241,18 +274,17 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDropStmt *tnode) {
     if (exec_status.IsNotFound()) {
       // Ignore not found error for a DROP IF EXISTS statement.
       if (tnode->drop_if_exists()) {
-        return Status::OK();
+        CB_RETURN(cb, Status::OK());
       }
 
       error_code = error_not_found;
     }
 
-    return exec_context_->Error(tnode->name_loc(),
-                                exec_status.ToString().c_str(),
-                                error_code);
+    CB_RETURN(
+        cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
   }
 
-  return Status::OK();
+  CB_RETURN(cb, Status::OK());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -349,7 +381,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
         VLOG(3) << "Expr actual value = " << string_value.value_->c_str();
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetString(
-            col_index, Slice(string_value.value_->data(), string_value.value_->size())));
+              col_index, Slice(string_value.value_->data(), string_value.value_->size())));
         }
       }
       break;
@@ -716,9 +748,9 @@ CHECKED_STATUS Executor::BoolExprToPB(YQLConditionPB *cond, const PTExpr* expr) 
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
+void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallback cb) {
   if (tnode->is_system()) {
-    return Status::OK();
+    CB_RETURN(cb, Status::OK());
   }
 
   // Create the read request.
@@ -731,7 +763,9 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
 
   Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
   if (!st.ok()) {
-    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Specify selected columns.
@@ -743,7 +777,7 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
   EvalIntValue limit_value;
   if (tnode->has_limit()) {
     const PTExpr::SharedPtr limit_expr = tnode->limit();
-    RETURN_NOT_OK(EvalIntExpr(limit_expr, &limit_value));
+    CB_RETURN_NOT_OK(cb, EvalIntExpr(limit_expr, &limit_value));
     if (limit_value.value_ > 0) {
       if (limit_value.value_ > params_->total_num_rows_read()) {
         uint64_t limit = limit_value.value_ - params_->total_num_rows_read();
@@ -753,9 +787,10 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
           req->set_limit(limit);
         }
       } else {
-        return exec_context_->Error(tnode->loc(),
-                                    "Number of rows returned already reached the limit.",
-                                    ErrorCode::INVALID_ARGUMENTS);
+        CB_RETURN(
+            cb, exec_context_->Error(
+                    tnode->loc(), "Number of rows returned already reached the limit.",
+                    ErrorCode::INVALID_ARGUMENTS));
       }
     }
   } else if (params_->page_size() > 0) {
@@ -765,28 +800,39 @@ CHECKED_STATUS Executor::ExecPTNode(const PTSelectStmt *tnode) {
   *req->mutable_paging_state() = params_->paging_state();
   string curr_table_id = params_->table_id();
   if (!curr_table_id.empty() && curr_table_id != table->id()) {
-    return exec_context_->Error(tnode->loc(),
-                                "Table no longer exists.",
-                                ErrorCode::TABLE_NOT_FOUND);
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND));
   }
 
   // Apply the operator always even when select_op is "null" so that the last read_op saved in
   // exec_context is always cleared.
-  YQLPagingStatePB* paging_state_pb = select_op->mutable_response()->mutable_paging_state();
-  RETURN_NOT_OK(exec_context_->ApplyRead(select_op, tnode));
+  exec_context_->ApplyReadAsync(
+      select_op, tnode, Bind(
+                            &Executor::ApplyReadAsyncDone, Unretained(this), Unretained(tnode),
+                            limit_value, select_op, cb));
+}
+
+void Executor::ApplyReadAsyncDone(
+    const PTSelectStmt *tnode, EvalIntValue limit_value, shared_ptr<YBqlReadOp> select_op,
+    StatementExecutedCallback cb, const Status &s, ExecutedResult::SharedPtr result) {
+  const shared_ptr<client::YBTable> &table = tnode->table();
+  YQLPagingStatePB *paging_state_pb = select_op->mutable_response()->mutable_paging_state();
   paging_state_pb->set_table_id(table->id());
   if ((tnode->has_limit() && limit_value.value_ <= paging_state_pb->total_num_rows_read()) ||
       paging_state_pb->next_partition_key().empty()) {
-    exec_context_->ClearPagingState();
+    if (result != nullptr && result->type() == ExecutedResult::Type::ROWS) {
+      static_cast<RowsResult*>(result.get())->clear_paging_state();
+    }
     select_op->mutable_response()->clear_paging_state();
     VLOG(3) << "End of read, clearing paging state";
   }
-  return Status::OK();
+  cb.Run(s, result);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTInsertStmt *tnode) {
+void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallback cb) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> insert_op(table->NewYQLInsert());
@@ -797,25 +843,27 @@ CHECKED_STATUS Executor::ExecPTNode(const PTInsertStmt *tnode) {
                                         insert_op->mutable_request(),
                                         insert_op->mutable_row());
   if (!s.ok()) {
-    return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    CB_RETURN(
+        cb, exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
     s = BoolExprToPB(insert_op->mutable_request()->mutable_if_condition(), tnode->if_clause());
     if (!s.ok()) {
-      return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+      CB_RETURN(
+          cb,
+          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
     }
   }
 
   // Apply the operator.
-  RETURN_NOT_OK(exec_context_->ApplyWrite(insert_op, tnode));
-  return Status::OK();
+  exec_context_->ApplyWriteAsync(insert_op, tnode, cb);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
+void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallback cb) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> delete_op(table->NewYQLDelete());
@@ -826,7 +874,9 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
   YBPartialRow *row = delete_op->mutable_row();
   Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
   if (!st.ok()) {
-    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the IF clause.
@@ -834,18 +884,19 @@ CHECKED_STATUS Executor::ExecPTNode(const PTDeleteStmt *tnode) {
     Status s = BoolExprToPB(delete_op->mutable_request()->mutable_if_condition(),
                             tnode->if_clause());
     if (!s.ok()) {
-      return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+      CB_RETURN(
+          cb,
+          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
     }
   }
 
   // Apply the operator.
-  RETURN_NOT_OK(exec_context_->ApplyWrite(delete_op, tnode));
-  return Status::OK();
+  exec_context_->ApplyWriteAsync(delete_op, tnode, cb);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
+void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallback cb) {
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   shared_ptr<YBqlWriteOp> update_op(table->NewYQLUpdate());
@@ -856,7 +907,9 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
   YBPartialRow *row = update_op->mutable_row();
   Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
   if (!st.ok()) {
-    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Setup the columns' new values.
@@ -865,7 +918,9 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
                                   update_op->mutable_request(),
                                   update_op->mutable_row());
   if (!st.ok()) {
-    return exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
   }
 
   // Set the IF clause.
@@ -873,18 +928,19 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUpdateStmt *tnode) {
     Status s = BoolExprToPB(update_op->mutable_request()->mutable_if_condition(),
                             tnode->if_clause());
     if (!s.ok()) {
-      return exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS);
+      CB_RETURN(
+          cb,
+          exec_context_->Error(tnode->loc(), s.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
     }
   }
 
   // Apply the operator.
-  RETURN_NOT_OK(exec_context_->ApplyWrite(update_op, tnode));
-  return Status::OK();
+  exec_context_->ApplyWriteAsync(update_op, tnode, cb);
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
+void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
   Status exec_status = exec_context_->CreateKeyspace(tnode->name());
 
@@ -894,25 +950,24 @@ CHECKED_STATUS Executor::ExecPTNode(const PTCreateKeyspace *tnode) {
     if(exec_status.IsAlreadyPresent()) {
       if (tnode->create_if_not_exists()) {
         // Case: CREATE KEYSPACE IF NOT EXISTS name;
-        return Status::OK();
+        CB_RETURN(cb, Status::OK());
       }
 
       error_code = ErrorCode::KEYSPACE_ALREADY_EXISTS;
     }
 
-    return exec_context_->Error(tnode->loc(),
-                                exec_status.ToString().c_str(),
-                                error_code);
+    CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
   }
 
-  return Status::OK();
+  CB_RETURN(cb, Status::OK());
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ExecPTNode(const PTUseKeyspace *tnode) {
+void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
-  Status exec_status = exec_context_->UseKeyspace(tnode->name());
+  ExecutedResult::SharedPtr result;
+  Status exec_status = exec_context_->UseKeyspace(tnode->name(), &result);
 
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::EXEC_ERROR;
@@ -921,11 +976,9 @@ CHECKED_STATUS Executor::ExecPTNode(const PTUseKeyspace *tnode) {
       error_code = ErrorCode::KEYSPACE_NOT_FOUND;
     }
 
-    return exec_context_->Error(tnode->loc(),
-                                exec_status.ToString().c_str(),
-                                error_code);
+    CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
   }
-  return Status::OK();
+  cb.Run(Status::OK(), result);
 }
 
 }  // namespace sql

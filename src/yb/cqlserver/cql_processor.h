@@ -32,6 +32,8 @@ class CQLMetrics : public sql::SqlMetrics {
 
   scoped_refptr<yb::Histogram> time_to_queue_cql_response_;
   scoped_refptr<yb::Counter> num_errors_parsing_cql_;
+  // Rpc level metrics
+  yb::rpc::RpcMethodMetrics rpc_method_metrics_;
 };
 
 // A CQL statement that is prepared and cached.
@@ -61,19 +63,32 @@ class CQLProcessor : public sql::SqlProcessor {
   ~CQLProcessor();
 
   // Processing an inbound call.
-  void ProcessCall(const Slice& msg, std::unique_ptr<CQLResponse> *response);
+  void ProcessCall(rpc::CQLInboundCall* cql_call);
 
   // Process a PREPARE request.
   CQLResponse *ProcessPrepare(const PrepareRequest& req);
 
   // Process a EXECUTE request.
-  CQLResponse *ProcessExecute(const ExecuteRequest& req);
+  void ProcessExecute(const ExecuteRequest& req, Callback<void(CQLResponse*)> cb);
 
   // Process a QUERY request.
-  CQLResponse *ProcessQuery(const QueryRequest& req);
+  void ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb);
 
  private:
-  CQLResponse *ReturnResult(const CQLRequest& req, sql::ExecuteResult::UniPtr result);
+  // Run in response to ProcessQuery, ProcessExecute and ProcessCall
+  void ProcessQueryDone(
+      const QueryRequest& req, Callback<void(CQLResponse*)> cb, const Status& s,
+      sql::ExecutedResult::SharedPtr result);
+  void ProcessExecuteDone(
+      const ExecuteRequest& req, std::shared_ptr<CQLStatement> stmt,
+      Callback<void(CQLResponse*)> cb, const Status& s, sql::ExecutedResult::SharedPtr result);
+  void ProcessCallDone(
+      rpc::CQLInboundCall* cql_call, const CQLRequest* request, const MonoTime& start,
+      CQLResponse* response);
+
+  CQLResponse* ReturnResponse(
+      const CQLRequest& req, Status s, sql::ExecutedResult::SharedPtr result);
+  void SendResponse(rpc::CQLInboundCall* cql_call, CQLResponse* response);
 
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* const service_impl_;

@@ -19,14 +19,6 @@ DEFINE_int32(cql_ybclient_reactor_threads, 24,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the cql layer");
 
-METRIC_DEFINE_histogram(server,
-                        handler_latency_yb_cqlserver_CQLServerService_Any,
-                        "yb.cqlserver.CQLServerService.AnyMethod RPC Time",
-                        yb::MetricUnit::kMicroseconds,
-                        "Microseconds spent handling "
-                        "yb.cqlserver.CQLServerService.AnyMethod() "
-                        "RPC requests",
-                        60000000LU, 2);
 namespace yb {
 namespace cqlserver {
 
@@ -40,15 +32,11 @@ using yb::client::YBSession;
 using yb::client::YBTableCache;
 using yb::rpc::InboundCall;
 using yb::rpc::CQLInboundCall;
-using yb::rpc::RpcContext;
 
-CQLServiceImpl::CQLServiceImpl(CQLServer* server, const string& yb_tier_master_addresses)
-    : CQLServerServiceIf(server->metric_entity()) {
+CQLServiceImpl::CQLServiceImpl(
+    CQLServer* server, shared_ptr<rpc::Messenger> messenger, const string& yb_tier_master_addresses)
+    : CQLServerServiceIf(server->metric_entity()), messenger_(messenger) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
-  metrics_.handler_latency =
-      METRIC_handler_latency_yb_cqlserver_CQLServerService_Any.Instantiate(
-          server->metric_entity());
-
   // Setup client.
   SetUpYBClient(yb_tier_master_addresses, server->metric_entity());
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
@@ -84,6 +72,13 @@ void CQLServiceImpl::SetUpYBClient(
 void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call));
+  if (cql_call->resume_from_ != nullptr) {
+    // This is a continuation/callback from a previous request.
+    // Call the call back, and we are done.
+    VLOG(2) << "Resuming " << cql_call->ToString();
+    cql_call->resume_from_->Run();
+    return;
+  }
   DVLOG(4) << "Handling " << cql_call->ToString();
 
   // Process the call.
@@ -93,24 +88,8 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   MonoTime got_processor = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
-
-  unique_ptr<CQLResponse> response;
   processor->SetSqlSession(cql_call->GetSqlSession());
-  processor->ProcessCall(cql_call->serialized_request(), &response);
-
-  // Reply to client.
-  MonoTime process_done = MonoTime::Now(MonoTime::FINE);
-  SendResponse(cql_call, response.get());
-  DVLOG(4) << cql_call->ToString() << " responded.";
-
-  // Release the processor.
-  processor->SetSqlSession(nullptr);
-  processor->unused();
-  MonoTime response_done = MonoTime::Now(MonoTime::FINE);
-  cql_metrics_->time_to_process_request_->Increment(
-      response_done.GetDeltaSince(start).ToMicroseconds());
-  cql_metrics_->time_to_queue_cql_response_->Increment(
-      response_done.GetDeltaSince(process_done).ToMicroseconds());
+  processor->ProcessCall(cql_call);
 }
 
 CQLProcessor *CQLServiceImpl::GetProcessor() {
@@ -137,15 +116,6 @@ CQLProcessor *CQLServiceImpl::GetProcessor() {
   return cql_processor;
 }
 
-void CQLServiceImpl::SendResponse(CQLInboundCall* cql_call, CQLResponse *response) {
-  CHECK(response != nullptr);
-
-  // Serialize the response to return to the CQL client. In case of error, an error response
-  // should still be present.
-  response->Serialize(&cql_call->response_msg_buf());
-  RpcContext *context = new RpcContext(cql_call, metrics_);
-  context->RespondSuccess();
-}
 
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     const CQLMessage::QueryId& query_id, const string& keyspace, const string& sql_stmt) {

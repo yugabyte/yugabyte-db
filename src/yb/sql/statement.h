@@ -46,28 +46,40 @@ class Statement {
                          PreparedResult::UniPtr *result = nullptr);
 
   // Execute the prepared statement.
-  CHECKED_STATUS Execute(SqlProcessor *processor,
-                         const StatementParameters& params,
-                         ExecuteResult::UniPtr *result);
+  void ExecuteAsync(
+      SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb);
 
   // Run the statement (i.e. prepare and execute).
-  CHECKED_STATUS Run(SqlProcessor *processor,
-                     const StatementParameters& params,
-                     ExecuteResult::UniPtr *result);
+  void RunAsync(
+      SqlProcessor* processor, const StatementParameters& params, StatementExecutedCallback cb);
 
  protected:
-  // Execute the prepared statement. Don't reprepare.
-  CHECKED_STATUS DoExecute(SqlProcessor *processor,
-                           const StatementParameters& params,
-                           MonoTime *last_prepare_time,
-                           bool *new_analysis_needed,
-                           ExecuteResult::UniPtr *result);
-
   // The keyspace this statement is parsed in.
   const std::string keyspace_;
 
   // The text of the SQL statement.
   const std::string text_;
+
+ private:
+  struct Request {
+    Request(SqlProcessor* processor, const StatementParameters* params)
+        : processor(processor), params(params) {}
+    SqlProcessor* const processor;
+    const StatementParameters* const params;
+  };
+
+  // Execute the prepared statement. Don't reprepare.
+  void DoExecuteAsync(SqlProcessor* processor,
+                      const StatementParameters& params,
+                      const MonoTime &last_prepare_time,
+                      Callback<void(const MonoTime &last_prepare_time,
+                                    bool new_analysis_needed,
+                                    const Status &s,
+                                    ExecutedResult::SharedPtr result)> cb);
+
+  void ExecuteAsyncDone(
+      Request req, StatementExecutedCallback cb, const MonoTime &updated_last_prepare_time,
+      bool new_analysis_needed, const Status &s, ExecutedResult::SharedPtr result);
 
   // The prepare time.
   MonoTime prepare_time_;
@@ -79,7 +91,7 @@ class Statement {
   boost::shared_mutex lock_;
 };
 
-} // namespace sql
-} // namespace yb
+}  // namespace sql
+}  // namespace yb
 
 #endif  // YB_SQL_STATEMENT_H_

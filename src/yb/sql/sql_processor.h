@@ -8,6 +8,7 @@
 #ifndef YB_SQL_SQL_PROCESSOR_H_
 #define YB_SQL_SQL_PROCESSOR_H_
 
+#include "yb/client/callbacks.h"
 #include "yb/sql/exec/executor.h"
 #include "yb/sql/parser/parser.h"
 #include "yb/sql/sem/analyzer.h"
@@ -37,8 +38,8 @@ class SqlProcessor {
 
   // Constructors.
   explicit SqlProcessor(
-      std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache,
-      SqlMetrics* sql_metrics);
+      std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
+      std::shared_ptr<client::YBTableCache> cache, SqlMetrics* sql_metrics);
   virtual ~SqlProcessor();
 
   // Set the SQL session to use to process SQL statements.
@@ -57,23 +58,24 @@ class SqlProcessor {
                          bool refresh_cache);
 
   // Execute a parse tree.
-  CHECKED_STATUS Execute(const string& sql_stmt,
-                         const ParseTree& parse_tree,
-                         const StatementParameters& params,
-                         bool *new_analysis_needed,
-                         ExecuteResult::UniPtr *result);
+  void ExecuteAsync(
+      const string& sql_stmt, const ParseTree& parse_tree, const StatementParameters& params,
+      Callback<void(
+          bool new_analysis_needed, const Status& s, ExecutedResult::SharedPtr result)> cb);
 
   // Execute a SQL statement.
-  CHECKED_STATUS Run(const std::string& sql_stmt,
-                     const StatementParameters& params,
-                     ExecuteResult::UniPtr *result);
+  void RunAsync(
+      const std::string& sql_stmt, const StatementParameters& params,
+      StatementExecutedCallback cb);
 
   // Claim this processor for a request.
   void used() {
+    start_time_ = MonoTime::Now(MonoTime::FINE);
     is_used_ = true;
   }
   // Unclaim this processor.
   void unused() {
+    SetCurrentCall(nullptr);
     is_used_ = false;
   }
   // Check if the processor is currently working on a statement.
@@ -82,6 +84,7 @@ class SqlProcessor {
   }
 
  protected:
+  void SetCurrentCall(rpc::CQLInboundCall* cql_call);
   //------------------------------------------------------------------------------------------------
   // Parsing processor.
   Parser::UniPtr parser_;
@@ -100,6 +103,23 @@ class SqlProcessor {
 
   // Processing state.
   bool is_used_;
+  MonoTime start_time_;
+
+ private:
+  struct Request {
+    Request(
+        const std::string& sql_stmt, const ParseTree& parse_tree, const StatementParameters& params)
+        : sql_stmt(sql_stmt), parse_tree(parse_tree), params(params) {}
+
+    const std::string& sql_stmt;
+    const ParseTree& parse_tree;
+    const StatementParameters& params;
+  };
+
+  void ProcessExecuteResponse(
+      const MonoTime& begin_time,
+      Callback<void(bool, const Status& s, ExecutedResult::SharedPtr result)> cb,
+      const Status& s, ExecutedResult::SharedPtr result);
 };
 
 }  // namespace sql

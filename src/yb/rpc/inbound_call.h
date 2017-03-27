@@ -19,6 +19,7 @@
 
 #include <string>
 #include <vector>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -34,6 +35,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/threadpool.h"
 
 namespace google {
 namespace protobuf {
@@ -141,7 +143,7 @@ class InboundCall {
   // Updates the Histogram with time elapsed since the call was received,
   // and should only be called once on a given instance.
   // Not thread-safe. Should only be called by the current "owner" thread.
-  void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time);
+  virtual void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time);
 
   // When RPC call Handle() completed execution on the server side.
   // Updates the Histogram with time elapsed since the call was started,
@@ -313,6 +315,7 @@ class CQLInboundCall : public InboundCall {
   CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                  bool is_success) override;
 
+  virtual void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
   virtual void QueueResponseToConnection() override;
   virtual void LogTrace() const override;
   virtual std::string ToString() const override;
@@ -327,6 +330,8 @@ class CQLInboundCall : public InboundCall {
 
   // Return the SQL session of this CQL call.
   sql::SqlSession::SharedPtr GetSqlSession() const;
+
+  Callback<void(void)>* resume_from_ = nullptr;
 
  protected:
   scoped_refptr<Connection> get_connection() override;

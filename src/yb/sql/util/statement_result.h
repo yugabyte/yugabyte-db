@@ -44,15 +44,15 @@ class PreparedResult {
 
 //------------------------------------------------------------------------------------------------
 // Result of executing a statement. Different possible types of results are listed below.
-class ExecuteResult {
+class ExecutedResult {
  public:
   // Public types.
-  typedef std::unique_ptr<ExecuteResult> UniPtr;
-  typedef std::unique_ptr<const ExecuteResult> UniPtrConst;
+  typedef std::shared_ptr<ExecutedResult> SharedPtr;
+  typedef std::shared_ptr<const ExecutedResult> SharedPtrConst;
 
   // Constructors.
-  ExecuteResult() { }
-  virtual ~ExecuteResult() { }
+  ExecutedResult() { }
+  virtual ~ExecutedResult() { }
 
   // Execution result types.
   enum class Type {
@@ -63,13 +63,18 @@ class ExecuteResult {
   virtual const Type type() const = 0;
 };
 
+// Callback to be called after a statement is executed. When execution fails, a not-ok status is
+// passed. When it succeeds, an ok status and the execution result are passed. When there is no
+// result (i.e. void), a nullptr is passed.
+typedef Callback<void(const Status&, ExecutedResult::SharedPtr)> StatementExecutedCallback;
+
 //------------------------------------------------------------------------------------------------
 // Result of "USE <keyspace>" statement.
-class SetKeyspaceResult : public ExecuteResult {
+class SetKeyspaceResult : public ExecutedResult {
  public:
   // Public types.
-  typedef std::unique_ptr<SetKeyspaceResult> UniPtr;
-  typedef std::unique_ptr<const SetKeyspaceResult> UniPtrConst;
+  typedef std::shared_ptr<SetKeyspaceResult> SharedPtr;
+  typedef std::shared_ptr<const SetKeyspaceResult> SharedPtrConst;
 
   // Constructors.
   explicit SetKeyspaceResult(const std::string& keyspace) : keyspace_(keyspace) { }
@@ -87,15 +92,14 @@ class SetKeyspaceResult : public ExecuteResult {
 
 //------------------------------------------------------------------------------------------------
 // Result of rows returned from executing a DML statement.
-class RowsResult : public ExecuteResult {
+class RowsResult : public ExecutedResult {
  public:
   // Public types.
-  typedef std::unique_ptr<RowsResult> UniPtr;
-  typedef std::unique_ptr<const RowsResult> UniPtrConst;
+  typedef std::shared_ptr<RowsResult> SharedPtr;
+  typedef std::shared_ptr<const RowsResult> SharedPtrConst;
 
   // Constructors.
-  explicit RowsResult(client::YBqlReadOp *op);
-  explicit RowsResult(client::YBqlWriteOp *op);
+  explicit RowsResult(client::YBqlOp *op);
   virtual ~RowsResult() override;
 
   // Result type.

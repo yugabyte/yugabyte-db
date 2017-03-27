@@ -4,6 +4,8 @@
 
 #include "yb/sql/sql_processor.h"
 
+#include <memory>
+
 #include "yb/sql/statement.h"
 
 METRIC_DEFINE_histogram(
@@ -51,14 +53,14 @@ SqlMetrics::SqlMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
 }
 
 SqlProcessor::SqlProcessor(
-    shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache, SqlMetrics* sql_metrics)
+    std::weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
+    shared_ptr<YBTableCache> cache, SqlMetrics* sql_metrics)
     : parser_(new Parser()),
       analyzer_(new Analyzer()),
       executor_(new Executor()),
-      sql_env_(new SqlEnv(client, cache)),
+      sql_env_(new SqlEnv(messenger, client, cache)),
       sql_metrics_(sql_metrics),
-      is_used_(false) {
-}
+      is_used_(false) {}
 
 SqlProcessor::~SqlProcessor() {
 }
@@ -116,14 +118,24 @@ CHECKED_STATUS SqlProcessor::Analyze(const string& sql_stmt,
   return s;
 }
 
-CHECKED_STATUS SqlProcessor::Execute(const string& sql_stmt,
-                                     const ParseTree& parse_tree,
-                                     const StatementParameters& params,
-                                     bool *new_analysis_needed,
-                                     ExecuteResult::UniPtr *result) {
+void SqlProcessor::ExecuteAsync(const string& sql_stmt,
+                                const ParseTree& parse_tree,
+                                const StatementParameters& params,
+                                Callback<void(bool new_analysis_needed, const Status &s,
+                                              ExecutedResult::SharedPtr result)> cb) {
+  sql_env_->Reset();
   // Code execution.
   const MonoTime begin_time = MonoTime::Now(MonoTime::FINE);
-  Status s = executor_->Execute(sql_stmt, parse_tree, params, sql_env_.get(), result);
+  executor_->ExecuteAsync(sql_stmt, parse_tree, params, sql_env_.get(),
+                          Bind(&SqlProcessor::ProcessExecuteResponse, Unretained(this),
+                               begin_time, cb));
+}
+
+void SqlProcessor::ProcessExecuteResponse(const MonoTime &begin_time,
+                                          Callback<void(bool, const Status &s,
+                                                        ExecutedResult::SharedPtr result)> cb,
+                                          const Status &s,
+                                          ExecutedResult::SharedPtr result) {
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
@@ -134,16 +146,31 @@ CHECKED_STATUS SqlProcessor::Execute(const string& sql_stmt,
   // to execute the YBSqlOp because the tablet is not found (ENG-945), or WRONG_METADATA_VERSION
   // when the schema version the tablet holds is different from the one used by the semantic
   // analyzer.
-  *new_analysis_needed = (executor_->error_code() == ErrorCode::TABLET_NOT_FOUND ||
-                          executor_->error_code() == ErrorCode::WRONG_METADATA_VERSION);
+  bool new_analysis_needed =
+      (executor_->error_code() == ErrorCode::TABLET_NOT_FOUND ||
+       executor_->error_code() == ErrorCode::WRONG_METADATA_VERSION);
   executor_->Done();
-  return s;
+  cb.Run(new_analysis_needed, s, result);
 }
 
-CHECKED_STATUS SqlProcessor::Run(const string& sql_stmt,
-                                 const StatementParameters& params,
-                                 ExecuteResult::UniPtr *result) {
-  return Statement(sql_env_->CurrentKeyspace(), sql_stmt).Run(this, params, result);
+// RunAsync callback added to keep the Statement object (first parameter) in-scope while it is
+// being run asynchronously. WHen called, just forward the status and result to the actual
+// callback cb.
+void RunAsyncDone(
+    shared_ptr<Statement> stmt, StatementExecutedCallback cb, const Status& s,
+    ExecutedResult::SharedPtr result) {
+  cb.Run(s, result);
+}
+
+void SqlProcessor::RunAsync(
+    const string& sql_stmt, const StatementParameters& params, StatementExecutedCallback cb) {
+  sql_env_->Reset();
+  shared_ptr<Statement> stmt = std::make_shared<Statement>(sql_env_->CurrentKeyspace(), sql_stmt);
+  stmt->RunAsync(this, params, Bind(&RunAsyncDone, stmt, cb));
+}
+
+void SqlProcessor::SetCurrentCall(rpc::CQLInboundCall* cql_call) {
+  sql_env_->SetCurrentCall(cql_call);
 }
 
 }  // namespace sql

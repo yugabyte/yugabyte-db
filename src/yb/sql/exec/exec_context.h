@@ -49,9 +49,9 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Use keyspace with the given name.
-  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
+  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name, ExecutedResult::SharedPtr* result) {
     RETURN_NOT_OK(sql_env_->UseKeyspace(keyspace_name));
-    result_.reset(new SetKeyspaceResult(keyspace_name));
+    result->reset(new SetKeyspaceResult(keyspace_name));
     return Status::OK();
   }
 
@@ -60,36 +60,26 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Apply YBClient write operator.
-  CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op,
-                            const TreeNode *tnode);
+  void ApplyWriteAsync(
+      std::shared_ptr<client::YBqlWriteOp> yb_op, const TreeNode* tnode,
+      StatementExecutedCallback cb);
 
   // Apply YBClient read operator.
-  CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op,
-                           const TreeNode *tnode);
-
-  // Clears only the paging state of the row result.
-  void ClearPagingState() {
-    if (result_ != nullptr && result_->type() == ExecuteResult::Type::ROWS) {
-      static_cast<RowsResult*>(result_.get())->clear_paging_state();
-    }
-  }
-
-  // Returns the execution result and release the ownership from this context.
-  ExecuteResult::UniPtr AcquireExecuteResult() {
-    return std::move(result_);
-  }
+  void ApplyReadAsync(
+      std::shared_ptr<client::YBqlReadOp> yb_op, const TreeNode* tnode,
+      StatementExecutedCallback cb);
 
  private:
-  // Check and return read/write response status.
-  CHECKED_STATUS ProcessResponseStatus(const client::YBqlOp& yb_op,
-                                       const TreeNode *tnode,
-                                       const Status& s);
+  void ApplyAsyncDone(
+      std::shared_ptr<client::YBqlOp> yb_op, const TreeNode* tnode,
+      StatementExecutedCallback cb, const Status& s);
+  // Check and return read/write response status and result if any.
+  CHECKED_STATUS ProcessResponseStatus(
+      std::shared_ptr<client::YBqlOp> yb_op, const TreeNode* tnode, const Status& s,
+      ExecutedResult::SharedPtr* result);
 
   // SQL environment.
   SqlEnv *sql_env_;
-
-  // Execution result.
-  ExecuteResult::UniPtr result_;
 };
 
 }  // namespace sql

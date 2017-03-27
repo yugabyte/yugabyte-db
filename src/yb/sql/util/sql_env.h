@@ -11,8 +11,9 @@
 #define YB_SQL_UTIL_SQL_ENV_H_
 
 #include "yb/client/client.h"
-
+#include "yb/client/callbacks.h"
 #include "yb/sql/sql_session.h"
+#include "yb/rpc/messenger.h"
 
 namespace yb {
 namespace sql {
@@ -27,7 +28,9 @@ class SqlEnv {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & desructor.
-  SqlEnv(std::shared_ptr<client::YBClient> client, std::shared_ptr<client::YBTableCache> cache);
+  SqlEnv(
+      std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
+      std::shared_ptr<client::YBTableCache> cache);
 
   // Set the SQL session to use in this SQL environment.
   virtual void set_sql_session(SqlSession::SharedPtr sql_session) {
@@ -38,9 +41,11 @@ class SqlEnv {
 
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
 
-  virtual CHECKED_STATUS ApplyWrite(std::shared_ptr<client::YBqlWriteOp> yb_op);
+  virtual void ApplyWriteAsync(
+      std::shared_ptr<client::YBqlWriteOp> yb_op, Callback<void(const Status&)> callback);
 
-  virtual CHECKED_STATUS ApplyRead(std::shared_ptr<client::YBqlReadOp> yb_op);
+  virtual void ApplyReadAsync(
+      std::shared_ptr<client::YBqlReadOp> yb_op, Callback<void(const Status&)> callback);
 
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
@@ -65,11 +70,22 @@ class SqlEnv {
     return sql_session_->current_keyspace();
   }
 
+  // Reset all env states or variables before executing the next statement.
+  void Reset();
+
+  void SetCurrentCall(rpc::CQLInboundCall* cql_call);
+
  private:
+
+  // Helpers to process the asynchronously received response from ybclient.
+  void FlushAsyncDone(const Status &s);
+  void ResumeCQLCall(const Status& s);
   // Process YBOperation status.
   CHECKED_STATUS ProcessOpStatus(const client::YBOperation* op,
                                  const Status& s,
-                                 client::YBSession *session) const;
+                                 client::YBSession* session) const;
+  CHECKED_STATUS ProcessWriteResult(const Status& s);
+  CHECKED_STATUS ProcessReadResult(const Status& s);
 
   // Persistent attributes.
 
@@ -85,7 +101,20 @@ class SqlEnv {
   // A specific session (within YBClient) to execute a statement.
   std::shared_ptr<client::YBSession> read_session_;
 
+  // Messenger used to requeue the CQL call upon callback.
+  std::weak_ptr<rpc::Messenger> messenger_;
+
+  client::YBStatusMemberCallback<SqlEnv> flush_done_cb_;
   // Transient attributes.
+  // The following attributes are reset implicitly for every execution.
+
+  // The "current" write/read op whose response we might be waiting for.
+  std::shared_ptr<client::YBqlWriteOp> current_write_op_;
+  std::shared_ptr<client::YBqlReadOp> current_read_op_;
+  rpc::CQLInboundCall* current_call_ = nullptr;
+
+  Callback<void(const Status&)> requested_callback_;
+  Callback<void(void)> resume_execution_;
 
   // SQL session that this SQL environment is using currently.
   SqlSession::SharedPtr sql_session_;

@@ -19,6 +19,8 @@ using std::vector;
 using std::unique_ptr;
 using strings::Substitute;
 
+using client::YBOperation;
+using client::YBqlOp;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
@@ -50,24 +52,53 @@ vector<ColumnSchema> GetColumnSchemasFromSelectStmt(const PTSelectStmt *stmt) {
   return column_schemas;
 }
 
-vector<ColumnSchema> GetColumnSchemasFromReadOp(const YBqlReadOp& op) {
+vector<ColumnSchema> GetColumnSchemasFromOp(const YBqlOp& op) {
   vector<ColumnSchema> column_schemas;
-  column_schemas.reserve(op.request().column_ids_size());
-  const auto& schema = op.table()->schema();
-  for (const auto column_id : op.request().column_ids()) {
-    const auto column = schema.ColumnById(column_id);
-    column_schemas.emplace_back(column.name(), column.type());
+  switch (op.type()) {
+    case YBOperation::Type::YQL_READ: {
+      const auto& read_op = static_cast<const YBqlReadOp&>(op);
+      column_schemas.reserve(read_op.request().column_ids_size());
+      const auto& schema = read_op.table()->schema();
+      for (const auto column_id : read_op.request().column_ids()) {
+        const auto column = schema.ColumnById(column_id);
+        column_schemas.emplace_back(column.name(), column.type());
+      }
+      return column_schemas;
+    }
+    case YBOperation::Type::YQL_WRITE: {
+      const auto& write_op = static_cast<const YBqlWriteOp&>(op);
+      column_schemas.reserve(write_op.response().column_schemas_size());
+      for (const auto column_schema : write_op.response().column_schemas()) {
+        column_schemas.emplace_back(ColumnSchemaFromPB(column_schema));
+      }
+      return column_schemas;
+    }
+    case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::REDIS_WRITE:
+      break;
+    // default: fallthrough
   }
-  return column_schemas;
+  LOG(FATAL) << "Internal error: invalid or unknown YQL operation: " << op.type();
 }
 
-vector<ColumnSchema> GetColumnSchemasFromWriteOp(const YBqlWriteOp& op) {
-  vector<ColumnSchema> column_schemas;
-  column_schemas.reserve(op.response().column_schemas_size());
-  for (const auto column_schema : op.response().column_schemas()) {
-    column_schemas.emplace_back(ColumnSchemaFromPB(column_schema));
+YQLClient GetClientFromOp(const YBqlOp& op) {
+  switch (op.type()) {
+    case YBOperation::Type::YQL_READ:
+      return static_cast<const YBqlReadOp&>(op).request().client();
+    case YBOperation::Type::YQL_WRITE:
+      return static_cast<const YBqlWriteOp&>(op).request().client();
+    case YBOperation::Type::INSERT: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::UPDATE: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::DELETE: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
+    case YBOperation::Type::REDIS_WRITE:
+      break;
+    // default: fallthrough
   }
-  return column_schemas;
+  LOG(FATAL) << "Internal error: invalid or unknown YQL operation: " << op.type();
 }
 
 } // namespace
@@ -85,11 +116,11 @@ PreparedResult::~PreparedResult() {
 }
 
 //------------------------------------------------------------------------------------------------
-RowsResult::RowsResult(YBqlReadOp *op)
+RowsResult::RowsResult(YBqlOp *op)
     : table_name_(op->table()->name()),
-      column_schemas_(GetColumnSchemasFromReadOp(*op)),
+      column_schemas_(GetColumnSchemasFromOp(*op)),
       rows_data_(op->rows_data()),
-      client_(op->request().client()) {
+      client_(GetClientFromOp(*op)) {
   // If there is a paging state in the response, fill in the table ID also and serialize the
   // paging state as bytes.
   if (op->response().has_paging_state()) {
@@ -99,13 +130,6 @@ RowsResult::RowsResult(YBqlReadOp *op)
     CHECK(pb_util::SerializeToString(*paging_state_pb, &paging_state_str));
     paging_state_ = paging_state_str.ToString();
   }
-}
-
-RowsResult::RowsResult(YBqlWriteOp *op)
-    : table_name_(op->table()->name()),
-      column_schemas_(GetColumnSchemasFromWriteOp(*op)),
-      rows_data_(op->rows_data()),
-      client_(op->request().client()) {
 }
 
 RowsResult::~RowsResult() {

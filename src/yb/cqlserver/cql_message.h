@@ -6,8 +6,8 @@
 //   - native_protocol_v4.spec
 //   - native_protocol_v5.spec
 
-#ifndef YB_CQLSERVER_CQL_MESSAGE_H
-#define YB_CQLSERVER_CQL_MESSAGE_H
+#ifndef YB_CQLSERVER_CQL_MESSAGE_H_
+#define YB_CQLSERVER_CQL_MESSAGE_H_
 
 #include <stdint.h>
 #include <memory>
@@ -208,6 +208,7 @@ class CQLRequest : public CQLMessage {
   virtual ~CQLRequest();
 
   virtual CQLResponse* Execute(CQLProcessor *processor) = 0;
+  virtual void Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb);
 
  protected:
   CQLRequest(const Header& header, const Slice& body);
@@ -307,6 +308,7 @@ class QueryRequest : public CQLRequest {
   QueryRequest(const Header& header, const Slice& body);
   virtual ~QueryRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual void Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
 
   const std::string& query() const { return query_; }
   const QueryParameters& params() const { return params_; }
@@ -343,6 +345,7 @@ class ExecuteRequest : public CQLRequest {
   ExecuteRequest(const Header& header, const Slice& body);
   virtual ~ExecuteRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
+  virtual void Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
 
   const QueryId& query_id() const { return query_id_; }
   const QueryParameters& params() const { return params_; }
@@ -710,15 +713,15 @@ class VoidResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class RowsResultResponse : public ResultResponse {
  public:
-  RowsResultResponse(const QueryRequest& request, sql::RowsResult::UniPtr result);
-  RowsResultResponse(const ExecuteRequest& request, sql::RowsResult::UniPtr result);
+  RowsResultResponse(const QueryRequest& request, sql::RowsResult::SharedPtr result);
+  RowsResultResponse(const ExecuteRequest& request, sql::RowsResult::SharedPtr result);
   virtual ~RowsResultResponse() override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
 
  private:
-  const sql::RowsResult::UniPtr result_;
+  const sql::RowsResult::SharedPtr result_;
   const bool skip_metadata_;
 };
 
@@ -881,7 +884,7 @@ class AuthSuccessResponse : public CQLResponse {
   const std::string token_;
 };
 
-} // namespace cqlserver
-} // namespace yb
+}  // namespace cqlserver
+}  // namespace yb
 
-#endif // YB_CQLSERVER_CQL_MESSAGE_H
+#endif // YB_CQLSERVER_CQL_MESSAGE_H_

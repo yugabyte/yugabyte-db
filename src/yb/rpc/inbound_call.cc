@@ -414,6 +414,12 @@ Status CQLInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) 
   return Status::OK();
 }
 
+void CQLInboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
+  if (resume_from_ == nullptr) {
+    InboundCall::RecordHandlingStarted(incoming_queue_time);
+  }
+}
+
 void CQLInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
   TRACE_EVENT0("rpc", "CQLInboundCall::SerializeResponseTo");
   CHECK_GT(response_msg_buf_.size(), 0);

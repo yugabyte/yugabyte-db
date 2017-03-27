@@ -7,7 +7,7 @@
 #ifndef YB_SQL_EXEC_EXECUTOR_H_
 #define YB_SQL_EXEC_EXECUTOR_H_
 
-#include "yb/sql/util/statement_params.h"
+#include "yb/common/partial_row.h"
 #include "yb/sql/exec/exec_context.h"
 #include "yb/sql/exec/eval_expr.h"
 #include "yb/sql/ptree/pt_create_keyspace.h"
@@ -18,8 +18,8 @@
 #include "yb/sql/ptree/pt_insert.h"
 #include "yb/sql/ptree/pt_delete.h"
 #include "yb/sql/ptree/pt_update.h"
-
-#include "yb/common/partial_row.h"
+#include "yb/sql/util/statement_params.h"
+#include "yb/sql/util/statement_result.h"
 
 namespace yb {
 namespace sql {
@@ -37,11 +37,9 @@ class Executor {
   virtual ~Executor();
 
   // Execute the given parse tree.
-  CHECKED_STATUS Execute(const std::string& sql_stmt,
-                         const ParseTree& ptree,
-                         const StatementParameters& params,
-                         SqlEnv *sql_env,
-                         ExecuteResult::UniPtr *result);
+  void ExecuteAsync(
+      const std::string &sql_stmt, const ParseTree &ptree, const StatementParameters &params,
+      SqlEnv *sql_env, StatementExecutedCallback cb);
 
   // Complete execution.
   void Done();
@@ -54,40 +52,40 @@ class Executor {
   //------------------------------------------------------------------------------------------------
   // Currently, we don't yet have code generator into byte code, so the following ExecTNode()
   // functions are operating directly on the parse tree.
-  CHECKED_STATUS ExecPTree(const ParseTree& ptree);
+  void ExecPTreeAsync(const ParseTree &ptree, StatementExecutedCallback cb);
 
   // Execute any TreeNode. This function determines how to execute a node.
-  CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
+  void ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb);
 
   // Returns unsupported error for generic tree node execution. We only get to this overloaded
   // function if the execution of a specific treenode is not yet supported or defined.
-  CHECKED_STATUS ExecPTNode(const TreeNode *tnode);
+  void ExecPTNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb);
 
   // Runs the execution on all of the entries in the list node.
-  CHECKED_STATUS ExecPTNode(const PTListNode *tnode);
+  void ExecPTNodeAsync(const PTListNode *tnode, StatementExecutedCallback cb, int idx = 0);
 
   // Creates table.
-  CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
+  void ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCallback cb);
 
-  CHECKED_STATUS ExecPTNode(const PTDropStmt *tnode);
+  void ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb);
 
   // Select statement.
-  CHECKED_STATUS ExecPTNode(const PTSelectStmt *tnode);
+  void ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallback cb);
 
   // Insert statement.
-  CHECKED_STATUS ExecPTNode(const PTInsertStmt *tnode);
+  void ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallback cb);
 
   // Delete statement.
-  CHECKED_STATUS ExecPTNode(const PTDeleteStmt *tnode);
+  void ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallback cb);
 
   // Update statement.
-  CHECKED_STATUS ExecPTNode(const PTUpdateStmt *tnode);
+  void ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallback cb);
 
   // Create keyspace.
-  CHECKED_STATUS ExecPTNode(const PTCreateKeyspace *tnode);
+  void ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedCallback cb);
 
   // Use keyspace.
-  CHECKED_STATUS ExecPTNode(const PTUseKeyspace *tnode);
+  void ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCallback cb);
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.
@@ -154,6 +152,19 @@ class Executor {
 
   // Get a bind variable.
   CHECKED_STATUS GetBindVariable(const PTBindVar* var, YQLValue *value) const;
+
+  void PTNodeAsyncDone(
+      const PTListNode *lnode, int index, StatementExecutedCallback cb, const Status &s,
+      ExecutedResult::SharedPtr result);
+
+  void ExecuteDone(
+      const ParseTree *ptree, StatementExecutedCallback cb, const Status &s,
+      ExecutedResult::SharedPtr result);
+
+  void ApplyReadAsyncDone(
+      const PTSelectStmt *tnode, EvalIntValue limit_value,
+      std::shared_ptr<client::YBqlReadOp> select_op, StatementExecutedCallback cb,
+      const Status &s, ExecutedResult::SharedPtr result);
 
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.

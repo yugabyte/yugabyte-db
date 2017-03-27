@@ -5,17 +5,20 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/sql/util/sql_env.h"
+#include "yb/client/callbacks.h"
 #include "yb/master/catalog_manager.h"
 
 namespace yb {
 namespace sql {
 
 using std::shared_ptr;
+using std::weak_ptr;
 
 using client::YBClient;
 using client::YBError;
 using client::YBOperation;
 using client::YBSession;
+using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCache;
 using client::YBTableCreator;
@@ -23,13 +26,24 @@ using client::YBTableName;
 using client::YBqlReadOp;
 using client::YBqlWriteOp;
 
-SqlEnv::SqlEnv(shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache)
+// Runs the callback (cb) and returns if the status s is not OK.
+#define CB_RETURN_NOT_OK(cb, s)    \
+  do {                             \
+    ::yb::Status _s = (s);         \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      (cb).Run(_s);                \
+      return;                      \
+    }                              \
+  } while (0)
+
+SqlEnv::SqlEnv(
+    weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache)
     : client_(client),
       table_cache_(cache),
       write_session_(client_->NewSession(false /* read_only */)),
       read_session_(client->NewSession(true /* read_only */)),
-      sql_session_(nullptr) {
-
+      messenger_(messenger),
+      flush_done_cb_(this, &SqlEnv::FlushAsyncDone) {
   write_session_->SetTimeoutMillis(kSessionTimeoutMs);
   CHECK_OK(write_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 
@@ -65,18 +79,76 @@ CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
   return s;
 }
 
-CHECKED_STATUS SqlEnv::ApplyWrite(std::shared_ptr<YBqlWriteOp> yb_op) {
-  // Execute the write.
-  RETURN_NOT_OK(write_session_->Apply(yb_op));
-  Status s = write_session_->Flush();
-  return ProcessOpStatus(yb_op.get(), s, write_session_.get());
+void SqlEnv::SetCurrentCall(rpc::CQLInboundCall *cql_call) {
+  DCHECK(cql_call == nullptr || current_call_ == nullptr)
+      << this << " Tried updating current call. Current call is " << current_call_;
+  current_call_ = cql_call;
 }
 
-CHECKED_STATUS SqlEnv::ApplyRead(std::shared_ptr<YBqlReadOp> yb_op) {
+void SqlEnv::ApplyWriteAsync(
+    std::shared_ptr<YBqlWriteOp> yb_op, Callback<void(const Status &)> cb) {
+  // The previous result must have been cleared.
+  DCHECK(current_read_op_ == nullptr);
+  DCHECK(current_write_op_ == nullptr);
+
+  // Execute the write.
+  CB_RETURN_NOT_OK(cb, write_session_->Apply(yb_op));
+  current_write_op_ = yb_op;
+  requested_callback_ = cb;
+  write_session_->FlushAsync(&flush_done_cb_);
+}
+
+void SqlEnv::ApplyReadAsync(
+    std::shared_ptr<YBqlReadOp> yb_op, Callback<void(const Status &)> cb) {
+  // The previous result must have been cleared.
+  DCHECK(current_read_op_ == nullptr);
+  DCHECK(current_write_op_ == nullptr);
+
   // Execute the read.
-  RETURN_NOT_OK(read_session_->Apply(yb_op));
-  Status s = read_session_->Flush();
-  return ProcessOpStatus(yb_op.get(), s, read_session_.get());
+  CB_RETURN_NOT_OK(cb, read_session_->Apply(yb_op));
+  current_read_op_ = yb_op;
+  requested_callback_ = cb;
+  read_session_->FlushAsync(&flush_done_cb_);
+}
+
+void SqlEnv::FlushAsyncDone(const Status &s) {
+  if (current_call_ == nullptr) {
+    // For unit tests. Run the callback in the current (reactor) thread.
+    ResumeCQLCall(s);
+    return;
+  }
+
+  // Production/cqlserver usecase. Enqueue the callback to run in the server's handler thread.
+  resume_execution_ = Bind(&SqlEnv::ResumeCQLCall, Unretained(this), s);
+  current_call_->resume_from_ = &resume_execution_;
+
+  auto messenger = messenger_.lock();
+  DCHECK(messenger != nullptr) << "weak_ptr's messenger is null";
+  messenger->QueueInboundCall(gscoped_ptr<rpc::InboundCall>(current_call_));
+}
+
+void SqlEnv::ResumeCQLCall(const Status &s) {
+  if (current_write_op_.get() != nullptr) {
+    DCHECK(current_read_op_ == nullptr);
+    requested_callback_.Run(ProcessWriteResult(s));
+  } else {
+    DCHECK(current_write_op_ == nullptr);
+    requested_callback_.Run(ProcessReadResult(s));
+  }
+}
+
+Status SqlEnv::ProcessWriteResult(const Status &s) {
+  auto yb_op = current_write_op_;
+  current_write_op_ = nullptr;
+  RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, write_session_.get()));
+  return Status::OK();
+}
+
+Status SqlEnv::ProcessReadResult(const Status &s) {
+  auto yb_op = current_read_op_;
+  current_read_op_ = nullptr;
+  RETURN_NOT_OK(ProcessOpStatus(yb_op.get(), s, read_session_.get()));
+  return Status::OK();
 }
 
 shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool refresh_cache,
@@ -89,6 +161,11 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool ref
   }
   CHECK(s.ok()) << "Server returns unexpected error. " << s.ToString();
   return yb_table;
+}
+
+void SqlEnv::Reset() {
+  current_read_op_ = nullptr;
+  current_write_op_ = nullptr;
 }
 
 CHECKED_STATUS SqlEnv::DeleteKeyspace(const std::string& keyspace_name) {
