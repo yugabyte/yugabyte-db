@@ -299,7 +299,7 @@ public class CassandraStockTicker extends Workload {
   public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);
-    sb.append("Sample stock ticker app built on Cassandra. The app models 10,000 stock tickers");
+    sb.append("Sample stock ticker app built on CQL. The app models 10,000 stock tickers");
     sb.append(optsSuffix);
     sb.append(optsPrefix);
     sb.append("each of which emits quote data every second. The raw data is written into the");

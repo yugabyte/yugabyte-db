@@ -1,6 +1,7 @@
 package org.yb.loadtester.workload;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -13,6 +14,8 @@ import org.yb.loadtester.Workload;
 import org.yb.loadtester.common.Configuration;
 import org.yb.loadtester.common.TimeseriesLoadGenerator;
 
+import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
@@ -33,8 +36,8 @@ public class CassandraTimeseries extends Workload {
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 2;
-    workloadConfig.numWriterThreads = 32;
+    workloadConfig.numReaderThreads = 1;
+    workloadConfig.numWriterThreads = 16;
     // Set the number of keys to read and write.
     workloadConfig.numKeysToRead = -1;
     workloadConfig.numKeysToWrite = -1;
@@ -63,6 +66,12 @@ public class CassandraTimeseries extends Workload {
   private AtomicBoolean verificationDisabled = new AtomicBoolean(false);
   // Max write lag across data sources.
   private AtomicLong maxWriteLag = new AtomicLong(0);
+  // The prepared select statement for fetching the data.
+  PreparedStatement preparedSelect;
+  // The prepared statement for inserting into the table.
+  PreparedStatement preparedInsert;
+  // Lock for initializing prepared statement objects.
+  Object prepareInitLock = new Object();
 
   @Override
   public void initialize(Configuration configuration) {
@@ -142,6 +151,24 @@ public class CassandraTimeseries extends Workload {
     LOG.info("Created a Cassandra table " + metricsTable + " using query: [" + create_stmt + "]");
   }
 
+  private PreparedStatement getPreparedSelect()  {
+    if (preparedSelect == null) {
+      synchronized (prepareInitLock) {
+        if (preparedSelect == null) {
+          // Create the prepared statement object.
+          String select_stmt =
+              String.format("SELECT * from %s WHERE user_id = :userId" +
+                            " AND metric_id = :metricId" +
+                            " AND node_id = :nodeId" +
+                            " AND ts > :startTs AND ts < :endTs;",
+                            metricsTable);
+          preparedSelect = getCassandraClient().prepare(select_stmt);
+        }
+      }
+    }
+    return preparedSelect;
+  }
+
   @Override
   public long doRead() {
     // Pick a ransom data source.
@@ -152,15 +179,18 @@ public class CassandraTimeseries extends Workload {
     }
     long startTs = dataSource.getStartTs();
     long endTs = dataSource.getEndTs();
-    String select_stmt =
-        String.format("SELECT * from %s WHERE user_id='%s'" +
-                      " AND metric_id='%s'" +
-                      " AND node_id='%s'" +
-                      " AND ts>%d AND ts<%d;",
-                      metricsTable, dataSource.getUserId(), dataSource.getRandomMetricId(),
-                      dataSource.getNodeId(), startTs, endTs);
-    ResultSet rs = getCassandraClient().execute(select_stmt);
+
+    // Bind the select statement.
+    BoundStatement select =
+        getPreparedSelect().bind().setString("userId", dataSource.getUserId())
+                                  .setString("nodeId", dataSource.getNodeId())
+                                  .setString("metricId", dataSource.getRandomMetricId())
+                                  .setTimestamp("startTs", new Date(startTs))
+                                  .setTimestamp("endTs", new Date(endTs));
+    // Make the query.
+    ResultSet rs = getCassandraClient().execute(select);
     List<Row> rows = rs.all();
+
     // TODO: there is still a verification bug that needs to be tracked down.
     // If the load tester is not able to keep up, data verification will be turned off.
 //    int expectedNumDataPoints = dataSource.getExpectedNumDataPoints(startTs, endTs);
@@ -189,6 +219,22 @@ public class CassandraTimeseries extends Workload {
     return 1;
   }
 
+  private PreparedStatement getPreparedInsert()  {
+    if (preparedInsert == null) {
+      synchronized (prepareInitLock) {
+        if (preparedInsert == null) {
+          // Create the prepared statement object.
+          String insert_stmt =
+              String.format("INSERT INTO %s (user_id, metric_id, node_id, ts, value) VALUES " +
+                            "(:user_id, :metric_id, :node_id, :ts, :value);",
+                            metricsTable);
+          preparedInsert = getCassandraClient().prepare(insert_stmt);
+        }
+      }
+    }
+    return preparedInsert;
+  }
+
   @Override
   public long doWrite() {
     // Pick a random data source.
@@ -205,14 +251,14 @@ public class CassandraTimeseries extends Workload {
     if (ts > -1) {
       String value = String.format("value-%s", ts);
       for (String metric : dataSource.getMetrics()) {
-        String insert_stmt =
-            String.format("INSERT INTO %s (user_id, metric_id, node_id, ts, value) VALUES " +
-                          "('%s', '%s', '%s', %s, '%s');",
-                          metricsTable, dataSource.getUserId(), metric,
-                          dataSource.getNodeId(), ts, value);
-        ResultSet resultSet = getCassandraClient().execute(insert_stmt);
+        BoundStatement insert =
+            getPreparedInsert().bind().setString("user_id", dataSource.getUserId())
+                                      .setString("node_id", dataSource.getNodeId())
+                                      .setString("metric_id", metric)
+                                      .setTimestamp("ts", new Date(ts))
+                                      .setString("value", value);
+        ResultSet resultSet = getCassandraClient().execute(insert);
         numKeysWritten++;
-        LOG.debug("Executed query: " + insert_stmt + ", result: " + resultSet.toString());
       }
       dataSource.setLastEmittedTs(ts);
       ts = dataSource.getDataEmitTs();
@@ -292,7 +338,7 @@ public class CassandraTimeseries extends Workload {
   public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);
-    sb.append("Sample timeseries/IoT app built on Cassandra. The app models 100 users, each of");
+    sb.append("Sample timeseries/IoT app built on CQL. The app models 100 users, each of");
     sb.append(optsSuffix);
     sb.append(optsPrefix);
     sb.append("whom own 5-10 devices. Each device emits 5-10 metrics per second. The data is");

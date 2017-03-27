@@ -6,6 +6,8 @@ import org.apache.log4j.Logger;
 import org.yb.loadtester.Workload;
 import org.yb.loadtester.common.SimpleLoadGenerator.Key;
 
+import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
@@ -22,8 +24,8 @@ public class CassandraKeyValue extends Workload {
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 32;
-    workloadConfig.numWriterThreads = 4;
+    workloadConfig.numReaderThreads = 24;
+    workloadConfig.numWriterThreads = 2;
     // Set the number of keys to read and write.
     workloadConfig.numKeysToRead = -1;
     workloadConfig.numKeysToWrite = -1;
@@ -31,6 +33,12 @@ public class CassandraKeyValue extends Workload {
   }
   // The table name.
   private String tableName = CassandraKeyValue.class.getSimpleName();
+  // The prepared select statement for fetching the data.
+  PreparedStatement preparedSelect;
+  // The prepared statement for inserting into the table.
+  PreparedStatement preparedInsert;
+  // Lock for initializing prepared statement objects.
+  Object prepareInitLock = new Object();
 
   @Override
   public void dropTable() {
@@ -60,6 +68,19 @@ public class CassandraKeyValue extends Workload {
     }
   }
 
+  private PreparedStatement getPreparedSelect()  {
+    if (preparedSelect == null) {
+      synchronized (prepareInitLock) {
+        if (preparedSelect == null) {
+          // Create the prepared statement object.
+          String select_stmt = String.format("SELECT k, v FROM %s WHERE k = ?;", tableName);
+          preparedSelect = getCassandraClient().prepare(select_stmt);
+        }
+      }
+    }
+    return preparedSelect;
+  }
+
   @Override
   public long doRead() {
     Key key = getSimpleLoadGenerator().getKeyToRead();
@@ -68,14 +89,14 @@ public class CassandraKeyValue extends Workload {
       return 0;
     }
     // Do the read from Cassandra.
-    String select_stmt = String.format("SELECT k, v FROM %s WHERE k = '%s';",
-                                       tableName, key.asString());
-    ResultSet rs = getCassandraClient().execute(select_stmt);
+    // Bind the select statement.
+    BoundStatement select = getPreparedSelect().bind(key.asString());
+    ResultSet rs = getCassandraClient().execute(select);
     List<Row> rows = rs.all();
     if (rows.size() != 1) {
       // If TTL is enabled, turn off correctness validation.
       if (workloadConfig.tableTTLSeconds <= 0) {
-        LOG.fatal("Read [" + select_stmt + "], expected 1 row in result, got " + rows.size());
+        LOG.fatal("Read key: " + key.asString() + " expected 1 row in result, got " + rows.size());
       }
       return 1;
     }
@@ -85,13 +106,26 @@ public class CassandraKeyValue extends Workload {
     return 1;
   }
 
+  private PreparedStatement getPreparedInsert()  {
+    if (preparedInsert == null) {
+      synchronized (prepareInitLock) {
+        if (preparedInsert == null) {
+          // Create the prepared statement object.
+          String insert_stmt =
+              String.format("INSERT INTO %s (k, v) VALUES (?, ?);", tableName);
+          preparedInsert = getCassandraClient().prepare(insert_stmt);
+        }
+      }
+    }
+    return preparedInsert;
+  }
+
   @Override
   public long doWrite() {
     Key key = getSimpleLoadGenerator().getKeyToWrite();
     // Do the write to Cassandra.
-    String insert_stmt = String.format("INSERT INTO %s (k, v) VALUES ('%s', '%s');",
-                                       tableName, key.asString(), key.getValueStr());
-    ResultSet resultSet = getCassandraClient().execute(insert_stmt);
+    BoundStatement insert = getPreparedInsert().bind(key.asString(), key.getValueStr());
+    ResultSet resultSet = getCassandraClient().execute(insert);
     LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
     getSimpleLoadGenerator().recordWriteSuccess(key);
     return 1;
