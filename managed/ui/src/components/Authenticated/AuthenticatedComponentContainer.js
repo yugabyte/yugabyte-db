@@ -10,6 +10,7 @@ import { getRegionList, getRegionListSuccess,
   getProviderListSuccess, getProviderListFailure, getSupportedRegionData,
   getSupportedRegionDataFailure, getSupportedRegionDataSuccess}
   from '../../actions/cloud';
+import {fetchSoftwareVersions, fetchSoftwareVersionsSuccess, fetchSoftwareVersionsFailure} from 'actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -52,11 +53,18 @@ const mapDispatchToProps = (dispatch) => {
         }
       })
     },
-
     resetUniverseList: () => {
       dispatch(resetUniverseList());
+    },
+    fetchSoftwareVersions: () => {
+      dispatch(fetchSoftwareVersions()).then((response)=>{
+        if (response.payload.status !== 200) {
+          dispatch(fetchSoftwareVersionsFailure(response.payload));
+        } else {
+          dispatch(fetchSoftwareVersionsSuccess(response.payload));
+        }
+      })
     }
-
   }
 }
 
