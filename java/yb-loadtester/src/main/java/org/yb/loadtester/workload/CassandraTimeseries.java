@@ -33,23 +33,25 @@ public class CassandraTimeseries extends Workload {
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 1;
-    workloadConfig.numWriterThreads = 1;
+    workloadConfig.numReaderThreads = 2;
+    workloadConfig.numWriterThreads = 32;
     // Set the number of keys to read and write.
     workloadConfig.numKeysToRead = -1;
     workloadConfig.numKeysToWrite = -1;
+    // Set the TTL for the raw table.
+    workloadConfig.tableTTLSeconds = 24 * 60 * 60;
   }
 
   // The number of users.
   private static int num_users = 100;
   // The minimum number of metrics emitted per data source.
-  private static int min_nodes_per_user = 1;
+  private static int min_nodes_per_user = 5;
   // The maximum number of metrics emitted per data source.
   private static int max_nodes_per_user = 10;
   // The minimum number of metrics emitted per data source.
-  private static int min_metrics_count = 1;
+  private static int min_metrics_count = 5;
   // The maximum number of metrics emitted per data source.
-  private static int max_metrics_count = 1;
+  private static int max_metrics_count = 10;
   // The rate at which each metric is generated in millis.
   private static long data_emit_rate_millis = 1 * 1000;
   static Random random = new Random();
@@ -110,19 +112,6 @@ public class CassandraTimeseries extends Workload {
         }
       }
     }
-  }
-
-  @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    return optsPrefix + "--num_threads_read 2" + optsSuffix +
-           optsPrefix + "--num_threads_write 32" + optsSuffix +
-           optsPrefix + "--num_users 100" + optsSuffix +
-           optsPrefix + "--min_nodes_per_user 5" + optsSuffix +
-           optsPrefix + "--max_nodes_per_user 10" + optsSuffix +
-           optsPrefix + "--min_metrics_count 10" + optsSuffix +
-           optsPrefix + "--max_metrics_count 10" + optsSuffix +
-           optsPrefix + "--data_emit_rate_millis 1000" + optsSuffix +
-           optsPrefix + "--table_ttl_seconds " + 24 * 60 * 60;
   }
 
   @Override
@@ -297,5 +286,62 @@ public class CassandraTimeseries extends Workload {
     public String toString() {
       return getId() + ":" + "[" + getMetrics().size() + " metrics]";
     }
+  }
+
+  @Override
+  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(optsPrefix);
+    sb.append("Sample timeseries/IoT app built on Cassandra. The app models 100 users, each of");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("whom own 5-10 devices. Each device emits 5-10 metrics per second. The data is");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("written into the 'ts_metrics_raw' table, which retains data for one day. Note that");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("the number of metrics written is a lot more than the number of metrics read as is");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("typical in such workloads. Every read query fetches the last 1-3 hours of metrics");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("for a user's device.");
+    sb.append(optsSuffix);
+    return sb.toString();
+  }
+
+  @Override
+  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(optsPrefix);
+    sb.append("--num_threads_read " + workloadConfig.numReaderThreads);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_threads_write " + workloadConfig.numWriterThreads);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_users " + num_users);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--min_nodes_per_user " + min_nodes_per_user);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--max_nodes_per_user " + max_nodes_per_user);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--min_metrics_count " + min_metrics_count);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--max_metrics_count " + max_metrics_count);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--data_emit_rate_millis " + data_emit_rate_millis);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--table_ttl_seconds " + workloadConfig.tableTTLSeconds);
+    sb.append(optsSuffix);
+    return sb.toString();
   }
 }

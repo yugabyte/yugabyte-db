@@ -13,36 +13,24 @@ import com.datastax.driver.core.Row;
  * This workload writes and reads some random string keys from a CQL server. One reader and one
  * writer thread thread each is spawned.
  */
-public class CassandraSimpleReadWrite extends Workload {
-  private static final Logger LOG = Logger.getLogger(CassandraSimpleReadWrite.class);
-  // The number of keys to write.
-  private static final int NUM_KEYS_TO_WRITE = 10;
-  // The number of keys to read.
-  private static final int NUM_KEYS_TO_READ = 10;
+public class CassandraKeyValue extends Workload {
+  private static final Logger LOG = Logger.getLogger(CassandraKeyValue.class);
+  // The number of unique keys to write.
+  private static final int NUM_UNIQUE_KEYS = 1000000;
   // Static initialization of this workload's config.
   static {
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 1;
-    workloadConfig.numWriterThreads = 1;
+    workloadConfig.numReaderThreads = 32;
+    workloadConfig.numWriterThreads = 4;
     // Set the number of keys to read and write.
-    workloadConfig.numKeysToRead = NUM_KEYS_TO_READ;
-    workloadConfig.numKeysToWrite = NUM_KEYS_TO_WRITE;
-    workloadConfig.numUniqueKeysToWrite = NUM_KEYS_TO_WRITE;
+    workloadConfig.numKeysToRead = -1;
+    workloadConfig.numKeysToWrite = -1;
+    workloadConfig.numUniqueKeysToWrite = NUM_UNIQUE_KEYS;
   }
   // The table name.
-  private String tableName = CassandraSimpleReadWrite.class.getSimpleName();
-
-  @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    return optsPrefix + "--num_threads_read 32" + optsSuffix +
-           optsPrefix + "--num_threads_write 4" + optsSuffix +
-           optsPrefix + "--num_reads 100000000" + optsSuffix +
-           optsPrefix + "--num_writes 100000000" + optsSuffix +
-           optsPrefix + "--num_unique_keys 10000000 " + optsSuffix +
-           optsPrefix + "[--table_ttl_seconds 86400]";
-  }
+  private String tableName = CassandraKeyValue.class.getSimpleName();
 
   @Override
   public void dropTable() {
@@ -107,5 +95,47 @@ public class CassandraSimpleReadWrite extends Workload {
     LOG.debug("Wrote key: " + key.toString() + ", return code: " + resultSet.toString());
     getSimpleLoadGenerator().recordWriteSuccess(key);
     return 1;
+  }
+
+  @Override
+  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(optsPrefix);
+    sb.append("Sample key-value app built on Cassandra. The app writes out 1M unique string keys");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("each with a string value. There are multiple readers and writers that update these");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("keys and read them indefinitely. Note that the number of reads and writes to");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("perform can be specified as a parameter.");
+    sb.append(optsSuffix);
+    return sb.toString();
+  }
+
+  @Override
+  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(optsPrefix);
+    sb.append("--num_unique_keys " + workloadConfig.numUniqueKeysToWrite);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_reads " + workloadConfig.numKeysToRead);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_writes " + workloadConfig.numKeysToWrite);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_threads_read " + workloadConfig.numReaderThreads);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_threads_write " + workloadConfig.numWriterThreads);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--table_ttl_seconds " + workloadConfig.tableTTLSeconds);
+    sb.append(optsSuffix);
+    return sb.toString();
   }
 }

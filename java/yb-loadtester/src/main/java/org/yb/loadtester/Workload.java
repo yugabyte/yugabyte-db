@@ -149,6 +149,15 @@ public abstract class Workload implements MetricsTracker.StatusMessageAppender {
    */
   public abstract long doWrite();
 
+  /**
+   * Describes the workload.
+   * @param optsPrefix : a prefix to be added to each line, for padding purposes.
+   * @return the formatted description.
+   */
+  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
+    return "";
+  }
+
   public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
     return "Not implemented";
   }

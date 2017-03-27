@@ -11,7 +11,6 @@ import java.util.UUID;
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
@@ -28,10 +27,10 @@ public class Configuration {
   // The types of workloads currently registered.
   public static enum WorkLoadType {
 //    CassandraRetail,
-    CassandraSimpleReadWrite,
+    CassandraKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
-    RedisSimpleReadWrite,
+    RedisKeyValue,
   }
 
   // The class type of the workload.
@@ -255,12 +254,16 @@ public class Configuration {
   }
 
   private static void printUsage(Options options, String header) throws Exception {
-    HelpFormatter formater = new HelpFormatter();
-    formater.setWidth(120);
-    formater.printHelp("LoadTester", header, options, "");
-
     StringBuilder footer = new StringBuilder();
-    footer.append("\nValid values for 'workload' are: ");
+
+    footer.append("****************************************************************************\n");
+    footer.append("*                                                                          *\n");
+    footer.append("*                     YugaByte Platform Demo App                           *\n");
+    footer.append("*                                                                          *\n");
+    footer.append("****************************************************************************\n");
+    footer.append("\n");
+    footer.append("Use this demo app to try out a variety of workloads against the YugaByte data " +
+                  "platform.\n");
     String optsPrefix = "\t\t\t";
     String optsSuffix = " \\\n";
     for (WorkLoadType workloadType : WorkLoadType.values()) {
@@ -270,11 +273,25 @@ public class Configuration {
       Workload workload = getWorkloadClass(workloadType).newInstance();
 
       footer.append("\n - " + workloadType.toString() + " :\n");
-      footer.append("\t\tjava -jar yb-loadtester-0.8.0-SNAPSHOT-jar-with-dependencies.jar"
-                    + optsSuffix);
+      footer.append("   ");
+      for (int idx = 0; idx < workloadType.toString().length(); idx++) {
+        footer.append("-");
+      }
+      footer.append("\n");
+
+      String description = workload.getWorkloadDescription("\t\t", "\n");
+      if (!description.isEmpty()) {
+        footer.append(description + "\n");
+      }
+      footer.append("\t\tUsage:\n");
+      footer.append(optsPrefix);
+      footer.append("java -jar yb-loadtester-0.8.0-SNAPSHOT-jar-with-dependencies.jar");
+      footer.append(optsSuffix);
       footer.append(optsPrefix + "--workload " + workloadType.toString() + optsSuffix);
-      footer.append(optsPrefix + "--nodes 127.0.0.1:" + port + optsSuffix);
-      footer.append(workload.getExampleUsageOptions(optsPrefix, optsSuffix));
+      footer.append(optsPrefix + "--nodes 127.0.0.1:" + port);
+
+      footer.append("\n\n\t\tOther options (with default values):\n");
+      footer.append(workload.getExampleUsageOptions(optsPrefix + "[ ", " ]\n"));
     }
     footer.append("\n");
     System.out.println(footer.toString());

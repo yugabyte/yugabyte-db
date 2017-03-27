@@ -1,5 +1,6 @@
 package org.yb.loadtester.workload;
 
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -11,6 +12,8 @@ import org.yb.loadtester.Workload;
 import org.yb.loadtester.common.Configuration;
 import org.yb.loadtester.common.TimeseriesLoadGenerator;
 
+import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
@@ -21,11 +24,13 @@ public class CassandraStockTicker extends Workload {
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 1;
-    workloadConfig.numWriterThreads = 1;
+    workloadConfig.numReaderThreads = 32;
+    workloadConfig.numWriterThreads = 4;
     // Set the number of keys to read and write.
     workloadConfig.numKeysToRead = -1;
     workloadConfig.numKeysToWrite = -1;
+    // Set the TTL for the raw table.
+    workloadConfig.tableTTLSeconds = 24 * 60 * 60;
   }
   private static int num_ticker_symbols = 10000;
   // The rate at which each metric is generated in millis.
@@ -39,6 +44,14 @@ public class CassandraStockTicker extends Workload {
   // The total number of rows read from the DB so far.
   private static AtomicLong num_rows_read;
   static Random random = new Random();
+  // The prepared select statement for fetching the latest data point.
+  PreparedStatement preparedSelectLatest;
+  // The prepared statement for inserting into the raw table.
+  PreparedStatement preparedInsertRaw;
+  // The prepared statement for inserting into the 1 min table.
+  PreparedStatement preparedInsertMin;
+  // Lock for initializing prepared statement objects.
+  Object prepareInitLock = new Object();
 
   @Override
   public void initialize(Configuration configuration) {
@@ -77,15 +90,6 @@ public class CassandraStockTicker extends Workload {
       num_rows_read = new AtomicLong(0);
       LOG.info("CassandraStockTicker app is ready.");
     }
-  }
-
-  @Override
-  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
-    return optsPrefix + "--num_threads_read 32" + optsSuffix +
-           optsPrefix + "--num_threads_write 4" + optsSuffix +
-           optsPrefix + "--num_ticker_symbols 100000" + optsSuffix +
-           optsPrefix + "--data_emit_rate_millis 1000" + optsSuffix +
-           optsPrefix + "--table_ttl_seconds " + 24 * 60 * 60;
   }
 
   @Override
@@ -136,7 +140,7 @@ public class CassandraStockTicker extends Workload {
                   ", primary key ((ticker_id), ts))" +
                   " WITH CLUSTERING ORDER BY (ts DESC)";
     if (workloadConfig.tableTTLSeconds > 0) {
-    create_stmt += " AND default_time_to_live = " + (10 * workloadConfig.tableTTLSeconds);
+    create_stmt += " AND default_time_to_live = " + (60 * workloadConfig.tableTTLSeconds);
     }
     create_stmt += ";";
     try {
@@ -146,6 +150,20 @@ public class CassandraStockTicker extends Workload {
     }
     LOG.info("Created a Cassandra table " + tickerTableMin +
              " using query: [" + create_stmt + "]");
+  }
+
+  private PreparedStatement getPreparedSelectLatest()  {
+    if (preparedSelectLatest == null) {
+      synchronized (prepareInitLock) {
+        if (preparedSelectLatest == null) {
+          // Create the prepared statement object.
+          String select_stmt =
+              String.format("SELECT * from %s WHERE ticker_id = ? LIMIT 1", tickerTableRaw);
+          preparedSelectLatest = getCassandraClient().prepare(select_stmt);
+        }
+      }
+    }
+    return preparedSelectLatest;
   }
 
   @Override
@@ -158,13 +176,45 @@ public class CassandraStockTicker extends Workload {
     }
     long startTs = dataSource.getStartTs();
     long endTs = dataSource.getEndTs();
-    String select_stmt =
-        String.format("SELECT * from %s WHERE ticker_id='%s' LIMIT 1",
-                      tickerTableRaw, dataSource.getTickerId());
-    ResultSet rs = getCassandraClient().execute(select_stmt);
+
+    // Bind the select statement.
+    BoundStatement select = getPreparedSelectLatest().bind(dataSource.getTickerId());
+    // Make the query.
+    ResultSet rs = getCassandraClient().execute(select);
+
     List<Row> rows = rs.all();
     num_rows_read.addAndGet(rows.size());
     return 1;
+  }
+
+  private PreparedStatement getPreparedInsertRaw()  {
+    if (preparedInsertRaw == null) {
+      synchronized (prepareInitLock) {
+        if (preparedInsertRaw == null) {
+          // Create the prepared statement object.
+          String insert_stmt =
+              String.format("INSERT INTO %s (ticker_id, ts, value) VALUES (?, ?, ?)",
+                            tickerTableRaw);
+          preparedInsertRaw = getCassandraClient().prepare(insert_stmt);
+        }
+      }
+    }
+    return preparedInsertRaw;
+  }
+
+  private PreparedStatement getPreparedInsertMin()  {
+    if (preparedInsertMin == null) {
+      synchronized (prepareInitLock) {
+        if (preparedInsertMin == null) {
+          // Create the prepared statement object.
+          String select_stmt =
+              String.format("INSERT INTO %s (ticker_id, ts, value) VALUES (?, ?, ?)",
+                            tickerTableMin);
+          preparedInsertMin = getCassandraClient().prepare(select_stmt);
+        }
+      }
+    }
+    return preparedInsertMin;
   }
 
   @Override
@@ -182,23 +232,20 @@ public class CassandraStockTicker extends Workload {
       } catch (Exception e) {}
       return 0; /* numKeysWritten */
     }
+
     // Insert the row.
-    String insert_stmt =
-        String.format("INSERT INTO %s (ticker_id, ts, value) VALUES ('%s', %s, '%s');",
-                      tickerTableRaw, dataSource.getTickerId(), ts, value);
-    ResultSet resultSet = getCassandraClient().execute(insert_stmt);
+    BoundStatement insertRaw =
+        getPreparedInsertRaw().bind(dataSource.getTickerId(), new Date(ts), value);
+    ResultSet resultSet = getCassandraClient().execute(insertRaw);
     numKeysWritten++;
-    LOG.debug("Executed query: " + insert_stmt + ", result: " + resultSet.toString());
     dataSource.setLastEmittedTs(ts);
 
     // With some probability, insert into the minutely table.
     if (random.nextInt(60000) < data_emit_rate_millis) {
-      insert_stmt =
-          String.format("INSERT INTO %s (ticker_id, ts, value) VALUES ('%s', %s, '%s');",
-                        tickerTableMin, dataSource.getTickerId(), ts, value);
-      resultSet = getCassandraClient().execute(insert_stmt);
+      BoundStatement insertMin =
+          getPreparedInsertMin().bind(dataSource.getTickerId(), new Date(ts), value);
+      resultSet = getCassandraClient().execute(insertMin);
       numKeysWritten++;
-      LOG.debug("Executed query: " + insert_stmt + ", result: " + resultSet.toString());
     }
 
     return numKeysWritten;
@@ -246,5 +293,50 @@ public class CassandraStockTicker extends Workload {
     public String toString() {
       return getId();
     }
+  }
+
+  @Override
+  public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(optsPrefix);
+    sb.append("Sample stock ticker app built on Cassandra. The app models 10,000 stock tickers");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("each of which emits quote data every second. The raw data is written into the");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("'stock_ticker_raw' table, which retains data for one day. The 'stock_ticker_1min'");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("table models downsampled ticker data, is written to once a minute and retains data");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("for 60 days. Every read query gets the latest value of the stock symbol from the");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("'stock_ticker_raw' table.");
+    sb.append(optsSuffix);
+    return sb.toString();
+  }
+
+  @Override
+  public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(optsPrefix);
+    sb.append("--num_threads_read " + workloadConfig.numReaderThreads);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_threads_write " + workloadConfig.numWriterThreads);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--num_ticker_symbols " + num_ticker_symbols);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--data_emit_rate_millis " + data_emit_rate_millis);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--table_ttl_seconds " + workloadConfig.tableTTLSeconds);
+    sb.append(optsSuffix);
+    return sb.toString();
   }
 }
