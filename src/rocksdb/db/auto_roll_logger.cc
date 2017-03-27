@@ -6,7 +6,7 @@
 #include "db/auto_roll_logger.h"
 #include "util/mutexlock.h"
 
-using namespace std;
+using std::string;
 
 namespace rocksdb {
 
@@ -120,7 +120,7 @@ void AutoRollLogger::LogHeaderWithContext(const char* file, const int line,
   headers_.push_back(data);
 
   // Log the original message to the current log
-  logger_->Logv(format, args);
+  logger_->LogvWithContext(file, line, InfoLogLevel::HEADER_LEVEL, format, args);
 }
 
 bool AutoRollLogger::LogExpired() {

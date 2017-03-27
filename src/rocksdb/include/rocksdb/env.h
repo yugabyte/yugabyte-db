@@ -668,13 +668,11 @@ class Logger {
   // Write a header to the log file with the specified format
   // It is recommended that you log all header information at the start of the
   // application. But it is not enforced.
-  // Note(akashnil): Currently we ignore the context (file, line number) because of the class
-  // hierarchy. Need to fix in future if Header is important.
   virtual void LogHeaderWithContext(const char* file, const int line,
       const char *format, va_list ap) {
     // Default implementation does a simple INFO level log write.
     // Please override as per the logger class requirement.
-    Logv(format, ap);
+    LogvWithContext(file, line, InfoLogLevel::HEADER_LEVEL, format, ap);
   }
 
   // Write an entry to the log file with the specified format.
