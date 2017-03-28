@@ -23,11 +23,12 @@ export default class CustomerMetricsPanel extends Component {
     return (
       <Measure onMeasure={this.onResize.bind(this)}>
         <GraphPanelHeaderContainer origin={origin}>
+          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"proxies"} />
+          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"server"} />
           <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"cql"} />
           <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"redis"} />
           <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"tserver"} />
           <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"lsmdb"} />
-          <GraphPanelContainer width={this.state.dimensions.width} nodePrefixes={nodePrefixes} type={"server"} />
         </GraphPanelHeaderContainer>
       </Measure>
     );

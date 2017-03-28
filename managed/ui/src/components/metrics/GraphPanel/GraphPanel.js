@@ -12,16 +12,18 @@ const panelTypes = {
              metrics: ["cpu_usage", "memory_usage", "disk_iops", "disk_bytes_per_second_per_node",
                        "network_bytes", "network_packets", "network_errors", "system_load_over_time"]},
   tserver: { title: "YugaByte Server",
-             metrics: [ "tserver_rpcs_per_sec", "tserver_ops_latency", "tserver_handler_latency", "tserver_cache_ops_per_sec","tserver_threads",
+             metrics: [ "tserver_rpcs_per_sec", "tserver_ops_latency", "tserver_handler_latency", "tserver_threads",
               "tserver_change_config", "tserver_context_switches", "tserver_spinlock_server", "tserver_log_latency",
               "tserver_log_bytes_written", "tserver_log_bytes_read", "tserver_log_ops_second", "tserver_tc_malloc_stats",
               "tserver_log_stats", "tserver_cache_reader_num_ops"]},
   lsmdb: { title: "LSM-DB Stats",
-             metrics: ["lsm_rocksdb_num_seek_or_next", "lsm_rocksdb_latencies", "lsm_rocksdb_block_cache"]},
-  redis:   { title: "Redis",
-             metrics: ["redis_rpcs_per_sec", "redis_ops_latency", "redis_yb_latency"]},
-  cql:     { title: "Cassandra",
-             metrics: ["cql_server_rpc_per_second", "cql_sql_latency", "cql_yb_latency", "cql_reactor_latency", "response_sizes"]}
+             metrics: ["lsm_rocksdb_num_seek_or_next", "lsm_rocksdb_latencies", "lsm_rocksdb_block_cache", "lsm_rocksdb_flush_size", "lsm_rocksdb_compaction"]},
+  proxies:   { title: "Redis and CQL ",
+             metrics: ["redis_rpcs_per_sec", "redis_ops_latency", "cql_server_rpc_per_second", "cql_sql_latency"]},
+  redis:   { title: "Redis Advanced Graphs",
+             metrics: ["redis_yb_latency"]},
+  cql:     { title: "Cassandra Advanced Graphs",
+             metrics: ["cql_sql_latency_breakdown", "cql_yb_latency", "cql_reactor_latency", "response_sizes"]}
 }
 
 class GraphPanel extends Component {
