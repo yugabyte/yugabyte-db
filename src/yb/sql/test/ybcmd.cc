@@ -2,6 +2,23 @@
 // Copyright (c) YugaByte, Inc.
 // This module is to help testing YbSql Parser manually. This application reads a statement from
 // stdin, parses it, and returns result or reports errors.
+//
+// To connect to an existing cluster at given masters' addresses:
+//
+// $ ybcmd --ybcmd_run=1 --ybcmd_master_addresses 127.0.0.1:7101,127.0.0.1:7102,127.0.0.1:7103
+// ybsql > create keyspace test;
+// ybsql > use test;
+// ybsql > create table t (c int primary key);
+// ybsql > insert into t (c) values (1);
+// ybsql > select * from t where c = 1;
+// ybsql > exit;
+//
+// To start a simulated cluster of its own:
+//
+// $ ybcmd --ybcmd_run=1
+// ...
+// ybsql > ...
+//
 //--------------------------------------------------------------------------------------------------
 
 #include <wchar.h>
@@ -15,9 +32,13 @@ using std::cin;
 using std::endl;
 using std::make_shared;
 using std::string;
+using yb::client::YBClientBuilder;
 
-// using yb::Status;
-DEFINE_bool(ybsql_run, false, "Not to run this test unless instructed");
+DEFINE_bool(ybcmd_run, false, "Not to run this test unless instructed");
+
+DEFINE_string(ybcmd_master_addresses, "",
+              "Comma-separated addresses of the existing masters ybcmd to connect to. If unset, "
+              "ybcmd will start a simulated cluster instead.");
 
 namespace yb {
 namespace sql {
@@ -26,24 +47,37 @@ class YbSqlCmd : public YbSqlTestBase {
  public:
   YbSqlCmd() : YbSqlTestBase() {
   }
+
+  void ConnectCluster(const string& master_addresses) {
+    YBClientBuilder builder;
+    builder.add_master_server_addr(master_addresses);
+    builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
+    CHECK_OK(builder.Build(&client_));
+    table_cache_ = std::make_shared<client::YBTableCache>(client_);
+  }
 };
 
 TEST_F(YbSqlCmd, TestSqlCmd) {
-  if (!FLAGS_ybsql_run) {
+  if (!FLAGS_ybcmd_run) {
     return;
   }
 
-  // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  if (!FLAGS_ybcmd_master_addresses.empty()) {
+    // Connect to external cluster.
+    ConnectCluster(FLAGS_ybcmd_master_addresses);
+  } else {
+    // Init the simulated cluster.
+    NO_FATALS(CreateSimulatedCluster());
+  }
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
 
   const string exit_cmd = "exit";
-  while (1) {
+  while (!cin.eof()) {
     // Read the statement.
     string sql_stmt;
-    while (1) {
+    while (!cin.eof()) {
       cout << endl << "\033[1;33mybsql > \033[0m";
 
       string sub_stmt;
@@ -62,6 +96,10 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
       if (sql_stmt.size() != 0) {
         sql_stmt += "\n";
       }
+    }
+
+    if (sql_stmt.empty()) {
+      continue;
     }
 
     // Execute.
