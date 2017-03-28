@@ -74,22 +74,24 @@ void Executor::ExecuteDone(
     CB_RETURN(cb, exec_context_->GetStatus());
   } else {
     VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
-    MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
-    switch (static_cast<const PTListNode *>(ptree->root().get())->element(0)->opcode()) {
-      case TreeNodeOpcode::kPTSelectStmt:
-        sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
-        break;
-      case TreeNodeOpcode::kPTInsertStmt:
-        sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
-        break;
-      case TreeNodeOpcode::kPTUpdateStmt:
-        sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
-        break;
-      case TreeNodeOpcode::kPTDeleteStmt:
-        sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
-        break;
-      default:
-        sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+    if (sql_metrics_ != nullptr) {
+      MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
+      switch (static_cast<const PTListNode *>(ptree->root().get())->element(0)->opcode()) {
+        case TreeNodeOpcode::kPTSelectStmt:
+          sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
+          break;
+        case TreeNodeOpcode::kPTInsertStmt:
+          sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
+          break;
+        case TreeNodeOpcode::kPTUpdateStmt:
+          sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
+          break;
+        case TreeNodeOpcode::kPTDeleteStmt:
+          sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
+          break;
+        default:
+          sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+      }
     }
     cb.Run(Status::OK(), result);
   }

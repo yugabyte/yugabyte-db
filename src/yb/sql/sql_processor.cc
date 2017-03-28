@@ -13,15 +13,15 @@ METRIC_DEFINE_histogram(
     "Time spent parsing the SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent parsing the SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_yb_cqlserver_SQLProcessor_AnalyseRequest,
-    "Time spent to analyse the parsed SQL query", yb::MetricUnit::kMicroseconds,
-    "Time spent to analyse the parsed SQL query", 60000000LU, 2);
+    server, handler_latency_yb_cqlserver_SQLProcessor_AnalyzeRequest,
+    "Time spent to analyze the parsed SQL query", yb::MetricUnit::kMicroseconds,
+    "Time spent to analyze the parsed SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest,
     "Time spent executing the parsed SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent executing the parsed SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
-    server, handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyse,
+    server, handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyze,
     "Number of rounds to successfully parse a SQL query", yb::MetricUnit::kOperations,
     "Number of rounds to successfully parse a SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
@@ -62,12 +62,12 @@ using client::YBTableCache;
 SqlMetrics::SqlMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
   time_to_parse_sql_query_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ParseRequest.Instantiate(metric_entity);
-  time_to_analyse_sql_query_ =
-      METRIC_handler_latency_yb_cqlserver_SQLProcessor_AnalyseRequest.Instantiate(metric_entity);
+  time_to_analyze_sql_query_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_AnalyzeRequest.Instantiate(metric_entity);
   time_to_execute_sql_query_ =
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest.Instantiate(metric_entity);
-  num_rounds_to_analyse_sql_ =
-      METRIC_handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyse.Instantiate(
+  num_rounds_to_analyze_sql_ =
+      METRIC_handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyze.Instantiate(
           metric_entity);
 
   sql_select_ =
@@ -127,8 +127,8 @@ CHECKED_STATUS SqlProcessor::Analyze(const string& sql_stmt,
     const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
     if (sql_metrics_ != nullptr) {
       const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
-      sql_metrics_->time_to_parse_sql_query_->Increment(elapsed_time.ToMicroseconds());
-      sql_metrics_->num_rounds_to_analyse_sql_->Increment(1);
+      sql_metrics_->time_to_analyze_sql_query_->Increment(elapsed_time.ToMicroseconds());
+      sql_metrics_->num_rounds_to_analyze_sql_->Increment(1);
     }
 
     const ErrorCode sem_errcode = analyzer_->error_code();
@@ -172,7 +172,7 @@ void SqlProcessor::ProcessExecuteResponse(const MonoTime &begin_time,
   const MonoTime end_time = MonoTime::Now(MonoTime::FINE);
   if (sql_metrics_ != nullptr) {
     const MonoDelta elapsed_time = end_time.GetDeltaSince(begin_time);
-    sql_metrics_->time_to_parse_sql_query_->Increment(elapsed_time.ToMicroseconds());
+    sql_metrics_->time_to_execute_sql_query_->Increment(elapsed_time.ToMicroseconds());
   }
   // If the failure occurs because of stale metadata cache, the parse tree needs to be re-analyzed
   // with new metadata. Symptoms of stale metadata can be TABLET_NOT_FOUND when the tserver fails

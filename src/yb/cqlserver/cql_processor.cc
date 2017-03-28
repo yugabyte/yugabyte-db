@@ -119,7 +119,6 @@ void CQLProcessor::ProcessCall(rpc::CQLInboundCall* cql_call) {
   if (!CQLRequest::ParseRequest(msg, &request, &response)) {
     cql_metrics_->num_errors_parsing_cql_->Increment();
     SendResponse(cql_call, response.release());
-    SetSqlSession(nullptr);
     this->unused();
     return;
   }

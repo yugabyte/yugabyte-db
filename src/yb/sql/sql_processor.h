@@ -23,9 +23,9 @@ class SqlMetrics {
   explicit SqlMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity);
 
   scoped_refptr<yb::Histogram> time_to_parse_sql_query_;
-  scoped_refptr<yb::Histogram> time_to_analyse_sql_query_;
+  scoped_refptr<yb::Histogram> time_to_analyze_sql_query_;
   scoped_refptr<yb::Histogram> time_to_execute_sql_query_;
-  scoped_refptr<yb::Histogram> num_rounds_to_analyse_sql_;
+  scoped_refptr<yb::Histogram> num_rounds_to_analyze_sql_;
 
   scoped_refptr<yb::Histogram> sql_select_;
   scoped_refptr<yb::Histogram> sql_insert_;
@@ -47,11 +47,6 @@ class SqlProcessor {
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
       std::shared_ptr<client::YBTableCache> cache, SqlMetrics* sql_metrics);
   virtual ~SqlProcessor();
-
-  // Set the SQL session to use to process SQL statements.
-  void SetSqlSession(SqlSession::SharedPtr sql_session) {
-    sql_env_->set_sql_session(sql_session);
-  }
 
   // Parse a SQL statement and generate a parse tree.
   CHECKED_STATUS Parse(const string& sql_stmt,

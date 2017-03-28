@@ -172,9 +172,12 @@ CHECKED_STATUS SqlEnv::DeleteKeyspace(const std::string& keyspace_name) {
   RETURN_NOT_OK(client_->DeleteNamespace(keyspace_name));
 
   // Reset the current keyspace name if it's dropped.
-  CHECK(sql_session_ != nullptr) << "SQL session is not set";
-  if (sql_session_->current_keyspace() == keyspace_name) {
-    sql_session_->reset_current_keyspace();
+  if (CurrentKeyspace() == keyspace_name) {
+    if (current_call_ != nullptr) {
+      current_call_->GetSqlSession()->reset_current_keyspace();
+    } else {
+      current_keyspace_.reset(new string(yb::master::kDefaultNamespaceName));
+    }
   }
 
   return Status::OK();
@@ -190,8 +193,11 @@ CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
   }
 
   // Set the current keyspace name.
-  CHECK(sql_session_ != nullptr) << "SQL session is not set";
-  sql_session_->set_current_keyspace(keyspace_name);
+  if (current_call_ != nullptr) {
+    current_call_->GetSqlSession()->set_current_keyspace(keyspace_name);
+  } else {
+    current_keyspace_.reset(new string(keyspace_name));
+  }
 
   return Status::OK();
 }

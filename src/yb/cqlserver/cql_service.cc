@@ -88,7 +88,6 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   MonoTime got_processor = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
-  processor->SetSqlSession(cql_call->GetSqlSession());
   processor->ProcessCall(cql_call);
 }
 

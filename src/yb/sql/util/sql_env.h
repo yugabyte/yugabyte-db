@@ -32,11 +32,6 @@ class SqlEnv {
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
       std::shared_ptr<client::YBTableCache> cache);
 
-  // Set the SQL session to use in this SQL environment.
-  virtual void set_sql_session(SqlSession::SharedPtr sql_session) {
-    sql_session_ = sql_session;
-  }
-
   virtual client::YBTableCreator *NewTableCreator();
 
   virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
@@ -66,8 +61,9 @@ class SqlEnv {
   virtual CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
 
   virtual std::string CurrentKeyspace() const {
-    CHECK(sql_session_ != nullptr) << "SQL session is not set";
-    return sql_session_->current_keyspace();
+    return (current_call_ != nullptr) ?
+        current_call_->GetSqlSession()->current_keyspace() :
+        current_keyspace_ != nullptr ? *current_keyspace_ : yb::master::kDefaultNamespaceName;
   }
 
   // Reset all env states or variables before executing the next statement.
@@ -116,8 +112,8 @@ class SqlEnv {
   Callback<void(const Status&)> requested_callback_;
   Callback<void(void)> resume_execution_;
 
-  // SQL session that this SQL environment is using currently.
-  SqlSession::SharedPtr sql_session_;
+  // The current keyspace. Used only in test environment when there is no current call.
+  std::unique_ptr<std::string> current_keyspace_;
 };
 
 }  // namespace sql
