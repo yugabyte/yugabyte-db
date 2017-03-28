@@ -100,6 +100,9 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
   // Valid statement: SELECT statement with "=" and "?" with no space in between.
   PARSE_VALID_STMT("SELECT * FROM t WHERE C1=?;");
 
+  // Valid statement: SELECT statement with different two-char operators and "?".
+  PARSE_VALID_STMT("SELECT * FROM t WHERE C1>=? AND C2<=? AND C3<>? AND C4!=?;");
+
   // Valid statement: SELECT statement with "=" and ":id" with no space in between.
   PARSE_VALID_STMT("SELECT * FROM t WHERE C1=:c1;");
 

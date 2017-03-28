@@ -688,31 +688,34 @@ public class TestBindVariable extends TestBase {
     LOG.info("End test");
   }
 
+  @Test
   public void testBindWithVariousOperators() throws Exception {
     LOG.info("Begin test");
 
     // Setup test table.
     SetupTable("test_bind", 10 /* num_rows */);
 
-    {
-      // Select bind marker with ">=" and "<=".
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                           " WHERE h1 = ? AND h2 = ? AND r1 >= ? AND r1 <= ?;";
-      ResultSet rs = session.execute(select_stmt,
-                                     new Integer(7), "h7",
-                                     new Integer(107), new Integer(107));
-      Row row = rs.one();
-      // Assert exactly 1 row is returned with expected column values.
-      assertNotNull(row);
-      assertEquals(7, row.getInt(0));
-      assertEquals("h7", row.getString(1));
-      assertEquals(107, row.getInt(2));
-      assertEquals("r107", row.getString(3));
-      assertEquals(1007, row.getInt(4));
-      assertEquals("v1007", row.getString(5));
-      row = rs.one();
-      assertNull(row);
-    }
+    // ">=" and "<=" not supported in YQL yet.
+    //
+    // {
+    //   // Select bind marker with ">=" and "<=".
+    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //                        " WHERE h1 = ? AND h2 = ? AND r1 >= ? AND r1 <= ?;";
+    //   ResultSet rs = session.execute(select_stmt,
+    //                                  new Integer(7), "h7",
+    //                                  new Integer(107), new Integer(107));
+    //   Row row = rs.one();
+    //   // Assert exactly 1 row is returned with expected column values.
+    //   assertNotNull(row);
+    //   assertEquals(7, row.getInt(0));
+    //   assertEquals("h7", row.getString(1));
+    //   assertEquals(107, row.getInt(2));
+    //   assertEquals("r107", row.getString(3));
+    //   assertEquals(1007, row.getInt(4));
+    //   assertEquals("v1007", row.getString(5));
+    //   row = rs.one();
+    //   assertNull(row);
+    // }
 
     {
       // Select bind marker with ">" and "<".
@@ -726,41 +729,46 @@ public class TestBindVariable extends TestBase {
       assertNull(row);
     }
 
-    {
-      // Select bind marker with "<>".
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                           " WHERE h1 = :1 AND h2 = :2 AND r1 <> :3;";
-      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
-      Row row = rs.one();
-      // Assert no row is returned.
-      assertNull(row);
-    }
+    // "<>" not supported in YQL yet.
+    //
+    // {
+    //   // Select bind marker with "<>".
+    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //                        " WHERE h1 = :1 AND h2 = :2 AND r1 <> :3;";
+    //   ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+    //   Row row = rs.one();
+    //   // Assert no row is returned.
+    //   assertNull(row);
+    // }
 
-    {
-      // Select bind marker with BETWEEN and NOT BETWEEN.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                           " WHERE h1 = :1 AND h2 = :2 AND" +
-                           " r1 BETWEEN ? AND ? AND r1 NOT BETWEEN ? AND ?;";
-      ResultSet rs = session.execute(select_stmt,
-                                     new Integer(7), "h7",
-                                     new Integer(106), new Integer(108),
-                                     new Integer(1000), new Integer(2000));
-      Row row = rs.one();
-      // Assert exactly 1 row is returned with expected column values.
-      assertNotNull(row);
-      assertEquals(7, row.getInt(0));
-      assertEquals("h7", row.getString(1));
-      assertEquals(107, row.getInt(2));
-      assertEquals("r107", row.getString(3));
-      assertEquals(1007, row.getInt(4));
-      assertEquals("v1007", row.getString(5));
-      row = rs.one();
-      assertNull(row);
-    }
+    // BETWEEN and NOT BETWEEN not supported in YQL yet.
+    //
+    // {
+    //   // Select bind marker with BETWEEN and NOT BETWEEN.
+    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //                        " WHERE h1 = :1 AND h2 = :2 AND" +
+    //                        " r1 BETWEEN ? AND ? AND r1 NOT BETWEEN ? AND ?;";
+    //   ResultSet rs = session.execute(select_stmt,
+    //                                  new Integer(7), "h7",
+    //                                  new Integer(106), new Integer(108),
+    //                                  new Integer(1000), new Integer(2000));
+    //   Row row = rs.one();
+    //   // Assert exactly 1 row is returned with expected column values.
+    //   assertNotNull(row);
+    //   assertEquals(7, row.getInt(0));
+    //   assertEquals("h7", row.getString(1));
+    //   assertEquals(107, row.getInt(2));
+    //   assertEquals("r107", row.getString(3));
+    //   assertEquals(1007, row.getInt(4));
+    //   assertEquals("v1007", row.getString(5));
+    //   row = rs.one();
+    //   assertNull(row);
+    // }
 
     LOG.info("End test");
   }
 
+  @Test
   public void testBindMisc() throws Exception {
     LOG.info("Begin test");
 
@@ -875,7 +883,7 @@ public class TestBindVariable extends TestBase {
                                      new HashMap<String, Object>() {{
                                          put("b1", new Integer(7));
                                          put("b2", "h7");
-                                         put("b", new Integer(107));
+                                         put("b3", new Integer(107));
                                        }});
       Row row = rs.one();
       // Assert exactly 1 row is returned with expected column values.
@@ -890,25 +898,27 @@ public class TestBindVariable extends TestBase {
       assertNull(row);
     }
 
-    {
-      // Bind marker with ">=" and "<=" and no space in between column, operator and bind marker.
-      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                           " WHERE h1=? AND h2=? AND r1>=? AND r1<=?;";
-      ResultSet rs = session.execute(select_stmt,
-                                     new Integer(7), "h7",
-                                     new Integer(107), new Integer(107));
-      Row row = rs.one();
-      // Assert exactly 1 row is returned with expected column values.
-      assertNotNull(row);
-      assertEquals(7, row.getInt(0));
-      assertEquals("h7", row.getString(1));
-      assertEquals(107, row.getInt(2));
-      assertEquals("r107", row.getString(3));
-      assertEquals(1007, row.getInt(4));
-      assertEquals("v1007", row.getString(5));
-      row = rs.one();
-      assertNull(row);
-    }
+    // ">=" and "<=" not supported in YQL yet.
+    //
+    // {
+    //   // Bind marker with ">=" and "<=" and no space in between column, operator and bind marker.
+    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //                        " WHERE h1=? AND h2=? AND r1>=? AND r1<=?;";
+    //   ResultSet rs = session.execute(select_stmt,
+    //                                  new Integer(7), "h7",
+    //                                  new Integer(107), new Integer(107));
+    //   Row row = rs.one();
+    //   // Assert exactly 1 row is returned with expected column values.
+    //   assertNotNull(row);
+    //   assertEquals(7, row.getInt(0));
+    //   assertEquals("h7", row.getString(1));
+    //   assertEquals(107, row.getInt(2));
+    //   assertEquals("r107", row.getString(3));
+    //   assertEquals(1007, row.getInt(4));
+    //   assertEquals("v1007", row.getString(5));
+    //   row = rs.one();
+    //   assertNull(row);
+    // }
 
     {
       // Bind marker with ">" and "<" and no space in between column, operator and bind marker.
@@ -922,13 +932,38 @@ public class TestBindVariable extends TestBase {
       assertNull(row);
     }
 
+    // "<>" not supported in YQL yet.
+    //
+    // {
+    //   // Bind marker with "<>" and no space in between column, operator and bind marker.
+    //   String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+    //                        " WHERE h1=:1 AND h2=:2 AND r1<>:3;";
+    //   ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+    //   Row row = rs.one();
+    //   // Assert no row is returned.
+    //   assertNull(row);
+    // }
+
     {
-      // Bind marker with "<>" and no space in between column, operator and bind marker.
+      // Named, case-insensitive bind markers.
       String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                           " WHERE h1=:1 AND h2=:2 AND r1<>:3;";
-      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Integer(107));
+                           " WHERE h1=:Bind1 AND h2=:Bind2 AND r1=:Bind3;";
+      ResultSet rs = session.execute(select_stmt,
+                                     new HashMap<String, Object>() {{
+                                         put("bind1", new Integer(7));
+                                         put("bind2", "h7");
+                                         put("bind3", new Integer(107));
+                                       }});
       Row row = rs.one();
-      // Assert no row is returned.
+      // Assert exactly 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+      row = rs.one();
       assertNull(row);
     }
 

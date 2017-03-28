@@ -868,8 +868,12 @@ other                     .
                         yytext[nchars-1] == '?')) {
     int   ic;
 
+    /* "!" is removed from the list below because
+     * "... WHERE col!=?" should be returned as two separate
+     * tokens ("!=" and "?").
+     */
     for (ic = nchars-2; ic >= 0; ic--) {
-      if (strchr("~!@#^&|`?%", yytext[ic]))
+      if (strchr("~@#^&|`?%", yytext[ic]))
         break;
     }
     if (ic >= 0)
@@ -889,6 +893,28 @@ other                     .
      */
     if (nchars == 1 && strchr(",()[].;:+-*/%^<>=", yytext[0])) {
       return GramProcessor::symbol_type(GramProcessor::token::yytokentype(yytext[0]), cursor_);
+    }
+
+    /* If what we have left are two chars, see if
+     * it is one of the two-character operators.
+     */
+    if (nchars == 2) {
+      if (strncmp(yytext, "::", 2) == 0) {
+        return GramProcessor::make_TYPECAST(cursor_);
+      } else if (strncmp(yytext, "..", 2) == 0) {
+        return GramProcessor::make_DOT_DOT(cursor_);
+      } else if (strncmp(yytext, ":=", 2) == 0) {
+        return GramProcessor::make_COLON_EQUALS(cursor_);
+      } else if (strncmp(yytext, "=>", 2) == 0) {
+        return GramProcessor::make_EQUALS_GREATER(cursor_);
+      } else if (strncmp(yytext, "<=", 2) == 0) {
+        return GramProcessor::make_LESS_EQUALS(cursor_);
+      } else if (strncmp(yytext, ">=", 2) == 0) {
+        return GramProcessor::make_GREATER_EQUALS(cursor_);
+      } else if (strncmp(yytext, "<>", 2) == 0 ||
+                 strncmp(yytext, "!=", 2) == 0) {
+        return GramProcessor::make_NOT_EQUALS(cursor_);
+      }
     }
   }
 
