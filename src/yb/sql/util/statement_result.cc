@@ -124,11 +124,11 @@ RowsResult::RowsResult(YBqlOp *op)
   // If there is a paging state in the response, fill in the table ID also and serialize the
   // paging state as bytes.
   if (op->response().has_paging_state()) {
-    YQLPagingStatePB *paging_state_pb = op->mutable_response()->mutable_paging_state();
-    paging_state_pb->set_table_id(op->table()->id());
-    faststring paging_state_str;
-    CHECK(pb_util::SerializeToString(*paging_state_pb, &paging_state_str));
-    paging_state_ = paging_state_str.ToString();
+    YQLPagingStatePB *paging_state = op->mutable_response()->mutable_paging_state();
+    paging_state->set_table_id(op->table()->id());
+    faststring serialized_paging_state;
+    CHECK(pb_util::SerializeToString(*paging_state, &serialized_paging_state));
+    paging_state_ = serialized_paging_state.ToString();
   }
 }
 

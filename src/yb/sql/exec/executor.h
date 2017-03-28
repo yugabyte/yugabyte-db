@@ -163,11 +163,6 @@ class Executor {
       const ParseTree *ptree, MonoTime start, StatementExecutedCallback cb, const Status &s,
       ExecutedResult::SharedPtr result);
 
-  void ApplyReadAsyncDone(
-      const PTSelectStmt *tnode, EvalIntValue limit_value,
-      std::shared_ptr<client::YBqlReadOp> select_op, StatementExecutedCallback cb,
-      const Status &s, ExecutedResult::SharedPtr result);
-
   //------------------------------------------------------------------------------------------------
   // Execution context which are created and destroyed for each execution.
   ExecContext::UniPtr exec_context_;

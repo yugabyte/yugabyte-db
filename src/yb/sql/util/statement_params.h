@@ -26,22 +26,24 @@ class StatementParameters {
   StatementParameters();
   virtual ~StatementParameters();
 
-  // Accessor functions.
+  // Accessor functions for page_size.
   uint64_t page_size() const { return page_size_; }
   void set_page_size(const uint64_t page_size) { page_size_ = page_size; }
 
-  const YQLPagingStatePB& paging_state() const { return paging_state_pb_; }
+  // Set paging state.
   CHECKED_STATUS set_paging_state(const std::string& paging_state) {
-    return paging_state_pb_.ParseFromString(paging_state) ?
+    return paging_state_.ParseFromString(paging_state) ?
         Status::OK() : STATUS(Corruption, "invalid paging state");
   }
 
-  const std::string& next_row_key_to_read() const {
-    return paging_state_pb_.next_row_key_to_read();
-  }
-  const std::string& table_id() const { return paging_state_pb_.table_id(); }
-  const std::string& next_partition_key() const { return paging_state_pb_.next_partition_key(); }
-  int64_t total_num_rows_read() const { return paging_state_pb_.total_num_rows_read(); }
+  // Accessor functions for paging state fields.
+  const std::string& table_id() const { return paging_state_.table_id(); }
+
+  const std::string& next_partition_key() const { return paging_state_.next_partition_key(); }
+
+  const std::string& next_row_key() const { return paging_state_.next_row_key(); }
+
+  int64_t total_num_rows_read() const { return paging_state_.total_num_rows_read(); }
 
   // Retrieve a bind variable for the execution of the statement. To be overridden by subclasses
   // to return actual bind variables.
@@ -55,7 +57,7 @@ class StatementParameters {
   uint64_t page_size_;
 
   // Paging State.
-  YQLPagingStatePB paging_state_pb_;
+  YQLPagingStatePB paging_state_;
 };
 
 } // namespace sql

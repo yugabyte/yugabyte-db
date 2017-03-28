@@ -84,20 +84,22 @@ class YbSqlProcessor : public SqlProcessor {
     cb.Run(s);
   }
 
-  void RunAsync(const string& sql_stmt, Callback<void(const Status&)> cb) {
+  void RunAsync(
+      const string& sql_stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
     result_ = nullptr;
     SqlProcessor::RunAsync(
-        sql_stmt, StatementParameters(), Bind(&YbSqlProcessor::RunAsyncDone, Unretained(this), cb));
+        sql_stmt, params, Bind(&YbSqlProcessor::RunAsyncDone, Unretained(this), cb));
   }
 
   // Execute a SQL statement.
-  CHECKED_STATUS Run(const std::string& sql_stmt) {
+  CHECKED_STATUS Run(
+      const std::string& sql_stmt, const StatementParameters& params = StatementParameters()) {
     Synchronizer s;
-    RunAsync(sql_stmt, Bind(&Synchronizer::StatusCB, Unretained(&s)));
+    RunAsync(sql_stmt, params, Bind(&Synchronizer::StatusCB, Unretained(&s)));
     return s.Wait();
   }
 
-    // Construct a row_block and send it back.
+  // Construct a row_block and send it back.
   std::shared_ptr<YQLRowBlock> row_block() const {
     if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
       return std::shared_ptr<YQLRowBlock>(static_cast<RowsResult*>(result_.get())->GetRowBlock());
@@ -106,6 +108,13 @@ class YbSqlProcessor : public SqlProcessor {
   }
 
   const ExecutedResult::SharedPtr& result() const { return result_; }
+
+  const RowsResult* rows_result() const {
+    if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
+      return static_cast<const RowsResult*>(result_.get());
+    }
+    return nullptr;
+  }
 
  private:
   // Execute result.

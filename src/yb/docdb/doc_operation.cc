@@ -510,7 +510,7 @@ Status YQLWriteOperation::IsConditionSatisfied(
   DocRowwiseIterator iterator(projection, schema_, rocksdb, hybrid_time);
   RETURN_NOT_OK(iterator.Init(spec));
   if (iterator.HasNext()) {
-    RETURN_NOT_OK(iterator.NextRow(spec, &value_map));
+    RETURN_NOT_OK(iterator.NextRow(&value_map));
   }
 
   // See if the if-condition is satisfied.
@@ -620,8 +620,12 @@ Status YQLReadOperation::Execute(
     rocksdb::DB *rocksdb, const HybridTime& hybrid_time, const Schema& schema,
     YQLRowBlock* rowblock) {
 
-  if (request_.has_limit() && request_.limit() == 0) {
-    return Status::OK();
+  size_t row_count_limit = std::numeric_limits<std::size_t>::max();
+  if (request_.has_limit()) {
+    if (request_.limit() == 0) {
+      return Status::OK();
+    }
+    row_count_limit = request_.limit();
   }
 
   // Populate dockey from YQL key columns.
@@ -635,9 +639,9 @@ Status YQLReadOperation::Execute(
   SubDocKey start_sub_doc_key;
   // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
   if (request_.has_paging_state() &&
-      request_.paging_state().has_next_row_key_to_read() &&
-      !request_.paging_state().next_row_key_to_read().empty()) {
-    KeyBytes start_key_bytes(request_.paging_state().next_row_key_to_read());
+      request_.paging_state().has_next_row_key() &&
+      !request_.paging_state().next_row_key().empty()) {
+    KeyBytes start_key_bytes(request_.paging_state().next_row_key());
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
     req_hybrid_time = start_sub_doc_key.hybrid_time();
   }
@@ -646,11 +650,10 @@ Status YQLReadOperation::Execute(
   YQLScanSpec spec(
       schema, hash_code, hashed_components,
       request_.has_where_condition() ? &request_.where_condition() : nullptr,
-      request_.has_limit() ? request_.limit() : std::numeric_limits<std::size_t>::max(),
       start_sub_doc_key.doc_key());
 
   // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
-  // When DocRowwiseIterator::NextBlock() populates a YQLRowBlock, it uses this projection only to
+  // When DocRowwiseIterator::NextRow() populates the value map, it uses this projection only to
   // scan sub-documents. YQLRowBlock's own projection schema is used to populate the row block,
   // including key columns if any. Keep the non-key columns to fetch in sorted order for more
   // efficient scan in the iterator.
@@ -672,38 +675,45 @@ Status YQLReadOperation::Execute(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
   // Scan docdb for the rows.
-  if (spec.row_count_limit() > 0) {
-    DocRowwiseIterator iter(projection, schema, rocksdb, req_hybrid_time);
-    RETURN_NOT_OK(iter.Init(spec));
-    if (FLAGS_trace_docdb_calls) {
-      TRACE("Initialized iterator");
-    }
-    int count = 0;
-    while (iter.HasNext()) {
-      count++;
-      RETURN_NOT_OK(iter.NextBlock(&spec, rowblock));
-      // If the limit has been reached as specified, retrieve no more rows.
-      if (rowblock->row_count() >= spec.row_count_limit()) {
-        break;
+  DocRowwiseIterator iter(projection, schema, rocksdb, req_hybrid_time);
+  RETURN_NOT_OK(iter.Init(spec));
+  if (FLAGS_trace_docdb_calls) {
+    TRACE("Initialized iterator");
+  }
+  YQLValueMap value_map;
+  while (rowblock->row_count() < row_count_limit && iter.HasNext()) {
+    value_map.clear();
+    RETURN_NOT_OK(iter.NextRow(&value_map));
+
+    // Match the row with the where condition before adding to the row block.
+    bool match = false;
+    RETURN_NOT_OK(spec.Match(value_map, &match));
+    if (match) {
+      auto& row = rowblock->Extend();
+      for (size_t i = 0; i < row.schema().num_columns(); i++) {
+        const auto column_id = row.schema().column_id(i);
+        const auto it = value_map.find(column_id);
+        CHECK(it != value_map.end()) << "Projected column missing: " << column_id;
+        *row.mutable_column(i) = std::move(it->second);
       }
     }
-    if (FLAGS_trace_docdb_calls) {
-      TRACE("Fetched $0 blocks.", count);
-    }
+  }
+  if (FLAGS_trace_docdb_calls) {
+    TRACE("Fetched $0 rows.", rowblock->row_count());
+  }
+
+  // When the "limit" number of rows are returned and we are asked to return the paging state,
+  // return the parition key and row key of the next row to read in the paging state if there are
+  // still more rows to read. Otherwise, leave the paging state empty which means we are done
+  // reading from this tablet.
+  if (rowblock->row_count() == row_count_limit && request_.return_paging_state()) {
     SubDocKey next_key;
     RETURN_NOT_OK(iter.GetNextReadSubDocKey(&next_key));
-    YQLPagingStatePB* paging_state_pb = response_.mutable_paging_state();
-    *paging_state_pb = request_.paging_state();
-    paging_state_pb->set_total_num_rows_read(
-      paging_state_pb->total_num_rows_read() + rowblock->row_count());
-    if (!next_key.doc_key().empty() && next_key.has_hybrid_time()) {
-      paging_state_pb->set_next_row_key_to_read(
-        next_key.Encode(true /* include_hybrid_time */).data());
-      paging_state_pb->set_next_partition_key(
-        PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
-    } else {
-      paging_state_pb->clear_next_row_key_to_read();
-      paging_state_pb->clear_next_partition_key();
+    if (!next_key.doc_key().empty()) {
+      YQLPagingStatePB* paging_state = response_.mutable_paging_state();
+      paging_state->set_next_partition_key(
+          PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
+      paging_state->set_next_row_key(next_key.Encode(true /* include_hybrid_time */).data());
     }
   }
 

@@ -35,8 +35,9 @@ class DocRowwiseIterator : public RowwiseIterator {
 
   virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
 
-  // This must always be called before NextBlock. The implementation actually finds the first row
-  // to scan, and NextBlock expects the RocksDB iterator to already be properly positioned.
+  // This must always be called before NextBlock or NextRow. The implementation actually finds the
+  // first row to scan, and NextBlock expects the RocksDB iterator to already be properly
+  // positioned.
   virtual bool HasNext() const OVERRIDE;
 
   virtual std::string ToString() const OVERRIDE;
@@ -56,10 +57,7 @@ class DocRowwiseIterator : public RowwiseIterator {
   CHECKED_STATUS Init(const YQLScanSpec& spec);
 
   // Read next row into a value map.
-  CHECKED_STATUS NextRow(const YQLScanSpec& spec, YQLValueMap* value_map);
-
-  // Read next set of rows into YQL row block (note: we are reading just 1 row per call for now).
-  CHECKED_STATUS NextBlock(YQLScanSpec* spec, YQLRowBlock* rowblock);
+  CHECKED_STATUS NextRow(YQLValueMap* value_map);
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;

@@ -90,17 +90,38 @@ enum YQLClient {
   YQL_CLIENT_CQL = 1;
 }
 
+// Paging state for continuing a read request.
+//
+// For a SELECT statement that returns many rows, the client may specify how many rows to return at
+// most in each fetch. This paging state maintains the state for returning the next set of rows of
+// the statement. This paging state is opaque to the client.
+//
+// When there should be more rows to return from the same tablet in the next fetch, "next_row_key"
+// is populated in DocDB (YQLReadOperation) with the DocKey of the next row to read. We also embed a
+// hybrid-time which is the clean snapshot time for read consistency. We also populate the
+// "next_partition_key" for the next row, which is the hash code of the hash portion of the DocKey.
+// This next parition key is needed by YBClient (Batcher) to locate the tablet to send the request
+// to and it doesn't have access to the DocDB function to decode and extract from the DocKey.
+//
+// When we are done returning rows from the current tablet and the next fetch should continue in
+// the next tablet (possible only for full-table query across tablets), "next_partition_key" is
+// populated by the current tablet with its exclusive partition-end key, which is the start key of
+// next tablet's partition. "next_row_key" is empty in this case which means we will start from the
+// very beginning of the next tablet. (TODO: we need to return the clean snapshot time in this case
+// also).
+//
 message YQLPagingStatePB {
-  // Table UUID.
+  // Table UUID to verify the same table still exists when continuing in the next fetch.
   optional bytes table_id = 1;
 
-  // The next row key (SubDocKey = [DocKey + HybridTimestamp]) to read.
-  optional bytes next_row_key_to_read = 2;
+  // Partition key to find the tablet server of the next row to read.
+  optional bytes next_partition_key = 2;
 
-  // Partition key to find the next tablet server.
-  optional bytes next_partition_key = 3;
+  // The row key (SubDocKey = [DocKey + HybridTimestamp]) of the next row to read.
+  optional bytes next_row_key = 3;
 
-  // Running total number of rows read across fetches so far.
+  // Running total number of rows read across fetches so far. Needed to ensure we read up to the
+  // number of rows in the SELECT's LIMIT clause across fetches.
   optional uint64 total_num_rows_read = 4;
 }
 
@@ -158,7 +179,9 @@ message YQLReadRequestPB {
   optional uint32 schema_version = 3; // required
 
   // Hashed key of row(s) to read - all fields required. The hashed column values must be in the
-  // same order as the column order in the table schema.
+  // same order as the column order in the table schema. If only a subset of hash columns are
+  // specified in the WHERE clause of the SELECT statement, "hashed_column_values" will be empty
+  // and we will do a full-table query across tablets.
   optional uint32 hash_code = 4;
   repeated YQLColumnValuePB hashed_column_values = 5;
 
@@ -168,11 +191,16 @@ message YQLReadRequestPB {
   // Column ids to read (select)
   repeated int32 column_ids = 7; // required
 
-  // Limit number of rows to return.
+  // Limit number of rows to return. For YQL SELECT, this limit is the smaller of the page size (max
+  // (max number of rows to return per fetch) & the LIMIT clause if present in the SELECT statement.
   optional uint64 limit = 8;
 
   // Paging state retrieved from the last response.
   optional YQLPagingStatePB paging_state = 10;
+
+  // Return paging state when "limit" number of rows are returned? In case when "limit" is the
+  // page size, this is set for YQLResponsePB to return the paging state for the next fetch.
+  optional bool return_paging_state = 11 [default = false];
 }
 
 //------------------------------ Response (for both read and write) -----------------------------
@@ -197,6 +225,6 @@ message YQLResponsePB {
   // Sidecar of rows data returned
   optional int32 rows_data_sidecar = 4;
 
-  // Paging state retrieved from the last response.
+  // Paging state for continuing the read in the next YQLReadRequestPB fetch.
   optional YQLPagingStatePB paging_state = 5;
 }

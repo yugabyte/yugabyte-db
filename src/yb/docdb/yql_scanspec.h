@@ -51,7 +51,6 @@ class YQLScanSpec {
   YQLScanSpec(
       const Schema& schema, uint32_t hash_code,
       const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
-      size_t row_count_limit,
       const DocKey& start_doc_key = DocKey());
 
   // Return the inclusive lower and upper bounds of the scan.
@@ -65,9 +64,6 @@ class YQLScanSpec {
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   CHECKED_STATUS Match(const YQLValueMap& row, bool* match) const;
-
-  // Return the max number of rows to return.
-  size_t row_count_limit() const { return row_count_limit_; }
 
  private:
   // Return inclusive lower/upper range doc key considering the start_doc_key.
@@ -90,9 +86,6 @@ class YQLScanSpec {
   const uint32_t hash_code_;
   const std::vector<PrimitiveValue>* hashed_components_;
   const YQLConditionPB* condition_;
-
-  // Max number of rows to return.
-  const size_t row_count_limit_;
 
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const YQLScanRange> range_;

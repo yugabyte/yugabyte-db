@@ -555,7 +555,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::NextRow(const YQLScanSpec& spec, YQLValueMap* value_map) {
+Status DocRowwiseIterator::NextRow(YQLValueMap* value_map) {
   if (!status_.ok()) {
     // An error happened in HasNext.
     return status_;
@@ -581,25 +581,6 @@ Status DocRowwiseIterator::NextRow(const YQLScanSpec& spec, YQLValueMap* value_m
     const auto& column_id = projection_.column_id(i);
     const auto data_type = projection_.column(i).type_info()->type();
     values[i - projection_.num_key_columns()].ToYQLValuePB(data_type, &(*value_map)[column_id]);
-  }
-  return Status::OK();
-}
-
-Status DocRowwiseIterator::NextBlock(YQLScanSpec* spec, YQLRowBlock* rowblock) {
-  YQLValueMap value_map;
-  RETURN_NOT_OK(NextRow(*spec, &value_map));
-
-  // Match the row with the where condition before adding to the row block.
-  bool match = false;
-  RETURN_NOT_OK(spec->Match(value_map, &match));
-  if (match) {
-    auto& row = rowblock->Extend();
-    for (size_t i = 0; i < row.schema().num_columns(); i++) {
-      const auto column_id = row.schema().column_id(i);
-      const auto it = value_map.find(column_id);
-      CHECK(it != value_map.end()) << "Projected column missing: " << column_id;
-      *row.mutable_column(i) = std::move(it->second);
-    }
   }
   return Status::OK();
 }

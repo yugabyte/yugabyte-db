@@ -110,7 +110,6 @@ class RowsResult : public ExecutedResult {
   const std::vector<ColumnSchema>& column_schemas() const { return column_schemas_; }
   const std::string& rows_data() const { return rows_data_; }
   const std::string& paging_state() const { return paging_state_; }
-  void clear_paging_state() { paging_state_.clear(); }
   YQLClient client() const { return client_; }
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free

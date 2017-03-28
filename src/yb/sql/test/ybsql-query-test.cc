@@ -2,7 +2,8 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include<thread>
+#include <thread>
+#include <cmath>
 
 #include "yb/sql/test/ybsql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
@@ -223,6 +224,174 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
 
   const string drop_stmt = "DROP TABLE test_table;";
   EXEC_VALID_STMT(drop_stmt);
+}
+
+TEST_F(YbSqlQuery, TestPagingState) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  LOG(INFO) << "Running paging state test.";
+
+  // Create table.
+  CHECK_VALID_STMT("CREATE TABLE t (h int, r int, v int, primary key((h), r));");
+
+  static constexpr int kNumRows = 100;
+  // Insert 100 rows of the same hash key into the table.
+  {
+    for (int i = 1; i <= kNumRows; i++) {
+      // INSERT: Valid statement with column list.
+      string stmt = Substitute("INSERT INTO t (h, r, v) VALUES ($0, $1, $2);", 1, i, 100 + i);
+      CHECK_VALID_STMT(stmt);
+    }
+    LOG(INFO) << kNumRows << " rows inserted";
+  }
+
+  // Read a single row. Verify row and that the paging state is empty.
+  CHECK_VALID_STMT("SELECT h, r, v FROM t WHERE h = 1 AND r = 1;");
+  std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& row = row_block->row(0);
+  CHECK_EQ(row.column(0).int32_value(), 1);
+  CHECK_EQ(row.column(1).int32_value(), 1);
+  CHECK_EQ(row.column(2).int32_value(), 101);
+  CHECK(processor->rows_result()->paging_state().empty());
+
+  // Read all rows. Verify rows and that they are read in the number of pages expected.
+  {
+    StatementParameters params;
+    int kPageSize = 5;
+    params.set_page_size(kPageSize);
+    int page_count = 0;
+    int i = 0;
+    do {
+      CHECK_OK(processor->Run("SELECT h, r, v FROM t WHERE h = 1;", params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      CHECK_EQ(row_block->row_count(), kPageSize);
+      for (int j = 0; j < kPageSize; j++) {
+        const YQLRow& row = row_block->row(j);
+        i++;
+        CHECK_EQ(row.column(0).int32_value(), 1);
+        CHECK_EQ(row.column(1).int32_value(), i);
+        CHECK_EQ(row.column(2).int32_value(), 100 + i);
+      }
+      page_count++;
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    CHECK_EQ(page_count, kNumRows / kPageSize);
+  }
+
+  // Read rows with a LIMIT. Verify rows and that they are read in the number of pages expected.
+  {
+    StatementParameters params;
+    static constexpr int kLimit = 53;
+    static constexpr int kPageSize = 5;
+    params.set_page_size(kPageSize);
+    int page_count = 0;
+    int i = 0;
+    string select_stmt = Substitute("SELECT h, r, v FROM t WHERE h = 1 LIMIT $0;", kLimit);
+    do {
+      CHECK_OK(processor->Run(select_stmt, params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      for (int j = 0; j < row_block->row_count(); j++) {
+        const YQLRow& row = row_block->row(j);
+        i++;
+        CHECK_EQ(row.column(0).int32_value(), 1);
+        CHECK_EQ(row.column(1).int32_value(), i);
+        CHECK_EQ(row.column(2).int32_value(), 100 + i);
+      }
+      page_count++;
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_EQ(row_block->row_count(), kPageSize);
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    CHECK_EQ(i, kLimit);
+    CHECK_EQ(page_count, static_cast<int>(ceil(static_cast<double>(kLimit) /
+                                               static_cast<double>(kPageSize))));
+  }
+
+  // Insert anther 100 rows of different hash keys into the table.
+  {
+    for (int i = 1; i <= kNumRows; i++) {
+      // INSERT: Valid statement with column list.
+      string stmt = Substitute("INSERT INTO t (h, r, v) VALUES ($0, $1, $2);", i, 100 + i, 200 + i);
+      CHECK_VALID_STMT(stmt);
+    }
+    LOG(INFO) << kNumRows << " rows inserted";
+  }
+
+  // Test full-table query without a hash key.
+
+  // Read all rows. Verify rows and that they are read in the number of pages expected.
+  {
+    StatementParameters params;
+    int kPageSize = 5;
+    params.set_page_size(kPageSize);
+    int page_count = 0;
+    int row_count = 0;
+    int sum = 0;
+    do {
+      CHECK_OK(processor->Run("SELECT h, r, v FROM t WHERE r > 100;", params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      for (int j = 0; j < row_block->row_count(); j++) {
+        const YQLRow& row = row_block->row(j);
+        CHECK_EQ(row.column(0).int32_value() + 100, row.column(1).int32_value());
+        sum += row.column(0).int32_value();
+        row_count++;
+      }
+      page_count++;
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    CHECK_EQ(row_count, kNumRows);
+    // Page count should be at least "kNumRows / kPageSize". Can be more because some pages may not
+    // be fully filled depending on the hash key distribution.
+    CHECK_GE(page_count, kNumRows / kPageSize);
+    CHECK_EQ(sum, (1 + kNumRows) * kNumRows / 2);
+  }
+
+  // Read rows with a LIMIT. Verify rows and that they are read in the number of pages expected.
+  {
+    StatementParameters params;
+    static constexpr int kLimit = 53;
+    static constexpr int kPageSize = 5;
+    params.set_page_size(kPageSize);
+    int page_count = 0;
+    int row_count = 0;
+    int sum = 0;
+    string select_stmt = Substitute("SELECT h, r, v FROM t WHERE r > 100 LIMIT $0;", kLimit);
+    do {
+      CHECK_OK(processor->Run(select_stmt, params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      for (int j = 0; j < row_block->row_count(); j++) {
+        const YQLRow& row = row_block->row(j);
+        CHECK_EQ(row.column(0).int32_value() + 100, row.column(1).int32_value());
+        sum += row.column(0).int32_value();
+        row_count++;
+      }
+      page_count++;
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    CHECK_EQ(row_count, kLimit);
+    // Page count should be at least "kLimit / kPageSize". Can be more because some pages may not
+    // be fully filled depending on the hash key distribution. Same for sum which should be at
+    // least the sum of the lowest consecutive kLimit number of "h" values. Can be more.
+    CHECK_GE(page_count, static_cast<int>(ceil(static_cast<double>(kLimit) /
+                                               static_cast<double>(kPageSize))));
+    CHECK_GE(sum, (1 + kLimit) * kLimit / 2);
+  }
 }
 
 TEST_F(YbSqlQuery, TestSqlQueryPartialHash) {

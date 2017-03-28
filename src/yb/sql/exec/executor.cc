@@ -775,8 +775,22 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
     CB_RETURN(cb, Status::OK());
   }
 
-  // Create the read request.
   const shared_ptr<client::YBTable>& table = tnode->table();
+
+  // If there is a table id in the statement parameter's paging state, this is a continuation of
+  // a prior SELECT statement. Verify that the same table still exists.
+  const bool continue_select = !params_->table_id().empty();
+  if (continue_select && params_->table_id() != table->id()) {
+    CB_RETURN(
+        cb,
+        exec_context_->Error(tnode->loc(), "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND));
+  }
+
+  if (params_->page_size() == 0) {
+    CB_RETURN(cb, Status::OK());
+  }
+
+  // Create the read request.
   shared_ptr<YBqlReadOp> select_op(table->NewYQLSelect());
   YQLReadRequestPB *req = select_op->mutable_request();
 
@@ -795,61 +809,47 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
     req->add_column_ids(col_desc->id());
   }
 
+  // Default row count limit is the page size. And we should return paging state when page size
+  // limit is hit.
+  req->set_limit(params_->page_size());
+  req->set_return_paging_state(true);
+
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   EvalIntValue limit_value;
   if (tnode->has_limit()) {
     const PTExpr::SharedPtr limit_expr = tnode->limit();
     CB_RETURN_NOT_OK(cb, EvalIntExpr(limit_expr, &limit_value));
-    if (limit_value.value_ > 0) {
-      if (limit_value.value_ > params_->total_num_rows_read()) {
-        uint64_t limit = limit_value.value_ - params_->total_num_rows_read();
-        if (params_->page_size() > 0) {
-          req->set_limit(std::min(limit, params_->page_size()));
-        } else {
-          req->set_limit(limit);
-        }
-      } else {
-        CB_RETURN(
-            cb, exec_context_->Error(
-                    tnode->loc(), "Number of rows returned already reached the limit.",
-                    ErrorCode::INVALID_ARGUMENTS));
-      }
+    if (limit_value.value_ < 0) {
+      CB_RETURN(
+          cb, exec_context_->Error(
+              tnode->loc(), "LIMIT clause cannot be a negative value.",
+              ErrorCode::INVALID_ARGUMENTS));
     }
-  } else if (params_->page_size() > 0) {
-    req->set_limit(params_->page_size());
-  }
-
-  *req->mutable_paging_state() = params_->paging_state();
-  string curr_table_id = params_->table_id();
-  if (!curr_table_id.empty() && curr_table_id != table->id()) {
-    CB_RETURN(
-        cb,
-        exec_context_->Error(tnode->loc(), "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND));
-  }
-
-  // Apply the operator always even when select_op is "null" so that the last read_op saved in
-  // exec_context is always cleared.
-  exec_context_->ApplyReadAsync(
-      select_op, tnode, Bind(
-                            &Executor::ApplyReadAsyncDone, Unretained(this), Unretained(tnode),
-                            limit_value, select_op, cb));
-}
-
-void Executor::ApplyReadAsyncDone(
-    const PTSelectStmt *tnode, EvalIntValue limit_value, shared_ptr<YBqlReadOp> select_op,
-    StatementExecutedCallback cb, const Status &s, ExecutedResult::SharedPtr result) {
-  const shared_ptr<client::YBTable> &table = tnode->table();
-  YQLPagingStatePB *paging_state_pb = select_op->mutable_response()->mutable_paging_state();
-  paging_state_pb->set_table_id(table->id());
-  if ((tnode->has_limit() && limit_value.value_ <= paging_state_pb->total_num_rows_read()) ||
-      paging_state_pb->next_partition_key().empty()) {
-    if (result != nullptr && result->type() == ExecutedResult::Type::ROWS) {
-      static_cast<RowsResult*>(result.get())->clear_paging_state();
+    if (limit_value.value_ == 0 || params_->total_num_rows_read() >= limit_value.value_) {
+      CB_RETURN(cb, Status::OK());
     }
-    select_op->mutable_response()->clear_paging_state();
-    VLOG(3) << "End of read, clearing paging state";
+
+    // If the LIMIT clause, subtracting the number of rows we have returned so far, is lower than
+    // the page size limit set from above, set the lower limit and do not return paging state when
+    // this limit is hit.
+    uint64_t limit = limit_value.value_ - params_->total_num_rows_read();
+    if (limit < req->limit()) {
+      req->set_limit(limit);
+      req->set_return_paging_state(false);
+    }
   }
-  cb.Run(s, result);
+
+  // If this is a continuation of a prior read, set the next partition key, row key and total number
+  // of rows read in the request's paging state.
+  if (continue_select) {
+    YQLPagingStatePB *paging_state = req->mutable_paging_state();
+    paging_state->set_next_partition_key(params_->next_partition_key());
+    paging_state->set_next_row_key(params_->next_row_key());
+    paging_state->set_total_num_rows_read(params_->total_num_rows_read());
+  }
+
+  // Apply the operator.
+  exec_context_->ApplyReadAsync(select_op, tnode, cb);
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -334,14 +334,13 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue(100)});
-  YQLScanSpec yql_scan_spec (schema, 0, hashed_components, nullptr,
-                             std::numeric_limits<size_t>::max());
+  YQLScanSpec yql_scan_spec (schema, 0, hashed_components, nullptr);
   DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
                               HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter.Init(yql_scan_spec));
   ASSERT_TRUE(yql_iter.HasNext());
   YQLValueMap value_map;
-  ASSERT_OK(yql_iter.NextRow(yql_scan_spec, &value_map));
+  ASSERT_OK(yql_iter.NextRow(&value_map));
   ASSERT_EQ(4, value_map.size());
   EXPECT_EQ(100, value_map.at(ColumnId(0)).int32_value());
   EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(1))));
@@ -380,14 +379,13 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue(101)});
-  YQLScanSpec yql_scan_spec_system (schema, 0, hashed_components_system, nullptr,
-                             std::numeric_limits<size_t>::max());
+  YQLScanSpec yql_scan_spec_system (schema, 0, hashed_components_system, nullptr);
   DocRowwiseIterator yql_iter_system(schema, schema, rocksdb(),
                                      HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter_system.Init(yql_scan_spec_system));
   ASSERT_TRUE(yql_iter_system.HasNext());
   YQLValueMap value_map_system;
-  ASSERT_OK(yql_iter_system.NextRow(yql_scan_spec_system, &value_map_system));
+  ASSERT_OK(yql_iter_system.NextRow(&value_map_system));
   ASSERT_EQ(4, value_map_system.size());
   EXPECT_EQ(101, value_map_system.at(ColumnId(0)).int32_value());
   EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(1))));
