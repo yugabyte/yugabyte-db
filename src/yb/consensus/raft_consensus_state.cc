@@ -385,27 +385,27 @@ void ReplicaState::DumpPendingTransactions() {
 }
 
 Status ReplicaState::CancelPendingTransactions() {
- {
-   ThreadRestrictions::AssertWaitAllowed();
-   UniqueLock lock(update_lock_);
-   if (state_ != kShuttingDown) {
-     return STATUS(IllegalState, "Can only wait for pending commits on kShuttingDown state.");
-   }
-   if (pending_txns_.empty()) {
-     return Status::OK();
-   }
+  {
+    ThreadRestrictions::AssertWaitAllowed();
+    UniqueLock lock(update_lock_);
+    if (state_ != kShuttingDown) {
+      return STATUS(IllegalState, "Can only wait for pending commits on kShuttingDown state.");
+    }
+    if (pending_txns_.empty()) {
+      return Status::OK();
+    }
 
-   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_txns_.size()
-                                  << " pending transactions.";
-   for (const auto& txn : pending_txns_) {
-     const scoped_refptr<ConsensusRound>& round = txn.second;
-     // We cancel only transactions whose applies have not yet been triggered.
-     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting transaction as it isn't in flight: "
-                                    << txn.second->replicate_msg()->ShortDebugString();
-     round->NotifyReplicationFinished(STATUS(Aborted, "Transaction aborted"));
-   }
- }
- return Status::OK();
+    LOG_WITH_PREFIX_UNLOCKED(INFO) << "Trying to abort " << pending_txns_.size()
+                                   << " pending transactions.";
+    for (const auto& txn : pending_txns_) {
+      const scoped_refptr<ConsensusRound>& round = txn.second;
+      // We cancel only transactions whose applies have not yet been triggered.
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Aborting transaction as it isn't in flight: "
+                                     << txn.second->replicate_msg()->ShortDebugString();
+      round->NotifyReplicationFinished(STATUS(Aborted, "Transaction aborted"));
+    }
+  }
+  return Status::OK();
 }
 
 Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
@@ -548,8 +548,11 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
 }
 
 Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
+                                                   MustExist must_exist,
                                                    bool *committed_index_changed) {
-  *committed_index_changed = false;
+  if (committed_index_changed) {
+    *committed_index_changed = false;
+  }
   // If we already committed up to (or past) 'id' return.
   // This can happen in the case that multiple UpdateConsensus() calls end
   // up in the RPC queue at the same time, and then might get interleaved out
@@ -572,6 +575,17 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   auto iter = pending_txns_.upper_bound(last_committed_index_.index());
   // Stop at the operation after the last one we must commit.
   auto end_iter = pending_txns_.upper_bound(committed_index.index());
+  if (must_exist == MustExist::YES) {
+    if (end_iter == pending_txns_.begin()) {
+      return STATUS(NotFound, "No pending entries before committed index");
+    }
+    auto prev = end_iter;
+    --prev;
+    auto prev_id = prev->second->id();
+    if (OpIdEquals(prev_id, committed_index)) {
+      return STATUS(NotFound, "No pending entry with committed index");
+    }
+  }
   CHECK(iter != pending_txns_.end());
 
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Last triggered apply was: "
@@ -635,7 +649,9 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   }
 
   last_committed_index_.CopyFrom(committed_index);
-  *committed_index_changed = true;
+  if (committed_index_changed) {
+    *committed_index_changed = true;
+  }
   return Status::OK();
 }
 

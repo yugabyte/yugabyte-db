@@ -303,9 +303,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       RETURN_NOT_OK(StartReplicaTransactionUnlocked(replicate_ptr));
     }
 
-    bool committed_index_changed = false;
-    RETURN_NOT_OK(
-        state_->AdvanceCommittedIndexUnlocked(info.last_committed_id, &committed_index_changed));
+    RETURN_NOT_OK(state_->AdvanceCommittedIndexUnlocked(info.last_committed_id));
 
     queue_->Init(state_->GetLastReceivedOpIdUnlocked());
   }
@@ -414,8 +412,13 @@ Status RaftConsensus::StartElection(
     // has jumped before we can start.
     bool start_now = true;
     if (pending_commit) {
-      start_now = state_->HasOpIdCommittedUnlocked(
-          opid.IsInitialized() ? opid : state_->GetPendingElectionOpIdUnlocked());
+      auto required_id = opid.IsInitialized() ? opid : state_->GetPendingElectionOpIdUnlocked();
+      if (!state_->AdvanceCommittedIndexUnlocked(required_id, MustExist::YES).ok()) {
+        LOG(WARNING) << "Starting an election but the latest committed OpId is not "
+                        "present in this peer's log: "
+                     << required_id.ShortDebugString();
+      }
+      start_now = state_->HasOpIdCommittedUnlocked(required_id);
     }
 
     if (start_now) {
@@ -553,7 +556,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     for (const RaftPeerPB& peer : active_config.peers()) {
       if (peer.member_type() == RaftPeerPB::VOTER &&
           peer.permanent_uuid() == new_leader_uuid) {
-        shared_ptr<RunLeaderElectionState> election_state(new RunLeaderElectionState());
+        auto election_state = std::make_shared<RunLeaderElectionState>();
         RETURN_NOT_OK(peer_proxy_factory_->NewProxy(peer, &election_state->proxy));
         election_state->req.set_dest_uuid(new_leader_uuid);
         election_state->req.set_tablet_id(tablet_id);
@@ -582,14 +585,18 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   RETURN_NOT_OK(BecomeReplicaUnlocked());
 
+  WithholdElectionAfterStepDown();
+
+  return Status::OK();
+}
+
+void RaftConsensus::WithholdElectionAfterStepDown() {
   just_stepped_down_ = true;
   withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
   withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
       FLAGS_after_stepdown_delay_election_multiplier *
       FLAGS_leader_failure_max_missed_heartbeat_periods *
       FLAGS_raft_heartbeat_interval_ms));
-
-  return Status::OK();
 }
 
 void RaftConsensus::RunLeaderElectionResponseRpcCallback(
@@ -676,12 +683,7 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
                                  << state_->ToStringUnlocked();
 
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
-    just_stepped_down_ = true;
-    withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
-    withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
-        FLAGS_after_stepdown_delay_election_multiplier *
-        FLAGS_leader_failure_max_missed_heartbeat_periods *
-        FLAGS_raft_heartbeat_interval_ms));
+    WithholdElectionAfterStepDown();
   }
 
   state_->ClearLeaderUnlocked();
@@ -1294,8 +1296,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
         early_apply_up_to.ShortDebugString();
     TRACE("Early marking committed up to $0",
           early_apply_up_to.ShortDebugString());
-    bool committed_index_changed = false;
-    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(early_apply_up_to, &committed_index_changed));
+    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(early_apply_up_to));
 
     // 2 - Enqueue the prepares
 
@@ -1404,7 +1405,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
 
     VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking committed up to " << apply_up_to.ShortDebugString();
     TRACE(Substitute("Marking committed up to $0", apply_up_to.ShortDebugString()));
-    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(apply_up_to, &committed_index_changed));
+    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(apply_up_to));
 
     // We can now update the last received watermark.
     //

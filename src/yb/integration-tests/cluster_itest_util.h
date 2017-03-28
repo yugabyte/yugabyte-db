@@ -165,18 +165,28 @@ Status WaitUntilCommittedConfigNumVotersIs(int config_size,
                                            const std::string& tablet_id,
                                            const MonoDelta& timeout);
 
-// Wait until the opid_index of the committed consensus config on the
-// specified tablet is 'opid_index'.
-Status WaitUntilCommittedConfigOpIdIndexIs(int64_t opid_index,
-                                           const TServerDetails* replica,
-                                           const std::string& tablet_id,
-                                           const MonoDelta& timeout);
+// Used to specify committed entry type.
+enum class CommittedEntryType {
+  ANY,
+  CONFIG,
+};
 
-// Wait until the last commited OpId has index exactly 'opid_index'.
+// Wait until the last committed OpId has index exactly 'opid_index'.
+// 'type' - type of committed entry for check.
 Status WaitUntilCommittedOpIdIndexIs(int64_t opid_index,
                                      TServerDetails* replica,
                                      const std::string& tablet_id,
-                                     const MonoDelta& timeout);
+                                     const MonoDelta& timeout,
+                                     CommittedEntryType type = CommittedEntryType::ANY);
+
+// Wait until the last committed OpId has index greater than 'opid_index' and store new value there.
+// The value pointed by 'opid_index' should not change during execution.
+// 'type' - type of committed entry for check.
+Status WaitUntilCommittedOpIdIndexGrow(int64_t* opid_index,
+                                       TServerDetails* replica,
+                                       const std::string& tablet_id,
+                                       const MonoDelta& timeout,
+                                       CommittedEntryType type = CommittedEntryType::ANY);
 
 // Returns:
 // Status::OK() if the replica is alive and leader of the consensus configuration.

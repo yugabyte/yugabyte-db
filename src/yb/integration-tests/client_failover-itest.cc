@@ -39,6 +39,10 @@ using std::unordered_map;
 
 namespace yb {
 
+namespace {
+const int kNumberOfRetries = 5;
+}
+
 // Integration test for client failover behavior.
 class ClientFailoverITest : public ExternalMiniClusterITestBase {
 };
@@ -48,8 +52,7 @@ class ClientFailoverITest : public ExternalMiniClusterITestBase {
 TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
 
-  vector<string> ts_flags = { "--enable_leader_failure_detection=false",
-                              "--enable_remote_bootstrap=false" };
+  vector<string> ts_flags = { "--enable_remote_bootstrap=false" };
   vector<string> master_flags = {"--catalog_manager_wait_for_new_tablets_to_elect_leader=false"};
 
   // Start up with 4 tablet servers.
@@ -83,7 +86,21 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   }
   int leader_index = *replica_indexes.begin();
   TServerDetails* leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()];
-  ASSERT_OK(itest::StartElection(leader, tablet_id, kTimeout));
+  for (auto retries_left = kNumberOfRetries; ;) {
+    TServerDetails *current_leader = nullptr;
+    ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &current_leader));
+    if (current_leader->uuid() == leader->uuid()) {
+      break;
+    } else if (retries_left <= 0) {
+      FAIL() << "Failed to elect first server as leader";
+    }
+    ASSERT_OK(itest::StartElection(leader, tablet_id, kTimeout));
+    --retries_left;
+    SleepFor(MonoDelta::FromMilliseconds(150 * (kNumberOfRetries - retries_left)));
+  }
+
+  int64_t expected_index = 0;
+  ASSERT_OK(WaitForServersToAgree(kTimeout, active_ts_map, tablet_id, 0, &expected_index));
 
   // Write data to a tablet.
   workload.Start();
@@ -92,17 +109,24 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   }
   workload.StopAndJoin();
 
+  expected_index += workload.batches_completed();
+
   // We don't want the leader that takes over after we kill the first leader to
   // be unsure whether the writes have been committed, so wait until all
   // replicas have all of the writes.
-  ASSERT_OK(WaitForServersToAgree(kTimeout, active_ts_map, tablet_id,
-                                  workload.batches_completed() + 1));
+  ASSERT_OK(WaitForServersToAgree(kTimeout,
+                                  active_ts_map,
+                                  tablet_id,
+                                  expected_index,
+                                  &expected_index));
 
   // Open the scanner and count the rows.
   shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(TestWorkload::kDefaultTableName, &table));
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
-  LOG(INFO) << "Number of rows: " << workload.rows_inserted();
+  LOG(INFO) << "Number of rows: " << workload.rows_inserted()
+            << ", batches: " << workload.batches_completed()
+            << ", expected index: " << expected_index;
 
   // Delete the leader replica. This will cause the next scan to the same
   // leader to get a TABLET_NOT_FOUND error.
@@ -110,24 +134,56 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                 boost::none, kTimeout));
 
   int old_leader_index = leader_index;
+  // old_leader - node that was leader before we started to elect a new leader
   TServerDetails* old_leader = leader;
-  leader_index = *(++replica_indexes.begin()); // Select the "next" replica as leader.
-  leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()];
 
   ASSERT_EQ(1, replica_indexes.erase(old_leader_index));
   ASSERT_EQ(1, active_ts_map.erase(old_leader->uuid()));
 
-  // We need to elect a new leader to remove the old node.
-  ASSERT_OK(itest::StartElection(leader, tablet_id, kTimeout));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(workload.batches_completed() + 2, leader, tablet_id,
-                                          kTimeout));
+  for (auto retries_left = kNumberOfRetries; ; --retries_left) {
+    // current_leader - node that currently leader
+    TServerDetails *current_leader = nullptr;
+    ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &current_leader));
+    if (current_leader->uuid() != old_leader->uuid()) {
+      leader = current_leader;
+      // Do a config change to remove the old replica and add a new one.
+      // Cause the new replica to become leader, then do the scan again.
+      // Since old_leader is not changed in loop we would not remove more than one node.
+      auto result = RemoveServer(leader, tablet_id, old_leader, boost::none, kTimeout);
+      if (result.ok()) {
+        break;
+      } else if (retries_left <= 0) {
+        FAIL() << "RemoveServer failed and out of retries: " << result.ToString();
+      } else {
+        LOG(WARNING) << "RemoveServer failed: " << result.ToString() << ", after "
+                     << kNumberOfRetries << " retries";
+      }
+      SleepFor(MonoDelta::FromMilliseconds(100));
+    } else if (retries_left <= 0) {
+      FAIL() << "Failed to elect new leader instead of " << old_leader->uuid();
+    }
+    TServerDetails* desired_leader = nullptr;
+    for (auto index : replica_indexes) {
+      auto new_leader_uuid = cluster_->tablet_server(index)->uuid();
+      if (new_leader_uuid != old_leader->uuid()) {
+        desired_leader = ts_map_[new_leader_uuid];
+        break;
+      }
+    }
+    ASSERT_NE(desired_leader, nullptr);
+    ASSERT_OK(itest::StartElection(desired_leader, tablet_id, kTimeout));
+    ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index,
+                                              desired_leader,
+                                              tablet_id,
+                                              kTimeout));
+  }
 
-  // Do a config change to remove the old replica and add a new one.
-  // Cause the new replica to become leader, then do the scan again.
-  ASSERT_OK(RemoveServer(leader, tablet_id, old_leader, boost::none, kTimeout));
   // Wait until the config is committed, otherwise AddServer() will fail.
-  ASSERT_OK(WaitUntilCommittedConfigOpIdIndexIs(workload.batches_completed() + 3, leader, tablet_id,
-                                                kTimeout));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index,
+                                            leader,
+                                            tablet_id,
+                                            kTimeout,
+                                            itest::CommittedEntryType::CONFIG));
 
   TServerDetails* to_add = ts_map_[cluster_->tablet_server(missing_replica_index)->uuid()];
   ASSERT_OK(AddServer(leader, tablet_id, to_add, consensus::RaftPeerPB::PRE_VOTER,
@@ -141,28 +197,35 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   InsertOrDie(&active_ts_map, new_ts_uuid, ts_map_[new_ts_uuid]);
 
   // Wait for remote bootstrap to complete. Then elect the new node.
-  ASSERT_OK(WaitForServersToAgree(kTimeout, active_ts_map, tablet_id,
-                                  workload.batches_completed() + 5));
+  ASSERT_OK(WaitForServersToAgree(kTimeout,
+                                  active_ts_map,
+                                  tablet_id,
+                                  ++expected_index,
+                                  &expected_index));
   leader_index = missing_replica_index;
   leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()];
   ASSERT_OK(itest::StartElection(leader, tablet_id, kTimeout));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(workload.batches_completed() + 6, leader, tablet_id,
-                                          kTimeout));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index, leader, tablet_id, kTimeout));
 
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
 
   // Rotate leaders among the replicas and verify the new leader is the designated one each time.
-  int last_op = 5;
   for (const auto ts_map : active_ts_map) {
-    TServerDetails* current_leader;
-    TServerDetails* new_leader = ts_map.second;
-    ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &current_leader));
-    ASSERT_OK(itest::LeaderStepDown(current_leader, tablet_id, new_leader, kTimeout));
-    ASSERT_OK(WaitUntilCommittedOpIdIndexIs(workload.batches_completed() + (++last_op),
-                                            new_leader, tablet_id, kTimeout));
-    current_leader = new_leader;
-    ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &new_leader));
-    ASSERT_EQ(current_leader->uuid(), new_leader->uuid());
+    for (auto retries_left = kNumberOfRetries; ; --retries_left) {
+      TServerDetails* current_leader = nullptr;
+      TServerDetails* new_leader = ts_map.second;
+      ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &current_leader));
+      ASSERT_OK(itest::LeaderStepDown(current_leader, tablet_id, new_leader, kTimeout));
+      ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index, new_leader, tablet_id, kTimeout));
+      current_leader = new_leader;
+      ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &new_leader));
+      if (current_leader->uuid() == new_leader->uuid()) {
+        break;
+      } else if (retries_left <= 0) {
+        FAIL() << "Failed to elect new leader instead of " << old_leader->uuid()
+               << ", after " << kNumberOfRetries << " retries";
+      }
+    }
   }
 
 }

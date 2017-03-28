@@ -445,6 +445,9 @@ class RaftConsensus : public Consensus,
   // string implies there are servers in transit.
   string ServersInTransitionMessage();
 
+  // Prevent starting new election for some time, after we stepped down.
+  void WithholdElectionAfterStepDown();
+
   // Threadpool for constructing requests to peers, handling RPC callbacks,
   // etc.
   gscoped_ptr<ThreadPool> thread_pool_;

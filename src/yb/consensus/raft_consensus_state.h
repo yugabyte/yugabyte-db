@@ -45,6 +45,12 @@ class Messenger;
 
 namespace consensus {
 
+// Used instead of bool flag must_exist to improve method call readability.
+enum class MustExist {
+  NO,
+  YES,
+};
+
 // Class that coordinates access to the replica state (independently of Role).
 // This has a 1-1 relationship with RaftConsensus and is essentially responsible for
 // keeping state and checking if state changes are viable.
@@ -111,7 +117,7 @@ class ReplicaState {
   // state (role) to replicate the provided operation, that the operation
   // contains a replicate message and is of the appropriate type, and returns
   // Status::IllegalState if that is not the case.
-  CHECKED_STATUS LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const;
 
   // Locks a replica down until an the critical section of an update completes.
   // Further updates from the same or some other leader will be blocked until
@@ -247,10 +253,17 @@ class ReplicaState {
 
   // Advances the committed index.
   // This is a no-op if the committed index has not changed.
+  // `must_exist` - set to Yes to fail when specified commit index is not present in log.
   // Returns in '*committed_index_changed' whether the operation actually advanced
   // the index.
   CHECKED_STATUS AdvanceCommittedIndexUnlocked(const OpId& committed_index,
-                                       bool* committed_index_changed);
+                                               MustExist must_exist,
+                                               bool* committed_index_changed = nullptr);
+
+  CHECKED_STATUS AdvanceCommittedIndexUnlocked(const OpId& committed_index,
+                                               bool* committed_index_changed = nullptr) {
+    return AdvanceCommittedIndexUnlocked(committed_index, MustExist::NO, committed_index_changed);
+  }
 
   // Returns the watermark below which all operations are known to
   // be committed according to consensus.

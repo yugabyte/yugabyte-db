@@ -18,26 +18,37 @@
 
 #include <algorithm>
 #include <limits>
+
 #include <boost/optional.hpp>
+
 #include <glog/stl_logging.h>
 
+#include <gtest/gtest.h>
+
 #include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/master.proxy.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/server/server_base.proxy.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/net/net_util.h"
 
 namespace yb {
@@ -342,62 +353,141 @@ Status WaitUntilCommittedConfigMemberTypeIs(int config_size,
                                      cstate.ShortDebugString(), s.ToString()));
 }
 
-Status WaitUntilCommittedConfigOpIdIndexIs(int64_t opid_index,
-                                           const TServerDetails* replica,
-                                           const std::string& tablet_id,
-                                           const MonoDelta& timeout) {
+template<class Context>
+Status WaitUntilCommittedOpIdIndex(TServerDetails* replica,
+                                   const string& tablet_id,
+                                   const MonoDelta& timeout,
+                                   CommittedEntryType type,
+                                   Context context) {
   MonoTime start = MonoTime::Now(MonoTime::FINE);
   MonoTime deadline = start;
   deadline.AddDelta(timeout);
 
+  bool config = type == CommittedEntryType::CONFIG;
   Status s;
+  OpId op_id;
   ConsensusStatePB cstate;
   while (true) {
     MonoDelta remaining_timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
-    s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_COMMITTED,
-                          remaining_timeout, &cstate);
-    if (s.ok() && cstate.config().opid_index() == opid_index) {
+
+    int64_t op_index = -1;
+    if (config) {
+      s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_COMMITTED,
+          remaining_timeout, &cstate);
+      if (s.ok()) {
+        op_index = cstate.config().opid_index();
+      }
+    } else {
+      s = GetLastOpIdForReplica(tablet_id, replica, consensus::COMMITTED_OPID, remaining_timeout,
+          &op_id);
+      if (s.ok()) {
+        op_index = op_id.index();
+      }
+    }
+
+    if (s.ok() && context.Check(op_index)) {
+      if (config) {
+        LOG(INFO) << "Committed config state is: " << cstate.ShortDebugString() << " for replica: "
+                  << replica->instance_id.permanent_uuid();
+      } else {
+        LOG(INFO) << "Committed op_id index is: " << op_id << " for replica: "
+                  << replica->instance_id.permanent_uuid();
+      }
       return Status::OK();
     }
-    if (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).MoreThan(timeout)) break;
-    SleepFor(MonoDelta::FromMilliseconds(10));
+    auto passed = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
+    if (passed.MoreThan(timeout)) {
+      auto name = config ? "config" : "consensus";
+      auto last_value = config ? cstate.ShortDebugString() : OpIdToString(op_id);
+      return STATUS(TimedOut,
+                    Substitute("Committed $0 opid_index does not equal $1 "
+                               "after waiting for $2. Last value: $3, Last status: $4",
+                               name,
+                               context.Desired(),
+                               passed.ToString(),
+                               last_value,
+                               s.ToString()));
+    }
+    if (!config) {
+      LOG(INFO) << "Committed index is at: " << op_id.index() << " and not yet at "
+                << context.Desired();
+    }
+    SleepFor(MonoDelta::FromMilliseconds(100));
   }
-  return STATUS(TimedOut, Substitute("Committed config opid_index does not equal $0 "
-                                     "after waiting for $1. "
-                                     "Last consensus state: $2. Last status: $3",
-                                     opid_index,
-                                     MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).ToString(),
-                                     cstate.ShortDebugString(), s.ToString()));
 }
+
+class WaitUntilCommittedOpIdIndexContext {
+ public:
+  explicit WaitUntilCommittedOpIdIndexContext(std::string desired)
+      : desired_(std::move(desired)) {
+  }
+
+  const string& Desired() const {
+    return desired_;
+  }
+ private:
+  string desired_;
+};
+
+class WaitUntilCommittedOpIdIndexIsContext : public WaitUntilCommittedOpIdIndexContext {
+ public:
+  explicit WaitUntilCommittedOpIdIndexIsContext(int64_t value)
+      : WaitUntilCommittedOpIdIndexContext(Substitute("equal $0", value)),
+        value_(value) {
+  }
+
+  bool Check(int64_t current) {
+    return value_ == current;
+  }
+ private:
+  int64_t value_;
+};
 
 Status WaitUntilCommittedOpIdIndexIs(int64_t opid_index,
                                      TServerDetails* replica,
                                      const string& tablet_id,
-                                     const MonoDelta& timeout) {
-  MonoTime start = MonoTime::Now(MonoTime::FINE);
-  MonoTime deadline = start;
-  deadline.AddDelta(timeout);
+                                     const MonoDelta& timeout,
+                                     CommittedEntryType type) {
+  return WaitUntilCommittedOpIdIndex(
+      replica,
+      tablet_id,
+      timeout,
+      type,
+      WaitUntilCommittedOpIdIndexIsContext(opid_index));
+}
 
-  Status s;
-  OpId op_id;
-  while (true) {
-    MonoDelta remaining_timeout = deadline.GetDeltaSince(MonoTime::Now(MonoTime::FINE));
-    s = GetLastOpIdForReplica(tablet_id, replica, consensus::COMMITTED_OPID, remaining_timeout,
-                              &op_id);
-    if (s.ok() && op_id.index() == opid_index) {
-      LOG(INFO) << "Committed op_id index is: " << op_id << " for replica: "
-                <<  replica->instance_id.permanent_uuid();;
-      return Status::OK();
-    }
-    if (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).MoreThan(timeout)) break;
-    LOG(INFO) << "Committed index is at: " << op_id.index() << " and not yet at " << opid_index;
-    SleepFor(MonoDelta::FromMilliseconds(100));
+class WaitUntilCommittedOpIdIndexGrowContext : public WaitUntilCommittedOpIdIndexContext {
+ public:
+  explicit WaitUntilCommittedOpIdIndexGrowContext(int64_t* value)
+      : WaitUntilCommittedOpIdIndexContext(Substitute("greater than $0", *value)),
+        original_value_(*value), value_(value) {
+
   }
-  return STATUS(TimedOut, Substitute("Committed consensus opid_index does not equal $0 "
-                                     "after waiting for $1. Last status: $2",
-                                     opid_index,
-                                     MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).ToString(),
-                                     s.ToString()));
+
+  bool Check(int64_t current) {
+    if (current > *value_) {
+      CHECK_EQ(*value_, original_value_);
+      *value_ = current;
+      return true;
+    }
+    return false;
+  }
+ private:
+  int64_t original_value_;
+  int64_t* const value_;
+};
+
+Status WaitUntilCommittedOpIdIndexGrow(int64_t* index,
+                                       TServerDetails* replica,
+                                       const string& tablet_id,
+                                       const MonoDelta& timeout,
+                                       CommittedEntryType type) {
+  return WaitUntilCommittedOpIdIndex(
+      replica,
+      tablet_id,
+      timeout,
+      type,
+      WaitUntilCommittedOpIdIndexGrowContext(index));
 }
 
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,

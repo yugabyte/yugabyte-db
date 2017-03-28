@@ -214,7 +214,11 @@ TEST_F(TabletReplacementITest, TestEvictAndReplaceDeadFollower) {
   cluster_->tablet_server(kFollowerIndex)->Shutdown();
 
   // With a RemoveServer and AddServer, the opid_index of the committed config will be 3.
-  ASSERT_OK(itest::WaitUntilCommittedConfigOpIdIndexIs(3, leader_ts, tablet_id, timeout));
+  ASSERT_OK(itest::WaitUntilCommittedOpIdIndexIs(3,
+                                                 leader_ts,
+                                                 tablet_id,
+                                                 timeout,
+                                                 itest::CommittedEntryType::CONFIG));
   ASSERT_OK(cluster_->tablet_server(kFollowerIndex)->Restart());
 }
 

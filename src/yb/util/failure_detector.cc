@@ -17,9 +17,10 @@
 
 #include "yb/util/failure_detector.h"
 
-#include <glog/logging.h>
 #include <mutex>
 #include <unordered_map>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -98,18 +99,18 @@ FailureDetector::NodeStatus TimedFailureDetector::GetNodeStatusUnlocked(const st
 }
 
 void TimedFailureDetector::CheckForFailures(const MonoTime& now) {
-  typedef unordered_map<string, FailureDetectedCallback> CallbackMap;
-  CallbackMap callbacks;
+  unordered_map<string, FailureDetectedCallback> callbacks;
   {
     std::lock_guard<simple_spinlock> lock(lock_);
-    for (const NodeMap::value_type& entry : nodes_) {
+    for (const auto& entry : nodes_) {
       if (GetNodeStatusUnlocked(entry.first, now) == DEAD) {
         InsertOrDie(&callbacks, entry.first, entry.second->callback);
       }
     }
   }
+
   // Invoke failure callbacks outside of lock.
-  for (const CallbackMap::value_type& entry : callbacks) {
+  for (const auto& entry : callbacks) {
     const string& node_name = entry.first;
     const FailureDetectedCallback& callback = entry.second;
     callback.Run(node_name, STATUS(RemoteError, Substitute("Node '$0' failed", node_name)));

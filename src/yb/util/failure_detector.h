@@ -158,7 +158,7 @@ class RandomizedFailureMonitor {
   // Runs the monitor thread.
   void RunThread();
 
-  // Mean & std. deviation of random period to sleep for between checking the
+    // Mean & std. deviation of random period to sleep for between checking the
   // failure detectors.
   const int64_t period_mean_millis_;
   const int64_t period_stddev_millis_;
