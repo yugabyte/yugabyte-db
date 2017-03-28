@@ -269,7 +269,8 @@ public class YBClient implements AutoCloseable {
         GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
         return resp.getInstanceId().getPermanentUuid().toStringUtf8();
       } catch (Exception e) {
-        LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+        LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
+                 hostAndPort.toString(), e.getMessage());
       }
     }
 
@@ -296,7 +297,8 @@ public class YBClient implements AutoCloseable {
             return resp.getInstanceId().getPermanentUuid().toStringUtf8();
           }
         } catch (Exception e) {
-          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
+          LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
+                   hostAndPort.toString(), e.getMessage());
         }
       }
     }

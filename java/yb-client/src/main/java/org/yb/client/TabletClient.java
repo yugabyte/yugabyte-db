@@ -493,6 +493,8 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     MasterErrorException ex = new MasterErrorException(uuid, error);
     if (error.getCode() == Master.MasterErrorPB.Code.NOT_THE_LEADER) {
       ybClient.handleNotLeader(rpc, ex, this);
+    } else if (error.getCode() == Master.MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED) {
+      ybClient.handleRetryableError(rpc, ex);
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE &&
         (!(rpc instanceof GetMasterRegistrationRequest))) {
       // TODO: This is a crutch until we either don't have to retry RPCs going to the
