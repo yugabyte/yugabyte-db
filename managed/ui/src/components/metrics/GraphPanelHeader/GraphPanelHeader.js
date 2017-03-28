@@ -103,17 +103,21 @@ class GraphPanelHeader extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const {location, universe: {universeList}} = nextProps;
+    const {location, universe, universe: {universeList}} = nextProps;
     if (this.props.location !== nextProps.location || this.props.universe.universeList !== universeList) {
       var nodePrefix = this.state.nodePrefix;
       if (location.query.nodePrefix) {
         nodePrefix = location.query.nodePrefix;
       }
-      var currentUniverse = universeList.find(function (item) {
-        return item.universeDetails.nodePrefix === nodePrefix;
-      })
-      if (!isValidObject(currentUniverse) || !isValidArray(Object.keys(currentUniverse))) {
-        currentUniverse = "all";
+      if (!universe.currentUniverse) {
+        var currentUniverse = universeList.find(function (item) {
+          return item.universeDetails.nodePrefix === nodePrefix;
+        })
+        if (!isValidObject(currentUniverse) || !isValidArray(Object.keys(currentUniverse))) {
+          currentUniverse = "all";
+        }
+      } else {
+        currentUniverse = universe.currentUniverse;
       }
       var currentSelectedNode = "all";
       if (isValidObject(location.query.nodeName)) {
