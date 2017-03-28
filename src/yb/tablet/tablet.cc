@@ -337,6 +337,7 @@ Status Tablet::OpenKeyValueTablet() {
     return STATUS(IllegalState, rocksdb_open_status.ToString());
   }
   rocksdb_.reset(db);
+  yql_storage_.reset(new docdb::YQLRocksDBStorage(rocksdb_.get()));
   LOG(INFO) << "Successfully opened a RocksDB database at " << db_dir;
   largest_flushed_seqno_collector_->SetLargestSeqNum(MaxPersistentSequenceNumber());
   return Status::OK();
@@ -915,6 +916,41 @@ Status Tablet::HandleRedisReadRequest(HybridTime timestamp,
   return Status::OK();
 }
 
+Status Tablet::HandleYQLReadRequest(
+    HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
+    gscoped_ptr<faststring>* rows_data) {
+  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
+
+  return AbstractTablet::HandleYQLReadRequest(timestamp, yql_read_request, response, rows_data);
+}
+
+CHECKED_STATUS Tablet::CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
+                                                const YQLRowBlock& rowblock,
+                                                YQLResponsePB* response) const {
+  // If there is no hash column in the read request, this is a full-table query. And if there is no
+  // paging state in the response, we are done reading from the current tablet. In this case, we
+  // should return the exclusive end partition key of this tablet if not empty which is the start
+  // key of the next tablet. Do so only if the request has no row count limit, or there is and we
+  // haven't hit it, or we are asked to return paging state even when we have hit the limit.
+  // Otherwise, leave the paging state empty which means we are completely done reading for the
+  // whole SELECT statement.
+  if (yql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
+      (!yql_read_request.has_limit() || rowblock.row_count() < yql_read_request.limit() ||
+          yql_read_request.return_paging_state())) {
+    const string& next_partition_key = metadata_->partition().partition_key_end();
+    if (!next_partition_key.empty()) {
+      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
+    }
+  }
+
+  // If there is a paging state, update the total number of rows read so far.
+  if (response->has_paging_state()) {
+    response->mutable_paging_state()->set_total_num_rows_read(
+        yql_read_request.paging_state().total_num_rows_read() + rowblock.row_count());
+  }
+  return Status::OK();
+}
+
 Status Tablet::KeyValueBatchFromYQLWriteBatch(
     const WriteRequestPB& write_request,
     unique_ptr<const WriteRequestPB>* write_batch_pb,
@@ -945,62 +981,6 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
   }
   write_request_copy->clear_row_operations();
 
-  return Status::OK();
-}
-
-Status Tablet::HandleYQLReadRequest(HybridTime timestamp,
-                                    const YQLReadRequestPB& yql_read_request,
-                                    YQLResponsePB* response,
-                                    gscoped_ptr<faststring>* rows_data) {
-  GUARD_AGAINST_ROCKSDB_SHUTDOWN;
-
-  // TODO(Robert): verify that all key column values are provided
-  docdb::YQLReadOperation doc_op(yql_read_request);
-
-  vector<ColumnId> column_ids;
-  for (const auto column_id : yql_read_request.column_ids()) {
-    column_ids.emplace_back(column_id);
-  }
-  YQLRowBlock rowblock(metadata_->schema(), column_ids);
-  TRACE("Start Execute");
-  const Status s = doc_op.Execute(
-      rocksdb_.get(), timestamp, metadata_->schema(), &rowblock);
-  TRACE("Done Execute");
-  if (!s.ok()) {
-    response->set_status(YQLResponsePB::YQL_STATUS_RUNTIME_ERROR);
-    response->set_error_message(s.message().ToString());
-    return Status::OK();
-  }
-
-  *response = std::move(doc_op.response());
-
-  // If there is no hash column in the read request, this is a full-table query. And if there is no
-  // paging state in the response, we are done reading from the current tablet. In this case, we
-  // should return the exclusive end partition key of this tablet if not empty which is the start
-  // key of the next tablet. Do so only if the request has no row count limit, or there is and we
-  // haven't hit it, or we are asked to return paging state even when we have hit the limit.
-  // Otherwise, leave the paging state empty which means we are completely done reading for the
-  // whole SELECT statement.
-  if (yql_read_request.hashed_column_values().empty() && !response->has_paging_state() &&
-      (!yql_read_request.has_limit() || rowblock.row_count() < yql_read_request.limit() ||
-       yql_read_request.return_paging_state())) {
-    const string& next_partition_key = metadata_->partition().partition_key_end();
-    if (!next_partition_key.empty()) {
-      response->mutable_paging_state()->set_next_partition_key(next_partition_key);
-    }
-  }
-
-  // If there is a paging state, update the total number of rows read so far.
-  if (response->has_paging_state()) {
-    response->mutable_paging_state()->set_total_num_rows_read(
-        yql_read_request.paging_state().total_num_rows_read() + rowblock.row_count());
-  }
-
-  response->set_status(YQLResponsePB::YQL_STATUS_OK);
-  rows_data->reset(new faststring());
-  TRACE("Start Serialize");
-  rowblock.Serialize(yql_read_request.client(), rows_data->get());
-  TRACE("Done Serialize");
   return Status::OK();
 }
 
@@ -2598,7 +2578,7 @@ void Tablet::UnregisterReader(HybridTime timestamp) {
   }
 }
 
-ScopedReadTransaction::ScopedReadTransaction(Tablet* tablet)
+ScopedReadTransaction::ScopedReadTransaction(AbstractTablet* tablet)
     : tablet_(tablet), timestamp_(tablet_->SafeTimestampToRead()) {
   tablet_->RegisterReaderTimestamp(timestamp_);
 }

@@ -34,6 +34,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.service.h"
 #include "yb/master/master_service.h"
+#include "yb/master/master_tablet_service.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/messenger.h"
@@ -69,6 +70,10 @@ using yb::tserver::ConsensusServiceImpl;
 using yb::tserver::RemoteBootstrapServiceImpl;
 using strings::Substitute;
 
+DEFINE_int32(master_tserver_svc_num_threads, 10,
+             "Number of RPC worker threads to run for the master tserver service");
+TAG_FLAG(master_tserver_svc_num_threads, advanced);
+
 DEFINE_int32(master_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master service");
 TAG_FLAG(master_svc_num_threads, advanced);
@@ -80,6 +85,10 @@ TAG_FLAG(master_consensus_svc_num_threads, advanced);
 DEFINE_int32(master_remote_bootstrap_svc_num_threads, 10,
              "Number of RPC threads for the master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_num_threads, advanced);
+
+DEFINE_int32(master_tserver_svc_queue_length, 50,
+             "RPC queue length for master tserver service");
+TAG_FLAG(master_tserver_svc_queue_length, advanced);
 
 DEFINE_int32(master_svc_queue_length, 50,
              "RPC queue length for master service");
@@ -106,7 +115,8 @@ Master::Master(const MasterOptions& opts)
     registration_initialized_(false),
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
     metric_entity_cluster_(METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(),
-                                                             "yb.cluster")) {
+                                                             "yb.cluster")),
+    master_tablet_server_(new MasterTabletServer()) {
 }
 
 Master::~Master() {
@@ -149,6 +159,8 @@ Status Master::StartAsync() {
   RETURN_NOT_OK(maintenance_manager_->Init());
 
   gscoped_ptr<ServiceIf> impl(new MasterServiceImpl(this));
+  gscoped_ptr<ServiceIf> master_tserver_impl(
+      new MasterTabletServiceImpl(master_tablet_server_.get(), this));
   gscoped_ptr<ServiceIf> consensus_service(
     new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
   gscoped_ptr<ServiceIf> remote_bootstrap_service(
@@ -156,6 +168,8 @@ Status Master::StartAsync() {
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
      SERVICE_POOL_OPTIONS(master_svc, msvc), impl.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      SERVICE_POOL_OPTIONS(master_tserver_svc, mtssvc), master_tserver_impl.Pass()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
      SERVICE_POOL_OPTIONS(master_consensus_svc, conssvc), consensus_service.Pass()));
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(

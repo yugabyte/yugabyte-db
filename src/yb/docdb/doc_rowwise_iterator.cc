@@ -3,8 +3,10 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/common/iterator.h"
+#include "yb/common/partition.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_yql_scanspec.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/strings/substitute.h"
@@ -78,12 +80,14 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::Init(const YQLScanSpec& spec) {
-  // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
+Status DocRowwiseIterator::Init(const common::YQLScanSpec& spec) {
+  const DocYQLScanSpec& doc_spec = dynamic_cast<const DocYQLScanSpec&>(spec);
+
+  // TOOD(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   DocKey lower_doc_key;
   DocKey upper_doc_key;
-  RETURN_NOT_OK(spec.lower_bound(&lower_doc_key));
-  RETURN_NOT_OK(spec.upper_bound(&upper_doc_key));
+  RETURN_NOT_OK(doc_spec.lower_bound(&lower_doc_key));
+  RETURN_NOT_OK(doc_spec.upper_bound(&upper_doc_key));
   const bool is_fixed_point_get = !lower_doc_key.empty() && upper_doc_key == lower_doc_key;
   db_iter_ = CreateRocksDBIterator(db_, is_fixed_point_get /* use_bloom_on_scan */);
 
@@ -601,6 +605,27 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
   RETURN_NOT_OK(doc_key.DecodeFrom(&slice));
   *sub_doc_key = SubDocKey(doc_key, hybrid_time_);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
+  return Status::OK();
+}
+
+CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const YQLReadRequestPB& request,
+                                                             const YQLRowBlock& rowblock,
+                                                             const size_t row_count_limit,
+                                                             YQLResponsePB* response) const {
+  // When the "limit" number of rows are returned and we are asked to return the paging state,
+  // return the parition key and row key of the next row to read in the paging state if there are
+  // still more rows to read. Otherwise, leave the paging state empty which means we are done
+  // reading from this tablet.
+  if (rowblock.row_count() == row_count_limit && request.return_paging_state()) {
+    SubDocKey next_key;
+    RETURN_NOT_OK(GetNextReadSubDocKey(&next_key));
+    if (!next_key.doc_key().empty()) {
+      YQLPagingStatePB* paging_state = response->mutable_paging_state();
+      paging_state->set_next_partition_key(
+          PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
+      paging_state->set_next_row_key(next_key.Encode(true /* include_hybrid_time */).data());
+    }
+  }
   return Status::OK();
 }
 

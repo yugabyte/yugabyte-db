@@ -36,6 +36,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
 #include "yb/server/monitored_task.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/locks.h"
@@ -296,7 +297,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
 
   std::string ToString() const;
 
-  const NamespaceId& namespace_id() const;
+  const NamespaceId namespace_id() const;
 
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const OVERRIDE { return table_id_; }
@@ -564,7 +565,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     template<typename RespClass>
       bool CheckIsInitializedAndIsLeaderOrRespond(RespClass* resp, rpc::RpcContext* rpc);
 
+    // TServer API variant of above class to set appropriate error codes.
+    template<typename RespClass>
+    bool CheckIsInitializedAndIsLeaderOrRespondTServer(RespClass* resp, rpc::RpcContext* rpc);
+
    private:
+    template<typename RespClass, typename ErrorClass>
+    bool CheckIsInitializedAndIsLeaderOrRespondInternal(RespClass* resp, rpc::RpcContext* rpc);
     CatalogManager* catalog_;
     shared_lock<RWMutex> leader_shared_lock_;
     Status catalog_status_;
@@ -638,6 +645,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // This only returns tablets which are in RUNNING state.
   CHECKED_STATUS GetTabletLocations(const TabletId& tablet_id,
                             TabletLocationsPB* locs_pb);
+
+  // Retrieves a SystemTablet instance based on the existing system tablets already created in our
+  // syscatalog.
+  CHECKED_STATUS RetrieveSystemTablet(const TabletId& tablet_id,
+                                      std::shared_ptr<tablet::AbstractTablet>* tablet);
 
   // Handle a tablet report from the given tablet server.
   //
@@ -1142,6 +1154,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Use the Raft config that has been bootstrapped to update the in-memory state of master options
   // and also the on-disk state of the consensus meta object.
   CHECKED_STATUS UpdateMastersListInMemoryAndDisk();
+
+  // System tablets for virtual tables.
+  std::shared_ptr<tablet::AbstractTablet> system_peers_tablet; // system.peers;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

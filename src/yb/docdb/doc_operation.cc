@@ -1,10 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
+#include "yb/common/yql_scanspec.h"
+#include "yb/common/yql_storage_interface.h"
+#include "yb/common/yql_value.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/yql_scanspec.h"
+#include "yb/docdb/doc_yql_scanspec.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
@@ -391,23 +395,6 @@ const RedisResponsePB& RedisReadOperation::response() {
 
 namespace {
 
-// Add primary key column values to the component group. Verify that they are in the same order
-// as in the table schema.
-void YQLColumnValuesToPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<YQLColumnValuePB>& column_values,
-    const Schema& schema, size_t column_idx, const size_t column_count,
-    vector<PrimitiveValue>* components) {
-  for (const auto& column_value : column_values) {
-    CHECK_EQ(schema.column_id(column_idx), column_value.column_id())
-        << "Primary key column id mismatch";
-
-    components->push_back(PrimitiveValue::FromYQLValuePB(
-        schema.column(column_idx).type(), column_value.value(),
-        schema.column(column_idx).sorting_type()));
-    column_idx++;
-  }
-}
-
 // Populate dockey from YQL key columns.
 DocKey DocKeyFromYQLKey(const Schema& schema, const YQLWriteRequestPB& request) {
   vector<PrimitiveValue> hashed_components;
@@ -417,12 +404,12 @@ DocKey DocKeyFromYQLKey(const Schema& schema, const YQLWriteRequestPB& request) 
   const auto& range_column_values = request.range_column_values();
 
   // Populate the hashed and range components in the same order as they are in the table schema.
-  YQLColumnValuesToPrimitiveValues(
+  CHECK_OK(YQLColumnValuesToPrimitiveValues(
       hashed_column_values, schema, 0,
-      schema.num_hash_key_columns(), &hashed_components);
-  YQLColumnValuesToPrimitiveValues(
+      schema.num_hash_key_columns(), &hashed_components));
+  CHECK_OK(YQLColumnValuesToPrimitiveValues(
       range_column_values, schema, schema.num_hash_key_columns(),
-      schema.num_key_columns() - schema.num_hash_key_columns(), &range_components);
+      schema.num_key_columns() - schema.num_hash_key_columns(), &range_components));
 
   if (request.has_hash_code() && !hashed_column_values.empty()) {
     return DocKey(request.hash_code(), hashed_components, range_components);
@@ -505,7 +492,7 @@ Status YQLWriteOperation::IsConditionSatisfied(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
   // Scan docdb for the row.
-  YQLScanSpec spec(projection, doc_key_);
+  DocYQLScanSpec spec(projection, doc_key_);
   YQLValueMap value_map;
   DocRowwiseIterator iterator(projection, schema_, rocksdb, hybrid_time);
   RETURN_NOT_OK(iterator.Init(spec));
@@ -616,7 +603,7 @@ YQLReadOperation::YQLReadOperation(const YQLReadRequestPB& request) : request_(r
 }
 
 Status YQLReadOperation::Execute(
-    rocksdb::DB *rocksdb, const HybridTime& hybrid_time, const Schema& schema,
+    const common::YQLStorageIf& yql_storage, const HybridTime& hybrid_time, const Schema& schema,
     YQLRowBlock* rowblock) {
 
   size_t row_count_limit = std::numeric_limits<std::size_t>::max();
@@ -626,30 +613,6 @@ Status YQLReadOperation::Execute(
     }
     row_count_limit = request_.limit();
   }
-
-  // Populate dockey from YQL key columns.
-  docdb::DocKeyHash hash_code = static_cast<docdb::DocKeyHash>(request_.hash_code());
-  vector<PrimitiveValue> hashed_components;
-  YQLColumnValuesToPrimitiveValues(
-    request_.hashed_column_values(), schema, 0,
-    schema.num_hash_key_columns(), &hashed_components);
-
-  HybridTime req_hybrid_time(hybrid_time);
-  SubDocKey start_sub_doc_key;
-  // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
-  if (request_.has_paging_state() &&
-      request_.paging_state().has_next_row_key() &&
-      !request_.paging_state().next_row_key().empty()) {
-    KeyBytes start_key_bytes(request_.paging_state().next_row_key());
-    RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    req_hybrid_time = start_sub_doc_key.hybrid_time();
-  }
-
-  // Construct the scan spec basing on the WHERE condition.
-  YQLScanSpec spec(
-      schema, hash_code, hashed_components,
-      request_.has_where_condition() ? &request_.where_condition() : nullptr,
-      start_sub_doc_key.doc_key());
 
   // Find the non-key columns selected by the row block plus any referenced in the WHERE condition.
   // When DocRowwiseIterator::NextRow() populates the value map, it uses this projection only to
@@ -673,20 +636,24 @@ Status YQLReadOperation::Execute(
       schema.CreateProjectionByIdsIgnoreMissing(
           vector<ColumnId>(non_key_columns.begin(), non_key_columns.end()), &projection));
 
-  // Scan docdb for the rows.
-  DocRowwiseIterator iter(projection, schema, rocksdb, req_hybrid_time);
-  RETURN_NOT_OK(iter.Init(spec));
+  std::unique_ptr<common::YQLRowwiseIteratorIf> iter;
+  std::unique_ptr<common::YQLScanSpec> spec;
+  HybridTime req_hybrid_time;
+  RETURN_NOT_OK(yql_storage.BuildYQLScanSpec(request_, hybrid_time, schema, &spec,
+                                             &req_hybrid_time));
+  RETURN_NOT_OK(yql_storage.GetIterator(projection, schema, req_hybrid_time, &iter));
+  RETURN_NOT_OK(iter->Init(*spec));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
   YQLValueMap value_map;
-  while (rowblock->row_count() < row_count_limit && iter.HasNext()) {
+  while (rowblock->row_count() < row_count_limit && iter->HasNext()) {
     value_map.clear();
-    RETURN_NOT_OK(iter.NextRow(&value_map));
+    RETURN_NOT_OK(iter->NextRow(&value_map));
 
     // Match the row with the where condition before adding to the row block.
     bool match = false;
-    RETURN_NOT_OK(spec.Match(value_map, &match));
+    RETURN_NOT_OK(spec->Match(value_map, &match));
     if (match) {
       auto& row = rowblock->Extend();
       for (size_t i = 0; i < row.schema().num_columns(); i++) {
@@ -701,20 +668,7 @@ Status YQLReadOperation::Execute(
     TRACE("Fetched $0 rows.", rowblock->row_count());
   }
 
-  // When the "limit" number of rows are returned and we are asked to return the paging state,
-  // return the parition key and row key of the next row to read in the paging state if there are
-  // still more rows to read. Otherwise, leave the paging state empty which means we are done
-  // reading from this tablet.
-  if (rowblock->row_count() == row_count_limit && request_.return_paging_state()) {
-    SubDocKey next_key;
-    RETURN_NOT_OK(iter.GetNextReadSubDocKey(&next_key));
-    if (!next_key.doc_key().empty()) {
-      YQLPagingStatePB* paging_state = response_.mutable_paging_state();
-      paging_state->set_next_partition_key(
-          PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
-      paging_state->set_next_row_key(next_key.Encode(true /* include_hybrid_time */).data());
-    }
-  }
+  RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, *rowblock, row_count_limit, &response_));
 
   return Status::OK();
 }

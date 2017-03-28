@@ -83,6 +83,7 @@ set(COMMON_SRCS
   wire_protocol.cc
   yql_value.cc
   yql_bfunc.cc
+  yql_scanspec.cc
   yql_rowblock.cc)
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757

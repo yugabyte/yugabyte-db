@@ -21,7 +21,12 @@ class InetAddress {
   static constexpr size_t kV6Size = 16;
   InetAddress();
 
+  explicit InetAddress(const boost::asio::ip::address& address);
+
   InetAddress(const InetAddress& other);
+
+  // Resolves the given host and populates addresses with a list of IP addresses for the host.
+  static CHECKED_STATUS Resolve(const std::string& host, std::vector<InetAddress>* addresses);
 
   // Builds an InetAddress object given a string representation of an IPv4 or IPv6 address.
   CHECKED_STATUS FromString(const std::string& strval);

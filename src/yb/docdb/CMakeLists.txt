@@ -14,11 +14,13 @@ ADD_EXPORTABLE_LIBRARY(docdb_proto
   NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 set(DOCDB_SRCS
+    docdb_util.cc
     doc_key.cc
     doc_kv_util.cc
     doc_operation.cc
     doc_rowwise_iterator.cc
     doc_write_batch_cache.cc
+    doc_yql_scanspec.cc
     docdb.cc
     docdb_compaction_filter.cc
     docdb_rocksdb_util.cc
@@ -29,7 +31,7 @@ set(DOCDB_SRCS
     value.cc
     subdocument.cc
     value_type.cc
-    yql_scanspec.cc)
+    yql_rocksdb_storage.cc)
 
 set(DOCDB_DEPS
     rocksdb

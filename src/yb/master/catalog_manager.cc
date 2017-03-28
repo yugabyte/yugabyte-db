@@ -73,9 +73,11 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/system_tablet.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/yql_peers_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -580,7 +582,6 @@ Status CatalogManager::Init(bool is_first_run) {
     CHECK_EQ(kStarting, state_);
     state_ = kRunning;
   }
-
   return Status::OK();
 }
 
@@ -757,7 +758,7 @@ Status CatalogManager::CreateSystemPeersSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
   RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::STRING)); // This should be UUID.
-  RETURN_NOT_OK(builder.AddColumn("tokens", DataType::STRING)); // This should be SET<TEXT>.
+  RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, {YQLType(DataType::STRING)})));
   *schema = builder.Build();
   return Status::OK();
 }
@@ -785,6 +786,7 @@ Status CatalogManager::PrepareSystemPeersTable() {
 
   RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, kSystemNamespaceId, partitions,
                     &tablets, nullptr, &table));
+  DCHECK_EQ(1, tablets.size());
   LOG (INFO) << "Inserted new table and tablet info into CatalogManager maps";
 
   // Write Tablets to sys-tablets (in "running" state since we don't want the loadbalancer to
@@ -806,6 +808,11 @@ Status CatalogManager::PrepareSystemPeersTable() {
   for (TabletInfo *tablet : tablets) {
     tablet->mutable_metadata()->CommitMutation();
   }
+
+  // Finally create the appropriate tablet object.
+  system_peers_tablet.reset(new SystemTablet(schema,
+                                             new PeersVTable(schema, master_),
+                                             tablets[0]->tablet_id()));
 
   return Status::OK();
 }
@@ -4364,6 +4371,27 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   return Status::OK();
 }
 
+Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
+                                            std::shared_ptr<tablet::AbstractTablet>* tablet) {
+  RETURN_NOT_OK(CheckOnline());
+  scoped_refptr<TabletInfo> tablet_info;
+  {
+    boost::shared_lock<LockType> l(lock_);
+    if (!FindCopy(tablet_map_, tablet_id, &tablet_info)) {
+      return STATUS(NotFound, Substitute("Unknown tablet $0", tablet_id));
+    }
+  }
+
+  if (!tablet_info->IsSupportedSystemTable()) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", tablet_id);
+  } else if (tablet_info->table()->name() == kSystemPeersTableName) {
+    *tablet = system_peers_tablet;
+    return Status::OK();
+  }
+  return STATUS_SUBSTITUTE(InvalidArgument, "$0 isn't a supported system table",
+                           tablet_info->table()->name());
+}
+
 Status CatalogManager::GetTabletLocations(const TabletId& tablet_id,
                                           TabletLocationsPB* locs_pb) {
   RETURN_NOT_OK(CheckOnline());
@@ -4836,11 +4864,10 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespond(
   return true;
 }
 
-template<typename RespClass>
-bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond(
+template<typename RespClass, typename ErrorClass>
+bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondInternal(
     RespClass* resp,
     RpcContext* rpc) {
-
   Status& s = catalog_status_;
   if (PREDICT_TRUE(s.ok())) {
     s = leader_status_;
@@ -4850,9 +4877,24 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrResp
   }
 
   StatusToPB(s, resp->mutable_error()->mutable_status());
-  resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
+  resp->mutable_error()->set_code(ErrorClass::NOT_THE_LEADER);
   rpc->RespondSuccess();
   return false;
+}
+
+template<typename RespClass>
+bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond(
+    RespClass* resp,
+    RpcContext* rpc) {
+  return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, MasterErrorPB>(resp, rpc);
+}
+
+// Variation of the above method which uses TabletServerErrorPB instead.
+template<typename RespClass>
+bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer(
+    RespClass* resp,
+    RpcContext* rpc) {
+  return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, TabletServerErrorPB>(resp, rpc);
 }
 
 // Explicit specialization for callers outside this compilation unit.
@@ -4863,6 +4905,11 @@ CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespond( \
 #define INITTED_AND_LEADER_OR_RESPOND(RespClass) \
 template bool \
 CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond( \
+    RespClass* resp, RpcContext* rpc)
+
+#define INITTED_AND_LEADER_OR_RESPOND_TSERVER(RespClass) \
+template bool \
+CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer( \
     RespClass* resp, RpcContext* rpc)
 
 INITTED_OR_RESPOND(GetMasterRegistrationResponsePB);
@@ -4891,8 +4938,13 @@ INITTED_AND_LEADER_OR_RESPOND(GetLoadMovePercentResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsMasterLeaderReadyResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsLoadBalancedResponsePB);
 
+
+// TServer variants.
+INITTED_AND_LEADER_OR_RESPOND_TSERVER(tserver::ReadResponsePB);
+
 #undef INITTED_OR_RESPOND
 #undef INITTED_AND_LEADER_OR_RESPOND
+#undef INITTED_AND_LEADER_OR_RESPOND_TSERVER
 
 ////////////////////////////////////////////////////////////
 // TabletInfo
@@ -4976,17 +5028,17 @@ bool TableInfo::IsSupportedSystemTable() const {
       kMasterSupportedSystemTables.find(name()) != kMasterSupportedSystemTables.end());
 }
 
+const TableName TableInfo::name() const {
+  TableMetadataLock l(this, TableMetadataLock::READ);
+  return l.data().pb.name();
+}
+
 std::string TableInfo::ToString() const {
   TableMetadataLock l(this, TableMetadataLock::READ);
   return Substitute("$0 [id=$1]", l.data().pb.name(), table_id_);
 }
 
-const TableName TableInfo::name() const {
-  TableMetadataLock l(this, TableMetadataLock::READ);
-  return l.data().name();
-}
-
-const NamespaceId& TableInfo::namespace_id() const {
+const NamespaceId TableInfo::namespace_id() const {
   TableMetadataLock l(this, TableMetadataLock::READ);
   return l.data().namespace_id();
 }

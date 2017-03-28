@@ -26,6 +26,7 @@ set(MASTER_YRPC_LIBS
   protobuf
   rpc_header_proto
   tablet_proto
+  tserver_proto
   wire_protocol_proto)
 ADD_EXPORTABLE_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
@@ -33,6 +34,10 @@ ADD_EXPORTABLE_LIBRARY(master_proto
   NONLINK_DEPS ${MASTER_YRPC_TGTS})
 
 set(MASTER_SRCS
+  system_tablet.cc
+  yql_virtual_table.cc
+  yql_peers_vtable.cc
+  yql_vtable_iterator.cc
   catalog_manager.cc
   cluster_balance.cc
   master.cc
@@ -43,6 +48,8 @@ set(MASTER_SRCS
   sys_catalog.cc
   ts_descriptor.cc
   ts_manager.cc
+  master_tablet_service.cc
+  master_tserver.cc
 )
 
 add_library(master ${MASTER_SRCS})

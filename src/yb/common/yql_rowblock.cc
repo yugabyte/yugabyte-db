@@ -79,6 +79,12 @@ YQLRow& YQLRowBlock::Extend() {
   return rows_.back();
 }
 
+Status YQLRowBlock::AddRow(const YQLRow& row) {
+  // TODO: check for schema compatibility between YQLRow and YQLRowBlock.
+  rows_.push_back(row);
+  return Status::OK();
+}
+
 string YQLRowBlock::ToString() const {
   string s = "{ ";
   for (size_t i = 0; i < rows_.size(); i++) {

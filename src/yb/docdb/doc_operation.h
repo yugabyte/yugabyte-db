@@ -5,6 +5,7 @@
 
 #include "rocksdb/db.h"
 
+#include "yb/common/yql_storage_interface.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/primitive_value.h"
@@ -139,7 +140,7 @@ class YQLReadOperation {
   explicit YQLReadOperation(const YQLReadRequestPB& request);
 
   CHECKED_STATUS Execute(
-      rocksdb::DB *rocksdb, const HybridTime& hybrid_time, const Schema& schema,
+      const common::YQLStorageIf& yql_storage, const HybridTime& hybrid_time, const Schema& schema,
       YQLRowBlock* rowblock);
 
   const YQLResponsePB& response() const;

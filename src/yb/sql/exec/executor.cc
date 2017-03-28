@@ -943,18 +943,6 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
               exec_context_->Error(tnode->loc(), ErrorCode::TABLE_NOT_FOUND));
   }
 
-  // Special handling for system.peers table until we fully support this table as a virtual table
-  // in master.
-  if (table->name().table_name() == master::kSystemPeersTableName) {
-    // Create an empty row as a result and return it.
-    faststring buffer;
-    CQLEncodeLength(0, &buffer);
-    ExecutedResult::SharedPtr result(new RowsResult(table.get(), buffer.ToString()));
-    cb.Run(Status::OK(), result);
-    return;
-  }
-
-
   // If there is a table id in the statement parameter's paging state, this is a continuation of
   // a prior SELECT statement. Verify that the same table still exists.
   const bool continue_select = !params_->table_id().empty();

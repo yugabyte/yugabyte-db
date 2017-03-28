@@ -70,7 +70,6 @@ TEST_F(InetAddressTest, TestOperators) {
 
 TEST_F(InetAddressTest, TestErrors) {
   InetAddress addr;
-  ASSERT_FALSE(addr.FromString("1.2.3").ok());
   ASSERT_FALSE(addr.FromString("1.2.3.256").ok());
   ASSERT_FALSE(addr.FromString("1:2:3:f").ok());
   ASSERT_FALSE(addr.FromString("2607:g0d0:1002:51::4").ok());
@@ -83,6 +82,19 @@ TEST_F(InetAddressTest, TestErrors) {
   ASSERT_FALSE(addr.FromBytes(bytes).ok());
   bytes = "111111111111111111"; // 17 bytes.
   ASSERT_FALSE(addr.FromBytes(bytes).ok());
+}
+
+TEST_F(InetAddressTest, TestHostName) {
+  InetAddress addr;
+  ASSERT_OK(addr.FromString("localhost"));
+  ASSERT_OK(addr.FromString("1.2.3")); // boost seems to convert this to 1.2.0.3.
+  ASSERT_EQ("1.2.0.3", addr.ToString());
+  ASSERT_OK(addr.FromString("1.2")); // boost seems to convert this to 1.0.0.2.
+  ASSERT_EQ("1.0.0.2", addr.ToString());
+  ASSERT_OK(addr.FromString("1000"));
+  ASSERT_EQ("0.0.3.232", addr.ToString());
+  ASSERT_OK(addr.FromString("0xC00002EB"));
+  ASSERT_EQ("192.0.2.235", addr.ToString());
 }
 
 } // namespace yb

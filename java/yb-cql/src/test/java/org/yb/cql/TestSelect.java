@@ -1,11 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
-import java.util.Iterator;
-import java.util.Date;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.TimeZone;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.util.*;
 
 import org.junit.Test;
 
@@ -302,5 +300,30 @@ public class TestSelect extends TestBase {
     runInvalidSelectWithTimestamp(tableName, "1992-13-12");
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30:31");
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30.12.32");
+  }
+
+  @Test
+  public void testSystemPeersTable() throws Exception {
+    // Pick only 1 contact point since all will have same IP.
+    InetAddress contactPoint = miniCluster.getCQLContactPoints().get(0).getAddress();
+
+    ResultSet rs = session.execute("SELECT * FROM system.peers;");
+    verifyPeersTable(rs, contactPoint);
+
+    // Try with where clause.
+    rs = session.execute(String.format("SELECT * FROM system.peers WHERE peer = '%s'",
+      contactPoint.getHostAddress()));
+    verifyPeersTable(rs, contactPoint);
+
+    rs = session.execute("SELECT * FROM system.peers WHERE peer = '127.0.0.2'");
+    assertEquals(0, rs.all().size());
+  }
+
+  private void verifyPeersTable(ResultSet rs, InetAddress expected) throws Exception {
+    assertEquals(1, rs.all().size());
+    for (Row row : rs.all()) {
+      assertEquals(expected, row.getInet(0)); // peer
+      assertEquals(expected, row.getInet(6)); // rpc address
+    }
   }
 }

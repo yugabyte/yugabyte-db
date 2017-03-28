@@ -1,5 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
+#include <boost/asio/io_service.hpp>
+#include <boost/asio/ip/tcp.hpp>
 #include "yb/util/net/inetaddress.h"
 
 namespace yb {
@@ -7,17 +9,46 @@ namespace yb {
 InetAddress::InetAddress() {
 }
 
+InetAddress::InetAddress(const boost::asio::ip::address& address)
+    : boost_addr_(address) {
+}
+
 InetAddress::InetAddress(const InetAddress& other) {
   boost_addr_ = other.boost_addr_;
 }
 
-CHECKED_STATUS InetAddress::FromString(const std::string& strval) {
+CHECKED_STATUS ResolveInternal(const std::string& host,
+                               boost::asio::ip::tcp::resolver::iterator* iter) {
   boost::system::error_code ec;
-  boost_addr_ = boost::asio::ip::address::from_string(strval, ec);
+  boost::asio::io_service io;
+  boost::asio::ip::tcp::resolver resolver(io);
+  // Port 80 is just a placeholder since boost doesn't seem to support a DNS lookup API without
+  // the port.
+  boost::asio::ip::tcp::resolver::query query(host, "80");
+  *iter = resolver.resolve(query, ec);
   if (ec.value()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is an invalid ip address: $1", strval,
+    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is an invalid host/ip address: $1", host,
                              ec.message());
   }
+  return Status::OK();
+}
+
+CHECKED_STATUS InetAddress::Resolve(const std::string& host, std::vector<InetAddress>* addresses) {
+  boost::asio::ip::tcp::resolver::iterator iter;
+  RETURN_NOT_OK(ResolveInternal(host, &iter));
+  boost::asio::ip::tcp::resolver::iterator end;
+  while (iter != end) {
+    addresses->push_back(InetAddress(iter->endpoint().address()));
+    iter++;
+  }
+  return Status::OK();
+}
+
+CHECKED_STATUS InetAddress::FromString(const std::string& strval) {
+  boost::asio::ip::tcp::resolver::iterator iter;
+  RETURN_NOT_OK(ResolveInternal(strval, &iter));
+  // Pick the first IP address in the list.
+  boost_addr_ = iter->endpoint().address();
   return Status::OK();
 }
 

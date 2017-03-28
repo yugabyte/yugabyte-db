@@ -36,12 +36,15 @@
 #include "yb/common/predicate_encoder.h"
 #include "yb/common/schema.h"
 #include "yb/common/row_operations.h"
+#include "yb/common/yql_storage_interface.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/yql_rocksdb_storage.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+#include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/rowset_metadata.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/lock_manager.h"
@@ -94,7 +97,7 @@ struct TabletComponents;
 struct TabletMetrics;
 class WriteTransactionState;
 
-class Tablet {
+class Tablet : public AbstractTablet {
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentMap;
   friend class CompactRowSetsOp;
@@ -220,7 +223,15 @@ class Tablet {
 
   CHECKED_STATUS HandleRedisReadRequest(
       HybridTime timestamp, const RedisReadRequestPB& redis_read_request,
-      RedisResponsePB* response);
+      RedisResponsePB* response) override;
+
+  CHECKED_STATUS HandleYQLReadRequest(
+      HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
+      gscoped_ptr<faststring>* rows_data) override;
+
+  CHECKED_STATUS CreatePagingStateForRead(const YQLReadRequestPB& yql_read_request,
+                                          const YQLRowBlock& rowblock,
+                                          YQLResponsePB* response) const override;
 
   CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
       const tserver::WriteRequestPB& write_request,
@@ -228,10 +239,6 @@ class Tablet {
       vector<string> *keys_locked,
       tserver::WriteResponsePB* write_response,
       WriteTransactionState* tx_state);
-
-  CHECKED_STATUS HandleYQLReadRequest(
-      HybridTime timestamp, const YQLReadRequestPB& yql_read_request, YQLResponsePB* response,
-      gscoped_ptr<faststring>* rows_data);
 
   // Takes a Kudu WriteRequestPB as input with its row operations.
   // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
@@ -429,7 +436,7 @@ class Tablet {
   // This method is not thread safe.
   void UnregisterMaintenanceOps();
 
-  const std::string& tablet_id() const { return metadata_->tablet_id(); }
+  const std::string& tablet_id() const override { return metadata_->tablet_id(); }
 
   // Return the metrics for this tablet.
   // May be NULL in unit tests, etc.
@@ -441,7 +448,7 @@ class Tablet {
   // Returns a reference to this tablet's memory tracker.
   const std::shared_ptr<MemTracker>& mem_tracker() const { return mem_tracker_; }
 
-  TableType table_type() const { return table_type_; }
+  TableType table_type() const override { return table_type_; }
 
   // Returns true if a RocksDB-backed tablet has any SSTables.
   bool HasSSTables() const;
@@ -467,6 +474,14 @@ class Tablet {
 
   const scoped_refptr<server::Clock> &clock() const {
     return clock_;
+  }
+
+  const Schema& SchemaRef() const override {
+    return metadata_->schema();
+  }
+
+  const common::YQLStorageIf& YQLStorage() const override {
+    return *yql_storage_;
   }
 
  private:
@@ -597,9 +612,9 @@ class Tablet {
 
   // Register/Unregister a read operation, with an associated timestamp, for the purpose of
   // tracking the oldest read point.
-  void RegisterReaderTimestamp(HybridTime read_point);
-  void UnregisterReader(HybridTime read_point);
-  HybridTime SafeTimestampToRead() const;
+  void RegisterReaderTimestamp(HybridTime read_point) override;
+  void UnregisterReader(HybridTime read_point) override;
+  HybridTime SafeTimestampToRead() const override;
 
   // Lock protecting schema_ and key_schema_.
   //
@@ -705,6 +720,8 @@ class Tablet {
   // RocksDB database for key-value tables.
   std::unique_ptr<rocksdb::DB> rocksdb_;
 
+  std::unique_ptr<common::YQLStorageIf> yql_storage_;
+
   // This is for docdb fine-grained locking.
   yb::util::SharedLockManager shared_lock_manager_;
 
@@ -734,14 +751,14 @@ class Tablet {
 // when created, and deregisters the read point when this object is destructed.
 class ScopedReadTransaction {
  public:
-  explicit ScopedReadTransaction(Tablet* tablet);
+  explicit ScopedReadTransaction(AbstractTablet* tablet);
 
   ~ScopedReadTransaction();
 
   HybridTime GetReadTimestamp();
 
  private:
-  Tablet* tablet_;
+  AbstractTablet* tablet_;
   HybridTime timestamp_;
 };
 
@@ -775,19 +792,19 @@ class Tablet::Iterator : public RowwiseIterator {
  public:
   virtual ~Iterator();
 
-  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  virtual bool HasNext() const OVERRIDE;
+  bool HasNext() const override;
 
-  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
+  CHECKED_STATUS NextBlock(RowBlock *dst) override;
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
-  const Schema &schema() const OVERRIDE {
+  const Schema &schema() const override {
     return projection_;
   }
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
+  void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
  private:
   friend class Tablet;

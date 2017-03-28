@@ -32,7 +32,7 @@ import java.util.TimeZone;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
-
+import java.util.Properties;
 
 public class TestBase {
   protected static final Logger LOG = LoggerFactory.getLogger(TestBase.class);
@@ -61,6 +61,10 @@ public class TestBase {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
+    Properties props = System.getProperties();
+    // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
+    // additional columns.
+    props.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
     LOG.info("Setting up before class...");
 
     miniCluster = new MiniYBCluster.MiniYBClusterBuilder()

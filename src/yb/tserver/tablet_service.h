@@ -23,6 +23,8 @@
 
 #include "yb/consensus/consensus.service.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.service.h"
 
@@ -47,7 +49,7 @@ class TabletServer;
 
 class TabletServiceImpl : public TabletServerServiceIf {
  public:
-  explicit TabletServiceImpl(TabletServer* server);
+  explicit TabletServiceImpl(TabletServerIf* server);
 
   virtual void Write(const WriteRequestPB* req, WriteResponsePB* resp,
                      rpc::RpcContext* context) OVERRIDE;
@@ -118,7 +120,12 @@ class TabletServiceImpl : public TabletServerServiceIf {
   CHECKED_STATUS CheckLeaderRole(const tablet::TabletPeer& tablet_peer,
                                  TabletServerErrorPB::Code* error_code);
 
-  TabletServer* server_;
+  virtual CHECKED_STATUS CheckLeaderAndGetTablet(const ReadRequestPB* req,
+                                                 ReadResponsePB* resp,
+                                                 rpc::RpcContext* context,
+                                                 std::shared_ptr<tablet::AbstractTablet>* tablet);
+
+  TabletServerIf *const server_;
 };
 
 class TabletServiceAdminImpl : public TabletServerAdminServiceIf {

@@ -27,6 +27,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver_options.h"
+#include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/net/net_util.h"
@@ -44,7 +45,7 @@ class ScannerManager;
 class TabletServerPathHandlers;
 class TSTabletManager;
 
-class TabletServer : public server::RpcAndWebServerBase {
+class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
@@ -67,11 +68,11 @@ class TabletServer : public server::RpcAndWebServerBase {
   CHECKED_STATUS Start();
   void Shutdown();
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
-  TSTabletManager* tablet_manager() { return tablet_manager_.get(); }
+  TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
 
-  ScannerManager* scanner_manager() { return scanner_manager_.get(); }
+  ScannerManager* scanner_manager() override { return scanner_manager_.get(); }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -93,6 +94,10 @@ class TabletServer : public server::RpcAndWebServerBase {
 
   // Update in-memory list of master addresses that this tablet server pings to.
   CHECKED_STATUS UpdateMasterAddresses(const consensus::RaftConfigPB& new_config);
+
+  server::Clock* Clock() override { return clock(); }
+
+  const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
  private:
   // Auto initialize some of the service flags that are defaulted to -1.

@@ -22,6 +22,7 @@ import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
+import "yb/tserver/tserver.proto";
 
 ////////////////////////////////////////////////////////////
 // Common data structures

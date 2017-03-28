@@ -1,9 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/common/partial_row.h"
+#include "yb/docdb/yql_rocksdb_storage.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/doc_yql_scanspec.h"
 #include "yb/server/hybrid_clock.h"
 
 namespace yb {
@@ -148,7 +150,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4
     YQLReadOperation read_op(yql_read_req);
     YQLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
                                                         ColumnId(3)}));
-    EXPECT_OK(read_op.Execute(rocksdb(), read_time, schema, &row_block));
+    YQLRocksDBStorage yql_storage(rocksdb());
+    EXPECT_OK(read_op.Execute(yql_storage, read_time, schema, &row_block));
     return row_block;
   }
 };
@@ -334,7 +337,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue(100)});
-  YQLScanSpec yql_scan_spec (schema, 0, hashed_components, nullptr);
+  DocYQLScanSpec yql_scan_spec(schema, 0, hashed_components, nullptr);
   DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
                               HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter.Init(yql_scan_spec));
@@ -379,7 +382,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue(101)});
-  YQLScanSpec yql_scan_spec_system (schema, 0, hashed_components_system, nullptr);
+  DocYQLScanSpec yql_scan_spec_system(schema, 0, hashed_components_system, nullptr);
   DocRowwiseIterator yql_iter_system(schema, schema, rocksdb(),
                                      HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter_system.Init(yql_scan_spec_system));

@@ -39,6 +39,7 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -544,13 +545,13 @@ static size_t GetMaxBatchSizeBytesHint(const ScanRequestPB* req) {
                   implicit_cast<uint32_t>(FLAGS_scanner_max_batch_size_bytes));
 }
 
-TabletServiceImpl::TabletServiceImpl(TabletServer* server)
-    : TabletServerServiceIf(server->metric_entity()),
+TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)
+    : TabletServerServiceIf(server->MetricEnt()),
       server_(server) {
 }
 
 TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
-    : TabletServerAdminServiceIf(server->metric_entity()),
+    : TabletServerAdminServiceIf(server->MetricEnt()),
       server_(server) {
 }
 
@@ -788,7 +789,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  if (!server_->clock()->SupportsExternalConsistencyMode(req->external_consistency_mode())) {
+  if (!server_->Clock()->SupportsExternalConsistencyMode(req->external_consistency_mode())) {
     Status s = STATUS(NotSupported, "The configured clock does not support the"
         " required consistency mode.");
     SetupErrorAndRespond(resp->mutable_error(), s,
@@ -801,7 +802,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   // hybrid_times are greater than the passed hybrid_time.
   if (req->has_propagated_hybrid_time()) {
     HybridTime ts(req->propagated_hybrid_time());
-    s = server_->clock()->Update(ts);
+    s = server_->Clock()->Update(ts);
   }
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
 
@@ -860,6 +861,33 @@ Status TabletServiceImpl::CheckLeaderRole(const TabletPeer& tablet_peer,
   return Status::OK();
 }
 
+Status TabletServiceImpl::CheckLeaderAndGetTablet(const ReadRequestPB* req,
+                                                  ReadResponsePB* resp,
+                                                  rpc::RpcContext* context,
+                                                  shared_ptr<tablet::AbstractTablet>* tablet) {
+  scoped_refptr<TabletPeer> tablet_peer;
+  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
+                                 &tablet_peer)) {
+    return STATUS(NotFound, "Tablet not found: $0", req->tablet_id());
+  }
+
+  TabletServerErrorPB::Code error_code;
+  Status s = CheckLeaderRole(*tablet_peer.get(), &error_code);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+    return s;
+  }
+
+  shared_ptr<tablet::Tablet> ptr;
+  s = GetTabletRef(tablet_peer, &ptr, &error_code);
+  if (PREDICT_FALSE(!s.ok())) {
+    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
+    return s;
+  }
+  *tablet = ptr;
+  return Status::OK();
+}
+
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext* context) {
@@ -868,26 +896,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
                "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Read RPC: " << req->DebugString();
 
-  scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
-                                 &tablet_peer)) {
+  shared_ptr<tablet::AbstractTablet> tablet;
+  if (!CheckLeaderAndGetTablet(req, resp, context, &tablet).ok()) {
     return;
   }
 
-  TabletServerErrorPB::Code error_code;
-  Status s = CheckLeaderRole(*tablet_peer.get(), &error_code);
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
-    return;
-  }
-
-  shared_ptr<Tablet> tablet;
-  s = GetTabletRef(tablet_peer, &tablet, &error_code);
-  if (PREDICT_FALSE(!s.ok())) {
-    SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
-    return;
-  }
-
+  Status s;
   tablet::ScopedReadTransaction read_tx(tablet.get());
   switch (tablet->table_type()) {
     case TableType::REDIS_TABLE_TYPE: {
@@ -1840,7 +1854,7 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
     // 'propagated_hybrid_time'. If 'propagated_hybrid_time' is lower than
     // 'now' this call has no effect. If 'propagated_hybrid_time' is too much
     // into the future this will fail and we abort.
-    RETURN_NOT_OK(server_->clock()->Update(propagated_hybrid_time));
+    RETURN_NOT_OK(server_->Clock()->Update(propagated_hybrid_time));
   }
 
   HybridTime tmp_snap_hybrid_time;
@@ -1848,13 +1862,13 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
   // If the client provided no snapshot hybrid_time we take the current clock
   // time as the snapshot hybrid_time.
   if (!scan_pb.has_snap_hybrid_time()) {
-    tmp_snap_hybrid_time = server_->clock()->Now();
+    tmp_snap_hybrid_time = server_->Clock()->Now();
     // ... else we use the client provided one, but make sure it is not too far
     // in the future as to be invalid.
   } else {
     RETURN_NOT_OK(tmp_snap_hybrid_time.FromUint64(scan_pb.snap_hybrid_time()));
     HybridTime max_allowed_ts;
-    Status s = server_->clock()->GetGlobalLatest(&max_allowed_ts);
+    Status s = server_->Clock()->GetGlobalLatest(&max_allowed_ts);
     if (!s.ok()) {
       return STATUS(NotSupported, "Snapshot scans not supported on this server",
                     s.ToString());
@@ -1862,8 +1876,8 @@ Status TabletServiceImpl::HandleScanAtSnapshot(const NewScanRequestPB& scan_pb,
     if (tmp_snap_hybrid_time.CompareTo(max_allowed_ts) > 0) {
       return STATUS(InvalidArgument,
                     Substitute("Snapshot time $0 in the future. Max allowed hybrid_time is $1",
-                               server_->clock()->Stringify(tmp_snap_hybrid_time),
-                               server_->clock()->Stringify(max_allowed_ts)));
+                               server_->Clock()->Stringify(tmp_snap_hybrid_time),
+                               server_->Clock()->Stringify(max_allowed_ts)));
     }
   }
 

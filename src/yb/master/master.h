@@ -28,6 +28,7 @@
 #include "yb/master/master_options.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_tserver.h"
 #include "yb/server/server_base.h"
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
@@ -170,6 +171,9 @@ class Master : public server::RpcAndWebServerBase {
 
   // The metric entity for the cluster.
   scoped_refptr<MetricEntity> metric_entity_cluster_;
+
+  // Master's tablet server implementation used to host virtual tables like system.peers.
+  std::unique_ptr<MasterTabletServer> master_tablet_server_;
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };

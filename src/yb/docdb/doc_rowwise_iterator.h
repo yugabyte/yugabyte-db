@@ -13,9 +13,10 @@
 #include "yb/common/rowblock.h"
 #include "yb/common/scan_spec.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/yql_rowwise_iterator_interface.h"
+#include "yb/common/yql_scanspec.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/yql_scanspec.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"
 
@@ -23,7 +24,7 @@ namespace yb {
 namespace docdb {
 
 // An adapter between SQL-mapped-to-document-DB and Kudu's RowwiseIterator.
-class DocRowwiseIterator : public RowwiseIterator {
+class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
  public:
   DocRowwiseIterator(const Schema &projection,
@@ -33,36 +34,42 @@ class DocRowwiseIterator : public RowwiseIterator {
                      yb::util::PendingOperationCounter* pending_op_counter = nullptr);
   virtual ~DocRowwiseIterator();
 
-  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
   // This must always be called before NextBlock or NextRow. The implementation actually finds the
   // first row to scan, and NextBlock expects the RocksDB iterator to already be properly
   // positioned.
-  virtual bool HasNext() const OVERRIDE;
+  bool HasNext() const override;
 
-  virtual std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
-  virtual const Schema& schema() const OVERRIDE {
+  const Schema& schema() const override {
     // Note: this is the schema only for the columns in the projection, not all columns.
     return projection_;
   }
 
   // This may return one row at a time in the initial implementation, even though Kudu's scanning
   // interface supports returning multiple rows at a time.
-  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
+  CHECKED_STATUS NextBlock(RowBlock *dst) override;
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
+  void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
   // Init YQL read scan.
-  CHECKED_STATUS Init(const YQLScanSpec& spec);
+  CHECKED_STATUS Init(const common::YQLScanSpec& spec) override;
 
   // Read next row into a value map.
-  CHECKED_STATUS NextRow(YQLValueMap* value_map);
+  CHECKED_STATUS NextRow(YQLValueMap* value_map) override;
+
+  CHECKED_STATUS SetPagingStateIfNecessary(const YQLReadRequestPB& request,
+                                           const YQLRowBlock& rowblock,
+                                           const size_t row_count_limit,
+                                           YQLResponsePB* response) const override;
+
+ private:
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
 
- private:
   DocKey KuduToDocKey(const EncodedKey &encoded_key) {
     return DocKey::FromKuduEncodedKey(encoded_key, schema_);
   }

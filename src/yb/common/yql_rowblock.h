@@ -84,6 +84,9 @@ class YQLRowBlock {
   // Extend row block by 1 emtpy row and return the new row.
   YQLRow& Extend();
 
+  // Add a row to the rowblock.
+  CHECKED_STATUS AddRow(const YQLRow& row);
+
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
   std::string ToString() const;

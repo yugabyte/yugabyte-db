@@ -16,6 +16,7 @@
 # under the License.
 
 set(TABLET_SRCS
+  abstract_tablet.cc
   tablet.cc
   tablet_bootstrap.cc
   tablet_metrics.cc

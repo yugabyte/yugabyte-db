@@ -127,7 +127,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   ValidateColumn(schema_pb.columns(5), "release_version", /* is_key */ false, DataType::STRING);
   ValidateColumn(schema_pb.columns(6), "rpc_address", /* is_key */ false, DataType::INET);
   ValidateColumn(schema_pb.columns(7), "schema_version", /* is_key */ false, DataType::STRING);
-  ValidateColumn(schema_pb.columns(8), "tokens", /* is_key */ false, DataType::STRING);
+  ValidateColumn(schema_pb.columns(8), "tokens", /* is_key */ false, DataType::SET);
 }
 
 } // namespace master
