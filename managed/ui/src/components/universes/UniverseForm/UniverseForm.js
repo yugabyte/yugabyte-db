@@ -106,6 +106,9 @@ export default class UniverseForm extends Component {
 
   componentWillMount() {
     this.props.resetConfig();
+    if (isValidArray(this.props.softwareVersions)) {
+      this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
+    }
     if (this.props.type === "Edit") {
       const {universe: {currentUniverse}, universe: {currentUniverse: {universeDetails: {userIntent}}}} = this.props;
       var providerUUID = currentUniverse.provider.uuid;
@@ -219,9 +222,9 @@ export default class UniverseForm extends Component {
       this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
     }
     // Set Default Software Package in case of Create
-    if (nextProps.softwareVersions !== this.props.softwareVersions &&
-        isValidArray(nextProps.softwareVersions) && !isValidArray(this.props.ybSoftwareVersions)
-        && !isValidObject(this.props.universe.currentUniverse)) {
+    if (nextProps.softwareVersions !== this.props.softwareVersions
+        && !isValidObject(this.props.universe.currentUniverse) && isValidArray(nextProps.softwareVersions)
+        && !isValidArray(this.props.softwareVersions)) {
         this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
     }
   }
