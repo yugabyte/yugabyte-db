@@ -27,7 +27,7 @@ export default class UniverseTable extends Component {
   render() {
     var self = this;
     const { universe: { universeList, loading }, universeReadWriteData, tasks } = this.props;
-    if (loading) {
+    if (loading.universeList) {
       return <YBLoadingIcon/>;
     }
 
