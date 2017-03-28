@@ -10,7 +10,6 @@ import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
   INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS, INITIALIZE_PROVIDER_FAILURE,
   DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE, RESET_PROVIDER_BOOTSTRAP
 } from '../actions/cloud';
-
 import _ from 'lodash';
 
 const INITIAL_STATE = {regions: [], providers: [], instanceTypes: [], loading: {regions: false, providers: false, instanceTypes: false,

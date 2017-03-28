@@ -211,15 +211,15 @@ export default class UniverseForm extends Component {
        var instanceTypeSelected = nextProps.cloud.instanceTypes.find(function(item){
         return item.instanceTypeCode ===  self.state.instanceTypeSelected;
       });
-      if (isValidArray(Object.keys(instanceTypeSelected))) {
+      if (isValidObject(instanceTypeSelected) && isValidArray(Object.keys(instanceTypeSelected))) {
         var deviceInfo = {
           volumeSize: instanceTypeSelected.volumeSizeGB,
           numVolumes: instanceTypeSelected.volumeCount,
           mountPoints: null,
           diskIops: 1000,
         }
+        this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
       }
-      this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
     }
     // Set Default Software Package in case of Create
     if (nextProps.softwareVersions !== this.props.softwareVersions
@@ -234,8 +234,12 @@ export default class UniverseForm extends Component {
     var self = this;
     const { visible, onHide, handleSubmit, title, universe, softwareVersions } = this.props;
     var universeProviderList = [];
+    var currentProviderCode = "";
     if (isValidArray(this.props.cloud.providers)) {
       universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
+        if (providerItem.uuid === self.state.providerSelected) {
+          currentProviderCode = providerItem.code;
+        }
         return <option key={providerItem.uuid} value={providerItem.uuid}>
           {providerItem.name}
         </option>;
@@ -247,13 +251,37 @@ export default class UniverseForm extends Component {
       return {value: regionItem.uuid, label: regionItem.name};
     });
 
-    var universeInstanceTypeList =
-      this.props.cloud.instanceTypes.map(function (instanceTypeItem, idx) {
-        return <option key={instanceTypeItem.instanceTypeCode}
-                       value={instanceTypeItem.instanceTypeCode}>
-          {instanceTypeItem.instanceTypeCode}
-        </option>
-      });
+    if (currentProviderCode === "aws") {
+      var optGroups = this.props.cloud.instanceTypes.reduce(function(groups, it) {
+          var prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
+          groups[prefix] ? groups[prefix].push(it.instanceTypeCode): groups[prefix] = [it.instanceTypeCode];
+          return groups;}
+        , {});
+      var universeInstanceTypeList = <span/>;
+      if (isValidArray(Object.keys(optGroups))) {
+        universeInstanceTypeList = Object.keys(optGroups).map(function(key, idx){
+          return(
+            <optgroup label={`${key.toUpperCase()} type instances`} key={key+idx}>
+              {
+                optGroups[key].sort(function(a, b) { return /\d+(?!\.)/.exec(a) - /\d+(?!\.)/.exec(b) }).map(function(item, arrIdx){
+                  return (<option key={idx+arrIdx} value={item}>
+                    {item}
+                  </option>)
+                })
+              }
+            </optgroup>
+          )
+        })
+      }
+    } else {
+      var universeInstanceTypeList =
+        this.props.cloud.instanceTypes.map(function (instanceTypeItem, idx) {
+          return <option key={instanceTypeItem.instanceTypeCode}
+                         value={instanceTypeItem.instanceTypeCode}>
+            {instanceTypeItem.instanceTypeCode}
+          </option>
+        });
+    }
     if (universeInstanceTypeList.length > 0) {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
