@@ -74,33 +74,30 @@ export default class UniverseDisplayPanel extends Component {
   render() {
     var self = this;
     const { universe: {universeList, loading, showModal, visibleModal}, cloud} = this.props;
-    if (loading) {
-      return <YBLoadingIcon/>;
-    }
-    if (!isValidObject(universeList)) {
-      return <span/>;
-    } else if (!isValidArray(cloud.providers)) {
+    if (!isValidArray(cloud.providers) && !loading.universeList && cloud.status !== "storage" && cloud.status !== "init") {
       return (
-      <div className="get-started-config">
-        <span>Welcome to <div className="yb-data-name">YugaByte Admin Console</div></span>
-        <span>Before you can create a Universe, you must configure a cloud provider.</span>
-        <span><Link to="config">Click Here to Configure A Provider</Link></span>
-      </div>
+        <div className="get-started-config">
+          <span>Welcome to <div className="yb-data-name">YugaByte Admin Console</div></span>
+          <span>Before you can create a Universe, you must configure a cloud provider.</span>
+          <span><Link to="config">Click Here to Configure A Provider</Link></span>
+        </div>
+      )
+    } else if (isValidArray(cloud.providers)) {
+      var universeDisplayList = universeList.map(function(universeItem, idx){
+        return <UniverseDisplayItem  key={universeItem.name+idx} universe={universeItem}/>
+      });
+      var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
+      return (
+        <div className="universe-display-panel-container">
+          <h2>Universes</h2>
+          {universeDisplayList}
+          {createUniverseButton}
+          <UniverseFormContainer type="Create"
+                                 visible={showModal===true && visibleModal==="universeModal"}
+                                 onHide={this.props.closeUniverseModal} title="Create Universe" />
+        </div>
       )
     }
-    var universeDisplayList = universeList.map(function(universeItem, idx){
-      return <UniverseDisplayItem  key={universeItem.name+idx} universe={universeItem}/>
-    });
-     var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;
-    return (
-      <div className="universe-display-panel-container">
-        <h2>Universes</h2>
-        {universeDisplayList}
-        {createUniverseButton}
-        <UniverseFormContainer type="Create"
-                               visible={showModal===true && visibleModal==="universeModal"}
-                               onHide={this.props.closeUniverseModal} title="Create Universe" />
-      </div>
-    )
+    return <YBLoadingIcon/>;
   }
 }

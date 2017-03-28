@@ -1,65 +1,67 @@
 // Copyright (c) YugaByte, Inc.
 
 import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_FAILURE, RESET_UNIVERSE_INFO,
-         CREATE_UNIVERSE, CREATE_UNIVERSE_SUCCESS, CREATE_UNIVERSE_FAILURE,
-         EDIT_UNIVERSE, EDIT_UNIVERSE_SUCCESS, EDIT_UNIVERSE_FAILURE,
-         FETCH_UNIVERSE_LIST, FETCH_UNIVERSE_LIST_SUCCESS, FETCH_UNIVERSE_LIST_FAILURE,
-         RESET_UNIVERSE_LIST, DELETE_UNIVERSE, DELETE_UNIVERSE_SUCCESS,
-         DELETE_UNIVERSE_FAILURE, FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_SUCCESS,
-         FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS,
-         OPEN_DIALOG, CLOSE_DIALOG, CONFIGURE_UNIVERSE_TEMPLATE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
-         CONFIGURE_UNIVERSE_TEMPLATE_FAILURE, CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
-         CONFIGURE_UNIVERSE_RESOURCES_FAILURE, ROLLING_UPGRADE, ROLLING_UPGRADE_SUCCESS, ROLLING_UPGRADE_FAILURE,
-         RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS, SET_PLACEMENT_STATUS, RESET_UNIVERSE_CONFIGURATION }
-        from '../actions/universe';
+  CREATE_UNIVERSE, CREATE_UNIVERSE_SUCCESS, CREATE_UNIVERSE_FAILURE,
+  EDIT_UNIVERSE, EDIT_UNIVERSE_SUCCESS, EDIT_UNIVERSE_FAILURE,
+  FETCH_UNIVERSE_LIST, FETCH_UNIVERSE_LIST_SUCCESS, FETCH_UNIVERSE_LIST_FAILURE,
+  RESET_UNIVERSE_LIST, DELETE_UNIVERSE, DELETE_UNIVERSE_SUCCESS,
+  DELETE_UNIVERSE_FAILURE, FETCH_UNIVERSE_TASKS, FETCH_UNIVERSE_TASKS_SUCCESS,
+  FETCH_UNIVERSE_TASKS_FAILURE, RESET_UNIVERSE_TASKS,
+  OPEN_DIALOG, CLOSE_DIALOG, CONFIGURE_UNIVERSE_TEMPLATE, CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
+  CONFIGURE_UNIVERSE_TEMPLATE_FAILURE, CONFIGURE_UNIVERSE_RESOURCES, CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
+  CONFIGURE_UNIVERSE_RESOURCES_FAILURE, ROLLING_UPGRADE, ROLLING_UPGRADE_SUCCESS, ROLLING_UPGRADE_FAILURE,
+  RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS, SET_PLACEMENT_STATUS, RESET_UNIVERSE_CONFIGURATION }
+  from '../actions/universe';
+import _ from 'lodash';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], error: null, showModal: false, visibleModal: "",
-                       formSubmitSuccess: false, universeConfigTemplate: {}, universeResourceTemplate: {},
-                       currentPlacementStatus: null};
+  formSubmitSuccess: false, universeConfigTemplate: {}, universeResourceTemplate: {},
+  currentPlacementStatus: null, loading: {createUniverse: false, editUniverse: false, currentUniverse: false,
+    universeList: false, universeTasks: false}};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
   switch(action.type) {
     case CREATE_UNIVERSE:
-      return { ...state, loading: true, formSubmitSuccess: false};
+      return { ...state, loading: _.assign(state.loading, {createUniverse: true}), formSubmitSuccess: false};
     case CREATE_UNIVERSE_SUCCESS:
-      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
+      return { ...state, loading: _.assign(state.loading, {createUniverse: false}), universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
     case CREATE_UNIVERSE_FAILURE:
-      return { ...state, loading: false, error: action.payload.data.error, formSubmitSuccess: false};
+      return { ...state, loading: _.assign(state.loading, {createUniverse: false}), error: action.payload.data.error, formSubmitSuccess: false};
     case EDIT_UNIVERSE:
-      return { ...state, loading: true, formSubmitSuccess: false};
+      return { ...state, loading: _.assign(state.loading, {editUniverse: true}), formSubmitSuccess: false};
     case EDIT_UNIVERSE_SUCCESS:
-      return { ...state, loading: false, universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
+      return { ...state, loading: _.assign(state.loading, {editUniverse: false}), universeConfigTemplate: {}, universeResourceTemplate: {}, formSubmitSuccess: true};
     case EDIT_UNIVERSE_FAILURE:
-      return { ...state, loading: false, error: action.payload.data.error, formSubmitSuccess: false};
+      return { ...state, loading: _.assign(state.loading, {editUniverse: false}), error: action.payload.data.error, formSubmitSuccess: false};
     case OPEN_DIALOG:
       return { ...state, showModal: true, visibleModal: action.payload, formSubmitSuccess: false};
     case CLOSE_DIALOG:
       return { ...state, showModal: false, visibleModal: "", universeConfigTemplate: {}, universeResourceTemplate: {}};
     case FETCH_UNIVERSE_INFO:
-      return { ...state, loading: true};
+      return { ...state, loading: _.assign(state.loading, {currentUniverse: true})};
     case FETCH_UNIVERSE_INFO_SUCCESS:
-      return { ...state, currentUniverse: action.payload.data, error: null, loading: false, showModal: false};
+      return { ...state, currentUniverse: action.payload.data, error: null, loading: _.assign(state.loading, {currentUniverse: false}), showModal: false};
     case FETCH_UNIVERSE_INFO_FAILURE:
       error = action.payload.data || {message: action.payload.error};
-      return { ...state, currentUniverse: null, error: error, loading: false};
+      return { ...state, currentUniverse: null, error: error, loading: _.assign(state.loading, {currentUniverse: false})};
     case RESET_UNIVERSE_INFO:
-      return { ...state, currentUniverse: null, error: null, loading: false};
+      return { ...state, currentUniverse: null, error: null, loading: _.assign(state.loading, {currentUniverse: false})};
     case FETCH_UNIVERSE_LIST:
-      return { ...state, universeList: [], error: null, loading: true};
+      return { ...state, universeList: [], error: null, loading: _.assign(state.loading, {universeList: true})};
     case FETCH_UNIVERSE_LIST_SUCCESS:
-      return { ...state, universeList: action.payload.data, error: null, loading: false};
+      return { ...state, universeList: action.payload.data, error: null, loading: _.assign(state.loading, {universeList: false})};
     case FETCH_UNIVERSE_LIST_FAILURE:
-      return { ...state, universeList: [], error: error, loading: false};
+      return { ...state, universeList: [], error: error, loading: _.assign(state.loading, {universeList: false})};
     case RESET_UNIVERSE_LIST:
       return { ...state, universeList: [], universeCurrentCostList: [],
-               currentTotalCost: 0, error: null, loading: false};
+        currentTotalCost: 0, error: null, loading: _.assign(state.loading, {universeList: false})};
     case FETCH_UNIVERSE_TASKS:
-      return { ...state, universeTasks: [], error: null, loading: true};
+      return { ...state, universeTasks: [], error: null, loading: _.assign(state.loading, {universeTasks: true})};
     case FETCH_UNIVERSE_TASKS_SUCCESS:
-      return { ...state, universeTasks: action.payload.data, error: null, loading: false};
+      return { ...state, universeTasks: action.payload.data, error: null, loading: _.assign(state.loading, {universeTasks: false})};
     case FETCH_UNIVERSE_TASKS_FAILURE:
-      return { ...state, universeTasks: [], error: error, loading: false};
+      return { ...state, universeTasks: [], error: error, loading: _.assign(state.loading, {universeTasks: false})};
     case RESET_UNIVERSE_TASKS:
       return { ...state, universeTasks: [], error: null, loading: false};
     case DELETE_UNIVERSE:
