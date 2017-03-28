@@ -26,7 +26,7 @@ cpu_usage:
     cpu: "user|system"
   group_by: "cpu"
   layout:
-    title: "CPU Usage"
+    title: "CPU Usage (pct)"
     xaxis:
       type: "date"
 disk_iops:
@@ -37,13 +37,14 @@ disk_iops:
     type: "iostat_write_count|iostat_read_count"
   group_by: "type"
   layout:
-    title: "Disk IOPS"
+    title: "Disk IOPS / Node"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "iostat_write_count": "Writes"
         "iostat_read_count": "Reads"
+
 disk_iops_by_universe:
   metric: "collectd_yb_system_counter_total"
   function: "rate|avg"
@@ -52,7 +53,7 @@ disk_iops_by_universe:
     type: "iostat_write_count|iostat_read_count"
   group_by: "type, node_prefix, exported_instance"
   layout:
-    title: "Disk IOPS"
+    title: "Disk IOPS / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -67,10 +68,10 @@ memory_usage:
     memory: "used|buffered|cached|free"
   group_by: "memory"
   layout:
-    title: "Memory Usage"
+    title: "Memory Usage (bytes)"
     xaxis:
       type: "date"
-    ticksuffix: "&nbsp;GiB"
+
 network_bytes:
   metric: "collectd_yb_system_counter_total"
   function: "rate|avg"
@@ -79,14 +80,13 @@ network_bytes:
     type: "net_bytes_sent|net_bytes_recv"
   group_by: "type"
   layout:
-    title: "Network Bytes / sec / host"
+    title: "Network Bytes / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "net_bytes_sent": "TX"
         "net_bytes_recv": "RX"
-      ticksuffix: "&nbsp;GBps"
 
 network_packets:
   metric: "collectd_yb_system_counter_total"
@@ -97,7 +97,7 @@ network_packets:
     type: "net_packets_sent|net_packets_recv"
   group_by: "type"
   layout:
-    title: "Network Packets / sec / host"
+    title: "Network Packets / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -113,7 +113,7 @@ network_errors:
     type: "net_errin|net_errout"
   group_by: "type"
   layout:
-    title: "Network Errors / sec / host"
+    title: "Network Errors / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -150,9 +150,8 @@ disk_bytes_per_second_per_node:
       type: "date"
     yaxis:
       alias:
-        "iostat_read_bytes": "RX"
-        "iostat_write_bytes": "TX"
-      ticksuffix: "&nbsp;GBPs"
+        "iostat_read_bytes": "Read"
+        "iostat_write_bytes": "Write"
 
 redis_rpcs_per_sec:
   metric: "collectd_yb_redis_counter_total"
@@ -162,7 +161,7 @@ redis_rpcs_per_sec:
     type: "rpc_RedisServerService_get.num|rpc_RedisServerService_set.num|rpc_RedisServerService_echo.num"
   group_by: "type"
   layout:
-    title: "Redis RPCs / sec / node"
+    title: "Redis RPCs / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -195,13 +194,14 @@ redis_yb_latency:
     type: "rpc_write.avg|rpc_read.avg"
   group_by: "type"
   layout:
-    title: "YBClient Latency Breakdown"
+    title: "YBClient Latency"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rpc_write.avg": "Write"
         "rpc_read.avg": "Read"
+      ticksuffix: "&nbsp;\u00B5s"
 
 # tserver metrics
 tserver_ops_latency:
@@ -219,7 +219,7 @@ tserver_ops_latency:
         "rpc_TabletServerService_Scan.avg": "Scan"
         "rpc_TabletServerService_Write.avg": "Write"
         "rpc_TabletServerService_Read.avg": "Read"
-      ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_handler_latency:
   metric: "collectd_yb_tserver_counter_total"
@@ -228,7 +228,7 @@ tserver_handler_latency:
     type: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
   group_by: "type"
   layout:
-    title: "YugaByte reactor delays"
+    title: "YugaByte Reactor Delays"
     xaxis:
       type: "date"
     yaxis:
@@ -236,6 +236,7 @@ tserver_handler_latency:
         "rpc_incoming_queue_time.avg": "Incoming queue time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_rpcs_per_sec:
   metric: "collectd_yb_tserver_counter_total"
@@ -245,7 +246,7 @@ tserver_rpcs_per_sec:
     type: "rpc_TabletServerService_Scan.num|rpc_TabletServerService_Write.num|rpc_TabletServerService_Read.num"
   group_by: "type"
   layout:
-    title: "YugaByte RPCs / sec"
+    title: "YugaByte RPCs / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -253,21 +254,6 @@ tserver_rpcs_per_sec:
         "rpc_TabletServerService_Scan.num": "Scan"
         "rpc_TabletServerService_Write.num": "Write"
         "rpc_TabletServerService_Read.num": "Read"
-tserver_cache_ops_per_sec:
-  metric: "collectd_yb_tserver_counter_total"
-  function: "rate|avg"
-  range: "1m"
-  filters:
-    type: "block_cache_hits|block_cache_lookups"
-  group_by: "type"
-  layout:
-    title: "Block Cache Ops / sec"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "block_cache_hits": "Hits"
-        "block_cache_lookups": "Lookups"
 tserver_threads:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
@@ -342,7 +328,8 @@ tserver_log_latency:
         "log_sync_latency.avg": "Sync"
         "log_group_commit_latency.avg": "Commit"
         "log_append_latency.avg": "Append"
-      ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
+
 tserver_log_bytes_written:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
@@ -351,13 +338,12 @@ tserver_log_bytes_written:
     type: "log_bytes_logged"
   group_by: "type"
   layout:
-    title: "Log Bytes Written / Sec / Tserver"
+    title: "Log Bytes Written / Sec / TServer"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "log_bytes_logged": "Log Bytes Logged"
-      ticksuffix: "&nbsp;GBps"
 tserver_log_bytes_read:
   metric: "collectd_yb_tserver_counter_total"
   function: "rate|avg"
@@ -366,29 +352,28 @@ tserver_log_bytes_read:
     type: "log_reader_bytes_read"
   group_by: "type"
   layout:
-    title: "Log Bytes Read / Sec / Tserver"
+    title: "Log Bytes Read / Sec / TServer"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "log_reader_bytes_read": "Log Bytes Read"
-      ticksuffix: "&nbsp;KBps"
 tserver_log_ops_second:
    metric: "collectd_yb_tserver_counter_total"
    function: "rate|avg"
    range: "1m"
    filters:
-     type: "log_group_commit_latency.avg|log_append_latency.avg|log_sync_latency.avg"
+     type: "log_group_commit_latency.num|log_append_latency.num|log_sync_latency.num"
    group_by: "type"
    layout:
-     title: "TServer Log Ops / sec / host"
+     title: "TServer Log Ops / Sec / Node"
      xaxis:
        type: "date"
      yaxis:
        alias:
-         "log_group_commit_latency.avg": "Commit"
-         "log_append_latency.avg": "Append"
-         "log_sync_latency.avg": "Sync"
+         "log_group_commit_latency.num": "Commit"
+         "log_append_latency.num": "Append"
+         "log_sync_latency.num": "Sync"
        ticksuffix: "&nbsp;ops"
 tserver_tc_malloc_stats:
   metric: "collectd_yb_tserver_counter_total"
@@ -423,19 +408,19 @@ tserver_log_stats:
         "log_reader_bytes_read": "Log Bytes Read"
         "log_cache_size": "Log Cache Size"
       ticksuffix: "&nbsp;KiB"
+
 tserver_cache_reader_num_ops:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
   filters:
-    type: "log_reader_bytes_read|log_cache_num_ops"
+    type: "log_cache_num_ops"
   group_by: "type"
   layout:
-    title: "Log Cache / Reader Num Ops"
+    title: "Log Cache Num Ops"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "log_reader_bytes_read": "Log Bytes Read"
         "log_cache_num_ops": "Num Ops"
 
 lsm_rocksdb_num_seek_or_next:
@@ -464,7 +449,7 @@ lsm_rocksdb_latencies:
     type: "rocksdb.db.get.micros.avg|rocksdb.db.write.micros.avg|rocksdb.db.seek.micros.avg"
   group_by: "type"
   layout:
-    title: "LSM-DB Seek/Next latencies (us)"
+    title: "LSM-DB Get / Write / Seek latencies (us)"
     xaxis:
       type: "date"
     yaxis:
@@ -490,24 +475,77 @@ lsm_rocksdb_block_cache:
         "rocksdb.block.cache.miss": "Miss"
         "rocksdb.block.cache.add": "Add"
 
+lsm_rocksdb_flush_size:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rocksdb.flush.write.bytes"
+  group_by: "type"
+  layout:
+    title: "Flush write (bytes)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb.flush.write.bytes": "Flush"
+
+lsm_rocksdb_compaction:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  filters:
+    type: "rocksdb.compact.read.bytes|rocksdb.compact.write.bytes"
+  group_by: "type"
+  layout:
+    title: "Compaction (bytes)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb.compact.read.bytes": "Bytes Read"
+        "rocksdb.compact.write.bytes": "Bytes Written"
+
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "collectd_yb_cql_counter_total"
   function: "rate|avg"
   range: "1m"
   filters:
-    type: "rpc_CQLServerService_Any.num|yb_cqlserver_CQLServerService_ParsingErrors"
+    type: "rpc_SQLProcessor_SelectStmt.num|rpc_SQLProcessor_InsertStmt.num|rpc_SQLProcessor_UpdateStmt.num|rpc_SQLProcessor_DeleteStmt.num|rpc_SQLProcessor_OtherStmts.num"
   group_by: "type"
   layout:
-    title: "CQL Ops / Sec"
+    title: "CQL Ops / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "rpc_CQLServerService_Any.num": "CQL Ops / Sec / Node"
-        "yb_cqlserver_CQLServerService_ParsingErrors": "Parsing Errors/Sec"
+        "rpc_SQLProcessor_SelectStmt.num": "Select"
+        "rpc_SQLProcessor_InsertStmt.num": "Insert"
+        "rpc_SQLProcessor_UpdateStmt.num": "Update"
+        "rpc_SQLProcessor_DeleteStmt.num": "Delete"
+        "rpc_SQLProcessor_OtherStmts.num": "Other"
 
 cql_sql_latency:
+  metric: "collectd_yb_cql_counter_total"
+  function: "avg"
+  filters:
+    type: "rpc_SQLProcessor_SelectStmt.avg|rpc_SQLProcessor_InsertStmt.avg|rpc_SQLProcessor_UpdateStmt.avg|rpc_SQLProcessor_DeleteStmt.avg|rpc_SQLProcessor_OtherStmts.avg"
+  group_by: "type"
+  layout:
+    title: "CQL Op Execute Latencies"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpc_SQLProcessor_SelectStmt.avg": "Select"
+        "rpc_SQLProcessor_InsertStmt.avg": "Insert"
+        "rpc_SQLProcessor_UpdateStmt.avg": "Update"
+        "rpc_SQLProcessor_DeleteStmt.avg": "Delete"
+        "rpc_SQLProcessor_OtherStmts.avg": "Others"
+      ticksuffix: "&nbsp;\u00B5s"
+
+cql_sql_latency_breakdown:
   metric: "collectd_yb_cql_counter_total"
   function: "avg"
   filters:
@@ -519,10 +557,12 @@ cql_sql_latency:
       type: "date"
     yaxis:
       alias:
-        "rpc_CQLServerService_ProcessRequest.avg": "Process Request"
-        "rpc_SQLProcessor_ParseRequest.avg": "Parse SQL"
-        "rpc_SQLProcessor_AnalyseRequest.avg": "Analyze SQL"
-        "rpc_SQLProcessor_ExecuteRequest.avg": "Execute SQL"
+        "rpc_CQLServerService_ProcessRequest.avg": "Total"
+        "rpc_SQLProcessor_ParseRequest.avg": "Parse"
+        "rpc_SQLProcessor_AnalyseRequest.avg": "Analyze"
+        "rpc_SQLProcessor_ExecuteRequest.avg": "Execute"
+      ticksuffix: "&nbsp;\u00B5s"
+
 cql_yb_latency:
   metric: "collectd_yb_cql_counter_total"
   function: "avg"
@@ -530,13 +570,14 @@ cql_yb_latency:
     type: "rpc_write.avg|rpc_read.avg"
   group_by: "type"
   layout:
-    title: "YBClient Latency Breakdown"
+    title: "YBClient Latency"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "rpc_read.avg": "Read"
         "rpc_write.avg": "Write"
+      ticksuffix: "&nbsp;\u00B5s"
 
 cql_reactor_latency:
   metric: "collectd_yb_cql_counter_total"
@@ -545,7 +586,7 @@ cql_reactor_latency:
     type: "rpc_incoming_queue_time.avg|handler_latency_outbound_transfer.avg|handler_latency_outbound_call_queue_time.avg"
   group_by: "type"
   layout:
-    title: "YBClient reactor delays"
+    title: "YBClient Reactor Delays"
     xaxis:
       type: "date"
     yaxis:
@@ -553,6 +594,7 @@ cql_reactor_latency:
         "rpc_incoming_queue_time.avg": "Incoming Queue"
         "handler_latency_outbound_transfer.avg": "Outbound transfer time"
         "handler_latency_outbound_call_queue_time.avg": "Outbound queue time"
+      ticksuffix: "&nbsp;\u00B5s"
 
 response_sizes:
   metric: "collectd_yb_cql_counter_total"
@@ -561,7 +603,7 @@ response_sizes:
     type: "rpc_SQLProcessor_ResponseSize.avg"
   group_by: "type"
   layout:
-    title: "Response Size"
+    title: "Response Size (bytes)"
     xaxis:
       type: "date"
     yaxis:
