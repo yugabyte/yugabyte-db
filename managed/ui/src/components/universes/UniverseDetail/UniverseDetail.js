@@ -56,7 +56,7 @@ export default class UniverseDetail extends Component {
 
     const width = this.state.dimensions.width;
     const nodePrefixes = [currentUniverse.universeDetails.nodePrefix];
-    const graphPanelTypes = ['cql', 'redis', 'tserver', 'lsmdb', 'server'];
+    const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
     const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
       return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />
     });
