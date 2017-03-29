@@ -2,12 +2,11 @@
 
 import React, { Component } from 'react';
 import { DescriptionList } from '../../common/descriptors';
-import { YBCost } from 'components/common/descriptors';
 
 export default class ResourceStringPanel extends Component {
   render() {
     const { universeInfo } = this.props;
-    const { universeDetails, resources } = universeInfo;
+    const { universeDetails } = universeInfo;
     const { userIntent } = universeDetails;
     var azString = universeInfo.universeDetails.placementInfo.cloudList.map(function(cloudItem, idx){
       return cloudItem.regionList.map(function(regionItem, regionIdx){

@@ -96,7 +96,7 @@ export default class AWSProviderConfiguration extends ProviderConfiguration {
   render() {
     const { handleSubmit, submitting, pristine, reset,
       cloudBootstrap: { loading, type, error },
-      configuredProviders, configuredRegions } = this.props;
+      configuredProviders, configuredRegions, accessKeys } = this.props;
 
     var awsProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
     var providerConfig;
@@ -106,15 +106,20 @@ export default class AWSProviderConfiguration extends ProviderConfiguration {
       );
       var regionList = "Not Configured"
       var zoneList = "Not Configured"
+      var accessKeyList = "Not Configured"
+
       if (isValidArray(awsRegions)) {
         regionList = awsRegions.map( (awsRegion) => awsRegion.name ).join(",")
         zoneList = awsRegions.map( (awsRegion) => awsRegion.zones.map( (zone) => zone.name )).join(",")
       }
-
+      if (isValidObject(accessKeys) && isValidArray(accessKeys.data)) {
+        accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(",")
+      }
       var providerInfo = [
         {name: "Provider", data: awsProvider.name },
         {name: "Regions", data: regionList },
-        {name: "Zones", data: zoneList }
+        {name: "Zones", data: zoneList },
+        {name: "Access Keys", data: accessKeyList}
       ]
 
       providerConfig =

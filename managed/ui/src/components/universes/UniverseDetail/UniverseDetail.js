@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Grid, Row, Col, ButtonGroup, DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import Measure from 'react-measure';
-import { UniverseInfoPanel, ConnectStringPanel, ResourceStringPanel } from '../../panels'
+import { UniverseInfoPanel, ResourceStringPanel } from '../../panels'
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
@@ -88,7 +88,7 @@ export default class UniverseDetail extends Component {
         <ListTablesContainer/>
       </Tab>,
       <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab">
-        <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
+        <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet} />
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
         <GraphPanelHeaderContainer origin={"universe"}>

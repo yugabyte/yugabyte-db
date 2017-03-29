@@ -33,6 +33,10 @@ export const FETCH_SOFTWARE_VERSIONS = 'FETCH_SOFTWARE_VERSIONS';
 export const FETCH_SOFTWARE_VERSIONS_SUCCESS = 'FETCH_SOFTWARE_VERSIONS_SUCCESS';
 export const FETCH_SOFTWARE_VERSIONS_FAILURE = 'FETCH_SOFTWARE_VERSIONS_FAILURE';
 
+export const FETCH_HOST_INFO = 'FETCH_HOST_INFO';
+export const FETCH_HOST_INFO_SUCCESS = 'FETCH_HOST_INFO_SUCCESS';
+export const FETCH_HOST_INFO_FAILURE = 'FETCH_HOST_INFO_FAILURE';
+
 export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");
   var auth_token = localStorage.getItem("customer_token");
@@ -167,6 +171,29 @@ export function fetchSoftwareVersionsSuccess(result) {
 export function fetchSoftwareVersionsFailure(error) {
   return {
     type: FETCH_SOFTWARE_VERSIONS_FAILURE,
+    payload: error
+  }
+}
+
+export function fetchHostInfo() {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/host_info`);
+  return {
+    type: FETCH_HOST_INFO,
+    payload: request
+  }
+}
+
+export function fetchHostInfoSuccess(result) {
+  return {
+    type: FETCH_HOST_INFO_SUCCESS,
+    payload: result
+  }
+}
+
+export function fetchHostInfoFailure(error) {
+  return {
+    type: FETCH_HOST_INFO_FAILURE,
     payload: error
   }
 }

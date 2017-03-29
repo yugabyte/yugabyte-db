@@ -4,12 +4,13 @@ import {
   VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_SUCCESS, VALIDATE_FROM_TOKEN_FAILURE,
 	REGISTER, REGISTER_SUCCESS, REGISTER_FAILURE,
 	LOGIN, LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE,
-  FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS, FETCH_SOFTWARE_VERSIONS
+  FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS, FETCH_SOFTWARE_VERSIONS,
+  FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE
 } from '../actions/customers';
 import {isValidObject} from '../utils/ObjectUtils';
 
 const INITIAL_STATE = {customer: null, universes: [], tasks: [], status: null,
-                       error: null, loading: false, softwareVersions: []};
+                       error: null, loading: false, softwareVersions: [], hostInfo: null};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -59,6 +60,12 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, softwareVersions: action.payload.data}
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return {...state}
+    case FETCH_HOST_INFO:
+      return {...state, hostInfo: null}
+    case FETCH_HOST_INFO_SUCCESS:
+      return {...state, hostInfo: action.payload.data}
+    case FETCH_HOST_INFO_FAILURE:
+      return {...state, hostInfo: null }
     default:
       return state;
   }

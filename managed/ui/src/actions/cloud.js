@@ -48,6 +48,10 @@ export const DELETE_PROVIDER_FAILURE = 'DELETE_PROVIDER_FAILURE';
 
 export const RESET_PROVIDER_BOOTSTRAP = 'RESET_PROVIDER_BOOTSTRAP';
 
+export const LIST_ACCESS_KEYS = 'LIST_ACCESS_KEYS';
+export const LIST_ACCESS_KEYS_SUCCESS = 'LIST_ACCESS_KEYS_SUCCESS';
+export const LIST_ACCESS_KEYS_FAILURE = 'LIST_ACCESS_KEYS_FAILURE';
+
 export function getProviderList() {
   var cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -275,5 +279,28 @@ export function deleteProviderFailure(error) {
 export function resetProviderBootstrap() {
   return {
     type: RESET_PROVIDER_BOOTSTRAP
+  }
+}
+
+export function listAccessKeys(providerUUID) {
+  var url = getProviderEndpoint(providerUUID) + '/access_keys';
+  const request = axios.get(url);
+  return {
+    type: LIST_ACCESS_KEYS,
+    payload: request
+  };
+}
+
+export function listAccessKeysSuccess(result) {
+  return {
+    type: LIST_ACCESS_KEYS_SUCCESS,
+    payload: result
+  };
+}
+
+export function listAccessKeysFailure(error) {
+  return {
+    type: LIST_ACCESS_KEYS_FAILURE,
+    payload: error
   }
 }
