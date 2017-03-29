@@ -106,6 +106,12 @@ final class GetMasterRegistrationReceived {
     if (countResponsesReceived.incrementAndGet() == numMasters) {
       if (responseDCalled.compareAndSet(false, true)) {
         boolean allUnrecoverable = true;
+
+        // When there are no exceptions, default to retry semantics.
+        if (exceptionsReceived.isEmpty()) {
+          allUnrecoverable = false;
+        }
+
         for (Exception ex : exceptionsReceived) {
           if (!(ex instanceof NonRecoverableException)) {
             allUnrecoverable = false;
