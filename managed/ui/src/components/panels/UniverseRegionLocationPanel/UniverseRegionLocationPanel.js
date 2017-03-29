@@ -1,15 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import {isValidArray} from '../../../utils/ObjectUtils';
 import { RegionMap } from '../../maps';
-import {YBLoadingIcon} from '../../common/indicators';
 import { RegionMapLegend } from '../../maps';
 
 export default class UniverseRegionLocationPanel extends Component {
 
   render() {
-    const { cloud, cloud: {loading}, universe: {universeList} } = this.props;
+    const { cloud, universe: {universeList} } = this.props;
 
     var completeRegionList = cloud.supportedRegionList;
     var universeListByRegions = {};

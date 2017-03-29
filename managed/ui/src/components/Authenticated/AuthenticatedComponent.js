@@ -8,6 +8,7 @@ export default class AuthenticatedComponent extends Component {
     this.props.fetchUniverseList();
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
+    this.props.fetchHostInfo();
   }
 
   componentWillUnmount() {

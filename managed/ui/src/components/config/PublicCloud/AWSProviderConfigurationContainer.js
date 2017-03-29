@@ -10,7 +10,8 @@ import { createProvider, createProviderSuccess, createProviderFailure,
   getSupportedRegionData, getSupportedRegionDataSuccess, getSupportedRegionDataFailure,
   getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
   getProviderListSuccess, getProviderListFailure, deleteProvider, deleteProviderSuccess,
-  deleteProviderFailure, resetProviderBootstrap
+  deleteProviderFailure, resetProviderBootstrap, listAccessKeys,
+  listAccessKeysSuccess, listAccessKeysFailure
  } from '../../../actions/cloud';
 
 function validate(values) {
@@ -107,6 +108,14 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(getProviderListSuccess(response.payload));
           response.payload.data.forEach(function (item, idx) {
+            dispatch(listAccessKeys(item.uuid))
+              .then((response) => {
+                if (response.payload.status !== 200) {
+                  dispatch(listAccessKeysFailure(response.payload));
+                } else {
+                  dispatch(listAccessKeysSuccess(response.payload));
+                }
+              });
             dispatch(getRegionList(item.uuid, true))
               .then((response) => {
                 if (response.payload.status !== 200) {
@@ -131,6 +140,7 @@ const mapStateToProps = (state) => {
   return {
     configuredProviders: state.cloud.providers,
     configuredRegions: state.cloud.supportedRegionList,
+    accessKeys: state.cloud.accessKeys,
     cloudBootstrap: state.cloud.bootstrap,
     initialValues: { accountName: "Amazon" }
   };

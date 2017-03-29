@@ -93,4 +93,15 @@ public class AccessKeyTest extends FakeDBApplication {
     List<AccessKey> accessKeys = AccessKey.getAll(defaultProvider.uuid);
     assertEquals(0, accessKeys.size());
   }
+
+  @Test
+  public void testToJson() {
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.publicKey = "/path/to/public.key";
+    keyInfo.privateKey = "/path/to/private.key";
+    AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "access-code", keyInfo);
+    JsonNode accessKeyJson = Json.toJson(accessKey);
+    assertNotNull(accessKeyJson.get("keyInfo"));
+    assertNotNull(accessKeyJson.get("idKey"));
+  }
 }

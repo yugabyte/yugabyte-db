@@ -36,7 +36,6 @@ public class AccessKey extends Model {
     @Constraints.Required
     @Column(nullable = false)
     @DbJson
-    @JsonBackReference
     public JsonNode keyInfo;
 
     public void setKeyInfo(KeyInfo info) { this.keyInfo = Json.toJson(info); }
