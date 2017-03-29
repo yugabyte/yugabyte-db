@@ -1,12 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, {Component} from 'react';
 import { ListGroup, ListGroupItem } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 var Dropzone = require('react-dropzone');
-import ProviderConfiguration from '../ConfigProvider/ProviderConfiguration';
+import {withRouter} from 'react-router';
 
-export default class GCPProviderConfiguration extends ProviderConfiguration {
+class GCPProviderConfiguration extends Component {
 
   render() {
     return (
@@ -39,3 +39,5 @@ export default class GCPProviderConfiguration extends ProviderConfiguration {
     )
   }
 }
+
+export default withRouter(GCPProviderConfiguration);

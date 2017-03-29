@@ -1,18 +1,29 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, {Component} from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
-import ProviderConfiguration from '../ConfigProvider/ProviderConfiguration';
 import { ProgressList } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
 import { Field } from 'redux-form';
+import {withRouter} from 'react-router';
 import  { isValidArray, isValidObject } from '../../../utils/ObjectUtils';
 import { RegionMap } from '../../maps';
 
 const PROVIDER_TYPE = "aws";
 
-export default class AWSProviderConfiguration extends ProviderConfiguration {
+class AWSProviderConfiguration extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      bootstrapSteps: [
+        {type: "provider", name: "Create Provider", state: "Initializing"},
+        {type: "region", name: "Create Region and Zones", state: "Initializing"},
+        {type: "access-key", name: "Create Access Key", state: "Initializing"},
+        {type: "initialize", name: "Create Instance Types", state: "Initializing"}
+      ]
+    }
+  }
   componentWillMount() {
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
@@ -20,16 +31,7 @@ export default class AWSProviderConfiguration extends ProviderConfiguration {
   componentWillUnmount() {
     this.props.resetProviderBootstrap();
   }
-  getInitialState() {
-      return {
-        bootstrapSteps: [
-          {type: "provider", name: "Create Provider", state: "Initializing"},
-          {type: "region", name: "Create Region and Zones", state: "Initializing"},
-          {type: "access-key", name: "Create Access Key", state: "Initializing"},
-          {type: "initialize", name: "Create Instance Types", state: "Initializing"}
-        ]
-      };
-  }
+
   createProviderConfig(formValues) {
     const awsProviderConfig = {
       'AWS_ACCESS_KEY_ID': formValues.accessKey,
@@ -184,3 +186,5 @@ export default class AWSProviderConfiguration extends ProviderConfiguration {
     )
   }
 }
+
+export default withRouter(AWSProviderConfiguration);
