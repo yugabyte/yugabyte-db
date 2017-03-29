@@ -13,6 +13,8 @@ import { createProvider, createProviderSuccess, createProviderFailure,
   deleteProviderFailure, resetProviderBootstrap, listAccessKeys,
   listAccessKeysSuccess, listAccessKeysFailure
  } from '../../../actions/cloud';
+ import { fetchHostInfo, fetchHostInfoSuccess,
+   fetchHostInfoFailure } from '../../../actions/customers';
 
 function validate(values) {
   var errors = {};
@@ -50,8 +52,8 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    createRegion: (providerUUID, regionCode) => {
-      dispatch(createRegion(providerUUID, regionCode)).then((response) => {
+    createRegion: (providerUUID, regionCode, hostVPCId) => {
+      dispatch(createRegion(providerUUID, regionCode, hostVPCId)).then((response) => {
         if(response.payload.status !== 200) {
           dispatch(createRegionFailure(response.payload));
         } else {
@@ -131,8 +133,17 @@ const mapDispatchToProps = (dispatch) => {
     resetProviderBootstrap: () => {
       dispatch(resetProviderBootstrap());
     },
-  }
 
+    fetchHostInfo: () => {
+      dispatch(fetchHostInfo()).then((response)=>{
+        if (response.payload.status !== 200) {
+          dispatch(fetchHostInfoFailure(response.payload));
+        } else {
+          dispatch(fetchHostInfoSuccess(response.payload));
+        }
+      })
+    }
+  }
 }
 
 
@@ -142,7 +153,8 @@ const mapStateToProps = (state) => {
     configuredRegions: state.cloud.supportedRegionList,
     accessKeys: state.cloud.accessKeys,
     cloudBootstrap: state.cloud.bootstrap,
-    initialValues: { accountName: "Amazon" }
+    initialValues: { accountName: "Amazon" },
+    hostInfo: state.customer.hostInfo
   };
 }
 
