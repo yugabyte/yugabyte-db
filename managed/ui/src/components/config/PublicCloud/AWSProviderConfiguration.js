@@ -27,6 +27,7 @@ class AWSProviderConfiguration extends Component {
   componentWillMount() {
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
+    this.props.fetchHostInfo();
   }
   componentWillUnmount() {
     this.props.resetProviderBootstrap();
@@ -64,8 +65,13 @@ class AWSProviderConfiguration extends Component {
       switch (type) {
         case "provider":
           this.setState({providerUUID: response.uuid, accountName: response.name})
-          // TODO: fetch the yugaware region code from api.
-          this.props.createRegion(response.uuid, "us-west-2");
+          const { hostInfo } = this.props;
+          if (isValidObject(hostInfo) && hostInfo["error"] === undefined) {
+            this.props.createRegion(response.uuid, hostInfo["region"], hostInfo["vpc-id"]);
+          } else {
+            // TODO: Temporary change to it work locally.
+            this.props.createRegion(response.uuid, "us-west-2", "");
+          }
           break;
         case "region":
           var accessKeyCode = "yb-" + this.state.accountName.toLowerCase() + "-key"
@@ -135,8 +141,6 @@ class AWSProviderConfiguration extends Component {
             <Col lg={4} lgOffset={8}>
               <YBButton btnText={"Delete"} btnClass={"btn btn-default delete-btn"}
                         disabled={submitting}  btnType="submit"/>
-              <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}
-                        disabled={pristine || submitting} onClick={reset} />
             </Col>
           </Row>
         </form>
