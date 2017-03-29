@@ -8,12 +8,15 @@ import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
   CREATE_PROVIDER_FAILURE, CREATE_REGION, CREATE_REGION_SUCCESS, CREATE_REGION_FAILURE,
   CREATE_ACCESS_KEY, CREATE_ACCESS_KEY_SUCCESS, CREATE_ACCESS_KEY_FAILURE,
   INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS, INITIALIZE_PROVIDER_FAILURE,
-  DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE, RESET_PROVIDER_BOOTSTRAP
+  DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE, RESET_PROVIDER_BOOTSTRAP,
+  LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_SUCCESS, LIST_ACCESS_KEYS_FAILURE
 } from '../actions/cloud';
+
+import { setSuccessState, setFailureState, setLoadingState}  from './common';
 import _ from 'lodash';
 
 const INITIAL_STATE = {regions: [], providers: [], instanceTypes: [], loading: {regions: false, providers: false, instanceTypes: false,
-  supportedRegions: false}, selectedProvider: null, error: null, supportedRegionList: [], bootstrap: {}, status : 'init'};
+  supportedRegions: false}, selectedProvider: null, error: null, accessKeys: {}, supportedRegionList: [], bootstrap: {}, status : 'init'};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -84,7 +87,17 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, bootstrap: {type: 'cleanup', error: action.payload.data.error, loading: false}};
     case RESET_PROVIDER_BOOTSTRAP:
       return { ...state, bootstrap: {}};
+    case LIST_ACCESS_KEYS:
+      setLoadingState(state, "accessKeys");
+      break;
+    case LIST_ACCESS_KEYS_SUCCESS:
+      setSuccessState(state, "accessKeys", action.payload.data);
+      break;
+    case LIST_ACCESS_KEYS_FAILURE:
+      setFailureState(state, "accessKeys", action.payload.data.error);
+      break;
     default:
-      return state;
+      break;
   }
+  return state;
 }

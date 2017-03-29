@@ -4,80 +4,8 @@ import React, { Component, PropTypes } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
-import { YBModal, YBButton } from '../../common/forms/fields';
 import { isValidObject, isValidArray } from 'utils/ObjectUtils';
-
-
-class NodeConnectModal extends Component {
-  static propTypes = {
-    nodeIPs: PropTypes.array
-  }
-
-  constructor(props) {
-    super(props);
-    this.state = { showConnectModal: false };
-    this.toggleConnectModal = this.toggleConnectModal.bind(this);
-  }
-
-  toggleConnectModal() {
-    this.setState({showConnectModal: !this.state.showConnectModal});
-  }
-
-  render() {
-    const { nodeIPs } = this.props;
-
-    if (!isValidArray(nodeIPs)) {
-      return <span />;
-    }
-    var privateSSHCommand = nodeIPs.map(function(nodeIP) {
-      return(
-        <p>
-          ssh -i no-such-key.pem centos@{nodeIP.privateIP} -p 54422
-        </p>
-      )
-    })
-
-    var publicSSHCommand = nodeIPs.map(function(nodeIP) {
-      return(
-        <p>
-          ssh -i no-such-key.pem centos@{nodeIP.publicIP} -p 54422
-        </p>
-      )
-    })
-    return (
-      <div>
-        <YBButton btnText={"Connect"}
-          btnClass={"btn btn-default"}
-          onClick={this.toggleConnectModal}/>
-        <YBModal title={"Access your Cluster"}
-                 visible={this.state.showConnectModal}
-                 onHide={this.toggleConnectModal}
-                 showCancelButton={true} cancelLabel={"Ok"}>
-          <h4>From Admin host:</h4>
-          <ol>
-            <li>Locate your private key file (no-such-key.pem).</li>
-            <li>Make sure your key is not publicly viewable for SSH to work. Use this command if needed
-              <pre>chmod 400 no-such-key.pem</pre>
-            </li>
-            <li>Connect to your cluster using Private IP:
-              <pre>{privateSSHCommand}</pre>
-            </li>
-          </ol>
-          <h4>From localhost: (<i>Not recommended for production</i>)</h4>
-          <ol>
-            <li>Get your private key file (no-such-key.pem).</li>
-            <li>Make sure your key is not publicly viewable for SSH to work. Use this command if needed
-              <pre>chmod 400 no-such-key.pem</pre>
-            </li>
-            <li>Connect to your cluster using Public IP:
-              <pre>{publicSSHCommand}</pre>
-            </li>
-          </ol>
-        </YBModal>
-      </div>
-    );
-  }
-}
+import NodeConnectModal from './NodeConnectModal';
 
 export default class NodeDetails extends Component {
   static propTypes = {
@@ -92,6 +20,7 @@ export default class NodeDetails extends Component {
 
   render() {
     const { nodeDetails } = this.props;
+
     if (!isValidArray(nodeDetails)) {
       return <span />;
     }

@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 
-import { RegionMapLegend } from '../maps';
 import { UniverseRegionLocationPanelContainer,
    UniverseDisplayPanelContainer } from '../panels';
 import './stylesheets/Dashboard.css'
