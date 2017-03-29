@@ -107,8 +107,10 @@ void Logger::LogvWithContext(const char* file,
     const InfoLogLevel log_level,
     const char* format,
     va_list ap) {
-  static const char* kInfoLogLevelNames[5] = { "DEBUG", "INFO", "WARN",
-      "ERROR", "FATAL" };
+  static const char* kInfoLogLevelNames[6] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL", "HEADER"};
+  static_assert(
+      sizeof(kInfoLogLevelNames) / sizeof(kInfoLogLevelNames[0]) == NUM_INFO_LOG_LEVELS,
+      "kInfoLogLevelNames must have an element for each log level");
   if (log_level < log_level_) {
     return;
   }
@@ -381,7 +383,7 @@ void AssignEnvOptions(EnvOptions* env_options, const DBOptions& options) {
   env_options->allow_fallocate = options.allow_fallocate;
 }
 
-}
+}  // anonymous namespace
 
 EnvOptions Env::OptimizeForLogWrite(const EnvOptions& env_options,
                                     const DBOptions& db_options) const {
