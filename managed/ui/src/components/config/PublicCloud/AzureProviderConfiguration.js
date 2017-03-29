@@ -4,7 +4,8 @@ import React, { Component } from 'react';
 import { ListGroup, ListGroupItem, Col, Row } from 'react-bootstrap';
 import { YBInputField, YBButton } from '../../common/forms/fields';
 import { Field } from 'redux-form';
-import ProviderConfiguration from '../ConfigProvider/ProviderConfiguration';
+
+import { withRouter } from 'react-router';
 
 class FormDataCell extends Component {
   render() {
@@ -15,7 +16,7 @@ class FormDataCell extends Component {
   }
 }
 
-export default class AzureProviderConfiguration extends ProviderConfiguration {
+class AzureProviderConfiguration extends Component {
   render() {
     return (
       <div className="provider-config-container">
@@ -65,3 +66,5 @@ export default class AzureProviderConfiguration extends ProviderConfiguration {
     )
   }
 }
+
+export default withRouter(AzureProviderConfiguration);

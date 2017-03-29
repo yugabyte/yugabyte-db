@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, {Component} from 'react';
 import { ListGroup, ListGroupItem, Well } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
-import ProviderConfiguration from '../ConfigProvider/ProviderConfiguration';
+import {withRouter} from 'react-router';
 
-export default class DockerProviderConfiguration extends ProviderConfiguration {
+class DockerProviderConfiguration extends Component {
   render() {
     return (
       <div className="provider-config-container">
@@ -44,3 +44,5 @@ export default class DockerProviderConfiguration extends ProviderConfiguration {
     )
   }
 }
+
+export default withRouter(DockerProviderConfiguration);
