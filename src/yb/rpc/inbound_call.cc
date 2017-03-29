@@ -40,8 +40,18 @@ using yb::RedisResponsePB;
 
 DEFINE_bool(rpc_dump_all_traces, false,
             "If true, dump all RPC traces at INFO level");
+DEFINE_bool(collect_end_to_end_traces, false,
+            "If true, collected traces includes information for sub-components "
+            "potentially running on a different server. ");
+DEFINE_int32(print_trace_every, 0,
+            "Controls the rate at which traces are printed. Setting this to 0 "
+            "disables printing the collected traces.");
 TAG_FLAG(rpc_dump_all_traces, advanced);
 TAG_FLAG(rpc_dump_all_traces, runtime);
+TAG_FLAG(collect_end_to_end_traces, advanced);
+TAG_FLAG(collect_end_to_end_traces, runtime);
+TAG_FLAG(print_trace_every, advanced);
+TAG_FLAG(print_trace_every, runtime);
 
 
 namespace yb {
@@ -50,10 +60,15 @@ namespace rpc {
 InboundCall::InboundCall()
     : sidecars_deleter_(&sidecars_),
       trace_(new Trace) {
+  TRACE_TO(trace_, "Created InboundCall");
   RecordCallReceived();
 }
 
-InboundCall::~InboundCall() {}
+InboundCall::~InboundCall() {
+  TRACE_TO(trace_, "Destroying InboundCall");
+  YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
+      << "Tracing op: \n " << trace_->DumpToString(true);
+}
 
 void InboundCall::RespondSuccess(const MessageLite& response) {
   TRACE_EVENT0("rpc", "InboundCall::RespondSuccess");
@@ -183,6 +198,7 @@ Status YBInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
   TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
 
+  trace_->AddChildTrace(transfer->trace());
   RETURN_NOT_OK(serialization::ParseYBMessage(transfer->data(), &header_, &serialized_request_));
 
   // Adopt the service/method info from the header as soon as it's available.
@@ -295,6 +311,7 @@ Status RedisInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
 
+  trace_->AddChildTrace(transfer->trace());
   RETURN_NOT_OK(serialization::ParseRedisMessage(transfer->data(), &serialized_request_));
 
   RemoteMethodPB remote_method_pb;
@@ -399,6 +416,7 @@ Status CQLInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) 
   TRACE_EVENT_FLOW_BEGIN0("rpc", "CQLInboundCall", this);
   TRACE_EVENT0("rpc", "CQLInboundCall::ParseFrom");
 
+  trace_->AddChildTrace(transfer->trace());
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
   serialized_request_ = transfer->data();
 

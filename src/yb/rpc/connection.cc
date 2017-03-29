@@ -412,7 +412,9 @@ void Connection::ReadHandler(ev::io& watcher, int revents) {  // NOLINT
     if (inbound() == nullptr) {
       CreateInboundTransfer();
     }
+    TRACE_TO(inbound()->trace(), "Receiving Buffer");
     Status status = inbound()->ReceiveBuffer(socket_);
+    TRACE_TO(inbound()->trace(), "Done Receiving Buffer");
     if (PREDICT_FALSE(!status.ok())) {
       if (status.posix_code() == ESHUTDOWN) {
         VLOG(1) << ToString() << " shut down by remote end.";
@@ -426,6 +428,7 @@ void Connection::ReadHandler(ev::io& watcher, int revents) {  // NOLINT
       DVLOG(3) << ToString() << ": read is not yet finished yet.";
       return;
     }
+    TRACE_TO(inbound()->trace(), "Handling Finished Transfer");
     HandleFinishedTransfer();
 
     // TODO: it would seem that it would be good to loop around and see if

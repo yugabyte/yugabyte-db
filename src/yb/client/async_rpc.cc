@@ -26,6 +26,7 @@ METRIC_DEFINE_histogram(
     "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
     "Microseconds spent before sending the request to the server", 60000000LU, 2);
 DECLARE_bool(rpc_dump_all_traces);
+DECLARE_bool(collect_end_to_end_traces);
 
 namespace yb {
 
@@ -42,6 +43,10 @@ using strings::Substitute;
 namespace client {
 
 namespace internal {
+
+bool IsTracingEnabled() {
+  return FLAGS_collect_end_to_end_traces;
+}
 
 AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
     : write_rpc_time(METRIC_handler_latency_yb_client_write.Instantiate(entity)),
@@ -60,7 +65,11 @@ AsyncRpc::AsyncRpc(
       current_ts_(NULL),
       ops_(std::move(ops)),
       start_(MonoTime::Now(MonoTime::FINE)),
-      async_rpc_metrics_(async_rpc_metrics) {}
+      async_rpc_metrics_(async_rpc_metrics) {
+  if (Trace::CurrentTrace()) {
+    Trace::CurrentTrace()->AddChildTrace(trace_.get());
+  }
+}
 
 AsyncRpc::~AsyncRpc() {
   STLDeleteElements(&ops_);
@@ -189,6 +198,7 @@ void AsyncRpc::FailToNewReplica(const Status& reason) {
 
 void AsyncRpc::SendRpcCb(const Status& status) {
   TRACE_TO(trace_, "SendRpcCb(%s)", status.ToString(false));
+  ADOPT_TRACE(trace_.get());
   // Prefer early failures over controller failures.
   Status new_status = status;
   if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
@@ -309,6 +319,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   const Schema* schema = table()->schema().schema_;
 
   req_.set_tablet_id(tablet->tablet_id());
+  req_.set_include_trace(IsTracingEnabled());
   switch (batcher->external_consistency_mode()) {
     case yb::client::YBSession::CLIENT_PROPAGATED:
       req_.set_external_consistency_mode(yb::CLIENT_PROPAGATED);
@@ -396,9 +407,11 @@ WriteRpc::~WriteRpc() {
 
 void WriteRpc::SendRpcToTserver() {
   TRACE_TO(trace_, "SendRpcToTserver");
+  ADOPT_TRACE(trace_.get());
   current_ts_->proxy()->WriteAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
+  TRACE_TO(trace_, "RpcDispatched Asynchronously");
 }
 
 Status WriteRpc::response_error_status() {
@@ -408,6 +421,9 @@ Status WriteRpc::response_error_status() {
 
 void WriteRpc::ProcessResponseFromTserver(Status status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
+  if (resp_.has_trace_buffer()) {
+    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
+  }
   batcher_->ProcessWriteResponse(*this, status);
   if (resp_.has_error()) {
     LOG(WARNING) << "Write Rpc to tablet server has error:"
@@ -485,6 +501,7 @@ ReadRpc::ReadRpc(
     : AsyncRpc(batcher, tablet, ops, deadline, messenger, async_rpc_metrics) {
   TRACE_TO(trace_, "ReadRpc initiated to %s", tablet->tablet_id());
   req_.set_tablet_id(tablet->tablet_id());
+  req_.set_include_trace(IsTracingEnabled());
   int ctr = 0;
   for (InFlightOp* op : ops_) {
     switch (op->yb_op->type()) {
@@ -528,9 +545,11 @@ ReadRpc::~ReadRpc() {
 
 void ReadRpc::SendRpcToTserver() {
   TRACE_TO(trace_, "SendRpcToTserver");
+  ADOPT_TRACE(trace_.get());
   current_ts_->proxy()->ReadAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
+  TRACE_TO(trace_, "RpcDispatched Asynchronously");
 }
 
 Status ReadRpc::response_error_status() {
@@ -540,6 +559,9 @@ Status ReadRpc::response_error_status() {
 
 void ReadRpc::ProcessResponseFromTserver(Status status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
+  if (resp_.has_trace_buffer()) {
+    TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
+  }
   batcher_->ProcessReadResponse(*this, status);
   if (resp_.has_error()) {
     LOG(WARNING) << "Read Rpc to tablet server has error:"

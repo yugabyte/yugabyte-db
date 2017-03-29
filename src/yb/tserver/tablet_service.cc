@@ -318,8 +318,8 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
  public:
   WriteTransactionCompletionCallback(
       rpc::RpcContext* const context, WriteResponsePB* const response,
-      tablet::WriteTransactionState* const state)
-      : context_(context), response_(response), state_(state) { }
+      tablet::WriteTransactionState* const state, bool trace = false)
+      : context_(context), response_(response), state_(state), include_trace_(trace) { }
 
   virtual void TransactionCompleted() OVERRIDE {
     if (!status_.ok()) {
@@ -341,6 +341,9 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
             new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx), response_, context_);
         yql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
       }
+      if (include_trace_ && Trace::CurrentTrace() != nullptr) {
+        response_->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+      }
       context_->RespondSuccess();
     }
   };
@@ -354,6 +357,7 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
   rpc::RpcContext* const context_;
   WriteResponsePB* const response_;
   tablet::WriteTransactionState* const state_;
+  const bool include_trace_;
 };
 
 // Generic interface to handle scan results.
@@ -744,6 +748,7 @@ Status TabletServiceImpl::TakeReadSnapshot(Tablet* tablet,
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext* context) {
+  TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Write RPC: " << req->DebugString();
@@ -762,6 +767,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+  TRACE("Found Tablet");
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
   double capacity_pct;
@@ -820,7 +826,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
       new WriteTransactionState(tablet_peer.get(), req, resp));
 
   tx_state->set_completion_callback(gscoped_ptr<TransactionCompletionCallback>(
-      new WriteTransactionCompletionCallback(context, resp, tx_state.get())).Pass());
+      new WriteTransactionCompletionCallback(context, resp,
+                                             tx_state.get(), req->include_trace())).Pass());
 
   // Submit the write. The RPC will be responded to asynchronously.
   s = tablet_peer->SubmitWrite(tx_state.release());
@@ -855,6 +862,7 @@ Status TabletServiceImpl::CheckLeaderRole(const TabletPeer& tablet_peer,
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext* context) {
+  TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read",
                "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Read RPC: " << req->DebugString();
@@ -896,8 +904,10 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         YQLResponsePB yql_response;
         gscoped_ptr<faststring> rows_data;
         int rows_data_sidecar_idx = 0;
+        TRACE("Start HandleYBLReadRequest");
         s = tablet->HandleYQLReadRequest(
             read_tx.GetReadTimestamp(), yql_read_req, &yql_response, &rows_data);
+        TRACE("Done HandleYBLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
         if (rows_data.get() != nullptr) {
           s = context->AddRpcSidecar(make_gscoped_ptr(
@@ -928,8 +938,12 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       LOG(FATAL) << "Unknown table type: " << tablet->table_type();
       break;
   }
+  if (req->include_trace() && Trace::CurrentTrace() != nullptr) {
+    resp->set_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
+  }
   RpcTransactionCompletionCallback<ReadResponsePB> rpc(context, resp);
   rpc.TransactionCompleted();
+  TRACE("Done Read");
 }
 
 ConsensusServiceImpl::ConsensusServiceImpl(const scoped_refptr<MetricEntity>& metric_entity,

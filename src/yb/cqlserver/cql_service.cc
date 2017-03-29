@@ -70,6 +70,7 @@ void CQLServiceImpl::SetUpYBClient(
 }
 
 void CQLServiceImpl::Handle(InboundCall* inbound_call) {
+  TRACE("Handling the CQL call");
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call));
   if (cql_call->resume_from_ != nullptr) {

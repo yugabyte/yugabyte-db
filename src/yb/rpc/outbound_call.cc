@@ -93,6 +93,10 @@ OutboundCall::OutboundCall(
       start_(MonoTime::Now(MonoTime::FINE)),
       outbound_call_metrics_(outbound_call_metrics) {
   TRACE_TO(trace_, "Outbound Call initiated to %s", conn_id.ToString());
+  if (Trace::CurrentTrace()) {
+    Trace::CurrentTrace()->AddChildTrace(trace_.get());
+  }
+
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
            << (controller->timeout().Initialized() ? controller->timeout().ToString() : "none");

@@ -36,6 +36,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
+#include "yb/util/trace.h"
 
 DECLARE_int32(rpc_max_message_size);
 
@@ -69,6 +70,9 @@ struct RedisClientCommand {
 // and the InboundTransfer object itself is handed off.
 class AbstractInboundTransfer {
  public:
+  AbstractInboundTransfer() : trace_(new Trace) {
+    TRACE_TO(trace_, "Created AbstractInboundTransfer");
+  }
   virtual ~AbstractInboundTransfer() {}
 
   // Read from the socket into our buffer.
@@ -88,9 +92,13 @@ class AbstractInboundTransfer {
   // suitable for logging.
   virtual std::string StatusAsString() const = 0;
 
+  Trace *trace() { return trace_.get(); }
+
  protected:
   faststring buf_;
   int32_t cur_offset_ = 0;  // Index into buf_ where the next byte read from the client is stored.
+  // The trace buffer.
+  scoped_refptr<yb::Trace> trace_;
 };
 
 class YBInboundTransfer : public AbstractInboundTransfer {

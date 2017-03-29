@@ -9,6 +9,9 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/common/partition.h"
+#include "yb/util/trace.h"
+
+DECLARE_bool(trace_docdb_calls);
 
 using strings::Substitute;
 
@@ -672,12 +675,20 @@ Status YQLReadOperation::Execute(
   if (spec.row_count_limit() > 0) {
     DocRowwiseIterator iter(projection, schema, rocksdb, req_hybrid_time);
     RETURN_NOT_OK(iter.Init(spec));
+    if (FLAGS_trace_docdb_calls) {
+      TRACE("Initialized iterator");
+    }
+    int count = 0;
     while (iter.HasNext()) {
+      count++;
       RETURN_NOT_OK(iter.NextBlock(&spec, rowblock));
       // If the limit has been reached as specified, retrieve no more rows.
       if (rowblock->row_count() >= spec.row_count_limit()) {
         break;
       }
+    }
+    if (FLAGS_trace_docdb_calls) {
+      TRACE("Fetched $0 blocks.", count);
     }
     SubDocKey next_key;
     RETURN_NOT_OK(iter.GetNextReadSubDocKey(&next_key));
@@ -695,6 +706,7 @@ Status YQLReadOperation::Execute(
       paging_state_pb->clear_next_partition_key();
     }
   }
+
   return Status::OK();
 }
 

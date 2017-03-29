@@ -962,8 +962,10 @@ Status Tablet::HandleYQLReadRequest(HybridTime timestamp,
     column_ids.emplace_back(column_id);
   }
   YQLRowBlock rowblock(metadata_->schema(), column_ids);
+  TRACE("Start Execute");
   const Status s = doc_op.Execute(
       rocksdb_.get(), timestamp, metadata_->schema(), &rowblock);
+  TRACE("Done Execute");
   if (!s.ok()) {
     response->set_status(YQLResponsePB::YQL_STATUS_RUNTIME_ERROR);
     response->set_error_message(s.message().ToString());
@@ -973,7 +975,9 @@ Status Tablet::HandleYQLReadRequest(HybridTime timestamp,
   *response = std::move(doc_op.response());
   response->set_status(YQLResponsePB::YQL_STATUS_OK);
   rows_data->reset(new faststring());
+  TRACE("Start Serialize");
   rowblock.Serialize(yql_read_request.client(), rows_data->get());
+  TRACE("Done Serialize");
   return Status::OK();
 }
 

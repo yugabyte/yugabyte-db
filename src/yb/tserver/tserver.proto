@@ -146,6 +146,8 @@ message WriteRequestPB {
   // TODO crypto sign this and propagate the signature along with
   // the hybrid_time.
   optional fixed64 propagated_hybrid_time = 5;
+
+  optional bool include_trace = 6 [ default = false ];
 }
 
 message WriteResponsePB {
@@ -176,6 +178,8 @@ message WriteResponsePB {
   // The hybrid_time chosen by the server for this write.
   // TODO KUDU-611 propagate hybrid_times with server signature.
   optional fixed64 hybrid_time = 3;
+
+  optional string trace_buffer = 10;
 }
 
 // A list tablets request
@@ -239,6 +243,8 @@ message ReadRequestPB {
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 3 [default = true];
 
+  optional bool include_trace = 5 [ default = false ];
+
   // TODO: add hybrid_time in future
 }
 
@@ -251,6 +257,8 @@ message ReadResponsePB {
   optional fixed64 hybrid_time = 2;
 
   optional TabletServerErrorPB error = 3;
+
+  optional string trace_buffer = 5;
 }
 
 
@@ -349,6 +357,8 @@ message ScanRequestPB {
 
   // If set, the server will reject the request if it is not the leader
   optional bool leader_only = 6 [default = false];
+
+  optional bool include_trace = 7 [ default = false ];
 }
 
 message ScanResponsePB {
@@ -383,6 +393,8 @@ message ScanResponsePB {
   // If this is a fault-tolerant scanner, this is set to the encoded primary
   // key of the last row returned in the response.
   optional bytes last_primary_key = 7;
+
+  optional string trace_buffer = 8;
 }
 
 // A scanner keep-alive request.

@@ -38,6 +38,7 @@ DEFINE_bool(use_docdb_aware_bloom_filter, false,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 DEFINE_int32(max_nexts_to_avoid_seek, 8,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
+DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the docdb.");
 
 using std::shared_ptr;
 using std::string;
@@ -108,13 +109,17 @@ void PerformRocksDBSeek(
   } else {
     for (int nexts = 0; nexts <= FLAGS_max_nexts_to_avoid_seek; nexts++) {
       if (!iter->Valid() || iter->key().compare(key) >= 0) {
-          TRACE("Did $0 Next(s) instead of a Seek", nexts);
+          if (FLAGS_trace_docdb_calls) {
+            TRACE("Did $0 Next(s) instead of a Seek", nexts);
+          }
           break;
       }
       if (nexts < FLAGS_max_nexts_to_avoid_seek) {
         iter->Next();
       } else {
-        TRACE("Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
+        if (FLAGS_trace_docdb_calls) {
+          TRACE("Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
+        }
         iter->Seek(key);
       }
     }

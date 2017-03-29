@@ -4,6 +4,7 @@
 // SqlEnv represents the environment where SQL statements are being processed.
 //--------------------------------------------------------------------------------------------------
 
+#include <yb/util/trace.h>
 #include "yb/sql/util/sql_env.h"
 #include "yb/client/callbacks.h"
 #include "yb/master/catalog_manager.h"
@@ -95,6 +96,7 @@ void SqlEnv::ApplyWriteAsync(
   CB_RETURN_NOT_OK(cb, write_session_->Apply(yb_op));
   current_write_op_ = yb_op;
   requested_callback_ = cb;
+  TRACE("Flushing Write");
   write_session_->FlushAsync(&flush_done_cb_);
 }
 
@@ -108,10 +110,12 @@ void SqlEnv::ApplyReadAsync(
   CB_RETURN_NOT_OK(cb, read_session_->Apply(yb_op));
   current_read_op_ = yb_op;
   requested_callback_ = cb;
+  TRACE("Flushing Read");
   read_session_->FlushAsync(&flush_done_cb_);
 }
 
 void SqlEnv::FlushAsyncDone(const Status &s) {
+  TRACE("Flush Async Done");
   if (current_call_ == nullptr) {
     // For unit tests. Run the callback in the current (reactor) thread.
     ResumeCQLCall(s);
@@ -128,6 +132,7 @@ void SqlEnv::FlushAsyncDone(const Status &s) {
 }
 
 void SqlEnv::ResumeCQLCall(const Status &s) {
+  TRACE("Resuming CQL Call");
   if (current_write_op_.get() != nullptr) {
     DCHECK(current_read_op_ == nullptr);
     requested_callback_.Run(ProcessWriteResult(s));
