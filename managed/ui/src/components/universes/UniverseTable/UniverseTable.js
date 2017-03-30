@@ -31,6 +31,10 @@ export default class UniverseTable extends Component {
       return <YBLoadingIcon/>;
     }
 
+    if (!(isValidArray(universeList) && universeList.length)) {
+      return <h5>No universes defined.</h5>;
+    }
+
     var universeRowItem =
       universeList.map(function (item, idx) {
         var universeTaskUUIDs = [];
