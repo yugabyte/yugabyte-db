@@ -82,9 +82,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Wait for a Master Leader to be elected.
       createWaitForMasterLeaderTask().setUserSubTask(SubTaskType.ConfigureUniverse);
 
-      // Persist the placement info into the YB master.
+      // Persist the placement info into the YB master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
           .setUserSubTask(SubTaskType.ConfigureUniverse);
+
+      // Wait for a master leader to hear from atleast replication factor number of tservers.
+      createWaitForTServerHeartBeatsTask().setUserSubTask(SubTaskType.ConfigureUniverse);
 
       // Update the swamper target file
       createSwamperTargetUpdateTask(false /* removeFile */, SubTaskType.ConfigureUniverse);
