@@ -2,8 +2,7 @@
 
 import { connect } from 'react-redux';
 import Dashboard from './Dashboard';
-import { fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure,
-  resetUniverseList } from '../../actions/universe';
+import { fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure } from '../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -16,9 +15,6 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(fetchUniverseListSuccess(response.payload));
           }
         });
-    },
-    resetUniverseList: () => {
-      dispatch(resetUniverseList());
     }
   }
 }

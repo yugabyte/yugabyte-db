@@ -154,7 +154,10 @@ const mapStateToProps = (state) => {
     accessKeys: state.cloud.accessKeys,
     cloudBootstrap: state.cloud.bootstrap,
     initialValues: { accountName: "Amazon" },
+    universeList: state.universe.universeList,
+    universeLoading: state.universe.loading.universeList,
     hostInfo: state.customer.hostInfo
+
   };
 }
 

@@ -44,7 +44,7 @@ class AWSProviderConfiguration extends Component {
     this.props.deleteProviderConfig(provider.uuid);
   }
   componentWillReceiveProps(nextProps) {
-    const { cloudBootstrap: { loading, response, error, type } } = nextProps;
+    const { cloudBootstrap: { loading, response, error, type }} = nextProps;
     const { bootstrapSteps } = this.state;
     var currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
@@ -104,7 +104,12 @@ class AWSProviderConfiguration extends Component {
   render() {
     const { handleSubmit, submitting, pristine, reset,
       cloudBootstrap: { loading, type, error },
-      configuredProviders, configuredRegions, accessKeys } = this.props;
+      configuredProviders, configuredRegions, accessKeys, universeList, universeLoading } = this.props;
+    var universeExistsForProvider = false;
+    if ((isValidArray(configuredProviders))
+      && (universeLoading || universeList.find(universe => universe.provider.uuid === configuredProviders[0].uuid))){
+      universeExistsForProvider = true;
+    }
 
     var awsProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
     var providerConfig;
@@ -140,7 +145,7 @@ class AWSProviderConfiguration extends Component {
           <Row className="form-action-button-container">
             <Col lg={4} lgOffset={8}>
               <YBButton btnText={"Delete"} btnClass={"btn btn-default delete-btn"}
-                        disabled={submitting}  btnType="submit"/>
+                        disabled={submitting || universeExistsForProvider}  btnType="submit"/>
             </Col>
           </Row>
         </form>
