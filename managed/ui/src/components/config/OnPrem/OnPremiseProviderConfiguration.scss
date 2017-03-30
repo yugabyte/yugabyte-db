@@ -5,7 +5,8 @@
 
 .on-prem-provider-container {
   width: 100%;
-  height: 580px;
+  min-height: 500px;
+  height: 100%;
 
   .cell-container {
     position: relative;
@@ -117,7 +118,7 @@
   position: absolute;
   width: 100%;
   margin-left: 100%;
-  top: 0;
+  top: -10px;
   padding-left: 20px;
 }
 
