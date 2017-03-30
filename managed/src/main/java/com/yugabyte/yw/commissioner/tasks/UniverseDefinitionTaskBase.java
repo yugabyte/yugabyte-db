@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
@@ -330,6 +331,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     TaskList taskList = new TaskList("WaitForMasterLeader", executor);
     WaitForMasterLeader task = new WaitForMasterLeader();
     WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
+    params.universeUUID = taskParams().universeUUID;
+    task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  /**
+   * Creates a task list to wait for a minimum number of tservers to heartbeat
+   * to the master leader.
+   */
+  public TaskList createWaitForTServerHeartBeatsTask() {
+    TaskList taskList = new TaskList("WaitForTServerHeartBeats", executor);
+    WaitForTServerHeartBeats task = new WaitForTServerHeartBeats();
+    WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
     taskList.addTask(task);
