@@ -152,7 +152,7 @@ export default class AZSelectorTable extends Component {
     }
     var azGroups = self.state.azItemState;
     var azList = [];
-    if (isValidArray(azGroups)) {
+    if (isValidArray(azGroups) && azGroups.length) {
       azList = azGroups.map(function(azGroupItem, idx){
         return (
           <Row key={idx} >
@@ -168,12 +168,14 @@ export default class AZSelectorTable extends Component {
             </Col>
           </Row>
         )
-      })
+      });
+      return (
+        <div className={"az-table-container form-field-grid"}>
+          <h4>Availability Zones</h4>
+          {azList}
+        </div>
+      );
     }
-    return (
-      <div className={"az-table-container form-field-grid"}>
-        {azList}
-      </div>
-    )
+    return <span/>;
   }
 }
