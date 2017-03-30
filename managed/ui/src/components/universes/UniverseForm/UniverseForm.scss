@@ -85,3 +85,25 @@
   margin-top: 34px;
 }
 
+.universe-form-instance-info {
+  .volume-info {
+    display: inline-block;
+    line-height: 35px;
+
+    .volume-info-field {
+      display: inline-block;
+      margin: 0 5px;
+
+      &:first-child {
+        margin-left: 0;
+      }
+    }
+
+    .form-item-label {
+      display: inline-block;
+      margin: 0 5px 0 20px;
+      padding: 0;
+    }
+  }
+
+}
