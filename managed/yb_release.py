@@ -6,6 +6,7 @@ import logging
 import shutil
 import sys
 import argparse
+import tarfile
 
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
@@ -49,11 +50,13 @@ try:
             raise YBOpsRuntimeError("--tag is required for docker release.")
 
         packages_folder = os.path.join(script_dir, "target", "docker", "stage", "packages")
+
         package_infos = None
         try:
             log_message(logging.INFO, "Download packages based on the release tag")
             package_infos = get_package_info(args.tag)
             yugaware_commit_hash = None
+            yugabyte_package = None
             for package_info in package_infos:
                 package_name = package_info.get("package")
                 repo, commit, version = _extract_components_from_package_name(package_name, True)
@@ -62,6 +65,7 @@ try:
                     continue
                 elif repo == "yugabyte":
                     download_folder = os.path.join(packages_folder, repo, version)
+                    yugabyte_package = os.path.join(download_folder, package_name)
                 else:
                     download_folder = os.path.join(packages_folder, repo)
 
@@ -69,6 +73,16 @@ try:
                     os.makedirs(download_folder)
 
                 download_release(args.tag, package_name, download_folder, S3_RELEASE_BUCKET)
+
+
+            # Get the YB Load tester tar alone
+            yugabyte_tarfile = tarfile.open(yugabyte_package)
+            log_message(logging.INFO, "Get yb-loadtester jar from yugabyte tarfile")
+            for archive_file in yugabyte_tarfile.getmembers():
+                if "yb-loadtester" in archive_file.name:
+                    yugabyte_tarfile.extract(archive_file, packages_folder)
+                    shutil.move(os.path.join(packages_folder, archive_file.name),
+                                os.path.join(packages_folder, "yb-sample-app.jar"))
 
             if not yugaware_commit_hash:
                 raise YBOpsRuntimeError("Unable to fetch yugaware commit hash.")
