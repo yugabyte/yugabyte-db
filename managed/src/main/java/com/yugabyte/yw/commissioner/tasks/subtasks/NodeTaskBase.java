@@ -75,7 +75,7 @@ public abstract class NodeTaskBase extends AbstractTaskBase {
     if (response.code == 0) {
       LOG.info("[" + getName() + "] STDOUT: " + response.message);
     } else {
-      LOG.warn("[" + getName() + "] STDERR: " + response.message);
+      throw new RuntimeException(response.message);
     }
   }
 }
