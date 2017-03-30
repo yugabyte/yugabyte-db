@@ -30,7 +30,7 @@ class DataCenterConfiguration extends Component {
     const onPremiseTabContent =
       <div className="on-premise">
         <i className="fa fa-server" />
-        On-Premises<br/>Datacenter
+        On-Premises<br/>Datacenters
       </div>;
     return (
       <div>

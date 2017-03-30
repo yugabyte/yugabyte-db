@@ -3,7 +3,8 @@
 @import "_style/colors.scss";
 
 .provider-config-container {
-  height: 590px;
+  min-height: 500px;
+  height: 100%;
 }
 .provider-config-container .list-group {
   margin-right: 2%;
