@@ -11,9 +11,6 @@ class GCPProviderConfiguration extends Component {
   render() {
     return (
       <div className="provider-config-container">
-        <div>
-          <h2>Google Cloud Platform</h2>
-        </div>
         <ListGroup>
           <ListGroupItem>
             Configure Google Cloud Platform service access for YugaWare.
@@ -33,7 +30,6 @@ class GCPProviderConfiguration extends Component {
         </ListGroup>
         <div className="form-action-button-container">
           <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn pull-right"}/>
-          <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn pull-right"}/>
         </div>
       </div>
     )
