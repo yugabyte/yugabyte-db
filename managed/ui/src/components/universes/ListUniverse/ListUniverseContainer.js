@@ -3,7 +3,7 @@
 import { connect } from 'react-redux';
 
 import { ListUniverse } from '../../universes';
-import {fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, resetUniverseList,
+import {fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure,
         openDialog, closeDialog} from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
@@ -17,9 +17,6 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(fetchUniverseListSuccess(response.payload));
           }
         });
-    },
-    resetUniverseList: () => {
-      dispatch(resetUniverseList());
     },
     showUniverseModal: () => {
       dispatch(openDialog("universeModal"));
