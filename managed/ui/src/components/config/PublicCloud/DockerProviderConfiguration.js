@@ -9,7 +9,6 @@ class DockerProviderConfiguration extends Component {
   render() {
     return (
       <div className="provider-config-container">
-         <h2>Docker Configuration</h2>
         <ListGroup>
           <ListGroupItem>
             Ensure that
@@ -36,10 +35,6 @@ class DockerProviderConfiguration extends Component {
             </Well>
           </ListGroupItem>
         </ListGroup>
-        <div className="form-action-button-container">
-          <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn pull-right"}/>
-          <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn pull-right"}/>
-        </div>
       </div>
     )
   }

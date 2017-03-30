@@ -20,7 +20,6 @@ class AzureProviderConfiguration extends Component {
   render() {
     return (
       <div className="provider-config-container">
-        <h2>Azure</h2>
         <ListGroup>
           <ListGroupItem>
             Configure Microsoft Azure access for YugaWare. See Azure documentation:
@@ -60,7 +59,6 @@ class AzureProviderConfiguration extends Component {
         </ListGroup>
         <div className="form-action-button-container">
           <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn pull-right"}/>
-          <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn pull-right"}/>
         </div>
       </div>
     )
