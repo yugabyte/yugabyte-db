@@ -79,6 +79,7 @@ using TabletServerId = std::string;
 using PlacementId = std::string;
 using NamespaceId = std::string;
 using NamespaceName = std::string;
+using TServerId = std::string;
 
 // This class is a base wrapper around the protos that get serialized in the data column of the
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
@@ -348,6 +349,34 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
 
+class DeletedTableInfo;
+typedef std::pair<TServerId, TabletId> TabletKey;
+typedef std::unordered_map<
+    TabletKey, scoped_refptr<DeletedTableInfo>, boost::hash<TabletKey>> DeletedTabletMap;
+
+class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
+ public:
+  explicit DeletedTableInfo(const TableInfo* table);
+
+  const TableId& id() const { return table_id_; }
+
+  void DeleteTablet(const TabletKey& key) {
+    tablet_set_.erase(key);
+  }
+
+  bool HasTablets() const {
+    return !tablet_set_.empty();
+  }
+
+  void AddTabletsToMap(DeletedTabletMap* tablet_map);
+
+ private:
+  const TableId table_id_;
+
+  typedef std::unordered_set<TabletKey, boost::hash<TabletKey>> TabletSet;
+  TabletSet tablet_set_;
+};
+
 // The data related to a namespace which is persisted on disk.
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
@@ -555,6 +584,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                      DeleteTableResponsePB* resp,
                      rpc::RpcContext* rpc);
 
+  // Get the information about an in-progress delete operation
+  CHECKED_STATUS IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
+                                   IsDeleteTableDoneResponsePB* resp);
+
   // Alter the specified table
   //
   // The RPC context is provided for logging/tracing purposes,
@@ -645,7 +678,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
-  void NotifyTabletDeleteFinished(const std::string& tserver_uuid, const TableId& table_id);
+  void NotifyTabletDeleteFinished(const TServerId& tserver_uuid, const TableId& table_id);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
@@ -973,6 +1006,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   TableInfoMap table_ids_map_;         // Table map: table-id -> TableInfo
   TableInfoByNameMap table_names_map_; // Table map: [namespace-id, table-name] -> TableInfo
+
+  DeletedTabletMap deleted_tablet_map_; // Deleted Tablets map:
+                                        // [tserver-id, tablet-id] -> DeletedTableInfo
 
   // Tablet maps: tablet-id -> TabletInfo
   TabletInfoMap tablet_map_;

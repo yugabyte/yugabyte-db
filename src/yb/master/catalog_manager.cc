@@ -1340,6 +1340,8 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
 
   TRACE("Locking table");
   TableMetadataLock l(table.get(), TableMetadataLock::WRITE);
+  resp->set_table_id(table->id());
+
   if (l.data().is_deleted()) {
     Status s = STATUS(NotFound, "The table was deleted", l.data().pb.state_msg());
     SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
@@ -1362,16 +1364,24 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
     return s;
   }
 
-  // Remove it from the maps
+  // Update the internal table maps.
   {
     TRACE("Removing from by-name map");
     std::lock_guard<LockType> l_map(lock_);
     if (table_names_map_.erase({l.data().namespace_id(), l.data().name()}) != 1) {
       PANIC_RPC(rpc, "Could not remove table from map, name=" + l.data().name());
     }
-    TRACE("Removing from by-ids map");
-    if (table_ids_map_.erase(table->id()) != 1) {
-      PANIC_RPC(rpc, "Could not remove table from map, id=" + table->id());
+
+    scoped_refptr<DeletedTableInfo> deleted_table = new DeletedTableInfo(table.get());
+    if (deleted_table->HasTablets()) {
+      TRACE("Add deleted table tablets into tablet wait list");
+      deleted_table->AddTabletsToMap(&deleted_tablet_map_);
+    } else {
+      TRACE("Removing from by-ids map");
+      if (table_ids_map_.erase(deleted_table->id()) != 1) {
+        LOG(WARNING) << "Could not remove table from map, id=" << deleted_table->id();
+      }
+      // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
     }
   }
 
@@ -1388,6 +1398,39 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
             << " per request from " << RequestorString(rpc);
   background_tasks_->Wake();
   return Status::OK();
+}
+
+Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
+                                         IsDeleteTableDoneResponsePB* resp) {
+  RETURN_NOT_OK(CheckOnline());
+
+  // Lookup the deleted table.
+  TRACE("Looking up table $0", req->table_id());
+  std::lock_guard<LockType> l_map(lock_);
+  scoped_refptr<TableInfo> table = FindPtrOrNull(table_ids_map_, req->table_id());
+
+  if (table == nullptr) {
+    LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
+              << req->table_id() << ": deleted";
+    resp->set_done(true);
+    return Status::OK();
+  }
+
+  TRACE("Locking table");
+  TableMetadataLock l(table.get(), TableMetadataLock::READ);
+
+  if (l.data().is_deleted()) {
+    LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
+              << req->table_id() << ": deleting tablets";
+    resp->set_done(false);
+    return Status::OK();
+  }
+
+  LOG(WARNING) << "Servicing IsDeleteTableDone request for table id "
+      << req->table_id() << ": NOT deleted";
+  Status s = STATUS(IllegalState, "The table was NOT deleted", l.data().pb.state_msg());
+  SetupError(resp->mutable_error(), MasterErrorPB::TABLE_NOT_FOUND, s);
+  return s;
 }
 
 static Status ApplyAlterSteps(const SysTablesEntryPB& current_pb,
@@ -1774,8 +1817,31 @@ bool CatalogManager::TableNameExists(const NamespaceId& namespace_id,
   return table_names_map_.find({namespace_id, table_name}) != table_names_map_.end();
 }
 
-void CatalogManager::NotifyTabletDeleteFinished(const string& tserver_uuid,
+void CatalogManager::NotifyTabletDeleteFinished(const TServerId& tserver_uuid,
                                                 const TabletId& tablet_id) {
+  {
+    std::lock_guard<LockType> l_map(lock_);
+    DeletedTabletMap::key_type tablet_key(tserver_uuid, tablet_id);
+    scoped_refptr<DeletedTableInfo> deleted_table = FindPtrOrNull(deleted_tablet_map_, tablet_key);
+
+    if (deleted_table != nullptr) {
+      LOG(INFO) << "Deleted tablet " << tablet_key.second << " in ts " << tablet_key.first
+                << " from deleted table " << deleted_table->id();
+      deleted_tablet_map_.erase(tablet_key);
+      deleted_table->DeleteTablet(tablet_key);
+      // TODO: Check if we want to delete the tablet from the sys_catalog here.
+
+      if (!deleted_table->HasTablets()) {
+        LOG(INFO) << "All tablets were deleted from deleted table " << deleted_table->id();
+        TRACE("Removing from by-ids map");
+        if (table_ids_map_.erase(deleted_table->id()) != 1) {
+          LOG(WARNING) << "Could not remove table from map, id=" << deleted_table->id();
+        }
+        // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
+      }
+    }
+  }
+
   shared_ptr<TSDescriptor> ts_desc;
   if (!master_->ts_manager()->LookupTSByUUID(tserver_uuid, &ts_desc)) {
     LOG(WARNING) << "Unable to find tablet server " << tserver_uuid;
@@ -4634,6 +4700,7 @@ INITTED_OR_RESPOND(RemovedMasterUpdateResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(AlterTableResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(CreateTableResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(DeleteTableResponsePB);
+INITTED_AND_LEADER_OR_RESPOND(IsDeleteTableDoneResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsAlterTableDoneResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsCreateTableDoneResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(ListTablesResponsePB);
@@ -4894,6 +4961,32 @@ void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo> > *ret) const {
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   pb.set_state(state);
   pb.set_state_msg(msg);
+}
+
+////////////////////////////////////////////////////////////
+// DeletedTableInfo
+////////////////////////////////////////////////////////////
+
+DeletedTableInfo::DeletedTableInfo(const TableInfo* table) : table_id_(table->id()) {
+  vector<scoped_refptr<TabletInfo> > tablets;
+  table->GetAllTablets(&tablets);
+
+  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+    TabletMetadataLock tablet_lock(tablet.get(), TabletMetadataLock::READ);
+    TabletInfo::ReplicaMap replica_locations;
+    tablet->GetReplicaLocations(&replica_locations);
+
+    for (const TabletInfo::ReplicaMap::value_type& r : replica_locations) {
+      tablet_set_.insert(TabletSet::value_type(
+          r.second.ts_desc->permanent_uuid(), tablet->id()));
+    }
+  }
+}
+
+void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
+  for (const TabletKey& key : tablet_set_) {
+    tablet_map->insert(DeletedTabletMap::value_type(key, this));
+  }
 }
 
 ////////////////////////////////////////////////////////////

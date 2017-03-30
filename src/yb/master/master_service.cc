@@ -243,6 +243,19 @@ void MasterServiceImpl::DeleteTable(const DeleteTableRequestPB* req,
   rpc->RespondSuccess();
 }
 
+void MasterServiceImpl::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
+                                          IsDeleteTableDoneResponsePB* resp,
+                                          rpc::RpcContext* rpc) {
+  CatalogManager::ScopedLeaderSharedLock l(server_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc)) {
+    return;
+  }
+
+  Status s = server_->catalog_manager()->IsDeleteTableDone(req, resp);
+  CheckRespErrorOrSetUnknown(s, resp);
+  rpc->RespondSuccess();
+}
+
 void MasterServiceImpl::AlterTable(const AlterTableRequestPB* req,
                                    AlterTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {

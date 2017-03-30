@@ -101,7 +101,8 @@ class MasterTest : public YBTest {
                        const NamespaceName& namespace_name = "");
 
   Status DeleteTable(const TableName& table_name,
-                     const NamespaceName& namespace_name = "");
+                     const NamespaceName& namespace_name = "",
+                     TableId* table_id = nullptr);
 
   void DoListAllNamespaces(ListNamespacesResponsePB* resp);
   Status CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp);
@@ -304,7 +305,8 @@ void MasterTest::DoListAllTables(ListTablesResponsePB* resp,
 }
 
 Status MasterTest::DeleteTable(const TableName& table_name,
-                               const NamespaceName& namespace_name /* = "" */) {
+                               const NamespaceName& namespace_name /* = "" */,
+                               TableId* table_id /* = nullptr */) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   req.mutable_table()->set_table_name(table_name);
@@ -315,6 +317,9 @@ Status MasterTest::DeleteTable(const TableName& table_name,
 
   RETURN_NOT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
   SCOPED_TRACE(resp.DebugString());
+  if (table_id) {
+    *table_id = resp.table_id();
+  }
 
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
@@ -338,7 +343,29 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_EQ(kTableName, tables.tables(0).name());
 
   // Delete the table
-  ASSERT_OK(DeleteTable(kTableName));
+  TableId id;
+  ASSERT_OK(DeleteTable(kTableName, "" , &id));
+
+  IsDeleteTableDoneRequestPB done_req;
+  done_req.set_table_id(id);
+  IsDeleteTableDoneResponsePB done_resp;
+  bool delete_done = false;
+
+  for (int num_retries = 0; num_retries < 10; ++num_retries) {
+    const Status s = proxy_->IsDeleteTableDone(done_req, &done_resp, ResetAndGetController());
+    LOG(INFO) << "IsDeleteTableDone: " << s.ToString() << " done=" << done_resp.done();
+    ASSERT_TRUE(s.ok());
+    ASSERT_TRUE(done_resp.has_done());
+    if (done_resp.done()) {
+      LOG(INFO) << "Done on retry " << num_retries;
+      delete_done = true;
+      break;
+    }
+
+    SleepFor(MonoDelta::FromMilliseconds(10 * num_retries)); // sleep a bit more with each attempt.
+  }
+
+  ASSERT_TRUE(delete_done);
 
   // List tables, should show no table
   ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));

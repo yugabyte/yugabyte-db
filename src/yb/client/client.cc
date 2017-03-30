@@ -308,10 +308,10 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
   return data_->IsCreateTableInProgress(this, table_name, deadline, create_in_progress);
 }
 
-Status YBClient::DeleteTable(const YBTableName& table_name) {
+Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
-  return data_->DeleteTable(this, table_name, deadline);
+  return data_->DeleteTable(this, table_name, deadline, wait);
 }
 
 YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {

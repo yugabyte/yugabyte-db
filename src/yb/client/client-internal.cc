@@ -75,6 +75,8 @@ using master::IsAlterTableDoneRequestPB;
 using master::IsAlterTableDoneResponsePB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
+using master::IsDeleteTableDoneRequestPB;
+using master::IsDeleteTableDoneResponsePB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::ListMastersRequestPB;
@@ -438,14 +440,15 @@ Status YBClient::Data::CreateTable(
 Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
                                                const YBTableName& table_name,
                                                const MonoTime& deadline,
-                                               bool *create_in_progress) {
+                                               bool* create_in_progress) {
+  DCHECK_NOTNULL(create_in_progress);
   IsCreateTableDoneRequestPB req;
   IsCreateTableDoneResponsePB resp;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
 
   // TODO: Add client rpc timeout and use 'default_admin_operation_timeout_' as
   // the default timeout for all admin operations.
-  Status s =
+  const Status s =
       SyncLeaderMasterRpc<IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB>(
           deadline,
           client,
@@ -476,26 +479,76 @@ Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
 
 Status YBClient::Data::DeleteTable(YBClient* client,
                                    const YBTableName& table_name,
-                                   const MonoTime& deadline) {
+                                   const MonoTime& deadline,
+                                   bool wait) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
 
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
-  Status s = SyncLeaderMasterRpc<DeleteTableRequestPB, DeleteTableResponsePB>(
+  const Status s = SyncLeaderMasterRpc<DeleteTableRequestPB, DeleteTableResponsePB>(
       deadline, client, req, &resp,
       &attempts, "DeleteTable", &MasterServiceProxy::DeleteTable);
   RETURN_NOT_OK(s);
+
   if (resp.has_error()) {
     if (resp.error().code() == MasterErrorPB::TABLE_NOT_FOUND && attempts > 1) {
       // A prior attempt to delete the table has succeeded, but
       // appeared as a failure to the client due to, e.g., an I/O or
       // network issue.
-      return Status::OK();
+      // Good case - go through - to 'return Status::OK()'
+    } else {
+      return StatusFromPB(resp.error().status());
     }
+  }
+
+  // Spin until the table is fully deleted, if requested.
+  if (wait && resp.has_table_id()) {
+    RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
+  }
+
+  LOG(INFO) << "Deleted table " << table_name.ToString();
+  return Status::OK();
+}
+
+Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
+                                               const std::string& deleted_table_id,
+                                               const MonoTime& deadline,
+                                               bool* delete_in_progress) {
+  DCHECK_NOTNULL(delete_in_progress);
+  IsDeleteTableDoneRequestPB req;
+  IsDeleteTableDoneResponsePB resp;
+  req.set_table_id(deleted_table_id);
+
+  // TODO: Add client rpc timeout and use 'default_admin_operation_timeout_' as
+  // the default timeout for all admin operations.
+  const Status s =
+      SyncLeaderMasterRpc<IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB>(
+          deadline,
+          client,
+          req,
+          &resp,
+          nullptr,
+          "IsDeleteTableDone",
+          &MasterServiceProxy::IsDeleteTableDone);
+  // RETURN_NOT_OK macro can't take templated function call as param,
+  // and SyncLeaderMasterRpc must be explicitly instantiated, else the
+  // compiler complains.
+  RETURN_NOT_OK(s);
+  if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
+
+  *delete_in_progress = !resp.done();
   return Status::OK();
+}
+
+Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
+                                                  const std::string& deleted_table_id,
+                                                  const MonoTime& deadline) {
+  return RetryFunc(
+      deadline, "Waiting on Delete Table to be completed", "Timed out waiting for Table Deletion",
+      std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, deleted_table_id, _1, _2));
 }
 
 Status YBClient::Data::AlterTable(YBClient* client,

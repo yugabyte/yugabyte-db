@@ -23,21 +23,11 @@ public class TestKeyspace extends TestBase {
   public void setupTable(String test_table) throws Exception {
     LOG.info("Create & setup table: " + test_table);
     super.SetupTable(test_table, 2 /* num_rows */);
-
-    // Supposing the create operation is asyncronous.
-    // That's why let the system finish the creation to prevent races.
-    // TODO: Check ENG-985 and try to remove all sleeps.
-    Thread.sleep(500);
   }
 
   public void dropTable(String test_table) throws Exception {
     LOG.info("Drop table: " + test_table);
     super.DropTable(test_table);
-
-    // Supposing the drop operation is asyncronous.
-    // That's why let the system finish the deletion to prevent races.
-    // TODO: Check ENG-985 and try to remove all sleeps.
-    Thread.sleep(500);
   }
 
   public void checkTableRows(String test_table, int[] ids) throws Exception {
@@ -79,26 +69,54 @@ public class TestKeyspace extends TestBase {
   public void createKeyspace(String test_keyspace) throws Exception {
     String createKeyspaceStmt = "CREATE KEYSPACE " + test_keyspace + ";";
     execute(createKeyspaceStmt);
-
-    // Supposing the create operation is asyncronous.
-    // That's why let the system finish the operation to prevent races.
-    // TODO: Check ENG-985 and try to remove all sleeps.
-    Thread.sleep(200);
   }
 
   public void dropKeyspace(String test_keyspace) throws Exception {
     String deleteKeyspaceStmt = "DROP KEYSPACE " + test_keyspace + ";";
     execute(deleteKeyspaceStmt);
-
-    // Supposing the drop operation is asyncronous.
-    // That's why let the system finish the deletion to prevent races.
-    // TODO: Check ENG-985 and try to remove all sleeps.
-    Thread.sleep(200);
   }
 
   public void useKeyspace(String test_keyspace) throws Exception {
     String useKeyspaceStmt = "USE " + test_keyspace + ";";
     execute(useKeyspaceStmt);
+  }
+
+  @Test
+  public void testCreateAndDropTableTimeout() throws Exception {
+    String keyspaceName = "test_keyspace";
+    String tableName = "test_table";
+
+    createKeyspace(keyspaceName);
+    useKeyspace(keyspaceName);
+
+    for (int i = 0; i < 5; ++i) {
+      LOG.info("Create big table: " + tableName);
+      super.SetupTable(tableName, 10000 /* num_rows */);
+      dropTable(tableName);
+
+      // Check results of dropTable() just first a few times.
+      // Then only call Create+Drop as quick as it's possible.
+      if (i < 3) {
+        assertNoTable(tableName);
+      }
+    }
+
+    dropKeyspace(keyspaceName);
+  }
+
+  @Test
+  public void testCreateAndDropKeyspaceTimeout() throws Exception {
+    String keyspaceName = "test_keyspace";
+
+    for (int i = 0; i < 10; ++i) {
+      createKeyspace(keyspaceName);
+
+      if (i < 5) {
+        useKeyspace(keyspaceName);
+      }
+
+      dropKeyspace(keyspaceName);
+    }
   }
 
   @Test

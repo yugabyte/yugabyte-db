@@ -84,7 +84,17 @@ class YBClient::Data {
 
   CHECKED_STATUS DeleteTable(YBClient* client,
                              const YBTableName& table_name,
-                             const MonoTime& deadline);
+                             const MonoTime& deadline,
+                             bool wait = true);
+
+  CHECKED_STATUS IsDeleteTableInProgress(YBClient* client,
+                                         const std::string& deleted_table_id,
+                                         const MonoTime& deadline,
+                                         bool *delete_in_progress);
+
+  CHECKED_STATUS WaitForDeleteTableToFinish(YBClient* client,
+                                            const std::string& deleted_table_id,
+                                            const MonoTime& deadline);
 
   CHECKED_STATUS AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,

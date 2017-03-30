@@ -53,6 +53,9 @@ class MasterServiceImpl : public MasterServiceIf {
   virtual void DeleteTable(const DeleteTableRequestPB* req,
                            DeleteTableResponsePB* resp,
                            rpc::RpcContext* rpc) OVERRIDE;
+  virtual void IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
+                                 IsDeleteTableDoneResponsePB* resp,
+                                 rpc::RpcContext* rpc) OVERRIDE;
   virtual void AlterTable(const AlterTableRequestPB* req,
                            AlterTableResponsePB* resp,
                            rpc::RpcContext* rpc) OVERRIDE;
@@ -137,4 +140,4 @@ class MasterServiceImpl : public MasterServiceIf {
 } // namespace master
 } // namespace yb
 
-#endif
+#endif // YB_MASTER_MASTER_SERVICE_H
