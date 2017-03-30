@@ -4,8 +4,7 @@ import { connect } from 'react-redux';
 
 import UniverseTable from './UniverseTable';
 import { fetchUniverseList, fetchUniverseListSuccess,
-         fetchUniverseListFailure, resetUniverseList,
-         resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
+         fetchUniverseListFailure, resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
 import { fetchTaskProgress, fetchCurrentTaskListSuccess,
   fetchCurrentTaskListFailure, resetTaskProgress, fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import { queryMetrics } from '../../../actions/graph';
@@ -22,9 +21,7 @@ const mapDispatchToProps = (dispatch) => {
           }
         });
     },
-    resetUniverseList: () => {
-      dispatch(resetUniverseList());
-    },
+
     fetchUniverseTasks: () => {
       dispatch(fetchCustomerTasks())
       .then((response) => {

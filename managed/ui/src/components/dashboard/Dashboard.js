@@ -12,7 +12,7 @@ export default class Dashboard extends Component {
     this.props.fetchUniverseList();
   }
   componentWillUnmount() {
-    this.props.resetUniverseList();
+    this.props.fetchUniverseList();
   }
   render() {
     return (
