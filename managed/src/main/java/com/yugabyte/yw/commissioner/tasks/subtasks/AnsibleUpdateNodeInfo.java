@@ -33,10 +33,7 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
     // Create the process to fetch information about the node from the cloud provider.
     ShellProcessHandler.ShellResponse response = getNodeManager().nodeCommand(
         NodeManager.NodeCommandType.List, taskParams());
-
-    if (response.code != 0) {
-      throw new RuntimeException(response.message);
-    }
+    logShellResponse(response);
 
     // TODO: log output stream somewhere.
 
