@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.Common;
@@ -57,9 +59,11 @@ public class UpgradeUniverse extends UniverseTaskBase {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       if (taskParams().taskType == UpgradeTaskType.Software) {
-
+        if (taskParams().ybSoftwareVersion == null || taskParams().ybSoftwareVersion.isEmpty()) {
+          throw new IllegalArgumentException("Invalid yugabyte software version: " + taskParams().ybSoftwareVersion);
+        }
         if (taskParams().ybSoftwareVersion.equals(universe.getUniverseDetails().userIntent.ybSoftwareVersion)) {
-          throw new RuntimeException("Cluster is already on yugabyte software version: " + taskParams().ybSoftwareVersion);
+          throw new IllegalArgumentException("Cluster is already on yugabyte software version: " + taskParams().ybSoftwareVersion);
         }
 
         LOG.info("Upgrading software version to {} for {} nodes in universe {}",
@@ -77,6 +81,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
         createUpgradeTasks(universe.getTServers(), UniverseDefinitionTaskBase.ServerType.TSERVER);
       }
 
+      // Marks the update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks();
+
       // Run all the tasks.
       taskListQueue.run();
     } catch (Throwable t) {
@@ -89,8 +96,8 @@ public class UpgradeUniverse extends UniverseTaskBase {
   }
 
   public void createUpgradeTasks(List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType) {
-    nodes = filterByNodeName(nodes, taskParams().nodeNames);
-    for (NodeDetails node : nodes) {
+    List<NodeDetails> filterNodes = filterByNodeName(nodes, taskParams().nodeNames);
+    for (NodeDetails node : filterNodes) {
       if (taskParams().taskType == UpgradeTaskType.Software) {
         createSetNodeStateTask(node, NodeDetails.NodeState.UpgradeSoftware);
         createSoftwareUpgradeTask(node, processType);
@@ -114,10 +121,9 @@ public class UpgradeUniverse extends UniverseTaskBase {
     taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Install));
     taskList.setUserSubTask(UserTaskDetails.SubTaskType.InstallingSoftware);
     taskListQueue.add(taskList);
-    int sleepMillis = processType == UniverseDefinitionTaskBase.ServerType.MASTER ?
-      taskParams().sleepAfterMasterRestartMillis : taskParams().sleepAfterTServerRestartMillis;
 
-    createServerControlTask(node, processType, "start", sleepMillis, UserTaskDetails.SubTaskType.InstallingSoftware);
+    createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType),
+                            UserTaskDetails.SubTaskType.InstallingSoftware);
   }
 
   public void createGFlagsUpgradeTask(NodeDetails node, UniverseDefinitionTaskBase.ServerType processType) {
@@ -128,10 +134,13 @@ public class UpgradeUniverse extends UniverseTaskBase {
     taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
     taskList.setUserSubTask(UserTaskDetails.SubTaskType.UpdatingGFlags);
     taskListQueue.add(taskList);
+    createServerControlTask(node, processType, "start", getSleepTimeForProcess(processType),
+                            UserTaskDetails.SubTaskType.UpdatingGFlags);
+  }
 
-    int sleepMillis = processType == UniverseDefinitionTaskBase.ServerType.MASTER ?
-      taskParams().sleepAfterMasterRestartMillis : taskParams().sleepAfterTServerRestartMillis;
-    createServerControlTask(node, processType, "start", sleepMillis, UserTaskDetails.SubTaskType.UpdatingGFlags);
+  private int getSleepTimeForProcess(UniverseDefinitionTaskBase.ServerType processType) {
+    return processType == UniverseDefinitionTaskBase.ServerType.MASTER ?
+               taskParams().sleepAfterMasterRestartMillis : taskParams().sleepAfterTServerRestartMillis;
   }
 
   private AnsibleConfigureServers getConfigureTask(NodeDetails node,
