@@ -2,20 +2,39 @@
 
 @import "_style/colors.scss";
 
+#config-tab-panel .tab-content {
+  overflow: hidden;
+  min-height: 400px;
+}
+
 .provider-config-container {
-  min-height: 500px;
   height: 100%;
-}
-.provider-config-container .list-group {
-  margin-right: 2%;
-  padding: 10px 20px;
-}
-.provider-config-container .list-group-item {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 20px;
-  background-color: transparent;
-  border: none;
+  min-height: 500px;
+  padding-bottom: 30px;
+
+  .list-group {
+    padding: 0;
+    margin: 0;
+
+    .list-group-item {
+      font-size: 16px;
+      margin-bottom: 10px;
+      background-color: transparent;
+      border: none;
+
+      a {
+        font-weight: 600;
+      }
+
+      form, .well {
+        margin: 10px 0 20px 20px;
+      }
+
+      label {
+        font-size: 14px;
+      }
+    }
+  }
 }
 
 .provider-config-container .heading-text {
@@ -88,10 +107,16 @@
 
 .provider-config-container {
   .save-btn, .cancel-btn, .delete-btn {
-    width: 120px ;
+    width: 120px;
     height: 36px;
     padding: 0;
     margin: 0px 6px;
+  }
+  .save-btn, .delete-btn {
+    font-weight: 600;
+  }
+  .delete-aws-btn {
+    width: 160px;
   }
 }
 

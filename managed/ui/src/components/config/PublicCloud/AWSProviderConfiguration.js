@@ -113,7 +113,17 @@ class AWSProviderConfiguration extends Component {
 
     var awsProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
     var providerConfig;
+
     if (isValidObject(awsProvider)) {
+      var confirmDeleteSubmit = (e) => {
+        if (handleSubmit && confirm("Are you sure you want to delete this AWS account?")) {
+          return handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))();
+        } else {
+          e.preventDefault();
+          return false;
+        }
+      };
+
       var awsRegions = configuredRegions.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
@@ -129,23 +139,20 @@ class AWSProviderConfiguration extends Component {
         accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(",")
       }
       var providerInfo = [
-        {name: "Provider", data: awsProvider.name },
+        {name: "Account Name", data: awsProvider.name },
+        {name: "Key Pair", data: accessKeyList},
         {name: "Regions", data: regionList },
         {name: "Zones", data: zoneList },
-        {name: "Access Keys", data: accessKeyList}
       ]
 
       providerConfig =
-        <form name="awsConfigForm" onSubmit={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}>
+        <form name="awsConfigForm" onSubmit={confirmDeleteSubmit}>
           <Row className="config-section-header">
-            <h4>AWS configuration</h4>
-            <DescriptionList listItems={providerInfo} />
-            <RegionMap title="All Supported Regions" regions={awsRegions} type="Root"/>
-          </Row>
-          <Row className="form-action-button-container">
-            <Col lg={4} lgOffset={8}>
-              <YBButton btnText={"Delete"} btnClass={"btn btn-default delete-btn"}
-                        disabled={submitting || universeExistsForProvider}  btnType="submit"/>
+            <Col md={12}>
+              <YBButton btnText={"Delete Configuration"} btnClass={"btn btn-default delete-btn delete-aws-btn"}
+                        disabled={submitting || universeExistsForProvider} btnType="submit" />
+              <DescriptionList listItems={providerInfo} />
+              <RegionMap title="All Supported Regions" regions={awsRegions} type="Root"/>
             </Col>
           </Row>
         </form>
@@ -168,23 +175,20 @@ class AWSProviderConfiguration extends Component {
         <form name="awsConfigForm" onSubmit={handleSubmit(this.createProviderConfig.bind(this))}>
           <Row className="config-section-header">
             <Col lg={12}>
+              <h4>AWS Account Info</h4>
               { error && <Alert bsStyle="danger">{error}</Alert> }
-              <div className="aws-config-form">
+              <div className="aws-config-form form-right-aligned-labels">
                 <Field name="accountName" type="text" component={YBTextInputWithLabel} label="Account Name" />
-                <Field name="accessKey" type="text" component={YBTextInputWithLabel} label="Access Key"/>
-                <Field name="secretKey" type="text" component={YBTextInputWithLabel} label="Secret Key"/>
+                <Field name="accessKey" type="text" component={YBTextInputWithLabel} label="Access Key ID"/>
+                <Field name="secretKey" type="text" component={YBTextInputWithLabel} label="Secret Access Key"/>
               </div>
               { bootstrapSteps }
             </Col>
           </Row>
-          <Row className="form-action-button-container">
-            <Col lg={4} lgOffset={8}>
-              <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}
-                        disabled={submitting || loading } btnType="submit"/>
-              <YBButton btnText={"Cancel"} btnClass={"btn btn-default cancel-btn"}
-                        disabled={pristine || submitting} onClick={reset} />
-            </Col>
-          </Row>
+          <div className="form-action-button-container">
+            <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}
+                      disabled={submitting || loading } btnType="submit"/>
+          </div>
         </form>;
     }
 
@@ -192,7 +196,7 @@ class AWSProviderConfiguration extends Component {
       <div className="provider-config-container">
         { providerConfig }
       </div>
-    )
+    );
   }
 }
 
