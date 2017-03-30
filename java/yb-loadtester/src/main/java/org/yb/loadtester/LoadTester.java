@@ -48,14 +48,33 @@ public class LoadTester {
     public void run() {
       try {
         LOG.info("Starting " + ioType.toString() + " IOPS thread #" + threadIdx);
+        int numConsecutiveExceptions = 0;
         while(!workload.hasFinished()) {
-          switch (ioType) {
-            case Write: workload.workloadWrite(); break;
-            case Read: workload.workloadRead(); break;
+          try {
+            switch (ioType) {
+              case Write: workload.workloadWrite(); break;
+              case Read: workload.workloadRead(); break;
+            }
+            numConsecutiveExceptions = 0;
+          } catch (RuntimeException e) {
+            if (numConsecutiveExceptions++ % 10 == 0) {
+              LOG.info("Caught Exception ", e);
+            }
+            if (numConsecutiveExceptions > 500) {
+              LOG.error("Had more than " + numConsecutiveExceptions
+                        + " consecutive exceptions. Exiting.", e);
+              return;
+            }
+            try {
+              Thread.sleep(1000);
+            } catch (Exception ie) {
+              LOG.error("Sleep interrupted.", ie);
+              return;
+            }
           }
         }
-        LOG.info("IOPS thread #" + threadIdx + " finished");
       } finally {
+        LOG.info("IOPS thread #" + threadIdx + " finished");
         workload.terminate();
       }
     }
