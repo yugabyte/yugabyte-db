@@ -14,7 +14,7 @@
 #include "yb/cqlserver/cql_service.h"
 #include "yb/sql/sql_processor.h"
 #include "yb/sql/statement.h"
-#include "yb/rpc/inbound_call.h"
+#include "yb/rpc/cql_rpc.h"
 
 namespace yb {
 namespace cqlserver {

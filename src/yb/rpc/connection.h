@@ -294,126 +294,32 @@ class Connection : public RefCountedThreadSafe<Connection> {
   scoped_refptr<Histogram> handler_latency_outbound_transfer_;
 };
 
-class RedisConnection : public Connection {
+// Callbacks for sending an RPC call response from the server.
+// This takes ownership of the InboundCall object so that, once it has
+// been responded to, we can free up all of the associated memory.
+struct ResponseTransferCallbacks : public TransferCallbacks {
  public:
-  RedisConnection(ReactorThread* reactor_thread,
-                  Sockaddr remote,
-                  int socket,
-                  Direction direction);
+  ResponseTransferCallbacks() {}
 
-  virtual void RunNegotiation(const MonoTime& deadline) override;
+  virtual ~ResponseTransferCallbacks() {}
+
+  virtual void NotifyTransferFinished() override {
+    delete this;
+  }
+
+  virtual void NotifyTransferAborted(const Status& status) override;
 
  protected:
-  virtual void CreateInboundTransfer() override;
-
-  TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
-
-  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
-
-  virtual void HandleFinishedTransfer() override;
-
-  AbstractInboundTransfer* inbound() const override;
-
- private:
-  friend class RedisResponseTransferCallbacks;
-
-  gscoped_ptr<RedisInboundTransfer> inbound_;
-
-  // Used by the WriteHandler to signal that the current call has been
-  // responded to, so that the next call can be queued up for handling.
-  // Since the redis client calls do not have an associated call id. We
-  // need to be careful to ensure that the responses are sent in the
-  // same order in which the requests were made. Having more than one
-  // client request -- from the same connection -- cannot be allowed to
-  // process in parallel.
-  // In the current implementation, the Reader thread which receives data
-  // from the client, and the Writer thread that responds to the client are
-  // one and the same. So we might even be fine having this be a normal "bool"
-  // instead of atomic. But, we are just being safe here. There is no reason
-  // why the ReadHandler and WriteHandler should be on the same thread always.
-  std::atomic<bool> processing_call_;
-
-  void FinishedHandlingACall();
+  virtual InboundCall* call() = 0;
 };
 
-class CQLConnection : public Connection {
- public:
-  CQLConnection(ReactorThread* reactor_thread,
-                Sockaddr remote,
-                int socket,
-                Direction direction);
-
-  virtual void RunNegotiation(const MonoTime& deadline) override;
-
-  sql::SqlSession::SharedPtr sql_session() const { return sql_session_; }
-
- protected:
-  virtual void CreateInboundTransfer() override;
-
-  TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
-
-  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
-
-  virtual void HandleFinishedTransfer() override;
-
-  AbstractInboundTransfer* inbound() const override;
-
- private:
-  friend class CQLResponseTransferCallbacks;
-
-  gscoped_ptr<CQLInboundTransfer> inbound_;
-
-  void FinishedHandlingACall();
-
-  // SQL session of this CQL client connection.
-  // TODO(robert): To get around the need for this RPC layer to link with the SQL layer for the
-  // reference to the SqlSession here, the whole SqlSession definition is contained in sql_session.h
-  // and #include'd in connection.h/.cc. When SqlSession gets more complicated (say when we support
-  // Cassandra ROLE), consider adding a CreateNewConnection method in rpc::ServiceIf so that
-  // CQLConnection can be created and returned from CQLServiceImpl.CreateNewConnection().
-  sql::SqlSession::SharedPtr sql_session_;
-};
-
-class YBConnection : public Connection {
- public:
-  YBConnection(ReactorThread* reactor_thread,
-               Sockaddr remote,
-               int socket,
-               Direction direction);
-
-  // Return SASL client instance for this connection.
-  SaslClient& sasl_client() { return sasl_client_; }
-
-  // Return SASL server instance for this connection.
-  SaslServer& sasl_server() { return sasl_server_; }
-
-  // Initialize SASL client before negotiation begins.
-  CHECKED_STATUS InitSaslClient();
-
-  // Initialize SASL server before negotiation begins.
-  CHECKED_STATUS InitSaslServer();
-
-  virtual void RunNegotiation(const MonoTime& deadline) override;
-
- protected:
-  virtual void CreateInboundTransfer() override;
-
-  TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
-
-  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
-
-  virtual void HandleFinishedTransfer() OVERRIDE;
-
-  AbstractInboundTransfer* inbound() const override;
-
- private:
-  gscoped_ptr<YBInboundTransfer> inbound_;
-  // SASL client instance used for connection negotiation when Direction == CLIENT.
-  SaslClient sasl_client_;
-
-  // SASL server instance used for connection negotiation when Direction == SERVER.
-  SaslServer sasl_server_;
-};
+#define RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status) \
+  if (PREDICT_FALSE(!status.ok())) {                            \
+    if (Socket::IsTemporarySocketError(status.posix_code())) {  \
+      return Status::OK(); /* EAGAIN, etc. */                   \
+    }                                                           \
+    return status;                                              \
+  }
 
 }  // namespace rpc
 }  // namespace yb

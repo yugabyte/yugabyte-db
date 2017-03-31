@@ -37,8 +37,6 @@ class Histogram;
 namespace rpc {
 
 class InboundCall;
-class YBInboundCall;
-class RedisInboundCall;
 
 struct RpcMethodMetrics {
   RpcMethodMetrics();

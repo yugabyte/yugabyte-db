@@ -9,6 +9,8 @@
 #include "yb/client/callbacks.h"
 #include "yb/master/catalog_manager.h"
 
+#include "yb/rpc/cql_rpc.h"
+
 namespace yb {
 namespace sql {
 

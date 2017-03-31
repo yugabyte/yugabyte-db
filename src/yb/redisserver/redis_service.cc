@@ -15,6 +15,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/redisserver/redis_server.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/redis_rpc.h"
 #include "yb/util/bytes_formatter.h"
 
 METRIC_DEFINE_histogram(

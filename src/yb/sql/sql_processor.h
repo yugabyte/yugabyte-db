@@ -16,6 +16,11 @@
 #include "yb/util/metrics.h"
 
 namespace yb {
+
+namespace rpc {
+class CQLInboundCall;
+} // namespace rpc
+
 namespace sql {
 
 class SqlMetrics {

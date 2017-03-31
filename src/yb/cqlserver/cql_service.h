@@ -22,6 +22,10 @@ class YBTable;
 class YBSession;
 }  // namespace client
 
+namespace rpc {
+class CQLInboundCall;
+} // namespace rpc
+
 namespace cqlserver {
 
 class CQLMetrics;

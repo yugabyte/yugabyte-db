@@ -46,15 +46,11 @@ class Message;
 namespace yb {
 
 class Histogram;
-class RedisResponsePB;
 class Trace;
 
 namespace rpc {
 
 class Connection;
-class YBConnection;
-class RedisConnection;
-class CQLConnection;
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 class RpcSidecar;
@@ -210,137 +206,6 @@ class InboundCall {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
-};
-
-class YBInboundCall : public InboundCall {
- public:
-  explicit YBInboundCall(YBConnection* conn);
-
-  // Parse an inbound call message.
-  //
-  // This only deserializes the call header, populating the 'header_' and
-  // 'serialized_request_' member variables. The actual call parameter is
-  // not deserialized, as this may be CPU-expensive, and this is called
-  // from the reactor thread.
-  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
-
-  int32_t call_id() const {
-    return header_.call_id();
-  }
-
-  // Serialize the response packet for the finished call.
-  // The resulting slices refer to memory in this object.
-  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
-
-  // Serialize a response message for either success or failure. If it is a success,
-  // 'response' should be the user-defined response type for the call. If it is a
-  // failure, 'response' should be an ErrorStatusPB instance.
-  virtual CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                         bool is_success) override;
-
-  virtual void QueueResponseToConnection() override;
-  virtual void LogTrace() const override;
-  virtual std::string ToString() const override;
-  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
-
-  // Return true if the deadline set by the client has already elapsed.
-  // In this case, the server may stop processing the call, since the
-  // call response will be ignored anyway.
-  virtual MonoTime GetClientDeadline() const override;
- protected:
-  scoped_refptr<Connection> get_connection() override;
-  const scoped_refptr<Connection> get_connection() const override;
-
- private:
-  // The header of the incoming call. Set by ParseFrom()
-  RequestHeader header_;
-
-  // The buffers for serialized response. Set by SerializeResponseBuffer().
-  faststring response_hdr_buf_;
-  faststring response_msg_buf_;
-
-  // The connection on which this inbound call arrived.
-  scoped_refptr<YBConnection> conn_;
-
-};
-
-class RedisInboundCall : public InboundCall {
- public:
-  explicit RedisInboundCall(RedisConnection* conn);
-
-  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
-
-  // Serialize the response packet for the finished call.
-  // The resulting slices refer to memory in this object.
-  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
-
-  // Serialize a response message for either success or failure. If it is a success,
-  // 'response' should be the user-defined response type for the call. If it is a
-  // failure, 'response' should be an ErrorStatusPB instance.
-  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                 bool is_success) override;
-  CHECKED_STATUS SerializeResponseBuffer(const RedisResponsePB& redis_response, bool is_success);
-
-  virtual void QueueResponseToConnection() override;
-  virtual void LogTrace() const override;
-  virtual std::string ToString() const override;
-  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
-
-  virtual MonoTime GetClientDeadline() const override;
-  RedisClientCommand& GetClientCommand();
-
- protected:
-  scoped_refptr<Connection> get_connection() override;
-  const scoped_refptr<Connection> get_connection() const override;
-
- private:
-  // The connection on which this inbound call arrived.
-  scoped_refptr<RedisConnection> conn_;
-  faststring response_msg_buf_;
-};
-
-class CQLInboundCall : public InboundCall {
- public:
-  explicit CQLInboundCall(CQLConnection* conn);
-
-  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
-
-  // Serialize the response packet for the finished call.
-  // The resulting slices refer to memory in this object.
-  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
-
-  // Serialize a response message for either success or failure. If it is a success,
-  // 'response' should be the user-defined response type for the call. If it is a
-  // failure, 'response' should be an ErrorStatusPB instance.
-  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                 bool is_success) override;
-
-  virtual void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
-  virtual void QueueResponseToConnection() override;
-  virtual void LogTrace() const override;
-  virtual std::string ToString() const override;
-  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
-
-  virtual MonoTime GetClientDeadline() const override;
-
-  // Return the response message buffer.
-  faststring& response_msg_buf() {
-    return response_msg_buf_;
-  }
-
-  // Return the SQL session of this CQL call.
-  sql::SqlSession::SharedPtr GetSqlSession() const;
-
-  Callback<void(void)>* resume_from_ = nullptr;
-
- protected:
-  scoped_refptr<Connection> get_connection() override;
-  const scoped_refptr<Connection> get_connection() const override;
-
- private:
-  // The connection on which this inbound call arrived.
-  scoped_refptr<CQLConnection> conn_;
-  faststring response_msg_buf_;
 };
 
 }  // namespace rpc

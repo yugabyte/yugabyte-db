@@ -26,6 +26,10 @@ class YBRedisWriteOp;
 class YBRedisReadOp;
 }  // namespace client
 
+namespace rpc {
+struct RedisClientCommand;
+}
+
 namespace redisserver {
 
 class RedisServer;

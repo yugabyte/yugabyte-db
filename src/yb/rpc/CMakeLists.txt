@@ -47,12 +47,14 @@ set(YRPC_SRCS
     outbound_call.cc
     connection.cc
     constants.cc
+    cql_rpc.cc
     inbound_call.cc
     messenger.cc
     negotiation.cc
     proxy.cc
     reactor.cc
     redis_encoding.cc
+    redis_rpc.cc
     remote_method.cc
     rpc.cc
     rpc_context.cc
@@ -65,6 +67,7 @@ set(YRPC_SRCS
     service_if.cc
     service_pool.cc
     transfer.cc
+    yb_rpc.cc
 )
 
 set(YRPC_LIBS

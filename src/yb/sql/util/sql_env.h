@@ -14,8 +14,10 @@
 #include "yb/client/callbacks.h"
 #include "yb/sql/sql_session.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/cql_rpc.h"
 
 namespace yb {
+
 namespace sql {
 
 class SqlEnv {
