@@ -642,16 +642,23 @@ Status YBClient::TableExists(const YBTableName& table_name, bool* exists) {
 Status YBTableCache::GetTable(
     const YBTableName& table_name, shared_ptr<YBTable>* table, bool force_refresh,
     bool* cache_used) {
-  if (!force_refresh) {
+  {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
     auto itr = cached_tables_.find(
         YBTableMap::key_type(table_name.namespace_name(), table_name.table_name()));
     if (itr != cached_tables_.end()) {
-      *table = itr->second;
-      *cache_used = true;
-      return Status::OK();
+      if (!force_refresh) {
+        *table = itr->second;
+        *cache_used = true;
+        return Status::OK();
+      } else {
+        // If force refresh, delete the cached entry now. Otherwise, if the table has been dropped
+        // and OpenTable() fails below, the cached entry will not be deleted.
+        cached_tables_.erase(itr);
+      }
     }
   }
+
   RETURN_NOT_OK(client_->OpenTable(table_name, table));
   *cache_used = false;
   {

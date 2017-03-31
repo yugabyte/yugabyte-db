@@ -42,6 +42,10 @@ CHECKED_STATUS Statement::Prepare(SqlProcessor *processor,
   {
     boost::lock_guard<boost::shared_mutex> l(lock_);
     if (prepare_time_.Equals(last_prepare_time)) {
+      // Clear last prepare time to reinitialize the statement to unprepared state. Otherwise, if
+      // the statement needs to be reprepared and the semantic analysis fails, the statement may be
+      // treated as prepared when accessed next time, but semantic analysis info has been purged.
+      prepare_time_ = kNoLastPrepareTime;
 
       // Parse the statement if the parse tree hasn't been generated (not parsed) yet.
       if (parse_tree_.get() == nullptr) {

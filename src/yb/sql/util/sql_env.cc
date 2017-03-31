@@ -70,6 +70,7 @@ CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
   if (s.IsIOError()) {
     vector<client::YBError*> errors;
     bool overflowed;
+    ElementDeleter d(&errors);
     session->GetPendingErrors(&errors, &overflowed);
     for (const auto* error : errors) {
       if (&error->failed_op() == op) {
@@ -117,8 +118,11 @@ void SqlEnv::ApplyReadAsync(
 void SqlEnv::FlushAsyncDone(const Status &s) {
   TRACE("Flush Async Done");
   if (current_call_ == nullptr) {
-    // For unit tests. Run the callback in the current (reactor) thread.
+    // For unit tests. Run the callback in the current (reactor) thread and allow wait for the case
+    // when a statement needs to be reprepared and we need to fetch table metadata synchronously.
+    bool allowed = ThreadRestrictions::SetWaitAllowed(true);
     ResumeCQLCall(s);
+    ThreadRestrictions::SetWaitAllowed(allowed);
     return;
   }
 

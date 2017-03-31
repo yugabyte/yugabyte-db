@@ -116,6 +116,8 @@ class YbSqlProcessor : public SqlProcessor {
     return nullptr;
   }
 
+  std::string CurrentKeyspace() const { return sql_env_->CurrentKeyspace(); }
+
  private:
   // Execute result.
   ExecutedResult::SharedPtr result_;
