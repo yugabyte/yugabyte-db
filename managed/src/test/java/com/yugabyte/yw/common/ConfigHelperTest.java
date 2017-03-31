@@ -1,9 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.YugawareProperty;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -21,8 +23,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.ReleaseManagerTest.TMP_STORAGE_PATH;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.*;
@@ -39,6 +40,16 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   @Mock
   Application application;
+
+  @Before
+  public void beforeTest() throws IOException {
+    new File(TMP_STORAGE_PATH).mkdirs();
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
+  }
 
   private InputStream asYamlStream(Map<String, Object> map) throws IOException {
     Yaml yaml = new Yaml();

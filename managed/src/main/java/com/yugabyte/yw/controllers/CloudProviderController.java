@@ -5,10 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +46,9 @@ public class CloudProviderController extends AuthenticatedController {
   @Inject
   AccessManager accessManager;
 
+  @Inject
+  NetworkManager networkManager;
+
   /**
    * GET endpoint for listing providers
    * @return JSON response with provider's
@@ -73,13 +76,15 @@ public class CloudProviderController extends AuthenticatedController {
       accessKeys.forEach((accessKey) -> {
         provider.regions.forEach((region) -> {
           accessManager.deleteKey(region.uuid, accessKey.getKeyCode());
+          // Delete yugabyte vpc and subnets
+          networkManager.cleanup(region.uuid);
         });
         accessKey.delete();
       });
 
       provider.delete();
       return ApiResponse.success("Deleted provider: " + providerUUID);
-    } catch (PersistenceException e) {
+    } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete provider: " + providerUUID);
     }

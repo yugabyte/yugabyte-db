@@ -4,8 +4,6 @@ package com.yugabyte.yw.common;
 
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import org.junit.Before;
@@ -16,7 +14,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.runners.MockitoJUnitRunner;
-import play.libs.Json;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.anyList;
@@ -100,8 +96,11 @@ public class NetworkManagerTest extends FakeDBApplication {
   public void testCommandFailure() {
     List<String> commandTypes = Arrays.asList("query", "cleanup");
     commandTypes.forEach(commandType -> {
-      JsonNode json = runCommand(defaultRegion.uuid, commandType, true);
-      assertErrorNodeValue(json, "YBCloud command network (" + commandType + ") failed to execute.");
+      try {
+        runCommand(defaultRegion.uuid, commandType, true);
+      } catch (RuntimeException re) {
+        assertEquals(re.getMessage(), "YBCloud command network (" + commandType + ") failed to execute.");
+      }
     });
   }
 

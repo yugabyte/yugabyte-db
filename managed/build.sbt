@@ -33,6 +33,7 @@ libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT" % "compile,test
 publishTo := Some("yugabyteS3" at "s3://no-such-url/")
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
+testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
 
 // Skip packaging javadoc for now
 sources in (Compile, doc) := Seq()

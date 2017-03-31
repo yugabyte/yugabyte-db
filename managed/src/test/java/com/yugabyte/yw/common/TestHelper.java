@@ -9,7 +9,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class TestHelper {
-  static String TMP_PATH = "/tmp/yugaware_tests";
+  public static String TMP_PATH = "/tmp/yugaware_tests";
 
   public static String createTempFile(String basePath, String fileName, String data) {
     FileWriter fw;
