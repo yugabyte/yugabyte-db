@@ -144,7 +144,7 @@ export default class AZSelectorTable extends Component {
         region => universeConfigTemplate.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }
-    var azListOptions = <span/>;
+    var azListOptions = <option/>;
     if (isValidArray(azListForSelectedRegions)) {
       azListOptions = azListForSelectedRegions.map(function(azItem, azIdx){
         return <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
