@@ -64,11 +64,10 @@ export default class UniverseDetail extends Component {
 
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
+        <UniverseAppsModal nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
         <div className="universe-detail-resources">
-          <UniverseAppsModal nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
           <UniverseResources resources={currentUniverse.resources} />
         </div>
-        <hr/>
         <Row>
           <Col lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse}

@@ -9,6 +9,10 @@ import './UniverseResources.scss';
 export default class UniverseResources extends Component {
   render() {
     const {resources} = this.props;
+    if (!isDefinedNotNull(resources)) {
+      return <span/>;
+    }
+
     var empty = false;
     var costPerDay = '$0.00';
     var costPerMonth = '$0.00';
@@ -27,6 +31,7 @@ export default class UniverseResources extends Component {
         <YBResourceCount size={resources.volumeCount || 0} kind="Volume" pluralizeKind />
         <YBResourceCount size={costPerDay} kind="/day" />
         <YBResourceCount size={costPerMonth} kind="/month" />
+        <hr/>
       </div>
     );
   }

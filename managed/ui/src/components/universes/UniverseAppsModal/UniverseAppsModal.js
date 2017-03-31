@@ -5,7 +5,6 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
 import { YBCodeBlock } from '../../common/descriptors';
 import { isValidObject } from 'utils/ObjectUtils';
-import { connect } from 'react-redux';
 import { Tab, Tabs } from 'react-bootstrap';
 
 import './UniverseAppsModal.scss';

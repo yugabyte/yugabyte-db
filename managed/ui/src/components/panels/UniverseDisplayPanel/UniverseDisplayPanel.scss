@@ -3,10 +3,9 @@
 @import "_style/colors.scss";
 
 .universe-display-item-container {
-  float: left;
-  height: 200px;
+  height: 130px;
   background-color: white;
-  margin: 0 20px 20px 0;
+  margin-bottom: 10px;
   padding: 12px 14px;
   border: $YB_GRAY_20 solid 1px;
 
@@ -15,12 +14,23 @@
     top: -1px;
     left: 1px;
     font-size: 22px;
+    margin: 0;
   }
 
   .display-name {
     font-weight: 600;
     font-size: 18px;
     line-height: 120%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 22px;
+  }
+
+  .status-icon {
+    position: absolute;
+    top: 8px;
+    right: 10px;
   }
 
   .description-item-list {
@@ -62,13 +72,20 @@
   }
 
   .create-universe-button {
-    float: left;
-    height: 200px;
-    margin: 0 20px 20px 0;
-    padding: 60px 0 4px 0;
+    height: 130px;
+    margin-bottom: 10px;
+    padding: 25px 0 4px 0;
     border: $YB_GRAY_20 solid 1px;
     background-color: rgba(84, 84, 84, 0.05);
     text-align: center;
+  }
+
+  .row {
+    margin: 0 -5px;
+
+    .col-lg-2, .col-md-3 {
+      padding: 0 5px;
+    }
   }
 }
 
