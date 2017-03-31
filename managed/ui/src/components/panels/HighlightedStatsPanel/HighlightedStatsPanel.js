@@ -27,10 +27,7 @@ class StatsPanelComponent extends Component {
 export default class HighlightedStatsPanel extends Component {
 
   render() {
-    const { universe: { universeList, loading } } = this.props;
-    if (loading) {
-      return <div className="container">Loading...</div>;
-    }
+    const { universe: { universeList } } = this.props;
     var numNodes = 0;
     var totalCost = 0;
     if (!isValidArray(universeList)) {
