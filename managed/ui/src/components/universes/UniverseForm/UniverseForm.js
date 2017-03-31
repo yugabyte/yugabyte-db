@@ -256,7 +256,7 @@ export default class UniverseForm extends Component {
       return {value: regionItem.uuid, label: regionItem.name};
     });
 
-    var universeInstanceTypeList = [];
+    var universeInstanceTypeList = <option/>;
     if (currentProviderCode === "aws") {
       var optGroups = this.props.cloud.instanceTypes.reduce(function(groups, it) {
           var prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
