@@ -68,11 +68,11 @@ export default class UniverseForm extends Component {
     if (fieldName !== "ybSoftwareVersion") {
       universeTaskParams.userIntent["ybSoftwareVersion"] = this.state.ybSoftwareVersion;
     }
+    if (fieldName !== "deviceInfo" && isValidArray(Object.keys(this.state.deviceInfo))) {
+      universeTaskParams.userIntent.deviceInfo = this.state.deviceInfo;
+    }
     universeTaskParams.userIntent[fieldName] = fieldVal;
     if (isDefinedNotNull(formValues.instanceType) && isValidArray(universeTaskParams.userIntent.regionList)) {
-      if (isValidArray(Object.keys(this.state.deviceInfo))) {
-        universeTaskParams.userIntent.deviceInfo = this.state.deviceInfo;
-      }
       this.props.cloud.providers.forEach(function(providerItem, idx){
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
           universeTaskParams.userIntent.providerType = providerItem.code;
@@ -138,7 +138,7 @@ export default class UniverseForm extends Component {
 
   instanceTypeChanged(instanceTypeValue) {
     this.setState({instanceTypeSelected: instanceTypeValue});
-    this.configureUniverseNodeList("instanceType", instanceTypeValue, false);
+    var self = this;
     var instanceTypeSelected = this.props.cloud.instanceTypes.find(function(item){
       return item.instanceTypeCode ===  instanceTypeValue;
     });
@@ -148,7 +148,9 @@ export default class UniverseForm extends Component {
       mountPoints: null,
       diskIops: 1000
     }
-    this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
+    this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType},function(){
+      self.configureUniverseNodeList("instanceType", instanceTypeValue, false);
+    });
   }
 
   numNodesChanged(value) {
@@ -189,18 +191,21 @@ export default class UniverseForm extends Component {
     var currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.numVolumes = val;
     this.setState({deviceInfo: currentDeviceInfo});
+    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   volumeSizeChanged(val) {
     var currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.volumeSize = val;
     this.setState({deviceInfo: currentDeviceInfo});
+    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   diskIopsChanged(val) {
     var currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.diskIops = val;
     this.setState({deviceInfo: currentDeviceInfo});
+    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   componentWillReceiveProps(nextProps) {
@@ -322,15 +327,18 @@ export default class UniverseForm extends Component {
       if (self.state.volumeType === 'EBS') {
         deviceDetail = <span className="volume-info">
           <span className="volume-info-field" style={{width: 60}}>
-            <Field name="volumeCount" component={YBControlledNumericInput} label="Number of Volumes" val={self.state.deviceInfo.numVolumes}/>
+            <Field name="volumeCount" component={YBControlledNumericInput}
+                   label="Number of Volumes" val={self.state.deviceInfo.numVolumes} onInputChanged={self.numVolumesChanged}/>
           </span>
           &times;
           <span className="volume-info-field" style={{width: 100}}>
-            <Field name="volumeSize" component={YBControlledNumericInput} label="Volume Size" val={self.state.deviceInfo.volumeSize} valueFormat={volumeTypeFormat}/>
+            <Field name="volumeSize" component={YBControlledNumericInput} label="Volume Size" val={self.state.deviceInfo.volumeSize}
+                   valueFormat={volumeTypeFormat} onInputChanged={self.volumeSizeChanged}/>
           </span>
           <label className="form-item-label">Provisioned IOPS</label>
           <span className="volume-info-field" style={{width: 80}}>
-            <Field name="diskIops" component={YBControlledNumericInput} label="Provisioned IOPS" val={self.state.deviceInfo.diskIops}/>
+            <Field name="diskIops" component={YBControlledNumericInput} label="Provisioned IOPS"
+                   val={self.state.deviceInfo.diskIops} onInputChanged={self.diskIopsChanged}/>
           </span>
         </span>;
       } else if (self.state.volumeType === 'SSD') {
