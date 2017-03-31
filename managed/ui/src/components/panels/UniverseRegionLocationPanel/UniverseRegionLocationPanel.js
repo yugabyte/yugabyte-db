@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import { RegionMap } from '../../maps';
 import { RegionMapLegend } from '../../maps';
+import {isValidArray, isValidObject} from '../../../utils/ObjectUtils';
 
 export default class UniverseRegionLocationPanel extends Component {
 
@@ -11,18 +12,22 @@ export default class UniverseRegionLocationPanel extends Component {
 
     var completeRegionList = cloud.supportedRegionList;
     var universeListByRegions = {};
-    universeList.forEach(function(universeItem, universeIdx){
-      universeItem.regions.forEach(function(regionItem, regionIdx){
-        if (universeListByRegions.hasOwnProperty(regionItem.uuid)) {
-          universeListByRegions[regionItem.uuid].push(universeItem);
-        } else {
-          universeListByRegions[regionItem.uuid] = [universeItem];
-        }
-      });
+    universeList.forEach(function(universeItem){
+      if (isValidArray(universeItem.regions)) {
+        universeItem.regions.forEach(function (regionItem) {
+          if (isValidObject(regionItem.uuid)) {
+            if (universeListByRegions.hasOwnProperty(regionItem.uuid)) {
+              universeListByRegions[regionItem.uuid].push(universeItem);
+            } else {
+              universeListByRegions[regionItem.uuid] = [universeItem];
+            }
+          }
+        });
+      }
     });
     completeRegionList.forEach(function(completeRegionItem, crIdx){
       delete completeRegionList[crIdx].universes;
-      Object.keys(universeListByRegions).forEach(function(regionKey, rIdx){
+      Object.keys(universeListByRegions).forEach(function(regionKey){
         if (regionKey === completeRegionItem.uuid) {
           completeRegionList[crIdx].universes = universeListByRegions[regionKey];
         }
