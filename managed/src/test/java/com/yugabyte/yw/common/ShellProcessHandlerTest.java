@@ -2,9 +2,10 @@
 
 package com.yugabyte.yw.common;
 
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -29,12 +30,17 @@ public class ShellProcessHandlerTest {
 
     @Mock
     play.Configuration appConfig;
-    static String YB_DEVOPS_HOME = "/tmp/yugaware_tests";
+    static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
 
     @Before
     public void beforeTest() {
-        new TemporaryFolder(new File(YB_DEVOPS_HOME));
-        when(appConfig.getString("yb.devops.home")).thenReturn(YB_DEVOPS_HOME);
+        new File(TMP_STORAGE_PATH).mkdirs();
+        when(appConfig.getString("yb.devops.home")).thenReturn(TMP_STORAGE_PATH);
+    }
+
+    @After
+    public void tearDown() throws IOException {
+        FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
     }
 
     @Test
@@ -43,7 +49,7 @@ public class ShellProcessHandlerTest {
         command.add("pwd");
         ShellProcessHandler.ShellResponse response = shellProcessHandler.run(command, new HashMap<>());
         assertEquals(0, response.code);
-        assertThat(response.message, allOf(notNullValue(), containsString(YB_DEVOPS_HOME)));
+        assertThat(response.message, allOf(notNullValue(), containsString(TMP_STORAGE_PATH)));
     }
 
     @Test
@@ -69,7 +75,7 @@ public class ShellProcessHandlerTest {
     }
 
     private String createTestShellScript() throws IOException {
-        String fileName = YB_DEVOPS_HOME + "/test.sh";
+        String fileName = TMP_STORAGE_PATH + "/test.sh";
         FileWriter fw = new FileWriter(fileName);
         fw.write(">&2 echo \"error\"\nexit -1");
         fw.close();

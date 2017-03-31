@@ -35,6 +35,10 @@ public class NetworkManager extends DevopsBase {
   }
 
   public JsonNode cleanup(UUID regionUUID) {
-    return execCommand(regionUUID, "cleanup", Collections.emptyList());
+    JsonNode response = execCommand(regionUUID, "cleanup", Collections.emptyList());
+    if (response.has("error")) {
+      throw new RuntimeException(response.get("error").asText());
+    }
+    return response;
   }
 }

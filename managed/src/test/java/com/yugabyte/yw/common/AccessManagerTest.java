@@ -4,12 +4,12 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.*;
@@ -59,12 +58,17 @@ import static org.mockito.Mockito.when;
 
   @Before
   public void beforeTest() {
-    new TemporaryFolder(new File(TMP_KEYS_PATH));
+    new File(TMP_KEYS_PATH).mkdirs();
     defaultProvider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
     when(appConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
     command = ArgumentCaptor.forClass(ArrayList.class);
     cloudCredentials = ArgumentCaptor.forClass(HashMap.class);
+  }
+
+  @After
+  public void tearDown() throws IOException {
+    FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
   }
 
   private JsonNode uploadKeyCommand(UUID regionUUID, boolean mimicError) {
