@@ -17,11 +17,7 @@ export default class Dashboard extends Component {
   render() {
     return (
       <div id="page-wrapper" className="dashboard-container">
-        <Row>
-          <Col lg={12}>
-            <UniverseDisplayPanelContainer {...this.props}/>
-          </Col>
-        </Row>
+        <UniverseDisplayPanelContainer {...this.props}/>
         <Row>
           <Col lg={12}>
             <UniverseRegionLocationPanelContainer {...this.props}/>

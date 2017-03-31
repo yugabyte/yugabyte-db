@@ -24,8 +24,8 @@ class StatsPanelComponent extends Component {
     )
   }
 }
-export default class HighlightedStatsPanel extends Component {
 
+export default class HighlightedStatsPanel extends Component {
   render() {
     const { universe: { universeList } } = this.props;
     var numNodes = 0;
@@ -37,13 +37,14 @@ export default class HighlightedStatsPanel extends Component {
       numNodes += universeItem.universeDetails.userIntent.numNodes;
       totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
     });
+    const formattedCost = <YBFormattedNumber value={totalCost} maximumFractionDigits={2}
+                                             formattedNumberStyle="currency" currency="USD"/>;
     return (
       <div className="row tile_count highlighted-stats-panel">
         <Col md={6} mdOffset={3}>
           <StatsPanelComponent value={universeList.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
-          <StatsPanelComponent value={<YBFormattedNumber value={totalCost} maximumFractionDigits={2}
-                                                         formattedNumberStyle="currency" currency="USD"/>} label={"Monthly Cost"}/>
+          <StatsPanelComponent value={formattedCost} label={"Per Month"}/>
         </Col>
       </div>
     )

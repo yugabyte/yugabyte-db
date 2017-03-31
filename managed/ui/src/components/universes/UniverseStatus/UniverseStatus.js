@@ -33,10 +33,10 @@ export default class UniverseStatus extends Component {
           statusDisplay =
             <div className={"status-pending"}>
               <Row className={"status-pending-display-container"}>
-                <span className={"status-pending-name"}>{universePendingTask.percentComplete}% complete&nbsp;</span>
                 <i className={"fa fa fa-spinner fa-spin"}/>
                 <Col className={"status-pending-name"}>
-                  Pending...
+                  Pending&hellip;
+                  {universePendingTask.percentComplete}%
                 </Col>
               </Row>
               <Row className={"status-pending-progress-container "}>
