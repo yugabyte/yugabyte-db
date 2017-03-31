@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Region;
@@ -43,19 +44,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class ProviderControllerTest extends FakeDBApplication {
+public class CloudProviderControllerTest extends FakeDBApplication {
   Customer customer;
 
   AccessManager mockAccessManager;
+  NetworkManager mockNetworkManager;
 
   @Override
   protected Application provideApplication() {
     ApiHelper mockApiHelper = mock(ApiHelper.class);
     mockAccessManager = mock(AccessManager.class);
+    mockNetworkManager = mock(NetworkManager.class);
     return new GuiceApplicationBuilder()
         .configure((Map) Helpers.inMemoryDatabase())
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(AccessManager.class).toInstance(mockAccessManager))
+        .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
         .build();
   }
 
@@ -182,6 +186,7 @@ public class ProviderControllerTest extends FakeDBApplication {
     AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
     verify(mockAccessManager, times(1)).deleteKey(r.uuid, "access-key-code");
+    verify(mockNetworkManager, times(1)).cleanup(r.uuid);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.asText(),
@@ -194,7 +199,8 @@ public class ProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithInvalidProviderUUID() {
     UUID providerUUID = UUID.randomUUID();
     Result result = deleteProvider(providerUUID);
-    verify(mockAccessManager, times(0)).deleteKey(providerUUID, "access-key-code");
+    verify(mockAccessManager, times(0)).deleteKey(any(), eq("access-key-code"));
+    verify(mockNetworkManager, times(0)).cleanup(any());
     assertBadRequest(result, "Invalid Provider UUID: " + providerUUID);
   }
 
@@ -217,10 +223,41 @@ public class ProviderControllerTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     Result result = deleteProvider(p.uuid);
     verify(mockAccessManager, times(0)).deleteKey(any(), any());
+    verify(mockNetworkManager, times(0)).cleanup(any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.asText(),
         allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
     assertNull(Provider.get(p.uuid));
+  }
+
+  @Test
+  public void testDeleteProviderAccessManagerError() {
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "region 1", "yb image");
+    AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    when(mockAccessManager.deleteKey(r.uuid, "access-key-code")).thenThrow(
+        new RuntimeException("Unable to delete access key")
+    );
+    Result result = deleteProvider(p.uuid);
+    verify(mockAccessManager, times(1)).deleteKey(r.uuid, "access-key-code");
+    verify(mockNetworkManager, times(0)).cleanup(r.uuid);
+    assertInternalServerError(result, "Unable to delete provider: " + p.uuid);
+    assertNotNull(Provider.get(p.uuid));
+  }
+
+  @Test
+  public void testDeleteProviderNetworkManagerError() {
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "region 1", "yb image");
+    AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
+    when(mockNetworkManager.cleanup(r.uuid)).thenThrow(
+        new RuntimeException("Unable to do network cleanup")
+    );
+    Result result = deleteProvider(p.uuid);
+    verify(mockAccessManager, times(1)).deleteKey(r.uuid, "access-key-code");
+    verify(mockNetworkManager, times(1)).cleanup(r.uuid);
+    assertInternalServerError(result, "Unable to delete provider: " + p.uuid);
+    assertNotNull(Provider.get(p.uuid));
   }
 }
