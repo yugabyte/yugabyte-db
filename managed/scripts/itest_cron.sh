@@ -7,16 +7,31 @@
 
 set -euo pipefail
 
-itest_repo=/home/centos/code/yugaware
+code_root=/home/centos/code/
+itest_yw_repo="$code_root"/yugaware
+itest_devops_repo="$code_root"/devops
 
-if [ ! -d "$itest_repo" ]; then
-  cd /home/centos/code/
+if [ ! -d "$itest_yw_repo" ]; then
+  cd $code_root
   git clone git@bitbucket.org:yugabyte/yugaware.git
 fi
 
-cd $itest_repo
+if [ ! -d "$itest_devops_repo" ]; then
+  cd $code_root
+  git clone git@bitbucket.org:yugabyte/devops.git
+fi
+
+export DEVOPS_HOME=$itest_devops_repo
+
+cd $itest_devops_repo
+git checkout master
+git pull --rebase
+cd bin
+./install_python_requirements.sh
+
+cd $itest_yw_repo
 git checkout master
 git pull --rebase
 
 # The `unset` is needed to make yugabyte build correctly (otherwise hit ELF lib check failures).
-unset LD_LIBRARY_PATH; ./run_itest --update_packages yugaware yugabyte devops --perform_tests --perform_edits --notify
+unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --update_packages yugaware yugabyte devops --perform_tests --perform_edits --notify
