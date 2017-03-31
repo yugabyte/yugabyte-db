@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <condition_variable>
 #include <functional>
 #include <vector>
 
@@ -341,7 +342,7 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
   latch.Wait();
 
   // Verify that the timedout call got short circuited before being processed.
-  const Counter *timed_out_in_queue = service_pool_->RpcsTimedOutInQueueMetricForTests();
+  const Counter* timed_out_in_queue = service_pool_->RpcsTimedOutInQueueMetricForTests();
   ASSERT_EQ(1, timed_out_in_queue->value());
 }
 
@@ -424,6 +425,132 @@ TEST_F(RpcStubTest, TestCallbackClearedAfterRunning) {
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
   ASSERT_TRUE(my_refptr->HasOneRef());
+}
+
+struct PingCall {
+  PingResponsePB response;
+  RpcController controller;
+  MonoTime handle_time;
+  MonoTime reply_time;
+  MonoTime start_time;
+};
+
+class PingTestHelper {
+ public:
+  PingTestHelper(CalculatorServiceProxy* proxy, size_t calls_count)
+      : proxy_(proxy), calls_(calls_count) {
+    for (auto& call : calls_) {
+      call.controller.set_timeout(MonoDelta::FromSeconds(1));
+    }
+  }
+
+  void Launch(size_t id) {
+    PingRequestPB req;
+    auto& call = calls_[id];
+    call.start_time = MonoTime::Now(MonoTime::FINE);
+    req.set_id(id);
+    call.handle_time = MonoTime::Max();
+    call.reply_time = MonoTime::Max();
+    proxy_->PingAsync(req,
+                      &call.response,
+                      &call.controller,
+                      std::bind(&PingTestHelper::Done, this, id));
+  }
+
+  void LaunchNext() {
+    auto id = call_idx_++;
+    if (id < calls_.size()) {
+      Launch(id);
+    }
+  }
+
+  void Done(size_t idx) {
+    auto& call = calls_[idx];
+    call.handle_time = MonoTime::FromUint64(call.response.time());
+    call.reply_time = MonoTime::Now(MonoTime::FINE);
+    LaunchNext();
+    if (++done_calls_ == calls_.size()) {
+      LOG(INFO) << "Calls done";
+      cond_.notify_one();
+    }
+  }
+
+  void Wait() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (done_calls_ < calls_.size()) {
+      cond_.wait(lock);
+    }
+  }
+
+  const vector<PingCall>& calls() const {
+    return calls_;
+  }
+
+ private:
+  CalculatorServiceProxy* proxy_;
+  std::atomic<size_t> done_calls_ = {0};
+  std::atomic<size_t> call_idx_ = {0};
+  vector<PingCall> calls_;
+  std::mutex mutex_;
+  std::condition_variable cond_;
+};
+
+DEFINE_int32(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
+DEFINE_int32(test_rpc_count, 50000, "Total number of RPC requests");
+
+TEST_F(RpcStubTest, TestRpcPerformance) {
+  client_messenger_ = CreateMessenger("Client", 4);
+  CalculatorServiceProxy p(client_messenger_, server_addr_);
+
+  const size_t kWarmupCalls = 50;
+  const size_t concurrent = FLAGS_test_rpc_concurrency;
+  const size_t total_calls = kWarmupCalls + FLAGS_test_rpc_count;
+
+  auto start = MonoTime::Now(MonoTime::FINE);
+  PingTestHelper helper(&p, total_calls);
+  {
+    for (uint64_t id = 0; id != concurrent; ++id) {
+      helper.LaunchNext();
+    }
+    LOG(INFO) << "Warmup done, Calls left: " << total_calls - kWarmupCalls;
+    helper.Wait();
+  }
+  auto finish = MonoTime::Now(MonoTime::FINE);
+
+  MonoDelta min_processing = MonoDelta::kMax;
+  MonoDelta max_processing = MonoDelta::kMin;
+  MonoDelta reply_sum = MonoDelta::kZero;
+  MonoDelta handle_sum = MonoDelta::kZero;
+  size_t measured_calls = 0;
+  auto& calls = helper.calls();
+  for (size_t i = kWarmupCalls; i != total_calls; ++i) {
+    const auto& call = calls[i];
+    auto call_processing_delta = call.reply_time.GetDeltaSince(call.start_time);
+    min_processing = std::min(min_processing, call_processing_delta);
+    max_processing = std::max(max_processing, call_processing_delta);
+    reply_sum += call_processing_delta;
+    handle_sum += call.handle_time.GetDeltaSince(call.start_time);
+    ++measured_calls;
+  }
+
+  ASSERT_NE(measured_calls, 0);
+  auto reply_average = MonoDelta::FromNanoseconds(reply_sum.ToNanoseconds() / measured_calls);
+  auto handle_average = MonoDelta::FromNanoseconds(handle_sum.ToNanoseconds() / measured_calls);
+  auto passed_us = finish.GetDeltaSince(start).ToMicroseconds();
+  auto us_per_call = passed_us * 1.0 / measured_calls;
+  LOG(INFO) << "Min: " << min_processing.ToMicroseconds() << "us, "
+            << "max: " << max_processing.ToMicroseconds() << "us, "
+            << "reply avg: " << reply_average.ToMicroseconds() << "us, "
+            << "handle avg: " << handle_average.ToMicroseconds() << "us, "
+            << "total: " << passed_us << "us, "
+            << "calls per second: " << measured_calls * 1000000 / passed_us
+            << " (" << us_per_call << "us per call, NOT latency)";
+  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(15);
+  const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10);
+  const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5);
+  ASSERT_LE(max_processing, kMaxLimit);
+  ASSERT_LE(reply_average, kReplyAverageLimit);
+  ASSERT_LE(handle_average, kHandleAverageLimit);
 }
 
 } // namespace rpc

@@ -31,12 +31,29 @@ namespace yb {
 #define MAX_MONOTONIC_SECONDS \
   (((1ULL<<63) - 1ULL) /(int64_t)MonoTime::kNanosecondsPerSecond)
 
+namespace {
+
+bool SafeToAdd64(int64_t a, int64_t b) {
+  bool negativeA = a < 0;
+  bool negativeB = b < 0;
+  if (negativeA != negativeB) {
+    return true;
+  }
+  bool negativeSum = (a + b) < 0;
+  return negativeSum == negativeA;
+}
+
+} // namespace
 
 ///
 /// MonoDelta
 ///
 
-const int64_t MonoDelta::kUninitialized = kint64min;
+const MonoDelta::NanoDeltaType MonoDelta::kUninitialized =
+    std::numeric_limits<NanoDeltaType>::min();
+const MonoDelta MonoDelta::kMin = MonoDelta(std::numeric_limits<NanoDeltaType>::min() + 1);
+const MonoDelta MonoDelta::kMax = MonoDelta(std::numeric_limits<NanoDeltaType>::max());
+const MonoDelta MonoDelta::kZero = MonoDelta(0);
 
 MonoDelta MonoDelta::FromSeconds(double seconds) {
   CHECK_LE(seconds, std::numeric_limits<int64_t>::max() / MonoTime::kNanosecondsPerSecond);
@@ -112,6 +129,15 @@ int64_t MonoDelta::ToMicroseconds() const {
 int64_t MonoDelta::ToMilliseconds() const {
   DCHECK(Initialized());
   return nano_delta_ / MonoTime::kNanosecondsPerMillisecond;
+}
+
+MonoDelta& MonoDelta::operator+=(const MonoDelta& rhs) {
+  DCHECK(Initialized());
+  DCHECK(rhs.Initialized());
+  DCHECK(SafeToAdd64(nano_delta_, rhs.nano_delta_));
+  DCHECK(nano_delta_ + rhs.nano_delta_ != kUninitialized);
+  nano_delta_ += rhs.nano_delta_;
+  return *this;
 }
 
 void MonoDelta::ToTimeVal(struct timeval *tv) const {
@@ -220,6 +246,7 @@ MonoDelta MonoTime::GetDeltaSince(const MonoTime &rhs) const {
 
 void MonoTime::AddDelta(const MonoDelta &delta) {
   DCHECK(Initialized());
+  DCHECK(delta.Initialized());
   nanos_ += delta.nano_delta_;
 }
 
@@ -255,6 +282,10 @@ double MonoTime::ToSeconds() const {
   double d(nanos_);
   d /= MonoTime::kNanosecondsPerSecond;
   return d;
+}
+
+std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other) {
+  return op.ToString();
 }
 
 void SleepFor(const MonoDelta& delta) {

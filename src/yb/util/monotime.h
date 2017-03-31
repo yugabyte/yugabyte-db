@@ -47,6 +47,11 @@ class YB_EXPORT MonoDelta {
   static MonoDelta FromMilliseconds(int64_t ms);
   static MonoDelta FromMicroseconds(int64_t us);
   static MonoDelta FromNanoseconds(int64_t ns);
+
+  static const MonoDelta kMin;
+  static const MonoDelta kMax;
+  static const MonoDelta kZero;
+
   MonoDelta();
   bool Initialized() const;
   bool LessThan(const MonoDelta &rhs) const;
@@ -57,6 +62,8 @@ class YB_EXPORT MonoDelta {
   int64_t ToMilliseconds() const;
   int64_t ToMicroseconds() const;
   int64_t ToNanoseconds() const;
+
+  MonoDelta& operator+=(const MonoDelta& rhs);
 
   // Update struct timeval to current value of delta, with microsecond accuracy.
   // Note that if MonoDelta::IsPositive() returns true, the struct timeval
@@ -70,13 +77,21 @@ class YB_EXPORT MonoDelta {
   static void NanosToTimeSpec(int64_t nanos, struct timespec* ts);
 
  private:
-  static const int64_t kUninitialized;
+  typedef int64_t NanoDeltaType;
+  static const NanoDeltaType kUninitialized;
 
   friend class MonoTime;
   FRIEND_TEST(TestMonoTime, TestDeltaConversions);
-  explicit MonoDelta(int64_t delta);
-  int64_t nano_delta_;
+  explicit MonoDelta(NanoDeltaType delta);
+  NanoDeltaType nano_delta_;
 };
+
+inline bool operator<(const MonoDelta& lhs, const MonoDelta& rhs) { return lhs.LessThan(rhs); }
+inline bool operator>(const MonoDelta& lhs, const MonoDelta& rhs) { return rhs < lhs; }
+inline bool operator>=(const MonoDelta& lhs, const MonoDelta& rhs) { return !(lhs < rhs); }
+inline bool operator<=(const MonoDelta& lhs, const MonoDelta& rhs) { return !(rhs < lhs); }
+
+std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDelta& other);
 
 // Represent a particular point in time, relative to some fixed but unspecified
 // reference point.
@@ -114,11 +129,15 @@ class YB_EXPORT MonoTime {
   MonoTime();
   bool Initialized() const;
   MonoDelta GetDeltaSince(const MonoTime &rhs) const;
+  MonoDelta GetDeltaSinceMin() const { return GetDeltaSince(Min()); }
   void AddDelta(const MonoDelta &delta);
   bool ComesBefore(const MonoTime &rhs) const;
   std::string ToString() const;
   bool Equals(const MonoTime& other) const;
   bool IsMax() const;
+
+  uint64_t ToUint64() const { return nanos_; }
+  static MonoTime FromUint64(uint64_t value) { return MonoTime(value); }
 
  private:
   friend class MonoDelta;

@@ -52,6 +52,8 @@
 #define TRACE_TO(trace, format, substitutions...) \
   (trace)->SubstituteAndTrace(__FILE__, __LINE__, (format), ##substitutions)
 
+#define PLAIN_TRACE_TO(trace, message) \
+  do { (trace)->Trace(__FILE__, __LINE__, (message)); } while (0)
 
 namespace yb {
 
@@ -147,6 +149,8 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // The tail of the linked list of entries (allocated inside arena_)
   TraceEntry* entries_tail_;
 
+  int64_t trace_start_time_usec_ = 0;
+
   std::vector<scoped_refptr<Trace> > child_traces_;
 
   DISALLOW_COPY_AND_ASSIGN(Trace);
@@ -180,6 +184,35 @@ class ScopedAdoptTrace {
   Trace* old_trace_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedAdoptTrace);
+};
+
+// PlainTrace could be used in simple cases when we trace only up to 20 entries with const message.
+// So it does not allocate memory.
+class PlainTrace {
+ public:
+  static const size_t kMaxEntries = 20;
+
+  PlainTrace();
+
+  void Trace(const char* file_path, int line_number, const char* message);
+  void Dump(std::ostream* out, bool include_time_deltas) const;
+  std::string DumpToString(bool include_time_deltas) const;
+
+ private:
+  class Entry {
+   public:
+    const char* file_path;
+    int line_number;
+    const char* message;
+    MonoTime timestamp;
+
+    void Dump(std::ostream* out) const;
+  };
+
+  mutable simple_spinlock mutex_;
+  int64_t trace_start_time_usec_ = 0;
+  size_t size_ = 0;
+  Entry entries_[kMaxEntries];
 };
 
 } // namespace yb

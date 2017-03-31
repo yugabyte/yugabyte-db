@@ -60,6 +60,8 @@ using yb::rpc_test::SleepRequestPB;
 using yb::rpc_test::SleepResponsePB;
 using yb::rpc_test::WhoAmIRequestPB;
 using yb::rpc_test::WhoAmIResponsePB;
+using yb::rpc_test::PingRequestPB;
+using yb::rpc_test::PingResponsePB;
 using yb::rpc_test_diff_package::ReqDiffPackagePB;
 using yb::rpc_test_diff_package::RespDiffPackagePB;
 
@@ -238,13 +240,20 @@ class CalculatorService : public CalculatorServiceIf {
     PANIC_RPC(context, "Test method panicking!");
   }
 
+  virtual void Ping(const PingRequestPB* req,
+                    PingResponsePB* resp,
+                    RpcContext* context) OVERRIDE {
+    auto now = MonoTime::Now(MonoTime::FINE);
+    resp->set_time(now.ToUint64());
+    context->RespondSuccess();
+  }
+
  private:
   void DoSleep(const SleepRequestPB *req,
                RpcContext *context) {
     SleepFor(MonoDelta::FromMicroseconds(req->sleep_micros()));
     context->RespondSuccess();
   }
-
 };
 
 const char *GenericCalculatorService::kFullServiceName = "yb.rpc.GenericCalculatorService";
@@ -263,6 +272,7 @@ class RpcTestBase : public YBTest {
     : n_worker_threads_(3),
       n_server_reactor_threads_(3),
       keepalive_time_ms_(1000),
+      seed_(time(nullptr)),
       metric_entity_(METRIC_ENTITY_server.Instantiate(&metric_registry_, "test.rpc_test")) {
   }
 
@@ -302,8 +312,8 @@ class RpcTestBase : public YBTest {
 
   CHECKED_STATUS DoTestSyncCall(const Proxy &p, const char *method) {
     AddRequestPB req;
-    req.set_x(rand());
-    req.set_y(rand());
+    req.set_x(rand_r(&seed_));
+    req.set_y(rand_r(&seed_));
     AddResponsePB resp;
     RpcController controller;
     controller.set_timeout(MonoDelta::FromMilliseconds(10000));
@@ -388,7 +398,6 @@ class RpcTestBase : public YBTest {
   }
 
  private:
-
   static Slice GetSidecarPointer(const RpcController& controller, int idx,
                                  int expected_size) {
     Slice sidecar;
@@ -424,6 +433,7 @@ class RpcTestBase : public YBTest {
   int n_worker_threads_;
   int n_server_reactor_threads_;
   int keepalive_time_ms_;
+  unsigned int seed_;
 
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -432,4 +442,4 @@ class RpcTestBase : public YBTest {
 
 } // namespace rpc
 } // namespace yb
-#endif
+#endif  // YB_RPC_RPC_TEST_BASE_H

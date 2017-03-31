@@ -68,12 +68,14 @@ message SendTwoStringsResponsePB {
 message EchoRequestPB {
   required string data = 1;
 }
+
 message EchoResponsePB {
   required string data = 1;
 }
 
 message WhoAmIRequestPB {
 }
+
 message WhoAmIResponsePB {
   required yb.rpc.UserInformationPB credentials = 1;
   required string address = 2;
@@ -88,7 +90,17 @@ message CalculatorError {
 }
 
 message PanicRequestPB {}
+
 message PanicResponsePB {}
+
+message PingRequestPB {
+  required uint64 id = 1;
+}
+
+message PingResponsePB {
+  required uint64 time = 1; // Time when this call was received by server.
+                            // Used with MonoTime::FromUint64/ToUint64.
+}
 
 service CalculatorService {
   rpc Add(AddRequestPB) returns(AddResponsePB);
@@ -98,4 +110,5 @@ service CalculatorService {
   rpc TestArgumentsInDiffPackage(yb.rpc_test_diff_package.ReqDiffPackagePB)
     returns(yb.rpc_test_diff_package.RespDiffPackagePB);
   rpc Panic(PanicRequestPB) returns (PanicResponsePB);
+  rpc Ping(PingRequestPB) returns (PingResponsePB);
 }

@@ -32,12 +32,17 @@
 #ifndef YB_UTIL_MEMORY_MEMORY_H_
 #define YB_UTIL_MEMORY_MEMORY_H_
 
+#include <stddef.h>
+
 #include <algorithm>
-#include <glog/logging.h>
 #include <limits>
 #include <memory>
-#include <stddef.h>
 #include <vector>
+
+#include <boost/mpl/if.hpp>
+#include <boost/type_traits/is_const.hpp>
+
+#include <glog/logging.h>
 
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/mutex.h"
@@ -971,6 +976,17 @@ template<bool thread_safe>
 void StaticQuota<thread_safe>::SetQuota(const size_t quota) {
   lock_guard_maybe<Mutex> lock(Quota<thread_safe>::mutex());
   quota_ = quota;
+}
+
+template <class T>
+using EndOfObjectResultType =
+  typename boost::mpl::if_<boost::is_const<T>, const char*, char*>::type;
+
+template <class T>
+EndOfObjectResultType<T>
+EndOfObject(T* t) {
+  typedef EndOfObjectResultType<T> ResultType;
+  return reinterpret_cast<ResultType>(t) + sizeof(T);
 }
 
 }  // namespace yb
