@@ -14,3 +14,4 @@ export { default as UniverseStatus } from './UniverseStatus/UniverseStatus';
 export { default as UniverseStatusContainer } from './UniverseStatus/UniverseStatusContainer';
 export { default as UniverseTable } from './UniverseTable/UniverseTable';
 export { default as UniverseTableContainer } from './UniverseTable/UniverseTableContainer';
+export { default as UniverseAppsModal } from './UniverseAppsModal/UniverseAppsModal';

@@ -8,7 +8,8 @@ import { UniverseInfoPanel, ResourceStringPanel } from '../../panels'
 import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
-import { UniverseFormContainer, UniverseStatusContainer, NodeDetails, DeleteUniverseContainer } from '../../universes';
+import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
+  DeleteUniverseContainer, UniverseAppsModal } from '../../universes';
 import { UniverseResources } from '../UniverseResources';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -64,6 +65,7 @@ export default class UniverseDetail extends Component {
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         <div className="universe-detail-resources">
+          <UniverseAppsModal nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
           <UniverseResources resources={currentUniverse.resources} />
         </div>
         <hr/>

@@ -10,14 +10,14 @@ export default class YBModal extends Component {
   render() {
     const {visible, onHide, size, formName, onFormSubmit, title, submitLabel,
       cancelLabel,  error, submitting, asyncValidating, footerAccessory,
-      showCancelButton} = this.props;
+      showCancelButton, className} = this.props;
     var btnDisabled = false;
     if (submitting || asyncValidating) {
       btnDisabled = true;
     }
 
     return (
-      <Modal show={visible} onHide={onHide} bsSize={size}>
+      <Modal show={visible} onHide={onHide} bsSize={size} className={className}>
         <form name={formName} onSubmit={onFormSubmit}>
           <Modal.Header closeButton>
             <Modal.Title>{title}</Modal.Title>
@@ -29,12 +29,14 @@ export default class YBModal extends Component {
           <Modal.Body>
             {this.props.children}
           </Modal.Body>
-          <Modal.Footer>
-            {footerAccessory && <div className="pull-left">{footerAccessory}</div>}
-            {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
-            {onFormSubmit && <YBButton btnClass="btn bg-orange" disabled={btnDisabled}
-              btnText={submitLabel} btnType="submit" />}
-          </Modal.Footer>
+          {(footerAccessory || showCancelButton || onFormSubmit) && 
+            <Modal.Footer>
+              {footerAccessory && <div className="pull-left">{footerAccessory}</div>}
+              {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
+              {onFormSubmit && <YBButton btnClass="btn bg-orange" disabled={btnDisabled}
+                btnText={submitLabel} btnType="submit" />}
+            </Modal.Footer>
+          }
         </form>
       </Modal>
     )
