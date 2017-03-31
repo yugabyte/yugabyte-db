@@ -20,7 +20,7 @@ export default class UniverseInfoPanel extends Component {
                      year='numeric' month='long' day='2-digit'
                      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />;
     const endpointUrl = ROOT_URL + "/customers/" + customerId +
-                        "/universes/" + universeId + "/masters";
+                        "/universes/" + universeId + "/yqlservers";
     const endpoint =
       <a href={endpointUrl} target="_blank">Endpoint &nbsp;
         <i className="fa fa-external-link" aria-hidden="true"></i>
@@ -29,7 +29,7 @@ export default class UniverseInfoPanel extends Component {
       {name: "Universe ID", data: universeId},
       {name: "Customer ID", data: customerId},
       {name: "Launch Time", data: formattedCreationDate},
-      {name: "Meta Masters", data: endpoint},
+      {name: "YQL Proxies", data: endpoint},
       {name: "Server Version", data: userIntent.ybSoftwareVersion || 'n/a'},
     ];
 
