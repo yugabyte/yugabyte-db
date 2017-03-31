@@ -116,7 +116,8 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
   queue_state_.state = kQueueConstructed;
   queue_state_.mode = NON_LEADER;
   queue_state_.majority_size_ = -1;
-  CHECK_OK(ThreadPoolBuilder("queue-observers-pool").set_max_threads(1).Build(&observers_pool_));
+  CHECK_OK(ThreadPoolBuilder("queue-observers-pool").set_min_threads(1)
+           .set_max_threads(1).Build(&observers_pool_));
 }
 
 void PeerMessageQueue::Init(const OpId& last_locally_replicated) {

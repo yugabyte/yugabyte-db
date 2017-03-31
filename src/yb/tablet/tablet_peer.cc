@@ -134,7 +134,8 @@ Status TabletPeer::Init(const shared_ptr<Tablet>& tablet,
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
-  RETURN_NOT_OK(ThreadPoolBuilder("prepare").set_max_threads(1).Build(&prepare_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("prepare").set_min_threads(1)
+                .set_max_threads(1).Build(&prepare_pool_));
   prepare_pool_->SetQueueLengthHistogram(
       METRIC_op_prepare_queue_length.Instantiate(metric_entity));
   prepare_pool_->SetQueueTimeMicrosHistogram(
