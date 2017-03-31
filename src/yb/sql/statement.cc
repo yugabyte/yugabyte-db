@@ -131,15 +131,23 @@ void Statement::DoExecuteAsync(SqlProcessor* processor,
                                              bool new_analysis_needed,
                                              const Status &s,
                                              ExecutedResult::SharedPtr result)> cb) {
-  // Save the last prepare time and execute the parse tree. Do so within a shared lock until
-  // SqlProcessor::ExecuteAsync() returns by when we are done with the parse tree and the execute
-  // request has been queued.
-  boost::shared_lock<boost::shared_mutex> l(lock_);
-  // CQLProcessor should have ensured the statement has been parsed and analyzed before
-  // attempting execution.
-  CHECK(parse_tree_ != nullptr) << "Internal error: null parse tree";
-  processor->ExecuteAsync(text_, *parse_tree_.get(), params,
-                          Bind(&DoExecuteAsyncDone, cb, prepare_time_));
+  {
+    // Save the last prepare time and execute the parse tree. Do so within a shared lock until
+    // SqlProcessor::ExecuteAsync() returns by when we are done with the parse tree and the execute
+    // request has been queued.
+    boost::shared_lock<boost::shared_mutex> l(lock_);
+
+    // Execute if the statement has been prepared. Otherwise, fall through below to prepare the
+    // statement before executing it.
+    if (!prepare_time_.Equals(kNoLastPrepareTime)) {
+      processor->ExecuteAsync(text_, *parse_tree_.get(), params,
+                              Bind(&DoExecuteAsyncDone, cb, prepare_time_));
+      return;
+    }
+  }
+
+  // Prepare the statement and execute it.
+  cb.Run(kNoLastPrepareTime, true /* new_analysis_needed */, Status::OK(), nullptr /* result */);
 }
 
 void Statement::RunAsync(

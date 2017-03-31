@@ -54,14 +54,17 @@ TEST_F(YbSqlStatement, TestExecutePrepareAfterTableDrop) {
   // Drop table.
   EXEC_VALID_STMT("drop table t;");
 
-  // Execute the prepared statement. Expect failure.
-  Synchronizer s;
-  ExecuteAsync(&stmt, processor, Bind(&Synchronizer::StatusCB, Unretained(&s)));
-  CHECK(!s.Wait().ok());
+  // Try executing and repreparing the statement a few times.
+  for (int i = 0; i < 3; i++) {
+    // Execute the prepared statement. Expect failure.
+    Synchronizer s;
+    ExecuteAsync(&stmt, processor, Bind(&Synchronizer::StatusCB, Unretained(&s)));
+    CHECK(!s.Wait().ok());
 
-  // Reprepare the statement and ask for prepared result explicitly this time. Expect failure.
-  PreparedResult::UniPtr result;
-  CHECK(!stmt.Prepare(processor, Statement::kNoLastPrepareTime, false, nullptr, &result).ok());
+    // Reprepare the statement and ask for prepared result explicitly this time. Expect failure.
+    PreparedResult::UniPtr result;
+    CHECK(!stmt.Prepare(processor, Statement::kNoLastPrepareTime, false, nullptr, &result).ok());
+  }
 
   LOG(INFO) << "Done.";
 }
