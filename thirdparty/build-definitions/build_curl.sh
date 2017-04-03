@@ -2,6 +2,7 @@
 
 CURL_VERSION=7.32.0
 CURL_DIR=$TP_SOURCE_DIR/curl-${CURL_VERSION}
+TP_NAME_TO_SRC_DIR["curl"]=$CURL_DIR
 
 build_curl() {
   # Configure for a very minimal install - basically only HTTP, since we only
@@ -9,6 +10,7 @@ build_curl() {
   create_build_dir_and_prepare "$CURL_DIR"
   (
     set_build_env_vars
+    set_thirdparty_flags_for_autotools_projects
     set -x
     ./configure --prefix=$PREFIX \
       --disable-ftp \

@@ -65,7 +65,6 @@ dest_dir=$( cd "$dest_dir" && pwd )
 TP_DIR=$( cd "$( dirname "$0" )" && pwd )
 
 . "$TP_DIR"/thirdparty-packaging-common.sh
-. "$TP_DIR"/vars.sh
 
 cd "$TP_DIR"
 

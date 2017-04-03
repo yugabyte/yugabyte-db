@@ -371,7 +371,7 @@ if "$clean_thirdparty"; then
   log "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (
     set -x
-    "$YB_THIRDPARTY_DIR"/clean_thirdparty.sh
+    "$YB_THIRDPARTY_DIR"/clean_thirdparty.sh --all
   )
 fi
 

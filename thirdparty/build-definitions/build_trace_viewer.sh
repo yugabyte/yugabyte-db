@@ -8,6 +8,7 @@
 # and built with "kudu-build.sh" included within the repository.
 TRACE_VIEWER_VERSION=45f6525d8aa498be53e4137fb73a9e9e036ce91d
 TRACE_VIEWER_DIR=$TP_SOURCE_DIR/kudu-trace-viewer-${TRACE_VIEWER_VERSION}
+TP_NAME_TO_SRC_DIR["trace_viewer"]=$TRACE_VIEWER_DIR
 
 build_trace_viewer() {
   log "Installing trace-viewer into the www directory"

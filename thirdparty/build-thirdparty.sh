@@ -28,30 +28,11 @@
 #   * /thirdparty/installed/tsan - prefix directory for libraries built
 #                                  with thread sanitizer instrumentation.
 #
-# Old locations of these build directories, used for compatibility with old pre-built third-party
-# dependencies:
-#
-#   * /thirdparty/installed - prefix directory for libraries and binary tools
-#                             common to all build types, e.g. LLVM, Clang, and
-#                             CMake.
-#     (renamed to /thirdparty/installed/common)
-#
-#   * /thirdparty/installed-deps - prefix directory for libraries built with
-#                                  normal options (no sanitizer instrumentation).
-#     (renamed to /thirdparty/installed/uninstrumented)
-#
-#   * /thirdparty/installed-deps-tsan - prefix directory for libraries built
-#                                       with thread sanitizer instrumentation.
-#     (renamed to /thirdparty/installed/tsan)
-#
-# Environment variables which can be set when calling build-thirdparty.sh:
+# Environment used internally in build-thirdparty.sh (but cannot be set externally):
 #   * EXTRA_CFLAGS - additional flags passed to the C compiler.
 #   * EXTRA_CXXFLAGS - additional flags passed to the C++ compiler.
 #   * EXTRA_LDFLAGS - additional flags passed to the linker.
 #   * EXTRA_LIBS - additional libraries to link.
-#
-# Actually, we're ignoring user-set values of the above variables as of Jan 2017. This is to
-# maintain better predictability of builds.
 
 # Portions Copyright (c) YugaByte, Inc.
 
@@ -59,17 +40,45 @@ set -euo pipefail
 
 . "${BASH_SOURCE%/*}/thirdparty-common.sh"
 
+reset_build_environment() {
+  local var_name
+  for var_name in "${YB_THIRDPARTY_COMPILER_SETTING_VARS[@]}"; do
+    if [[ ! $var_name =~ ^(CC|CXX)$ ]]; then
+      eval $var_name=""
+    fi
+  done
+}
+
 set_install_prefix_type() {
+  if [[ $# -lt 1 || $# -gt 2 ]]; then
+    fatal "$FUNCNAME expects one or two arguments: install prefix type and optional dependency name"
+  fi
   install_prefix_type=$1
+  local dependency_name=${2:-}
   case "$install_prefix_type" in
     common)
+      if [[ $dependency_name == "libstdcxx" ]]; then
+        fatal "libstdcxx is not supposed to be installed into the common prefix"
+      fi
       PREFIX=$PREFIX_COMMON
+      set_compiler gcc
     ;;
     uninstrumented)
-      PREFIX=$PREFIX_DEPS
+      if [[ $dependency_name == "libstdcxx" ]]; then
+        # Build uninstrumented libstdcxx. It gets installed into its own sub-directory of both
+        # uninstrumented and TSAN prefix directories.
+        PREFIX=$PREFIX_LIBSTDCXX
+      else
+        PREFIX=$PREFIX_DEPS
+      fi
+      set_compiler gcc
     ;;
     tsan)
-      PREFIX=$PREFIX_DEPS_TSAN
+      if [[ $dependency_name == "libstdcxx" ]]; then
+        PREFIX=$PREFIX_LIBSTDCXX_TSAN
+      else
+        PREFIX=$PREFIX_DEPS_TSAN
+      fi
       set_compiler clang
     ;;
     *)
@@ -99,11 +108,18 @@ do_build_if_necessary() {
     echo >&2 -e "$YELLOW_COLOR$HORIZONTAL_LINE$NO_COLOR"
     echo >&2 -e "$YELLOW_COLOR" "Running $build_func ($install_prefix_type)$NO_COLOR"
     echo >&2 -e "$YELLOW_COLOR$HORIZONTAL_LINE$NO_COLOR"
+
+    # Log values of environment variables that influence the third-party dependency build.
+    log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
     log_empty_line
-    log "CC=${CC:-unset}"
-    log "CXX=${CXX:-unset}"
-    export CC
-    export CXX
+    local var_name
+    for var_name in "${YB_THIRDPARTY_COMPILER_SETTING_VARS[@]}"; do
+      log "$var_name=${!var_name:-unset}"
+    done
+
+    # Also export these variables.
+    export "${YB_THIRDPARTY_COMPILER_SETTING_VARS[@]}"
+
     # output_line does not need to be declared as local because it only exists in
     # a subshell.
     time (
@@ -151,7 +167,13 @@ add_cxx_ld_flags() {
   expect_num_args 1 "$@"
   local flags=$1
   EXTRA_CXXFLAGS+=" $flags"
-  EXTRA_LDFLAGS+=" $flags"
+  add_ld_flags "$flags"
+}
+
+add_ld_flags() {
+  expect_num_args 1 "$@"
+  local flags=$1
+  EXTRA_LDFLAGS+=" $1"
 }
 
 add_cxx_flags() {
@@ -183,13 +205,13 @@ prepend_c_cxx_flags() {
 prepend_ld_flags() {
   expect_num_args 1 "$@"
   local flags=$1
-  LDFLAGS="$flags $LDFLAGS"
+  EXTRA_LDFLAGS="$flags $EXTRA_LDFLAGS"
 }
 
 add_rpath() {
   expect_num_args 1 "$@"
   local lib_dir=$1
-  EXTRA_LDFLAGS+=" -Wl,-rpath=$lib_dir"
+  add_ld_flags "-Wl,-rpath,$lib_dir"
 }
 
 # Add the given directory both as a library directory and an rpath entry.
@@ -205,7 +227,7 @@ prepend_lib_dir_and_rpath() {
   expect_num_args 1 "$@"
   local lib_dir=$1
   prepend_c_cxx_flags "-L$lib_dir"
-  prepend_ld_flags "-Wl,-rpath=$lib_dir"
+  prepend_ld_flags "-Wl,-rpath,$lib_dir"
 }
 
 add_linuxbrew_flags() {
@@ -222,8 +244,15 @@ add_linuxbrew_flags() {
 # Note that "uninstrumented" here differs from "uninstrumented" that is part of the
 # installed/uninstrumented install prefix. The former means that we don't specify -fsanitize=thread,
 # but the latter means it has nothing todo with the TSAN build altogether.
+#
+# Also this function is called when we build libstdc++ itself,
 set_tsan_build_flags() {
+  if [[ $# -lt 1 || $# -gt 2 ]]; then
+    fatal "$FUNCNAME expects one or two arguments: TSAN instrumentation type and an optional" \
+          "name of the dependency being built."
+  fi
   local instrumented_or_not=$1
+  local dependency_name=${2:-}
   if [[ $instrumented_or_not == "instrumented" ]]; then
     add_c_cxx_flags "-fsanitize=thread -DTHREAD_SANITIZER"
     local CXX_STDLIB_PREFIX=$PREFIX_LIBSTDCXX_TSAN
@@ -234,13 +263,19 @@ set_tsan_build_flags() {
           "$instrumented_or_not"
   fi
 
-  local gcc_include_dir=$CXX_STDLIB_PREFIX/include/c++/$GCC_VERSION
-  prepend_cxx_flags "-nostdinc++"
-  prepend_cxx_flags "-isystem $gcc_include_dir/backward"
-  prepend_cxx_flags "-isystem $gcc_include_dir"
-  prepend_lib_dir_and_rpath "$CXX_STDLIB_PREFIX/lib"
+  if [[ $dependency_name != "libstdcxx" ]]; then
+    # Obviously we can't use the custom libstdc++ when building that libstdc++.
+    local gcc_include_dir=$CXX_STDLIB_PREFIX/include/c++/$GCC_VERSION
+    prepend_cxx_flags "-nostdinc++"
+    prepend_cxx_flags "-isystem $gcc_include_dir/backward"
+    prepend_cxx_flags "-isystem $gcc_include_dir"
+    prepend_lib_dir_and_rpath "$CXX_STDLIB_PREFIX/lib"
+  fi
   add_linuxbrew_flags
-  if using_linuxbrew; then
+  if using_linuxbrew && is_clang; then
+    # The default GCC we build with (5.3 as of 03/13/2017, installed with Linuxbrew) does not
+    # recognize this option, so we only use it when building with clang, e.g. during the TSAN
+    # build.
     add_c_cxx_flags "--gcc-toolchain=$YB_LINUXBREW_DIR"
   fi
 }
@@ -269,7 +304,6 @@ set_compiler gcc
 
 F_ALL=1
 F_BITSHUFFLE=""
-F_CMAKE=""
 F_CRCUTIL=""
 F_CURL=""
 F_DIR=""
@@ -303,6 +337,9 @@ fi
 F_VERSION=""
 F_ZLIB=""
 
+should_clean=false
+building_what=()
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-prebuilt)
@@ -325,29 +362,54 @@ while [[ $# -gt 0 ]]; do
       F_TSAN=""
     ;;
 
-    "cmake")        F_ALL=""; F_CMAKE=1 ;;
-    "gflags")       F_ALL=""; F_GFLAGS=1 ;;
-    "glog")         F_ALL=""; F_GLOG=1 ;;
-    "gmock")        F_ALL=""; F_GMOCK=1 ;;
-    "gperftools")   F_ALL=""; F_GPERFTOOLS=1 ;;
-    "libev")        F_ALL=""; F_LIBEV=1 ;;
-    "lz4")          F_ALL=""; F_LZ4=1 ;;
-    "bitshuffle")   F_ALL=""; F_BITSHUFFLE=1;;
-    "protobuf")     F_ALL=""; F_PROTOBUF=1 ;;
-    "rapidjson")    F_ALL=""; F_RAPIDJSON=1 ;;
-    "snappy")       F_ALL=""; F_SNAPPY=1 ;;
-    "zlib")         F_ALL=""; F_ZLIB=1 ;;
-    "squeasel")     F_ALL=""; F_SQUEASEL=1 ;;
-    "gsg")          F_ALL=""; F_GSG=1 ;;
-    "gcovr")        F_ALL=""; F_GCOVR=1 ;;
-    "curl")         F_ALL=""; F_CURL=1 ;;
-    "crcutil")      F_ALL=""; F_CRCUTIL=1 ;;
-    "libunwind")    F_ALL=""; F_LIBUNWIND=1 ;;
-    "llvm")         F_ALL=""; F_LLVM=1 ;;
-    "libstdcxx")    F_ALL=""; F_LIBSTDCXX=1 ;;
-    "trace-viewer") F_ALL=""; F_TRACE_VIEWER=1 ;;
-    "nvml")         F_ALL=""; F_NVML=1 ;;
-    "libbacktrace") F_ALL=""; F_LIBBACKTRACE=1 ;;
+    --clean)
+      should_clean=true
+    ;;
+
+    "bitshuffle")   building_what+=( bitshuffle )
+                    F_BITSHUFFLE=1 ;;
+    "crcutil")      building_what+=( crcutil )
+                    F_CRCUTIL=1 ;;
+    "curl")         building_what+=( curl )
+                    F_CURL=1 ;;
+    "gcovr")        building_what+=( gcovr )
+                    F_GCOVR=1 ;;
+    "gflags")       building_what+=( gflags )
+                    F_GFLAGS=1 ;;
+    "glog")         building_what+=( glog )
+                    F_GLOG=1 ;;
+    "gmock")        building_what+=( gmock )
+                    F_GMOCK=1 ;;
+    "gperftools")   building_what+=( gperftools )
+                    F_GPERFTOOLS=1 ;;
+    "gsg")          building_what+=( gsg )
+                    F_GSG=1 ;;
+    "libev")        building_what+=( libev )
+                    F_LIBEV=1 ;;
+    "libstdcxx")    building_what+=( libstdcxx )
+                    F_LIBSTDCXX=1 ;;
+    "libunwind")    building_what+=( libunwind )
+                    F_LIBUNWIND=1 ;;
+    "llvm")         building_what+=( llvm )
+                    F_LLVM=1 ;;
+    "lz4")          building_what+=( lz4 )
+                    F_LZ4=1 ;;
+    "nvml")         building_what+=( nvml )
+                    F_NVML=1 ;;
+    "protobuf")     building_what+=( protobuf )
+                    F_PROTOBUF=1 ;;
+    "rapidjson")    building_what+=( rapidjson )
+                    F_RAPIDJSON=1 ;;
+    "snappy")       building_what+=( snappy )
+                    F_SNAPPY=1 ;;
+    "squeasel")     building_what+=( squeasel )
+                    F_SQUEASEL=1 ;;
+    "trace-viewer") building_what+=( trace_viewer )
+                    F_TRACE_VIEWER=1 ;;
+    "zlib")         building_what+=( zlib )
+                    F_ZLIB=1 ;;
+    "libbacktrace") building_what+=( libbacktrace )
+                    F_LIBBACKTRACE=1 ;;
     *)
       echo "Invalid option: $1" >&2
       exit 1
@@ -355,6 +417,19 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+if [[ ${#building_what[@]} -gt 0 ]]; then
+  F_ALL=""
+fi
+
+if "$should_clean"; then
+  if [[ -n $F_ALL ]]; then
+    clean_args=( --all )
+  else
+    clean_args=( "${building_what[@]}" )
+  fi
+
+  ( set -x; "$TP_DIR/clean_thirdparty.sh" "${clean_args[@]}" )
+fi
 
 # Create a couple of directories that need to exist. ----------------------------------------------
 
@@ -413,16 +488,7 @@ done
 # Initialize some variables that the code that follows expects to be initialized after enabling
 # "set -u".
 
-# Kudu would be affected by values of these variables from the environment, but we want more
-# predictable behavior, so we don't allow overriding these.
-CFLAGS=""
-EXTRA_CFLAGS=""
-CXXFLAGS=""
-EXTRA_CXXFLAGS=""
-LDFLAGS=""
-EXTRA_LDFLAGS=""
-LIBS=""
-EXTRA_LIBS=""
+reset_build_environment
 
 add_linuxbrew_flags
 
@@ -606,21 +672,17 @@ if [[ -n $F_TSAN  ]]; then
   if [ -n "$F_ALL" -o -n "$F_LIBSTDCXX" ]; then
     save_env
 
-    set_install_prefix_type uninstrumented
-    # Build uninstrumented libstdcxx. It gets installed into its own sub-directory of both
-    # uninstrumented and tsan prefix directories.
-    PREFIX=$PREFIX_LIBSTDCXX
-    EXTRA_CFLAGS=
-    EXTRA_CXXFLAGS=
-    add_linuxbrew_flags
+    # Build non-TSAN-instrumented libstdc++ -------------------------------------------------------
+    # We're passing "libstdcxx" here in order to use a separate prefix for libstdc++.
+    set_install_prefix_type uninstrumented libstdcxx
+    reset_build_environment
+    set_tsan_build_flags uninstrumented libstdcxx
     do_build_if_necessary libstdcxx
 
-    # Build instrumented libstdxx
-    set_install_prefix_type tsan
-    PREFIX=$PREFIX_LIBSTDCXX_TSAN
-    EXTRA_CFLAGS="-fsanitize=thread"
-    EXTRA_CXXFLAGS="-fsanitize=thread"
-    add_linuxbrew_flags
+    # Build TSAN-instrumented libstdxx ------------------------------------------------------------
+    set_install_prefix_type tsan libstdcxx
+    reset_build_environment
+    set_tsan_build_flags instrumented libstdcxx
     do_build_if_necessary libstdcxx
 
     restore_env

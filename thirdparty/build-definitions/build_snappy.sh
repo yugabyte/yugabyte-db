@@ -2,17 +2,15 @@
 
 SNAPPY_VERSION=1.1.0
 SNAPPY_DIR=$TP_SOURCE_DIR/snappy-$SNAPPY_VERSION
+TP_NAME_TO_SRC_DIR["snappy"]=$SNAPPY_DIR
 
 build_snappy() {
   create_build_dir_and_prepare "$SNAPPY_DIR"
   (
     set_build_env_vars
+    set_thirdparty_flags_for_autotools_projects
     set -x
-    CFLAGS="$EXTRA_CFLAGS" \
-      CXXFLAGS="$EXTRA_CXXFLAGS" \
-      LDFLAGS="$EXTRA_LDFLAGS" \
-      LIBS="$EXTRA_LIBS" \
-      ./configure --with-pic --prefix=$PREFIX
+    ./configure --with-pic --prefix=$PREFIX
     run_make install
    mkdir -p "include" "lib"
    # Copy over all the headers into a generic include/ directory.

@@ -2,6 +2,7 @@
 
 GCC_VERSION=4.9.3
 GCC_DIR=$TP_SOURCE_DIR/gcc-${GCC_VERSION}
+TP_NAME_TO_SRC_DIR["libstdcxx"]=$GCC_DIR
 
 build_libstdcxx() {
   # Configure libstdcxx to use posix threads by default. Normally this symlink
@@ -14,10 +15,9 @@ build_libstdcxx() {
 
   (
     set_build_env_vars
+    set_thirdparty_flags_for_autotools_projects
     set -x
-    CFLAGS=$EXTRA_CFLAGS \
-      CXXFLAGS=$EXTRA_CXXFLAGS \
-      $GCC_DIR/libstdc++-v3/configure \
+    $GCC_DIR/libstdc++-v3/configure \
       --enable-multilib=no \
       --prefix="$PREFIX"
     run_make install

@@ -168,8 +168,7 @@ SCRIPT_DIR=$(cd "$(dirname "$BASH_SOURCE")" && pwd)
 if [ -n "$DEST_DIR" ]; then
   echo "Using custom download directory '$DEST_DIR'"
   mkdir -p "$DEST_DIR"
-  # We have to set TP_DIR based on DEST_DIR, because we import vars.sh that sets a lot of variables
-  # based on TP_DIR.
+  # We have to set TP_DIR based on DEST_DIR, because we set a lot of variables based on TP_DIR.
   TP_DIR=$DEST_DIR
   if [[ ! -d "$DEST_DIR/patches" && $DOWNLOAD_ONLY -eq 0 ]]; then
     ln -s "$SCRIPT_DIR/patches" "$DEST_DIR/patches"

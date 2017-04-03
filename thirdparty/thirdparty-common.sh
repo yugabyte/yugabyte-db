@@ -48,6 +48,27 @@ PREFIX_LIBSTDCXX_TSAN=$PREFIX_DEPS_TSAN/gcc
 
 BUILD_STAMP_DIR=$YB_THIRDPARTY_DIR/build-status
 
+# An associative array from dependency name to its source directory. Populated by build_... scripts.
+declare -A TP_NAME_TO_SRC_DIR
+
+# A set of valid dependency names. Values are always 1.
+declare -A TP_VALID_DEP_NAME_SET
+
+# These flags influence how third-party dependencies are being built. We show the values of these
+# flags before each third-party dependency build and also export them.
+readonly YB_THIRDPARTY_COMPILER_SETTING_VARS=(
+  CC
+  CXX
+  CFLAGS
+  CXXFLAGS
+  EXTRA_CFLAGS
+  EXTRA_CXXFLAGS
+  EXTRA_LDFLAGS
+  EXTRA_LIBS
+  LDFLAGS
+  LIBS
+)
+
 # Come up with a string that allows us to tell when to rebuild a particular third-party dependency.
 # The result is returned in the get_build_stamp_for_component_rv variable, which should have been
 # made local by the caller.
@@ -157,6 +178,25 @@ restore_env() {
   EXTRA_LIBS=${_EXTRA_LIBS}
 }
 
+set_thirdparty_flags_for_autotools_projects() {
+  log "Setting CFLAGS to '$EXTRA_CFLAGS'"
+  export CFLAGS=$EXTRA_CFLAGS
+
+  log "Setting CXXFLAGS to '$EXTRA_CXXFLAGS'"
+  export CXXFLAGS=$EXTRA_CXXFLAGS
+
+  log "Setting LDFLAGS to '$EXTRA_LDFLAGS'"
+  export LDFLAGS=$EXTRA_LDFLAGS
+
+  log "Setting LIBS to '$EXTRA_LIBS'"
+  export LIBS=$EXTRA_LIBS
+}
+
+set_thirdparty_flags_for_cmake_projects() {
+  log "Setting CXXFLAGS to '$CXXFLAGS' for a Cmake project"
+  export CXXFLAGS="$EXTRA_CFLAGS $EXTRA_CXXFLAGS $EXTRA_LDFLAGS $EXTRA_LIBS"
+}
+
 get_build_directory() {
   expect_num_args 1 "$@"
   local basename=$1
@@ -248,7 +288,12 @@ source_thirdparty_build_definitions() {
   local build_def_file
   for build_def_file in "$YB_THIRDPARTY_DIR"/build-definitions/build_*.sh; do
     . "$build_def_file"
+    local dep_name=${build_def_file##*/build_}
+    dep_name=${dep_name%.sh}
+    TP_VALID_DEP_NAME_SET[$dep_name]=1
   done
+  readonly TP_NAME_TO_SRC_DIR
+  readonly TP_VALID_DEP_NAME_SET
 }
 
 # -------------------------------------------------------------------------------------------------

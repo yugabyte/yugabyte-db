@@ -20,6 +20,7 @@ LLVM_VERSION=3.9.0
 # TODO: migrate to this pattern for all other third-party dependencies.
 # Note: we have the ".src" suffix at the end because that's what comes out of the tarball.
 LLVM_SOURCE=$TP_SOURCE_DIR/llvm-$LLVM_VERSION.src
+TP_NAME_TO_SRC_DIR["llvm"]=$LLVM_SOURCE
 
 # Python 2.7 is required to build LLVM 3.6+. It is only built and installed if the system Python
 # version is not 2.7.

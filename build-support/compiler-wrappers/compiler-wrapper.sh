@@ -294,6 +294,11 @@ exit_handler() {
     if [[ -f ${stderr_path:-} ]]; then
       tail -n +2 "$stderr_path" >&2
     fi
+  elif [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
+    # Do not add any fancy output if we're running as part of the third-party build.
+    if [[ -f ${stderr_path:-} ]]; then
+      cat "$stderr_path" >&2
+    fi
   else
     # We output the compiler executable path because the actual command we're running will likely
     # contain ccache instead of the compiler executable.
@@ -343,13 +348,6 @@ exit_handler() {
 
 set_build_env_vars
 
-if [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
-  # This is the third-party build. Don't do any extra error checking/reporting, just pass through to
-  # the compiler (which is potentially fronted with ccache).
-  "${cmd[@]}"
-  exit
-fi
-
 compiler_exit_code=UNKNOWN
 trap exit_handler EXIT
 
@@ -363,10 +361,18 @@ set -e
 # Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
 # Extra output might break the version detection.
 if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} &&
-      "$compiler_args_str" != "-v" &&
-      "$compiler_args_str" != "-Wl,--version" &&
-      "$compiler_args_str" != "-fuse-ld=gold -Wl,--version" ]]; then
+      $compiler_args_str != "-v" &&
+      $compiler_args_str != "-Wl,--version" &&
+      $compiler_args_str != "-fuse-ld=gold -Wl,--version" &&
+      $compiler_args_str != "-print-prog-name=ld" ]]; then
   show_compiler_command_line "$CYAN_COLOR"
+fi
+
+if [[ -n ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
+  # This is the third-party build. Don't do any extra error checking/reporting, just pass the
+  # compiler output back to the caller. The compiler's standard error will be passed to the calling
+  # process by the exit handler.
+  exit "$compiler_exit_code"
 fi
 
 # Deal with failures when trying to use precompiled headers. Our current approach is to delete the
