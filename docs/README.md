@@ -6,9 +6,8 @@ YugaByte Product Documentation
 
 ### What is this repository for? ###
 
-* Quick summary
 
-Our docs are based on the Hugo framework and using the Material Docs theme
+Our docs are based on the Hugo framework and are using the Material Docs theme
 
 ** Hugo framework: http://gohugo.io/overview/introduction/
 
@@ -16,51 +15,24 @@ Our docs are based on the Hugo framework and using the Material Docs theme
 
 ** Example of Material docs theme: http://themes.gohugo.io/theme/material-docs/
 
-* Version
-* [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
 
 ### How do I get set up? ###
 
-* Summary of set up
 
 On Mac OS X
 
 ```
-brew update && brew install hugo
-```
-
-Detailed installation instructions: http://gohugo.io/overview/installing/
-
-* Configuration
-None
-
-* Dependencies
-None
-
-* Database configuration
-None
-
-* How to run tests
-
-clone the docs project into /code directory
-
-run the following to start a high performance web server that continuously watches the entire docs directory
-
-```
+cd ~/code
+git clone git@bitbucket.org:yugabyte/docs.git
+cd docs
+brew update
+brew install hugo
 hugo server
 ```
 
-Go to [http://localhost:1313/] (http://localhost:1313/)to see the docs
+The last command above starts high performance web server that continuously watches the entire docs directory. Go to [http://localhost:1313/](http://localhost:1313/)to see the docs.
 
-* Deployment instructions
+Simply running "hugo" will create a directory called public that has all the html content necessary to deploy to production behind an existing web server.
 
-### Contribution guidelines ###
-
-* Writing tests
-* Code review
-* Other guidelines
-
-### Who do I talk to? ###
-
-* Repo owner or admin
-* Other community or team contact
+Detailed installation instructions: http://gohugo.io/overview/installing/
+Detailed usage instructions: http://gohugo.io/overview/usage/

@@ -70,7 +70,9 @@ You should see the following output
 
 ### Configuring Replicated for YugaWare
 
-Launch Replicated UI by going to [http://host-public-ip:8800] (http://host-public-ip:8800). The browser warning shown next states that the connection to the server is not private. We will adress this warning as soon as we setup HTTPS for the Replicated admin console in the next step. Click ADVANCED to bypass this warning and go to the Replicated admin console.
+Launch Replicated UI by going to [http://yugaware-host-public-ip:8800] (http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will adress this warning as soon as we setup HTTPS for the Replicated admin console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated admin console.
+
+![Replicated Browser TLS](/images/replicated-browser-tls.png)
 
 ![Replicated SSL warning](/images/replicated-warning.png)
 
@@ -108,7 +110,7 @@ All the containers powering the YugaWare application will be downloaded from the
 
 ![Replicated Dashboard](/images/replicated-dashboard.png)
 
-After starting the YugaWare application, you can register a new customer in YugaWare by following the instructions in the [Admin](/http://localhost:1313/admin/#register-customer) section.
+After starting the YugaWare application, you can register a new customer in YugaWare by following the instructions in the [Admin] (/admin/#register-customer) section.
 
 ## Backup
 
