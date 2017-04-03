@@ -159,7 +159,9 @@ void Trace::SubstituteAndTrace(const char* file_path,
   };
 
   int msg_len = strings::internal::SubstitutedSize(format, args_array);
+  DCHECK_NE(msg_len, 0) << "Bad format specification";
   TraceEntry* entry = NewEntry(msg_len, file_path, line_number);
+  if (entry == nullptr) return;
   SubstituteToBuffer(format, args_array, entry->message());
   AddEntry(entry);
 }
@@ -167,7 +169,12 @@ void Trace::SubstituteAndTrace(const char* file_path,
 TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number) {
   int size = sizeof(TraceEntry) + msg_len;
   uint8_t* dst = reinterpret_cast<uint8_t*>(arena_->AllocateBytes(size));
-  TraceEntry* entry = reinterpret_cast<TraceEntry*>(dst);
+  if (dst == nullptr) {
+    LOG(ERROR) << "NewEntry(msg_len, " << file_path << ", " << line_number
+        << ") received nullptr from AllocateBytes.\n So far:" << DumpToString(true);
+    return nullptr;
+  }
+  TraceEntry* entry = new (dst) TraceEntry;
   entry->timestamp = MonoTime::Now(MonoTime::FINE);
   entry->message_len = msg_len;
   entry->file_path = file_path;

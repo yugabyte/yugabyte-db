@@ -174,7 +174,7 @@ const YBTable* AsyncRpc::table() const {
 }
 
 void AsyncRpc::LookupTabletCb(const Status& status) {
-  TRACE_TO(trace_, "LookupTabletCb(%s)", status.ToString(false));
+  TRACE_TO(trace_, "LookupTabletCb($0)", status.ToString(false));
   // We should retry the RPC regardless of the outcome of the lookup, as
   // leader election doesn't depend on the existence of a master at all.
   //
@@ -197,7 +197,7 @@ void AsyncRpc::FailToNewReplica(const Status& reason) {
 }
 
 void AsyncRpc::SendRpcCb(const Status& status) {
-  TRACE_TO(trace_, "SendRpcCb(%s)", status.ToString(false));
+  TRACE_TO(trace_, "SendRpcCb($0)", status.ToString(false));
   ADOPT_TRACE(trace_.get());
   // Prefer early failures over controller failures.
   Status new_status = status;
@@ -255,7 +255,7 @@ void AsyncRpc::SendRpcCb(const Status& status) {
 }
 
 void AsyncRpc::InitTSProxyCb(const Status& status) {
-  TRACE_TO(trace_, "InitTSProxyCb(%s)", status.ToString(false));
+  TRACE_TO(trace_, "InitTSProxyCb($0)", status.ToString(false));
   // Fail to a replica in the event of a DNS resolution failure.
   if (!status.ok()) {
     FailToNewReplica(status);
@@ -315,7 +315,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
                    const shared_ptr<Messenger>& messenger,
                    const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics)
     : AsyncRpc(batcher, tablet, ops, deadline, messenger, async_rpc_metrics) {
-  TRACE_TO(trace_, "WriteRpc initiated to %s", tablet->tablet_id());
+  TRACE_TO(trace_, "WriteRpc initiated to $0", tablet->tablet_id());
   const Schema* schema = table()->schema().schema_;
 
   req_.set_tablet_id(tablet->tablet_id());
@@ -499,7 +499,7 @@ ReadRpc::ReadRpc(
     const MonoTime& deadline, const shared_ptr<Messenger>& messenger,
     const std::shared_ptr<AsyncRpcMetrics>& async_rpc_metrics)
     : AsyncRpc(batcher, tablet, ops, deadline, messenger, async_rpc_metrics) {
-  TRACE_TO(trace_, "ReadRpc initiated to %s", tablet->tablet_id());
+  TRACE_TO(trace_, "ReadRpc initiated to $0", tablet->tablet_id());
   req_.set_tablet_id(tablet->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   int ctr = 0;
