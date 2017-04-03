@@ -119,16 +119,22 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT(3500)]) 
   void SetupRocksDBState(KeyBytes encoded_doc_key, InitMarkerBehavior use_init_marker) {
 
     SubDocument root;
-    SubDocument a, b, c, d, e, b2;
-    // Set root = {a : {1 : 1, 2 : 2}, b : {c : {1 : 3}, d : {1 : 5, 2 : 6}}, x : 7}
-    // then delete root.b
-    // Then insert root.b = {e : {1 : 8, 2 : 9}, y : 10}
+    SubDocument a, b, c, d, e, f, b2;
+
+    // The test plan below:
+    // Set root = {a: {1: 1, 2: 2}, b: {c: {1: 3}, d: {1: 5, 2: 6}}, u: 7}
+    // Then set root.a.2 = 11
+    // Then replace root.b = {e: {1: 8, 2: 9}, y: 10}
+    // Then extend root.a by {1: 3, 3: 4}
+    // Then Delete root.b.e.2
+    // The end result should be {a: {1: 3, 2: 11, 3: 4, x: {}}, b: {e: {1: 8}, y: 10}, u: 7}
+
 #define SET_CHILD(parent, child) parent.SetChild(PrimitiveValue(#child), std::move(child))
 #define SET_VALUE(parent, key, value) parent.SetChild(PrimitiveValue(key), \
     SubDocument(PrimitiveValue(value)))
 
     // Constructing top level document: "root"
-    SET_VALUE(root, "x", "7");
+    SET_VALUE(root, "u", "7");
     SET_VALUE(a, "1", "1");
     SET_VALUE(a, "2", "2");
     SET_VALUE(c, "1", "3");
@@ -154,7 +160,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT(3500)]) 
       "2": "6"
     }
   },
-  "x": "7"
+  "u": "7"
 }
       )#", root.ToString());
 
@@ -174,17 +180,30 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT(3500)]) 
 }
       )#", b2.ToString());
 
+    // Constructing a doc with which we will extend a later
+    SET_VALUE(f, "1", "3");
+    SET_VALUE(f, "3", "4");
+
+    EXPECT_STR_EQ_VERBOSE_TRIMMED(R"#(
+{
+  "1": "3",
+  "3": "4"
+}
+      )#", f.ToString());
+
 #undef SET_CHILD
 #undef SET_VALUE
 
     NO_FATALS(InsertSubDocument(
         DocPath(encoded_doc_key), root, HybridTime(1000), use_init_marker));
+    // The Insert above could have been an Extend with no difference in external behavior.
+    // Internally however, an insert writes an extra key (with value tombstone).
     NO_FATALS(SetPrimitive(
         DocPath(encoded_doc_key, PrimitiveValue("a"), PrimitiveValue("2")),
-        Value(PrimitiveValue(11)), HybridTime(4000), nullptr, use_init_marker));
-    NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("b")),
-        Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(3000), nullptr, use_init_marker));
+        Value(PrimitiveValue(11)), HybridTime(2000), nullptr, use_init_marker));
     NO_FATALS(InsertSubDocument(DocPath(encoded_doc_key, PrimitiveValue("b")), b2,
+        HybridTime(3000), use_init_marker));
+    NO_FATALS(ExtendSubDocument(DocPath(encoded_doc_key, PrimitiveValue("a")), f,
         HybridTime(4000), use_init_marker));
     NO_FATALS(SetPrimitive(
         DocPath(encoded_doc_key, PrimitiveValue("b"), PrimitiveValue("e"), PrimitiveValue("2")),
@@ -317,19 +336,21 @@ TEST_F(DocDBTest, SetPrimitiveYQL) {
   SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::kOptional);
   AssertDocDbDebugDumpStrEqVerboseTrimmed(
       R"#(
+SubDocKey(DocKey([], ["mydockey", 123456]), [HT(1000)]) -> DEL
+SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "1"; HT(4000)]) -> "3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "1"; HT(1000)]) -> "1"
-SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "2"; HT(4000)]) -> 11
+SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "2"; HT(2000)]) -> 11
 SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "2"; HT(1000)]) -> "2"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["a", "3"; HT(4000)]) -> "4"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["b"; HT(3000)]) -> DEL
 SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "c", "1"; HT(1000)]) -> "3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "d", "1"; HT(1000)]) -> "5"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "d", "2"; HT(1000)]) -> "6"
-SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "e", "1"; HT(4000)]) -> "8"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "e", "1"; HT(3000)]) -> "8"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "e", "2"; HT(5000)]) -> DEL
-SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "e", "2"; HT(4000)]) -> "9"
-SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "y"; HT(4000)]) -> "10"
-SubDocKey(DocKey([], ["mydockey", 123456]), ["x"; HT(1000)]) -> "7"
-      )#");
+SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "e", "2"; HT(3000)]) -> "9"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["b", "y"; HT(3000)]) -> "10"
+SubDocKey(DocKey([], ["mydockey", 123456]), ["u"; HT(1000)]) -> "7"      )#");
 }
 
 // This tests GetSubDocument without init markers. Basic Test tests with init markers.
@@ -337,24 +358,12 @@ TEST_F(DocDBTest, GetSubDocumentTest) {
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
   SetupRocksDBState(doc_key.Encode(), InitMarkerBehavior::kOptional);
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(10000),
-      R"#(
-{
-  "a": {
-    "1": "1",
-    "2": 11
-  },
-  "b": {
-    "e": {
-      "1": "8"
-    },
-    "y": "10"
-  },
-  "x": "7"
-}
-      )#");
+  // We will test the state of the entire document after every operation, using timestamps
+  // 500, 1500, 2500, 3500, 4500, 5500.
 
-  VerifySubDocument(SubDocKey(doc_key), HybridTime(2500),
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(500), "");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(1500),
       R"#(
 {
   "a": {
@@ -370,19 +379,88 @@ TEST_F(DocDBTest, GetSubDocumentTest) {
       "2": "6"
     }
   },
-  "x": "7"
+  "u": "7"
 }
       )#");
 
-  VerifySubDocument(SubDocKey(doc_key, PrimitiveValue("b")), HybridTime(10000),
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(2500),
       R"#(
 {
-  "e": {
-    "1": "8"
+  "a": {
+    "1": "1",
+    "2": 11
   },
-  "y": "10"
+  "b": {
+    "c": {
+      "1": "3"
+    },
+    "d": {
+      "1": "5",
+      "2": "6"
+    }
+  },
+  "u": "7"
 }
       )#");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(3500),
+      R"#(
+{
+  "a": {
+    "1": "1",
+    "2": 11
+  },
+  "b": {
+    "e": {
+      "1": "8",
+      "2": "9"
+    },
+    "y": "10"
+  },
+  "u": "7"
+}
+      )#");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(4500),
+      R"#(
+{
+  "a": {
+    "1": "3",
+    "2": 11,
+    "3": "4"
+  },
+  "b": {
+    "e": {
+      "1": "8",
+      "2": "9"
+    },
+    "y": "10"
+  },
+  "u": "7"
+}
+      )#");
+
+  VerifySubDocument(SubDocKey(doc_key), HybridTime(5500),
+      R"#(
+{
+  "a": {
+    "1": "3",
+    "2": 11,
+    "3": "4"
+  },
+  "b": {
+    "e": {
+      "1": "8"
+    },
+    "y": "10"
+  },
+  "u": "7"
+}
+      )#");
+
+  // Test the evolution of SubDoc root.b at various timestamps.
+
+  VerifySubDocument(SubDocKey(doc_key, PrimitiveValue("b")), HybridTime(500), "");
 
   VerifySubDocument(SubDocKey(doc_key, PrimitiveValue("b")), HybridTime(2500),
       R"#(
@@ -394,6 +472,27 @@ TEST_F(DocDBTest, GetSubDocumentTest) {
     "1": "5",
     "2": "6"
   }
+}
+      )#");
+
+  VerifySubDocument(SubDocKey(doc_key, PrimitiveValue("b")), HybridTime(3500),
+      R"#(
+{
+  "e": {
+    "1": "8",
+    "2": "9"
+  },
+  "y": "10"
+}
+      )#");
+
+  VerifySubDocument(SubDocKey(doc_key, PrimitiveValue("b")), HybridTime(5500),
+      R"#(
+{
+  "e": {
+    "1": "8"
+  },
+  "y": "10"
 }
       )#");
 

@@ -375,6 +375,17 @@ void DocDBRocksDBFixture::InsertSubDocument(
   ASSERT_OK(WriteToRocksDB(local_doc_write_batch));
 }
 
+void DocDBRocksDBFixture::ExtendSubDocument(
+    const DocPath& doc_path,
+    const SubDocument& value,
+    HybridTime hybrid_time,
+    InitMarkerBehavior use_init_marker) {
+  DocWriteBatch local_doc_write_batch(rocksdb_.get());
+  local_doc_write_batch.Clear();
+  ASSERT_OK(local_doc_write_batch.ExtendSubDocument(doc_path, value, hybrid_time, use_init_marker));
+  ASSERT_OK(WriteToRocksDB(local_doc_write_batch));
+}
+
 void DocDBRocksDBFixture::DocDBDebugDumpToConsole() {
   ASSERT_OK(DocDBDebugDump(rocksdb_.get(), std::cerr));
 }

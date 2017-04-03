@@ -148,6 +148,12 @@ class DocDBRocksDBFixture {
       HybridTime hybrid_time,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
 
+  void ExtendSubDocument(
+      const DocPath& doc_path,
+      const SubDocument& value,
+      HybridTime hybrid_time,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+
   void DocDBDebugDumpToConsole();
 
   void FlushRocksDB();

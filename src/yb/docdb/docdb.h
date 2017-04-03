@@ -88,11 +88,16 @@ class DocWriteBatch {
     return SetPrimitive(doc_path, Value(value), hybrid_time, use_init_marker);
   }
 
-  // Insert the SubDocument in the given key. If existing subkeys need to be removed,
-  // The caller must put a tombstone first (Using SetPrimitive possibly).
+  // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
   // TODO(akashnil): 03/20/17 ENG-1107
   // In each SetPrimitive call, some common work is repeated. It may be made more
   // efficient by not calling SetPrimitive internally.
+  CHECKED_STATUS ExtendSubDocument(
+      const DocPath& doc_path,
+      const SubDocument& value,
+      HybridTime hybrid_time = HybridTime::kMax,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,

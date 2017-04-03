@@ -233,20 +233,24 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
                               use_init_marker);
 }
 
-Status DocWriteBatch::InsertSubDocument(
+Status DocWriteBatch::ExtendSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
     HybridTime hybrid_time,
     InitMarkerBehavior use_init_marker) {
   if (value.value_type() == ValueType::kObject) {
     const auto& map = value.object_container();
+    if (map.empty()) {
+      return SetPrimitive(doc_path,
+          Value(PrimitiveValue(ValueType::kObject)), hybrid_time, use_init_marker);
+    }
     for (const auto& ent : map) {
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(ent.first);
-      RETURN_NOT_OK(InsertSubDocument(child_doc_path, ent.second, hybrid_time, use_init_marker));
+      RETURN_NOT_OK(ExtendSubDocument(child_doc_path, ent.second, hybrid_time, use_init_marker));
     }
   } else if (value.value_type() == ValueType::kArray) {
-    // In future InsertSubDocument will also support List types, will call ExtendList in this case.
+    // In future ExtendSubDocument will also support List types, will call ExtendList in this case.
     // For now it is not supported because it's clunky to pass monotonic counters in every function.
     return STATUS(InvalidArgument, "Cannot insert subdocument of list type");
   } else {
@@ -258,6 +262,16 @@ Status DocWriteBatch::InsertSubDocument(
     RETURN_NOT_OK(SetPrimitive(doc_path, Value(value), hybrid_time, use_init_marker));
   }
   return Status::OK();
+}
+
+Status DocWriteBatch::InsertSubDocument(
+    const DocPath& doc_path,
+    const SubDocument& value,
+    HybridTime hybrid_time,
+    InitMarkerBehavior use_init_marker) {
+  RETURN_NOT_OK(SetPrimitive(
+      doc_path, Value(PrimitiveValue(ValueType::kTombstone)), hybrid_time, use_init_marker));
+  return ExtendSubDocument(doc_path, value, hybrid_time, use_init_marker);
 }
 
 Status DocWriteBatch::DeleteSubDoc(const DocPath& doc_path, const HybridTime hybrid_time,
