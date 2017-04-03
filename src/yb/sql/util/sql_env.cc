@@ -167,10 +167,11 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool ref
   shared_ptr<YBTable> yb_table;
   Status s = table_cache_->GetTable(table_name, &yb_table, refresh_cache, cache_used);
 
-  if (s.IsNotFound()) {
+  if (!s.ok()) {
+    LOG(ERROR) << "GetTableDesc: Server returns an error: " << s.ToString();
     return nullptr;
   }
-  CHECK(s.ok()) << "Server returns unexpected error. " << s.ToString();
+
   return yb_table;
 }
 

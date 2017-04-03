@@ -429,6 +429,7 @@ void WriteRpc::ProcessResponseFromTserver(Status status) {
     TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
   }
   batcher_->ProcessWriteResponse(*this, status);
+  if (!status.ok()) return;
   if (resp_.has_error()) {
     LOG(WARNING) << "Write Rpc to tablet server has error:"
                  << resp_.error().DebugString()
@@ -569,6 +570,7 @@ void ReadRpc::ProcessResponseFromTserver(Status status) {
     TRACE_TO(trace_, "Received from server: $0", resp_.trace_buffer());
   }
   batcher_->ProcessReadResponse(*this, status);
+  if (!status.ok()) return;
   if (resp_.has_error()) {
     LOG(WARNING) << "Read Rpc to tablet server has error:"
                  << resp_.error().DebugString()

@@ -424,7 +424,8 @@ void Batcher::AddOpCountMismatchError() {
   // TODO: how to handle this kind of error where the array of response PB's don't match
   //       the size of the array of requests. We don't have a specific YBOperation to
   //       create an error with, because there are multiple YBOps in one Rpc.
-  LOG(FATAL) << "Server sent wrong number of redis responses compared to request";
+  LOG(ERROR) << "Received wrong number of responses compared to request(s) sent.";
+  DCHECK(false);
 }
 
 void Batcher::RemoveInFlightOps(const vector<InFlightOp*>& ops) {
