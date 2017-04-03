@@ -573,16 +573,24 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
 
   // Start at the operation after the last committed one.
   auto iter = pending_txns_.upper_bound(last_committed_index_.index());
-  // Stop at the operation after the last one we must commit.
+  // Stop at the operation after the last one we must commit. This iterator by definition points to
+  // the first entry greater than the committed index, so the entry preceding that must have the
+  // OpId equal to commited_index.
   auto end_iter = pending_txns_.upper_bound(committed_index.index());
   if (must_exist == MustExist::YES) {
+    // The MustExist::YES mode is being used from StartElection, and in that case there is no
+    // guarantee that we'll have the new commited entry in our log, because the committed OpId does
+    // not arrive through the usual UpdateConsensus mechanism that also replicates the committed
+    // entry. Therefore, to maintain safety, we need to check that the committed entry is actually
+    // present in our log (and as a result, is either already committed locally, which means there
+    // is nothing to do, or present in the pending transactions map).
     if (end_iter == pending_txns_.begin()) {
       return STATUS(NotFound, "No pending entries before committed index");
     }
     auto prev = end_iter;
     --prev;
     auto prev_id = prev->second->id();
-    if (OpIdEquals(prev_id, committed_index)) {
+    if (!OpIdEquals(prev_id, committed_index)) {
       return STATUS(NotFound, "No pending entry with committed index");
     }
   }
