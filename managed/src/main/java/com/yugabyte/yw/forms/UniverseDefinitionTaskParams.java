@@ -105,8 +105,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public String toString() {
-      return "UserIntent " + "for universe=" + universeName + ", isMultiAZ=" + isMultiAZ + " type=" +
-             instanceType + ", numNodes=" + numNodes;
+      return "UserIntent " + "for universe=" + universeName + ", isMultiAZ=" + isMultiAZ + " type="
+             + instanceType + ", numNodes=" + numNodes + ", prov=" + provider + ", provType=" +
+             providerType + ", RF=" + replicationFactor + ", regions=" + regionList + ", pref=" +
+             preferredRegion + ", ybVersion=" + ybSoftwareVersion + ", accessKey=" + accessKeyCode +
+             ", deviceInfo=" + deviceInfo;
     }
 
     public UserIntent clone() {

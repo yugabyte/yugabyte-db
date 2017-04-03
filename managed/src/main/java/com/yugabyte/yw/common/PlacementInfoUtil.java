@@ -56,6 +56,7 @@ public class PlacementInfoUtil {
    * @return True iff the only difference between the intents is the number of nodes.
    */
   private static boolean isPureExpandOrShrink(UserIntent taskIntent, UserIntent existingIntent) {
+    LOG.info("Comparing task '{}' and existing '{}' intents.", taskIntent, existingIntent);
     UserIntent tempIntent = taskIntent.clone();
     tempIntent.numNodes = existingIntent.numNodes;
     return tempIntent.equals(existingIntent) && taskIntent.numNodes != existingIntent.numNodes;
@@ -106,7 +107,7 @@ public class PlacementInfoUtil {
         taskParams.nodeDetailsSet.addAll(existingNodes);
       } else {
         // In the case of Full Move get placementInfo from UserIntent
-        if ( taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
+        if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
           taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
         }
         // Here for full move based edit or full move + expand case.
