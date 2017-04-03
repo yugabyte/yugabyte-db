@@ -15,4 +15,10 @@ public class DeviceInfo {
 
   // Comma separated list of mount points for the devices in each instance (if specified).
   public String mountPoints;
+  
+  public String toString() {
+    return "DeviceInfo:" + " volSize=" + volumeSize + ", numVols=" + numVolumes + ", iops=" +
+           diskIops + ", mountPoints=" + mountPoints;
+      
+  }
 }
