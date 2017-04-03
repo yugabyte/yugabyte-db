@@ -180,8 +180,8 @@ void Batcher::CheckForFinishedFlush() {
 MonoTime Batcher::ComputeDeadlineUnlocked() const {
   MonoDelta timeout = timeout_;
   if (PREDICT_FALSE(!timeout.Initialized())) {
-    YB_LOG_EVERY_N(WARNING, 1000) << "Client writing with no timeout set, using 60 seconds.\n"
-                                << GetStackTrace();
+    YB_LOG_EVERY_N(WARNING, 100000) << "Client writing with no timeout set, using 60 seconds.\n"
+                                    << GetStackTrace();
     timeout = MonoDelta::FromSeconds(60);
   }
   MonoTime ret = MonoTime::Now(MonoTime::FINE);
