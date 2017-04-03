@@ -5,6 +5,8 @@
 #config-tab-panel .tab-content {
   overflow: hidden;
   min-height: 400px;
+  padding-top: 20px;
+  margin-bottom: 25px;
 }
 
 .provider-config-container {
@@ -169,5 +171,15 @@
 
   > li.active > a {
     min-height: 70px;
+  }
+}
+
+.config-region {
+  min-height: 100px;
+  padding-top: 12px;
+  line-height: 1.3;
+
+  .config-region-name {
+    font-weight: 600;
   }
 }
