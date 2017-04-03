@@ -5,6 +5,7 @@ import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
 import { ProgressList } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
+import { YBConfirmModal } from '../../modals';
 import { Field } from 'redux-form';
 import {withRouter} from 'react-router';
 import  { isValidArray, isValidObject } from '../../../utils/ObjectUtils';
@@ -27,6 +28,7 @@ class AWSProviderConfiguration extends Component {
   componentWillMount() {
     this.props.getProviderListItems();
     this.props.getSupportedRegionList();
+    // TODO: may be call this only once if not already fetched?
     this.props.fetchHostInfo();
   }
   componentWillUnmount() {
@@ -102,28 +104,17 @@ class AWSProviderConfiguration extends Component {
   }
 
   render() {
-    const { handleSubmit, submitting, pristine, reset,
-      cloudBootstrap: { loading, type, error },
-      configuredProviders, configuredRegions, accessKeys, universeList, universeLoading } = this.props;
+    const { handleSubmit, submitting, cloudBootstrap: { loading, type, error },
+      configuredProviders, configuredRegions, accessKeys, universeList } = this.props;
     var universeExistsForProvider = false;
-    if ((isValidArray(configuredProviders))
-      && (universeLoading || universeList.find(universe => universe.provider.uuid === configuredProviders[0].uuid))){
-      universeExistsForProvider = true;
+    if (isValidArray(configuredProviders) && isValidArray(universeList)){
+      universeExistsForProvider = universeList.some(universe => universe.provider.uuid === configuredProviders[0].uuid);
     }
 
     var awsProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
     var providerConfig;
 
     if (isValidObject(awsProvider)) {
-      var confirmDeleteSubmit = (e) => {
-        if (handleSubmit && confirm("Are you sure you want to delete this AWS account?")) {
-          return handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))();
-        } else {
-          e.preventDefault();
-          return false;
-        }
-      };
-
       var awsRegions = configuredRegions.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
@@ -146,16 +137,19 @@ class AWSProviderConfiguration extends Component {
       ]
 
       providerConfig =
-        <form name="awsConfigForm" onSubmit={confirmDeleteSubmit}>
+        <div>
           <Row className="config-section-header">
             <Col md={12}>
-              <YBButton btnText={"Delete Configuration"} btnClass={"btn btn-default delete-btn delete-aws-btn"}
-                        disabled={submitting || universeExistsForProvider} btnType="submit" />
+              <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
+                btnLabel="Delete Configuration" btnClass="btn btn-default delete-btn delete-aws-btn" disabled={universeExistsForProvider}
+                onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}>
+                Are you sure you want to delete this AWS configuration?
+              </YBConfirmModal>
               <DescriptionList listItems={providerInfo} />
               <RegionMap title="All Supported Regions" regions={awsRegions} type="Root"/>
             </Col>
           </Row>
-        </form>
+        </div>
     } else {
       var bootstrapSteps = <span />;
       // We don't have bootstrap steps for cleanup.
