@@ -7,7 +7,8 @@ import { ProgressList } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { Field } from 'redux-form';
-import {withRouter} from 'react-router';
+import { withRouter } from 'react-router';
+import { sortBy } from 'lodash';
 import  { isValidArray, isValidObject, trimString, convertSpaceToDash } from '../../../utils/ObjectUtils';
 import { RegionMap } from '../../maps';
 
@@ -118,37 +119,60 @@ class AWSProviderConfiguration extends Component {
       var awsRegions = configuredRegions.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
-      var regionList = "Not Configured"
-      var zoneList = "Not Configured"
-      var accessKeyList = "Not Configured"
 
-      if (isValidArray(awsRegions)) {
-        regionList = awsRegions.map( (awsRegion) => awsRegion.name ).join(",")
-        zoneList = awsRegions.map( (awsRegion) => awsRegion.zones.map( (zone) => zone.name )).join(",")
+      var regionColumns = <Col md={12}>No AWS Regions Configured</Col>;
+      var accessKeyList = "Not Configured";
+
+      if (isValidArray(awsRegions) && awsRegions.length) {
+        regionColumns = sortBy(awsRegions, 'longitude').map((region) => {
+          const zoneList = region.zones.map((zone) => {
+            return <div key={`zone-${zone.uuid}`} className="config-zone-name">{zone.name}</div>;
+          });
+          return (
+            <Col key={`region-${region.uuid}`} md={3} lg={2} className="config-region">
+              <div className="config-region-name">{region.name}</div>
+              {zoneList}
+            </Col>
+          );
+        });
       }
       if (isValidObject(accessKeys) && isValidArray(accessKeys.data)) {
-        accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(",")
+        accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(", ")
       }
       var providerInfo = [
         {name: "Account Name", data: awsProvider.name },
         {name: "Key Pair", data: accessKeyList},
-        {name: "Regions", data: regionList },
-        {name: "Zones", data: zoneList },
       ]
+
+      let deleteButtonDisabled = submitting || universeExistsForProvider;
+      let deleteButtonClassName = "btn btn-default delete-aws-btn";
+      let deleteButtonTitle = "Delete this AWS configuration.";
+      if (deleteButtonDisabled) {
+        deleteButtonTitle = "Can't delete this AWS configuration because one or more AWS universes are currently defined. Delete all AWS universes first.";
+      } else {
+        deleteButtonClassName += " delete-btn";
+      }
 
       providerConfig =
         <div>
           <Row className="config-section-header">
             <Col md={12}>
-              <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
-                              btnLabel="Delete Configuration" btnClass="btn btn-default delete-btn delete-aws-btn" disabled={universeExistsForProvider}
-                              onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}>
-                Are you sure you want to delete this AWS configuration?
-              </YBConfirmModal>
+              <span className="pull-right" title={deleteButtonTitle}>
+                <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
+                  btnLabel="Delete Configuration" btnClass={deleteButtonClassName} disabled={deleteButtonDisabled}
+                  onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}>
+                  Are you sure you want to delete this AWS configuration?
+                </YBConfirmModal>
+              </span>
               <DescriptionList listItems={providerInfo} />
+            </Col>
+          </Row>
+          <Row className="config-section-region-map">
+            <Col md={12}>
               <RegionMap title="All Supported Regions" regions={awsRegions} type="Root"/>
             </Col>
           </Row>
+          <Row className="config-section-regions">{regionColumns}</Row>
         </div>
     } else {
       var bootstrapSteps = <span />;

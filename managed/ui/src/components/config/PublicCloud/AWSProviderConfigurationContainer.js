@@ -13,8 +13,7 @@ import { createProvider, createProviderSuccess, createProviderFailure,
   deleteProviderFailure, resetProviderBootstrap, listAccessKeys,
   listAccessKeysSuccess, listAccessKeysFailure
  } from '../../../actions/cloud';
- import { fetchHostInfo, fetchHostInfoSuccess,
-   fetchHostInfoFailure } from '../../../actions/customers';
+ import { fetchHostInfo, fetchHostInfoSuccess, fetchHostInfoFailure } from '../../../actions/customers';
 
 function validate(values) {
   var errors = {};

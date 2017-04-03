@@ -2,6 +2,7 @@
 
 .region-map-container {
     width: 100%;
+    min-height: 30vw;
     border-color: #d3d3d3;
     border-style: solid;
     border-width: 2px 1px;
