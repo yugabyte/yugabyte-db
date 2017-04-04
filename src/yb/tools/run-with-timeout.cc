@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
   if (args.size() < 2) {
     cerr << "Usage: run-with-timeout <timeout_sec> <program> [<arguments>]" << endl;
     cerr << endl;
-    cerr << "Runs the given program with the given timeout. If the prgoram is still" << endl;
+    cerr << "Runs the given program with the given timeout. If the program is still" << endl;
     cerr << "running after the given amount of time, it gets sent the SIGQUIT signal" << endl;
     cerr << "to make it create a core dump and terminate. If it is still running after" << endl;
     cerr << "that, it is killed with a SIGKILL." << endl;
@@ -70,7 +70,11 @@ int main(int argc, char** argv) {
   args.erase(args.begin());
   Subprocess subprocess(program, args);
   auto start_time = steady_clock::now();
-  LOG(INFO) << "Starting child process";
+  if (timeout_sec > 0) {
+    LOG(INFO) << "Starting child process with a timeout of " << timeout_sec << " seconds";
+  } else {
+    LOG(INFO) << "Starting child process with no timeout";
+  }
   const Status start_status = subprocess.Start();
   if (!start_status.ok()) {
     LOG(ERROR) << "Failed to start child process: " << start_status.ToString();
@@ -98,7 +102,11 @@ int main(int argc, char** argv) {
       finished_local = finished;
     }
 
-    if (!finished_local && subprocess.IsRunning()) {
+    const bool subprocess_is_running = subprocess.IsRunning();
+    LOG(INFO) << "Reaper thread: finished=" << finished_local
+              << ", subprocess_is_running=" << subprocess_is_running;
+
+    if (!finished_local && subprocess_is_running) {
       timed_out = true;
       LOG(ERROR) << "Timeout reached, trying to stop the child process with SIGQUIT";
       const Status sigquit_status = subprocess.KillNoCheckIfRunning(SIGQUIT);
@@ -126,17 +134,19 @@ int main(int argc, char** argv) {
     }
   });
 
-  int wait_ret_val = 0;
-  CHECK_OK(subprocess.Wait(&wait_ret_val));
+  int waitpid_ret_val = 0;
+  CHECK_OK(subprocess.Wait(&waitpid_ret_val));
+  LOG(INFO) << "subprocess.Wait finished, waitpid() returned " << waitpid_ret_val;
   {
     unique_lock<mutex> l(lock);
     finished = true;
     finished_cond.notify_one();
   }
 
+  LOG(INFO) << "Waiting for reaper thread to join";
   reaper_thread.join();
-  int exit_code = WIFEXITED(wait_ret_val) ? WEXITSTATUS(wait_ret_val) : 0;
-  int term_sig = WIFSIGNALED(wait_ret_val) ? WTERMSIG(wait_ret_val) : 0;
+  int exit_code = WIFEXITED(waitpid_ret_val) ? WEXITSTATUS(waitpid_ret_val) : 0;
+  int term_sig = WIFSIGNALED(waitpid_ret_val) ? WTERMSIG(waitpid_ret_val) : 0;
   LOG(INFO) << "Child process returned exit code " << exit_code;
   if (exit_code == 0 && timed_out) {
     LOG(ERROR) << "Child process timed out and we had to kill it";
