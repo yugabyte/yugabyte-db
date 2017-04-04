@@ -131,7 +131,7 @@ public class BaseYBTest {
       @Override
       public Object call(Object arg) throws Exception {
         gotError.set(true);
-        LOG.error("Error : " + arg);
+        LOG.info("JEFF Error : " + arg);
         return null;
       }
     });
@@ -142,8 +142,7 @@ public class BaseYBTest {
       fail("Timed out");
     }
     if (gotError.get()) {
-      fail("Got error during table creation, is the YB master running at " +
-          masterAddresses + "?");
+      fail("Got error during table creation, is the YB master running at " + masterAddresses + "?");
     }
     tableNames.add(tableName);
     return table;

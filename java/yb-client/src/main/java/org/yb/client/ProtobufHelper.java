@@ -53,6 +53,9 @@ public class ProtobufHelper {
   public static Common.SchemaPB schemaToPb(Schema schema) {
     Common.SchemaPB.Builder builder = Common.SchemaPB.newBuilder();
     builder.addAllColumns(schemaToListPb(schema));
+    Common.TablePropertiesPB.Builder tablePropsBuilder = builder.getTablePropertiesBuilder();
+    tablePropsBuilder.setDefaultTimeToLive(schema.getTimeToLiveInMillis());
+    builder.setTableProperties(tablePropsBuilder.build());
     return builder.build();
   }
 
@@ -75,15 +78,22 @@ public class ProtobufHelper {
     if (column.getCompressionAlgorithm() != null) {
       schemaBuilder.setCompression(column.getCompressionAlgorithm().getInternalPbType());
     }
+    if (column.getSortOrder() != ColumnSchema.SortOrder.NONE) {
+      schemaBuilder.setSortingType(column.getSortOrder().getValue());
+    }
     if (column.getDefaultValue() != null) schemaBuilder.setReadDefaultValue
         (ZeroCopyLiteralByteString.wrap(objectToWireFormat(column, column.getDefaultValue())));
     return schemaBuilder.build();
   }
 
-  public static Schema pbToSchema(Common.SchemaPB schema) {
-    List<ColumnSchema> columns = new ArrayList<>(schema.getColumnsCount());
-    List<Integer> columnIds = new ArrayList<>(schema.getColumnsCount());
-    for (Common.ColumnSchemaPB columnPb : schema.getColumnsList()) {
+  public static Schema pbToSchema(Common.SchemaPB schemaPB) {
+    List<ColumnSchema> columns = new ArrayList<>(schemaPB.getColumnsCount());
+    List<Integer> columnIds = new ArrayList<>(schemaPB.getColumnsCount());
+    long timeToLive = -1L;
+    if (schemaPB.hasTableProperties() && schemaPB.getTableProperties().hasDefaultTimeToLive()) {
+      timeToLive = schemaPB.getTableProperties().getDefaultTimeToLive();
+    }
+    for (Common.ColumnSchemaPB columnPb : schemaPB.getColumnsList()) {
       int id = columnPb.getId();
       if (id < 0) {
         throw new IllegalArgumentException("Illegal column ID " + id + " provided for column " +
@@ -96,9 +106,11 @@ public class ProtobufHelper {
       ColumnSchema.Encoding encoding = ColumnSchema.Encoding.valueOf(columnPb.getEncoding().name());
       ColumnSchema.CompressionAlgorithm compressionAlgorithm =
           ColumnSchema.CompressionAlgorithm.valueOf(columnPb.getCompression().name());
+      ColumnSchema.SortOrder sortOrder =
+          ColumnSchema.SortOrder.findFromValue(columnPb.getSortingType());
       ColumnSchema column = new ColumnSchema.ColumnSchemaBuilder(columnPb.getName(), type)
           .id(id)
-          .key(columnPb.getIsKey())
+          .rangeKey(columnPb.getIsKey(), sortOrder)
           .hashKey(columnPb.getIsHashKey())
           .nullable(columnPb.getIsNullable())
           .defaultValue(defaultValue)
@@ -107,7 +119,7 @@ public class ProtobufHelper {
           .build();
       columns.add(column);
     }
-    return new Schema(columns, columnIds);
+    return new Schema(columns, columnIds, timeToLive);
   }
 
   /**

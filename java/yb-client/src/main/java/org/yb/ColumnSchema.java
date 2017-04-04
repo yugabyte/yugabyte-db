@@ -39,6 +39,7 @@ public class ColumnSchema {
   private final int desiredBlockSize;
   private final Encoding encoding;
   private final CompressionAlgorithm compressionAlgorithm;
+  private final SortOrder sortOrder;
 
   /**
    * Specifies the encoding of data for a column on disk.
@@ -90,9 +91,35 @@ public class ColumnSchema {
     }
   };
 
+  public enum SortOrder {
+    NONE(0),
+    ASC(1),
+    DESC(2);
+
+    private final int sortOrder;
+
+    SortOrder(int sortOrder) {
+      this.sortOrder = sortOrder;
+    }
+
+    public int getValue() {
+      return sortOrder;
+    }
+
+    public static SortOrder findFromValue(int value) {
+      for (SortOrder sortOrder : values()) {
+        if (sortOrder.getValue() == value) {
+          return sortOrder;
+        }
+      }
+      return NONE;
+    }
+  };
+
   private ColumnSchema(Integer id, String name, Type type, boolean key, boolean hashKey,
                        boolean nullable, Object defaultValue, int desiredBlockSize,
-                       Encoding encoding, CompressionAlgorithm compressionAlgorithm) {
+                       Encoding encoding, CompressionAlgorithm compressionAlgorithm,
+                       SortOrder sortOrder) {
     this.id = id;
     this.name = name;
     this.type = type;
@@ -103,6 +130,7 @@ public class ColumnSchema {
     this.desiredBlockSize = desiredBlockSize;
     this.encoding = encoding;
     this.compressionAlgorithm = compressionAlgorithm;
+    this.sortOrder = sortOrder;
   }
 
   public Integer getId() {
@@ -139,6 +167,14 @@ public class ColumnSchema {
    */
   public boolean isHashKey() {
     return hashKey;
+  }
+
+  /**
+   * Returns the sort order. Valid only if the key is a range primary key.
+   * @return the sort order.
+   */
+  public SortOrder getSortOrder() {
+    return sortOrder;
   }
 
   /**
@@ -224,6 +260,7 @@ public class ColumnSchema {
     private int blockSize = 0;
     private Encoding encoding = null;
     private CompressionAlgorithm compressionAlgorithm = null;
+    private SortOrder sortOrder = SortOrder.NONE;
 
     /**
      * Constructor for the required parameters.
@@ -251,7 +288,19 @@ public class ColumnSchema {
      * @return this instance
      */
     public ColumnSchemaBuilder key(boolean key) {
+      return rangeKey(key, SortOrder.NONE);
+    }
+
+    /**
+     * Sets if the column is part of the range row key, along with a sort order.
+     * @param key a boolean that indicates if the column is part of the key. False by default.
+     * @param sortOrder an enum that indicates if the column is sorted in ascending, descending, or
+     *                  no order
+     * @return this instance.
+     */
+    public ColumnSchemaBuilder rangeKey(boolean key, SortOrder sortOrder) {
       this.key = key;
+      this.sortOrder = sortOrder;
       return this;
     }
 
@@ -337,7 +386,7 @@ public class ColumnSchema {
     public ColumnSchema build() {
       return new ColumnSchema(id, name, type,
                               key, hashKey, nullable, defaultValue,
-                              blockSize, encoding, compressionAlgorithm);
+                              blockSize, encoding, compressionAlgorithm, sortOrder);
     }
   }
 }

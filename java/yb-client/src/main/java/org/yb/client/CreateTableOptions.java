@@ -129,7 +129,7 @@ public class CreateTableOptions {
   /**
    * Sets the number of tablets.
    *
-   * @param numTables the number of tablets to split the table.
+   * @param numTablets the number of tablets to split the table.
    * @return this instance
    */
   public CreateTableOptions setNumTablets(int numTablets) {

@@ -63,6 +63,7 @@ public class Schema {
   private final int rowSize;
   private final boolean hasNullableColumns;
   private final int numHashKeyColumns;
+  private final long timeToLiveInMillis;
 
   /**
    * Constructs a schema using the specified columns and does some internal accounting
@@ -72,7 +73,7 @@ public class Schema {
    * See {@code ColumnPBsToSchema()} in {@code src/kudu/common/wire_protocol.cc}
    */
   public Schema(List<ColumnSchema> columns) {
-    this(columns, null);
+    this(columns, null, -1L);
   }
 
   /**
@@ -82,18 +83,20 @@ public class Schema {
    *
    * @param columns the columns in index order
    * @param columnIds the column ids of the provided columns, or null
+   * @param timeToLiveInMillis the time to live for this table schema (in milliseconds)
    * @throws IllegalArgumentException If the primary key columns aren't specified first
    * @throws IllegalArgumentException If the column ids length does not match the columns length
    *
    * See {@code ColumnPBsToSchema()} in {@code src/kudu/common/wire_protocol.cc}
    */
-  public Schema(List<ColumnSchema> columns, List<Integer> columnIds) {
+  public Schema(List<ColumnSchema> columns, List<Integer> columnIds, long timeToLiveInMillis) {
     boolean hasColumnIds = columnIds != null;
     if (hasColumnIds && columns.size() != columnIds.size()) {
       throw new IllegalArgumentException(
           "Schema must be constructed with all column IDs, or none.");
     }
 
+    this.timeToLiveInMillis = timeToLiveInMillis;
     this.columnsByIndex = ImmutableList.copyOf(columns);
     int varLenCnt = 0;
     this.columnOffsets = new int[columns.size()];
@@ -274,6 +277,14 @@ public class Schema {
    */
   public Schema getRowKeyProjection() {
     return new Schema(primaryKeyColumns);
+  }
+
+  /**
+   * Get the time to live (in milliseconds) for this Schema.
+   * @return the time to live (in milliseconds).
+   */
+  public long getTimeToLiveInMillis() {
+    return timeToLiveInMillis;
   }
 
   /**

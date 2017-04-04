@@ -16,7 +16,9 @@
 // under the License.
 package org.yb.client;
 
+import org.junit.AfterClass;
 import org.yb.ColumnSchema;
+import org.yb.Common;
 import org.yb.Schema;
 import org.yb.Type;
 import org.junit.BeforeClass;
@@ -38,9 +40,127 @@ public class TestYBTable extends BaseYBTest {
 
   private static Schema schema = getBasicSchema();
 
+  public static Common.SchemaPB getTTLSchemaPB(boolean defaultTTL) {
+    Common.SchemaPB.Builder pb = Common.SchemaPB.newBuilder();
+    pb.addColumns(Common.ColumnSchemaPB.newBuilder()
+        .setId(0)
+        .setName("key")
+        .setType(Common.DataType.INT32)
+        .setIsKey(true)
+        .build());
+    pb.addColumns(Common.ColumnSchemaPB.newBuilder()
+        .setId(1)
+        .setName("column1_i")
+        .setType(Common.DataType.INT32)
+        .build());
+    pb.addColumns(Common.ColumnSchemaPB.newBuilder()
+        .setId(2)
+        .setName("column2_i")
+        .setType(Common.DataType.INT32)
+        .build());
+    pb.addColumns(Common.ColumnSchemaPB.newBuilder()
+        .setId(3)
+        .setName("column3_s")
+        .setType(Common.DataType.STRING)
+        .setIsNullable(true)
+        .setCfileBlockSize(4096)
+        .setEncoding(Common.EncodingType.DICT_ENCODING)
+        .setCompression(Common.CompressionType.LZ4)
+        .build());
+    pb.addColumns(Common.ColumnSchemaPB.newBuilder()
+        .setId(4)
+        .setName("column4_b")
+        .setType(Common.DataType.BOOL)
+        .build());
+    if (!defaultTTL) {
+      pb.setTableProperties(Common.TablePropertiesPB.newBuilder()
+          .setDefaultTimeToLive(5000L)
+          .build());
+    }
+    return pb.build();
+  }
+
+  public static Schema getSortOrderSchema(ColumnSchema.SortOrder sortOrder) {
+    ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(5);
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("key1", Type.INT32)
+        .rangeKey(true, sortOrder)
+        .build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("key2", Type.INT32)
+        .key(true)
+        .build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("column1_i", Type.INT32).build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("column2_s", Type.STRING)
+        .nullable(true)
+        .desiredBlockSize(4096)
+        .encoding(ColumnSchema.Encoding.DICT_ENCODING)
+        .compressionAlgorithm(ColumnSchema.CompressionAlgorithm.LZ4)
+        .build());
+    columns.add(new ColumnSchema.ColumnSchemaBuilder("column3_b", Type.BOOL).build());
+    return new Schema(columns);
+  }
+
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     BaseYBTest.setUpBeforeClass();
+  }
+
+  @AfterClass
+  public static void tearDownAfterClass() throws Exception {
+    BaseYBTest.tearDownAfterClass();
+  }
+
+  @Test
+  public void testDefaultTTL() {
+    String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
+    Schema defaultSchema = ProtobufHelper.pbToSchema(getTTLSchemaPB(true));
+    YBTable table = BaseYBTest.createTable(tableName, defaultSchema, null);
+    assertEquals(defaultSchema.getTimeToLiveInMillis(), table.getSchema().getTimeToLiveInMillis());
+  }
+
+  @Test
+  public void testCustomTTL() {
+    String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
+    Schema ttlSchema = ProtobufHelper.pbToSchema(getTTLSchemaPB(false));
+    YBTable table = BaseYBTest.createTable(tableName, ttlSchema, null);
+    assertEquals(ttlSchema.getTimeToLiveInMillis(), table.getSchema().getTimeToLiveInMillis());
+  }
+
+  @Test
+  public void testSortOrderNone() {
+    String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
+    Schema noneOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.NONE);
+    YBTable table = BaseYBTest.createTable(tableName, noneOrderSchema, null);
+    for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
+      assertEquals(ColumnSchema.SortOrder.NONE, columnSchema.getSortOrder());
+    }
+  }
+
+  @Test
+  public void testSortOrderAsc() {
+    String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
+    Schema ascOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.ASC);
+    YBTable table = BaseYBTest.createTable(tableName, ascOrderSchema, null);
+    for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
+      if (columnSchema.getName().equals("key1")) {
+        assertEquals(ColumnSchema.SortOrder.ASC, columnSchema.getSortOrder());
+      } else {
+        assertEquals(ColumnSchema.SortOrder.NONE, columnSchema.getSortOrder());
+      }
+    }
+  }
+
+  @Test
+  public void testSortOrderDesc() {
+    String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
+    Schema descOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.DESC);
+    YBTable table = BaseYBTest.createTable(tableName, descOrderSchema, null);
+    for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
+      if (columnSchema.getName().equals("key1")) {
+        assertEquals(ColumnSchema.SortOrder.DESC, columnSchema.getSortOrder());
+      } else {
+        assertEquals(ColumnSchema.SortOrder.NONE, columnSchema.getSortOrder());
+      }
+    }
   }
 
   @Ignore
