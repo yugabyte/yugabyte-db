@@ -36,7 +36,7 @@ Three types of mission-critical OLTP/HTAP enterprise applications are best serve
 
 ### Flexible schema
 
-OLTP applications (such as retail product catalog, unified customer profile, global identity, transactional systems-of-recordcentralized configuration management etc.) that require a semi-structured yet easily changeable schema. These applications can benefit heavily from YugaByte’s ability to add/remove attributes in the schema in a completely online manner without any hidden performance issues. Such applications use YugaByte’s CQL support.
+OLTP applications (such as retail product catalog, unified customer profile, global identity, transactional systems-of-record, centralized configuration management etc.) that require a semi-structured yet easily changeable schema. These applications can benefit heavily from YugaByte’s ability to add/remove attributes in the schema in a completely online manner without any hidden performance issues. Such applications use YugaByte’s CQL support.
 
 ### Time series
 

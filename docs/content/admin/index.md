@@ -42,13 +42,34 @@ YugaWare ensures that YugaByte instances run inside your own AWS account and are
 
 ![AWS Configured Successfully](/images/configure-aws-2.png)
 
+Now we are ready to create a YugaByte universe (aka cluster) on AWS.
+
 ### Google Cloud Platform
+
+\<docs coming soon\>
 
 ### Docker Platform
 
-### On-Premises Data Centers
+\<docs coming soon\>
+
+### On-Premises Datacenters
+
+\<docs coming soon\>
 
 ## Create universe
 
+![Dashboard with No Universes](/images/no-univ-dashboard.png)
+
+![Create Universe](/images/create-univ.png)
+
+![Dashboard with Pending Universe](/images/pending-univ-dashboard.png)
+
+![Detail for a Pending Universe](/images/pending-univ-detail.png)
+
+![Tasks for a Pending Universe](/images/pending-univ-tasks.png)
+
+![Nodes for a Pending Universe](/images/pending-univ-nodes.png)
+
 ## Expand or shrink universe
 
+\<docs coming soon\>
