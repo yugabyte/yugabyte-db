@@ -155,13 +155,13 @@ disk_bytes_per_second_per_node:
 
 redis_rpcs_per_sec:
   metric: "collectd_yb_redis_counter_total"
-  function: "rate|avg"
+  function: "rate|sum"
   range: "1m"
   filters:
     type: "rpc_RedisServerService_get.num|rpc_RedisServerService_set.num|rpc_RedisServerService_echo.num"
   group_by: "type"
   layout:
-    title: "Redis RPCs / Sec / Node"
+    title: "Total Redis Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
@@ -509,13 +509,13 @@ lsm_rocksdb_compaction:
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "collectd_yb_cql_counter_total"
-  function: "rate|avg"
+  function: "rate|sum"
   range: "1m"
   filters:
     type: "rpc_SQLProcessor_SelectStmt.num|rpc_SQLProcessor_InsertStmt.num|rpc_SQLProcessor_UpdateStmt.num|rpc_SQLProcessor_DeleteStmt.num|rpc_SQLProcessor_OtherStmts.num"
   group_by: "type"
   layout:
-    title: "CQL Ops / Sec / Node"
+    title: "Total CQL Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
