@@ -20,7 +20,7 @@ build_squeasel() {
   (
     set_build_env_vars
     set -x
-    $CC $EXTRA_CFLAGS -std=c99 -O3 -DNDEBUG -fPIC -c squeasel.c
+    ${CC:-gcc} $EXTRA_CFLAGS -std=c99 -O3 -DNDEBUG -fPIC -c squeasel.c
     ar rs libsqueasel.a squeasel.o
     cp libsqueasel.a "$PREFIX/lib/"
     cp squeasel.h "$PREFIX/include/"

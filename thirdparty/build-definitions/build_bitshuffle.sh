@@ -12,7 +12,7 @@ build_bitshuffle() {
     set_build_env_vars
     set -x
     # bitshuffle depends on lz4, therefore set the flag I$PREFIX/include
-    $CC $EXTRA_CFLAGS $EXTRA_LDFLAGS \
+    ${CC:-gcc} $EXTRA_CFLAGS $EXTRA_LDFLAGS \
       -std=c99 -I$PREFIX/include -O3 -DNDEBUG -fPIC -c \
       src/bitshuffle_core.c src/bitshuffle.c src/iochain.c
     ar rs bitshuffle.a bitshuffle_core.o bitshuffle.o iochain.o
