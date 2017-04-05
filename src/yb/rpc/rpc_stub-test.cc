@@ -100,15 +100,13 @@ TEST_F(RpcStubTest, TestBigCallData) {
   EchoRequestPB req;
   req.set_data(data);
 
-  ptr_vector<EchoResponsePB> resps;
-  ptr_vector<RpcController> controllers;
+  vector<EchoResponsePB> resps(kNumSentAtOnce);
+  vector<RpcController> controllers(kNumSentAtOnce);
 
   CountDownLatch latch(kNumSentAtOnce);
   for (int i = 0; i < kNumSentAtOnce; i++) {
-    auto resp = new EchoResponsePB;
-    resps.push_back(resp);
-    auto controller = new RpcController;
-    controllers.push_back(controller);
+    auto resp = &resps[i];
+    auto controller = &controllers[i];
 
     p.EchoAsync(req, resp, controller, [&latch]() { latch.CountDown(); });
   }
@@ -468,6 +466,7 @@ class PingTestHelper {
     auto& call = calls_[idx];
     call.handle_time = MonoTime::FromUint64(call.response.time());
     call.reply_time = MonoTime::Now(MonoTime::FINE);
+    call.controller.Reset();
     LaunchNext();
     if (++done_calls_ == calls_.size()) {
       LOG(INFO) << "Calls done";
@@ -545,9 +544,14 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
             << "total: " << passed_us << "us, "
             << "calls per second: " << measured_calls * 1000000 / passed_us
             << " (" << us_per_call << "us per call, NOT latency)";
-  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(15);
-  const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10);
-  const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5);
+#ifndef NDEBUG
+  const int kTimeMultiplier = 3;
+#else
+  const int kTimeMultiplier = 1;
+#endif
+  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(3 * kTimeMultiplier);
+  const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10 * kTimeMultiplier);
+  const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5 * kTimeMultiplier);
   ASSERT_LE(max_processing, kMaxLimit);
   ASSERT_LE(reply_average, kReplyAverageLimit);
   ASSERT_LE(handle_average, kHandleAverageLimit);
