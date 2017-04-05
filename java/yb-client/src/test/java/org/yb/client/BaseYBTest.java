@@ -131,7 +131,7 @@ public class BaseYBTest {
       @Override
       public Object call(Object arg) throws Exception {
         gotError.set(true);
-        LOG.info("JEFF Error : " + arg);
+        LOG.error("Error : " + arg);
         return null;
       }
     });

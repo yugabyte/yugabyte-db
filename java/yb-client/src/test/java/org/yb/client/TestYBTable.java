@@ -40,6 +40,8 @@ public class TestYBTable extends BaseYBTest {
 
   private static Schema schema = getBasicSchema();
 
+  private static long testTTL = 5000L;
+
   public static Common.SchemaPB getTTLSchemaPB(boolean defaultTTL) {
     Common.SchemaPB.Builder pb = Common.SchemaPB.newBuilder();
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
@@ -74,7 +76,7 @@ public class TestYBTable extends BaseYBTest {
         .build());
     if (!defaultTTL) {
       pb.setTableProperties(Common.TablePropertiesPB.newBuilder()
-          .setDefaultTimeToLive(5000L)
+          .setDefaultTimeToLive(testTTL)
           .build());
     }
     return pb.build();
@@ -114,7 +116,7 @@ public class TestYBTable extends BaseYBTest {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema defaultSchema = ProtobufHelper.pbToSchema(getTTLSchemaPB(true));
     YBTable table = BaseYBTest.createTable(tableName, defaultSchema, null);
-    assertEquals(defaultSchema.getTimeToLiveInMillis(), table.getSchema().getTimeToLiveInMillis());
+    assertEquals(Schema.defaultTTL, table.getSchema().getTimeToLiveInMillis());
   }
 
   @Test
@@ -122,7 +124,7 @@ public class TestYBTable extends BaseYBTest {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema ttlSchema = ProtobufHelper.pbToSchema(getTTLSchemaPB(false));
     YBTable table = BaseYBTest.createTable(tableName, ttlSchema, null);
-    assertEquals(ttlSchema.getTimeToLiveInMillis(), table.getSchema().getTimeToLiveInMillis());
+    assertEquals(testTTL, table.getSchema().getTimeToLiveInMillis());
   }
 
   @Test

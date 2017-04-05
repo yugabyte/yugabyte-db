@@ -34,6 +34,8 @@ import java.util.Map;
 @InterfaceStability.Evolving
 public class Schema {
 
+  public static long defaultTTL = -1L;
+
   /**
    * Mapping of column index to column.
    */
