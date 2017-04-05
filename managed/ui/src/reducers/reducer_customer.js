@@ -5,12 +5,13 @@ import {
 	REGISTER, REGISTER_SUCCESS, REGISTER_FAILURE,
 	LOGIN, LOGIN_SUCCESS, LOGIN_FAILURE, LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE,
   FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS, FETCH_SOFTWARE_VERSIONS,
-  FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE
+  FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE, FETCH_CUSTOMER_COUNT
 } from '../actions/customers';
 import {isValidObject} from '../utils/ObjectUtils';
+import { setLoadingState }  from './common';
 
 const INITIAL_STATE = {customer: null, universes: [], tasks: [], status: null,
-                       error: null, loading: false, softwareVersions: [], hostInfo: null};
+                       error: null, loading: false, softwareVersions: [], hostInfo: null, customerCount: {}};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -66,6 +67,8 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, hostInfo: action.payload.data}
     case FETCH_HOST_INFO_FAILURE:
       return {...state, hostInfo: null }
+    case FETCH_CUSTOMER_COUNT:
+      return setLoadingState(state, "customerCount");
     default:
       return state;
   }
