@@ -462,13 +462,16 @@ if [[ -n $cxx_test_name ]]; then
   else
     (
       export YB_COMPILER_TYPE
+      set +u
       repeat_unit_test_extra_args=( "${repeat_unit_test_inherited_args[@]}" )
+      set -u
       if "$verbose"; then
         repeat_unit_test_extra_args+=( --verbose )
       fi
       set -x +u
       "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$cxx_test_name" \
          --num-iter "$num_test_repetitions" "${repeat_unit_test_extra_args[@]}"
+      set -u
     )
   fi
 fi

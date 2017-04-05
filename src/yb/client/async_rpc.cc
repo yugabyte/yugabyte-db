@@ -406,12 +406,16 @@ WriteRpc::~WriteRpc() {
 }
 
 void WriteRpc::SendRpcToTserver() {
-  TRACE_TO(trace_, "SendRpcToTserver");
-  ADOPT_TRACE(trace_.get());
+  auto trace = trace_; // It is possible that we receive reply before returning from WriteAsync.
+                       // Since send happens before we return from WriteAsync.
+                       // So under heavy load it is possible that our request is handled and
+                       // reply is received before WriteAsync returned.
+  TRACE_TO(trace, "SendRpcToTserver");
+  ADOPT_TRACE(trace.get());
   current_ts_->proxy()->WriteAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&WriteRpc::SendRpcCb, this, Status::OK()));
-  TRACE_TO(trace_, "RpcDispatched Asynchronously");
+  TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
 Status WriteRpc::response_error_status() {
@@ -544,12 +548,14 @@ ReadRpc::~ReadRpc() {
 }
 
 void ReadRpc::SendRpcToTserver() {
-  TRACE_TO(trace_, "SendRpcToTserver");
-  ADOPT_TRACE(trace_.get());
+  auto trace = trace_; // It is possible that we receive reply before returning from ReadAsync.
+                       // Detailed explanation in WriteRpc::SendRpcToTserver.
+  TRACE_TO(trace, "SendRpcToTserver");
+  ADOPT_TRACE(trace.get());
   current_ts_->proxy()->ReadAsync(
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
-  TRACE_TO(trace_, "RpcDispatched Asynchronously");
+  TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
 Status ReadRpc::response_error_status() {
