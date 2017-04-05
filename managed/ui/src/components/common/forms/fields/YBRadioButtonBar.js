@@ -19,9 +19,11 @@ export default class YBRadioButtonBar extends Component {
   }
 
   radioButtonChecked(event) {
-    const {onSelect} = this.props;
-    this.setState({fieldValue: Number(event.target.value)})
-    onSelect(event.target.value);
+    const {onSelect, isReadOnly} = this.props;
+    if (!isReadOnly) {
+      this.setState({fieldValue: Number(event.target.value)})
+      onSelect(event.target.value);
+    }
   }
   render() {
     const { input, options } = this.props;
