@@ -37,33 +37,31 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitCreateUniverse: (values) => {
-      return new Promise((resolve, reject) => {
-        dispatch(createUniverse(values)).then((response) => {
-          if (response.payload.status !== 200) {
-            dispatch(createUniverseFailure(response.payload));
-          } else {
-            dispatch(closeDialog());
-            dispatch(createUniverseSuccess(response.payload));
-            dispatch(fetchCustomerTasks())
-              .then((response) => {
-                if (!response.error) {
-                  dispatch(fetchCustomerTasksSuccess(response.payload));
-                } else {
-                  dispatch(fetchCustomerTasksFailure(response.payload));
-                }
-              });
-            dispatch(fetchUniverseList())
-              .then((response) => {
-                if (response.payload.status !== 200) {
-                  dispatch(fetchUniverseListFailure(response.payload));
-                  //Add Error message state to modal
-                } else {
-                  dispatch(fetchUniverseListSuccess(response.payload));
-                }
-              });
+      dispatch(createUniverse(values)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(createUniverseFailure(response.payload));
+        } else {
+          dispatch(closeDialog());
+          dispatch(createUniverseSuccess(response.payload));
+          dispatch(fetchCustomerTasks())
+            .then((response) => {
+              if (!response.error) {
+                dispatch(fetchCustomerTasksSuccess(response.payload));
+              } else {
+                dispatch(fetchCustomerTasksFailure(response.payload));
+              }
+            });
+          dispatch(fetchUniverseList())
+            .then((response) => {
+              if (response.payload.status !== 200) {
+                dispatch(fetchUniverseListFailure(response.payload));
+                //Add Error message state to modal
+              } else {
+                dispatch(fetchUniverseListSuccess(response.payload));
+              }
+            });
           }
         });
-      })
     },
 
     submitEditUniverse: (values, universeUUID) => {

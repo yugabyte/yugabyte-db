@@ -1,6 +1,6 @@
 import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { Field } from 'redux-form';
+import { Field, change } from 'redux-form';
 import _ from 'lodash';
 import { isDefinedNotNull, isValidArray, isValidObject, areIntentsEqual } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel, 
@@ -142,7 +142,9 @@ export default class UniverseForm extends Component {
   providerChanged(value) {
     var providerUUID = value;
     if (!this.props.universe.currentUniverse) {
-      this.setState({providerSelected: providerUUID});
+      this.props.resetConfig();
+      this.props.dispatch(change("UniverseForm", "regionList", []));
+      this.setState({regionList: [], providerSelected: providerUUID, deviceInfo: {}});
       this.props.getRegionListItems(providerUUID, this.state.azCheckState);
       this.props.getInstanceTypeListItems(providerUUID);
     }
