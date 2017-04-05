@@ -80,8 +80,8 @@ export default class UniverseDetail extends Component {
         </Row>
         <Row>
           <Col lg={12}>
-            <RegionMap regions={currentUniverse.regions} type={"Root"} />
-            <YBMapLegend title="Placement Policy" regions={currentUniverse.regions}/>
+            <RegionMap regions={currentUniverse.regions ? currentUniverse.regions: []} type={"Root"} />
+            <YBMapLegend title="Placement Policy" regions={ currentUniverse.regions ? currentUniverse.regions : []}/>
           </Col>
         </Row>
       </Tab>,

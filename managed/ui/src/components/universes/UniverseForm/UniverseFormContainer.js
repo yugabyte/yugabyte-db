@@ -155,17 +155,17 @@ function mapStateToProps(state, ownProps) {
     "instanceType": "m3.medium",
     "formType": "create",
   };
-
   if (isDefinedNotNull(currentUniverse)) {
+    var userIntent = currentUniverse.universeDetails && currentUniverse.universeDetails.userIntent;
     data.universeName = currentUniverse.name;
     data.formType = "edit";
-    data.provider = currentUniverse.provider.uuid;
-    data.numNodes = currentUniverse.universeDetails.userIntent.numNodes;
-    data.isMultiAZ = currentUniverse.universeDetails.userIntent.isMultiAZ;
-    data.instanceType = currentUniverse.universeDetails.userIntent.instanceType;
-    data.ybSoftwareVersion = currentUniverse.universeDetails.userIntent.ybSoftwareVersion;
-    if (isDefinedNotNull(currentUniverse.universeDetails)  && currentUniverse.universeDetails.userIntent.isMultiAZ) {
-      data.regionList = currentUniverse.regions.map(function (item, idx) {
+    data.provider = currentUniverse.provider && currentUniverse.provider.uuid;
+    data.numNodes = userIntent && userIntent.numNodes;
+    data.isMultiAZ = userIntent && userIntent.isMultiAZ;
+    data.instanceType = userIntent && userIntent.instanceType;
+    data.ybSoftwareVersion = userIntent && userIntent.ybSoftwareVersion;
+    if (isDefinedNotNull(currentUniverse.universeDetails)  && userIntent.isMultiAZ) {
+      data.regionList = currentUniverse.regions && currentUniverse.regions.map(function (item, idx) {
         return {value: item.uuid, name: item.name, label: item.name};
       })
     } else {
