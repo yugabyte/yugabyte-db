@@ -8,7 +8,7 @@ import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { Field } from 'redux-form';
 import {withRouter} from 'react-router';
-import  { isValidArray, isValidObject } from '../../../utils/ObjectUtils';
+import  { isValidArray, isValidObject, trimString, convertSpaceToDash } from '../../../utils/ObjectUtils';
 import { RegionMap } from '../../maps';
 
 const PROVIDER_TYPE = "aws";
@@ -172,9 +172,12 @@ class AWSProviderConfiguration extends Component {
               <h4>AWS Account Info</h4>
               { error && <Alert bsStyle="danger">{error}</Alert> }
               <div className="aws-config-form form-right-aligned-labels">
-                <Field name="accountName" type="text" component={YBTextInputWithLabel} label="Account Name" />
-                <Field name="accessKey" type="text" component={YBTextInputWithLabel} label="Access Key ID"/>
-                <Field name="secretKey" type="text" component={YBTextInputWithLabel} label="Secret Access Key"/>
+                <Field name="accountName" type="text" label="Account Name"
+                  component={YBTextInputWithLabel} normalize={convertSpaceToDash} />
+                <Field name="accessKey" type="text" label="Access Key ID"
+                  component={YBTextInputWithLabel} normalize={trimString} />
+                <Field name="secretKey" type="text" label="Secret Access Key"
+                  component={YBTextInputWithLabel} normalize={trimString} />
               </div>
               { bootstrapSteps }
             </Col>
