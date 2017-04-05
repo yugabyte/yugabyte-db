@@ -1,15 +1,15 @@
 /* Copyright (c) YugaByte, Inc. */
 .universe-apps-modal {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 100px;
-
   .open-modal-btn {
     float: right;
   }
   .modal-content {
-    width: 800px;
+    width: 100%;
+  }
+  .modal-dialog {
+    padding: 0;
+    margin-left: 20%;
+    width: 60%;
   }
   .tab-content {
     min-height: 0px;

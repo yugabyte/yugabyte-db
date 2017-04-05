@@ -98,7 +98,7 @@ export default class UniverseAppsModal extends Component {
 
     return (
       <div className="universe-apps-modal">
-        <YBButton btnText={"Apps"} btnClass={"open-modal-btn btn btn-default"} onClick={this.toggleAppsModal}/>
+        <YBButton btnText={"Apps"} btnClass={"btn btn-default open-modal-btn"} onClick={this.toggleAppsModal}/>
         <YBModal title={"Run Sample Apps"} visible={this.state.showAppsModal}
                  onHide={this.toggleAppsModal} className={"universe-apps-modal"}>
           <Tabs defaultActiveKey={0} id="apps-modal">
