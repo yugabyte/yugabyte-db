@@ -97,16 +97,16 @@ class CellLocationPanel extends Component {
   render() {
     const {universe, universe: {universeDetails: {userIntent}}} = this.props;
     var isMultiAz = userIntent.isMultiAZ ? "Multi AZ" : "Single AZ";
-    var regionList = universe.regions.map(function(regionItem, idx){
+    var regionList = universe.regions && universe.regions.map(function(regionItem, idx){
       return <span key={idx}>{regionItem.name}</span>
     })
 
     return (
       <div >
         <Row className={"cell-position-detail"}>
-          <Col lg={2} className={"cell-num-nodes"}>{userIntent.numNodes} Nodes</Col>
+          <Col lg={2} className={"cell-num-nodes"}>{userIntent && userIntent.numNodes} Nodes</Col>
           <Col lg={10}>
-            <span className={"cell-provider-name"}>{universe.provider.name}</span>
+            <span className={"cell-provider-name"}>{universe.provider && universe.provider.name}</span>
             <span className={"cell-multi-az"}>({isMultiAz})</span>
           </Col>
         </Row>
