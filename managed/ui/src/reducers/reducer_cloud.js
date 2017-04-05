@@ -88,16 +88,12 @@ export default function(state = INITIAL_STATE, action) {
     case RESET_PROVIDER_BOOTSTRAP:
       return { ...state, bootstrap: {}};
     case LIST_ACCESS_KEYS:
-      setLoadingState(state, "accessKeys");
-      break;
+      return setLoadingState(state, "accessKeys");
     case LIST_ACCESS_KEYS_SUCCESS:
-      setSuccessState(state, "accessKeys", action.payload.data);
-      break;
+      return setSuccessState(state, "accessKeys", action.payload.data);
     case LIST_ACCESS_KEYS_FAILURE:
-      setFailureState(state, "accessKeys", action.payload.data.error);
-      break;
+      return setFailureState(state, "accessKeys", action.payload.data.error);
     default:
-      break;
+      return state;
   }
-  return state;
 }

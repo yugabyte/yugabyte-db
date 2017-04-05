@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
-import { validateToken, validateTokenSuccess, validateTokenFailure } from './actions/customers';
+import { validateToken, validateTokenSuccess,
+  validateTokenFailure, fetchCustomerCount } from './actions/customers';
 import App from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -23,7 +24,15 @@ function validateSession(store, replacePath, callback) {
   let token = localStorage.getItem('customer_token');
   // If the token is null or invalid, we just re-direct to login page
   if(!token || token === '') {
-    replacePath('/login');
+    store.dispatch(fetchCustomerCount()).then((response) => {
+      if (!response.error) {
+        var responseData = response.payload.data;
+        if (responseData && responseData.count === 0) {
+          browserHistory.push('/register');
+        }
+      }
+    })
+    browserHistory.push('/login');
   } else {
     store.dispatch(validateToken(token))
       .then((response) => {

@@ -3,6 +3,8 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -169,5 +171,19 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String authToken2 = json.get("authToken").asText();
     assertEquals(authToken1, authToken2);
+  }
+
+  @Test
+  public void testCustomerCount() {
+    startApp(false);
+    Result result = route(fakeRequest("GET", "/api/customer_count"));
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "count", "0");
+    ModelFactory.testCustomer("foo@bar.com");
+    result = route(fakeRequest("GET", "/api/customer_count"));
+    json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "count", "1");
   }
 }

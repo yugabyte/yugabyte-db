@@ -92,4 +92,11 @@ public class SessionController extends Controller {
     }
     return ok();
   }
+
+  public Result customerCount() {
+    int customerCount = Customer.find.all().size();
+    ObjectNode response = Json.newObject();
+    response.put("count", customerCount);
+    return ApiResponse.success(response);
+  }
 }
