@@ -2777,6 +2777,9 @@ class RetryingTSRpcTask : public MonitoredTask {
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "Async tablet task failed or was cancelled: "
                                << status.ToString();
+      if (status.IsAborted() && state() == kStateWaiting) {
+        PerformStateTransition(kStateWaiting, kStateAborted);
+      }
       UnregisterAsyncTask();   // May delete this.
       return;
     }

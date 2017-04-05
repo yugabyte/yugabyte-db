@@ -111,6 +111,7 @@ Master::Master(const MasterOptions& opts)
 
 Master::~Master() {
   CHECK_NE(kRunning, state_);
+  messenger_->Shutdown();
 }
 
 string Master::ToString() const {

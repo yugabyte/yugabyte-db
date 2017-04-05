@@ -193,8 +193,13 @@ Status Messenger::RegisterService(const string& service_name,
 }
 
 Status Messenger::UnregisterAllServices() {
-  std::lock_guard<percpu_rwlock> guard(lock_);
-  rpc_services_.clear();
+  decltype(rpc_services_) rpc_services_copy; // Drain rpc services here,
+                                             // to avoid deleting them in locked state.
+  {
+    std::lock_guard<percpu_rwlock> guard(lock_);
+    rpc_services_.swap(rpc_services_copy);
+  }
+  rpc_services_copy.clear();
   return Status::OK();
 }
 

@@ -160,9 +160,12 @@ Status Peer::SignalRequest(bool even_if_queue_empty) {
     }
   }
 
-  RETURN_NOT_OK(thread_pool_->SubmitClosure(
-                  Bind(&Peer::SendNextRequest, Unretained(this), even_if_queue_empty)));
-  return Status::OK();
+  auto status = thread_pool_->SubmitClosure(
+      Bind(&Peer::SendNextRequest, Unretained(this), even_if_queue_empty));
+  if (!status.ok()) {
+    sem_.Release();
+  }
+  return status;
 }
 
 void Peer::SendNextRequest(bool even_if_queue_empty) {
