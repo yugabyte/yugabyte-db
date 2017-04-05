@@ -63,6 +63,15 @@ public class YBClient implements AutoCloseable {
   // 2 power 16
   public static final int TWO_POWER_SIXTEEN = (int)Math.pow(2, 16);
 
+  // Number of response errors to tolerate.
+  private static final int MAX_ERRORS_TO_IGNORE = 2500;
+
+  // Log errors every so many errors.
+  private static final int LOG_ERRORS_EVERY_NUM_ITERS = 100;
+
+  // Log info after these many iterations.
+  private static final int LOG_EVERY_NUM_ITERS = 200;
+
   public YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
   }
@@ -537,6 +546,9 @@ public class YBClient implements AutoCloseable {
   public boolean waitForServer(final HostAndPort hp, final long timeoutMs) {
     Exception finalException = null;
     long start = System.currentTimeMillis();
+    int numErrors = 0;
+    int numIters = 0;
+    String errorMessage = null;
     do {
       try {
         if (ping(hp.getHostText(), hp.getPort())) {
@@ -546,15 +558,35 @@ public class YBClient implements AutoCloseable {
         // We will get exceptions if we cannot connect to the other end. Catch them and save for
         // final debug if we never succeed.
         finalException = e;
+        numErrors++;
+        if (numErrors % LOG_ERRORS_EVERY_NUM_ITERS == 0) {
+          LOG.warn("Hit {} errors so far. Latest is : {}.", numErrors, finalException.toString());
+        }
+        if (numErrors >= MAX_ERRORS_TO_IGNORE) {
+          errorMessage = "Hit too many errors, final exception is " + finalException.toString();
+          break;
+        }
       }
+
+      numIters++;
+      if (numIters % LOG_EVERY_NUM_ITERS == 0) {
+        LOG.info("Tried load balance rpc {} times so far.", numIters);
+      }
+
       // Need to wait even when ping has an exception, so the sleep is outside the above try block.
       try {
         Thread.sleep(AsyncYBClient.SLEEP_TIME);
       } catch (Exception e) {}
     } while (System.currentTimeMillis() < start + timeoutMs);
 
-    LOG.warn("Timed out waiting for server {} to come online. Final exception was {}.",
-             hp.toString(), finalException != null ? finalException.toString() : "none");
+    if (errorMessage == null) {
+      LOG.error("Timed out waiting for server {} to come online. Final exception was {}.",
+                hp.toString(), finalException != null ? finalException.toString() : "none");
+    } else {
+      LOG.error(errorMessage);
+    }
+
+    LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
 
     return false;
   }
@@ -568,6 +600,9 @@ public class YBClient implements AutoCloseable {
   public boolean waitForLoadBalance(final long timeoutMs, int numServers) {
     Exception finalException = null;
     long start = System.currentTimeMillis();
+    int numErrors = 0;
+    int numIters = 0;
+    String errorMessage = null;
     do {
       try {
         IsLoadBalancedResponse resp = getIsLoadBalanced(numServers);
@@ -578,15 +613,36 @@ public class YBClient implements AutoCloseable {
         // We will get exceptions if we cannot connect to the other end. Catch them and save for
         // final debug if we never succeed.
         finalException = e;
+        numErrors++;
+        if (numErrors % LOG_ERRORS_EVERY_NUM_ITERS == 0) {
+          LOG.warn("Hit {} errors so far. Latest is : {}.", numErrors, finalException.toString());
+        }
+        if (numErrors >= MAX_ERRORS_TO_IGNORE) {
+          errorMessage = "Hit too many errors, final exception is " + finalException.toString();
+          break;
+        }
       }
+
+      numIters++;
+      if (numIters % LOG_EVERY_NUM_ITERS == 0) {
+        LOG.info("Tried load balance rpc {} times so far.", numIters);
+      }
+
       // Need to wait even when check has an exception, so sleep is outside the above try block.
       try {
         Thread.sleep(AsyncYBClient.SLEEP_TIME);
-      } catch (Exception e) {}
+      } catch (InterruptedException e) {}
     } while ((timeoutMs == Long.MAX_VALUE) || System.currentTimeMillis() < start + timeoutMs);
 
-    LOG.warn("Timed out waiting for load to balance. Final exception was {}.",
-             finalException != null ? finalException.toString() : "none");
+    if (errorMessage == null) {
+      LOG.error("Timed out waiting for load to balance. Final exception was {}.",
+                finalException != null ? finalException.toString() : "none");
+    } else {
+      LOG.error(errorMessage);
+    }
+
+    LOG.error("Returning failure after {} iterations, num errors = {}.", numIters, numErrors);
+
     return false;
   }
 
