@@ -108,7 +108,7 @@ class AWSProviderConfiguration extends Component {
       configuredProviders, configuredRegions, accessKeys, universeList } = this.props;
     var universeExistsForProvider = false;
     if (isValidArray(configuredProviders) && isValidArray(universeList)){
-      universeExistsForProvider = universeList.some(universe => universe.provider.uuid === configuredProviders[0].uuid);
+      universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === configuredProviders[0].uuid));
     }
 
     var awsProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
@@ -141,8 +141,8 @@ class AWSProviderConfiguration extends Component {
           <Row className="config-section-header">
             <Col md={12}>
               <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
-                btnLabel="Delete Configuration" btnClass="btn btn-default delete-btn delete-aws-btn" disabled={universeExistsForProvider}
-                onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}>
+                              btnLabel="Delete Configuration" btnClass="btn btn-default delete-btn delete-aws-btn" disabled={universeExistsForProvider}
+                              onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}>
                 Are you sure you want to delete this AWS configuration?
               </YBConfirmModal>
               <DescriptionList listItems={providerInfo} />

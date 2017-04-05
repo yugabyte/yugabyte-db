@@ -16,6 +16,9 @@ export default class UniverseResources extends Component {
     var empty = false;
     var costPerDay = '$0.00';
     var costPerMonth = '$0.00';
+    if (!resources) {
+      return <span/>;
+    }
     if (isDefinedNotNull(resources) && Object.keys(resources).length > 0) {
       costPerDay = <YBCost value={resources.pricePerHour} multiplier={"day"} />
       costPerMonth = <YBCost value={resources.pricePerHour} multiplier={"month"} />

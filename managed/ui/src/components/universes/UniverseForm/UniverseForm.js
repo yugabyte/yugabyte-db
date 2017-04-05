@@ -120,11 +120,18 @@ export default class UniverseForm extends Component {
     }
     if (this.props.type === "Edit") {
       const {universe: {currentUniverse}, universe: {currentUniverse: {universeDetails: {userIntent}}}} = this.props;
-      var providerUUID = currentUniverse.provider.uuid;
+      var providerUUID = currentUniverse.provider && currentUniverse.provider.uuid;
       var isMultiAZ = userIntent.isMultiAZ;
-      this.setState({providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
-                      numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor,
-                      ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList});
+      if (userIntent && providerUUID) {
+        this.setState({
+          providerSelected: providerUUID,
+          azCheckState: isMultiAZ,
+          instanceTypeSelected: userIntent.instanceType,
+          numNodes: userIntent.numNodes,
+          replicationFactor: userIntent.replicationFactor,
+          ybSoftwareVersion: userIntent.ybSoftwareVersion
+        });
+      }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
       // If Edit Case Set Initial Configuration
@@ -259,20 +266,23 @@ export default class UniverseForm extends Component {
       this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
       var providerUUID = currentUniverse.provider.uuid;
       var isMultiAZ = true;
-      this.setState({providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
-        numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor,
-        ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList});
+      if (userIntent && providerUUID) {
+        this.setState({
+          providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
+          numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor,
+          ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList
+        });
+      }
     }
   }
 
   render() {
-
     var self = this;
-    const { visible, handleSubmit, title, universe, softwareVersions } = this.props;
+    const { visible, handleSubmit, title, universe, softwareVersions, cloud } = this.props;
     var universeProviderList = [];
     var currentProviderCode = "";
-    if (isValidArray(this.props.cloud.providers)) {
-      universeProviderList = this.props.cloud.providers.map(function(providerItem, idx) {
+    if (isValidArray(cloud.providers)) {
+      universeProviderList = cloud.providers.map(function(providerItem, idx) {
         if (providerItem.uuid === self.state.providerSelected) {
           currentProviderCode = providerItem.code;
         }
@@ -283,7 +293,7 @@ export default class UniverseForm extends Component {
     }
     universeProviderList.unshift(<option key="" value=""></option>);
 
-    var universeRegionList = this.props.cloud.regions.map(function (regionItem, idx) {
+    var universeRegionList = cloud.regions && cloud.regions.map(function (regionItem, idx) {
       return {value: regionItem.uuid, label: regionItem.name};
     });
 
@@ -311,14 +321,14 @@ export default class UniverseForm extends Component {
       }
     } else {
       universeInstanceTypeList =
-        this.props.cloud.instanceTypes.map(function (instanceTypeItem, idx) {
+        cloud.instanceTypes && cloud.instanceTypes.map(function (instanceTypeItem, idx) {
           return <option key={instanceTypeItem.instanceTypeCode}
                          value={instanceTypeItem.instanceTypeCode}>
             {instanceTypeItem.instanceTypeCode}
           </option>
         });
     }
-    if (universeInstanceTypeList.length > 0) {
+    if (isValidArray(universeInstanceTypeList)) {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
 
