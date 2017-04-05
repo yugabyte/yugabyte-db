@@ -79,9 +79,18 @@ DEFINE_bool(suicide_on_eio, true,
             "Kill the process if an I/O operation results in EIO");
 TAG_FLAG(suicide_on_eio, advanced);
 
-DEFINE_bool(never_fsync, false,
+#ifdef __APPLE__
+// Never fsync on Mac OS X as we are getting many slow fsync errors in Jenkins and the fsync
+// implementation is very different in production (on Linux) anyway.
+#define FLAGS_never_fsync_default true
+#else
+#define FLAGS_never_fsync_default false
+#endif
+
+DEFINE_bool(never_fsync, FLAGS_never_fsync_default,
             "Never fsync() anything to disk. This is used by certain test cases to "
             "speed up runtime. This is very unsafe to use in production.");
+
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
 
