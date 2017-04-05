@@ -37,6 +37,8 @@ export const FETCH_HOST_INFO = 'FETCH_HOST_INFO';
 export const FETCH_HOST_INFO_SUCCESS = 'FETCH_HOST_INFO_SUCCESS';
 export const FETCH_HOST_INFO_FAILURE = 'FETCH_HOST_INFO_FAILURE';
 
+export const FETCH_CUSTOMER_COUNT = 'FETCH_CUSTOMER_COUNT';
+
 export function validateToken(tokenFromStorage) {
   var cUUID = localStorage.getItem("customer_id");
   var auth_token = localStorage.getItem("customer_token");
@@ -196,4 +198,13 @@ export function fetchHostInfoFailure(error) {
     type: FETCH_HOST_INFO_FAILURE,
     payload: error
   }
+}
+
+
+export function fetchCustomerCount() {
+  const request = axios.get(`${ROOT_URL}/customer_count`);
+  return {
+    type: FETCH_CUSTOMER_COUNT,
+    payload: request
+  };
 }

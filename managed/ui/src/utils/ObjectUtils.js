@@ -17,7 +17,7 @@ export function isValidFunction(func) {
 }
 
 export function isValidNumber(n) {
-  return typeof n == 'number' && isFinite(n);
+  return typeof n === 'number' && isFinite(n);
 }
 
 // TODO: Rename to isValidObject after changing previous isValidObject references to isDefinedNotNull.

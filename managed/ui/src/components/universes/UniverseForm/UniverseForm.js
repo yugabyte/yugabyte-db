@@ -3,7 +3,7 @@ import { Row, Col } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
 import _ from 'lodash';
 import { isDefinedNotNull, isValidArray, isValidObject, areIntentsEqual } from 'utils/ObjectUtils';
-import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel, 
+import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
   YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel } from 'components/common/forms/fields';
 
 import AZSelectorTable from './AZSelectorTable';
@@ -156,7 +156,6 @@ export default class UniverseForm extends Component {
 
   instanceTypeChanged(instanceTypeValue) {
     this.setState({instanceTypeSelected: instanceTypeValue});
-    var self = this;
     var instanceTypeSelected = this.props.cloud.instanceTypes.find(function(item){
       return item.instanceTypeCode ===  instanceTypeValue;
     });
