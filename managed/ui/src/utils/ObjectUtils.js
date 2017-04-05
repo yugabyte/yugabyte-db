@@ -33,6 +33,14 @@ export function removeNullProperties(obj) {
   }
 }
 
+export function trimString(string) {
+  return string && string.trim()
+}
+
+export function convertSpaceToDash(string) {
+  return string && string.replace(/\s+/g, '-');
+}
+
 export function sortByLengthOfArrayProperty(array, propertyName) {
   function arrayLengthComparator(item) {
     return item[propertyName] ? item[propertyName].length : 0;
