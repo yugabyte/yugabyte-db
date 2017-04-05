@@ -96,7 +96,7 @@ class ListTableGrid extends Component {
     var universeUUID = this.props.universe.currentUniverse.universeUUID;
     const {universe: {universeTasks}} = this.props;
     // Do not send tables query if task type is create, status is pending and target is universe
-    if (!isValidArray(universeTasks[universeUUID]) || !(universeTasks[universeUUID][0].type === "Create"
+    if (!universeTasks || !isValidArray(universeTasks[universeUUID]) || !(universeTasks[universeUUID][0].type === "Create"
         && universeTasks[universeUUID][0].status === "Running" && universeTasks[universeUUID][0].target === "Universe")) {
       this.props.fetchUniverseTables(universeUUID);
     }
