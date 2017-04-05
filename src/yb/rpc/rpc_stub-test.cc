@@ -17,6 +17,7 @@
 
 #include <condition_variable>
 #include <functional>
+#include <thread>
 #include <vector>
 
 #include <boost/ptr_container/ptr_vector.hpp>
@@ -470,14 +471,21 @@ class PingTestHelper {
     LaunchNext();
     if (++done_calls_ == calls_.size()) {
       LOG(INFO) << "Calls done";
+      std::unique_lock<std::mutex> lock(mutex_);
       cond_.notify_one();
+      finished_ = true;
     }
   }
 
   void Wait() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    while (done_calls_ < calls_.size()) {
-      cond_.wait(lock);
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      while (done_calls_ < calls_.size()) {
+        cond_.wait(lock);
+      }
+    }
+    while (!finished_) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
 
@@ -492,6 +500,7 @@ class PingTestHelper {
   vector<PingCall> calls_;
   std::mutex mutex_;
   std::condition_variable cond_;
+  std::atomic<bool> finished_ = {false};
 };
 
 DEFINE_int32(test_rpc_concurrency, 20, "Number of concurrent RPC requests");
