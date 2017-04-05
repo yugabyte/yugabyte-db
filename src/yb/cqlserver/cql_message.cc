@@ -1003,6 +1003,9 @@ ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
     case DataType::INET:
       id = Id::INET;
       return;
+    case DataType::UUID:
+      id = Id::UUID;
+      return;
     case DataType::LIST:
       id = Id::LIST;
       new (&element_type) shared_ptr<const Type>(
@@ -1027,7 +1030,6 @@ ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
     case DataType::VARINT: FALLTHROUGH_INTENDED;
-    case DataType::UUID: FALLTHROUGH_INTENDED;
     case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
     case DataType::TYPEARGS: FALLTHROUGH_INTENDED;

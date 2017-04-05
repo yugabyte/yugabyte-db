@@ -89,6 +89,11 @@ Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
       break;
     }
 
+    case InternalType::kUuidValue: {
+      RETURN_NOT_OK(EvalUuidExpr(expr, static_cast<EvalUuidValue*>(result)));
+      break;
+    }
+
     default:
       LOG(FATAL) << "Unknown expression datatype " << expr->internal_type();
   }
@@ -353,6 +358,28 @@ Status Executor::EvalInetaddressExpr(const PTExpr::SharedPtr& expr, EvalInetaddr
   return eval_status;
 }
 
+Status Executor::EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *result) {
+  Status eval_status = Status::OK();
+
+  const PTExpr *e = expr.get();
+  switch (expr->expr_op()) {
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      result->value_ = value.uuid_value();
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Not supported operator";
+  }
+  return eval_status;
+}
+
 Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value) {
   switch (result->datatype()) {
     case InternalType::kInt64Value:
@@ -450,6 +477,14 @@ Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& str
       InetAddress addr;
       RETURN_NOT_OK(addr.FromString(s));
       static_cast<EvalInetaddressValue*>(result)->value_ = addr;
+      break;
+    }
+
+    case InternalType::kUuidValue: {
+      std::string s = string_value.value_.get()->c_str();
+      Uuid uuid;
+      RETURN_NOT_OK(uuid.FromString(s));
+      static_cast<EvalUuidValue*>(result)->value_ = uuid;
       break;
     }
 

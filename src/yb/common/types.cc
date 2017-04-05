@@ -76,6 +76,7 @@ class TypeInfoResolver {
     AddMapping<SET>();
     AddMapping<LIST>();
     AddMapping<DECIMAL>();
+    AddMapping<UUID>();
   }
 
   template<DataType type> void AddMapping() {

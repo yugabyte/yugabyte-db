@@ -552,7 +552,7 @@ DECLARE_bool(yql_experiment_support_expression);
                           TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
-                          UNLOGGED UNTIL UPDATE USE USER USING
+                          UNLOGGED UNTIL UPDATE USE USER USING UUID
 
                           VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARINT
                           VARYING VERBOSE VERSION_P VIEW VIEWS VOLATILE
@@ -3939,6 +3939,9 @@ SimpleTypename:
   | INET {
     $$ = MAKE_NODE(@1, PTInet);
   }
+  | UUID {
+    $$ = MAKE_NODE(@1, PTUuid);
+  }
   | Bit {
     PARSER_UNSUPPORTED(@1);
   }
@@ -4578,6 +4581,7 @@ col_name_keyword:
   | TINYINT { $$ = $1; }
   | TREAT { $$ = $1; }
   | TRIM { $$ = $1; }
+  | UUID { $$ = $1; }
   | VALUES { $$ = $1; }
   | VARCHAR { $$ = $1; }
   | VARINT { $$ = $1; }

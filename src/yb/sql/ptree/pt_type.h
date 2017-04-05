@@ -228,6 +228,24 @@ class PTInet : public PTPrimitiveType<InternalType::kInetaddressValue,
 };
 
 //--------------------------------------------------------------------------------------------------
+// UUID types.
+class PTUuid : public PTPrimitiveType<InternalType::kUuidValue,
+    DataType::UUID> {
+ public:
+  typedef MCSharedPtr<PTUuid> SharedPtr;
+  typedef MCSharedPtr<const PTUuid> SharedPtrConst;
+
+  explicit PTUuid(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr);
+
+  virtual ~PTUuid();
+
+  template<typename... TypeArgs>
+  inline static PTUuid::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTUuid>(memctx, std::forward<TypeArgs>(args)...);
+  }
+};
+
+//--------------------------------------------------------------------------------------------------
 // Datetime types.
 
 class PTTimestamp : public PTSimpleType<InternalType::kTimestampValue,

@@ -97,6 +97,14 @@ struct EvalInetaddressValue: public EvalValue {
   InetAddress value_;
 };
 
+struct EvalUuidValue: public EvalValue {
+  InternalType datatype() {
+    return InternalType::kUuidValue;
+  }
+
+  Uuid value_;
+};
+
 }  // namespace sql
 }  // namespace yb
 

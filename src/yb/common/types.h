@@ -28,6 +28,7 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/util/net/inetaddress.h"
+#include "yb/util/uuid.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/slice.h"
 
@@ -361,6 +362,19 @@ struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY>{
 };
 
 template<>
+struct DataTypeTraits<UUID> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "uuid";
+  }
+  static void AppendDebugStringForValue(const void *val, string *str) {
+    const Slice *s = reinterpret_cast<const Slice *>(val);
+    Uuid uuid;
+    DCHECK(uuid.FromSlice(*s).ok());
+    str->append(uuid.ToString());
+  }
+};
+
+template<>
 struct DataTypeTraits<MAP> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "map";
@@ -512,6 +526,7 @@ class Variant {
         break;
       case STRING: FALLTHROUGH_INTENDED;
       case INET: FALLTHROUGH_INTENDED;
+      case UUID: FALLTHROUGH_INTENDED;
       case BINARY:
         {
           const Slice *str = static_cast<const Slice *>(value);
@@ -579,7 +594,8 @@ class Variant {
       case FLOAT:        return (&numeric_.float_val);
       case DOUBLE:       return (&numeric_.double_val);
       case STRING:       FALLTHROUGH_INTENDED;
-      case INET:       FALLTHROUGH_INTENDED;
+      case INET:         FALLTHROUGH_INTENDED;
+      case UUID:         FALLTHROUGH_INTENDED;
       case BINARY:       return &vstr_;
       case MAP: FALLTHROUGH_INTENDED;
       case SET: FALLTHROUGH_INTENDED;

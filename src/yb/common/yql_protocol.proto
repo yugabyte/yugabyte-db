@@ -34,6 +34,8 @@ message YQLValuePB {
     string decimal_value = 15;
     string varint_value = 16;
     string varint_string_value = 17;
+    // raw bytes for uuid address.
+    bytes uuid_value = 18;
   }
 }
 

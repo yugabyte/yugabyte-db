@@ -45,6 +45,8 @@ enum class ValueType : char {
   // We allow putting a 32-bit hash in front of the document key. This hash is computed based on
   // the "hashed" components of the document key that precede "range" components.
 
+  kUuid = '_', // ASCII code 95
+  kUuidDescending = '`', // ASCII code 96
   kStringDescending = 'a',  // ASCII code 97
   kInt64Descending = 'b',  // ASCII code 98
   kTimestampDescending = 'c',  // ASCII code 99

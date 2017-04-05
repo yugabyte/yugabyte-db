@@ -99,6 +99,7 @@ class Executor {
   CHECKED_STATUS EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *result);
   CHECKED_STATUS EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampValue *result);
   CHECKED_STATUS EvalInetaddressExpr(const PTExpr::SharedPtr& expr, EvalInetaddressValue *result);
+  CHECKED_STATUS EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *result);
   CHECKED_STATUS EvalDecimalExpr(const PTExpr::SharedPtr& expr, EvalDecimalValue *result);
 
   CHECKED_STATUS ConvertFromInt(EvalValue *result, const EvalIntValue& int_value);

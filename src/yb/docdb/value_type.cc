@@ -25,8 +25,10 @@ string ValueTypeToStr(ValueType value_type) {
     case ValueType::kDecimal: return "Decimal";
     case ValueType::kTimestampDescending: return "TimestampDescending";
     case ValueType::kTimestamp: return "Timestamp";
-    case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;;
+    case ValueType::kInetaddressDescending: return "InetAddressDescending";
     case ValueType::kInetaddress: return "InetAddress";
+    case ValueType::kUuidDescending: return "UuidDecending";
+    case ValueType::kUuid: return "Uuid";
     case ValueType::kHybridTime: return "HybridTime";
     case ValueType::kUInt16Hash: return "UInt16Hash";
     case ValueType::kObject: return "Object";

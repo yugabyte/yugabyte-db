@@ -61,6 +61,9 @@ class PrimitiveValue {
     } else if (other.type_ == ValueType::kDecimal || other.type_ == ValueType::kDecimalDescending) {
       type_ = other.type_;
       new(&decimal_val_) std::string(other.decimal_val_);
+    } else if (other.type_ == ValueType::kUuid || other.type_ == ValueType::kUuidDescending) {
+      type_ = other.type_;
+      new(&uuid_val_) Uuid(std::move((other.uuid_val_)));
     } else {
       memmove(this, &other, sizeof(PrimitiveValue));
     }
@@ -129,6 +132,16 @@ class PrimitiveValue {
       type_ = ValueType::kInetaddress;
     }
     inetaddress_val_ = new InetAddress(inetaddress);
+  }
+
+  explicit PrimitiveValue(const Uuid& uuid,
+                          SortOrder sort_order = SortOrder::kAscending) {
+    if (sort_order == SortOrder::kDescending) {
+      type_ = ValueType::kUuidDescending;
+    } else {
+      type_ = ValueType::kUuid;
+    }
+    uuid_val_ = uuid;
   }
 
   explicit PrimitiveValue(const HybridTime& hybrid_time) : type_(ValueType::kHybridTime) {
@@ -251,6 +264,11 @@ class PrimitiveValue {
     return inetaddress_val_;
   }
 
+  const Uuid& GetUuid() const {
+    DCHECK(type_ == ValueType::kUuid || type_ == ValueType::kUuidDescending);
+    return uuid_val_;
+  }
+
   ColumnId GetColumnId() const {
     DCHECK(type_ == ValueType::kColumnId || type_ == ValueType::kSystemColumnId);
     return column_id_val_;
@@ -281,6 +299,7 @@ class PrimitiveValue {
     double double_val_;
     Timestamp timestamp_val_;
     InetAddress* inetaddress_val_;
+    Uuid uuid_val_;
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
     ColumnId column_id_val_;
@@ -307,7 +326,10 @@ class PrimitiveValue {
     } else if (other->type_ == ValueType::kDecimal ||
                other->type_ == ValueType::kDecimalDescending) {
       type_ = other->type_;
-      new (&decimal_val_) std::string(std::move(other->decimal_val_));
+      new(&decimal_val_) std::string(std::move(other->decimal_val_));
+    } else if (other->type_ == ValueType::kUuid || other->type_ == ValueType::kUuidDescending) {
+      type_ = other->type_;
+      new(&uuid_val_) Uuid(std::move((other->uuid_val_)));
     } else {
       // Non-string primitive values only have plain old data. We are assuming there is no overlap
       // between the two objects, so we're using memcpy instead of memmove.

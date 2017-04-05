@@ -95,5 +95,12 @@ PTList::PTList(MemoryContext *memctx, YBLocation::SharedPtr loc, YQLType elems_t
 PTList::~PTList() {
 }
 
+PTUuid::PTUuid(MemoryContext *memctx, YBLocation::SharedPtr loc)
+    : PTPrimitiveType<InternalType::kUuidValue, DataType::UUID>(memctx, loc) {
+}
+
+PTUuid::~PTUuid() {
+}
+
 }  // namespace sql
 }  // namespace yb

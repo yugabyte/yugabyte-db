@@ -177,6 +177,7 @@ set(UTIL_SRCS
   varint.cc
   decimal.cc
   port_picker.cc
+  uuid.cc
   )
 
 if(NOT APPLE)
@@ -344,6 +345,7 @@ ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(net/inetaddress-test)
+ADD_YB_TEST(uuid-test)
 
 #######################################
 # jsonwriter_test_proto

@@ -232,6 +232,11 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
       RETURN_NOT_OK(YQLValue::inetaddress_value(value).ToBytes(&bytes));
       return row->SetInet(column_idx, Slice(bytes));
     }
+    case UUID: {
+      string bytes;
+      RETURN_NOT_OK(YQLValue::uuid_value(value).ToBytes(&bytes));
+      return row->SetUuid(column_idx, Slice(bytes));
+    }
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case BINARY: FALLTHROUGH_INTENDED;
@@ -239,7 +244,6 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
     case LIST: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
-    case UUID: FALLTHROUGH_INTENDED;
     case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;

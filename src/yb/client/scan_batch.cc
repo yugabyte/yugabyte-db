@@ -151,6 +151,10 @@ Status YBScanBatch::RowPtr::GetInet(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<INET> >(col_name, val);
 }
 
+Status YBScanBatch::RowPtr::GetUuid(const Slice& col_name, Slice* val) const {
+  return Get<TypeTraits<UUID> >(col_name, val);
+}
+
 Status YBScanBatch::RowPtr::GetBool(int col_idx, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_idx, val);
 }
@@ -193,6 +197,10 @@ Status YBScanBatch::RowPtr::GetBinary(int col_idx, Slice* val) const {
 
 Status YBScanBatch::RowPtr::GetInet(int col_idx, Slice* val) const {
   return Get<TypeTraits<INET> >(col_idx, val);
+}
+
+Status YBScanBatch::RowPtr::GetUuid(int col_idx, Slice* val) const {
+  return Get<TypeTraits<UUID> >(col_idx, val);
 }
 
 template<typename T>

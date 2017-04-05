@@ -80,6 +80,9 @@ string PrimitiveValue::ToString() const {
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress:
       return inetaddress_val_->ToString();
+    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kUuid:
+      return uuid_val_.ToString();
     case ValueType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
     case ValueType::kHybridTime:
@@ -163,6 +166,20 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
     }
 
+    case ValueType::kUuid: {
+      std::string bytes;
+      CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
+      key_bytes->AppendString(bytes);
+      return;
+    }
+
+    case ValueType::kUuidDescending: {
+      std::string bytes;
+      CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
+      key_bytes->AppendDescendingString(bytes);
+      return;
+    }
+
     case ValueType::kArrayIndex:
       key_bytes->AppendInt64(int64_val_);
       return;
@@ -231,6 +248,14 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kInetaddress: {
       std::string bytes;
       CHECK_OK(inetaddress_val_->ToBytes(&bytes))
+      result.append(bytes);
+      return result;
+    }
+
+    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kUuid: {
+      std::string bytes;
+      CHECK_OK(uuid_val_.EncodeToComparable(&bytes))
       result.append(bytes);
       return result;
     }
@@ -377,6 +402,24 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       return Status::OK();
     }
 
+    case ValueType::kUuid: {
+      string bytes;
+      RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
+      new(&uuid_val_) Uuid();
+      RETURN_NOT_OK(uuid_val_.DecodeFromComparable(bytes));
+      type_ = value_type;
+      return Status::OK();
+    }
+
+    case ValueType::kUuidDescending: {
+      string bytes;
+      RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
+      new(&uuid_val_) Uuid();
+      RETURN_NOT_OK(uuid_val_.DecodeFromComparable(bytes));
+      type_ = value_type;
+      return Status::OK();
+    }
+
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: {
       // Decode varint.
@@ -494,6 +537,19 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
     }
 
+    case ValueType::kUuid: {
+      if (slice.size() != Uuid::kUuidSize) {
+        return STATUS(Corruption,
+                      Substitute("Invalid number of bytes to decode Uuid: $0, need $1",
+                                 slice.size(), Uuid::kUuidSize));
+      }
+      Slice slice_temp(slice.data(), slice.size());
+      new(&uuid_val_) Uuid();
+      RETURN_NOT_OK(uuid_val_.DecodeFromComparableSlice(slice_temp));
+      type_ = value_type;
+      return Status::OK();
+    }
+
     case ValueType::kArray:
       return STATUS(IllegalState, "Arrays are currently not supported");
 
@@ -507,8 +563,9 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kDecimalDescending:
+    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kTimestampDescending:
       return STATUS(Corruption,
           Substitute("$0 is not allowed in a RocksDB PrimitiveValue", ValueTypeToStr(value_type)));
   }
@@ -589,6 +646,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kTimestamp: return timestamp_val_ == other.timestamp_val_;
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress: return *inetaddress_val_ == *(other.inetaddress_val_);
+    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kUuid: return uuid_val_ == other.uuid_val_;
 
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: return column_id_val_ == other.column_id_val_;
@@ -627,6 +686,9 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress:
       return GenericCompare(*inetaddress_val_, *(other.inetaddress_val_));
+    case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kUuid:
+      return GenericCompare(uuid_val_, other.uuid_val_);
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId:
       return GenericCompare(column_id_val_, other.column_id_val_);
@@ -648,6 +710,8 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
     inetaddress_val_ = new InetAddress();
   } else if (value_type == ValueType::kDecimal || value_type == ValueType::kDecimalDescending) {
     new(&decimal_val_) std::string();
+  } else if (value_type == ValueType::kUuid || value_type == ValueType::kUuidDescending) {
+    new(&uuid_val_) Uuid();
   }
 }
 
@@ -718,13 +782,13 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
       return PrimitiveValue(YQLValue::bool_value(value) ? ValueType::kTrue : ValueType::kFalse);
     case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
     case INET: return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
+    case UUID: return PrimitiveValue(YQLValue::uuid_value(value), sort_order);
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;
-    case UUID: FALLTHROUGH_INTENDED;
     case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;
@@ -779,6 +843,9 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
     case INET:
       YQLValue::set_inetaddress_value(*primitive_value.GetInetaddress(), yql_value);
       return;
+    case UUID:
+      YQLValue::set_uuid_value(primitive_value.GetUuid(), yql_value);
+      return;
     case STRING:
       YQLValue::set_string_value(primitive_value.GetString(), yql_value);
       return;
@@ -791,7 +858,6 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;
-    case UUID: FALLTHROUGH_INTENDED;
     case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;

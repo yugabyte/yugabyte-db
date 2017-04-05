@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import java.util.UUID;
 import java.net.InetAddress;
 import java.util.Date;
 import java.util.HashMap;
@@ -622,21 +623,25 @@ public class TestBindVariable extends TestBase {
                          "c8 boolean, " +
                          "c9 timestamp, " +
                          "c10 inet, " +
+                         "c11 uuid, " +
                          "primary key (c1));";
     session.execute(create_stmt);
 
     // Insert data of all supported datatypes with bind by position.
-    String insert_stmt = "INSERT INTO test_bind (c1, c2, c3, c4, c5, c6, c7, c8, c9, c10) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    String insert_stmt = "INSERT INTO test_bind (c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
+    LOG.info("EXECUTING");
     session.execute(insert_stmt,
                     new Byte((byte)1), new Short((short)2), new Integer(3), new Long(4),
                     new Float(5.0), new Double(6.0),
                     "c7",
                     new Boolean(true),
                     new Date(2017, 1, 1),
-                    InetAddress.getByName("1.2.3.4"));
+                    InetAddress.getByName("1.2.3.4"),
+                    UUID.fromString("11111111-2222-3333-4444-555555555555"));
+    LOG.info("EXECUTED");
 
     {
       // Select data from the test table.
@@ -655,6 +660,7 @@ public class TestBindVariable extends TestBase {
       assertTrue(row.getBool("c8"));
       assertEquals(new Date(2017, 1, 1), row.getTimestamp("c9"));
       assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet("c10"));
+      assertEquals(UUID.fromString("11111111-2222-3333-4444-555555555555"), row.getUUID("c11"));
     }
 
     // Update data of all supported datatypes with bind by position.
@@ -667,7 +673,8 @@ public class TestBindVariable extends TestBase {
                          "c7 = ?, " +
                          "c8 = ?, " +
                          "c9 = ?, " +
-                         "c10 = ? " +
+                         "c10 = ?, " +
+                         "c11 = ? " +
                          "WHERE c1 = ?;";
     session.execute(update_stmt,
                     new HashMap<String, Object>() {{
@@ -681,6 +688,7 @@ public class TestBindVariable extends TestBase {
                       put("c8", new Boolean(false));
                       put("c9", new Date(2017, 11, 11));
                       put("c10", InetAddress.getByName("1.2.3.4"));
+                      put("c11", UUID.fromString("22222222-2222-3333-4444-555555555555"));
                     }});
 
     {
@@ -700,6 +708,7 @@ public class TestBindVariable extends TestBase {
       assertFalse(row.getBool("c8"));
       assertEquals(new Date(2017, 11, 11), row.getTimestamp("c9"));
       assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet("c10"));
+      assertEquals(UUID.fromString("22222222-2222-3333-4444-555555555555"), row.getUUID("c11"));
     }
 
     LOG.info("End test");

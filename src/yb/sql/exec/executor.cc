@@ -495,6 +495,21 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
+    case InternalType::kUuidValue: {
+      EvalUuidValue uuid_value;
+      RETURN_NOT_OK(EvalExpr(expr, &uuid_value));
+
+      Uuid &actual_value = uuid_value.value_;
+      VLOG(3) << "Expr actual value = " << actual_value.ToString();
+      YQLValue::set_uuid_value(actual_value, col_pb);
+      std::string bytes;
+      RETURN_NOT_OK(actual_value.ToBytes(&bytes));
+      if (row != nullptr) {
+        RETURN_NOT_OK(row->SetUuid(col_index, Slice(bytes)));
+      }
+      break;
+    }
+
     case InternalType::kMapValue: {
       if (row != nullptr) {
         return STATUS(NotSupported, "Cannot have collection types in key");
