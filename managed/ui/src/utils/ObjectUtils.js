@@ -58,3 +58,25 @@ export function sortedGroupCounts(array) {
     };
   });
 }
+
+export function areIntentsEqual(userIntent1, userIntent2) {
+  return (_.isEqual(userIntent1.numNodes,userIntent2.numNodes)
+          && _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort())
+          && _.isEqual(userIntent1.deviceInfo, userIntent2.deviceInfo)
+          && _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor)
+          && _.isEqual(userIntent1.provider, userIntent2.provider)
+          && _.isEqual(userIntent1.universeName, userIntent2.universeName)
+          && _.isEqual(userIntent1.ybSoftwareVersion, userIntent2.ybSoftwareVersion))
+}
+
+export function areUniverseConfigsEqual(config1, config2) {
+  var userIntentsEqual = true;
+  var dataObjectsEqual = true;
+  if (config1 && config2) {
+    if (config1.userIntent && config2.userIntent) {
+      userIntentsEqual = areIntentsEqual(config1.userIntent, config2.userIntent);
+    }
+    dataObjectsEqual = _.isEqual(config1.nodeDetailsSet, config2.nodeDetailsSet) && _.isEqual(config1.placementInfo, config2.placementInfo);
+  }
+  return dataObjectsEqual && userIntentsEqual;
+}

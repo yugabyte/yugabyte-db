@@ -11,24 +11,24 @@ import { YBLabel } from 'components/common/descriptors';
 export class YBControlledNumericInput extends Component {
   static defaultProps = {
     minVal: 0,
-    maxVal: 32,
   };
   render() {
-    const {input, val, onInputChanged, onInputSelect, onInputBlur, onInputFocus, valueFormat} = this.props;
+    const {input, val, onInputChanged, onInputSelect, onInputBlur, onInputFocus, valueFormat, minVal} = this.props;
     return (
       <NumericInput {...input} className="form-control" value={val} onChange={onInputChanged}
-                    onSelect={onInputSelect} onFocus={onInputFocus} onBlur={onInputBlur} format={valueFormat}/>
+                    onSelect={onInputSelect} onFocus={onInputFocus} onBlur={onInputBlur} format={valueFormat}
+                    min={minVal} />
     )
   }
 }
 export class YBUnControlledNumericInput extends Component {
   static defaultProps = {
-    minVal: 3,
-    maxVal: 32,
+    minVal: 0,
+
   };
 
   render() {
-    const { input, onInputChanged, minVal, maxVal } = this.props;
+    const { input, onInputChanged, minVal } = this.props;
 
     function onChange(value) {
       input.onChange(value);
@@ -38,7 +38,7 @@ export class YBUnControlledNumericInput extends Component {
     }
 
     return (
-      <NumericInput {...input} className="form-control" min={minVal} max={maxVal} onChange={onChange}/>
+      <NumericInput {...input} className="form-control" min={minVal} onChange={onChange}/>
     );
   }
 }

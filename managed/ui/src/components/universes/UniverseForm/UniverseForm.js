@@ -1,8 +1,8 @@
 import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field } from 'redux-form';
-
-import { isDefinedNotNull, isValidArray, isValidObject } from 'utils/ObjectUtils';
+import _ from 'lodash';
+import { isDefinedNotNull, isValidArray, isValidObject, areIntentsEqual } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel, 
   YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel } from 'components/common/forms/fields';
 
@@ -10,6 +10,19 @@ import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
 import './UniverseForm.scss';
 import AZPlacementInfo from './AZPlacementInfo';
+
+const initialState = {
+  instanceTypeSelected: 'm3.medium',
+  azCheckState: true,
+  providerSelected: '',
+  regionList: [],
+  numNodes: 3,
+  isCustom: false,
+  replicationFactor: 3,
+  deviceInfo: {},
+  placementInfo: {},
+  ybSoftwareVersion: ''
+};
 
 export default class UniverseForm extends Component {
   static propTypes = {
@@ -25,7 +38,6 @@ export default class UniverseForm extends Component {
     this.numNodesChanged = this.numNodesChanged.bind(this);
     this.createUniverse = this.createUniverse.bind(this);
     this.editUniverse = this.editUniverse.bind(this);
-    this.universeNameChanged = this.universeNameChanged.bind(this);
     this.softwareVersionChanged = this.softwareVersionChanged.bind(this);
     this.azChanged = this.azChanged.bind(this);
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
@@ -34,64 +46,61 @@ export default class UniverseForm extends Component {
     this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
     this.numVolumesChanged = this.numVolumesChanged.bind(this);
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
-    var azInitState = true;
+    this.hideModal = this.hideModal.bind(this);
     this.configureUniverseNodeList = this.configureUniverseNodeList.bind(this);
-    if (isDefinedNotNull(this.props.universe.currentUniverse)) {
-      azInitState = this.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ
-    }
-    this.state = {
-      instanceTypeSelected: 'm3.medium',
-      azCheckState: azInitState,
-      providerSelected: '',
-      numNodes: 3,
-      isCustom: false,
-      replicationFactor: 3,
-      deviceInfo: {},
-      placementInfo: {},
-      ybSoftwareVersion: ''
-    };
+    this.state = initialState;
   }
 
-  configureUniverseNodeList(fieldName, fieldVal, isCustom) {
+  hideModal() {
+    this.setState(initialState);
+    this.props.reset();
+    this.props.onHide();
+  }
+
+  configureUniverseNodeList() {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues} = this.props;
-    var universeTaskParams = universeConfigTemplate;
+    var universeTaskParams = _.clone(universeConfigTemplate, true);
     if (isDefinedNotNull(currentUniverse)) {
       universeTaskParams.universeUUID = currentUniverse.universeUUID;
       universeTaskParams.expectedUniverseVersion = currentUniverse.version;
     }
-    var formSubmitVals = formValues;
-    delete formSubmitVals.formType;
-    universeTaskParams.userIntent = formSubmitVals;
-    if (fieldName !== "replicationFactor") {
-      universeTaskParams.userIntent["replicationFactor"] = this.state.replicationFactor;
+    var currentState = this.state;
+    universeTaskParams.userIntent = {
+      universeName: formValues.universeName,
+      provider: currentState.providerSelected,
+      regionList: currentState.regionList,
+      numNodes: currentState.numNodes,
+      instanceType: currentState.instanceTypeSelected,
+      ybSoftwareVersion: currentState.ybSoftwareVersion,
+      replicationFactor: currentState.replicationFactor,
+      isMultiAZ: true,
+      deviceInfo: currentState.deviceInfo
     }
-    if (fieldName !== "ybSoftwareVersion") {
-      universeTaskParams.userIntent["ybSoftwareVersion"] = this.state.ybSoftwareVersion;
-    }
-    if (fieldName !== "deviceInfo" && isValidArray(Object.keys(this.state.deviceInfo))) {
-      universeTaskParams.userIntent.deviceInfo = this.state.deviceInfo;
-    }
-    universeTaskParams.userIntent[fieldName] = fieldVal;
-    if (isDefinedNotNull(formValues.instanceType) && isValidArray(universeTaskParams.userIntent.regionList)) {
-      this.props.cloud.providers.forEach(function(providerItem, idx){
+    if (isDefinedNotNull(currentState.instanceTypeSelected) && isValidArray(currentState.regionList)) {
+      this.props.cloud.providers.forEach(function (providerItem, idx) {
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
           universeTaskParams.userIntent.providerType = providerItem.code;
         }
       });
       if (!isValidArray(universeTaskParams.userIntent.regionList)) {
-        universeTaskParams.userIntent.regionList = [formSubmitVals.regionList.value];
+        universeTaskParams.userIntent.regionList = [formValues.regionList.value];
       } else {
-        universeTaskParams.userIntent.regionList = formSubmitVals.regionList.map(function (item, idx) {
+        universeTaskParams.userIntent.regionList = formValues.regionList.map(function (item, idx) {
           return item.value;
         });
       }
       if (isValidObject(universeTaskParams.placementInfo)) {
-        universeTaskParams.placementInfo.isCustom = isCustom;
+        universeTaskParams.placementInfo.isCustom = this.state.isCustom;
       }
-      if (isValidObject(universeTaskParams.userIntent) && fieldName !== "numNodes") {
-        universeTaskParams.userIntent.numNodes = this.state.numNodes;
+      if (currentUniverse) {
+        if (!areIntentsEqual(currentUniverse.universeDetails.userIntent, universeTaskParams.userIntent)) {
+          this.props.submitConfigureUniverse(universeTaskParams);
+        } else {
+          this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
+        }
+      } else {
+        this.props.submitConfigureUniverse(universeTaskParams);
       }
-      this.props.submitConfigureUniverse(universeTaskParams);
     }
   }
 
@@ -114,26 +123,26 @@ export default class UniverseForm extends Component {
       var providerUUID = currentUniverse.provider.uuid;
       var isMultiAZ = userIntent.isMultiAZ;
       this.setState({providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
-      numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor, ybSoftwareVersion: userIntent.ybSoftwareVersion});
+                      numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor,
+                      ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList});
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
-      this.props.submitConfigureUniverse({userIntent: userIntent});
+      // If Edit Case Set Initial Configuration
+      this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
     }
-  }
-
-  universeNameChanged(universeName) {
-    this.configureUniverseNodeList("universeName", universeName);
   }
 
   providerChanged(value) {
     var providerUUID = value;
-    this.setState({providerSelected: providerUUID});
-    this.props.getRegionListItems(providerUUID, this.state.azCheckState);
-    this.props.getInstanceTypeListItems(providerUUID);
+    if (!this.props.universe.currentUniverse) {
+      this.setState({providerSelected: providerUUID});
+      this.props.getRegionListItems(providerUUID, this.state.azCheckState);
+      this.props.getInstanceTypeListItems(providerUUID);
+    }
   }
 
   regionListChanged(value) {
-    this.configureUniverseNodeList("regionList", value, false);
+    this.setState({regionList: value});
   }
 
   instanceTypeChanged(instanceTypeValue) {
@@ -148,9 +157,7 @@ export default class UniverseForm extends Component {
       mountPoints: null,
       diskIops: 1000
     }
-    this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType},function(){
-      self.configureUniverseNodeList("instanceType", instanceTypeValue, false);
-    });
+    this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
   }
 
   numNodesChanged(value) {
@@ -158,32 +165,44 @@ export default class UniverseForm extends Component {
   }
 
   numNodesChangedViaAzList(value) {
-    this.setState({numNodes: value});
-    this.configureUniverseNodeList("numNodes", value, true);
+    this.setState({numNodes: value, isCustom: true});
   }
 
   numNodesClicked() {
-    this.configureUniverseNodeList("numNodes", this.state.numNodes, false);
+    this.setState({isCustom: false});
   }
 
   azChanged(event) {
     this.setState({azCheckState: !this.state.azCheckState});
-    this.configureUniverseNodeList("isMultiAZ", !JSON.parse(event.target.value), false);
   }
 
   softwareVersionChanged(version) {
-    this.setState({ybSoftwareVersion: version});
-    this.configureUniverseNodeList("ybSoftwareVersion", version, false);
+    this.setState({ybSoftwareVersion: version, isCustom: false});
   }
 
   replicationFactorChanged(value) {
-    this.setState({replicationFactor: value});
-    this.configureUniverseNodeList("replicationFactor", value, false);
+    var self = this;
+    if (!this.props.universe.currentUniverse) {
+      this.setState({replicationFactor: value}, function () {
+        if (self.state.numNodes <= value) {
+          self.setState({numNodes: value, isCustom: false});
+        }
+      });
+    }
   }
 
-  componentDidUpdate(newProps) {
+  componentWillUpdate(newProps) {
     if (newProps.universe.formSubmitSuccess) {
       this.props.reset();
+    }
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (!_.isEqual(this.state, prevState)
+        && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
+      if (this.state.numNodes >= this.state.replicationFactor) {
+        this.configureUniverseNodeList();
+      }
     }
   }
 
@@ -210,6 +229,7 @@ export default class UniverseForm extends Component {
 
   componentWillReceiveProps(nextProps) {
     var self = this;
+    const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
     if (nextProps.cloud.instanceTypes !== this.props.cloud.instanceTypes
        && isValidArray(nextProps.cloud.instanceTypes) && !isValidArray(Object.keys(this.state.deviceInfo))
        && isValidObject(this.state.instanceTypeSelected)) {
@@ -232,12 +252,23 @@ export default class UniverseForm extends Component {
         && !isValidArray(this.props.softwareVersions)) {
         this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
     }
+
+    // If dialog has been closed and opened again in-case of edit, then repopulate current config
+    if (currentUniverse && isValidArray(Object.keys(currentUniverse)) && showModal && !this.props.universe.showModal && visibleModal === "universeModal") {
+      var userIntent  = currentUniverse.universeDetails.userIntent;
+      this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
+      var providerUUID = currentUniverse.provider.uuid;
+      var isMultiAZ = true;
+      this.setState({providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
+        numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor,
+        ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList});
+    }
   }
 
   render() {
 
     var self = this;
-    const { visible, onHide, handleSubmit, title, universe, softwareVersions } = this.props;
+    const { visible, handleSubmit, title, universe, softwareVersions } = this.props;
     var universeProviderList = [];
     var currentProviderCode = "";
     if (isValidArray(this.props.cloud.providers)) {
@@ -308,11 +339,7 @@ export default class UniverseForm extends Component {
     var softwareVersionOptions = softwareVersions.map(function(item, idx){
       return <option key={idx} value={item}>{item}</option>
     })
-    // Hide modal when close is clicked, it also resets the form state and sets it to pristine
-    var hideModal = function() {
-      self.props.reset();
-      onHide();
-    }
+
     var placementStatus = <span/>;
     if (self.props.universe.currentPlacementStatus) {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>
@@ -323,6 +350,13 @@ export default class UniverseForm extends Component {
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
+    var isRFReadOnly = false;
+    var isProviderReadOnly = false;
+    if (universe.currentUniverse) {
+      isRFReadOnly = true;
+      isProviderReadOnly = true;
+    }
+
     if (isValidArray(Object.keys(self.state.deviceInfo))) {
       if (self.state.volumeType === 'EBS') {
         deviceDetail = <span className="volume-info">
@@ -351,7 +385,7 @@ export default class UniverseForm extends Component {
     }
 
     return (
-      <YBModal visible={visible} onHide={hideModal} title={title} error={universe.error}
+      <YBModal visible={visible} onHide={this.hideModal} title={title} error={universe.error}
         submitLabel={submitLabel} showCancelButton={true}
           onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large">
         <Row className={"no-margin-row"}>
@@ -361,14 +395,15 @@ export default class UniverseForm extends Component {
             <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
                    onValueChanged={this.universeNameChanged} isReadOnly={isDefinedNotNull(universe.currentUniverse)} />
             <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
-                   options={universeProviderList} onInputChanged={this.providerChanged}
+                   options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isProviderReadOnly}
             />
             <Field name="regionList" component={YBMultiSelectWithLabel}
                     label="Regions" options={universeRegionList}
                     selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
                     providerSelected={this.state.providerSelected}/>
             <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
-                   label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}/>
+                   label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                    minVal={Number(this.state.replicationFactor)}/>
           </div>
         </Col>
         <Col lg={6} className={"universe-az-selector-container"}>
@@ -395,7 +430,6 @@ export default class UniverseForm extends Component {
                 <div className="form-group universe-form-instance-info">
                   <label className="form-item-label">Volume Info</label>
                   {deviceDetail}
-
                 </div>
               </div>
             </Col>
@@ -408,7 +442,8 @@ export default class UniverseForm extends Component {
           <Col lg={4}>
             <div className="form-right-aligned-labels">
               <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
-                     label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged}/>
+                     label="Replication Factor" initialValue={this.state.replicationFactor}
+                     onSelect={this.replicationFactorChanged} isReadOnly={isRFReadOnly}/>
             </div>
           </Col>
           <Col lg={4}>

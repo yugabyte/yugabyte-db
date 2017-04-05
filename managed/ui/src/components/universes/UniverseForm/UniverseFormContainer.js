@@ -128,7 +128,17 @@ const mapDispatchToProps = (dispatch) => {
 
     resetConfig: () => {
       dispatch(resetUniverseConfiguration());
-    }
+    },
+    getExistingUniverseConfiguration: (universeDetail) => {
+      dispatch(configureUniverseTemplateSuccess({data: universeDetail}));
+      dispatch(configureUniverseResources(universeDetail)).then((resourceData) => {
+        if (resourceData.payload.status !== 200) {
+          dispatch(configureUniverseResourcesFailure(resourceData.payload));
+        } else {
+          dispatch(configureUniverseResourcesSuccess(resourceData.payload));
+        }
+      });
+    },
   }
 }
 

@@ -103,6 +103,7 @@ public class PlacementInfoUtil {
         // If Placement Info has not been set by client.
         if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
           taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
+          taskParams.placementInfo.isCustom = false;
         }
         taskParams.nodeDetailsSet.addAll(existingNodes);
       } else {

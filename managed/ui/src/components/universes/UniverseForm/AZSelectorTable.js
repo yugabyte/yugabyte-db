@@ -1,8 +1,13 @@
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
 import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
-import { isValidArray, isValidObject } from 'utils/ObjectUtils';
+import { isValidArray, isValidObject, areUniverseConfigsEqual } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
+
+const nodeStates = {
+  activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
+  inactiveStates: ["ToBeDecommissioned", "BeingDecommissioned", "Destroyed"]
+}
 
 export default class AZSelectorTable extends Component {
   constructor(props) {
@@ -29,7 +34,7 @@ export default class AZSelectorTable extends Component {
   }
 
   updatePlacementInfo(currentAZState) {
-    const {universe: {universeConfigTemplate}, cloud, numNodesChanged} = this.props;
+    const {universe: {universeConfigTemplate, currentUniverse}, cloud, numNodesChanged} = this.props;
     this.setState({azItemState: currentAZState});
     var totalNodesInConfig = 0;
     currentAZState.forEach(function(item){
@@ -63,23 +68,31 @@ export default class AZSelectorTable extends Component {
       newPlacementInfo.cloudList[0].regionList = newRegionList;
       var newTaskParams = universeConfigTemplate;
       newTaskParams.placementInfo = newPlacementInfo;
-      this.props.submitConfigureUniverse(newTaskParams);
+      if (!currentUniverse) {
+        this.props.submitConfigureUniverse(newTaskParams);
+      } else {
+        if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.universeDetails)) {
+          this.props.submitConfigureUniverse(newTaskParams);
+        }
+      }
   }
 
   getGroupWithCounts(universeConfigTemplate) {
     var uniConfigArray = [];
     if (isValidArray(universeConfigTemplate.nodeDetailsSet)) {
       universeConfigTemplate.nodeDetailsSet.forEach(function(nodeItem){
-        var nodeFound = false;
-        for (var idx = 0; idx < uniConfigArray.length; idx++) {
-          if (uniConfigArray[idx].value === nodeItem.azUuid) {
-            nodeFound = true;
-            uniConfigArray[idx].count ++;
-            break;
+        if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
+          var nodeFound = false;
+          for (var idx = 0; idx < uniConfigArray.length; idx++) {
+            if (uniConfigArray[idx].value === nodeItem.azUuid) {
+              nodeFound = true;
+              uniConfigArray[idx].count++;
+              break;
+            }
           }
-        }
-        if (!nodeFound) {
-          uniConfigArray.push({value: nodeItem.azUuid, count: 1})
+          if (!nodeFound) {
+            uniConfigArray.push({value: nodeItem.azUuid, count: 1})
+          }
         }
       });
     }
@@ -110,13 +123,14 @@ export default class AZSelectorTable extends Component {
     }
   }
   componentWillReceiveProps(nextProps) {
-    const {universe: {universeConfigTemplate}} = nextProps;
+    const {universe: {universeConfigTemplate, currentUniverse}} = nextProps;
     var placementInfo = this.getGroupWithCounts(universeConfigTemplate);
     var azGroups = placementInfo.groups;
-
-    if (this.props.universe.universeConfigTemplate !== universeConfigTemplate
+    if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate, universeConfigTemplate)
       && isValidObject(universeConfigTemplate.placementInfo) && !universeConfigTemplate.placementInfo.isCustom) {
-        this.setState({azItemState: azGroups});
+       this.setState({azItemState: azGroups});
+    } else if (currentUniverse && universeConfigTemplate.userIntent && areUniverseConfigsEqual(universeConfigTemplate, currentUniverse.universeDetails)) {
+      this.setState({azItemState: this.getGroupWithCounts(currentUniverse.universeDetails).groups})
     }
     if (isValidObject(universeConfigTemplate) && isValidObject(universeConfigTemplate.placementInfo)) {
         const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
@@ -152,7 +166,7 @@ export default class AZSelectorTable extends Component {
     }
     var azGroups = self.state.azItemState;
     var azList = [];
-    if (isValidArray(azGroups) && azGroups.length) {
+    if (isValidArray(azGroups) && azGroups.length && isValidArray(azListForSelectedRegions)) {
       azList = azGroups.map(function(azGroupItem, idx){
         return (
           <Row key={idx} >
