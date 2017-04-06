@@ -1,7 +1,6 @@
 {
   "www": ["www/*"],
-  "bin": ["bin/yb-prof.py",
-          "build-support/post_install.sh",
+  "bin": ["build-support/post_install.sh",
           "build/latest/bin/yb-admin",
           "build/latest/bin/yb-pbc-dump",
           "build/latest/bin/yb-master",
