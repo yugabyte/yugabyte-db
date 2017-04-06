@@ -2,8 +2,13 @@
 
 # NOTE:
 # This script contains the steps needed to run yugaware driven integration test.
-# It is present on scheduler machine and is part of cron task to run daily.
+# It is present on scheduler machine at /home/centos/scripts/itest_cron.sh and is part of cron task to run daily as shown below
 # This is a reference replica.
+#
+# The way to enable it as a cron job is to add the following three lines via `crontab -e`:
+# PATH=/home/centos/code/devtools/bin:/home/centos/code/google-styleguide/cpplint:/home/centos/tools/google-cloud-sdk/bin:/home/centos/.local/bin:/home/centos/.linuxbrew-yb-build/bin:/home/centos/tools/arcanist/bin:/usr/local/bin:/opt/yugabyte/yb-server/bin:/opt/yugabyte/yugaware/bin:/usr/lib64/ccache:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/apache-maven-3.3.9/bin:/home/centos/.local/bin:/home/centos/bin
+# DEVOPS_HOME=/home/centos/code/devops
+# 28 6 * * * centos unset LD_LIBRARY_PATH; /home/centos/scripts/itest_cron.sh >> /var/log/itest.log 2>&1
 
 set -euo pipefail
 
@@ -34,4 +39,4 @@ git checkout master
 git pull --rebase
 
 # The `unset` is needed to make yugabyte build correctly (otherwise hit ELF lib check failures).
-unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --update_packages yugaware yugabyte devops --perform_tests --perform_edits --notify
+unset LD_LIBRARY_PATH; "$itest_yw_repo"/run_itest --perform_edits --notify
