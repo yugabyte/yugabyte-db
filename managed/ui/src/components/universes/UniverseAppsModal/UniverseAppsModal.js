@@ -62,13 +62,13 @@ export default class UniverseAppsModal extends Component {
   render() {
     const { nodeDetails } = this.props;
     var cassandraHosts = nodeDetails.map(function(nodeDetail) {
-      if (nodeDetail.state === "Running" && isValidObject(nodeDetail.cloudInfo.private_ip))
+      if (nodeDetail.state === "Running" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.yqlServerRpcPort
       else
         return null
     }).filter(Boolean).join(",")
     var redisHosts = nodeDetails.map(function(nodeDetail) {
-      if (nodeDetail.state === "Running" && isValidObject(nodeDetail.cloudInfo.private_ip))
+      if (nodeDetail.state === "Running" && nodeDetail.cloudInfo && isValidObject(nodeDetail.cloudInfo.private_ip))
         return nodeDetail.cloudInfo.private_ip + ":" + nodeDetail.redisServerRpcPort
       else
         return null
