@@ -558,7 +558,7 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
 #else
   const int kTimeMultiplier = 1;
 #endif
-  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(3 * kTimeMultiplier);
+  const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(15 * kTimeMultiplier);
   const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10 * kTimeMultiplier);
   const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5 * kTimeMultiplier);
   ASSERT_LE(max_processing, kMaxLimit);
