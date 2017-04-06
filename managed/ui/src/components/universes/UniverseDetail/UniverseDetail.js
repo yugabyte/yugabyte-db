@@ -17,7 +17,7 @@ import { YBTabsPanel } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
-import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
+import { isValidObject, isValidArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
 import {YBLoadingIcon} from '../../common/indicators';
 import './UniverseDetail.scss';
 
@@ -65,9 +65,11 @@ export default class UniverseDetail extends Component {
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         <UniverseAppsModal nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
-        <div className="universe-detail-resources">
-          <UniverseResources resources={currentUniverse.resources} />
-        </div>
+        {isDefinedNotNull(currentUniverse.resources) &&
+          <div className="universe-detail-resources">
+            <UniverseResources resources={currentUniverse.resources} />
+          </div>
+        }
         <Row>
           <Col lg={5}>
             <UniverseInfoPanel universeInfo={currentUniverse}
