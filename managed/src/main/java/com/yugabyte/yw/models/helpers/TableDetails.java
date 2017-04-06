@@ -6,13 +6,19 @@ import org.yb.ColumnSchema;
 import org.yb.Schema;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 public class TableDetails {
 
   // The name of the table
   public String tableName;
+
+  // The default table-level time to live (in seconds)
+  public long ttlInSeconds = -1;
 
   // Details of the columns that make up the table (to be used to create ColumnSchemas)
   public List<ColumnDetails> columns;
@@ -25,6 +31,9 @@ public class TableDetails {
    */
   public static TableDetails createWithSchema(Schema schema) {
     TableDetails tableDetails = new TableDetails();
+    if (schema.getTimeToLiveInMillis() > 0) {
+      tableDetails.ttlInSeconds = schema.getTimeToLiveInMillis()/1000;
+    }
     tableDetails.columns = new LinkedList<>();
     for (ColumnSchema columnSchema : schema.getColumns()) {
       tableDetails.columns.add(ColumnDetails.createWithColumnSchema(columnSchema));
@@ -49,6 +58,7 @@ public class TableDetails {
   public String toCQLCreateString() {
     List<String> partitionKeys = new ArrayList<>();
     List<String> clusteringKeys = new ArrayList<>();
+    Map<String, String> sortOrderColumns = new HashMap<>();
     StringBuilder builder = new StringBuilder("CREATE TABLE ");
     builder.append(tableName);
 
@@ -77,6 +87,9 @@ public class TableDetails {
               "Any clustering keys must come immediately after partition keys.");
         }
       }
+      if (!column.sortOrder.equals(ColumnSchema.SortOrder.NONE)) {
+        sortOrderColumns.put(column.name, column.sortOrder.toString());
+      }
       lastColumn = column;
     }
 
@@ -104,7 +117,37 @@ public class TableDetails {
       builder.append(", ");
       builder.append(primaryKey);
     }
-    builder.append("));");
+    builder.append("))");
+
+    // Add default time to live and sort order (if any)
+    boolean hasTimeToLive = ttlInSeconds > 0;
+    boolean hasSortOrder = sortOrderColumns.size() > 0;
+    if (hasTimeToLive || hasSortOrder) {
+      builder.append(" WITH ");
+      if (hasTimeToLive) {
+        builder.append("default_time_to_live = ");
+        builder.append(Long.toString(ttlInSeconds));
+      }
+      if (hasTimeToLive && hasSortOrder) {
+        builder.append(" AND ");
+      }
+      if (hasSortOrder) {
+        builder.append("CLUSTERING ORDER BY (");
+        Iterator<String> columnNamesIterator = sortOrderColumns.keySet().iterator();
+        while (columnNamesIterator.hasNext()) {
+          String columnName = columnNamesIterator.next();
+          String sortOrder = sortOrderColumns.get(columnName);
+          builder.append(columnName);
+          builder.append(" ");
+          builder.append(sortOrder);
+          if (columnNamesIterator.hasNext()) {
+            builder.append(", ");
+          }
+        }
+        builder.append(")");
+      }
+    }
+    builder.append(";");
 
     return builder.toString();
   }

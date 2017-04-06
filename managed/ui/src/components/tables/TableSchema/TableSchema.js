@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { FormattedRelative } from 'react-intl';
 import { Row, Col } from 'react-bootstrap';
 import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
 import './TableSchema.scss';
@@ -8,10 +9,12 @@ import './TableSchema.scss';
 export default class TableSchema extends Component {
   render() {
     const {tableInfo: {tableDetails}} = this.props;
+    var ttlInSeconds = 0;
     var partitionKeyRows = [];
     var clusteringKeyRows = [];
     var otherKeyRows = [];
     if (isValidObject(tableDetails) && isValidArray(tableDetails.columns)) {
+      ttlInSeconds = tableDetails.ttlInSeconds;
       tableDetails.columns.forEach(function(item){
         if (item.isPartitionKey) {
           partitionKeyRows.push(item);
@@ -61,6 +64,18 @@ export default class TableSchema extends Component {
              <SchemaRowDefinition rows={otherKeyRows}/>
           </Col>
         </Row>
+        <Row className="schema-table-level-row">
+          <Col lg={4}>
+            <Row>
+              <Col lg={2}>
+                <h5 className="no-bottom-margin">TTL:</h5>
+              </Col>
+              <Col lg={10}>
+                <FormattedRelative value={Date.now() + 1000 * ttlInSeconds} updateInterval={0} />
+              </Col>
+            </Row>
+          </Col>
+        </Row>
       </div>
     )
   }
@@ -76,7 +91,7 @@ class SchemaRowDefinition extends Component {
         <Row key={idx}>
           <Col lg={4}>{item.name}</Col>
           <Col lg={4}>{item.type}</Col>
-          <Col lg={3}>{item.isClusteringKey ? 'ASC' : ''}</Col>
+          <Col lg={3}>{item.sortOrder === 'NONE' ? '' : item.sortOrder}</Col>
         </Row>
         )
       });

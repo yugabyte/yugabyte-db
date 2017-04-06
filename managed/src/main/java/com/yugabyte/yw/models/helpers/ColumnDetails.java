@@ -22,6 +22,9 @@ public class ColumnDetails {
   // True if this column is a clustering key
   public boolean isClusteringKey;
 
+  // SortOrder for this column (only valid for clustering columns)
+  public ColumnSchema.SortOrder sortOrder = ColumnSchema.SortOrder.NONE;
+
   public static ColumnDetails createWithColumnSchema(ColumnSchema columnSchema) {
     ColumnDetails columnDetails = new ColumnDetails();
     columnDetails.columnOrder = columnSchema.getId();
@@ -33,6 +36,9 @@ public class ColumnDetails {
     }
     columnDetails.isPartitionKey = columnSchema.isHashKey();
     columnDetails.isClusteringKey = !columnDetails.isPartitionKey && columnSchema.isKey();
+    if (columnSchema.getSortOrder() != null) {
+      columnDetails.sortOrder = columnSchema.getSortOrder();
+    }
     return columnDetails;
   }
 
