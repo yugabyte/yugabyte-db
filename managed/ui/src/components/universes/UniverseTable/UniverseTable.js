@@ -71,18 +71,18 @@ class YBUniverseItem extends Component {
       <div className={"universe-list-item"}>
         <ListGroupItem >
           <Row>
-            <Col lg={6}>
+            <Col sm={6}>
               <Link to={`/universes/${universe.universeUUID}`}><div className={"universe-name-cell"}>{universe.name}</div></Link>
             </Col>
-            <Col lg={6} className={"list-universe-status-container"}>
+            <Col sm={6} className={"list-universe-status-container"}>
               <UniverseStatusContainer currentUniverse={universe} showLabelText={true}/>
             </Col>
           </Row>
           <Row className={"universe-list-detail-item"}>
-            <Col lg={7}>
+            <Col sm={7}>
               <CellLocationPanel {...this.props}/>
             </Col>
-            <Col lg={5}>
+            <Col sm={5}>
               <CellResourcesPanel {...this.props}/>
             </Col>
           </Row>
@@ -104,15 +104,15 @@ class CellLocationPanel extends Component {
     return (
       <div >
         <Row className={"cell-position-detail"}>
-          <Col lg={2} className={"cell-num-nodes"}>{userIntent && userIntent.numNodes} Nodes</Col>
-          <Col lg={10}>
+          <Col sm={2} className={"cell-num-nodes"}>{userIntent && userIntent.numNodes} Nodes</Col>
+          <Col sm={10}>
             <span className={"cell-provider-name"}>{universe.provider && universe.provider.name}</span>
             <span className={"cell-multi-az"}>({isMultiAz})</span>
           </Col>
         </Row>
         <Row className={"cell-position-detail"}>
-          <Col lg={2} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
-          <Col lg={10}>{regionList}</Col>
+          <Col sm={2} className={"cell-num-nodes"}>{userIntent.regionList.length} Regions</Col>
+          <Col sm={10}>{regionList}</Col>
         </Row>
       </div>
     )
@@ -143,27 +143,27 @@ class CellResourcesPanel extends Component {
 
     return (
       <div>
-        <Col lg={4}>
+        <Col sm={4}>
           <div className={"cell-cost-item"}>
             <YBCost value={pricePerHour} multiplier={"month"}/>
           </div>
           Monthly Cost
         </Col>
-        <Col lg={8}>
+        <Col sm={8}>
           <Row>
             <Row>
-              <Col lg={6} className={"cell-bold-label"}>
+              <Col sm={6} className={"cell-bold-label"}>
                 Read <span className="cell-bold-letters">{averageReadRate}</span>
               </Col>
-              <Col lg={6} className={"cell-chart-container"}>
+              <Col sm={6} className={"cell-chart-container"}>
                 <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-read`} type={"read"} />
               </Col>
             </Row>
             <Row >
-              <Col lg={6} className={"cell-bold-label"}>
+              <Col sm={6} className={"cell-bold-label"}>
                 Write <span className="cell-bold-letters">{averageWriteRate}</span>
               </Col>
-              <Col lg={6} className={"cell-chart-container"}>
+              <Col sm={6} className={"cell-chart-container"}>
                 <UniverseReadWriteMetrics {...this.props} graphIndex={`${universeUUID}-write`} type={"write"}/>
               </Col>
             </Row>
