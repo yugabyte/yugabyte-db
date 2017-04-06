@@ -34,7 +34,6 @@ export default class UniverseResources extends Component {
         <YBResourceCount size={resources.volumeCount || 0} kind="Volume" pluralizeKind />
         <YBResourceCount size={costPerDay} kind="/day" />
         <YBResourceCount size={costPerMonth} kind="/month" />
-        <hr/>
       </div>
     );
   }

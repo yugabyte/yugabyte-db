@@ -170,12 +170,12 @@ export default class AZSelectorTable extends Component {
       azList = azGroups.map(function(azGroupItem, idx){
         return (
           <Row key={idx} >
-            <Col lg={6}>
+            <Col sm={6}>
               <Field name={`select${idx}`} component={YBControlledSelect}
                      options={azListOptions} selectVal={azGroupItem.value}
                      onInputChanged={self.handleAZChange.bind(self, idx)}/>
             </Col>
-            <Col lg={6}>
+            <Col sm={6}>
               <Field name={`nodes${idx}`} component={YBControlledNumericInput}
                      val={azGroupItem.count}
                      onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
