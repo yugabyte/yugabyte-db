@@ -282,6 +282,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // Preallocates the space for a new segment.
   CHECKED_STATUS PreAllocateNewSegment();
 
+  // Returns the desired size for the next log segment to be created.
+  uint64_t NextSegmentDesiredSize();
+
   // Writes serialized contents of 'entry' to the log. Called inside
   // AppenderThread. If 'caller_owns_operation' is true, then the
   // 'operation' field of the entry will be released after the entry
@@ -373,6 +376,12 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The maximum segment size, in bytes.
   uint64_t max_segment_size_;
+
+  // The maximum segment size we want for the current WAL segment, in bytes.
+  // This value keeps doubling (for each subsequent WAL segment) till it
+  // gets to max_segment_size_.
+  // Note: The first WAL segment will start off as twice of this value.
+  uint64_t cur_max_segment_size_ = 512 * 1024;
 
   // The queue used to communicate between the thread calling
   // Reserve() and the Log Appender thread

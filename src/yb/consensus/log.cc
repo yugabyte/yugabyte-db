@@ -485,8 +485,9 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
 
   // if the size of this entry overflows the current segment, get a new one
   if (allocation_state() == kAllocationNotStarted) {
-    if ((active_segment_->Size() + entry_batch_bytes + 4) > max_segment_size_) {
-      LOG(INFO) << "Max segment size reached. Starting new segment allocation. ";
+    if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
+      LOG(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
+                << "Starting new segment allocation. ";
       RETURN_NOT_OK(AsyncAllocateSegment());
       if (!options_.async_preallocate_segments) {
         LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
@@ -839,6 +840,10 @@ Status Log::DeleteOnDiskData(FsManager* fs_manager,
   return Status::OK();
 }
 
+uint64_t Log::NextSegmentDesiredSize() {
+  return std::min(cur_max_segment_size_ * 2, max_segment_size_);
+}
+
 Status Log::PreAllocateNewSegment() {
   TRACE_EVENT1("log", "PreAllocateNewSegment", "file", next_segment_path_);
   CHECK_EQ(allocation_state(), kAllocationInProgress);
@@ -849,10 +854,11 @@ Status Log::PreAllocateNewSegment() {
   RETURN_NOT_OK(CreatePlaceholderSegment(opts, &next_segment_path_, &next_segment_file_));
 
   if (options_.preallocate_segments) {
-    TRACE("Preallocating $0 byte segment in $1", max_segment_size_, next_segment_path_);
+    uint64_t next_segment_size = NextSegmentDesiredSize();
+    TRACE("Preallocating $0 byte segment in $1", next_segment_size, next_segment_path_);
     // TODO (perf) zero the new segments -- this could result in
     // additional performance improvements.
-    RETURN_NOT_OK(next_segment_file_->PreAllocate(max_segment_size_));
+    RETURN_NOT_OK(next_segment_file_->PreAllocate(next_segment_size));
   }
 
   {
@@ -922,6 +928,7 @@ Status Log::SwitchToAllocatedSegment() {
 
   // Now set 'active_segment_' to the new segment.
   active_segment_.reset(new_segment.release());
+  cur_max_segment_size_ = NextSegmentDesiredSize();
 
   allocation_state_ = kAllocationNotStarted;
 

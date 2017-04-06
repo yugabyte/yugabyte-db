@@ -29,19 +29,20 @@
 #include "yb/consensus/log_index.h"
 
 #include <fcntl.h>
-#include <mutex>
-#include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include <mutex>
+#include <string>
 #include <vector>
 
 #include "yb/consensus/opid_util.h"
-#include "yb/util/locks.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/locks.h"
 
 using std::string;
 using strings::Substitute;
@@ -63,7 +64,27 @@ struct PhysicalEntry {
   uint64_t offset_in_segment;
 } PACKED;
 
+// The number of index entries per index chunk.
+//
+// **** Note: This number cannot be changed after production!!!!! ***
+//
+// Why? Because, given a raft log index, the chunk (i.e. the specific index file) and index
+// of the entry within the file is determined via simple "/" and "%" calculations respectively
+// on this value. [Technically, if we did decide to change this number, we would have to
+// implement some logic to compute the number of entries in each file from its size. But
+// currently, that's not implemented.]
+//
+// On MacOS, ftruncate()'ing a file to its desired size before doing the mmap, immediately uses up
+// actual disk space, whereas on Linux, it appears to be lazy. Since MacOS is unlikely to be
+// used for production scenarios, to reduce disk space requirements and testing load (when creating
+// lots of tables (and therefore tablets)), we set this number to a lower value for MacOS.
+//
+#if defined(__APPLE__)
+static const int64_t kEntriesPerIndexChunk = 16 * 1024;
+#else
 static const int64_t kEntriesPerIndexChunk = 1000000;
+#endif
+
 static const int64_t kChunkFileSize = kEntriesPerIndexChunk * sizeof(PhysicalEntry);
 
 ////////////////////////////////////////////////////////////
