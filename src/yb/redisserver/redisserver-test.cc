@@ -37,6 +37,7 @@ class TestRedisService : public RedisTableTestBase {
 
  protected:
   void StartServer();
+  void StopServer();
   void StartClient();
   void StopClient();
   void RestartClient();
@@ -102,6 +103,13 @@ void TestRedisService::StartServer() {
   LOG(INFO) << "Redis server successfully started.";
 }
 
+void TestRedisService::StopServer() {
+  LOG(INFO) << "Shut down redis server...";
+  server_->Shutdown();
+  server_.reset();
+  LOG(INFO) << "Redis server successfully shut down.";
+}
+
 void TestRedisService::StartClient() {
   Sockaddr remote;
   CHECK_OK(remote.ParseString("0.0.0.0", server_port()));
@@ -121,6 +129,7 @@ void TestRedisService::RestartClient() {
 void TestRedisService::TearDown() {
   test_client_.disconnect();
   StopClient();
+  StopServer();
   RedisTableTestBase::TearDown();
 }
 

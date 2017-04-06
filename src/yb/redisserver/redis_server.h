@@ -24,6 +24,8 @@ class RedisServer : public server::RpcAndWebServerBase {
 
   CHECKED_STATUS Start();
 
+  void Shutdown() { server::RpcAndWebServerBase::Shutdown(); }
+
  private:
   RedisServerOptions opts_;
 
