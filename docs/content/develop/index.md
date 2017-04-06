@@ -6,14 +6,18 @@ weight: 30
 
 ## Run a sample app
 
+YugaWare ships with sample apps for the most common use cases powered by YugaByte. You can see the instructions on how to run these apps by simply clicking on the **Apps** button in the Overview tab of the Universe detail page.
+
 ![Time Series Sample App](/images/time-series-sample-app.png)
 
+Log into the YugaWare host machine.
+
 ```sh
-# go to the utils directory on the yugaware host
-cd /opt/yugabyte/utils
+# open a bash shell in the yugaware docker container
+sudo docker exec -it yugaware bash
 
 # run the time-series sample app
-java -jar yb-sample-app.jar --workload CassandraTimeseries --nodes 10.151.22.132:9042,10.151.38.209:9042,10.151.50.1:9042
+java -jar /opt/yugabyte/utils/yb-sample-app.jar --workload CassandraTimeseries --nodes 10.151.22.132:9042,10.151.38.209:9042,10.151.50.1:9042
 ```
 
 Other values of the `workload` param are `CassandraStockTicker`, `CassandraKeyValue`, `RedisKeyValue`
