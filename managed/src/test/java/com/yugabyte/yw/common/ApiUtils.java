@@ -12,6 +12,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
+import org.yb.ColumnSchema.SortOrder;
 
 public class ApiUtils {
   public static Universe.UniverseUpdater mockUniverseUpdater() {
@@ -105,9 +106,15 @@ public class ApiUtils {
     return node;
   }
 
-  public static TableDetails getDummyTableDetails(int partitionKeyCount, int clusteringKeyCount) {
+  public static TableDetails getDummyTableDetailsNoClusteringKey(int partitionKeyCount, long ttl) {
+    return getDummyTableDetails(partitionKeyCount, 0, ttl, SortOrder.NONE);
+  }
+
+  public static TableDetails getDummyTableDetails(int partitionKeyCount, int clusteringKeyCount,
+                                                  long ttl, SortOrder sortOrder) {
     TableDetails table = new TableDetails();
     table.tableName = "dummy_table";
+    table.ttlInSeconds = ttl;
     table.columns = new LinkedList<>();
     for (int i = 0; i < partitionKeyCount + clusteringKeyCount; ++i) {
       ColumnDetails column = new ColumnDetails();
@@ -116,6 +123,9 @@ public class ApiUtils {
       column.type = ColumnDetails.YQLDataType.INT;
       column.isPartitionKey = i < partitionKeyCount;
       column.isClusteringKey = !column.isPartitionKey;
+      if (column.isClusteringKey) {
+        column.sortOrder = sortOrder;
+      }
       table.columns.add(column);
     }
     ColumnDetails column = new ColumnDetails();
