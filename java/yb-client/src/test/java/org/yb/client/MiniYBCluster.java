@@ -291,6 +291,9 @@ public class MiniYBCluster implements AutoCloseable {
     }
     pathsToDelete.add(dataDirPath);
 
+    // Sleep for some time to let the shell master to get initialized and running.
+    Thread.sleep(5000);
+
     return newHp;
   }
 
