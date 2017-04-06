@@ -13,6 +13,7 @@ import { FETCH_UNIVERSE_INFO, FETCH_UNIVERSE_INFO_SUCCESS, FETCH_UNIVERSE_INFO_F
   RESET_ROLLING_UPGRADE, SET_UNIVERSE_METRICS, SET_PLACEMENT_STATUS, RESET_UNIVERSE_CONFIGURATION }
   from '../actions/universe';
 import _ from 'lodash';
+import { isValidArray } from 'utils/ObjectUtils.js';
 
 const INITIAL_STATE = {currentUniverse: null, universeList: [], error: null, showModal: false, visibleModal: "",
   formSubmitSuccess: false, universeConfigTemplate: {}, universeResourceTemplate: {},
@@ -93,13 +94,15 @@ export default function(state = INITIAL_STATE, action) {
     case SET_UNIVERSE_METRICS:
       var currentUniverseList = state.universeList;
       var universeReadWriteMetricList = action.payload.data.disk_iops_by_universe.data;
-      universeReadWriteMetricList.forEach(function(metricData, metricIdx){
-        for(var counter =0; counter < currentUniverseList.length; counter++) {
-          if (currentUniverseList[counter].universeDetails.nodePrefix === metricData.name) {
-            currentUniverseList[counter][metricData.labels["type"]] = metricData;
+      if (isValidArray(universeReadWriteMetricList)) {
+        universeReadWriteMetricList.forEach(function(metricData, metricIdx) {
+          for (var counter = 0; counter < currentUniverseList.length; counter++) {
+            if (currentUniverseList[counter].universeDetails.nodePrefix === metricData.name) {
+              currentUniverseList[counter][metricData.labels["type"]] = metricData;
+            }
           }
-        }
-      });
+        });
+      }
       return {...state, universeList: currentUniverseList}
     case SET_PLACEMENT_STATUS:
       return {...state, currentPlacementStatus: action.payload}
