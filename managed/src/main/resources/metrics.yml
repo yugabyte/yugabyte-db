@@ -392,7 +392,7 @@ tserver_tc_malloc_stats:
         "tcmalloc_max_total_thread_cache_bytes": "Usage"
         "tcmalloc_pageheap_free_bytes": "Free"
         "tcmalloc_pageheap_unmapped_bytes": "Small"
-      ticksuffix: "&nbsp;GiB"
+
 tserver_log_stats:
   metric: "collectd_yb_tserver_counter_total"
   function: "avg"
