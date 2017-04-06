@@ -11,16 +11,26 @@ const mapDispatchToProps = (dispatch) => {
     submitCreateTable: (currentUniverse, values) => {
       var rowCounter = 1;
       var partitionKeyList = values.partitionKeyColumns.map(function(row, idx){
-        return {"columnOrder": rowCounter ++, "name": row.name, "type": row.selected,
-                "isPartitionKey": true, "isClusteringKey": false};
+        return {"columnOrder": rowCounter ++,
+                "name": row.name,
+                "type": row.selected,
+                "isPartitionKey": true,
+                "isClusteringKey": false};
       });
       var clusteringColumnList = values.clusteringColumns.map(function(row, idx){
-        return {"columnOrder": rowCounter ++, "name": row.name, "type": row.selected,
-          "isPartitionKey": false, "isClusteringKey": true};
+        return {"columnOrder": rowCounter ++,
+                "name": row.name,
+                "type": row.selected,
+                "sortOrder": row.sortOrder,
+                "isPartitionKey": false,
+                "isClusteringKey": true};
       });
       var otherColumnList = values.otherColumns.map(function(row, idx){
-        return {"columnOrder": rowCounter ++, "name": row.name, "type": row.selected,
-          "isPartitionKey": false, "isClusteringKey": false};
+        return {"columnOrder": rowCounter ++,
+                "name": row.name,
+                "type": row.selected,
+                "isPartitionKey": false,
+                "isClusteringKey": false};
       });
       var tableDetails = partitionKeyList.concat(clusteringColumnList, otherColumnList);
 
@@ -31,7 +41,8 @@ const mapDispatchToProps = (dispatch) => {
       payload.tableType = "YQL_TABLE_TYPE";
       payload.tableDetails = {
         "tableName": values.tableName,
-        "columns": tableDetails
+        "columns": tableDetails,
+        "ttlInSeconds": values.ttlInSeconds
       };
       var universeUUID = currentUniverse.universeUUID;
 

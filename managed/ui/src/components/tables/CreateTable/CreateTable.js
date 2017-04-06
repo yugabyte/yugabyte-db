@@ -28,10 +28,10 @@ class KeyColumnList extends Component {
 
   columnListSort(item) {
     const {columnType} = this.props;
-    var sortOrderOptions = [<option key={"ascending"} value={"asc"}>
+    var sortOrderOptions = [<option key={"ascending"} value={"ASC"}>
                               ASC
                             </option>,
-                            <option key={"descending"} value={"desc"}>
+                            <option key={"descending"} value={"DESC"}>
                               DESC
                             </option>];
     if (columnType === "clustering") {
@@ -192,16 +192,28 @@ export default class CreateTable extends Component {
                     Type
                   </label>
                   <div className="yb-field-group">
-                    <YBRadioButton name="type" key="cassandra" label={cassandraLabel} fieldValue="cassandra" checkState={true} />
+                    <YBRadioButton name="type" key="cassandra" label={cassandraLabel}
+                                   fieldValue="cassandra" checkState={true} />
                   </div>
                 </div>
               </div>
             </Col>
           </Row>
+          <Row className="create-table-name-container">
+            <Col lg={6}>
+              <div className="form-right-aligned-labels">
+                <Field name="ttlInSeconds" component={YBInputField}
+                       className={`table-name-cell`} label="TTL (in seconds)"
+                       placeHolder={"0 seconds (optional)"} />
+              </div>
+            </Col>
+          </Row>
           <CassandraColumnSpecification {...this.props} />
           <div className="form-action-button-container">
-            <YBButton btnText="Create" btnClass={`pull-right btn btn-default bg-orange`} btnType="submit"/>
-            <YBButton btnText="Cancel" btnClass={`pull-right btn btn-default`} onClick={this.props.showListTables}/>
+            <YBButton btnText="Create" btnClass={`pull-right btn btn-default bg-orange`}
+                      btnType="submit"/>
+            <YBButton btnText="Cancel" btnClass={`pull-right btn btn-default`}
+                      onClick={this.props.showListTables}/>
           </div>
         </form>
       </div>
