@@ -6,7 +6,6 @@
 
 /* From gentelella.css need to cleanup */
 .tile_count .tile_stats_count {
-  border-bottom: 1px solid #D9DEE4;
   padding: 0 20px 0 20px;
   text-overflow: ellipsis;
   overflow: hidden;

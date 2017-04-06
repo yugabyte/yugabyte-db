@@ -12,7 +12,7 @@ import './UniverseDisplayPanel.scss';
 class CreateUniverseButtonComponent extends Component {
   render() {
     return (
-      <Col md={3} lg={2}>
+      <Col sm={4} md={3} lg={2}>
         <div className="create-universe-button" {...this.props}>
           <div className="btn-icon">
             <i className="fa fa-plus"/>
@@ -40,7 +40,7 @@ class UniverseDisplayItem extends Component {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>
     }
     return (
-      <Col md={3} lg={2}>
+      <Col sm={4} md={3} lg={2}>
         <div className="universe-display-item-container">
           <div className="status-icon">
             <UniverseStatusContainer currentUniverse={universe} />

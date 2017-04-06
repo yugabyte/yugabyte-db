@@ -11,7 +11,7 @@ class StatsPanelComponent extends Component {
   render() {
     const {value, label} = this.props;
     return (
-      <Col md={4} className="tile_stats_count text-center">
+      <Col sm={4} className="tile_stats_count text-center">
         <DescriptionItem>
           <div className="count">
             {value}
@@ -41,7 +41,7 @@ export default class HighlightedStatsPanel extends Component {
                                              formattedNumberStyle="currency" currency="USD"/>;
     return (
       <div className="row tile_count highlighted-stats-panel">
-        <Col md={6} mdOffset={3}>
+        <Col sm={6} smOffset={3}>
           <StatsPanelComponent value={universeList.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
           <StatsPanelComponent value={formattedCost} label={"Per Month"}/>
