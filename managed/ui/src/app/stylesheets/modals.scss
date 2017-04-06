@@ -13,3 +13,17 @@
   margin-left: 14px !important;
   }
 }
+
+.modal-accessory {
+  position: relative;
+  float: left;
+  top: -2px;
+}
+
+.modal-action-buttons {
+  position: absolute;
+  bottom: 14px;
+  right: 15px;
+  z-index: 100;
+  background-color: #f5f4f0;
+}

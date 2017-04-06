@@ -31,10 +31,12 @@ export default class YBModal extends Component {
           </Modal.Body>
           {(footerAccessory || showCancelButton || onFormSubmit) &&
             <Modal.Footer>
-              {footerAccessory && <div className="pull-left">{footerAccessory}</div>}
-              {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
-              {onFormSubmit && <YBButton btnClass="btn bg-orange" disabled={btnDisabled}
-                btnText={submitLabel} onClick={onFormSubmit} />}
+              <div className="modal-action-buttons">
+                {onFormSubmit && <YBButton btnClass="btn bg-orange pull-right" disabled={btnDisabled}
+                  btnText={submitLabel} onClick={onFormSubmit} />}
+                {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
+              </div>
+              {footerAccessory && <div className="pull-left modal-accessory">{footerAccessory}</div>}
             </Modal.Footer>
           }
         </form>

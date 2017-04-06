@@ -411,7 +411,7 @@ export default class UniverseForm extends Component {
         submitLabel={submitLabel} showCancelButton={true}
           onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large">
         <Row className={"no-margin-row"}>
-        <Col lg={6}>
+        <Col md={6}>
           <h4>Cloud Configuration</h4>
           <div className="form-right-aligned-labels">
             <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
@@ -428,16 +428,16 @@ export default class UniverseForm extends Component {
                     minVal={Number(this.state.replicationFactor)}/>
           </div>
         </Col>
-        <Col lg={6} className={"universe-az-selector-container"}>
+        <Col md={6} className={"universe-az-selector-container"}>
           <AZSelectorTable {...this.props} numNodesChanged={this.numNodesChangedViaAzList} setPlacementInfo={this.setPlacementInfo}/>
           {placementStatus}
         </Col>
         </Row>
         <Row className={"no-margin-row top-border-row"}>
-          <Col lg={12}>
+          <Col md={12}>
             <h4>Instance Configuration</h4>
           </Col>
-          <Col lg={4}>
+          <Col md={4}>
             <div className="form-right-aligned-labels">
               <Field name="instanceType" type="select" component={YBSelectWithLabel} label="Instance Type"
                      options={universeInstanceTypeList}
@@ -447,7 +447,7 @@ export default class UniverseForm extends Component {
             </div>
           </Col>
           {deviceDetail &&
-            <Col lg={8}>
+            <Col md={8}>
               <div className="form-right-aligned-labels">
                 <div className="form-group universe-form-instance-info">
                   <label className="form-item-label">Volume Info</label>
@@ -458,17 +458,17 @@ export default class UniverseForm extends Component {
           }
         </Row>
         <Row className={"no-margin-row top-border-row"}>
-          <Col lg={12}>
+          <Col md={12}>
             <h4>Advanced</h4>
           </Col>
-          <Col lg={4}>
+          <Col sm={7} md={4}>
             <div className="form-right-aligned-labels">
               <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
                      label="Replication Factor" initialValue={this.state.replicationFactor}
                      onSelect={this.replicationFactorChanged} isReadOnly={isRFReadOnly}/>
             </div>
           </Col>
-          <Col lg={4}>
+          <Col sm={5} md={4}>
             <div className="form-right-aligned-labels">
               <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel} defaultValue={this.state.ybSoftwareVersion}
                      options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged}/>
