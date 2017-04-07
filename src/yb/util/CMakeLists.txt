@@ -142,6 +142,7 @@ set(UTIL_SRCS
   path_util.cc
   pb_util.cc
   pb_util-internal.cc
+  ref_cnt_buffer.cc
   random_util.cc
   resettable_heartbeater.cc
   rolling_log.cc
@@ -185,6 +186,7 @@ if(NOT APPLE)
 endif()
 
 set(UTIL_LIBS
+  boost_chrono
   boost_system
   boost_thread
   crcutil
@@ -306,6 +308,7 @@ ADD_YB_TEST(once-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
 ADD_YB_TEST(pstack_watcher-test)
+ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
 ADD_YB_TEST(resettable_heartbeater-test)

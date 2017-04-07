@@ -105,6 +105,11 @@
         << "\n\nExpected (trimmed):\n" << expected_tmp; \
   } while(0)
 
+#define YB_ASSERT_TRUE(condition) \
+  GTEST_TEST_BOOLEAN_((condition) ? true : false, #condition, false, true, \
+                      GTEST_FATAL_FAILURE_)
+
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 
