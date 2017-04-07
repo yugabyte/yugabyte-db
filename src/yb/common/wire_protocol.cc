@@ -84,6 +84,8 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     pb->set_code(AppStatusPB::INVALID_COMMAND);
   } else if (status.IsSqlError()) {
     pb->set_code(AppStatusPB::SQL_ERROR);
+  } else if (status.IsInternalError()) {
+    pb->set_code(AppStatusPB::INTERNAL_ERROR);
   } else {
     LOG(WARNING) << "Unknown error code translation from internal error "
                  << status.ToString() << ": sending UNKNOWN_ERROR";
@@ -100,7 +102,9 @@ void StatusToPB(const Status& status, AppStatusPB* pb) {
     // will reconstruct the other parts of the ToString() response.
     pb->set_message(status.message().ToString());
   }
-  if (status.posix_code() != -1) {
+  if (status.IsSqlError()) {
+    pb->set_sql_error_code(status.sql_error_code());
+  } else if (status.posix_code() != -1) {
     pb->set_posix_code(status.posix_code());
   }
 }
@@ -150,7 +154,12 @@ Status StatusFromPB(const AppStatusPB& pb) {
     case AppStatusPB::INVALID_COMMAND:
       return STATUS(InvalidCommand, pb.message(), "", posix_code);
     case AppStatusPB::SQL_ERROR:
-      return STATUS(SqlError, pb.message(), "", posix_code);
+      if (!pb.has_sql_error_code()) {
+        return STATUS(InternalError, "SQL error code missing");
+      }
+      return STATUS(SqlError, pb.message(), "", pb.sql_error_code());
+    case AppStatusPB::INTERNAL_ERROR:
+      return STATUS(InternalError, pb.message(), "", posix_code);
     case AppStatusPB::UNKNOWN_ERROR:
     default:
       LOG(WARNING) << "Unknown error code in status: " << pb.ShortDebugString();

@@ -12,6 +12,8 @@
 
 #include <cstdint>
 
+#include "yb/util/status.h"
+
 namespace yb {
 namespace sql {
 
@@ -79,6 +81,9 @@ enum class ErrorCode : int64_t {
   // Warning. Start with 100.
   NOTFOUND = 100,
 };
+
+// Return SQL error code from an Status if it is a SQL error. Otherwise, return FAILURE.
+ErrorCode GetErrorCode(const Status& s);
 
 // Mapping errcode to text messages.
 const char *ErrorText(ErrorCode code);

@@ -211,7 +211,7 @@ Status YQLValue::Deserialize(const DataType sql_type, const YQLClient client, Sl
   }
 
   LOG(FATAL) << "Internal error: unsupported type " << sql_type;
-  return STATUS(RuntimeError, "unsupported type");
+  return STATUS(InternalError, "unsupported type");
 }
 
 

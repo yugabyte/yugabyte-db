@@ -57,11 +57,15 @@ message AppStatusPB {
     END_OF_FILE = 18;
     INVALID_COMMAND = 19;
     SQL_ERROR = 20;
+    INTERNAL_ERROR = 21;
   }
 
   required ErrorCode code = 1;
   optional string message = 2;
-  optional int32 posix_code = 4;
+  oneof error_codes {
+    int32 posix_code = 4;
+    int64 sql_error_code = 5;
+  }
 }
 
 // Uniquely identify a particular instance of a particular server in the

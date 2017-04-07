@@ -33,7 +33,7 @@ ProcessContextBase::~ProcessContextBase() {
 CHECKED_STATUS ProcessContextBase::GetStatus() {
   // Erroneous index is negative while successful index is non-negative.
   if (error_code_ < ErrorCode::SUCCESS) {
-    return STATUS(SqlError, error_msgs_.c_str());
+    return STATUS(SqlError, error_msgs_.c_str(), Slice(), static_cast<int64_t>(error_code_));
   }
   return Status::OK();
 }
@@ -88,7 +88,7 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
   error_msgs_.append(msg);
 
   LOG(INFO) << msg;
-  return STATUS(SqlError, msg.c_str());
+  return STATUS(SqlError, msg.c_str(), Slice(), static_cast<int64_t>(error_code_));
 }
 
 CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l, const char *m, const char* token) {

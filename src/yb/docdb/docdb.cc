@@ -754,7 +754,7 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
           return STATUS_SUBSTITUTE(Corruption,
               "Expected primitive value type, got $0", ValueTypeToStr(doc_value.value_type()));
         }
-        *subdocument = std::move(SubDocument(std::move(doc_value.primitive_value())));
+        *subdocument = SubDocument(doc_value.primitive_value());
         iter->Seek(found_key.AdvanceOutOfSubDoc().AsSlice());
       }
       continue;

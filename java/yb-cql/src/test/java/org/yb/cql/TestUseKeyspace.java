@@ -22,7 +22,7 @@ public class TestUseKeyspace extends TestBase {
     try {
       session.execute("USE \"" + keyspace + "\";");
       fail("USE \"" + keyspace + "\" did not fail");
-    } catch (com.datastax.driver.core.exceptions.SyntaxError e) {
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
       LOG.info("Expected exception", e);
     }
   }

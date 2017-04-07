@@ -10,6 +10,7 @@ import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.SyntaxError;
+import com.datastax.driver.core.exceptions.InvalidQueryException;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -21,7 +22,7 @@ import static org.junit.Assert.fail;
 
 public class TestBindVariable extends TestBase {
 
-  private void testInvalidBindStatement(String stmt, Object... values) {
+  private void testBindSyntaxError(String stmt, Object... values) {
     try {
       session.execute(stmt, values);
       fail("Statement \"" + stmt + "\" did not fail");
@@ -30,11 +31,20 @@ public class TestBindVariable extends TestBase {
     }
   }
 
+  private void testInvalidBindStatement(String stmt, Object... values) {
+    try {
+      session.execute(stmt, values);
+      fail("Statement \"" + stmt + "\" did not fail");
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+      LOG.info("Expected exception", e);
+    }
+  }
+
   private void testInvalidBindStatement(String stmt, Map<String,Object> values) {
     try {
       session.execute(stmt, values);
       fail("Statement \"" + stmt + "\" did not fail");
-    } catch (com.datastax.driver.core.exceptions.SyntaxError e) {
+    } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
       LOG.info("Expected exception", e);
     }
   }
@@ -985,9 +995,9 @@ public class TestBindVariable extends TestBase {
     SetupTable("test_bind", 0 /* num_rows */);
 
     // Illegal (non-positive) bind position marker.
-    testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
-                             " WHERE h1 = :0 AND h2 = :1 AND r1 = :2;",
-                             new Integer(7), "h7", new Integer(107));
+    testBindSyntaxError("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+                        " WHERE h1 = :0 AND h2 = :1 AND r1 = :2;",
+                        new Integer(7), "h7", new Integer(107));
 
     // Missing bind variable at position 3.
     testInvalidBindStatement("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +

@@ -16,15 +16,15 @@ namespace yb {
 const char* Status::CopyState(const char* state) {
   uint32_t size;
   strings::memcpy_inlined(&size, state, sizeof(size));
-  auto result = new char[size + 7];
-  strings::memcpy_inlined(result, state, size + 7);
+  auto result = new char[size + 13];
+  strings::memcpy_inlined(result, state, size + 13);
   return result;
 }
 
 Status::Status(Code code,
                const Slice& msg,
                const Slice& msg2,
-               int16_t posix_code,
+               int64_t error_code,
                const char* file_name,
                int line_number)
     : file_name_(file_name),
@@ -33,15 +33,15 @@ Status::Status(Code code,
   const uint32_t len1 = msg.size();
   const uint32_t len2 = msg2.size();
   const uint32_t size = len1 + (len2 ? (2 + len2) : 0);
-  auto result = new char[size + 7];
+  auto result = new char[size + kMsgPos];
   memcpy(result, &size, sizeof(size));
-  result[4] = static_cast<char>(code);
-  memcpy(result + 5, &posix_code, sizeof(posix_code));
-  memcpy(result + 7, msg.data(), len1);
+  result[kCodePos] = static_cast<char>(code);
+  memcpy(result + kErrorCodePos, &error_code, sizeof(error_code));
+  memcpy(result + kMsgPos, msg.data(), len1);
   if (len2) {
-    result[7 + len1] = ':';
-    result[8 + len1] = ' ';
-    memcpy(result + 9 + len1, msg2.data(), len2);
+    result[kMsgPos + len1] = ':';
+    result[kMsgPos + len1 + 1] = ' ';
+    memcpy(result + kMsgPos + 2 + len1, msg2.data(), len2);
   }
   state_ = result;
 }
@@ -147,10 +147,10 @@ std::string Status::ToString(bool include_file_and_line) const {
   result.append(": ");
   Slice msg = message();
   result.append(reinterpret_cast<const char*>(msg.data()), msg.size());
-  int16_t posix = posix_code();
-  if (posix != -1) {
+  int64_t error = GetErrorCode();
+  if (error != -1) {
     char buf[64];
-    snprintf(buf, sizeof(buf), " (error %d)", posix);
+    snprintf(buf, sizeof(buf), " (error %lld)", error);
     result.append(buf);
   }
   return result;
@@ -163,16 +163,27 @@ Slice Status::message() const {
 
   uint32_t length;
   memcpy(&length, state_, sizeof(length));
-  return Slice(state_ + 7, length);
+  return Slice(state_ + kMsgPos, length);
 }
 
-int16_t Status::posix_code() const {
+int64_t Status::GetErrorCode() const {
   if (state_ == nullptr) {
     return 0;
   }
-  int16_t posix_code;
-  memcpy(&posix_code, state_ + 5, sizeof(posix_code));
-  return posix_code;
+  int64_t error_code;
+  memcpy(&error_code, state_ + kErrorCodePos, sizeof(error_code));
+  return error_code;
+}
+
+int16_t Status::posix_code() const {
+  int64_t error_code = !IsSqlError() ? GetErrorCode() : 0;
+  CHECK_LE(error_code, INT16_MAX) << "invalid posix_code";
+  return static_cast<int16_t>(error_code);
+}
+
+int64_t Status::sql_error_code() const {
+  int64_t error_code = IsSqlError() ? GetErrorCode() : 0;
+  return error_code;
 }
 
 Status Status::CloneAndPrepend(const Slice& msg) const {

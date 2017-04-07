@@ -103,10 +103,10 @@ Status DateTime::TimestampFromString(const string str,
       timestamp->set_value(ts);
       return Status::OK();
     } catch (std::exception e) {
-      return STATUS(SqlError, "Invalid Timestamp: wrong format of input string");
+      return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string");
     }
   } else {
-    return STATUS(SqlError, "Invalid Timestamp: wrong format of input string");
+    return STATUS(InvalidArgument, "Invalid Timestamp: wrong format of input string");
   }
 }
 

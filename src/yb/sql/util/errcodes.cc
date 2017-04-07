@@ -79,6 +79,10 @@ const unordered_map<int64_t, const char*> kYbSqlErrorMessage {
   { static_cast<int64_t>(ErrorCode::NOTFOUND), "Not Found" },
 };
 
+ErrorCode GetErrorCode(const Status& s) {
+  return s.IsSqlError() ? static_cast<ErrorCode>(s.sql_error_code()) : ErrorCode::FAILURE;
+}
+
 const char *ErrorText(ErrorCode error_code) {
   return kYbSqlErrorMessage.at(static_cast<int64_t>(error_code));
 }

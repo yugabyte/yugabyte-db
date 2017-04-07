@@ -238,14 +238,14 @@ class YB_EXPORT Status {
                            int line_number,
                            const Slice& msg,
                            const Slice& msg2 = Slice(),
-                           int64_t posix_code = -1) {
+                           int16_t posix_code = -1) {
     return Status(kIncomplete, msg, msg2, posix_code, file_name, line_number);
   }
   static Status EndOfFile(const char* file_name,
                           int line_number,
                           const Slice& msg,
                           const Slice& msg2 = Slice(),
-                          int64_t posix_code = -1) {
+                          int16_t posix_code = -1) {
     return Status(kEndOfFile, msg, msg2, posix_code, file_name, line_number);
   }
   static Status InvalidCommand(const char* file_name,
@@ -258,9 +258,16 @@ class YB_EXPORT Status {
   static Status SqlError(const char* file_name,
                          int line_number,
                          const Slice& msg,
-                         const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kSqlError, msg, msg2, posix_code, file_name, line_number);
+                         const Slice& msg2,
+                         int64_t error_code) {
+    return Status(kSqlError, msg, msg2, error_code, file_name, line_number);
+  }
+  static Status InternalError(const char* file_name,
+                              int line_number,
+                              const Slice& msg,
+                              const Slice& msg2 = Slice(),
+                              int16_t posix_code = -1) {
+    return Status(kInternalError, msg, msg2, posix_code, file_name, line_number);
   }
 
   // Returns true iff the status indicates success.
@@ -323,8 +330,11 @@ class YB_EXPORT Status {
   // Returns true iff the status indicates an InvalidCommand error.
   bool IsInvalidCommand() const { return code() == kInvalidCommand; }
 
-  // Returns true iff the status indicates a SqlError.
+  // Returns true iff the status indicates a SQL error.
   bool IsSqlError() const { return code() == kSqlError; }
+
+  // Returns true iff the status indicates an internal error.
+  bool IsInternalError() const { return code() == kInternalError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -343,8 +353,12 @@ class YB_EXPORT Status {
   // live and unchanged.
   Slice message() const;
 
-  // Get the POSIX code associated with this Status, or -1 if there is none.
+  // Get the POSIX code associated with this Status, or -1 if there is none. For non-SQL errors
+  // only.
   int16_t posix_code() const;
+
+  // Get the error code associated with this Status, or -1 if there is none. For SQL errors only.
+  int64_t sql_error_code() const;
 
   // Return a new Status object with the same state plus an additional leading message.
   Status CloneAndPrepend(const Slice& msg) const;
@@ -365,9 +379,14 @@ class YB_EXPORT Status {
   // of the following form:
   //    state_[0..3] == length of message
   //    state_[4]    == code
-  //    state_[5..6] == posix_code
-  //    state_[7..]  == message
+  //    state_[5..12] == posix_code / error_code
+  //    state_[13..]  == message
   const char* state_ = nullptr;
+
+  static constexpr size_t kMsgLengthPos = 0;
+  static constexpr size_t kCodePos      = 4;
+  static constexpr size_t kErrorCodePos = 5;
+  static constexpr size_t kMsgPos       = 13;
 
   // This must always be a pointer to a constant string. The status object does not own this string.
   const char* file_name_ = nullptr;
@@ -395,6 +414,7 @@ class YB_EXPORT Status {
     kEndOfFile = 18,
     kInvalidCommand = 19,
     kSqlError = 20,
+    kInternalError = 21,
 
     // NOTE: Remember to duplicate these constants into wire_protocol.proto and
     // and to add StatusTo/FromPB ser/deser cases in wire_protocol.cc !
@@ -407,10 +427,12 @@ class YB_EXPORT Status {
     return (state_ == NULL) ? kOk : static_cast<Code>(state_[4]);
   }
 
+  int64_t GetErrorCode() const;
+
   Status(Code code,
          const Slice& msg,
          const Slice& msg2,
-         int16_t posix_code,
+         int64_t error_code,
          const char* file_name,
          int line_number);
   static const char* CopyState(const char* s);

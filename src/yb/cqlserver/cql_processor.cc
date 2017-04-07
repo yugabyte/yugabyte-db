@@ -61,6 +61,8 @@ using sql::RowsResult;
 using sql::SetKeyspaceResult;
 using sql::SqlProcessor;
 using sql::Statement;
+using sql::ErrorCode;
+using sql::GetErrorCode;
 
 //------------------------------------------------------------------------------------------------
 CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
@@ -219,7 +221,66 @@ void CQLProcessor::ProcessQueryDone(
 CQLResponse* CQLProcessor::ReturnResponse(
     const CQLRequest& req, Status s, ExecutedResult::SharedPtr result) {
   if (!s.ok()) {
-    return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
+    if (s.IsSqlError()) {
+      switch (GetErrorCode(s)) {
+        // Syntax errors.
+        case ErrorCode::SQL_STATEMENT_INVALID: FALLTHROUGH_INTENDED;
+        case ErrorCode::CQL_STATEMENT_INVALID: FALLTHROUGH_INTENDED;
+        case ErrorCode::LEXICAL_ERROR: FALLTHROUGH_INTENDED;
+        case ErrorCode::CHARACTER_NOT_IN_REPERTOIRE: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_ESCAPE_SEQUENCE: FALLTHROUGH_INTENDED;
+        case ErrorCode::NAME_TOO_LONG: FALLTHROUGH_INTENDED;
+        case ErrorCode::NONSTANDARD_USE_OF_ESCAPE_CHARACTER: FALLTHROUGH_INTENDED;
+        case ErrorCode::SYNTAX_ERROR: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_PARAMETER_VALUE:
+          return new ErrorResponse(req, ErrorResponse::Code::SYNTAX_ERROR, s.ToString());
+
+        // Semantic errors.
+        case ErrorCode::FEATURE_NOT_YET_IMPLEMENTED: FALLTHROUGH_INTENDED;
+        case ErrorCode::FEATURE_NOT_SUPPORTED: FALLTHROUGH_INTENDED;
+        case ErrorCode::SEM_ERROR: FALLTHROUGH_INTENDED;
+        case ErrorCode::DATATYPE_MISMATCH: FALLTHROUGH_INTENDED;
+        case ErrorCode::DUPLICATE_TABLE: FALLTHROUGH_INTENDED;
+        case ErrorCode::UNDEFINED_COLUMN: FALLTHROUGH_INTENDED;
+        case ErrorCode::DUPLICATE_COLUMN: FALLTHROUGH_INTENDED;
+        case ErrorCode::MISSING_PRIMARY_KEY: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_PRIMARY_COLUMN_TYPE: FALLTHROUGH_INTENDED;
+        case ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY: FALLTHROUGH_INTENDED;
+        case ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY: FALLTHROUGH_INTENDED;
+        case ErrorCode::INCOMPARABLE_DATATYPES: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_TABLE_PROPERTY: FALLTHROUGH_INTENDED;
+        case ErrorCode::DUPLICATE_TABLE_PROPERTY: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_DATATYPE: FALLTHROUGH_INTENDED;
+        case ErrorCode::SYSTEM_NAMESPACE_READONLY: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_ARGUMENTS: FALLTHROUGH_INTENDED;
+        case ErrorCode::TOO_FEW_ARGUMENTS: FALLTHROUGH_INTENDED;
+        case ErrorCode::TOO_MANY_ARGUMENTS: FALLTHROUGH_INTENDED;
+
+        // Execution errors that are not server errors.
+        case ErrorCode::TABLE_NOT_FOUND: FALLTHROUGH_INTENDED;
+        case ErrorCode::INVALID_TABLE_DEFINITION: FALLTHROUGH_INTENDED;
+        case ErrorCode::KEYSPACE_ALREADY_EXISTS: FALLTHROUGH_INTENDED;
+        case ErrorCode::KEYSPACE_NOT_FOUND: FALLTHROUGH_INTENDED;
+        case ErrorCode::WRONG_METADATA_VERSION: FALLTHROUGH_INTENDED;
+        case ErrorCode::TABLET_NOT_FOUND:
+          return new ErrorResponse(req, ErrorResponse::Code::INVALID, s.ToString());
+
+        // Execution errors that are server errors.
+        case ErrorCode::FAILURE: FALLTHROUGH_INTENDED;
+        case ErrorCode::EXEC_ERROR:
+          return new ErrorResponse(req, ErrorResponse::Code::SERVER_ERROR, s.ToString());
+
+        case ErrorCode::SUCCESS:
+          break;
+
+        // Warnings.
+        case ErrorCode::NOTFOUND:
+          break;
+      }
+      LOG(ERROR) << "Internal error: invalid error code " << static_cast<int64_t>(GetErrorCode(s));
+      return new ErrorResponse(req, ErrorResponse::Code::SERVER_ERROR, "Invalid error code");
+    }
+    return new ErrorResponse(req, ErrorResponse::Code::SERVER_ERROR, s.ToString());
   }
   if (result == nullptr) {
     return new VoidResultResponse(req);
@@ -261,7 +322,7 @@ CQLResponse* CQLProcessor::ReturnResponse(
 
     // default: fall through
   }
-  LOG(FATAL) << "Internal error: unknown result type " << static_cast<int>(result->type());
+  LOG(ERROR) << "Internal error: unknown result type " << static_cast<int>(result->type());
   return new ErrorResponse(
       req, ErrorResponse::Code::SERVER_ERROR, "Internal error: unknown result type");
 }
