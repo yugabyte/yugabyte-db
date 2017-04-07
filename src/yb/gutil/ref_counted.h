@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef BASE_MEMORY_REF_COUNTED_H_
-#define BASE_MEMORY_REF_COUNTED_H_
+#ifndef YB_GUTIL_REF_COUNTED_H
+#define YB_GUTIL_REF_COUNTED_H
 
 #include <cassert>
 
@@ -270,8 +270,13 @@ class scoped_refptr {
 #endif
 
   T* operator->() const {
-    assert(ptr_ != NULL);
+    assert(ptr_ != nullptr);
     return ptr_;
+  }
+
+  T& operator*() const {
+    assert(ptr_ != nullptr);
+    return *ptr_;
   }
 
   scoped_refptr<T>& operator=(T* p) {
@@ -351,4 +356,4 @@ struct ScopedRefPtrHashFunctor {
   }
 };
 
-#endif  // BASE_MEMORY_REF_COUNTED_H_
+#endif // YB_GUTIL_REF_COUNTED_H
