@@ -173,7 +173,7 @@ export default class CreateTable extends Component {
   render() {
     const {handleSubmit} = this.props;
     var onFormSubmit = handleSubmit(this.createTable);
-    var cassandraLabel = <div><img src={cassandraLogo} alt="Cassandra" className="table-type-logo"/> Cassandra</div>;
+    var cassandraLabel = <div><img src={cassandraLogo} alt="Apache Cassandra" className="table-type-logo"/>&nbsp;Apache Cassandra</div>;
     return (
       <div className="bottom-bar-padding">
         <h3>Create Table</h3>
