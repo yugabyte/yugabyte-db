@@ -20,7 +20,7 @@ class TableTitle extends Component {
           Tables
           <div className="table-type-count">
             <Image src={cassandraLogo} className="table-type-logo"/>
-            {numCassandraTables} <span>Cassandra</span>
+            {numCassandraTables} <span>Apache Cassandra</span>
           </div>
           <div className="table-type-count">
             <Image src={redisLogo} className="table-type-logo"/>
