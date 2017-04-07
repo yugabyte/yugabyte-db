@@ -20,6 +20,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <unordered_set>
 
 #include "yb/gutil/ref_counted.h"
 
@@ -34,8 +35,8 @@ void HtmlOutputImpalaSchema(const std::string& table_name,
                             const Schema& schema,
                             const std::string& master_address,
                             std::stringstream* output);
-void HtmlOutputTaskList(const std::vector<scoped_refptr<MonitoredTask> >& tasks,
-                        std::stringstream* output);
+void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask> >& tasks,
+                     std::stringstream* output);
 } // namespace yb
 
 #endif // YB_SERVER_WEBUI_UTIL_H

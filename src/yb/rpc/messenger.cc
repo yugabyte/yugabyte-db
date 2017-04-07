@@ -335,7 +335,7 @@ int64_t Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& f
   if (msgr != nullptr) {
     task_id = next_task_id_.fetch_add(1);
   }
-  DelayedTask *task = new DelayedTask(func, when, task_id, msgr);
+  auto task = std::make_shared<DelayedTask>(func, when, task_id, msgr);
   if (msgr != nullptr) {
     std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
     scheduled_tasks_[task_id] = task;

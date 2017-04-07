@@ -21,10 +21,9 @@
 
 #include <atomic>
 #include <memory>
-#include <unordered_map>
-
 #include <list>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <gtest/gtest_prod.h>
@@ -295,7 +294,7 @@ class Messenger {
 
   std::mutex mutex_scheduled_tasks_;
 
-  std::unordered_map<int64_t, DelayedTask*> scheduled_tasks_;
+  std::unordered_map<int64_t, std::shared_ptr<DelayedTask>> scheduled_tasks_;
 
 
   DISALLOW_COPY_AND_ASSIGN(Messenger);

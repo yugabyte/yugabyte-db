@@ -303,12 +303,10 @@ class QueueTransferTask : public ReactorTask {
 
   virtual void Run(ReactorThread* thr) override {
     conn_->QueueOutbound(transfer_.Pass());
-    delete this;
   }
 
   virtual void Abort(const Status& status) override {
     transfer_->Abort(status);
-    delete this;
   }
 
  private:
@@ -456,14 +454,12 @@ class NegotiationCompletedTask : public ReactorTask {
 
   virtual void Run(ReactorThread* rthread) override {
     rthread->CompleteConnectionNegotiation(conn_, negotiation_status_);
-    delete this;
   }
 
   virtual void Abort(const Status& status) override {
     DCHECK(conn_->reactor_thread()->reactor()->closing());
     VLOG(1) << "Failed connection negotiation due to shut down reactor thread: "
             << status.ToString();
-    delete this;
   }
 
  private:
@@ -472,7 +468,7 @@ class NegotiationCompletedTask : public ReactorTask {
 };
 
 void Connection::CompleteNegotiation(const Status& negotiation_status) {
-  auto task = new NegotiationCompletedTask(this, negotiation_status);
+  auto task = std::make_shared<NegotiationCompletedTask>(this, negotiation_status);
   reactor_thread_->reactor()->ScheduleReactorTask(task);
 }
 
@@ -531,7 +527,7 @@ void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
   gscoped_ptr<OutboundTransfer> t(new OutboundTransfer(slices, cb,
       handler_latency_outbound_transfer_));
 
-  QueueTransferTask* task = new QueueTransferTask(t.Pass(), this);
+  auto task = std::make_shared<QueueTransferTask>(t.Pass(), this);
   reactor_thread_->reactor()->ScheduleReactorTask(task);
 }
 

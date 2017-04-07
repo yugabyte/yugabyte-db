@@ -2731,6 +2731,11 @@ class RetryingTSRpcTask : public MonitoredTask {
                       Unretained(this))));
   }
 
+  auto BindRpcCallback() ->
+    decltype(std::bind(&RetryingTSRpcTask::RpcCallback, shared_from(this))) {
+      return std::bind(&RetryingTSRpcTask::RpcCallback, shared_from(this));
+  }
+
   // Handle the actual work of the RPC callback. This is run on the master's worker
   // pool, rather than a reactor thread, so it may do blocking IO operations.
   void DoRpcCallback() {
@@ -2819,7 +2824,7 @@ class RetryingTSRpcTask : public MonitoredTask {
         return false;
       }
       reactor_task_id_ = master_->messenger()->ScheduleOnReactor(
-          std::bind(&RetryingTSRpcTask::RunDelayedTask, this, _1),
+          std::bind(&RetryingTSRpcTask::RunDelayedTask, shared_from(this), _1),
           MonoDelta::FromMilliseconds(delay_millis), master_->messenger());
 
       if (!PerformStateTransition(kStateScheduling, kStateWaiting)) {
@@ -2865,11 +2870,7 @@ class RetryingTSRpcTask : public MonitoredTask {
     }
     end_ts_ = MonoTime::Now(MonoTime::FINE);
     if (table_ != nullptr) {
-      table_->RemoveTask(this);
-    } else {
-      // This is a floating task (since the table does not exist)
-      // created as response to a tablet report.
-      Release();  // May call "delete this";
+      table_->RemoveTask(shared_from_this());
     }
   }
 
@@ -2967,8 +2968,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
   }
 
   virtual bool SendRequest(int attempt) OVERRIDE {
-    ts_proxy_->CreateTabletAsync(
-        req_, &resp_, &rpc_, std::bind(&AsyncCreateReplica::RpcCallback, this));
+    ts_proxy_->CreateTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
     VLOG(1) << "Send create tablet request to " << permanent_uuid_ << ":\n"
             << " (attempt " << attempt << "):\n"
             << req_.DebugString();
@@ -3064,8 +3064,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
       req.set_cas_config_opid_index_less_or_equal(*cas_config_opid_index_less_or_equal_);
     }
 
-    ts_proxy_->DeleteTabletAsync(
-        req, &resp_, &rpc_, std::bind(&AsyncDeleteReplica::RpcCallback, this));
+    ts_proxy_->DeleteTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
     VLOG(1) << "Send delete tablet request to " << permanent_uuid_
             << " (attempt " << attempt << "):\n"
             << req.DebugString();
@@ -3155,7 +3154,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
 
     l.Unlock();
 
-    ts_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, std::bind(&AsyncAlterTable::RpcCallback, this));
+    ts_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
     VLOG(1) << "Send alter table request to " << permanent_uuid()
             << " (attempt " << attempt << "):\n"
             << req.DebugString();
@@ -3247,8 +3246,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
     return false;
   }
 
-  consensus_proxy_->ChangeConfigAsync(
-      req_, &resp_, &rpc_, std::bind(&AsyncChangeConfigTask::RpcCallback, this));
+  consensus_proxy_->ChangeConfigAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Task " << description() << " sent request:\n" << req_.DebugString();
   return true;
 }
@@ -3439,8 +3437,7 @@ bool AsyncTryStepDown::SendRequest(int attempt) {
   LOG(INFO) << Substitute("Stepping down leader $0 for tablet $1",
                           change_config_ts_uuid_, tablet_->tablet_id());
   consensus_proxy_->LeaderStepDownAsync(
-      stepdown_req_, &stepdown_resp_, &rpc_,
-      std::bind(&AsyncTryStepDown::RpcCallback, this));
+      stepdown_req_, &stepdown_resp_, &rpc_, BindRpcCallback());
 
   return true;
 }
@@ -3463,7 +3460,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
                           should_remove_);
 
   if (should_remove_) {
-    auto task = new AsyncRemoveServerTask(
+    auto task = std::make_shared<AsyncRemoveServerTask>(
         master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_);
 
     tablet_->table()->AddTask(task);
@@ -3482,7 +3479,7 @@ void CatalogManager::SendAlterTableRequest(const scoped_refptr<TableInfo>& table
 }
 
 void CatalogManager::SendAlterTabletRequest(const scoped_refptr<TabletInfo>& tablet) {
-  auto call = new AsyncAlterTable(master_, worker_pool_.get(), tablet);
+  auto call = std::make_shared<AsyncAlterTable>(master_, worker_pool_.get(), tablet);
   tablet->table()->AddTask(call);
   WARN_NOT_OK(call->Run(), "Failed to send alter table request");
 }
@@ -3528,16 +3525,11 @@ void CatalogManager::SendDeleteTabletRequest(
                                       tablet_id, ts_desc->permanent_uuid(),
                                       TabletDataState_Name(delete_type),
                                       reason);
-  AsyncDeleteReplica* call =
-      new AsyncDeleteReplica(master_, worker_pool_.get(), ts_desc->permanent_uuid(), table,
-                             tablet_id, delete_type, cas_config_opid_index_less_or_equal,
-                             reason);
+  auto call = std::make_shared<AsyncDeleteReplica>(master_, worker_pool_.get(),
+      ts_desc->permanent_uuid(), table, tablet_id, delete_type,
+      cas_config_opid_index_less_or_equal, reason);
   if (table != nullptr) {
     table->AddTask(call);
-  } else {
-    // This is a floating task (since the table does not exist)
-    // created as response to a tablet report.
-    call->AddRef();
   }
 
   auto status = call->Run();
@@ -3562,7 +3554,7 @@ bool CatalogManager::getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
 void CatalogManager::SendLeaderStepDownRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
     const string& change_config_ts_uuid, bool should_remove, const string& new_leader_uuid) {
-  AsyncTryStepDown* task = new AsyncTryStepDown(
+  auto task = std::make_shared<AsyncTryStepDown>(
       master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid, should_remove,
       new_leader_uuid);
 
@@ -3576,7 +3568,7 @@ void CatalogManager::SendRemoveServerRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
     const string& change_config_ts_uuid) {
   // Check if the user wants the leader to be stepped down.
-  AsyncRemoveServerTask* task = new AsyncRemoveServerTask(
+  auto task = std::make_shared<AsyncRemoveServerTask>(
       master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
 
   tablet->table()->AddTask(task);
@@ -3587,8 +3579,8 @@ void CatalogManager::SendRemoveServerRequest(
 void CatalogManager::SendAddServerRequest(
     const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate,
     const string& change_config_ts_uuid) {
-  auto task =
-      new AsyncAddServerTask(master_, worker_pool_.get(), tablet, cstate, change_config_ts_uuid);
+  auto task = std::make_shared<AsyncAddServerTask>(master_, worker_pool_.get(), tablet, cstate,
+      change_config_ts_uuid);
   tablet->table()->AddTask(task);
   Status status = task->Run();
   WARN_NOT_OK(status, Substitute("Failed to send AddServer of tserver $0 to tablet $1",
@@ -4012,8 +4004,8 @@ void CatalogManager::SendCreateTabletRequests(const vector<TabletInfo*>& tablets
         tablet->metadata().dirty().pb.committed_consensus_state().config();
     tablet->set_last_update_time(MonoTime::Now(MonoTime::FINE));
     for (const RaftPeerPB& peer : config.peers()) {
-      AsyncCreateReplica* task = new AsyncCreateReplica(master_, worker_pool_.get(),
-                                                        peer.permanent_uuid(), tablet);
+      auto task = std::make_shared<AsyncCreateReplica>(master_, worker_pool_.get(),
+          peer.permanent_uuid(), tablet);
       tablet->table()->AddTask(task);
       WARN_NOT_OK(task->Run(), "Failed to send new tablet request");
     }
@@ -4892,39 +4884,28 @@ Status TableInfo::GetCreateTableErrorStatus() const {
   return create_table_error_;
 }
 
-void TableInfo::AddTask(MonitoredTask* task) {
-  task->AddRef();
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    pending_tasks_.insert(task);
-  }
+void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  pending_tasks_.insert(std::move(task));
 }
 
-void TableInfo::RemoveTask(MonitoredTask* task) {
-  {
-    std::lock_guard<simple_spinlock> l(lock_);
-    pending_tasks_.erase(task);
-  }
-
-  // Done outside the lock so that if Release() drops the last ref to this
-  // TableInfo, RemoveTask() won't unlock a freed lock.
-  task->Release();
+void TableInfo::RemoveTask(const std::shared_ptr<MonitoredTask>& task) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  pending_tasks_.erase(task);
 }
 
 // Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
 // from the pending list.
 void TableInfo::AbortTasks() {
-  std::vector<MonitoredTask *> abort_tasks;
+  std::vector<std::shared_ptr<MonitoredTask>> abort_tasks;
   {
     std::lock_guard<simple_spinlock> l(lock_);
-    for (MonitoredTask *task : pending_tasks_) {
-      task->AddRef();
-      abort_tasks.push_back(task);
-    }
+    abort_tasks.reserve(pending_tasks_.size());
+    abort_tasks.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
   }
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
-  for(auto* task : abort_tasks) {
+  for(const auto& task : abort_tasks) {
     task->AbortAndReturnPrevState();
   }
 }
@@ -4943,11 +4924,9 @@ void TableInfo::WaitTasksCompletion() {
   }
 }
 
-void TableInfo::GetTaskList(std::vector<scoped_refptr<MonitoredTask> > *ret) {
+std::unordered_set<std::shared_ptr<MonitoredTask>> TableInfo::GetTasks() {
   std::lock_guard<simple_spinlock> l(lock_);
-  for (MonitoredTask* task : pending_tasks_) {
-    ret->push_back(make_scoped_refptr(task));
-  }
+  return pending_tasks_;
 }
 
 void TableInfo::GetAllTablets(vector<scoped_refptr<TabletInfo> > *ret) const {

@@ -60,9 +60,11 @@ struct ReactorMetrics {
 };
 
 // A task which can be enqueued to run on the reactor thread.
-class ReactorTask : public boost::intrusive::list_base_hook<> {
+class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
  public:
   ReactorTask();
+  ReactorTask(const ReactorTask&) = delete;
+  void operator=(const ReactorTask&) = delete;
 
   // Run the task. 'reactor' is guaranteed to be the current thread.
   virtual void Run(ReactorThread *reactor) = 0;
@@ -70,15 +72,13 @@ class ReactorTask : public boost::intrusive::list_base_hook<> {
   // Abort the task, in the case that the reactor shut down before the
   // task could be processed. This may or may not run on the reactor thread
   // itself.
+  // If this is run not on reactor thread, then reactor thread should be already shut down.
   //
   // The Reactor guarantees that the Reactor lock is free when this
   // method is called.
   virtual void Abort(const Status &abort_status) {}
 
   virtual ~ReactorTask();
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ReactorTask);
 };
 
 // A ReactorTask that is scheduled to run at some point in the future.
@@ -99,11 +99,12 @@ class DelayedTask : public ReactorTask {
   // Behaves like ReactorTask::Abort.
   virtual void Abort(const Status& abort_status) OVERRIDE;
 
+  // Could be called from non-reactor thread even before reactor thread shutdown.
   void AbortTask(const Status& abort_status);
 
  private:
   // Set done_ to true if not set and return true. If done_ is already set, return false;
-  bool MarkAsDoneUnlocked();
+  bool MarkAsDone();
 
   // libev callback for when the registered timer fires.
   void TimerHandler(ev::timer& watcher, int revents);
@@ -266,7 +267,9 @@ class ReactorThread {
   //
   // Each task owns its own memory and must be freed by its TaskRun and
   // Abort members, provided it was allocated on the heap.
-  std::set<DelayedTask*> scheduled_tasks_;
+  std::set<std::shared_ptr<DelayedTask>> scheduled_tasks_;
+
+  std::vector<std::shared_ptr<ReactorTask>> async_handler_tasks_;
 
   // The current monotonic time.  Updated every coarse_timer_granularity_.
   MonoTime cur_time_;
@@ -324,15 +327,13 @@ class Reactor {
   // reactor thread.
   // If the reactor shuts down before it is run, the Abort method will be
   // called.
-  // Does _not_ take ownership of 'task' -- the task should take care of
-  // deleting itself after running if it is allocated on the heap.
-  void ScheduleReactorTask(ReactorTask *task);
+  void ScheduleReactorTask(std::shared_ptr<ReactorTask> task);
 
-  CHECKED_STATUS RunOnReactorThread(const std::function<Status()>& f);
+  CHECKED_STATUS RunOnReactorThread(std::function<Status()>&& f);
 
   // If the Reactor is closing, returns false.
   // Otherwise, drains the pending_tasks_ queue into the provided list.
-  bool DrainTaskQueue(boost::intrusive::list<ReactorTask> *tasks);
+  bool DrainTaskQueue(std::vector<std::shared_ptr<ReactorTask>> *tasks);
 
   Messenger *messenger() const {
     return messenger_.get();
@@ -366,7 +367,7 @@ class Reactor {
 
   // Tasks to be run within the reactor thread.
   // Guarded by lock_.
-  boost::intrusive::list<ReactorTask> pending_tasks_; // NOLINT(build/include_what_you_use)
+  std::vector<std::shared_ptr<ReactorTask>> pending_tasks_;
 
   ReactorThread thread_;
 

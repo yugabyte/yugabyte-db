@@ -315,13 +315,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   // Get the Status of the last error from the current CreateTable.
   CHECKED_STATUS GetCreateTableErrorStatus() const;
 
-  void AddTask(MonitoredTask *task);
-  void RemoveTask(MonitoredTask *task);
+  void AddTask(std::shared_ptr<MonitoredTask> task);
+  void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
   void AbortTasks();
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
-  void GetTaskList(std::vector<scoped_refptr<MonitoredTask> > *tasks);
+  std::unordered_set<std::shared_ptr<MonitoredTask>> GetTasks();
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -340,7 +340,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   mutable simple_spinlock lock_;
 
   // List of pending tasks (e.g. create/alter tablet requests)
-  std::unordered_set<MonitoredTask*> pending_tasks_;
+  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.

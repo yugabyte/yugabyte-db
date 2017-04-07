@@ -130,11 +130,11 @@ void HtmlOutputImpalaSchema(const std::string& table_name,
   *output << "</pre></code>\n";
 }
 
-void HtmlOutputTaskList(const std::vector<scoped_refptr<MonitoredTask> >& tasks,
+void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask>>& tasks,
                         std::stringstream* output) {
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
-  for (const scoped_refptr<MonitoredTask>& task : tasks) {
+  for (const auto& task : tasks) {
     string state = MonitoredTask::state(task->state());
 
     double running_secs = 0;

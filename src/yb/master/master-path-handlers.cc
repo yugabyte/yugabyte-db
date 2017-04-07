@@ -264,9 +264,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   master_addresses = JoinElements(all_addresses, ",");
   HtmlOutputImpalaSchema(table_name, schema, master_addresses, output);
 
-  std::vector<scoped_refptr<MonitoredTask> > task_list;
-  table->GetTaskList(&task_list);
-  HtmlOutputTaskList(task_list, output);
+  HtmlOutputTasks(table->GetTasks(), output);
 }
 
 void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,

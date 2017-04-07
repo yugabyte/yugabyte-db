@@ -989,6 +989,18 @@ EndOfObject(T* t) {
   return reinterpret_cast<ResultType>(t) + sizeof(T);
 }
 
+// There is a shared_from_this() standard function injected into class by extending
+// std::enable_shared_from_this template. We use this for ReactorTask and MonitoredTask base
+// classes. But for their subclasses we sometimes need to get shared pointer to specific class
+// type, for example for DelayedTask we need to get shared_ptr<DelayedTask>.
+// shared_from_this defined in the base ReactorTask class will return shared_ptr<ReactorTask>.
+// That is why we defined template free function shared_from which will downcast to shared_pointer
+// to type deduced from whatever we pass as an argument, shared_ptr<DelayedTask> in this case.
+template <typename U>
+std::shared_ptr<U> shared_from(U* u) {
+  return std::static_pointer_cast<U>(u->shared_from_this());
+}
+
 }  // namespace yb
 
 #endif // YB_UTIL_MEMORY_MEMORY_H_
