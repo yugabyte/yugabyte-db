@@ -89,7 +89,7 @@ TEST_F(TabletServerTest, TestServerClock) {
   ASSERT_GT(mini_server_->server()->clock()->Now().ToUint64(), resp.hybrid_time());
 }
 
-TEST_F(TabletServerTest, TestSetFlags) {
+TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   server::GenericServiceProxy proxy(
       client_messenger_, mini_server_->bound_rpc_addr());
 
@@ -153,9 +153,7 @@ TEST_F(TabletServerTest, TestSetFlags) {
     SCOPED_TRACE(resp.DebugString());
     EXPECT_EQ(server::SetFlagResponsePB::SUCCESS, resp.result());
   }
-}
 
-TEST_F(TabletServerTest, TestWebPages) {
   EasyCurl c;
   faststring buf;
   string addr = mini_server_->bound_http_addr().ToString();
@@ -764,78 +762,6 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushing) {
                         KeyValue(5, 50),
                         KeyValue(6, 60),
                         KeyValue(7, 7) });
-}
-
-// Tests performing mutations that are going to a DMS or to the following
-// DMS, when the initial one is flushed.
-TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushingAndCompacting) {
-
-  InsertTestRowsRemote(0, 1, 7);
-
-  shared_ptr<MyCommonHooks> hooks(new MyCommonHooks(this));
-
-  tablet_peer_->tablet()->SetFlushHooksForTests(hooks);
-  tablet_peer_->tablet()->SetCompactionHooksForTests(hooks);
-  tablet_peer_->tablet()->SetFlushCompactCommonHooksForTests(hooks);
-
-  // flush the first time
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
-  VerifyRows(schema_, { KeyValue(1, 10),
-                        KeyValue(2, 20),
-                        KeyValue(3, 30),
-                        KeyValue(4, 40),
-                        KeyValue(5, 50),
-                        KeyValue(6, 60),
-                        KeyValue(7, 7) });
-  hooks->increment_iteration();
-
-  // set the hooks on the new tablet
-  tablet_peer_->tablet()->SetFlushHooksForTests(hooks);
-  tablet_peer_->tablet()->SetCompactionHooksForTests(hooks);
-  tablet_peer_->tablet()->SetFlushCompactCommonHooksForTests(hooks);
-
-  // insert an additional row so that we can flush
-  InsertTestRowsRemote(0, 8, 1);
-
-  // flush an additional MRS so that we have two DiskRowSets and then compact
-  // them making sure that mutations executed mid compaction are replayed as
-  // expected
-  ASSERT_OK(tablet_peer_->tablet()->Flush());
-  VerifyRows(schema_, { KeyValue(1, 11),
-                        KeyValue(2, 21),
-                        KeyValue(3, 31),
-                        KeyValue(4, 41),
-                        KeyValue(5, 51),
-                        KeyValue(6, 61),
-                        KeyValue(7, 7),
-                        KeyValue(8, 8) });
-
-  hooks->increment_iteration();
-  ASSERT_OK(tablet_peer_->tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
-
-  // get the clock's current hybrid_time
-  HybridTime now_before = mini_server_->server()->clock()->Now();
-
-  // Shutdown the tserver and try and rebuild the tablet from the log
-  // produced on recovery (recovery flushed no state, but produced a new
-  // log).
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
-  VerifyRows(schema_, { KeyValue(1, 11),
-                        KeyValue(2, 22),
-                        KeyValue(3, 32),
-                        KeyValue(4, 42),
-                        KeyValue(5, 52),
-                        KeyValue(6, 62),
-                        KeyValue(7, 72),
-                        KeyValue(8, 8) });
-
-  // get the clock's hybrid_time after replay
-  HybridTime now_after = mini_server_->server()->clock()->Now();
-
-  // make sure 'now_after' is greater than or equal to 'now_before'
-  ASSERT_GE(now_after.value(), now_before.value());
 }
 
 #define ANFF ASSERT_NO_FATAL_FAILURE

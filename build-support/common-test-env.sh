@@ -26,7 +26,6 @@ NON_GTEST_ROCKSDB_TESTS_RE=$( regex_from_list "
 # There gtest suites have internal dependencies between tests, so those tests can't be run
 # separately.
 TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( regex_from_list "
-  bin/tablet_server-test
   rocksdb-build/backupable_db_test
   rocksdb-build/thread_local_test
 ")
