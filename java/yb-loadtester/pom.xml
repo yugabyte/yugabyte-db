@@ -76,6 +76,20 @@
           </execution>
         </executions>
       </plugin>
+      <!-- Attach source and javadoc to packaged jar -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>2.4</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <!-- make the jar executable by adding a Main-Class and Class-Path to the manifest -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
