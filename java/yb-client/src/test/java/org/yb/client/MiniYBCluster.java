@@ -236,7 +236,8 @@ public class MiniYBCluster implements AutoCloseable {
 
       final YBDaemon daemon =
           configureAndStartProcess(YBDaemonType.TSERVER,
-                                   tsCmdLine.toArray(new String[tsCmdLine.size()]));
+                                   tsCmdLine.toArray(new String[tsCmdLine.size()]),
+                                   "yb-tserver:" + localhost + ":" + rpc_port);
       tserverProcesses.put(rpc_port, daemon);
       daemon.setRpcPort(rpc_port);
       cqlContactPoints.add(new InetSocketAddress(localhost, cql_port));
@@ -278,7 +279,8 @@ public class MiniYBCluster implements AutoCloseable {
       "--logtostderr",
       "--webserver_port=" + webPort);
     final YBDaemon daemon = configureAndStartProcess(
-        YBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]));
+        YBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),
+        "yb-master:" + localhost + ":" + rpcPort);
     masterProcesses.put(rpcPort, daemon);
     daemon.setRpcPort(rpcPort);
 
@@ -361,7 +363,8 @@ public class MiniYBCluster implements AutoCloseable {
       }
       masterProcesses.put(masterRpcPorts.get(i),
           configureAndStartProcess(YBDaemonType.MASTER,
-                                   masterCmdLine.toArray(new String[masterCmdLine.size()])));
+                                   masterCmdLine.toArray(new String[masterCmdLine.size()]),
+                                   "yb-master:" + localhost + ":" + masterRpcPorts.get(i)));
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -377,13 +380,17 @@ public class MiniYBCluster implements AutoCloseable {
    * redirects the stderr to stdout, and starts a thread that will read from the process' input
    * stream and redirect that to LOG.
    *
+   * @param type Daemon type
    * @param command Process and options
+   * @param threadName Name for the thread that logs process output
    * @return The started process
    * @throws Exception Exception if an error prevents us from starting the process,
    *                   or if we were able to start the process but noticed that it was then killed
    *                   (in which case we'll log the exit value).
    */
-  private YBDaemon configureAndStartProcess(YBDaemonType type, String[] command) throws Exception {
+  private YBDaemon configureAndStartProcess(YBDaemonType type,
+                                            String[] command,
+                                            String threadName) throws Exception {
     command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
     LOG.info("Starting process: {}", Joiner.on(" ").join(command));
     ProcessBuilder processBuilder = new ProcessBuilder(command);
@@ -393,7 +400,7 @@ public class MiniYBCluster implements AutoCloseable {
         new ProcessInputStreamLogPrinterRunnable(proc.getInputStream());
     Thread thread = new Thread(printer);
     thread.setDaemon(true);
-    thread.setName(command[0]);
+    thread.setName(threadName);
     PROCESS_INPUT_PRINTERS.add(thread);
     thread.start();
 
