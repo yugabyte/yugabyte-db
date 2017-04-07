@@ -18,11 +18,11 @@ const panelTypes = {
               "tserver_log_stats", "tserver_cache_reader_num_ops"]},
   lsmdb: { title: "LSM-DB Stats",
              metrics: ["lsm_rocksdb_num_seek_or_next", "lsm_rocksdb_latencies", "lsm_rocksdb_block_cache", "lsm_rocksdb_flush_size", "lsm_rocksdb_compaction"]},
-  proxies:   { title: "CQL and Redis",
+  proxies:   { title: "Apache Cassandra and Redis",
              metrics: ["cql_server_rpc_per_second", "cql_sql_latency", "redis_rpcs_per_sec", "redis_ops_latency"]},
   redis:   { title: "Redis Advanced Graphs",
              metrics: ["redis_yb_latency"]},
-  cql:     { title: "Cassandra Advanced Graphs",
+  cql:     { title: "Apache Cassandra Advanced Graphs",
              metrics: ["cql_sql_latency_breakdown", "cql_yb_latency", "cql_reactor_latency", "response_sizes"]}
 }
 
