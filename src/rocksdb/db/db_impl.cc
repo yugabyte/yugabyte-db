@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include <gflags/gflags.h>
 #include "db/auto_roll_logger.h"
 #include "db/builder.h"
 #include "db/compaction_job.h"
@@ -98,6 +99,8 @@
 #include "util/thread_status_updater.h"
 #include "util/thread_status_util.h"
 #include "util/xfunc.h"
+
+DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
 
 namespace rocksdb {
 
@@ -300,10 +303,12 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
   column_family_memtables_.reset(
       new ColumnFamilyMemTablesImpl(versions_->GetColumnFamilySet()));
 
-  DumpRocksDBBuildVersion(db_options_.info_log.get());
-  DumpDBFileSummary(db_options_, dbname_);
-  db_options_.Dump(db_options_.info_log.get());
-  DumpSupportInfo(db_options_.info_log.get());
+  if (FLAGS_dump_dbimpl_info) {
+    DumpRocksDBBuildVersion(db_options_.info_log.get());
+    DumpDBFileSummary(db_options_, dbname_);
+    db_options_.Dump(db_options_.info_log.get());
+    DumpSupportInfo(db_options_.info_log.get());
+  }
 }
 
 // Will lock the mutex_,  will wait for completion if wait is true
