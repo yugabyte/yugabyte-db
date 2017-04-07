@@ -83,6 +83,7 @@ public class TestKeyspace extends TestBase {
 
   @Test
   public void testCreateAndDropTableTimeout() throws Exception {
+    LOG.info("--- TEST CQL: CREATE & DROP TABLE TIMEOUTS - Start");
     String keyspaceName = "test_keyspace";
     String tableName = "test_table";
 
@@ -102,10 +103,12 @@ public class TestKeyspace extends TestBase {
     }
 
     dropKeyspace(keyspaceName);
+    LOG.info("--- TEST CQL: CREATE & DROP TABLE TIMEOUTS - End");
   }
 
   @Test
   public void testCreateAndDropKeyspaceTimeout() throws Exception {
+    LOG.info("--- TEST CQL: CREATE & DROP KEYSPACE TIMEOUTS - Start");
     String keyspaceName = "test_keyspace";
 
     for (int i = 0; i < 10; ++i) {
@@ -117,6 +120,8 @@ public class TestKeyspace extends TestBase {
 
       dropKeyspace(keyspaceName);
     }
+
+    LOG.info("--- TEST CQL: CREATE & DROP KEYSPACE TIMEOUTS - End");
   }
 
   @Test

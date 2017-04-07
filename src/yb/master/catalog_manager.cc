@@ -2246,7 +2246,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
     for (const TableInfoMap::value_type& entry : table_ids_map_) {
       TableMetadataLock ltm(entry.second.get(), TableMetadataLock::READ);
 
-      if (ltm.data().namespace_id() == ns->id()) {
+      if (!ltm.data().is_deleted() && ltm.data().namespace_id() == ns->id()) {
         Status s = STATUS(InvalidArgument,
             Substitute("Cannot delete namespace which has a table: $0 [id=$1]",
                 ltm.data().name(), entry.second->id()), req->DebugString());
