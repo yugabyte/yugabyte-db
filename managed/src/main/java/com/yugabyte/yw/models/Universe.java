@@ -92,7 +92,7 @@ public class Universe extends Model {
     json.set("universeDetails", Json.parse(universeDetailsJson));
     json.put("version", version);
     try {
-      json.set("resources", Json.toJson(getUniverseResourcesUtil(getNodes(), getUniverseDetails().userIntent.providerType)));
+      json.set("resources", Json.toJson(getUniverseResourcesUtil(getNodes(), getUniverseDetails().userIntent)));
     } catch (Exception e) {
       json.set("resources", null);
     }
@@ -464,13 +464,14 @@ public class Universe extends Model {
     return this.version;
   }
 
-  public static UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, Common.CloudType cloudType) throws Exception {
+  public static UniverseResourceDetails getUniverseResourcesUtil(Collection<NodeDetails> nodes, UniverseDefinitionTaskParams.UserIntent userIntent) throws Exception {
+    Common.CloudType cloudType = userIntent.providerType;
     UniverseResourceDetails universeResourceDetails = new UniverseResourceDetails();
     for (NodeDetails node : nodes) {
       if (node.isActive() && cloudType == Common.CloudType.aws) {
-        AWSResourceUtil.mergeResourceDetails(node.cloudInfo.instance_type, node.cloudInfo.az,
-          AvailabilityZone.find.byId(node.azUuid).region.code,
-          AWSConstants.Tenancy.Shared, universeResourceDetails);
+        AWSResourceUtil.mergeResourceDetails(userIntent.deviceInfo, node.cloudInfo.instance_type,
+            node.cloudInfo.az, AvailabilityZone.find.byId(node.azUuid).region.code,
+            AWSConstants.Tenancy.Shared, universeResourceDetails);
       }
     }
     return universeResourceDetails;
