@@ -112,7 +112,7 @@ public class UniverseController extends AuthenticatedController {
       ObjectNode formData = (ObjectNode) request().body().asJson();
       UniverseDefinitionTaskParams taskParams = bindFormDataToTaskParams(formData);
       UniverseResourceDetails resourceDetails =
-        getUniverseResourcesUtil(taskParams.nodeDetailsSet, taskParams.userIntent.providerType);
+        getUniverseResourcesUtil(taskParams.nodeDetailsSet, taskParams.userIntent);
       return ApiResponse.success(resourceDetails);
     } catch (Throwable t) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR, t.getMessage());
@@ -258,7 +258,7 @@ public class UniverseController extends AuthenticatedController {
     for (Universe universe: customer.getUniverses()) {
       ObjectNode universePayload = (ObjectNode) universe.toJson();
       try {
-        universePayload.put("pricePerHour", getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent.providerType).pricePerHour);
+        universePayload.put("pricePerHour", getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent).pricePerHour);
       } catch (Exception e) {
         LOG.error("Unable to fetch cost for universe {}.", universe.universeUUID);
       }
@@ -341,7 +341,7 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
     try {
-      return ApiResponse.success(getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent.providerType));
+      return ApiResponse.success(getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent));
     }
     catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,
@@ -363,7 +363,7 @@ public class UniverseController extends AuthenticatedController {
     }
     try {
       for (Universe universe : universeSet) {
-        response.add(Json.toJson(getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent.providerType)));
+        response.add(Json.toJson(getUniverseResourcesUtil(universe.getNodes(), universe.getUniverseDetails().userIntent)));
       }
     } catch (Exception e) {
       return ApiResponse.error(INTERNAL_SERVER_ERROR,

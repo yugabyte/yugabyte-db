@@ -6,6 +6,8 @@ import java.util.Calendar;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +18,8 @@ import com.yugabyte.yw.models.InstanceType.PriceDetails;
 public class AWSResourceUtil {
   public static final Logger LOG = LoggerFactory.getLogger(AWSResourceUtil.class);
 
-  public static void mergeResourceDetails(String instanceTypeCode, String azCode,
+  public static void mergeResourceDetails(DeviceInfo deviceInfo,
+                                          String instanceTypeCode, String azCode,
                                           String regionCode, AWSConstants.Tenancy tenancy,
                                           UniverseResourceDetails universeResourceDetails) {
     // Get the instance type object.
@@ -28,10 +31,10 @@ public class AWSResourceUtil {
     }
     PriceDetails priceDetails = instanceType.getPriceDetails(regionCode, tenancy, azCode);
     universeResourceDetails.addCostPerHour(priceDetails.pricePerUnit);
-    universeResourceDetails.addvolumeSizeGB(instanceType.volumeSizeGB * instanceType.volumeCount);
+    universeResourceDetails.addvolumeSizeGB(deviceInfo.volumeSize * deviceInfo.numVolumes);
     universeResourceDetails.addmemSizeGB(instanceType.memSizeGB);
     universeResourceDetails.addAz(azCode);
     universeResourceDetails.addNumCores(instanceType.numCores);
-    universeResourceDetails.addVolumeCount(instanceType.volumeCount);
+    universeResourceDetails.addVolumeCount(deviceInfo.numVolumes);
   }
 }

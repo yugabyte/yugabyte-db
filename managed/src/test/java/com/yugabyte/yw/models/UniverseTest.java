@@ -253,7 +253,7 @@ public class UniverseTest extends FakeDBApplication {
     JsonNode resources = null;
     Exception ex = null;
     try {
-      resources = Json.toJson(getUniverseResourcesUtil(u.getNodes(), u.getUniverseDetails().userIntent.providerType));
+      resources = Json.toJson(getUniverseResourcesUtil(u.getNodes(), u.getUniverseDetails().userIntent));
     }catch (Exception e) {
       ex = e;
     }
