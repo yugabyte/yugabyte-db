@@ -15,12 +15,12 @@ constexpr int kDefaultSnapshotVerificationTestNumIter = 15000;
 DEFINE_int32(snapshot_verification_test_num_iter, kDefaultSnapshotVerificationTestNumIter,
              "Number iterations for randomized history cleanup DocDB tests.");
 
-// Use a lower default number of tests when running on TSAN so as not to exceed the test time limit.
-constexpr int kDefaultTestNumIter =
-#ifdef THREAD_SANITIZER
-    15000;
+// Use a lower default number of tests when running on ASAN/TSAN so as not to exceed the test time
+// limit.
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+static constexpr int kDefaultTestNumIter = 2000;
 #else
-    30000;
+static constexpr int kDefaultTestNumIter = 20000;
 #endif
 
 DEFINE_int32(test_num_iter, kDefaultTestNumIter,

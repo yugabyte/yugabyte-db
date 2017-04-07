@@ -63,23 +63,7 @@ fi
 
 MAX_NUM_PARALLEL_TESTS=3
 
-# If a commit messages contains a line that says 'DONT_BUILD', exit
-# immediately.
-set +e
-DONT_BUILD=$( git show | egrep '^\s{4}DONT_BUILD$' )
-set -e
-if [ -n "$DONT_BUILD" ]; then
-  fatal "*** Build not requested. Exiting."
-fi
-
-set +e
-SKIP_CPP_BUILD=$(git show|egrep '^\s{4}SKIP_CPP_BUILD$')
-set -e
-if [ -n "$SKIP_CPP_BUILD" ]; then
-  BUILD_CPP="0"
-else
-  BUILD_CPP="1"
-fi
+BUILD_CPP=${BUILD_CPP:-1}
 
 # gather core dumps
 ulimit -c unlimited
@@ -95,8 +79,10 @@ set_cmake_build_type_and_compiler_type
 
 set_build_root --no-readonly
 
+# TODO: deduplicate this with similar logic in yb-jenkins-build.sh.
 BUILD_JAVA=${BUILD_JAVA:-1}
-BUILD_PYTHON=${BUILD_PYTHON:-1}
+BUILD_PYTHON=${BUILD_PYTHON:-0}
+BUILD_CPP=${BUILD_CPP:-1}
 if is_jenkins; then
   # Delete the build root by default on Jenkins.
   DONT_DELETE_BUILD_ROOT=${DONT_DELETE_BUILD_ROOT:-0}

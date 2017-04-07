@@ -77,8 +77,11 @@ fi
 
 export YB_MINIMIZE_VERSION_DEFINES_CHANGES=1
 export YB_MINIMIZE_RECOMPILATION=1
-export BUILD_PYTHON=0
-export BUILD_JAVA=1
+
+# TODO: use YB_BUILD_... names internally in build-and-test.sh as well.
+export BUILD_JAVA=${YB_BUILD_JAVA:-1}
+export BUILD_PYTHON=${YB_BUILD_PYTHON:-0}
+export BUILD_CPP=${YB_BUILD_CPP:-1}
 
 echo
 echo ----------------------------------------------------------------------------------------------
