@@ -10,18 +10,18 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 
-constexpr int kDefaultSnapshotVerificationTestNumIter = 15000;
-
-DEFINE_int32(snapshot_verification_test_num_iter, kDefaultSnapshotVerificationTestNumIter,
-             "Number iterations for randomized history cleanup DocDB tests.");
-
 // Use a lower default number of tests when running on ASAN/TSAN so as not to exceed the test time
 // limit.
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 static constexpr int kDefaultTestNumIter = 2000;
+static constexpr int kDefaultSnapshotVerificationTestNumIter = 2000;
 #else
 static constexpr int kDefaultTestNumIter = 20000;
+static constexpr int kDefaultSnapshotVerificationTestNumIter = 15000;
 #endif
+
+DEFINE_int32(snapshot_verification_test_num_iter, kDefaultSnapshotVerificationTestNumIter,
+             "Number iterations for randomized history cleanup DocDB tests.");
 
 DEFINE_int32(test_num_iter, kDefaultTestNumIter,
              "Number iterations for randomized DocDB tests, except those involving logical DocDB "
@@ -80,7 +80,9 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
 
   HybridTime max_history_cleanup_ht(0);
 
-  while (load_gen_.next_iteration() <= FLAGS_snapshot_verification_test_num_iter) {
+  const int kNumIter = FLAGS_snapshot_verification_test_num_iter;
+
+  while (load_gen_.next_iteration() <= kNumIter) {
     const int current_iteration = load_gen_.next_iteration();
     if (current_iteration == kIterationToSwitchToInfrequentSnapshots) {
       // This is where we make snapshot/verification less frequent so the test can actually finish.
@@ -184,7 +186,11 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
   ASSERT_FALSE(expected_cleanup_ht_and_iteration.empty());
   ASSERT_EQ(expected_cleanup_ht_and_iteration, cleanup_ht_and_iteration);
 
-  ASSERT_GT(load_gen_.num_divergent_old_snapshot(), 0);
+  if (kNumIter > 2000) {
+    ASSERT_GT(load_gen_.num_divergent_old_snapshot(), 0);
+  } else {
+    ASSERT_EQ(0, load_gen_.num_divergent_old_snapshot());
+  }
 
   // Expected hybrid_times of snapshots invalidated by history cleanup, and actual history cutoff
   // hybrid_times at which that happened. This is deterministic, but highly dependent on the
