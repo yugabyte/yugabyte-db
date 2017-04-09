@@ -146,7 +146,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
   {
     TableMetadataLock l(table.get(), TableMetadataLock::WRITE);
     l.mutable_data()->pb.set_version(1);
-    l.mutable_data()->pb.set_state(SysTablesEntryPB::REMOVED);
+    l.mutable_data()->pb.set_state(SysTablesEntryPB::DELETING);
     ASSERT_OK(sys_catalog->UpdateTable(table.get()));
     l.Commit();
   }

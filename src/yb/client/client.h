@@ -225,8 +225,7 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
-  // NOTE: The feature temporary is disabled by default (originally wait=true by default)
-  CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = false);
+  CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);
 
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
   YBTableAlterer* NewTableAlterer(const YBTableName& table_name);

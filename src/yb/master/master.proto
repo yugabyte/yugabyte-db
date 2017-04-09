@@ -230,7 +230,8 @@ message SysTablesEntryPB {
     PREPARING = 1;
     RUNNING = 2;
     ALTERING = 3;
-    REMOVED = 4;
+    DELETING = 4;
+    DELETED = 5;
   }
 
   // Table name

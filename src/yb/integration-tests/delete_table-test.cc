@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <thread>
 
 #include <boost/optional.hpp>
 #include <glog/stl_logging.h>
@@ -934,7 +935,12 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
 
   // Delete it and wait for the tablet servers to crash.
-  NO_FATALS(DeleteTable(TestWorkload::kDefaultTableName));
+  // The DeleteTable() call can be blocking, so it should be called in a separate thread.
+  std::thread delete_table_thread([&]() {
+        NO_FATALS(DeleteTable(TestWorkload::kDefaultTableName));
+      });
+
+  SleepFor(MonoDelta::FromMilliseconds(50));
   NO_FATALS(WaitForAllTSToCrash());
 
   // There should still be data left on disk.
@@ -947,6 +953,8 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
     cluster_->tablet_server(i)->Shutdown();
     ASSERT_OK(cluster_->tablet_server(i)->Restart());
   }
+
+  delete_table_thread.join();
   ASSERT_OK(inspect_->WaitForNoData());
 }
 

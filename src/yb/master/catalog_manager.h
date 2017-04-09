@@ -242,8 +242,13 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   static int type() { return SysRowEntry::TABLE; }
 
+  bool started_deleting() const {
+    return pb.state() == SysTablesEntryPB::DELETING ||
+           pb.state() == SysTablesEntryPB::DELETED;
+  }
+
   bool is_deleted() const {
-    return pb.state() == SysTablesEntryPB::REMOVED;
+    return pb.state() == SysTablesEntryPB::DELETED;
   }
 
   bool is_running() const {
@@ -315,6 +320,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   // Get the Status of the last error from the current CreateTable.
   CHECKED_STATUS GetCreateTableErrorStatus() const;
 
+  std::size_t NumTasks() const;
+  bool HasTasks() const;
   void AddTask(std::shared_ptr<MonitoredTask> task);
   void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
   void AbortTasks();
@@ -360,18 +367,18 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
 
   const TableId& id() const { return table_id_; }
 
-  void DeleteTablet(const TabletKey& key) {
-    tablet_set_.erase(key);
-  }
+  std::size_t NumTablets() const;
+  bool HasTablets() const;
 
-  bool HasTablets() const {
-    return !tablet_set_.empty();
-  }
+  void DeleteTablet(const TabletKey& key);
 
   void AddTabletsToMap(DeletedTabletMap* tablet_map);
 
  private:
   const TableId table_id_;
+
+  // Protects tablet_set_.
+  mutable simple_spinlock lock_;
 
   typedef std::unordered_set<TabletKey, boost::hash<TabletKey>> TabletSet;
   TabletSet tablet_set_;
@@ -995,6 +1002,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     std::lock_guard<simple_spinlock> l(state_lock_);
     return leader_ready_term_;
   }
+
+  // Delete tables from internal map by id, if it has no more active tasks and tablets.
+  void CleanUpDeletedTables();
+
+  // Updated table state from DELETING to DELETED, if it has no more tablets.
+  void MarkTableDeletedIfNoTablets(scoped_refptr<DeletedTableInfo> deleted_table,
+                                   TableInfo* table_info = nullptr);
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
