@@ -38,6 +38,7 @@ class Trace;
 namespace rpc {
 
 class InboundCall;
+typedef scoped_refptr<InboundCall> InboundCallPtr;
 class RpcSidecar;
 class UserCredentials;
 
@@ -178,7 +179,7 @@ class RpcContext {
     __attribute__((noreturn));
 
  private:
-  InboundCall* const call_;
+  InboundCallPtr call_;
   const std::shared_ptr<const google::protobuf::Message> request_pb_;
   const std::shared_ptr<const google::protobuf::Message> response_pb_;
   RpcMethodMetrics metrics_;

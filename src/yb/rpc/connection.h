@@ -155,7 +155,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Queue a call response back to the client on the server side.
   //
   // This may be called from a non-reactor thread.
-  void QueueResponseForCall(gscoped_ptr<InboundCall> call);
+  void QueueResponseForCall(InboundCallPtr call);
 
   ReactorThread* reactor_thread() const { return reactor_thread_; }
 
@@ -187,7 +187,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
   };
 
   typedef std::unordered_map<uint64_t, CallAwaitingResponse*> car_map_t;
-  typedef std::unordered_map<uint64_t, InboundCall*> inbound_call_map_t;
+  typedef std::unordered_map<uint64_t, InboundCallPtr> inbound_call_map_t;
 
   // Returns the next valid (positive) sequential call ID by incrementing a counter
   // and ensuring we roll over from INT32_MAX to 0.
@@ -202,7 +202,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
     return call_id;
   }
 
-  virtual TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) = 0;
+  virtual TransferCallbacks* GetResponseTransferCallback(InboundCallPtr call) = 0;
 
   virtual void CreateInboundTransfer() = 0;
 

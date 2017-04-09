@@ -63,7 +63,7 @@ class CQLProcessor : public sql::SqlProcessor {
   ~CQLProcessor();
 
   // Processing an inbound call.
-  void ProcessCall(rpc::CQLInboundCall* cql_call);
+  void ProcessCall(rpc::InboundCallPtr cql_call);
 
   // Process a PREPARE request.
   CQLResponse *ProcessPrepare(const PrepareRequest& req);
@@ -83,12 +83,14 @@ class CQLProcessor : public sql::SqlProcessor {
       const ExecuteRequest& req, std::shared_ptr<CQLStatement> stmt,
       Callback<void(CQLResponse*)> cb, const Status& s, sql::ExecutedResult::SharedPtr result);
   void ProcessCallDone(
-      rpc::CQLInboundCall* cql_call, const CQLRequest* request, const MonoTime& start,
+      rpc::InboundCallPtr call,
+      const CQLRequest* request,
+      const MonoTime& start,
       CQLResponse* response);
 
   CQLResponse* ReturnResponse(
       const CQLRequest& req, Status s, sql::ExecutedResult::SharedPtr result);
-  void SendResponse(rpc::CQLInboundCall* cql_call, CQLResponse* response);
+  void SendResponse(rpc::InboundCallPtr call, CQLResponse* response);
 
   // Pointer to the containing CQL service implementation.
   CQLServiceImpl* const service_impl_;

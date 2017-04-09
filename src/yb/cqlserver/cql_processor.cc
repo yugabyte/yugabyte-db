@@ -111,7 +111,7 @@ CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl)
 CQLProcessor::~CQLProcessor() {
 }
 
-void CQLProcessor::ProcessCall(rpc::CQLInboundCall* cql_call) {
+void CQLProcessor::ProcessCall(rpc::InboundCallPtr cql_call) {
   const Slice& msg = cql_call->serialized_request();
   unique_ptr<CQLRequest> request;
   unique_ptr<CQLResponse> response;
@@ -136,13 +136,13 @@ void CQLProcessor::ProcessCall(rpc::CQLInboundCall* cql_call) {
 }
 
 void CQLProcessor::ProcessCallDone(
-    rpc::CQLInboundCall* cql_call, const CQLRequest* request, const MonoTime& start,
+    rpc::InboundCallPtr call, const CQLRequest* request, const MonoTime& start,
     CQLResponse* response) {
   // Reply to client.
   MonoTime begin_response = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_execute_cql_request_->Increment(
       begin_response.GetDeltaSince(start).ToMicroseconds());
-  SendResponse(cql_call, response);
+  SendResponse(std::move(call), response);
 
   // Release the processor.
   MonoTime response_done = MonoTime::Now(MonoTime::FINE);
@@ -153,13 +153,14 @@ void CQLProcessor::ProcessCallDone(
   this->unused();
 }
 
-void CQLProcessor::SendResponse(rpc::CQLInboundCall* cql_call, CQLResponse* response) {
+void CQLProcessor::SendResponse(rpc::InboundCallPtr call, CQLResponse* response) {
   CHECK(response != nullptr);
   // Serialize the response to return to the CQL client. In case of error, an error response
   // should still be present.
+  rpc::CQLInboundCall* cql_call = down_cast<rpc::CQLInboundCall*>(call.get());
   response->Serialize(&cql_call->response_msg_buf());
   delete response;
-  RpcContext* context = new RpcContext(cql_call, cql_metrics_->rpc_method_metrics_);
+  RpcContext* context = new RpcContext(call.get(), cql_metrics_->rpc_method_metrics_);
   context->RespondSuccess();
 }
 

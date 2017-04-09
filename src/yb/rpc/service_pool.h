@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_SERVICE_POOL_H
-#define YB_SERVICE_POOL_H
+#ifndef YB_RPC_SERVICE_POOL_H
+#define YB_RPC_SERVICE_POOL_H
 
 #include <string>
 #include <vector>
@@ -78,7 +78,7 @@ class ServicePool : public RpcService {
   // Shut down the queue and the thread pool.
   virtual void Shutdown();
 
-  virtual CHECKED_STATUS QueueInboundCall(gscoped_ptr<InboundCall> call) OVERRIDE;
+  virtual CHECKED_STATUS QueueInboundCall(InboundCallPtr call) OVERRIDE;
 
   const Counter* RpcsTimedOutInQueueMetricForTests() const {
     return rpcs_timed_out_in_queue_.get();
@@ -95,7 +95,7 @@ class ServicePool : public RpcService {
   const ServicePoolOptions options_;
   gscoped_ptr<ServiceIf> service_;
   std::vector<scoped_refptr<yb::Thread> > threads_;
-  BlockingQueue<InboundCall*> service_queue_;
+  BlockingQueue<InboundCallPtr> service_queue_;
   scoped_refptr<Histogram> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;
@@ -109,4 +109,4 @@ class ServicePool : public RpcService {
 } // namespace rpc
 } // namespace yb
 
-#endif
+#endif // YB_RPC_SERVICE_POOL_H

@@ -84,8 +84,8 @@ string CQLInboundTransfer::StatusAsString() const {
 
 class CQLResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  CQLResponseTransferCallbacks(gscoped_ptr<CQLInboundCall> call, CQLConnection* conn)
-      : call_(call.Pass()), conn_(conn) {}
+  CQLResponseTransferCallbacks(InboundCallPtr call, CQLConnection* conn)
+      : call_(std::move(call)), conn_(conn) {}
 
   ~CQLResponseTransferCallbacks() {
     conn_->FinishedHandlingACall();
@@ -97,7 +97,7 @@ class CQLResponseTransferCallbacks : public ResponseTransferCallbacks {
   }
 
  private:
-  gscoped_ptr<CQLInboundCall> call_;
+  InboundCallPtr call_;
   CQLConnection* conn_;
 };
 
@@ -119,9 +119,8 @@ AbstractInboundTransfer *CQLConnection::inbound() const {
   return inbound_.get();
 }
 
-TransferCallbacks* CQLConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
-  gscoped_ptr<CQLInboundCall> cql_call(down_cast<CQLInboundCall *>(call.release()));
-  return new CQLResponseTransferCallbacks(cql_call.Pass(), this);
+TransferCallbacks* CQLConnection::GetResponseTransferCallback(InboundCallPtr call) {
+  return new CQLResponseTransferCallbacks(std::move(call), this);
 }
 
 void CQLConnection::HandleFinishedTransfer() {
@@ -132,7 +131,7 @@ void CQLConnection::HandleFinishedTransfer() {
 void CQLConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
-  gscoped_ptr<CQLInboundCall> call(new CQLInboundCall(this));
+  InboundCallPtr call(new CQLInboundCall(this));
 
   Status s = call->ParseFrom(transfer.Pass());
   if (!s.ok()) {
@@ -142,7 +141,7 @@ void CQLConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> tran
     return;
   }
 
-  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.PassAs<InboundCall>());
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(std::move(call));
 }
 
 void CQLConnection::FinishedHandlingACall() {
@@ -200,7 +199,7 @@ Status CQLInboundCall::SerializeResponseBuffer(const MessageLite& response,
 }
 
 void CQLInboundCall::QueueResponseToConnection() {
-  conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
+  conn_->QueueResponseForCall(InboundCallPtr(this));
 }
 
 void CQLInboundCall::LogTrace() const {

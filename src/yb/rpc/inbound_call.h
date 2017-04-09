@@ -63,7 +63,7 @@ struct InboundCallTiming {
 };
 
 // Inbound call on server
-class InboundCall {
+class InboundCall : public RefCountedThreadSafe<InboundCall> {
  public:
   InboundCall();
   virtual ~InboundCall();
@@ -207,6 +207,8 @@ class InboundCall {
  private:
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };
+
+typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 }  // namespace rpc
 }  // namespace yb

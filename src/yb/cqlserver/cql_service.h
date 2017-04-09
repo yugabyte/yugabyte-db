@@ -56,7 +56,7 @@ class CQLServiceImpl : public CQLServerServiceIf {
   CQLProcessor *GetProcessor();
 
   // Reply to a call request.
-  void SendResponse(rpc::CQLInboundCall* cql_call, CQLResponse *response);
+  void SendResponse(rpc::InboundCallPtr cql_call, CQLResponse *response);
 
   // Allocate a prepared statement. If the statement already exists, return it instead.
   std::shared_ptr<CQLStatement> AllocatePreparedStatement(

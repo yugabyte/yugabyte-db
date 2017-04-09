@@ -163,7 +163,7 @@ class Messenger {
   void QueueOutboundCall(const std::shared_ptr<OutboundCall> &call);
 
   // Enqueue a call for processing on the server.
-  void QueueInboundCall(gscoped_ptr<InboundCall> call);
+  void QueueInboundCall(InboundCallPtr call);
 
   // Take ownership of the socket via Socket::Release
   void RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote);

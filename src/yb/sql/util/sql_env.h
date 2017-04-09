@@ -64,14 +64,14 @@ class SqlEnv {
 
   virtual std::string CurrentKeyspace() const {
     return (current_call_ != nullptr) ?
-        current_call_->GetSqlSession()->current_keyspace() :
+        current_cql_call()->GetSqlSession()->current_keyspace() :
         current_keyspace_ != nullptr ? *current_keyspace_ : yb::master::kDefaultNamespaceName;
   }
 
   // Reset all env states or variables before executing the next statement.
   void Reset();
 
-  void SetCurrentCall(rpc::CQLInboundCall* cql_call);
+  void SetCurrentCall(rpc::InboundCallPtr call);
 
  private:
 
@@ -84,6 +84,10 @@ class SqlEnv {
                                  client::YBSession* session) const;
   CHECKED_STATUS ProcessWriteResult(const Status& s);
   CHECKED_STATUS ProcessReadResult(const Status& s);
+
+  rpc::CQLInboundCall* current_cql_call() const {
+    return down_cast<rpc::CQLInboundCall*>(current_call_.get());
+  }
 
   // Persistent attributes.
 
@@ -109,7 +113,7 @@ class SqlEnv {
   // The "current" write/read op whose response we might be waiting for.
   std::shared_ptr<client::YBqlWriteOp> current_write_op_;
   std::shared_ptr<client::YBqlReadOp> current_read_op_;
-  rpc::CQLInboundCall* current_call_ = nullptr;
+  rpc::InboundCallPtr current_call_ = nullptr;
 
   Callback<void(const Status&)> requested_callback_;
   Callback<void(void)> resume_execution_;

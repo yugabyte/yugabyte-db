@@ -60,14 +60,14 @@ void DumpChildren(std::ostream* out, bool include_time_deltas, const Children* c
 void DumpChildren(std::ostream* out, bool include_time_deltas, std::nullptr_t children) {
 }
 
-template<class Entries, class Children>
-void DoDump(std::ostream* out,
-            bool include_time_deltas,
-            int64_t start,
-            const Entries& entries,
-            Children children) {
-  // Save original flags.
-  std::ios::fmtflags save_flags(out->flags());
+template<class Entries>
+void DumpEntries(std::ostream* out,
+                 bool include_time_deltas,
+                 int64_t start,
+                 const Entries& entries) {
+  if (entries.empty()) {
+    return;
+  }
 
   auto time_usec = entries.begin()->timestamp.GetDeltaSinceMin().ToMicroseconds();
   const int64_t time_correction_usec = start - time_usec;
@@ -101,14 +101,56 @@ void DoDump(std::ostream* out,
     e.Dump(out);
     *out << std::endl;
   }
+}
 
+template<class Entries, class Children>
+void DoDump(std::ostream* out,
+            bool include_time_deltas,
+            int64_t start,
+            const Entries& entries,
+            Children children) {
+  // Save original flags.
+  std::ios::fmtflags save_flags(out->flags());
+
+  DumpEntries(out, include_time_deltas, start, entries);
   DumpChildren(out, include_time_deltas, children);
 
   // Restore stream flags.
   out->flags(save_flags);
 }
 
+std::once_flag init_get_current_micros_fast_flag;
+int64_t initial_micros_offset;
+
+void InitGetCurrentMicrosFast() {
+  auto before = MonoTime::FineNow();
+  initial_micros_offset = GetCurrentTimeMicros();
+  auto after = MonoTime::FineNow();
+  auto mid = after.GetDeltaSinceMin().ToMicroseconds();
+  mid += before.GetDeltaSinceMin().ToMicroseconds();
+  mid /= 2;
+  initial_micros_offset -= mid;
+}
+
+int64_t GetCurrentMicrosFast() {
+  std::call_once(init_get_current_micros_fast_flag, InitGetCurrentMicrosFast);
+  auto now = MonoTime::FineNow();
+  return initial_micros_offset + now.GetDeltaSinceMin().ToMicroseconds();
+}
+
 } // namespace
+
+ScopedAdoptTrace::ScopedAdoptTrace(Trace* t)
+    : old_trace_(Trace::threadlocal_trace_), trace_(t) {
+  CHECK(!t || !t->HasOneRef());
+  Trace::threadlocal_trace_ = t;
+  DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
+}
+
+ScopedAdoptTrace::~ScopedAdoptTrace() {
+  Trace::threadlocal_trace_ = old_trace_;
+  DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
+}
 
 // Struct which precedes each entry in the trace.
 struct TraceEntry {
@@ -191,7 +233,7 @@ void Trace::AddEntry(TraceEntry* entry) {
   } else {
     DCHECK(entries_head_ == nullptr);
     entries_head_ = entry;
-    trace_start_time_usec_ = GetCurrentTimeMicros();
+    trace_start_time_usec_ = GetCurrentMicrosFast();
   }
   entries_tail_ = entry;
 }
@@ -203,6 +245,7 @@ void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
   // too slow, if the output stream is a file, for example).
   vector<TraceEntry*> entries;
   vector<scoped_refptr<Trace> > child_traces;
+  decltype(trace_start_time_usec_) trace_start_time_usec;
   {
     std::lock_guard<simple_spinlock> l(lock_);
     for (TraceEntry* cur = entries_head_;
@@ -212,10 +255,12 @@ void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
     }
 
     child_traces = child_traces_;
+    trace_start_time_usec = trace_start_time_usec_;
   }
+
   DoDump(out,
          include_time_deltas,
-         trace_start_time_usec_,
+         trace_start_time_usec,
          entries | boost::adaptors::indirected,
          &child_traces);
 }
@@ -236,9 +281,13 @@ void Trace::DumpCurrentTrace() {
 }
 
 void Trace::AddChildTrace(Trace* child_trace) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  scoped_refptr<Trace> ptr(child_trace);
-  child_traces_.push_back(ptr);
+  CHECK_NOTNULL(child_trace);
+  {
+    std::lock_guard<simple_spinlock> l(lock_);
+    scoped_refptr<Trace> ptr(child_trace);
+    child_traces_.push_back(ptr);
+  }
+  CHECK(!child_trace->HasOneRef());
 }
 
 PlainTrace::PlainTrace() {
@@ -250,7 +299,7 @@ void PlainTrace::Trace(const char *file_path, int line_number, const char *messa
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     if (size_ < kMaxEntries) {
       if (size_ == 0) {
-        trace_start_time_usec_ = GetCurrentTimeMicros();
+        trace_start_time_usec_ = GetCurrentMicrosFast();
       }
       entries_[size_] = {file_path, line_number, message, timestamp};
       ++size_;
@@ -260,12 +309,14 @@ void PlainTrace::Trace(const char *file_path, int line_number, const char *messa
 
 void PlainTrace::Dump(std::ostream *out, bool include_time_deltas) const {
   size_t size;
+  decltype(trace_start_time_usec_) trace_start_time_usec;
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     size = size_;
+    trace_start_time_usec = trace_start_time_usec_;
   }
   auto entries = boost::make_iterator_range(entries_, entries_ + size);
-  DoDump(out, include_time_deltas, trace_start_time_usec_, entries, /* children */ nullptr);
+  DoDump(out, include_time_deltas, trace_start_time_usec, entries, /* children */ nullptr);
 }
 
 std::string PlainTrace::DumpToString(bool include_time_deltas) const {

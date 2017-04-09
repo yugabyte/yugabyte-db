@@ -37,6 +37,7 @@ class Histogram;
 namespace rpc {
 
 class InboundCall;
+typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 struct RpcMethodMetrics {
   RpcMethodMetrics();

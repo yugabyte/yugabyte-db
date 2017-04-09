@@ -162,26 +162,13 @@ class Trace : public RefCountedThreadSafe<Trace> {
 // on the same thread)
 class ScopedAdoptTrace {
  public:
-  explicit ScopedAdoptTrace(Trace* t) :
-    old_trace_(Trace::threadlocal_trace_) {
-    Trace::threadlocal_trace_ = t;
-    if (t) {
-      t->AddRef();
-    }
-    DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
-  }
-
-  ~ScopedAdoptTrace() {
-    if (Trace::threadlocal_trace_) {
-      Trace::threadlocal_trace_->Release();
-    }
-    Trace::threadlocal_trace_ = old_trace_;
-    DFAKE_SCOPED_LOCK_THREAD_LOCKED(ctor_dtor_);
-  }
+  explicit ScopedAdoptTrace(Trace* t);
+  ~ScopedAdoptTrace();
 
  private:
   DFAKE_MUTEX(ctor_dtor_);
   Trace* old_trace_;
+  scoped_refptr<Trace> trace_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedAdoptTrace);
 };

@@ -65,7 +65,7 @@ class YBConnection : public Connection {
  protected:
   virtual void CreateInboundTransfer() override;
 
-  TransferCallbacks* GetResponseTransferCallback(gscoped_ptr<InboundCall> call) override;
+  TransferCallbacks* GetResponseTransferCallback(InboundCallPtr call) override;
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 

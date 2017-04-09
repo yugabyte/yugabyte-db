@@ -79,14 +79,14 @@ Status YBInboundTransfer::ReceiveBuffer(Socket& socket) {
 
 class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  YBResponseTransferCallbacks(gscoped_ptr<YBInboundCall> call, YBConnection* conn)
-      : call_(call.Pass()), conn_(conn) {}
+  YBResponseTransferCallbacks(InboundCallPtr call, YBConnection* conn)
+      : call_(std::move(call)), conn_(conn) {}
 
   ~YBResponseTransferCallbacks() {
     // Remove the call from the map.
-    InboundCall* call_from_map = EraseKeyReturnValuePtr(
-        &conn_->calls_being_handled_, call_->call_id());
-    DCHECK_EQ(call_from_map, call_.get());
+    InboundCallPtr call_from_map = EraseKeyReturnValuePtr(
+        &conn_->calls_being_handled_, yb_call()->call_id());
+    DCHECK_EQ(call_from_map.get(), call_.get());
   }
 
  protected:
@@ -94,8 +94,12 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
     return call_.get();
   }
 
+  YBInboundCall* yb_call() {
+    return down_cast<YBInboundCall*>(call_.get());
+  }
+
  private:
-  gscoped_ptr<YBInboundCall> call_;
+  InboundCallPtr call_;
   YBConnection* conn_;
 };
 
@@ -119,9 +123,8 @@ AbstractInboundTransfer *YBConnection::inbound() const {
   return inbound_.get();
 }
 
-TransferCallbacks* YBConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
-  gscoped_ptr<YBInboundCall> yb_call(down_cast<YBInboundCall*>(call.release()));
-  return new YBResponseTransferCallbacks(yb_call.Pass(), this);
+TransferCallbacks* YBConnection::GetResponseTransferCallback(InboundCallPtr call) {
+  return new YBResponseTransferCallbacks(std::move(call), this);
 }
 
 Status YBConnection::InitSaslClient() {
@@ -154,7 +157,8 @@ void YBConnection::HandleFinishedTransfer() {
 void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
-  gscoped_ptr<YBInboundCall> call(new YBInboundCall(this));
+  YBInboundCall * call;
+  InboundCallPtr call_ptr(call = new YBInboundCall(this));
 
   Status s = call->ParseFrom(transfer.Pass());
   if (!s.ok()) {
@@ -164,7 +168,7 @@ void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> trans
   }
 
   // call_id exists only for YB. Not for Redis.
-  if (!InsertIfNotPresent(&calls_being_handled_, call->call_id(), call.get())) {
+  if (!InsertIfNotPresent(&calls_being_handled_, call->call_id(), call_ptr)) {
     LOG(WARNING) << ToString() << ": received call ID " << call->call_id()
                  << " but was already processing this ID! Ignoring";
     reactor_thread_->DestroyConnection(
@@ -173,7 +177,7 @@ void YBConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> trans
     return;
   }
 
-  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.PassAs<InboundCall>());
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(std::move(call_ptr));
 }
 
 YBInboundCall::YBInboundCall(YBConnection* conn) : conn_(conn) {}
@@ -275,7 +279,7 @@ void YBInboundCall::LogTrace() const {
 }
 
 void YBInboundCall::QueueResponseToConnection() {
-  conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
+  conn_->QueueResponseForCall(InboundCallPtr(this));
 }
 
 scoped_refptr<Connection> YBInboundCall::get_connection() {

@@ -83,10 +83,10 @@ CHECKED_STATUS SqlEnv::ProcessOpStatus(const YBOperation* op,
   return s;
 }
 
-void SqlEnv::SetCurrentCall(rpc::CQLInboundCall *cql_call) {
+void SqlEnv::SetCurrentCall(rpc::InboundCallPtr cql_call) {
   DCHECK(cql_call == nullptr || current_call_ == nullptr)
       << this << " Tried updating current call. Current call is " << current_call_;
-  current_call_ = cql_call;
+  current_call_ = std::move(cql_call);
 }
 
 void SqlEnv::ApplyWriteAsync(
@@ -130,11 +130,11 @@ void SqlEnv::FlushAsyncDone(const Status &s) {
 
   // Production/cqlserver usecase. Enqueue the callback to run in the server's handler thread.
   resume_execution_ = Bind(&SqlEnv::ResumeCQLCall, Unretained(this), s);
-  current_call_->resume_from_ = &resume_execution_;
+  current_cql_call()->resume_from_ = &resume_execution_;
 
   auto messenger = messenger_.lock();
   DCHECK(messenger != nullptr) << "weak_ptr's messenger is null";
-  messenger->QueueInboundCall(gscoped_ptr<rpc::InboundCall>(current_call_));
+  messenger->QueueInboundCall(current_call_);
 }
 
 void SqlEnv::ResumeCQLCall(const Status &s) {
@@ -186,7 +186,7 @@ CHECKED_STATUS SqlEnv::DeleteKeyspace(const std::string& keyspace_name) {
   // Reset the current keyspace name if it's dropped.
   if (CurrentKeyspace() == keyspace_name) {
     if (current_call_ != nullptr) {
-      current_call_->GetSqlSession()->reset_current_keyspace();
+      current_cql_call()->GetSqlSession()->reset_current_keyspace();
     } else {
       current_keyspace_.reset(new string(yb::master::kDefaultNamespaceName));
     }
@@ -206,7 +206,7 @@ CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
 
   // Set the current keyspace name.
   if (current_call_ != nullptr) {
-    current_call_->GetSqlSession()->set_current_keyspace(keyspace_name);
+    current_cql_call()->GetSqlSession()->set_current_keyspace(keyspace_name);
   } else {
     current_keyspace_.reset(new string(keyspace_name));
   }

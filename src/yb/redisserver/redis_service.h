@@ -40,48 +40,48 @@ class RedisServiceImpl : public RedisServerServiceIf {
 
   void Handle(yb::rpc::InboundCall* call) override;
 
-  void GetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void GetCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void HGetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void HGetCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void StrLenCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void StrLenCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void ExistsCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void ExistsCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void GetRangeCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void GetRangeCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void SetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void SetCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void HSetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void HSetCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void GetSetCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void GetSetCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void AppendCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void AppendCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void DelCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void DelCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void SetRangeCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void SetRangeCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void IncrCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void IncrCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void EchoCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void EchoCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
-  void DummyCommand(yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void DummyCommand(yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
 
  private:
   void ReadCommand(
-      yb::rpc::InboundCall* call,
+      yb::rpc::InboundCallPtr call,
       yb::rpc::RedisClientCommand* c,
       const std::string& command_name,
       Status(*parse)(client::YBRedisReadOp*, const std::vector<Slice>&));
 
   void WriteCommand(
-      yb::rpc::InboundCall* call,
+      yb::rpc::InboundCallPtr call,
       yb::rpc::RedisClientCommand* c,
       const std::string& command_name,
       Status(*parse)(client::YBRedisWriteOp*, const std::vector<Slice>&));
 
-  typedef void (RedisServiceImpl::*RedisCommandFunctionPtr)(yb::rpc::InboundCall* call,
+  typedef void (RedisServiceImpl::*RedisCommandFunctionPtr)(yb::rpc::InboundCallPtr call,
                                                             rpc::RedisClientCommand* c);
 
   // Information about RedisCommand(s) that we support.
@@ -113,10 +113,11 @@ class RedisServiceImpl : public RedisServerServiceIf {
   const RedisCommandInfo* FetchHandler(const std::vector<Slice>& cmd_args);
   CHECKED_STATUS SetUpYBClient(string yb_master_address);
   void RespondWithFailure(
-      const string& error, yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+      const string& error, yb::rpc::InboundCallPtr call, yb::rpc::RedisClientCommand* c);
   // Verify that the command has the required number of arguments, and if so, handle the call.
-  void ValidateAndHandle(
-      const RedisCommandInfo* cmd_info, yb::rpc::InboundCall* call, yb::rpc::RedisClientCommand* c);
+  void ValidateAndHandle(const RedisCommandInfo* cmd_info,
+                         yb::rpc::InboundCallPtr call,
+                         yb::rpc::RedisClientCommand* c);
 
   void ConfigureSession(client::YBSession* session);
 

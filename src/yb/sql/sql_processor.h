@@ -90,7 +90,7 @@ class SqlProcessor {
   }
 
  protected:
-  void SetCurrentCall(rpc::CQLInboundCall* cql_call);
+  void SetCurrentCall(rpc::InboundCallPtr call);
   //------------------------------------------------------------------------------------------------
   // Parsing processor.
   Parser::UniPtr parser_;

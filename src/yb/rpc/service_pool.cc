@@ -17,10 +17,11 @@
 
 #include "yb/rpc/service_pool.h"
 
-#include <glog/logging.h>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -96,20 +97,18 @@ void ServicePool::Shutdown() {
 
   // Now we must drain the service queue.
   Status status = STATUS(ServiceUnavailable, "Service is shutting down");
-  gscoped_ptr<InboundCall> incoming;
+  InboundCallPtr incoming;
   while (service_queue_.BlockingGet(&incoming)) {
-    incoming.release()->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
+    incoming->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
   }
 
   service_->Shutdown();
 }
 
-Status ServicePool::QueueInboundCall(gscoped_ptr<InboundCall> call) {
-  InboundCall* c = call.release();
-
-  TRACE_TO(c->trace(), "Inserting onto call queue");
+Status ServicePool::QueueInboundCall(InboundCallPtr call) {
+  TRACE_TO(call->trace(), "Inserting onto call queue");
   // Queue message on service queue
-  QueueStatus queue_status = service_queue_.Put(c);
+  QueueStatus queue_status = service_queue_.Put(call);
   if (PREDICT_TRUE(queue_status == QUEUE_SUCCESS)) {
     // NB: do not do anything with 'c' after it is successfully queued --
     // a service thread may have already dequeued it, processed it, and
@@ -122,28 +121,28 @@ Status ServicePool::QueueInboundCall(gscoped_ptr<InboundCall> call) {
     string err_msg =
         Substitute("$0 request on $1 from $2 dropped due to backpressure. "
         "The service queue is full; it has $3 items.",
-        c->remote_method().method_name(),
+        call->remote_method().method_name(),
         service_->service_name(),
-        c->remote_address().ToString(),
+        call->remote_address().ToString(),
         service_queue_.max_size());
     status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
-    c->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, status);
+    call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, status);
     DLOG(INFO) << err_msg << " Contents of service queue:\n"
                << service_queue_.ToString();
   } else if (queue_status == QUEUE_SHUTDOWN) {
     status = STATUS(ServiceUnavailable, "Service is shutting down");
-    c->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
+    call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
   } else {
     status = STATUS(RuntimeError, Substitute("Unknown error from BlockingQueue: $0", queue_status));
-    c->RespondFailure(ErrorStatusPB::FATAL_UNKNOWN, status);
+    call->RespondFailure(ErrorStatusPB::FATAL_UNKNOWN, status);
   }
   return status;
 }
 
 void ServicePool::RunThread() {
   while (true) {
-    gscoped_ptr<InboundCall> incoming;
+    InboundCallPtr incoming;
     if (!service_queue_.BlockingGet(&incoming)) {
       VLOG(1) << "ServicePool: messenger shutting down.";
       return;
@@ -164,15 +163,13 @@ void ServicePool::RunThread() {
 
       // Must release since RespondFailure above ends up taking ownership
       // of the object.
-      ignore_result(incoming.release());
+      ignore_result(incoming);
       continue;
     }
 
     TRACE_TO(incoming->trace(), "Handling call");
 
-    // Release the InboundCall pointer -- when the call is responded to,
-    // it will get deleted at that point.
-    service_->Handle(incoming.release());
+    service_->Handle(incoming.get());
   }
 }
 

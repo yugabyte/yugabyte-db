@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_SERVICE_H_
-#define YB_RPC_SERVICE_H_
+#ifndef YB_RPC_RPC_SERVICE_H
+#define YB_RPC_RPC_SERVICE_H
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/status.h"
@@ -24,6 +24,7 @@ namespace yb {
 namespace rpc {
 
 class InboundCall;
+typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 class RpcService : public RefCountedThreadSafe<RpcService> {
  public:
@@ -32,10 +33,10 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
   // Enqueue a call for processing.
   // On failure, the RpcService::QueueInboundCall() implementation is
   // responsible for responding to the client with a failure message.
-  virtual CHECKED_STATUS QueueInboundCall(gscoped_ptr<InboundCall> call) = 0;
+  virtual CHECKED_STATUS QueueInboundCall(InboundCallPtr call) = 0;
 };
 
 } // namespace rpc
 } // namespace yb
 
-#endif // YB_RPC_SERVICE_H_
+#endif // YB_RPC_RPC_SERVICE_H

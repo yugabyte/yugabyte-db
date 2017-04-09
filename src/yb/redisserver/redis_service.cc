@@ -156,6 +156,7 @@ using yb::client::YBSession;
 using yb::client::YBStatusCallback;
 using yb::client::YBTableName;
 using yb::rpc::InboundCall;
+using yb::rpc::InboundCallPtr;
 using yb::rpc::RedisInboundCall;
 using yb::rpc::RpcContext;
 using yb::rpc::RedisClientCommand;
@@ -225,31 +226,34 @@ const RedisServiceImpl::RedisCommandInfo* RedisServiceImpl::FetchHandler(
   return iter->second;
 }
 
-void RedisServiceImpl::ValidateAndHandle(
-    const RedisServiceImpl::RedisCommandInfo* cmd_info, InboundCall* call, RedisClientCommand* c) {
+void RedisServiceImpl::ValidateAndHandle(const RedisServiceImpl::RedisCommandInfo* cmd_info,
+                                         InboundCallPtr call,
+                                         RedisClientCommand* c) {
   // Ensure that we have the required YBClient(s) initialized.
   if (!yb_client_initialized_.load()) {
     auto status = SetUpYBClient(yb_tier_master_addresses_);
     if (!status.ok()) {
-      RespondWithFailure(StrCat("Could not open .redis table. ", status.ToString()), call, c);
+      RespondWithFailure(StrCat("Could not open .redis table. ", status.ToString()),
+                         std::move(call),
+                         c);
       return;
     }
   }
 
   // Handle the current redis command.
   if (cmd_info == nullptr) {
-    RespondWithFailure("Unsupported call.", call, c);
+    RespondWithFailure("Unsupported call.", std::move(call), c);
   } else if (cmd_info->arity < 0 && c->cmd_args.size() < -1 * cmd_info->arity) {
     // -X means that the command needs >= X arguments.
     LOG(ERROR) << "Requested command " << c->cmd_args[0] << " does not have enough arguments.";
-    RespondWithFailure("Too few arguments.", call, c);
+    RespondWithFailure("Too few arguments.", std::move(call), c);
   } else if (cmd_info->arity > 0 && c->cmd_args.size() != cmd_info->arity) {
     // X (> 0) means that the command needs exactly X arguments.
     LOG(ERROR) << "Requested command " << c->cmd_args[0] << " has wrong number of arguments.";
-    RespondWithFailure("Wrong number of arguments.", call, c);
+    RespondWithFailure("Wrong number of arguments.", std::move(call), c);
   } else {
     // Handle the call.
-    (this->*cmd_info->function_ptr)(call, c);
+    (this->*cmd_info->function_ptr)(std::move(call), c);
   }
 }
 
@@ -284,31 +288,34 @@ Status RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
 }
 
 void RedisServiceImpl::Handle(InboundCall* inbound_call) {
+  InboundCallPtr call_ptr(inbound_call);
   auto* call = down_cast<RedisInboundCall*>(CHECK_NOTNULL(inbound_call));
 
   DVLOG(4) << "Asked to handle a call " << call->ToString();
   rpc::RedisClientCommand& c = call->GetClientCommand();
 
   auto cmd_info = FetchHandler(c.cmd_args);
-  ValidateAndHandle(cmd_info, call, &c);
+  ValidateAndHandle(cmd_info, std::move(call_ptr), &c);
 }
 
-void RedisServiceImpl::EchoCommand(InboundCall* call, RedisClientCommand* c) {
+void RedisServiceImpl::EchoCommand(InboundCallPtr call, RedisClientCommand* c) {
   RedisResponsePB* echo_response = new RedisResponsePB();
   echo_response->set_string_response(c->cmd_args[1].ToString());
   VLOG(4) << "Responding to Echo with " << c->cmd_args[1].ToString();
-  RpcContext* context = new RpcContext(call, nullptr, echo_response, metrics_["echo"]);
+  RpcContext* context = new RpcContext(call.get(), nullptr, echo_response, metrics_["echo"]);
   context->RespondSuccess();
   VLOG(4) << "Done Responding to Echo.";
 }
 
 class ReadCommandCb : public YBStatusCallback {
  public:
-  ReadCommandCb(
-      shared_ptr<client::YBSession> session, InboundCall* call, shared_ptr<YBRedisReadOp> read_op,
-      rpc::RpcMethodMetrics metrics, rpc::RpcMethodMetrics metrics_internal)
+  ReadCommandCb(shared_ptr<client::YBSession> session,
+                rpc::InboundCallPtr call,
+                shared_ptr<YBRedisReadOp> read_op,
+                rpc::RpcMethodMetrics metrics,
+                rpc::RpcMethodMetrics metrics_internal)
       : session_(session),
-        redis_call_(call),
+        redis_call_(std::move(call)),
         read_op_(read_op),
         metrics_(metrics),
         metrics_internal_(metrics_internal),
@@ -318,7 +325,7 @@ class ReadCommandCb : public YBStatusCallback {
 
  private:
   shared_ptr<client::YBSession> session_;
-  unique_ptr<InboundCall> redis_call_;
+  rpc::InboundCallPtr redis_call_;
   shared_ptr<YBRedisReadOp> read_op_;
   rpc::RpcMethodMetrics metrics_;
   rpc::RpcMethodMetrics metrics_internal_;
@@ -332,10 +339,10 @@ void ReadCommandCb::Run(const Status& status) {
 
   if (status.ok()) {
     RedisResponsePB* ok_response = new RedisResponsePB(read_op_->response());
-    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, ok_response, metrics_);
+    RpcContext* context = new RpcContext(redis_call_.get(), nullptr, ok_response, metrics_);
     context->RespondSuccess();
   } else {
-    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, nullptr, metrics_);
+    RpcContext* context = new RpcContext(redis_call_.get(), nullptr, nullptr, metrics_);
     context->RespondFailure(status);
   }
 
@@ -343,7 +350,7 @@ void ReadCommandCb::Run(const Status& status) {
 }
 
 void RedisServiceImpl::ReadCommand(
-    yb::rpc::InboundCall* call,
+    yb::rpc::InboundCallPtr call,
     yb::rpc::RedisClientCommand* c,
     const std::string& command_name,
     Status(*parse)(YBRedisReadOp*, const std::vector<Slice>&)) {
@@ -358,39 +365,44 @@ void RedisServiceImpl::ReadCommand(
     RespondWithFailure(s.message().ToString(), call, c);
     return;
   }
-  read_only_session->ReadAsync(
-      read_op,
-      new ReadCommandCb(
-          read_only_session, call, read_op, metrics_[command_name], metrics_["get_internal"]));
+  auto command = new ReadCommandCb(read_only_session,
+                                   std::move(call),
+                                   read_op,
+                                   metrics_[command_name],
+                                   metrics_["get_internal"]);
+
+  read_only_session->ReadAsync(read_op, command);
 }
 
-void RedisServiceImpl::GetCommand(InboundCall* call, RedisClientCommand* c) {
-  ReadCommand(call, c, "get", &ParseGet);
+void RedisServiceImpl::GetCommand(InboundCallPtr call, RedisClientCommand* c) {
+  ReadCommand(std::move(call), c, "get", &ParseGet);
 }
 
-void RedisServiceImpl::HGetCommand(InboundCall* call, RedisClientCommand* c) {
-  ReadCommand(call, c, "hget", &ParseHGet);
+void RedisServiceImpl::HGetCommand(InboundCallPtr call, RedisClientCommand* c) {
+  ReadCommand(std::move(call), c, "hget", &ParseHGet);
 }
 
-void RedisServiceImpl::StrLenCommand(InboundCall* call, RedisClientCommand* c) {
-  ReadCommand(call, c, "strlen", &ParseStrLen);
+void RedisServiceImpl::StrLenCommand(InboundCallPtr call, RedisClientCommand* c) {
+  ReadCommand(std::move(call), c, "strlen", &ParseStrLen);
 }
 
-void RedisServiceImpl::ExistsCommand(InboundCall* call, RedisClientCommand* c) {
-  ReadCommand(call, c, "exists", &ParseExists);
+void RedisServiceImpl::ExistsCommand(InboundCallPtr call, RedisClientCommand* c) {
+  ReadCommand(std::move(call), c, "exists", &ParseExists);
 }
 
-void RedisServiceImpl::GetRangeCommand(InboundCall* call, RedisClientCommand* c) {
-  ReadCommand(call, c, "exists", &ParseGetRange);
+void RedisServiceImpl::GetRangeCommand(InboundCallPtr call, RedisClientCommand* c) {
+  ReadCommand(std::move(call), c, "exists", &ParseGetRange);
 }
 
 class WriteCommandCb : public YBStatusCallback {
  public:
-  WriteCommandCb(
-      shared_ptr<client::YBSession> session, InboundCall* call, shared_ptr<YBRedisWriteOp> write_op,
-      rpc::RpcMethodMetrics metrics, rpc::RpcMethodMetrics metrics_internal)
+  WriteCommandCb(shared_ptr<client::YBSession> session,
+                 rpc::InboundCallPtr call,
+                 shared_ptr<YBRedisWriteOp> write_op,
+                 rpc::RpcMethodMetrics metrics,
+                 rpc::RpcMethodMetrics metrics_internal)
       : session_(session),
-        redis_call_(call),
+        redis_call_(std::move(call)),
         write_op_(write_op),
         metrics_(metrics),
         metrics_internal_(metrics_internal),
@@ -400,7 +412,7 @@ class WriteCommandCb : public YBStatusCallback {
 
  private:
   shared_ptr<client::YBSession> session_;
-  unique_ptr<InboundCall> redis_call_;
+  rpc::InboundCallPtr redis_call_;
   shared_ptr<YBRedisWriteOp> write_op_;
   rpc::RpcMethodMetrics metrics_;
   rpc::RpcMethodMetrics metrics_internal_;
@@ -414,7 +426,7 @@ void WriteCommandCb::Run(const Status& status) {
 
   if (status.ok()) {
     RedisResponsePB* ok_response = new RedisResponsePB(write_op_->response());
-    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, ok_response, metrics_);
+    RpcContext* context = new RpcContext(redis_call_.get(), nullptr, ok_response, metrics_);
     context->RespondSuccess();
   } else {
     vector<client::YBError*> errors;
@@ -427,7 +439,7 @@ void WriteCommandCb::Run(const Status& status) {
       }
     }
 
-    RpcContext* context = new RpcContext(redis_call_.release(), nullptr, nullptr, metrics_);
+    RpcContext* context = new RpcContext(redis_call_.get(), nullptr, nullptr, metrics_);
     context->RespondFailure(status);
   }
 
@@ -435,7 +447,7 @@ void WriteCommandCb::Run(const Status& status) {
 }
 
 void RedisServiceImpl::WriteCommand(
-    InboundCall* call,
+    InboundCallPtr call,
     RedisClientCommand* c,
     const string& command_name,
     Status(*parse)(YBRedisWriteOp*, const std::vector<Slice>&)) {
@@ -447,45 +459,49 @@ void RedisServiceImpl::WriteCommand(
   shared_ptr<YBRedisWriteOp> write_op(table_->NewRedisWrite());
   Status s = parse(write_op.get(), c->cmd_args);
   if (!s.ok()) {
-    RespondWithFailure(s.message().ToString(), call, c);
+    RespondWithFailure(s.message().ToString(), std::move(call), c);
     return;
   }
   CHECK_OK(tmp_session->Apply(write_op));
   // Callback will delete itself, after processing the callback.
-  tmp_session->FlushAsync(new WriteCommandCb(
-      tmp_session, call, write_op, metrics_[command_name], metrics_["set_internal"]));
+  auto command = new WriteCommandCb(tmp_session,
+                                    std::move(call),
+                                    write_op,
+                                    metrics_[command_name],
+                                    metrics_["set_internal"]);
+  tmp_session->FlushAsync(command);
 }
 
-void RedisServiceImpl::SetCommand(InboundCall* call, RedisClientCommand* c) {
-  WriteCommand(call, c, "set", &ParseSet);
+void RedisServiceImpl::SetCommand(InboundCallPtr call, RedisClientCommand* c) {
+  WriteCommand(std::move(call), c, "set", &ParseSet);
 }
 
-void RedisServiceImpl::HSetCommand(InboundCall* call, RedisClientCommand* c) {
-  WriteCommand(call, c, "hset", &ParseHSet);
+void RedisServiceImpl::HSetCommand(InboundCallPtr call, RedisClientCommand* c) {
+  WriteCommand(std::move(call), c, "hset", &ParseHSet);
 }
 
-void RedisServiceImpl::GetSetCommand(InboundCall* call, RedisClientCommand* c) {
-  WriteCommand(call, c, "getset", &ParseGetSet);
+void RedisServiceImpl::GetSetCommand(InboundCallPtr call, RedisClientCommand* c) {
+  WriteCommand(std::move(call), c, "getset", &ParseGetSet);
 }
 
-void RedisServiceImpl::AppendCommand(InboundCall* call, RedisClientCommand* c) {
-  WriteCommand(call, c, "append", &ParseAppend);
+void RedisServiceImpl::AppendCommand(InboundCallPtr call, RedisClientCommand* c) {
+  WriteCommand(std::move(call), c, "append", &ParseAppend);
 }
 
-void RedisServiceImpl::DelCommand(InboundCall* call, RedisClientCommand* c) {
-  WriteCommand(call, c, "del", &ParseDel);
+void RedisServiceImpl::DelCommand(InboundCallPtr call, RedisClientCommand* c) {
+  WriteCommand(std::move(call), c, "del", &ParseDel);
 }
 
-void RedisServiceImpl::SetRangeCommand(InboundCall* call, RedisClientCommand* c) {
-  WriteCommand(call, c, "setrange", &ParseSetRange);
+void RedisServiceImpl::SetRangeCommand(InboundCallPtr call, RedisClientCommand* c) {
+  WriteCommand(std::move(call), c, "setrange", &ParseSetRange);
 }
 
-void RedisServiceImpl::IncrCommand(InboundCall* call, RedisClientCommand* c) {
-  WriteCommand(call, c, "incr", &ParseIncr);
+void RedisServiceImpl::IncrCommand(InboundCallPtr call, RedisClientCommand* c) {
+  WriteCommand(std::move(call), c, "incr", &ParseIncr);
 }
 
 void RedisServiceImpl::RespondWithFailure(
-    const string& error, InboundCall* call, RedisClientCommand* c) {
+    const string& error, InboundCallPtr call, RedisClientCommand* c) {
   // process the request
   DVLOG(4) << " Processing request from client ";
   int size = c->cmd_args.size();
@@ -496,7 +512,7 @@ void RedisServiceImpl::RespondWithFailure(
   // Send the result.
   DVLOG(4) << "Responding to call " << call->ToString() << " with failure " << error;
   string cmd = c->cmd_args[0].ToString();
-  RpcContext* context = new RpcContext(call, nullptr, nullptr, metrics_["error"]);
+  RpcContext* context = new RpcContext(call.get(), nullptr, nullptr, metrics_["error"]);
   context->RespondFailure(STATUS(
       RuntimeError, StringPrintf("%s : %s", error.c_str(),  cmd.c_str())));
 }

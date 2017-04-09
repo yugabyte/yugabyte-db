@@ -202,8 +202,8 @@ void SqlProcessor::RunAsync(
   stmt->RunAsync(this, params, Bind(&RunAsyncDone, stmt, cb));
 }
 
-void SqlProcessor::SetCurrentCall(rpc::CQLInboundCall* cql_call) {
-  sql_env_->SetCurrentCall(cql_call);
+void SqlProcessor::SetCurrentCall(rpc::InboundCallPtr call) {
+  sql_env_->SetCurrentCall(std::move(call));
 }
 
 }  // namespace sql

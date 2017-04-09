@@ -499,7 +499,7 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
     }
   } else if (direction_ == SERVER) {
     for (const inbound_call_map_t::value_type& entry : calls_being_handled_) {
-      InboundCall* c = entry.second;
+      auto c = entry.second;
       c->DumpPB(req, resp->add_calls_in_flight());
     }
   } else {
@@ -508,7 +508,7 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
   return Status::OK();
 }
 
-void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
+void Connection::QueueResponseForCall(InboundCallPtr call) {
   // This is usually called by the IPC worker thread when the response
   // is set, but in some circumstances may also be called by the
   // reactor thread (e.g. if the service has shut down)
@@ -522,7 +522,7 @@ void Connection::QueueResponseForCall(gscoped_ptr<InboundCall> call) {
   std::vector<Slice> slices;  // Will point to data, that is owned by InboundCall.
   call->SerializeResponseTo(&slices);
 
-  TransferCallbacks* cb = GetResponseTransferCallback(call.Pass());
+  TransferCallbacks* cb = GetResponseTransferCallback(std::move(call));
   // After the response is sent, can delete the InboundCall object.
   gscoped_ptr<OutboundTransfer> t(new OutboundTransfer(slices, cb,
       handler_latency_outbound_transfer_));

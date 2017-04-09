@@ -215,8 +215,8 @@ Status RedisInboundTransfer::ReceiveBuffer(Socket& socket) {
 
 class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  RedisResponseTransferCallbacks(gscoped_ptr<RedisInboundCall> call, RedisConnection* conn)
-      : call_(call.Pass()), conn_(conn) {}
+  RedisResponseTransferCallbacks(InboundCallPtr call, RedisConnection* conn)
+      : call_(std::move(call)), conn_(conn) {}
 
   ~RedisResponseTransferCallbacks() {
     conn_->FinishedHandlingACall();
@@ -228,7 +228,7 @@ class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
   }
 
  private:
-  gscoped_ptr<RedisInboundCall> call_;
+  InboundCallPtr call_;
   RedisConnection* conn_;
 };
 
@@ -250,9 +250,8 @@ AbstractInboundTransfer *RedisConnection::inbound() const {
   return inbound_.get();
 }
 
-TransferCallbacks* RedisConnection::GetResponseTransferCallback(gscoped_ptr<InboundCall> call) {
-  gscoped_ptr<RedisInboundCall> redis_call(down_cast<RedisInboundCall *>(call.release()));
-  return new RedisResponseTransferCallbacks(redis_call.Pass(), this);
+TransferCallbacks* RedisConnection::GetResponseTransferCallback(InboundCallPtr call) {
+  return new RedisResponseTransferCallbacks(std::move(call), this);
 }
 
 void RedisConnection::HandleFinishedTransfer() {
@@ -270,7 +269,7 @@ void RedisConnection::HandleFinishedTransfer() {
 void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
   DCHECK(reactor_thread_->IsCurrentThread());
 
-  gscoped_ptr<RedisInboundCall> call(new RedisInboundCall(this));
+  InboundCallPtr call(new RedisInboundCall(this));
 
   Status s = call->ParseFrom(transfer.Pass());
   if (!s.ok()) {
@@ -280,7 +279,7 @@ void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> tr
   }
 
   processing_call_ = true;
-  reactor_thread_->reactor()->messenger()->QueueInboundCall(call.PassAs<InboundCall>());
+  reactor_thread_->reactor()->messenger()->QueueInboundCall(std::move(call));
 }
 
 void RedisConnection::FinishedHandlingACall() {
@@ -380,7 +379,7 @@ void RedisInboundCall::LogTrace() const {
 }
 
 void RedisInboundCall::QueueResponseToConnection() {
-  conn_->QueueResponseForCall(gscoped_ptr<InboundCall>(this).Pass());
+  conn_->QueueResponseForCall(InboundCallPtr(this));
 }
 
 scoped_refptr<Connection> RedisInboundCall::get_connection() {

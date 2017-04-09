@@ -219,7 +219,7 @@ void Messenger::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
   reactor->QueueOutboundCall(call);
 }
 
-void Messenger::QueueInboundCall(gscoped_ptr<InboundCall> call) {
+void Messenger::QueueInboundCall(InboundCallPtr call) {
   shared_lock<rw_spinlock> guard(lock_.get_lock());
   scoped_refptr<RpcService>* service = FindOrNull(rpc_services_,
                                                   call->remote_method().service_name());
@@ -227,12 +227,12 @@ void Messenger::QueueInboundCall(gscoped_ptr<InboundCall> call) {
     Status s =  STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
                                                       call->remote_method().service_name(), name_));
     LOG(INFO) << s.ToString();
-    call.release()->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_SERVICE, s);
+    call->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_SERVICE, s);
     return;
   }
 
   // The RpcService will respond to the client on success or failure.
-  WARN_NOT_OK((*service)->QueueInboundCall(call.Pass()), "Unable to handle RPC call");
+  WARN_NOT_OK((*service)->QueueInboundCall(std::move(call)), "Unable to handle RPC call");
 }
 
 void Messenger::RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote) {

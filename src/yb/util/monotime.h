@@ -116,6 +116,8 @@ class YB_EXPORT MonoTime {
   // accurate to within a millisecond or two.  The speed difference will
   // depend on your timer hardware.
   static MonoTime Now(enum Granularity granularity);
+  static MonoTime FineNow() { return Now(FINE); }
+  static MonoTime CoarseNow() { return Now(COARSE); }
 
   // Return MonoTime equal to farthest possible time into the future.
   static MonoTime Max();
