@@ -105,6 +105,9 @@ PG_FUNCTION_INFO_V1(ora_timestamptz_trunc);
 PG_FUNCTION_INFO_V1(ora_timestamptz_round);
 PG_FUNCTION_INFO_V1(ora_timestamp_trunc);
 PG_FUNCTION_INFO_V1(ora_timestamp_round);
+PG_FUNCTION_INFO_V1(orafce_sysdate);
+PG_FUNCTION_INFO_V1(orafce_sessiontimezone);
+PG_FUNCTION_INFO_V1(orafce_dbtimezone);
 
 /*
  * Search const value in char array
