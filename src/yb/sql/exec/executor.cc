@@ -76,21 +76,24 @@ void Executor::ExecuteDone(
     VLOG(3) << "Successfully executed parse-tree <" << ptree << ">";
     if (sql_metrics_ != nullptr) {
       MonoDelta delta = MonoTime::Now(MonoTime::FINE).GetDeltaSince(start);
-      switch (static_cast<const PTListNode *>(ptree->root().get())->element(0)->opcode()) {
-        case TreeNodeOpcode::kPTSelectStmt:
-          sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
-          break;
-        case TreeNodeOpcode::kPTInsertStmt:
-          sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
-          break;
-        case TreeNodeOpcode::kPTUpdateStmt:
-          sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
-          break;
-        case TreeNodeOpcode::kPTDeleteStmt:
-          sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
-          break;
-        default:
-          sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+      const auto* lnode = static_cast<const PTListNode *>(ptree->root().get());
+      if (lnode->size() > 0) {
+        switch (lnode->element(0)->opcode()) {
+          case TreeNodeOpcode::kPTSelectStmt:
+            sql_metrics_->sql_select_->Increment(delta.ToMicroseconds());
+            break;
+          case TreeNodeOpcode::kPTInsertStmt:
+            sql_metrics_->sql_insert_->Increment(delta.ToMicroseconds());
+            break;
+          case TreeNodeOpcode::kPTUpdateStmt:
+            sql_metrics_->sql_update_->Increment(delta.ToMicroseconds());
+            break;
+          case TreeNodeOpcode::kPTDeleteStmt:
+            sql_metrics_->sql_delete_->Increment(delta.ToMicroseconds());
+            break;
+          default:
+            sql_metrics_->sql_others_->Increment(delta.ToMicroseconds());
+        }
       }
     }
     cb.Run(Status::OK(), result);
@@ -152,12 +155,11 @@ void Executor::ExecPTNodeAsync(const TreeNode *tnode, StatementExecutedCallback 
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(
-    const PTListNode *lnode, StatementExecutedCallback cb, int idx) {
-  DCHECK_LT(idx, lnode->size()) << "idx should be less than the size of the list";
-  DCHECK_EQ(lnode->size(), 1)
-      << "Neil tells me that we expect the list to have only one element. While the async "
-      << "mechanism should work with multiple statements, it has not been tested so far.";
+void Executor::ExecPTNodeAsync(const PTListNode *lnode, StatementExecutedCallback cb, int idx) {
+  // Done if the list is empty.
+  if (lnode->size() == 0) {
+    CB_RETURN(cb, Status::OK());
+  }
   ExecTreeNodeAsync(
       lnode->element(idx).get(),
       Bind(&Executor::PTNodeAsyncDone, Unretained(this), Unretained(lnode), idx, cb));
@@ -180,6 +182,10 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
 
   if (!table_name.has_namespace()) {
     table_name.set_namespace_name(exec_context_->CurrentKeyspace());
+  }
+
+  if (table_name.is_system() && client::FLAGS_yb_system_namespace_readonly) {
+    CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY));
   }
 
   // Setting up columns.
@@ -786,11 +792,15 @@ CHECKED_STATUS Executor::BoolExprToPB(YQLConditionPB *cond, const PTExpr* expr) 
 //--------------------------------------------------------------------------------------------------
 
 void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallback cb) {
-  if (tnode->is_system()) {
-    CB_RETURN(cb, Status::OK());
-  }
-
   const shared_ptr<client::YBTable>& table = tnode->table();
+
+  if (table == nullptr) {
+    // If this is a system table but the table does not exist, it is okay. Just return OK with void
+    // result.
+    CB_RETURN(cb,
+              tnode->is_system() ? Status::OK() :
+              exec_context_->Error(tnode->loc(), ErrorCode::TABLE_NOT_FOUND));
+  }
 
   // If there is a table id in the statement parameter's paging state, this is a continuation of
   // a prior SELECT statement. Verify that the same table still exists.

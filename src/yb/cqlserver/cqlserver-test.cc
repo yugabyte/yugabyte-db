@@ -146,9 +146,11 @@ TEST_F(TestCQLService, OptionsRequest) {
   // Send OPTIONS request using version V4
   SendRequestAndExpectResponse(
       BINARY_STRING("\x04\x00\x00\x00\x05" "\x00\x00\x00\x00"),
-      BINARY_STRING("\x84\x00\x00\x00\x06" "\x00\x00\x00\x18"
-                    "\x00\x01" "\x00\x0b" "CQL_VERSION"
-                               "\x00\x01" "\x00\x05" "3.0.0"));
+      BINARY_STRING("\x84\x00\x00\x00\x06" "\x00\x00\x00\x2e"
+                    "\x00\x02" "\x00\x0b" "CQL_VERSION"
+                               "\x00\x02" "\x00\x05" "3.0.0" "\x00\x05" "3.4.2"
+                               "\x00\x0b" "COMPRESSION"
+                               "\x00\x00"));
 }
 
 TEST_F(TestCQLService, InvalidRequest) {

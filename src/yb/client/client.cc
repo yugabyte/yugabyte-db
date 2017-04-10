@@ -882,9 +882,13 @@ Status YBTableCreator::Create() {
 
     // Setup the number splits (i.e. number of tablets).
     if (data_->num_tablets_ <= 0) {
-      int tserver_count = 0;
-      RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
-      data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
+      if (data_->table_name_.is_system()) {
+        data_->num_tablets_ = 1;
+      } else {
+        int tserver_count = 0;
+        RETURN_NOT_OK(data_->client_->TabletServerCount(&tserver_count));
+        data_->num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
+      }
     }
     req.set_num_tablets(data_->num_tablets_);
 

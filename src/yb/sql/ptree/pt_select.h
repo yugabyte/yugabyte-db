@@ -128,10 +128,6 @@ class PTTableRef : public TreeNode {
     return name_->ToTableName();
   }
 
-  bool is_system() const {
-    return name_->is_system();
-  }
-
  private:
   PTQualifiedName::SharedPtr name_;
   MCString::SharedPtr alias_;
@@ -212,10 +208,6 @@ class PTSelectStmt : public PTDmlStmt {
   // Returns location of table name.
   virtual const YBLocation& table_loc() const OVERRIDE {
     return from_clause_->loc();
-  }
-
-  bool is_system() const OVERRIDE {
-    return from_clause_->element(0)->is_system();
   }
 
   // Reset to clear and release previous semantics analysis results.

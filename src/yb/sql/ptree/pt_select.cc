@@ -90,12 +90,14 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
   RETURN_NOT_OK(from_clause_->Analyze(sem_context));
-  if (is_system()) {
-    return Status::OK();
-  }
 
   // Collect table's schema for semantic analysis.
-  RETURN_NOT_OK(LookupTable(sem_context));
+  Status s = LookupTable(sem_context);
+  if (PREDICT_FALSE(!s.ok())) {
+    // If it is a system table and it does not exist, do not analyze further. We will return
+    // void result when the SELECT statement is executed.
+    return is_system() ? Status::OK() : s;
+  }
 
   // Run error checking on the select list 'target_'.
   // Check that all targets are valid references to table columns.

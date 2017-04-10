@@ -24,6 +24,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
                      bool write_only,
                      PTConstInt::SharedPtr ttl_seconds)
   : PTCollection(memctx, loc),
+    is_system_(false),
     table_columns_(memctx),
     num_key_columns_(0),
     num_hash_key_columns_(0),
@@ -43,6 +44,11 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
 
   if (!name.has_namespace()) {
     name.set_namespace_name(sem_context->CurrentKeyspace());
+  }
+
+  is_system_ = name.is_system();
+  if (is_system_ && write_only_ && client::FLAGS_yb_system_namespace_readonly) {
+    return sem_context->Error(table_loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
   }
 
   VLOG(3) << "Loading table descriptor for " << name.ToString();

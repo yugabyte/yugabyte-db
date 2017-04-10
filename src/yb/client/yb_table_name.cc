@@ -7,6 +7,8 @@
 namespace yb {
 namespace client {
 
+DEFINE_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only.");
+
 using std::string;
 
 void YBTableName::SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const {
@@ -17,6 +19,14 @@ void YBTableName::SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const 
 const string& YBTableName::default_namespace() {
     static const string defalt_namespace_name(master::kDefaultNamespaceName);
     return defalt_namespace_name;
+}
+
+bool YBTableName::IsSystemNamespace(const std::string& namespace_name) {
+  return (namespace_name == "system"             ||
+          namespace_name == "system_auth"        ||
+          namespace_name == "system_distributed" ||
+          namespace_name == "system_schema"      ||
+          namespace_name == "system_traces");
 }
 
 } // namespace client

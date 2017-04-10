@@ -84,6 +84,10 @@ class PTDmlStmt : public PTCollection {
     return table_;
   }
 
+  bool is_system() const {
+    return is_system_;
+  }
+
   int num_columns() const {
     return table_columns_.size();
   }
@@ -129,8 +133,6 @@ class PTDmlStmt : public PTCollection {
   // Reset to clear and release previous semantics analysis results.
   virtual void Reset() OVERRIDE;
 
-  virtual bool is_system() const = 0;
-
  protected:
   // Data types.
   struct WhereSemanticStats {
@@ -163,6 +165,9 @@ class PTDmlStmt : public PTCollection {
 
   // The sematic analyzer will decorate this node with the following information.
   std::shared_ptr<client::YBTable> table_;
+
+  // Is the table a system table?
+  bool is_system_;
 
   // Table columns.
   MCVector<ColumnDesc> table_columns_;

@@ -207,6 +207,7 @@ void CQLProcessor::ProcessExecuteDone(
 }
 
 void CQLProcessor::ProcessQuery(const QueryRequest& req, Callback<void(CQLResponse*)> cb) {
+  VLOG(1) << "QUERY " << req.query();
   RunAsync(
       req.query(), req.params(),
       Bind(&CQLProcessor::ProcessQueryDone, Unretained(this), req, cb));

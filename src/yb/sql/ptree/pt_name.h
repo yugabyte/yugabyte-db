@@ -104,10 +104,6 @@ class PTQualifiedName : public PTName {
     return ptnames_.back()->name();
   }
 
-  bool is_system() const {
-    return is_system_;
-  }
-
   client::YBTableName ToTableName() const {
     // We support only names with 1 or 2 sub-names.
     // See Analyze() implementation.
@@ -117,7 +113,6 @@ class PTQualifiedName : public PTName {
 
  private:
   MCList<PTName::SharedPtr> ptnames_;
-  bool is_system_;
 };
 
 using PTQualifiedNameListNode = TreeListNode<PTQualifiedName>;

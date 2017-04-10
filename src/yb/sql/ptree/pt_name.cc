@@ -67,8 +67,7 @@ PTQualifiedName::PTQualifiedName(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
                                  const PTName::SharedPtr& ptname)
     : PTName(memctx, loc),
-      ptnames_(memctx),
-      is_system_(false) {
+      ptnames_(memctx) {
   Append(ptname);
 }
 
@@ -76,8 +75,7 @@ PTQualifiedName::PTQualifiedName(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
                                  const MCString::SharedPtr& name)
     : PTName(memctx, loc),
-      ptnames_(memctx),
-      is_system_(false) {
+      ptnames_(memctx) {
   Append(PTName::MakeShared(memctx, loc, name));
 }
 
@@ -99,7 +97,6 @@ CHECKED_STATUS PTQualifiedName::Analyze(SemContext *sem_context) {
     return sem_context->Error(loc(), ErrorCode::FEATURE_NOT_SUPPORTED);
   }
 
-  is_system_ = (ptnames_.size() >= 2 && first_name() == "system");
   return Status::OK();
 }
 

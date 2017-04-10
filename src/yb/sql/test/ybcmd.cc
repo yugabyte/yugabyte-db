@@ -104,25 +104,33 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
 
     // Execute.
     cout << "\033[1;34mExecute statement: " << sql_stmt << "\033[0m" << endl;
-    Status s = processor->Run(sql_stmt);
-    if (!s.ok()) {
-      cout << s.ToString(false);
-    } else {
-      ExecutedResult::SharedPtr result = processor->result();
-      if (result != nullptr) {
-        // Check result.
-        switch (result->type()) {
-          case ExecutedResult::Type::SET_KEYSPACE:
-            cout << "Keyspace set to " << static_cast<SetKeyspaceResult*>(result.get())->keyspace();
-            break;
-          case ExecutedResult::Type::ROWS:
-            std::unique_ptr<YQLRowBlock>
-                row_block(static_cast<RowsResult*>(result.get())->GetRowBlock());
-            cout << row_block->ToString();
-            break;
+    StatementParameters params;
+    do {
+      Status s = processor->Run(sql_stmt, params);
+      if (!s.ok()) {
+        cout << s.ToString(false);
+      } else {
+        ExecutedResult::SharedPtr result = processor->result();
+        if (result != nullptr) {
+          // Check result.
+          switch (result->type()) {
+            case ExecutedResult::Type::SET_KEYSPACE:
+              cout << "Keyspace set to "
+                << static_cast<SetKeyspaceResult*>(result.get())->keyspace();
+              break;
+            case ExecutedResult::Type::ROWS:
+              RowsResult* rows_result = static_cast<RowsResult*>(result.get());
+              std::unique_ptr<YQLRowBlock> row_block(rows_result->GetRowBlock());
+              cout << row_block->ToString();
+              // Extract the paging state from the result (if present) and populate it in the
+              // statement parameters to retrieve the next set of rows until the end is reached
+              // when there is no more table id in the paging state (below).
+              CHECK_OK(params.set_paging_state(rows_result->paging_state()));
+              break;
+          }
         }
       }
-    }
+    } while (!params.table_id().empty());
   }
 }
 

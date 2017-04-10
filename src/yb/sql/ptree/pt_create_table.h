@@ -242,10 +242,6 @@ class PTCreateTable : public TreeNode {
 
   CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
 
-  bool is_system() const {
-    return relation_->is_system();
-  }
-
  private:
   PTQualifiedName::SharedPtr relation_;
   PTListNode::SharedPtr elements_;

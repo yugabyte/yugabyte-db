@@ -354,6 +354,31 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
 
 }
 
+TEST_F(YbSqlKeyspace, TestCreateSystemTable) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Allow writes to system keyspace.
+  client::FLAGS_yb_system_namespace_readonly = false;
+
+  // Create system table.
+  EXEC_VALID_STMT("create table system.t (c int primary key, v int);");
+
+  // Insert into system table.
+  EXEC_VALID_STMT("insert into system.t (c, v) values (1, 2);");
+
+  // Select from system table.
+  EXEC_VALID_STMT("select * from system.t where c = 1;");
+  std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  const YQLRow& row = row_block->row(0);
+  CHECK_EQ(row.column(0).int32_value(), 1);
+  CHECK_EQ(row.column(1).int32_value(), 2);
+}
+
 TEST_F(YbSqlKeyspace, TestSqlSelectInvalidTable) {
   // Init the simulated cluster.
   NO_FATALS(CreateSimulatedCluster());

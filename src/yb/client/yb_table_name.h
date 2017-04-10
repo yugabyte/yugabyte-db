@@ -20,6 +20,9 @@ class TableIdentifierPB;
 
 namespace client {
 
+// Is system keyspace read-only?
+DECLARE_bool(yb_system_namespace_readonly);
+
 // The class is used to store a table name, which can include namespace name as a suffix.
 class YB_EXPORT YBTableName {
  public:
@@ -80,6 +83,10 @@ class YB_EXPORT YBTableName {
     return table_name_;
   }
 
+  bool is_system() const {
+    return IsSystemNamespace(resolved_namespace_name());
+  }
+
   std::string ToString() const {
     return (has_namespace() ? namespace_name_ + '.' + table_name_ : table_name_);
   }
@@ -112,6 +119,8 @@ class YB_EXPORT YBTableName {
   void SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const;
 
   static const std::string& default_namespace();
+
+  static bool IsSystemNamespace(const std::string& namespace_name);
 
  private:
   std::string namespace_name_; // Can be empty, that means the namespace has not been set yet.

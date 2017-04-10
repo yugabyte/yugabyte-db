@@ -116,10 +116,6 @@ class PTUpdateStmt : public PTDmlStmt {
     return if_clause_.get();
   }
 
-  bool is_system() const OVERRIDE {
-    return relation_->is_system();
-  }
-
  private:
   PTTableRef::SharedPtr relation_;
   PTAssignListNode::SharedPtr set_clause_;

@@ -62,10 +62,6 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
   RETURN_NOT_OK(relation_->Analyze(sem_context));
 
-  if (is_system()) {
-    return sem_context->Error(relation_->loc(), ErrorCode::SYSTEM_NAMESPACE_READONLY);
-  }
-
   // Get table descriptor.
   RETURN_NOT_OK(LookupTable(sem_context));
   const int num_cols = num_columns();

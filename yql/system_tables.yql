@@ -1,0 +1,144 @@
+CREATE TABLE system.peers (
+    peer inet PRIMARY KEY,
+    data_center text,
+    preferred_ip inet,
+    rack text,
+    release_version text,
+    rpc_address inet);
+
+CREATE TABLE system.local (
+    key text PRIMARY KEY,
+    bootstrapped text,
+    broadcast_address inet,
+    cluster_name text,
+    cql_version text,
+    data_center text,
+    gossip_generation int,
+    listen_address inet,
+    native_protocol_version text,
+    partitioner text,
+    rack text,
+    release_version text,
+    rpc_address inet,
+    thrift_version text);
+
+-- This "local" row is needed by cqlsh to connect to YB cluster successfully but will cause
+-- Cassandra Java client to fail to connect because it tries to examine the "tokens" column which
+-- is a set column that we do not support yet. Therefore, do not create system tables in a local
+-- cluster when running Java loadtester.
+INSERT INTO system.local
+    (key, bootstrapped, broadcast_address, cluster_name, cql_version, data_center,
+    gossip_generation, listen_address, native_protocol_version, partitioner, rack,
+    release_version, rpc_address, thrift_version)
+    VALUES
+    ('local', 'COMPLETED', '127.0.0.1', 'local cluster', '3.4.2', 'datacenter',
+    0, '127.0.0.1', '4', 'org.apache.cassandra.dht.Murmur3Partitioner', 'rack',
+    '3.9-SNAPSHOT', '127.0.0.1', '20.1.0');
+
+CREATE KEYSPACE system_schema;
+
+CREATE TABLE system_schema.aggregates (
+    keyspace_name text,
+    aggregate_name text,
+    final_func text,
+    initcond text,
+    return_type text,
+    state_func text,
+    state_type text,
+    PRIMARY KEY (keyspace_name, aggregate_name));
+
+CREATE TABLE system_schema.columns (
+    keyspace_name text,
+    table_name text,
+    column_name text,
+    clustering_order text,
+    kind text,
+    position int,
+    type text,
+    PRIMARY KEY (keyspace_name, table_name, column_name));
+
+CREATE TABLE system_schema.functions (
+    keyspace_name text,
+    function_name text,
+    body text,
+    called_on_null_input boolean,
+    language text,
+    return_type text,
+    PRIMARY KEY (keyspace_name, function_name));
+
+CREATE TABLE system_schema.indexes (
+    keyspace_name text,
+    table_name text,
+    index_name text,
+    kind text,
+    PRIMARY KEY (keyspace_name, table_name, index_name));
+
+CREATE TABLE system_schema.keyspaces (
+    keyspace_name text PRIMARY KEY,
+    durable_writes boolean);
+
+CREATE TABLE system_schema.tables (
+    keyspace_name text,
+    table_name text,
+    bloom_filter_fp_chance double,
+    cdc boolean,
+    comment text,
+    crc_check_chance double,
+    dclocal_read_repair_chance double,
+    default_time_to_live int,
+    gc_grace_seconds int,
+    max_index_interval int,
+    memtable_flush_period_in_ms int,
+    min_index_interval int,
+    read_repair_chance double,
+    speculative_retry text,
+    PRIMARY KEY (keyspace_name, table_name));
+
+CREATE TABLE system_schema.triggers (
+    keyspace_name text,
+    table_name text,
+    trigger_name text,
+    PRIMARY KEY (keyspace_name, table_name, trigger_name));
+
+CREATE TABLE system_schema.types (
+    keyspace_name text,
+    type_name text,
+    PRIMARY KEY (keyspace_name, type_name));
+
+CREATE TABLE system_schema.views (
+    keyspace_name text,
+    view_name text,
+    base_table_name text,
+    bloom_filter_fp_chance double,
+    cdc boolean,
+    comment text,
+    crc_check_chance double,
+    dclocal_read_repair_chance double,
+    default_time_to_live int,
+    gc_grace_seconds int,
+    include_all_columns boolean,
+    max_index_interval int,
+    memtable_flush_period_in_ms int,
+    min_index_interval int,
+    read_repair_chance double,
+    speculative_retry text,
+    where_clause text,
+    PRIMARY KEY (keyspace_name, view_name));
+
+INSERT INTO system_schema.keyspaces (keyspace_name, durable_writes) VALUES ('system', true);
+INSERT INTO system_schema.keyspaces (keyspace_name, durable_writes) VALUES ('system_schema', true);
+
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system', 'local');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system', 'peers');
+
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'aggregates');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'columns');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'functions');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'indexes');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'keyspaces');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'tables');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'triggers');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'types');
+INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'views');
+
+exit;

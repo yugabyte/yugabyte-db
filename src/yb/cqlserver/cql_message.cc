@@ -804,8 +804,10 @@ void AuthenticateResponse::SerializeBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-const unordered_map<string, vector<string>> SupportedResponse::options_ =
-  { {"CQL_VERSION", {"3.0.0"} } };
+const unordered_map<string, vector<string>> SupportedResponse::options_ = {
+  {"COMPRESSION", { } },
+  {"CQL_VERSION", {"3.0.0" /* minimum */, "3.4.2" /* current */} }
+};
 
 SupportedResponse::SupportedResponse(const CQLRequest& request)
     : CQLResponse(request, Opcode::SUPPORTED) {
