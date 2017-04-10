@@ -60,6 +60,33 @@ ALTER TABLE @extschema@.part_config_sub RENAME COLUMN "sub_type" to "sub_partiti
 ALTER TABLE @extschema@.part_config RENAME COLUMN part_interval TO partition_interval;
 ALTER TABLE @extschema@.part_config_sub RENAME COLUMN sub_part_interval TO sub_partition_interval;
 
+-- This table was only created if the version of postgres was >= 9.2 at the time of v1.6.0 installation. Account for
+-- when people are upgrading from 1.x to 2.x and if they may have been on 9.1 at the time
+CREATE TABLE IF NOT EXISTS @extschema@.custom_time_partitions (
+    parent_table text NOT NULL
+    , child_table text NOT NULL
+    , partition_range tstzrange NOT NULL
+    , PRIMARY KEY (parent_table, child_table));
+-- IF EXISTS clause to CREATE INDEX was not added until 9.5, so use DO block instead since we're 9.4 compatible
+DO $$
+DECLARE
+v_exists    smallint;
+BEGIN
+    SELECT count(*) FROM pg_catalog.pg_class INTO v_exists
+    WHERE relname = 'custom_time_partitions_partition_range_idx'  
+    AND relkind = 'i';
+    IF v_exists < 1 THEN
+        CREATE INDEX custom_time_partitions_partition_range_idx ON custom_time_partitions USING gist (partition_range);
+    END IF;
+END
+$$;
+SELECT pg_catalog.pg_extension_config_dump('custom_time_partitions', '');
+
+CREATE INDEX IF NOT EXISTS custom_time_partitions_partition_range_idx ON @extschema@.custom_time_partitions USING gist (partition_range);
+SELECT pg_catalog.pg_extension_config_dump('custom_time_partitions', '');
+
+
+
 --NOTE This function is in the table sql file
 /* 
  * Ensure that sub-partitioned tables that are themselves sub-partitions have the same configuration options set when they are part of the same inheritance tree

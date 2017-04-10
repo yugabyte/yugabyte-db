@@ -1,6 +1,3 @@
-/*
- * Populate the child table(s) of an id-based partition set with old data from the original parent
- */
 CREATE FUNCTION partition_data_id(p_parent_table text
         , p_batch_count int DEFAULT 1
         , p_batch_interval bigint DEFAULT NULL
@@ -13,7 +10,9 @@ CREATE FUNCTION partition_data_id(p_parent_table text
 DECLARE
 
 v_control                   text;
+v_control_type              text;
 v_current_partition_name    text;
+v_epoch                     text;
 v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_max_partition_id          bigint;
@@ -30,25 +29,36 @@ v_start_control             bigint;
 v_total_rows                bigint := 0;
 
 BEGIN
+/*
+ * Populate the child table(s) of an id-based partition set with old data from the original parent
+ */
 
 SELECT partition_interval::bigint
     , control
+    , epoch
 INTO v_partition_interval
     , v_control
+    , v_epoch
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND partition_type = 'id';
+AND partition_type = 'partman';
 IF NOT FOUND THEN
-    RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+    RAISE EXCEPTION 'ERROR: No entry in part_config found for non-native partitioning for given table:  %', p_parent_table;
 END IF;
-
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(p_parent_table, '.', 1)::name
 AND tablename = split_part(p_parent_table, '.', 2)::name;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+
+IF v_control_type <> 'id' OR (v_control_type = 'id' AND v_epoch <> 'none') THEN
+    RAISE EXCEPTION 'Control column for given partition set is not id/serial based or epoch flag is set for time-based partitioning.';
+END IF;
+
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
 IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
     p_batch_interval := v_partition_interval;
@@ -137,7 +147,7 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP;
 
-PERFORM @extschema@.create_function_id(p_parent_table, NULL, p_analyze);
+PERFORM @extschema@.create_function_id(p_parent_table);
 
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
@@ -145,5 +155,4 @@ RETURN v_total_rows;
 
 END
 $$;
-
 

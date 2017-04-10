@@ -1,7 +1,4 @@
-/*
- * Create the trigger function for the parent table of an id-based partition set
- */
-CREATE FUNCTION create_function_id(p_parent_table text, p_job_id bigint DEFAULT NULL, p_analyze boolean DEFAULT true) RETURNS void
+CREATE FUNCTION create_function_id(p_parent_table text, p_job_id bigint DEFAULT NULL) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -11,6 +8,7 @@ ex_detail                       text;
 ex_hint                         text;
 ex_message                      text;
 v_control                       text;
+v_control_type                  text;
 v_count                         int;
 v_current_partition_name        text;
 v_current_partition_id          bigint;
@@ -36,8 +34,9 @@ v_partition_interval            bigint;
 v_premake                       int;
 v_prev_partition_id             bigint;
 v_prev_partition_name           text;
+v_relkind                       char;
 v_row_max_id                    record;
-v_run_maint                     boolean;
+v_run_maint                     text;
 v_step_id                       bigint;
 v_top_parent                    text := p_parent_table;
 v_trig_func                     text;
@@ -46,12 +45,15 @@ v_trigger_return_null           boolean;
 v_upsert                        text;
 
 BEGIN
+/*
+ * Create the trigger function for the parent table of an id-based partition set
+ */
 
 SELECT partition_interval::bigint
     , control
     , premake
     , optimize_trigger
-    , use_run_maintenance
+    , automatic_maintenance
     , jobmon
     , trigger_exception_handling
     , upsert
@@ -67,10 +69,27 @@ INTO v_partition_interval
     , v_trigger_return_null
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND partition_type = 'id';
+AND partition_type = 'partman';
 
 IF NOT FOUND THEN
-    RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+    RAISE EXCEPTION 'ERROR: no non-native pg_partman config found for %', p_parent_table;
+END IF;
+
+SELECT n.nspname, c.relname, c.relkind INTO v_parent_schema, v_parent_tablename, v_relkind
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
+
+IF v_relkind = 'p' THEN
+    RAISE EXCEPTION 'This function cannot run on natively partitioned tables';
+ELSIF v_relkind IS NULL THEN
+    RAISE EXCEPTION 'Unable to find given table in system catalogs: %.%', v_parent_schema, v_parent_tablename;
+END IF;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'id' THEN
+    RAISE EXCEPTION 'Cannot run create_function_id on partition set without id based control column. Found: %', v_control_type;
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -84,6 +103,8 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path
 
 SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
 
+v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
+
 IF v_jobmon_schema IS NOT NULL THEN
     IF p_job_id IS NULL THEN
         v_job_id := add_job(format('PARTMAN CREATE FUNCTION: %s', p_parent_table));
@@ -92,12 +113,6 @@ IF v_jobmon_schema IS NOT NULL THEN
     END IF;
     v_step_id := add_step(v_job_id, format('Creating partition function for table %s', p_parent_table));
 END IF;
-
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
-FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
-v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
 -- Get the highest level top parent if multi-level partitioned in order to get proper max() value below
 WHILE v_higher_parent_table IS NOT NULL LOOP -- initially set in DECLARE
@@ -232,39 +247,6 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             , v_upsert
             , v_parent_schema
         );
-
-    IF v_run_maint IS FALSE THEN
-        v_trig_func := v_trig_func ||format('
-        v_current_partition_id := NEW.%I - (NEW.%I %% %s);
-        IF (NEW.%I %% %s) > (%s / 2) THEN
-            v_id_position := (length(v_last_partition) - position(''p_'' in reverse(v_last_partition))) + 2;
-            v_next_partition_id := (substring(v_last_partition from v_id_position)::bigint) + %s;
-            WHILE ((v_next_partition_id - v_current_partition_id) / %s) <= %s LOOP 
-                v_partition_created := @extschema@.create_partition_id(%L, ARRAY[v_next_partition_id], p_analyze := %L);
-                IF v_partition_created THEN
-                    PERFORM @extschema@.create_function_id(%L, p_analyze := %L);
-                    PERFORM @extschema@.apply_constraints(%L);
-                END IF;
-                v_next_partition_id := v_next_partition_id + %s;
-            END LOOP;
-        END IF;'
-            , v_control
-            , v_control
-            , v_partition_interval
-            , v_control
-            , v_partition_interval
-            , v_partition_interval
-            , v_partition_interval
-            , v_partition_interval
-            , v_premake
-            , p_parent_table
-            , p_analyze
-            , p_parent_table
-            , p_analyze
-            , p_parent_table
-            , v_partition_interval
-        );
-    END IF;
 
     v_trig_func := v_trig_func ||'
     END IF;';

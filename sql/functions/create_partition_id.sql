@@ -1,6 +1,3 @@
-/*
- * Function to create id partitions
- */
 CREATE FUNCTION create_partition_id(p_parent_table text, p_partition_ids bigint[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -13,6 +10,7 @@ ex_message              text;
 v_all                   text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
 v_analyze               boolean := FALSE;
 v_control               text;
+v_control_type          text;
 v_exists                text;
 v_grantees              text[];
 v_hasoids               boolean;
@@ -24,37 +22,57 @@ v_jobmon_schema         text;
 v_new_search_path       text := '@extschema@,pg_temp';
 v_old_search_path       text;
 v_parent_grant          record;
-v_parent_owner          text;
 v_parent_schema         text;
 v_parent_tablename      text;
 v_parent_tablespace     text;
 v_partition_interval    bigint;
 v_partition_created     boolean := false;
 v_partition_name        text;
+v_partition_type        text;
 v_revoke                text;
 v_row                   record;
 v_sql                   text;
 v_step_id               bigint;
+v_sub_control           text;
+v_sub_partition_type    text; 
 v_sub_id_max            bigint;
 v_sub_id_min            bigint;
 v_unlogged              char;
 
 BEGIN
+/*
+ * Function to create id partitions
+ */
 
 SELECT control
+    , partition_type
     , partition_interval
     , inherit_fk
     , jobmon
 INTO v_control
+    , v_partition_type
     , v_partition_interval
     , v_inherit_fk
     , v_jobmon
 FROM @extschema@.part_config
-WHERE parent_table = p_parent_table
-AND partition_type = 'id';
+WHERE parent_table = p_parent_table;
 
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+END IF;
+
+SELECT n.nspname, c.relname, t.spcname 
+INTO v_parent_schema, v_parent_tablename, v_parent_tablespace 
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+LEFT OUTER JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'id' THEN
+    RAISE EXCEPTION 'ERROR: Given parent table is not set up for id/serial partitioning';
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -68,12 +86,6 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path
 
 -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
 SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'id');
-
-SELECT tableowner, schemaname, tablename, tablespace 
-INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace 
-FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN CREATE TABLE: %s', p_parent_table));
@@ -89,7 +101,11 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
     v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_id::text, TRUE);
     -- If child table already exists, skip creation
-    SELECT tablename INTO v_exists FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_partition_name::name;
+    -- Have to check pg_class because if subpartitioned, table will not be in pg_tables
+    SELECT c.relname INTO v_exists 
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = v_parent_schema::name AND c.relname = v_partition_name::name;
     IF v_exists IS NOT NULL THEN
         CONTINUE;
     END IF;
@@ -106,15 +122,29 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
     WHERE c.relname = v_parent_tablename::name
     AND n.nspname = v_parent_schema::name;
+
     v_sql := 'CREATE';
     IF v_unlogged = 'u' THEN
         v_sql := v_sql || ' UNLOGGED';
     END IF;
-    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)'
+    -- Close parentheses on LIKE are below due to differing requirements of native subpartitioning
+    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
             , v_parent_schema
             , v_partition_name
             , v_parent_schema
             , v_parent_tablename);
+
+    SELECT sub_partition_type, sub_control INTO v_sub_partition_type, v_sub_control 
+    FROM @extschema@.part_config_sub 
+    WHERE sub_parent = p_parent_table;
+    IF v_sub_partition_type = 'native' THEN
+        -- Cannot include indexes since they cannot exist on native parents
+        v_sql := v_sql || format(') PARTITION BY RANGE (%I) ', v_sub_control);
+    ELSE
+        v_sql := v_sql || format(' INCLUDING INDEXES) ', v_sub_control);
+    END IF;
+
+
     SELECT relhasoids INTO v_hasoids 
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -124,26 +154,46 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         v_sql := v_sql || ' WITH (OIDS)';
     END IF;
     EXECUTE v_sql;
+
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_partition_name, v_parent_tablespace);
     END IF;
-    EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %s AND %I < %s )'
-        , v_parent_schema
-        , v_partition_name
-        , v_partition_name||'_partition_check'
-        , v_control
-        , v_id
-        , v_control
-        , v_id + v_partition_interval);
-    EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I', v_parent_schema, v_partition_name, v_parent_schema, v_parent_tablename);
 
-    PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name, v_job_id);
+    IF v_partition_type = 'native' THEN
 
-    PERFORM @extschema@.apply_cluster(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name);
+        EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
+            , v_parent_schema
+            , v_parent_tablename
+            , v_parent_schema
+            , v_partition_name
+            , v_id
+            , v_id + v_partition_interval);
 
-    IF v_inherit_fk THEN
-        PERFORM @extschema@.apply_foreign_keys(p_parent_table, v_parent_schema||'.'||v_partition_name, v_job_id);
+    ELSE
+
+        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %s AND %I < %s )'
+            , v_parent_schema
+            , v_partition_name
+            , v_partition_name||'_partition_check'
+            , v_control
+            , v_id
+            , v_control
+            , v_id + v_partition_interval);
+
+        EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I', v_parent_schema, v_partition_name, v_parent_schema, v_parent_tablename);
+
+        -- Indexes cannot be created on the parent, so clustering cannot be used for native yet.
+        PERFORM @extschema@.apply_cluster(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name);
+
+        -- Foreign keys to other tables not supported in native
+        IF v_inherit_fk THEN
+            PERFORM @extschema@.apply_foreign_keys(p_parent_table, v_parent_schema||'.'||v_partition_name, v_job_id);
+        END IF;
+
     END IF;
+    
+    -- NOTE: Privileges currently not automatically inherited for native
+    PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name, v_job_id);
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -166,7 +216,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , sub_retention_schema
             , sub_retention_keep_table
             , sub_retention_keep_index
-            , sub_use_run_maintenance
+            , sub_automatic_maintenance
             , sub_infinite_time_partitions
             , sub_jobmon
             , sub_trigger_exception_handling
@@ -183,7 +233,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
                 , p_interval := %L
                 , p_constraint_cols := %L
                 , p_premake := %L
-                , p_use_run_maintenance := %L
+                , p_automatic_maintenance := %L
                 , p_inherit_fk := %L
                 , p_epoch := %L
                 , p_jobmon := %L )'
@@ -193,7 +243,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , v_row.sub_partition_interval
             , v_row.sub_constraint_cols
             , v_row.sub_premake
-            , v_row.sub_use_run_maintenance
+            , v_row.sub_automatic_maintenance
             , v_row.sub_inherit_fk
             , v_row.sub_epoch
             , v_row.sub_jobmon);
@@ -268,7 +318,8 @@ EXCEPTION
         RAISE EXCEPTION '%
 CONTEXT: %
 DETAIL: %
-HINT: %', ex_message, ex_context, ex_detail, ex_hint;
+HINT: %', ex_message, ex_context, ex_detail, ex_hint; 
 END
 $$;
+
 

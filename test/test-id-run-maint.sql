@@ -1,5 +1,7 @@
 -- ########## ID TESTS ##########
 -- Other tests: Single column Foreign Key, Use run_maintenance(), with OIDs, additional constraint single column, rows that hit dynamic fallback
+-- This test not really needed as of 3.0.0 since all ID partitions now use automatic_maintenance. 
+-- Instead, this is a test with automatic_maintenance = off
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -24,7 +26,8 @@ INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
 
-SELECT create_parent('partman_test.id_taptest_table', 'col1', 'id', '10', '{"col3"}', p_use_run_maintenance := true);
+SELECT create_parent('partman_test.id_taptest_table', 'col1', 'partman', '10', '{"col3"}', p_automatic_maintenance := 'off');
+
 UPDATE part_config SET optimize_constraint = 4 WHERE parent_table = 'partman_test.id_taptest_table';
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 exists');
@@ -68,7 +71,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20',
 SELECT hasnt_table('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 doesn''t exists yet');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60', 'Check id_taptest_table_p60 doesn''t exists yet');
 
-SELECT run_maintenance();
+SELECT run_maintenance('partman_test.id_taptest_table');
 
 SELECT has_table('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p60', 'Check id_taptest_table_p60 exists');
@@ -89,7 +92,7 @@ REVOKE ALL ON partman_test.id_taptest_table FROM partman_revoke;
 ALTER TABLE partman_test.id_taptest_table OWNER TO partman_owner;
 -- Skipped 26-29 to allow dynamic fallback insertion test below
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(30,60));
-SELECT run_maintenance();
+SELECT run_maintenance('partman_test.id_taptest_table');
 
 -- Check for additional constraint on date column
 SELECT col_has_check('partman_test', 'id_taptest_table_p10', 'col3', 'Check for additional constraint on col3 on id_taptest_table_p10');

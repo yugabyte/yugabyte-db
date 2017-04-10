@@ -1,5 +1,5 @@
 -- ########## TIME CUSTOM TESTS ##########
--- Other tests: Use undo_partition()
+-- Other tests: Use undo_partition(), pass 'time-custom' to create_parent()
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true

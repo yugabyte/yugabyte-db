@@ -1,12 +1,12 @@
-/*
- * Function to list all child partitions in a set in logical order.
- */
 CREATE FUNCTION show_partitions (p_parent_table text, p_order text DEFAULT 'ASC') RETURNS TABLE (partition_schemaname text, partition_tablename text)
     LANGUAGE plpgsql STABLE SECURITY DEFINER 
     AS $$
 DECLARE
 
+v_control               text;
+v_control_type          text;
 v_datetime_string       text;
+v_epoch                 text;
 v_new_search_path       text := '@extschema@,pg_temp';
 v_old_search_path       text;
 v_parent_schema         text;
@@ -17,6 +17,9 @@ v_type                  text;
 v_year                  text;
 
 BEGIN
+/*
+ * Function to list all child partitions in a set in logical order.
+ */
 
 SELECT current_setting('search_path') INTO v_old_search_path;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
@@ -29,18 +32,25 @@ END IF;
 SELECT partition_type
     , partition_interval
     , datetime_string
+    , control
+    , epoch
 INTO v_type
     , v_partition_interval
     , v_datetime_string
+    , v_control
+    , v_epoch
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
-FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
+SELECT n.nspname, c.relname INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
 
-IF v_type IN ('time', 'time-custom') THEN
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+
+IF v_control_type = 'time' OR (v_control_type = 'id' AND v_epoch <> 'none') THEN
 
     IF v_partition_interval::interval <> '3 months' OR (v_partition_interval::interval = '3 months' AND v_type = 'time-custom') THEN
         RETURN QUERY EXECUTE 
@@ -71,7 +81,7 @@ IF v_type IN ('time', 'time-custom') THEN
             , p_order);
     END IF;
 
-ELSIF v_type = 'id' THEN
+ELSIF v_control_type = 'id' THEN
     RETURN QUERY EXECUTE 
     format('SELECT n.nspname::text AS partition_schemaname, c.relname::text AS partition_name FROM
     pg_catalog.pg_inherits h
@@ -89,4 +99,5 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path
 
 END
 $$;
+
 

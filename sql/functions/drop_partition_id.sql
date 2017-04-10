@@ -1,7 +1,3 @@
-/*
- * Function to drop child tables from an id-based partition set. 
- * Options to move table to different schema, drop only indexes or actually drop the table from the database.
- */
 CREATE FUNCTION drop_partition_id(p_parent_table text, p_retention bigint DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -13,6 +9,7 @@ ex_hint                     text;
 ex_message                  text;
 v_adv_lock                  boolean;
 v_control                   text;
+v_control_type              text;
 v_drop_count                int := 0;
 v_index                     record;
 v_job_id                    bigint;
@@ -25,6 +22,7 @@ v_parent_schema             text;
 v_parent_tablename          text;
 v_partition_interval        bigint;
 v_partition_id              bigint;
+v_partition_type            text;
 v_retention                 bigint;
 v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
@@ -34,6 +32,10 @@ v_row_max_id                record;
 v_step_id                   bigint;
 
 BEGIN
+/*
+ * Function to drop child tables from an id-based partition set. 
+ * Options to move table to different schema, drop only indexes or actually drop the table from the database.
+ */
 
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman drop_partition_id'));
 IF v_adv_lock = 'false' THEN
@@ -41,10 +43,10 @@ IF v_adv_lock = 'false' THEN
     RETURN 0;
 END IF;
 
--- Allow override of configuration options
 IF p_retention IS NULL THEN
     SELECT  
         partition_interval::bigint
+        , partition_type
         , control
         , retention::bigint
         , retention_keep_table
@@ -53,6 +55,7 @@ IF p_retention IS NULL THEN
         , jobmon
     INTO
         v_partition_interval
+        , v_partition_type
         , v_control
         , v_retention
         , v_retention_keep_table
@@ -61,15 +64,15 @@ IF p_retention IS NULL THEN
         , v_jobmon
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
-    AND partition_type = 'id'
     AND retention IS NOT NULL;
 
     IF v_partition_interval IS NULL THEN
         RAISE EXCEPTION 'Configuration for given parent table with a retention period not found: %', p_parent_table;
     END IF;
-ELSE
+ELSE -- Allow override of configuration options
      SELECT  
         partition_interval::bigint
+        , partition_type
         , control
         , retention_keep_table
         , retention_keep_index
@@ -77,19 +80,24 @@ ELSE
         , jobmon
     INTO
         v_partition_interval
+        , v_partition_type
         , v_control
         , v_retention_keep_table
         , v_retention_keep_index
         , v_retention_schema
         , v_jobmon
     FROM @extschema@.part_config 
-    WHERE parent_table = p_parent_table 
-    AND partition_type = 'id'; 
+    WHERE parent_table = p_parent_table;
     v_retention := p_retention;
 
     IF v_partition_interval IS NULL THEN
         RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
     END IF;
+END IF;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'id' THEN
+    RAISE EXCEPTION 'Data type of control column in given partition set is not an integer type';
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -143,15 +151,23 @@ LOOP
         END IF;
 
         IF v_jobmon_schema IS NOT NULL THEN
-            v_step_id := add_step(v_job_id, format('Uninherit table %s.%s from %s', v_row.partition_schemaname, v_row.partition_tablename, p_parent_table));
+            v_step_id := add_step(v_job_id, format('Detach/Uninherit table %s.%s from %s', v_row.partition_schemaname, v_row.partition_tablename, p_parent_table));
         END IF;
-        EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
-            , v_row.partition_schemaname
-            , v_row.partition_tablename
-            , v_parent_schema
-            , v_parent_tablename);
-        IF v_jobmon_schema IS NOT NULL THEN
-            PERFORM update_step(v_step_id, 'OK', 'Done');
+        IF v_partition_type = 'native' THEN
+            EXECUTE format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
+                , v_parent_schema
+                , v_parent_tablename
+                , v_row.partition_schemaname
+                , v_row.partition_tablename);
+        ELSE
+            EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
+                , v_row.partition_schemaname
+                , v_row.partition_tablename
+                , v_parent_schema
+                , v_parent_tablename);
+            IF v_jobmon_schema IS NOT NULL THEN
+                PERFORM update_step(v_step_id, 'OK', 'Done');
+            END IF;
         END IF;
         IF v_retention_schema IS NULL THEN
             IF v_retention_keep_table = false THEN

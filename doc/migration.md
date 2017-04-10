@@ -1,7 +1,9 @@
 Migrating An Existing Partition Set to PG Partition Manager
 ===========================================================
 
-This document is an aid for migrating an existing partitioned table set to using pg_partman. pg_partman does not support having child table names that do not match its naming convention. I've tried to implement that several times, but it's too difficult to support in a general manner and just ends up hindering development or breaking a feature. Your situation likely isn't exactly like the ones below, but this should at least provide guidance on what is required. 
+This document is an aid for migrating an existing partitioned table set to using pg_partman. Please not that at this time, this guide is only for non-native partitioning. The easiest way to migrate to a natively partitioned table is to create a brand new table and copy/move the data. 
+
+pg_partman does not support having child table names that do not match its naming convention. I've tried to implement that several times, but it's too difficult to support in a general manner and just ends up hindering development or breaking a feature. Your situation likely isn't exactly like the ones below, but this should at least provide guidance on what is required. 
 
 As always, if you can first test this migration on a development system, it is highly recommended. The full data set is not needed to test this and just the schema with a smaller set of data in each child should be sufficient enough to make sure it works properly.
 
@@ -246,10 +248,10 @@ Step 4b
 -------
 Setup pg_partman to manage your partition set.
 
-    SELECT partman.create_parent('tracking.hits', 'start', 'time', 'weekly');
+    SELECT partman.create_parent('tracking.hits', 'start', 'partman', 'weekly');
     COMMIT;
 
-This single function call will add your old partition set into pg_partman's configuration, create a new trigger and possibly create some new child tables as well. pg_partman always keeps a minumum number of future partitions premade (based on the *premake* value in the config table or as a parameter to the create_parent() function), so if you don't have those yet, this step will take care of that as well. Adjust the parameters as needed and see the documentation for addtional options that are vailable. This call matches the time partition used in the example so far.
+This single function call will add your old partition set into pg_partman's configuration, create a new trigger and possibly create some new child tables as well. pg_partman always keeps a minumum number of future partitions premade (based on the *premake* value in the config table or as a parameter to the create_parent() function), so if you don't have those yet, this step will take care of that as well. Adjust the parameters as needed and see the documentation for addtional options that are available. This call matches the time partition used in the example so far.
 
     \d+ tracking.hits
                                       Table "tracking.hits"

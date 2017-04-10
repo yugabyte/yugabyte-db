@@ -1,6 +1,3 @@
-/*
- * Populate the child table(s) of a time-based partition set with old data from the original parent
- */
 CREATE FUNCTION partition_data_time(
         p_parent_table text
         , p_batch_count int DEFAULT 1
@@ -14,6 +11,7 @@ CREATE FUNCTION partition_data_time(
 DECLARE
 
 v_control                   text;
+v_control_type              text;
 v_datetime_string           text;
 v_current_partition_name    text;
 v_epoch                     text;
@@ -39,9 +37,9 @@ v_type                      text;
 v_year                      text;
 
 BEGIN
-
-SELECT current_setting('search_path') INTO v_old_search_path;
-EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+/*
+ * Populate the child table(s) of a time-based partition set with old data from the original parent
+ */
 
 SELECT partition_type
     , partition_interval::interval
@@ -55,20 +53,29 @@ INTO v_type
     , v_epoch
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND (partition_type = 'time' OR partition_type = 'time-custom');
+AND partition_type IN ('partman', 'time-custom');
 IF NOT FOUND THEN
-    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
-    RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
-END IF;
-
-IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
-    p_batch_interval := v_partition_interval;
+    RAISE EXCEPTION 'ERROR: No entry in part_config found for non-native partitioning for given table:  %', p_parent_table;
 END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(p_parent_table, '.', 1)::name
 AND tablename = split_part(p_parent_table, '.', 2)::name;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'time' THEN 
+    IF (v_control_type = 'id' AND v_epoch = 'none') OR v_control_type <> 'id' THEN
+        RAISE EXCEPTION 'Cannot run on partition set without time based control column or epoch flag set with an id column. Found control: %, epoch: %', v_control_type, v_epoch;
+    END IF;
+END IF;
+
+SELECT current_setting('search_path') INTO v_old_search_path;
+EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
+
+IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
+    p_batch_interval := v_partition_interval;
+END IF;
 
 SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
 
@@ -92,7 +99,7 @@ FOR i IN 1..p_batch_count LOOP
         EXIT;
     END IF;
 
-    IF v_type = 'time' THEN
+    IF v_type = 'partman' THEN
         CASE
             WHEN v_partition_interval = '15 mins' THEN
                 v_min_partition_timestamp := date_trunc('hour', v_start_control) + 
@@ -217,5 +224,4 @@ RETURN v_total_rows;
 
 END
 $$;
-
 

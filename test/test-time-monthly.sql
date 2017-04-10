@@ -26,7 +26,7 @@ INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'monthly', p_inherit_fk := false);
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', 'monthly', p_inherit_fk := false);
 --SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'monthly');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), 'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM'), 

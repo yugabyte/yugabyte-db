@@ -1,9 +1,4 @@
-
-/*
- * Function to undo partitioning. Copies data to parent without removing any data from children.
- * Will actually work on any parent/child table set, not just ones created by pg_partman.
- */
-CREATE FUNCTION undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_keep_table boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_lock_wait numeric DEFAULT 0) RETURNS bigint
+CREATE FUNCTION undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_keep_table boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_lock_wait numeric DEFAULT 0, OUT partitions_undone int, OUT rows_undone bigint) RETURNS record 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -27,19 +22,26 @@ v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
 v_partition_interval    interval;
+v_relkind               char;
 v_rowcount              bigint;
 v_step_id               bigint;
+v_top_parent_table      text;
 v_total                 bigint := 0;
 v_trig_name             text;
 v_type                  text;
 v_undo_count            int := 0;
 
 BEGIN
+/*
+ * Function to undo partitioning. Copies data to parent without removing any data from children.
+ * Will actually work on any non-native parent/child table set, not just ones created by pg_partman.
+ */
 
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'undo_partition already running.';
-    RETURN 0;
+    partitions_undone = -1;
+    RETURN;
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -51,15 +53,20 @@ IF p_jobmon THEN
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
+SELECT n.nspname, c.relname, c.relkind INTO v_parent_schema, v_parent_tablename, v_relkind
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
+
+IF v_relkind = 'p' THEN
+    RAISE EXCEPTION 'Given parent table uses native paritioning. Data cannot be copied to the parent with native. See undo_partition_native().';
+END IF;
+
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN UNDO PARTITIONING: %s', p_parent_table));
     v_step_id := add_step(v_job_id, format('Undoing partitioning for table %s', p_parent_table));
 END IF;
-
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
-FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
@@ -94,7 +101,7 @@ IF v_trig_name IS NOT NULL THEN
         END LOOP;
         IF NOT v_lock_obtained THEN
             RAISE NOTICE 'Unable to obtain lock on parent table to remove trigger';
-            RETURN -1;
+            RETURN;
         END IF;
     END IF; -- END p_lock_wait IF
     EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', v_trig_name, v_parent_schema, v_parent_tablename);
@@ -153,7 +160,7 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         END LOOP;
         IF NOT v_lock_obtained THEN
             RAISE NOTICE 'Unable to obtain lock on child table for removal from partition set';
-            RETURN -1;
+            RETURN;
         END IF;
     END IF; -- END p_lock_wait IF
 
@@ -194,6 +201,24 @@ END LOOP; -- v_batch_loop_count
 IF v_undo_count = 0 THEN
     -- FOR loop never ran, so there's no child tables left.
     DELETE FROM @extschema@.part_config WHERE parent_table = p_parent_table;
+    DELETE FROM @extschema@.part_config_sub WHERE sub_parent = p_parent_table;
+        -- If subpartitioned, remove the parent of this table from part_config_sub
+        WITH top_oid AS (
+            SELECT i.inhparent AS top_parent_oid
+            FROM pg_catalog.pg_inherits i
+            JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relname = v_parent_tablename::name
+            AND n.nspname = v_parent_schema::name
+        ) SELECT n.nspname||'.'||c.relname 
+        INTO v_top_parent_table 
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN top_oid t ON c.oid = t.top_parent_oid
+        JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname;
+
+        DELETE FROM @extschema@.part_config_sub WHERE sub_parent = v_top_parent_table;
+
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, 'Removing config from pg_partman (if it existed)');
         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -212,7 +237,9 @@ END IF;
 
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
-RETURN v_total;
+partitions_undone := v_undo_count;
+rows_undone := v_total;
+RETURN;
 
 EXCEPTION
     WHEN OTHERS THEN

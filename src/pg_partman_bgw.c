@@ -28,6 +28,11 @@
 #include "utils/snapmgr.h"
 #include "tcop/utility.h"
 
+#if (PG_VERSION_NUM >= 100000)
+#include "utils/varlena.h"
+#endif
+
+
 PG_MODULE_MAGIC;
 
 void        _PG_init(void);
@@ -167,7 +172,13 @@ _PG_init(void)
         BGWORKER_BACKEND_DATABASE_CONNECTION;
     worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
     worker.bgw_restart_time = BGW_NEVER_RESTART;
+    #if (PG_VERSION_NUM < 100000)
     worker.bgw_main = pg_partman_bgw_main;
+    #endif
+    #if (PG_VERSION_NUM >= 100000)
+    sprintf(worker.bgw_library_name, "pg_partman_bgw");
+    sprintf(worker.bgw_function_name, "pg_partman_bgw_main");
+    #endif
     worker.bgw_main_arg = CStringGetDatum(pg_partman_bgw_dbname);
     worker.bgw_notify_pid = 0;
     RegisterBackgroundWorker(&worker);
@@ -255,7 +266,9 @@ void pg_partman_bgw_main(Datum main_arg) {
                     BGWORKER_BACKEND_DATABASE_CONNECTION;
                 worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
                 worker.bgw_restart_time = BGW_NEVER_RESTART;
+                #if (PG_VERSION_NUM < 100000)
                 worker.bgw_main = NULL;
+                #endif
                 sprintf(worker.bgw_library_name, "pg_partman_bgw");
                 sprintf(worker.bgw_function_name, "pg_partman_bgw_run_maint");
                 full_string_length = snprintf(worker.bgw_name, sizeof(worker.bgw_name),
@@ -314,9 +327,17 @@ void pg_partman_bgw_main(Datum main_arg) {
 
         elog(DEBUG1, "Latch status just before waitlatch call: %d", MyProc->procLatch.is_set);
 
+        #if (PG_VERSION_NUM >= 100000)
+        rc = WaitLatch(&MyProc->procLatch,
+                       WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+                       pg_partman_bgw_interval * 1000L,
+                       PG_WAIT_EXTENSION);
+        #endif
+        #if (PG_VERSION_NUM < 100000)
         rc = WaitLatch(&MyProc->procLatch,
                        WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
                        pg_partman_bgw_interval * 1000L);
+        #endif
         /* emergency bailout if postmaster has died */
         if (rc & WL_POSTMASTER_DEATH) {
             proc_exit(1);

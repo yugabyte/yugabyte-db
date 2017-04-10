@@ -1,6 +1,3 @@
-/*
- * Apply constraints managed by partman extension
- */
 CREATE FUNCTION apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_analyze boolean DEFAULT FALSE, p_job_id bigint DEFAULT NULL, p_debug boolean DEFAULT FALSE) RETURNS void
     LANGUAGE plpgsql
     AS $$
@@ -18,7 +15,9 @@ v_constraint_col_type           text;
 v_constraint_name               text;
 v_constraint_values             record;
 v_control                       text;
+v_control_type                  text;
 v_datetime_string               text;
+v_epoch                         text;
 v_existing_constraint_name      text;
 v_job_id                        bigint;
 v_jobmon                        boolean;
@@ -43,6 +42,9 @@ v_suffix_position               int;
 v_type                          text;
 
 BEGIN
+/*
+ * Apply constraints managed by partman extension
+ */
 
 SELECT parent_table
     , partition_type
@@ -50,6 +52,7 @@ SELECT parent_table
     , premake
     , partition_interval
     , optimize_constraint
+    , epoch
     , datetime_string
     , constraint_cols
     , jobmon
@@ -59,6 +62,7 @@ INTO v_parent_table
     , v_premake
     , v_partition_interval
     , v_optimize_constraint
+    , v_epoch
     , v_datetime_string
     , v_constraint_cols
     , v_jobmon
@@ -79,6 +83,8 @@ INTO v_parent_schema, v_parent_tablename
 FROM pg_catalog.pg_tables 
 WHERE schemaname = split_part(v_parent_table, '.', 1)::name
 AND tablename = split_part(v_parent_table, '.', 2)::name;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
 
 SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
@@ -105,10 +111,10 @@ IF p_child_table IS NULL THEN
 
     SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(v_parent_table, 'DESC') LIMIT 1;
 
-    IF v_type IN ('time', 'time-custom') THEN
+    IF v_control_type = 'time' OR (v_control_type = 'id' AND v_epoch <> 'none') THEN
         SELECT child_start_time INTO v_last_partition_timestamp FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition, v_partition_interval, v_parent_table);
         v_partition_suffix := to_char(v_last_partition_timestamp - (v_partition_interval::interval * (v_optimize_constraint + v_premake + 1) ), v_datetime_string);
-    ELSIF v_type = 'id' THEN
+    ELSIF v_control_type = 'id' THEN
         SELECT child_start_id INTO v_last_partition_id FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition, v_partition_interval, v_parent_table);
         v_partition_suffix := (v_last_partition_id - (v_partition_interval::int * (v_optimize_constraint + v_premake + 1) ))::text; 
     END IF;

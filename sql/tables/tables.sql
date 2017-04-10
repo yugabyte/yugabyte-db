@@ -15,7 +15,7 @@ CREATE TABLE part_config (
     , retention_keep_index boolean NOT NULL DEFAULT true
     , infinite_time_partitions boolean NOT NULL DEFAULT false
     , datetime_string text
-    , use_run_maintenance BOOLEAN NOT NULL DEFAULT true
+    , automatic_maintenance text NOT NULL DEFAULT 'on' 
     , jobmon boolean NOT NULL DEFAULT true
     , sub_partition_set_full boolean NOT NULL DEFAULT false
     , undo_in_progress boolean NOT NULL DEFAULT false
@@ -29,7 +29,7 @@ CREATE INDEX part_config_type_idx ON @extschema@.part_config (partition_type);
 SELECT pg_catalog.pg_extension_config_dump('part_config', '');
 
 
--- FK set deferrable because create_parent() inserts to this table before part_config
+-- FK set deferrable because create_parent() & create_sub_parent() inserts to this table before part_config
 CREATE TABLE part_config_sub (
     sub_parent text 
     , sub_partition_type text NOT NULL
@@ -46,7 +46,7 @@ CREATE TABLE part_config_sub (
     , sub_retention_keep_table boolean NOT NULL DEFAULT true
     , sub_retention_keep_index boolean NOT NULL DEFAULT true
     , sub_infinite_time_partitions boolean NOT NULL DEFAULT false
-    , sub_use_run_maintenance BOOLEAN NOT NULL DEFAULT true
+    , sub_automatic_maintenance text NOT NULL DEFAULT 'on' 
     , sub_jobmon boolean NOT NULL DEFAULT true
     , sub_trigger_exception_handling BOOLEAN DEFAULT false
     , sub_upsert TEXT NOT NULL DEFAULT ''
@@ -57,6 +57,10 @@ CREATE TABLE part_config_sub (
 );
 SELECT pg_catalog.pg_extension_config_dump('part_config_sub', '');
 
+-- Ensure the control column cannot be one of the additional constraint columns. 
+ALTER TABLE @extschema@.part_config ADD CONSTRAINT control_constraint_col_chk CHECK ((constraint_cols @> ARRAY[control]) <> true);
+ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT control_constraint_col_chk CHECK ((sub_constraint_cols @> ARRAY[sub_control]) <> true);
+
 CREATE TABLE custom_time_partitions (
     parent_table text NOT NULL
     , child_table text NOT NULL
@@ -65,29 +69,61 @@ CREATE TABLE custom_time_partitions (
 CREATE INDEX custom_time_partitions_partition_range_idx ON custom_time_partitions USING gist (partition_range);
 SELECT pg_catalog.pg_extension_config_dump('custom_time_partitions', '');
 
+/*
+ * Custom view to help improve privilege lookups for pg_partman. 
+ * information_schema is a performance bottleneck since indexes aren't being used properly.
+ */
+CREATE OR REPLACE VIEW @extschema@.table_privs AS
+    SELECT u_grantor.rolname AS grantor,
+           grantee.rolname AS grantee,
+           nc.nspname AS table_schema,
+           c.relname AS table_name,
+           c.prtype AS privilege_type
+    FROM (
+            SELECT oid, relname, relnamespace, relkind, relowner, (aclexplode(coalesce(relacl, acldefault('r', relowner)))).* FROM pg_class
+         ) AS c (oid, relname, relnamespace, relkind, relowner, grantor, grantee, prtype, grantable),
+         pg_namespace nc,
+         pg_authid u_grantor,
+         (
+           SELECT oid, rolname FROM pg_authid
+           UNION ALL
+           SELECT 0::oid, 'PUBLIC'
+         ) AS grantee (oid, rolname)
+    WHERE c.relnamespace = nc.oid
+          AND c.relkind IN ('r', 'v', 'p')
+          AND c.grantee = grantee.oid
+          AND c.grantor = u_grantor.oid
+          AND c.prtype IN ('INSERT', 'SELECT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
+          AND (pg_has_role(u_grantor.oid, 'USAGE')
+               OR pg_has_role(grantee.oid, 'USAGE')
+               OR grantee.rolname = 'PUBLIC' );
+
 
 -- Put constraint functions & definitions here because having them separate makes the ordering of their creation harder to control. Some require the above tables to exist first.
-/*
- * Check function for config table partition types
+
+/* 
+ * Check for valid config values for automatic maintenance
+ * (not boolean to allow future values)
  */
-CREATE FUNCTION @extschema@.check_partition_type (p_type text) RETURNS boolean
+CREATE FUNCTION check_automatic_maintenance_value (p_automatic_maintenance text) RETURNS boolean
     LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
     AS $$
 DECLARE
 v_result    boolean;
 BEGIN
-    SELECT p_type IN ('time', 'time-custom', 'id') INTO v_result;
+    SELECT p_automatic_maintenance IN ('on', 'off') INTO v_result;
     RETURN v_result;
 END
 $$;
 
 ALTER TABLE @extschema@.part_config
-ADD CONSTRAINT part_config_type_check 
-CHECK (@extschema@.check_partition_type(partition_type));
+ADD CONSTRAINT part_config_automatic_maintenance_check
+CHECK (@extschema@.check_automatic_maintenance_value(automatic_maintenance));
 
 ALTER TABLE @extschema@.part_config_sub
-ADD CONSTRAINT part_config_sub_type_check
-CHECK (@extschema@.check_partition_type(sub_partition_type));
+ADD CONSTRAINT part_config_sub_automatic_maintenance_check
+CHECK (@extschema@.check_automatic_maintenance_value(sub_automatic_maintenance));
+
 
 /*
  * Check function for config table epoch types
@@ -112,38 +148,26 @@ ADD CONSTRAINT part_config_sub_epoch_check
 CHECK (@extschema@.check_epoch_type(sub_epoch));
 
 
--- Ensure the control column cannot be one of the additional constraint columns. 
-ALTER TABLE @extschema@.part_config ADD CONSTRAINT control_constraint_col_chk CHECK ((constraint_cols @> ARRAY[control]) <> true);
-ALTER TABLE @extschema@.part_config_sub ADD CONSTRAINT control_constraint_col_chk CHECK ((sub_constraint_cols @> ARRAY[sub_control]) <> true);
-
-
 /*
- * Custom view to help improve privilege lookups for pg_partman. 
- * information_schema is a performance bottleneck since indexes aren't being used properly.
+ * Check for valid config table partition types
  */
-CREATE VIEW @extschema@.table_privs AS
-    SELECT u_grantor.rolname AS grantor,
-           grantee.rolname AS grantee,
-           nc.nspname AS table_schema,
-           c.relname AS table_name,
-           c.prtype AS privilege_type
-    FROM (
-            SELECT oid, relname, relnamespace, relkind, relowner, (aclexplode(coalesce(relacl, acldefault('r', relowner)))).* FROM pg_class
-         ) AS c (oid, relname, relnamespace, relkind, relowner, grantor, grantee, prtype, grantable),
-         pg_namespace nc,
-         pg_authid u_grantor,
-         (
-           SELECT oid, rolname FROM pg_authid
-           UNION ALL
-           SELECT 0::oid, 'PUBLIC'
-         ) AS grantee (oid, rolname)
-    WHERE c.relnamespace = nc.oid
-          AND c.relkind IN ('r', 'v')
-          AND c.grantee = grantee.oid
-          AND c.grantor = u_grantor.oid
-          AND c.prtype IN ('INSERT', 'SELECT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
-          AND (pg_has_role(u_grantor.oid, 'USAGE')
-               OR pg_has_role(grantee.oid, 'USAGE')
-               OR grantee.rolname = 'PUBLIC' );
+CREATE OR REPLACE FUNCTION check_partition_type (p_type text) RETURNS boolean
+    LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER
+    AS $$
+DECLARE
+v_result    boolean;
+BEGIN
+    SELECT p_type IN ('partman', 'time-custom', 'native') INTO v_result;
+    RETURN v_result;
+END
+$$;
+
+ALTER TABLE @extschema@.part_config
+ADD CONSTRAINT part_config_type_check 
+CHECK (@extschema@.check_partition_type(partition_type));
+
+ALTER TABLE @extschema@.part_config_sub
+ADD CONSTRAINT part_config_sub_type_check
+CHECK (@extschema@.check_partition_type(sub_partition_type));
 
 

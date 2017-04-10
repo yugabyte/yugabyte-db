@@ -17,7 +17,7 @@ CREATE TABLE partman_test.time_taptest_table (col1 bigint primary key, col2 text
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), (extract('epoch' from CURRENT_TIMESTAMP - '8 weeks'::interval)::bigint)*1000);
 
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'weekly', '{"col1"}', p_epoch := 'milliseconds' 
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', 'weekly', '{"col1"}', p_epoch := 'milliseconds' 
     , p_premake := 2, p_start_partition := to_char(CURRENT_TIMESTAMP-'8 weeks'::interval, 'YYYY-MM-DD HH24:MI:SS'));
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' exists');

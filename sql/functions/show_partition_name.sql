@@ -1,15 +1,13 @@
-/*
- * Given a parent table and partition value, return the name of the child partition it would go in.
- * If using epoch time partitioning, give the text representation of the timestamp NOT the epoch integer value (use to_timestamp() to convert epoch values).
- * Also returns just the suffix value and true if the child table exists or false if it does not
- */
 CREATE FUNCTION show_partition_name(p_parent_table text, p_value text, OUT partition_table text, OUT suffix_timestamp timestamptz, OUT suffix_id bigint, OUT table_exists boolean) RETURNS record
     LANGUAGE plpgsql STABLE
     AS $$
 DECLARE
 
 v_child_exists          text;
+v_control               text;
+v_control_type          text;
 v_datetime_string       text;
+v_epoch                 text;
 v_max_range             timestamptz;
 v_min_range             timestamptz;
 v_parent_schema         text;
@@ -18,13 +16,22 @@ v_partition_interval    text;
 v_type                  text;
 
 BEGIN
+/*
+ * Given a parent table and partition value, return the name of the child partition it would go in.
+ * If using epoch time partitioning, give the text representation of the timestamp NOT the epoch integer value (use to_timestamp() to convert epoch values).
+ * Also returns just the suffix value and true if the child table exists or false if it does not
+ */
 
 SELECT partition_type 
+    , control
     , partition_interval
     , datetime_string
+    , epoch
 INTO v_type
+    , v_control
     , v_partition_interval
     , v_datetime_string 
+    , v_epoch
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table;
 
@@ -32,15 +39,20 @@ IF v_type IS NULL THEN
     RAISE EXCEPTION 'Parent table given is not managed by pg_partman (%)', p_parent_table;
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
-FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
+SELECT n.nspname, c.relname INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
 IF v_parent_tablename IS NULL THEN
     RAISE EXCEPTION 'Parent table given does not exist (%)', p_parent_table;
 END IF;
 
-IF v_type = 'time' THEN
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+
+IF ( (v_control_type = 'time') OR (v_control_type = 'id' AND v_epoch <> 'none') )
+     AND v_type <> 'time-custom' 
+THEN
     CASE
         WHEN v_partition_interval::interval = '15 mins' THEN
             suffix_timestamp := date_trunc('hour', p_value::timestamptz) + 
@@ -62,9 +74,11 @@ IF v_type = 'time' THEN
             suffix_timestamp := date_trunc('year', p_value::timestamptz);
     END CASE;
     partition_table := v_parent_schema||'.'||@extschema@.check_name_length(v_parent_tablename, to_char(suffix_timestamp, v_datetime_string), TRUE);
-ELSIF v_type = 'id' THEN
+
+ELSIF v_control_type = 'id' AND v_type <> 'time-custom' THEN
     suffix_id := (p_value::bigint - (p_value::bigint % v_partition_interval::bigint));
     partition_table := v_parent_schema||'.'||@extschema@.check_name_length(v_parent_tablename, suffix_id::text, TRUE);
+
 ELSIF v_type = 'time-custom' THEN
 
     SELECT child_table, lower(partition_range) INTO partition_table, suffix_timestamp FROM @extschema@.custom_time_partitions 

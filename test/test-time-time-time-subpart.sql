@@ -1,6 +1,6 @@
 -- ########## TIME PARENT / TIME SUBPARENT / TIME SUB-SUB-PARENT DYNAMIC ##########
 -- Currently tests 23, 39, 47 & 67 may fail around new years boundaries
--- Additional tests: Make sure option for handling exceptions in triggers works
+-- Additional tests: Make sure option for handling exceptions in triggers works, test stop_sub_partition()
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -8,14 +8,14 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(72);
+SELECT plan(79);
 CREATE SCHEMA partman_test;
 
 CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 
 -- yearly
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'yearly', p_premake := 2);
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', 'yearly', p_premake := 2);
 -- Make sure optimize values can be different
 UPDATE part_config SET optimize_trigger = 5, optimize_constraint = 10, trigger_exception_handling = true WHERE parent_table = 'partman_test.time_taptest_table';
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' exists');
@@ -41,7 +41,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
 
 
 -- monthly
-SELECT create_sub_parent('partman_test.time_taptest_table', 'col3', 'time', 'monthly', p_premake := 2);
+SELECT create_sub_parent('partman_test.time_taptest_table', 'col3', 'partman', 'monthly', p_premake := 2);
 UPDATE part_config_sub SET sub_trigger_exception_handling = true WHERE sub_parent = 'partman_test.time_taptest_table';
 -- Make sure optimize values can be different
 UPDATE part_config_sub SET sub_optimize_trigger = 5, sub_optimize_constraint = 10, sub_retention_keep_table = false WHERE sub_parent = 'partman_test.time_taptest_table';
@@ -89,20 +89,20 @@ SELECT results_eq('SELECT sub_parent FROM part_config_sub ORDER BY sub_parent',
     'Check that part_config_sub has all tables configured as needed');
 
 -- daily
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP, ''YYYY''), ''col3'', ''partman'', ''daily'', p_premake := 2)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' should return true');
 UPDATE part_config_sub SET sub_trigger_exception_handling = true WHERE sub_parent = 'partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY');
 
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''1 year''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''1 year''::interval, ''YYYY''), ''col3'', ''partman'', ''daily'', p_premake := 2)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY')||' should return true');
 UPDATE part_config_sub SET sub_trigger_exception_handling = true WHERE sub_parent = 'partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY');
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''2 years''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''2 years''::interval, ''YYYY''), ''col3'', ''partman'', ''daily'', p_premake := 2)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY')||' should return true');
 UPDATE part_config_sub SET sub_trigger_exception_handling = true WHERE sub_parent = 'partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY');
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''1 year''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''1 year''::interval, ''YYYY''), ''col3'', ''partman'', ''daily'', p_premake := 2)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY')||' should return true');
 UPDATE part_config_sub SET sub_trigger_exception_handling = true WHERE sub_parent = 'partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY');
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''2 years''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''2 years''::interval, ''YYYY''), ''col3'', ''partman'', ''daily'', p_premake := 2)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY')||' should return true');
 UPDATE part_config_sub SET sub_trigger_exception_handling = true WHERE sub_parent = 'partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY');
 
@@ -165,7 +165,7 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_p'||to_char(
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM_DD'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM_DD'));
 
-UPDATE part_config SET premake = 3 WHERE parent_table LIKE 'partman_test.time_taptest_table%' AND partition_type = 'time';
+UPDATE part_config SET premake = 3 WHERE parent_table LIKE 'partman_test.time_taptest_table%' AND partition_type = 'partman';
 SELECT run_maintenance();
 
 
@@ -177,6 +177,7 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
 -- This test may fail if the next month's subpartition was already made and +3 days is after the 1st of the month, which may have been made by the condition that guarantees there is always at least 1 child table in a subpartition.
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD')||' exists. This test may fail depending on the day of the month it is run.');
+
 -- Check that future year had the minimal partition made
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_01', 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'_01 exists');
@@ -213,6 +214,26 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_p'||to_char(
     'Check new data did not go into subparent time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM'));
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM_DD'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY_MM_DD'));
+
+
+-- Check that stopping subpartitioning works
+SELECT stop_sub_partition('partman_test.time_taptest_table');
+SELECT run_maintenance();
+
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY')||' does exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'4 year'::interval, 'YYYY')||'_01', 
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'4 year'::interval, 'YYYY')||'_01 does not exist');
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||' does exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'5 year'::interval, 'YYYY')||'_01', 
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'5 year'::interval, 'YYYY')||'_01 does not exist');
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' does exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'6 year'::interval, 'YYYY')||'_01', 
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'6 year'::interval, 'YYYY')||'_01 does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY')||' does not exist');
 
 
 /*

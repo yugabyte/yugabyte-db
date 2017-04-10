@@ -25,3 +25,21 @@ Tests for the time-custom partition type are in their own folder. The 30second t
 Tests for the reindexing script can be found in the test/test_reindex folder. These tests cannot just be run all at once and are not run within rolled back transactions. They must be run in order, one at a time, and there are explicit instructions at the end of each test for what to do next.
 
 Tests for the Background Worker can be found in the test/test_bgw folder. Please read the header comments at the top of each test for the postgresql.conf settings required for that test.
+
+Partitioning in PostgreSQL 10
+=============================
+pgtap currently does not have any tests for natively partitioned tables. The below two functions should be installed to the same schema as pgtap to allow the native partitioning tests to work. Once pgtap adds this support in itself, this will no longer be needed
+
+create or replace function has_partition(name, name, text)
+returns text
+language sql
+as $$
+SELECT ok(_rexists('p', $1, $2), $3);
+$$;
+
+create or replace function hasnt_partition(name, name, text)
+returns text
+language sql
+as $$
+SELECT ok( NOT _rexists('p', $1, $2), $3);
+$$;

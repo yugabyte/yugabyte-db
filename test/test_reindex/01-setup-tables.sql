@@ -13,7 +13,7 @@ INSERT INTO test_reindex VALUES (generate_series(1,1000), 'stuff'||generate_seri
 CREATE INDEX test_reindex_stuff_idx ON test_reindex (stuff); 
 CREATE INDEX test_reindex_upper_stuff_idx ON test_reindex(upper(stuff));
 
-SELECT create_parent('partman_reindex_test.test_reindex', 'id', 'id', '100');
+SELECT create_parent('partman_reindex_test.test_reindex', 'id', 'partman', '100');
 
 SELECT plan(40);
 SELECT has_table('partman_reindex_test', 'test_reindex', 'Check test_reindex exists');

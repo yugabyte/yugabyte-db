@@ -10,11 +10,11 @@ All bug reports, feature requests and general questions can be directed to the I
 
 If you're looking for a partitioning system that handles any range type beyond just time & serial, check out https://github.com/moat/range_partitioning. Note that if you are doing time/serial, the methods used in pg_partman are much more efficient and will provide better performance. But if you need greater flexibility, the range_partitioning extension should work very well for you.
 
-WARNING: The pg_partman background worker is currently incompatible with PostgreSQL 9.6. It runs fine in 9.4 and 9.5. I'm still working on trying to figure out what the issue is. If you must upgrade to 9.6 before this issue is fixed, you can disable the background worker by removing the entry for it in shared_preload_libraries and restarting postgres. Instead schedule the run_maintenance() plpgsql function to run via another scheduler method (cron). Note that the background worker technically runs in 9.6 and won't cause errors, but it essentially ignores the interval configuration option, runs without pause and will very quickly fill up your postgres logs or cause excessive system load.
+Native partitioning in PostgreSQL 10 is available for experimentation as of v3.0.1. Note that all the features of trigger-based partitioning are not yet supported in native, but performance in both reads & writes is much better.
 
 INSTALLATION
 ------------
-Requirement: PostgreSQL 9.4 & 9.5
+Requirement: PostgreSQL >= 9.4
 
 Recommended: pg_jobmon (>=v1.3.2). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
@@ -57,7 +57,7 @@ Run "make install" same as above to put the script files and libraries in place.
 
 If you are doing a pg_dump/restore and you've upgraded pg_partman in place from previous versions, it is recommended you use the --column-inserts option when dumping and/or restoring pg_partman's configuration tables. This is due to ordering of the configuration columns possibly being different (upgrades just add the columns onto the end, whereas the default of a new install may be different).
 
-If upgrading from 1.x to 2.x, please see the CHANGELOG or the notes in the update script itself for additional instructions for updating your trigger functions to the newer version and other important considerations for the update.
+If upgrading from 1.x to 2.x or greater, please carefully read all intervening version notes in the CHANGELOG, especially those for 2.0.0 and 3.0.1. There are additional instructions for updating your trigger functions to the newer version and other important considerations for the update.
 
 EXAMPLE
 -------
@@ -69,11 +69,11 @@ First create a parent table with an appropriate column type for the partitioning
 
 Then just run the create_parent() function with the appropriate parameters
 
-    SELECT partman.create_parent('test.part_test', 'col3', 'time', 'daily');
+    SELECT partman.create_parent('test.part_test', 'col3', 'partman', 'daily');
     or
-    SELECT partman.create_parent('test.part_test', 'col1', 'id', '100000');
+    SELECT partman.create_parent('test.part_test', 'col1', 'partman', '100000');
 
-This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, schedule the run_maintenance() function to run periodically or use the background worker settings in postgresql.conf (the latter is recommended). Serial based partitioning does not always require run_maintenance() (see doc file below).
+This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions, schedule the run_maintenance() function to run periodically or use the background worker settings in postgresql.conf (the latter is recommended). 
 
 This should be enough to get you started. Please see the [pg_partman.md file](doc/pg_partman.md) in the doc folder for more information on the types of partitioning supported and what the parameters in the create_parent() function mean. 
 
@@ -89,7 +89,7 @@ LICENSE AND COPYRIGHT
 
 PG Partition Manager (pg_partman) is released under the PostgreSQL License, a liberal Open Source license, similar to the BSD or MIT licenses.
 
-Copyright (c) 2016 OmniTI, Inc.
+Copyright (c) 2017 OmniTI, Inc.
 
 Permission to use, copy, modify, and distribute this software and its documentation for any purpose, without fee, and without a written agreement is hereby granted, provided that the above copyright notice and this paragraph and the following two paragraphs appear in all copies.
 

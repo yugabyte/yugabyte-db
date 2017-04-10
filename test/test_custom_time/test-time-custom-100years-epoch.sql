@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(156);
+SELECT plan(157);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -18,7 +18,10 @@ INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time-custom', '100 years', p_epoch := 'seconds');
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', '100 years', p_epoch := 'seconds');
+
+SELECT results_eq('SELECT partition_type FROM part_config WHERE parent_table = ''partman_test.time_taptest_table'''
+        , ARRAY['time-custom'], 'Check that part_config has time-custom for partitipe_type value');
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY'), 'Check time_taptest_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP)+'100 years'::interval, 'YYYY'), 
@@ -154,6 +157,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
     ARRAY[15], 'Check count from time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'400 years'::interval, 'YYYY'));
 
 UPDATE part_config SET premake = 5 WHERE parent_table = 'partman_test.time_taptest_table';
+
 SELECT run_maintenance();
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(101,122), extract('epoch' from CURRENT_TIMESTAMP + '500 years'::interval));
 

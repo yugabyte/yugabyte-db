@@ -27,7 +27,7 @@ INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
 
-SELECT results_eq('SELECT create_parent(''partman_test.id_taptest_table'', ''col1'', ''id'', ''10'', p_use_run_maintenance := true, p_inherit_fk := false, p_jobmon := false)::text', ARRAY['true'], 'Check that create_parent() returns true');
+SELECT results_eq('SELECT create_parent(''partman_test.id_taptest_table'', ''col1'', ''partman'', ''10'', p_inherit_fk := false, p_jobmon := false)::text', ARRAY['true'], 'Check that create_parent() returns true');
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p20 exists');

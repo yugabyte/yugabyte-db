@@ -23,7 +23,7 @@ INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time-custom', '30 seconds');
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', '30 seconds');
 -- Must run_maintenance because when interval time is between 1 hour and 1 minute, the first partition name done by above is always the nearest hour rounded down 
 SELECT run_maintenance();
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('minute', CURRENT_TIMESTAMP) + 

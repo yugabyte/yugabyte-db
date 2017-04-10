@@ -12,7 +12,7 @@ CREATE SCHEMA partman_test;
 
 CREATE TABLE partman_test.id_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
-SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'id', '10', '{"col3"}', p_use_run_maintenance := true, p_jobmon := false, p_upsert := 'ON CONFLICT (col1) DO NOTHING');
+SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'partman', '10', '{"col3"}', p_automatic_maintenance := 'on', p_jobmon := false, p_upsert := 'ON CONFLICT (col1) DO NOTHING');
 
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 exists');
@@ -36,7 +36,7 @@ INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 SELECT pass('Upsert DO NOTHING passed test'); 
 
 -- Create subpartition
-SELECT partman.create_sub_parent('partman_test.id_taptest_table', 'col3', 'time', 'daily', p_upsert := 'ON CONFLICT (col1) DO NOTHING');
+SELECT partman.create_sub_parent('partman_test.id_taptest_table', 'col3', 'partman', 'daily', p_upsert := 'ON CONFLICT (col1) DO NOTHING');
 -- p0
 SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
@@ -299,7 +299,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p
     ARRAY[1], 'Check count from id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
 
 -- Ensure time partitioning works for all sub partitions
-UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table ~ 'partman_test.id_taptest_table_p' AND partition_type = 'time';
+UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table ~ 'partman_test.id_taptest_table_p' AND partition_type = 'partman';
 SELECT run_maintenance();
 
 -- Check for new time sub-partitions

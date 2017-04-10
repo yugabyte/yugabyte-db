@@ -1,10 +1,4 @@
-/*
- * Check for consistent data in part_config_sub table. Was unable to get this working properly as either a constraint or trigger. 
- * Would either delay raising an error until the next write (which I cannot predict) or disallow future edits to update a sub-partition set's configuration.
- * This is called by run_maintainance() and at least provides a consistent way to check that I know will run. 
- * If anyone can get a working constraint/trigger, please help!
-*/
-CREATE OR REPLACE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table text) 
+CREATE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table text) 
     RETURNS TABLE (sub_partition_type text
         , sub_control text
         , sub_partition_interval text
@@ -15,7 +9,7 @@ CREATE OR REPLACE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table t
         , sub_retention_schema text
         , sub_retention_keep_table boolean
         , sub_retention_keep_index boolean
-        , sub_use_run_maintenance boolean
+        , sub_automatic_maintenance text
         , sub_epoch text 
         , sub_optimize_trigger int
         , sub_optimize_constraint int
@@ -27,6 +21,12 @@ CREATE OR REPLACE FUNCTION @extschema@.check_subpart_sameconfig(p_parent_table t
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path = @extschema@,pg_temp
 AS $$
+/*
+ * Check for consistent data in part_config_sub table. Was unable to get this working properly as either a constraint or trigger. 
+ * Would either delay raising an error until the next write (which I cannot predict) or disallow future edits to update a sub-partition set's configuration.
+ * This is called by run_maintainance() and at least provides a consistent way to check that I know will run. 
+ * If anyone can get a working constraint/trigger, please help!
+*/
 
     WITH parent_info AS (
         SELECT c1.oid
@@ -53,7 +53,7 @@ AS $$
         , a.sub_retention_schema
         , a.sub_retention_keep_table
         , a.sub_retention_keep_index
-        , a.sub_use_run_maintenance
+        , a.sub_automatic_maintenance
         , a.sub_epoch
         , a.sub_optimize_trigger
         , a.sub_optimize_constraint

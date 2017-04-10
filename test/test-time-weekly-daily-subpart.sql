@@ -18,7 +18,7 @@ INSERT INTO "Partman_test"."Time-taptest-Table" ("COL1", "Col-3") VALUES (genera
 GRANT SELECT,INSERT,UPDATE ON "Partman_test"."Time-taptest-Table" TO "partman-basic";
 GRANT ALL ON "Partman_test"."Time-taptest-Table" TO "Partman_Revoke";
 
-SELECT create_parent('Partman_test.Time-taptest-Table', 'Col-3', 'time', 'weekly', '{"COL1"}', p_premake := 4, p_start_partition := to_char(CURRENT_TIMESTAMP-'6 weeks'::interval, 'YYYY-MM-DD HH24:MI:SS'));
+SELECT create_parent('Partman_test.Time-taptest-Table', 'Col-3', 'partman', 'weekly', '{"COL1"}', p_premake := 4, p_start_partition := to_char(CURRENT_TIMESTAMP-'6 weeks'::interval, 'YYYY-MM-DD HH24:MI:SS'));
 SELECT has_table('Partman_test', 'Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')
     , 'Check Time-taptest-Table_'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' exists (this week)');
 SELECT has_table('Partman_test', 'Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP+'1 week'::interval, 'IYYY"w"IW'), 
@@ -190,7 +190,7 @@ SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."Time-taptest-Table_
 -- Ensure all the current child tables get the new privileges given above so they propagate properly when subpartitions are created
 SELECT reapply_privileges('Partman_test.Time-taptest-Table');
 
-SELECT create_sub_parent('Partman_test.Time-taptest-Table', 'Col-3', 'time', 'daily', '{"COL1"}', p_premake := 4);
+SELECT create_sub_parent('Partman_test.Time-taptest-Table', 'Col-3', 'partman', 'daily', '{"COL1"}', p_premake := 4);
 -- Check daily partitions
 SELECT has_table('Partman_test', 'Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||'_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')
         , 'Check Time-taptest-Table_'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||'_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists (current day)');
@@ -646,6 +646,7 @@ SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."Time-taptest-Table_
 -- Testing retention for daily
 -- All daily tables older than 2 weeks. Should only drop the daily subpartitions, not the weekly parents yet
 UPDATE part_config SET retention = '2 weeks', retention_keep_table = false WHERE parent_table LIKE 'Partman_test.Time-taptest-Table_p%' AND partition_interval = '1 day';
+
 SELECT run_maintenance();
 SELECT is_empty('SELECT partition_tablename FROM show_partitions(''Partman_test.Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'6 weeks'::interval, 'IYYY"w"IW')||''')',
             'Check that 6 week old parent Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'6 weeks'::interval, 'IYYY"w"IW')||' table has no children');

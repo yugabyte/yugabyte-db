@@ -1,3 +1,70 @@
+3.0.0 & 3.0.1
+-- IMPORTANT NOTE: The initial version of pg_partman 3 had to be split into two updates due to changing both the data in the config table as well as adding constraints on that data. Depending on the data contained in the config table, doing this in a single-transaction update may not work (you may see an error about pending trigger events). If this is the case, please update to version 3.0.1 in a separate transaction from your update to 3.0.0. Example:
+    
+    /*
+        BEGIN;
+        ALTER EXTENSION pg_partman UPDATE TO '3.0.0';
+        COMMIT;
+
+        BEGIN;
+        ALTER EXTENSION pg_partman UPDATE TO '3.0.1';
+        COMMIT;
+    */
+
+-- Update 3.0.1 MUST be installed for version 3.x of pg_partman to work properly. As long as these updates are run within a few seconds of each other, there should be no issues.
+    
+-- In preparation for native partitioning support, the "partition_type" parameter to create_parent() and create_sub_parent() has been simplified. 
+    -- The two main, valid values are now: "partman" or "native". "partman" is the same pre-3.0 partitioning method that has always existed. "native" uses the new native partitioning method that comes with PostgreSQL 10. See below for important information about native partitioning.
+    -- Whether a table is partitioned by time or id/serial is now automatically determined by the data type of the partition column.
+        -- smallint, integer, & bigint (int2, int4, int8 respectively) are automatically id/serial partitioning (unless the epoch flag is set)
+        -- timestamptz, timestamp, & date are automatically time
+    -- If the preset time intervals in the documentation are used (daily, weekly, etc), then the more efficient, static trigger function will be used. If any other time interval value is given, then the slower, but more flexible "time-custom" trigger will be used (See "Custom Time Interval Considerations" section of documentation).
+    -- "time-custom" is also still a valid value, but not necessary unless you want to be explicit in your partitioning method.
+
+-- Added preliminary support for native partitioning methods that will be introduced in PostgreSQL 10. Note this feature is still in very early testing, and could change before the official 10.0 release. But since it's a significant new feature, I want to stay ahead of it and allow real-world testing as early as possible for those interested in it and also make sure it works with pg_partman's own trigger-based partitioning methods as well. (Github Issue #171)
+    -- Use partition_type "native" in the create_parent() or create_sub_parent() functions. See pg_partman.md for more info
+    -- Native Sub-partitioning is a DESTRUCTIVE processes and cannot be run on a table that has any data without losing that data. This is because a table has to be declared natively partitioned at creation (no ALTER statement exists) and the current child tables that must become parents have to be dropped and recreated as such.
+        -- A new parameter flag for create_sub_parent() is included that must be set to "yes" to help ensure this is not accidentally done.
+-- Features NOT (yet) available in native:
+    -- Indexes are not currently possible to create on a partitioned parent table. This means there is currently no automatic index support for native partitioning in pg_partman. Waiting to see what final implementation will be like before adding code to handle this.
+    -- Data that does not match any children causes an error and is not preserved in the parent.
+    -- Foreign keys from partition set to other tables (FKs from other tables to partition sets not supported at all for any partition methods).
+
+-- Removed automatic partition creation via trigger at 50% for id/serial partitioning. Was making trigger function generation code harder to maintain and is just a bad practice in general to be making child partitions on the fly with data insertion. This is also not possible with native partitioning, so rather phase out the feature now. Now must use automatic partitioning and schedule frequently enough to keep up with ingestion rate or manually call run_maintenance() via some other means to maintain new partition creation for id-based partition sets.
+    -- The next maintenance run of any id-partitioned table will have its function remove the 50% code-block. Unable to do it as part of the extension update since that would then make the trigger function part of the extension.
+    -- If you encounter any issues caused by this update and the removal of the 50% code, call create_function_id() to recreate the trigger. This function has been added to pg_partman.md for reference.
+
+-- Changed config column & function arguments from "use_run_maintenance" to "automatic_maintenance". This makes the option clearer since manual maintenance can still use the run_maintenance() function.
+    -- Valid values are currently: "on", "off"
+    -- A value of "on" means that a call of run_maintenance() with no specific table parameter given will cause maintenance to automatically run for that partition set.
+    -- A value of "off" means that maintenance will not run in the above situation, but if you give a specific table parameter to run_maintenance(), maintenance can still be run manually for it.
+    -- Note that all partition sets in part_config have set this value to "on" as part of the 3.0.0 upgrade. Since the semantics of the column value have changed, I went with the safe option of turning maintenance for all partitions sets on vs trying to figure out what the intention of previous settings were. Review your configuration after upgrading and the new meanings for this column's value to ensure things are set up properly for your database. This is most relevant if you had this turned off to avoid automatic serial partition creation at 50%. Now that all serial partitioning requires run_maintenance(), this meaning is no longer relevant.
+
+-- The undo_partition plpgsql functions now return both the number of partitions undone as well as the number of rows copied/moved. Result is returned as a record set, so these functions can be queried as a table to have columns/rows returned. The value of undone partitions will be -1 when an issue is encountered while running the function.
+
+-- Improved performance if infinite_time_partitions flag is set to true. No longer obtains max value of partition set needlessly. (Github Pull Request #169)
+
+-- Added create_partition_time(), create_partition_id(), create_function_time(), create_function_id() to documenation. Had thought they were only really useful internally, but turns out they can be pretty useful in general to fill in missing children gaps and manually fix partition trigger function. (Github Issue #161).
+
+-- Fixed bug with upgrading from version 1.x to 2.x of pg_partman if your version of PostgreSQL had been less than 9.2 at the time the 1.6.0 version of pg_partman came out. The custom_time_partitions table was only created if PostgreSQL was >= than 9.2 since it relies on the range data type. If you then later upgraded to 9.2 or greater, the custom time table was never created and can cause issue with upgrading as well as if a custom time partition set is ever created. Since v2.x of pg_partman only works with PostgreSQL 9.4 and later, forcing this table creation as of v2.x should no longer be an issue (Github Issue #159).
+
+-- Fixed bug in sub-partitioning that did not check for sub-partitions being equal to or larger than the top parent's interval. Also did not properly disallow weekly sub-partitions. If any of your current partition sets have weekly sub-partitions, this won't break them, but you should be aware that time boundaries will not line up properly in some cases due to the nature of ISO weeks. It is recommended that you repartition in a different pattern.
+
+-- Fixed bug when undoing a subpartition set that did not remove the entry in the part_config_sub table. (Github Issue #168).
+    -- If the parent table given as an argument to the undo function had an entry in part_config_sub, it is now always removed.
+    -- By default, if you undo a child table that is also partitioned, it will not stop additional sibling children of the parent partition set from being subpartitioned unless that parent is also undone.
+    -- To handle the above situation where you may not be removing the parent but don't want any additional subpartitioned children, a new function has been added: stop_sub_partition().
+
+-- Fixed bug in undo_partition.py that would stop undoing the partition set if it hit a child table with zero rows. Script now returns the number of partitions undone instead of the rowcount moved.
+-- Also fixed bug in undo_partition.py that would mask any python errors and let script run as if nothing bad happened.
+
+-- Fixed bug in sub-partitioning when a parent was partitioned by time and its children were partitioned by ID. In certain situations, all ID sub-sets were not getting their parent table created. 
+
+-- Removed unused p_analyze parameter from create_function_id().
+
+-- Began moving function description comments into the functions themselves so they're visible in the database as well.
+
+
 2.6.4
 -- Note, if you installed update 2.6.3 prior to the release of 2.6.4, this update will not change anything, but is still required to be installed to allow the extension version update chain to work.
 -- While upgrading to version 2.6.3 or later, if you encounter the error: "cannot ALTER TABLE "part_config_sub" because it has pending trigger events" (or for the part_config table), then you must install that update by itself first and then install the update to 2.6.4 separately in a different transaction. Changing the values of a column in the same transaction as altering it to add/remove a constraint can cause the pending triggers error. The only way around that is to do the steps as separate transactions, which this update separates out from the previous one that caused the issue. Unfortunately, all extension updates run in a single transaction unless you upgrade manually to a specific version to control the transaction state between versions. (Github Issue #167).

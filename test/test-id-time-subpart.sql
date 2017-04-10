@@ -1,4 +1,5 @@
--- ########## ID PARENT / TIME SUBPARENT DYNAMIC TESTS ##########
+-- ########## ID PARENT / TIME SUBPARENT TESTS ##########
+-- Additional test: no pg_jobmon
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,12 +7,12 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(258);
+SELECT plan(260);
 CREATE SCHEMA partman_test;
 
 CREATE TABLE partman_test.id_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
-SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'id', '10', '{"col3"}', p_use_run_maintenance := true, p_jobmon := false);
+SELECT partman.create_parent('partman_test.id_taptest_table', 'col1', 'partman', '10', '{"col3"}', p_jobmon := false);
 
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 exists');
@@ -31,7 +32,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARR
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p0', ARRAY[9], 'Check count from id_taptest_table_p0');
 
 -- Create subpartition
-SELECT partman.create_sub_parent('partman_test.id_taptest_table', 'col3', 'time', 'daily');
+SELECT partman.create_sub_parent('partman_test.id_taptest_table', 'col3', 'partman', 'daily');
 -- p0
 SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
@@ -287,7 +288,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p20_p
     ARRAY[1], 'Check count from id_taptest_table_p20_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
 
 -- Ensure time partitioning works for all sub partitions
-UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table ~ 'partman_test.id_taptest_table_p' AND partition_type = 'time';
+UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table ~ 'partman_test.id_taptest_table_p' AND partition_type = 'partman';
 SELECT run_maintenance();
 
 -- Check for new time sub-partitions
@@ -338,6 +339,8 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p60_p'||to_char(CURRENT_TIM
 
 -- Test dropping without retention set
 SELECT drop_partition_time ('partman_test.id_taptest_table_p0', '2 days', p_keep_table := false);
+SELECT has_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD'), 
+    'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD')||' still exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
     'Check id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
@@ -536,9 +539,7 @@ SELECT is_empty('SELECT parent_table from part_config where parent_table = ''par
 -- Check top parent is still empty
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that top parent table has not had any data moved to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p10', ARRAY[10], 'Check count from subparent table');
--- TODO Not returning result that pgtap can test. Unsure why.
---SELECT results_eq('SELECT undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false);', ARRAY[11], 'Check undo partition_id returns correct number of rows');
-SELECT undo_partition_id('partman_test.id_taptest_table', 20, p_keep_table := false);
+SELECT results_eq('SELECT rows_undone::int FROM undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false);', ARRAY[11], 'Check undo partition_id returns correct number of rows');
 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 does not exist');
@@ -552,6 +553,7 @@ SELECT is_empty('SELECT parent_table from part_config where parent_table = ''par
     'Check that partman_test.id_taptest_table was removed from part_config');
 
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[11], 'Check count from final unpartitioned table');
+
 SELECT * FROM finish();
 ROLLBACK;
 

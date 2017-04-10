@@ -1,7 +1,3 @@
-/*
- * Function to drop child tables from a time-based partition set.
- * Options to move table to different schema, drop only indexes or actually drop the table from the database.
- */
 CREATE FUNCTION drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -12,8 +8,11 @@ ex_detail                   text;
 ex_hint                     text;
 ex_message                  text;
 v_adv_lock                  boolean;
+v_control                   text;
+v_control_type              text;
 v_datetime_string           text;
 v_drop_count                int := 0;
+v_epoch                     text;
 v_index                     record;
 v_job_id                    bigint;
 v_jobmon                    boolean;
@@ -24,15 +23,19 @@ v_parent_schema             text;
 v_parent_tablename          text;
 v_partition_interval        interval;
 v_partition_timestamp       timestamptz;
+v_partition_type            text;
 v_retention                 interval;
 v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
 v_retention_schema          text;
 v_row                       record;
 v_step_id                   bigint;
-v_type                      text;
 
 BEGIN
+/*
+ * Function to drop child tables from a time-based partition set.
+ * Options to move table to different schema, drop only indexes or actually drop the table from the database.
+ */
 
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman drop_partition_time'));
 IF v_adv_lock = 'false' THEN
@@ -44,7 +47,9 @@ END IF;
 IF p_retention IS NULL THEN
     SELECT  
         partition_type
+        , control
         , partition_interval::interval
+        , epoch
         , retention::interval
         , retention_keep_table
         , retention_keep_index
@@ -52,8 +57,10 @@ IF p_retention IS NULL THEN
         , retention_schema
         , jobmon
     INTO
-        v_type
+        v_partition_type
+        , v_control
         , v_partition_interval
+        , v_epoch
         , v_retention
         , v_retention_keep_table
         , v_retention_keep_index
@@ -62,7 +69,6 @@ IF p_retention IS NULL THEN
         , v_jobmon
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
-    AND (partition_type = 'time' OR partition_type = 'time-custom')
     AND retention IS NOT NULL;
 
     IF v_partition_interval IS NULL THEN
@@ -72,26 +78,34 @@ ELSE
     SELECT  
         partition_type
         , partition_interval::interval
+        , epoch
         , retention_keep_table
         , retention_keep_index
         , datetime_string
         , retention_schema
         , jobmon
     INTO
-        v_type
+        v_partition_type
         , v_partition_interval
+        , v_epoch
         , v_retention_keep_table
         , v_retention_keep_index
         , v_datetime_string
         , v_retention_schema
         , v_jobmon
     FROM @extschema@.part_config 
-    WHERE parent_table = p_parent_table 
-    AND (partition_type = 'time' OR partition_type = 'time-custom'); 
+    WHERE parent_table = p_parent_table;
     v_retention := p_retention;
 
     IF v_partition_interval IS NULL THEN
         RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
+    END IF;
+END IF;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'time' THEN 
+    IF (v_control_type = 'id' AND v_epoch = 'none') OR v_control_type <> 'id' THEN
+        RAISE EXCEPTION 'Cannot run on partition set without time based control column or epoch flag set with an id column. Found control: %, epoch: %', v_control_type, v_epoch;
     END IF;
 END IF;
 
@@ -127,7 +141,6 @@ LOOP
      SELECT child_start_time INTO v_partition_timestamp FROM @extschema@.show_partition_info(v_row.partition_schemaname||'.'||v_row.partition_tablename
         , v_partition_interval::text
         , p_parent_table);
-
     -- Add one interval since partition names contain the start of the constraint period
     IF v_retention < (CURRENT_TIMESTAMP - (v_partition_timestamp + v_partition_interval)) THEN
         -- Only create a jobmon entry if there's actual retention work done
@@ -136,17 +149,25 @@ LOOP
         END IF;
 
         IF v_jobmon_schema IS NOT NULL THEN
-            v_step_id := add_step(v_job_id, format('Uninherit table %s.%s from %s'
+            v_step_id := add_step(v_job_id, format('Detach/Uninherit table %s.%s from %s'
                                                 , v_row.partition_schemaname
                                                 , v_row.partition_tablename
                                                 , p_parent_table));
         END IF;
-        EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
-                , v_row.partition_schemaname
-                , v_row.partition_tablename
+        IF v_partition_type = 'native' THEN
+            EXECUTE format('ALTER TABLE %I.%I DETACH PARTITION %I.%I'
                 , v_parent_schema
-                , v_parent_tablename);
-        IF v_type = 'time-custom' THEN
+                , v_parent_tablename
+                , v_row.partition_schemaname
+                , v_row.partition_tablename);
+        ELSE
+            EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
+                    , v_row.partition_schemaname
+                    , v_row.partition_tablename
+                    , v_parent_schema
+                    , v_parent_tablename);
+        END IF;
+        IF v_partition_type = 'time-custom' THEN
             DELETE FROM @extschema@.custom_time_partitions WHERE parent_table = p_parent_table AND child_table = v_row.partition_schemaname||'.'||v_row.partition_tablename;
         END IF;
         IF v_jobmon_schema IS NOT NULL THEN
@@ -254,5 +275,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

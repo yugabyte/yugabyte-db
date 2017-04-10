@@ -19,7 +19,7 @@ INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123456
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table_123456789012345678901234567890123456780 TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table_123456789012345678901234567890123456780 TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table_123456789012345678901234567890123456780', 'col3', 'time', 'yearly');
+SELECT create_parent('partman_test.time_taptest_table_123456789012345678901234567890123456780', 'col3', 'partman', 'yearly');
 SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'Check time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 
     'Check time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY')||' exists');

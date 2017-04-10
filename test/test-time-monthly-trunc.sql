@@ -18,7 +18,7 @@ INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123457
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table_123456789012345678901234567890123457890 TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table_123456789012345678901234567890123457890 TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table_123456789012345678901234567890123457890', 'col3', 'time', 'monthly');
+SELECT create_parent('partman_test.time_taptest_table_123456789012345678901234567890123457890', 'col3', 'partman', 'monthly');
 SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), 'Check time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM'), 
     'Check time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM')||' exists');

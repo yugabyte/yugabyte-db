@@ -1,6 +1,3 @@
-/*
- * Function to create a child table in a time-based partition set
- */
 CREATE FUNCTION create_partition_time(p_parent_table text, p_partition_times timestamptz[], p_analyze boolean DEFAULT true, p_debug boolean DEFAULT false) 
 RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
@@ -14,9 +11,10 @@ ex_message                      text;
 v_all                           text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
 v_analyze                       boolean := FALSE;
 v_control                       text;
+v_control_type                  text;
 v_datetime_string               text;
-v_exists                        text;
 v_epoch                         text;
+v_exists                        smallint;
 v_grantees                      text[];
 v_hasoids                       boolean;
 v_inherit_fk                    boolean;
@@ -26,9 +24,9 @@ v_jobmon_schema                 text;
 v_new_search_path               text := '@extschema@,pg_temp';
 v_old_search_path               text;
 v_parent_grant                  record;
-v_parent_owner                  text;
 v_parent_schema                 text;
 v_parent_tablename              text;
+v_part_col                      text;
 v_partition_created             boolean := false;
 v_partition_name                text;
 v_partition_suffix              text;
@@ -43,36 +41,56 @@ v_row                           record;
 v_sql                           text;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
+v_sub_control                   text;
+v_sub_parent                    text;
+v_sub_partition_type            text;
 v_sub_timestamp_max             timestamptz;
 v_sub_timestamp_min             timestamptz;
 v_trunc_value                   text;
 v_time                          timestamptz;
-v_type                          text;
+v_partition_type                          text;
 v_unlogged                      char;
 v_year                          text;
 
 BEGIN
+/*
+ * Function to create a child table in a time-based partition set
+ */
 
-SELECT partition_type
-    , control
-    , partition_interval
-    , epoch
-    , inherit_fk
-    , jobmon
-    , datetime_string
-INTO v_type
+SELECT c.partition_type
+    , c.control
+    , c.partition_interval
+    , c.epoch
+    , c.inherit_fk
+    , c.jobmon
+    , c.datetime_string
+INTO v_partition_type
     , v_control
     , v_partition_interval
     , v_epoch
     , v_inherit_fk
     , v_jobmon
     , v_datetime_string
-FROM @extschema@.part_config
-WHERE parent_table = p_parent_table
-AND (partition_type = 'time' OR partition_type = 'time-custom');
+FROM @extschema@.part_config c
+WHERE parent_table = p_parent_table;
 
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+END IF;
+
+SELECT n.nspname, c.relname, t.spcname 
+INTO v_parent_schema, v_parent_tablename, v_parent_tablespace 
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+LEFT OUTER JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'time' THEN 
+    IF (v_control_type = 'id' AND v_epoch = 'none') OR v_control_type <> 'id' THEN
+        RAISE EXCEPTION 'Cannot run on partition set without time based control column or epoch flag set with an id column. Found control: %, epoch: %', v_control_type, v_epoch;
+    END IF;
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -86,12 +104,6 @@ EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path
 
 -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
 SELECT sub_min::timestamptz, sub_max::timestamptz INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
-
-SELECT tableowner, schemaname, tablename, tablespace 
-INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace 
-FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN CREATE TABLE: %s', p_parent_table));
@@ -115,6 +127,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             Child partition creation after time % skipped', v_time;
         v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
         PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation after time '||v_time||' skipped');
+
         CONTINUE;
     END;
 
@@ -128,8 +141,14 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     -- This suffix generation code is in partition_data_time() as well
     v_partition_suffix := to_char(v_time, v_datetime_string);
     v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
-    SELECT tablename INTO v_exists FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema::name AND tablename = v_partition_name::name;
-    IF v_exists IS NOT NULL THEN
+    -- Check if child exists. 
+    SELECT count(*) INTO v_exists
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = v_parent_schema::name 
+    AND c.relname = v_partition_name::name;
+
+    IF v_exists > 0 THEN
         CONTINUE;
     END IF;
 
@@ -153,11 +172,23 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     IF v_unlogged = 'u' THEN
         v_sql := v_sql || ' UNLOGGED';
     END IF;
-    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)'
+    -- Close parentheses on LIKE are below due to differing requirements of native subpartitioning
+    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
                                 , v_parent_schema
                                 , v_partition_name
                                 , v_parent_schema
                                 , v_parent_tablename);
+
+    SELECT sub_partition_type, sub_control INTO v_sub_partition_type, v_sub_control 
+    FROM @extschema@.part_config_sub 
+    WHERE sub_parent = p_parent_table;
+    IF v_sub_partition_type = 'native' THEN
+        -- Cannot include indexes since they cannot exist on native parents
+        v_sql := v_sql || format(') PARTITION BY RANGE (%I) ', v_sub_control);
+    ELSE
+        v_sql := v_sql || format(' INCLUDING INDEXES) ', v_sub_control);
+    END IF;
+
     SELECT relhasoids INTO v_hasoids 
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -166,56 +197,107 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     IF v_hasoids IS TRUE THEN
         v_sql := v_sql || ' WITH (OIDS)';
     END IF;
+    IF p_debug THEN
+        RAISE NOTICE 'create_partition_time v_sql: %', v_sql;
+    END IF;
     EXECUTE v_sql;
+
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_partition_name, v_parent_tablespace);
     END IF;
-    EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
-        , v_parent_schema
-        , v_partition_name
-        , v_partition_name||'_partition_check'
-        , v_partition_expression
-        , v_partition_timestamp_start
-        , v_partition_timestamp_end);
-    IF v_epoch = 'seconds' THEN
-        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
-                        , v_parent_schema
-                        , v_partition_name
-                        , v_partition_name||'_partition_int_check'
-                        , v_control
-                        , EXTRACT('epoch' from v_partition_timestamp_start)
-                        , v_control
-                        , EXTRACT('epoch' from v_partition_timestamp_end) );
-    ELSIF v_epoch = 'milliseconds' THEN
-        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
-                        , v_parent_schema
-                        , v_partition_name
-                        , v_partition_name||'_partition_int_check'
-                        , v_control
-                        , EXTRACT('epoch' from v_partition_timestamp_start) * 1000
-                        , v_control
-                        , EXTRACT('epoch' from v_partition_timestamp_end) * 1000);
-    END IF;
 
-    EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
+    IF v_partition_type = 'native' THEN
+        IF v_epoch = 'none' THEN
+            -- Attach with normal, time-based values for native constraint
+            EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
+                , v_parent_schema
+                , v_parent_tablename
+                , v_parent_schema
+                , v_partition_name
+                , v_partition_timestamp_start
+                , v_partition_timestamp_end);
+        ELSE
+            -- Must attach with integer based values for native constraint and epoch
+            IF v_epoch = 'seconds' THEN
+                EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
+                    , v_parent_schema
+                    , v_parent_tablename
                     , v_parent_schema
                     , v_partition_name
+                    , EXTRACT('epoch' FROM v_partition_timestamp_start)
+                    , EXTRACT('epoch' FROM v_partition_timestamp_end));
+            ELSIF v_epoch = 'milliseconds' THEN
+                EXECUTE format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I FOR VALUES FROM (%L) TO (%L)'
                     , v_parent_schema
-                    , v_parent_tablename);
+                    , v_parent_tablename
+                    , v_parent_schema
+                    , v_partition_name
+                    , EXTRACT('epoch' FROM v_partition_timestamp_start) * 1000
+                    , EXTRACT('epoch' FROM v_partition_timestamp_end) * 1000);
+            END IF;
+            -- Create secondary, time-based constraint since native's constraint is already integer based
+            EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
+                , v_parent_schema
+                , v_partition_name
+                , v_partition_name||'_partition_check'
+                , v_partition_expression
+                , v_partition_timestamp_start
+                , v_partition_timestamp_end);
+        END IF;
+    ELSE
+        -- Non-native always gets time-based constraint
+        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
+            , v_parent_schema
+            , v_partition_name
+            , v_partition_name||'_partition_check'
+            , v_partition_expression
+            , v_partition_timestamp_start
+            , v_partition_timestamp_end);
+        IF v_epoch = 'seconds' THEN
+            -- Non-native needs secondary, integer based constraint for epoch
+            EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
+                            , v_parent_schema
+                            , v_partition_name
+                            , v_partition_name||'_partition_int_check'
+                            , v_control
+                            , EXTRACT('epoch' from v_partition_timestamp_start)
+                            , v_control
+                            , EXTRACT('epoch' from v_partition_timestamp_end) );
+        ELSIF v_epoch = 'milliseconds' THEN
+            EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
+                            , v_parent_schema
+                            , v_partition_name
+                            , v_partition_name||'_partition_int_check'
+                            , v_control
+                            , EXTRACT('epoch' from v_partition_timestamp_start) * 1000
+                            , v_control
+                            , EXTRACT('epoch' from v_partition_timestamp_end) * 1000);
+        END IF;
 
-    -- If custom time, set extra config options.
-    IF v_type = 'time-custom' THEN
-        INSERT INTO @extschema@.custom_time_partitions (parent_table, child_table, partition_range)
-        VALUES ( p_parent_table, v_parent_schema||'.'||v_partition_name, tstzrange(v_partition_timestamp_start, v_partition_timestamp_end, '[)') );
-    END IF;
+        EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
+                        , v_parent_schema
+                        , v_partition_name
+                        , v_parent_schema
+                        , v_parent_tablename);
 
+        -- If custom time, set extra config options.
+        IF v_partition_type = 'time-custom' THEN
+            INSERT INTO @extschema@.custom_time_partitions (parent_table, child_table, partition_range)
+            VALUES ( p_parent_table, v_parent_schema||'.'||v_partition_name, tstzrange(v_partition_timestamp_start, v_partition_timestamp_end, '[)') );
+        END IF;
+
+        -- Indexes cannot be created on the parent, so clustering cannot be used for native yet.
+        PERFORM @extschema@.apply_cluster(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name);
+
+        -- Foreign keys to other tables not supported in native
+        IF v_inherit_fk THEN
+            PERFORM @extschema@.apply_foreign_keys(p_parent_table, v_parent_schema||'.'||v_partition_name, v_job_id);
+        END IF;
+
+    END IF; -- end native check
+
+    -- NOTE: Privileges currently not automatically inherited for native
     PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name, v_job_id);
-
-    PERFORM @extschema@.apply_cluster(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name);
-
-    IF v_inherit_fk THEN
-        PERFORM @extschema@.apply_foreign_keys(p_parent_table, v_parent_schema||'.'||v_partition_name, v_job_id);
-    END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -238,7 +320,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , sub_retention_schema
             , sub_retention_keep_table
             , sub_retention_keep_index
-            , sub_use_run_maintenance
+            , sub_automatic_maintenance
             , sub_infinite_time_partitions
             , sub_jobmon
             , sub_trigger_exception_handling
@@ -255,7 +337,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                 , p_interval := %L
                 , p_constraint_cols := %L
                 , p_premake := %L
-                , p_use_run_maintenance := %L
+                , p_automatic_maintenance := %L
                 , p_inherit_fk := %L
                 , p_epoch := %L
                 , p_jobmon := %L )'
@@ -265,10 +347,13 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , v_row.sub_partition_interval
             , v_row.sub_constraint_cols
             , v_row.sub_premake
-            , v_row.sub_use_run_maintenance
+            , v_row.sub_automatic_maintenance
             , v_row.sub_inherit_fk
             , v_row.sub_epoch
             , v_row.sub_jobmon);
+        IF p_debug THEN
+            RAISE NOTICE 'create_partition_time (create_parent loop): %', v_sql;
+        END IF;
         EXECUTE v_sql;
 
         UPDATE @extschema@.part_config SET 
@@ -289,7 +374,6 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     v_partition_created := true;
 
 END LOOP;
-
 -- v_analyze is a local check if a new table is made.
 -- p_analyze is a parameter to say whether to run the analyze at all. Used by create_parent() to avoid long exclusive lock or run_maintenence() to avoid long creation runs.
 IF v_analyze AND p_analyze THEN

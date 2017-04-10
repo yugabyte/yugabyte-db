@@ -17,7 +17,7 @@ INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'hourly', p_upsert := 'ON CONFLICT (col1) DO NOTHING');
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', 'hourly', p_upsert := 'ON CONFLICT (col1) DO NOTHING');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI'), 'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI')||' exists');

@@ -1,7 +1,4 @@
-/*
- * Function to undo id-based partitioning created by this extension
- */
-CREATE FUNCTION undo_partition_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval bigint DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0) RETURNS bigint
+CREATE FUNCTION undo_partition_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval bigint DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0, OUT partitions_undone int, OUT rows_undone bigint) RETURNS record 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -16,6 +13,7 @@ v_child_loop_total      bigint := 0;
 v_child_min             bigint;
 v_child_table           text;
 v_control               text;
+v_control_type          text;
 v_exists                int;
 v_function_name         text;
 v_inner_loop_count      int;
@@ -29,6 +27,7 @@ v_new_search_path       text := '@extschema@,pg_temp';
 v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
+v_partition_int_text    text;
 v_partition_interval    bigint;
 v_row                   record;
 v_rowcount              bigint;
@@ -39,26 +38,44 @@ v_total                 bigint := 0;
 v_undo_count            int := 0;
 
 BEGIN
+/*
+ * Function to undo id-based partitioning created by this extension
+ */
 
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_id'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'undo_partition_id already running.';
-    RETURN 0;
+    partitions_undone = -1;
+    RETURN;
 END IF;
 
-SELECT partition_interval::bigint
+SELECT partition_interval
     , control
     , jobmon
-INTO v_partition_interval
+INTO v_partition_int_text
     , v_control
     , v_jobmon
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table 
-AND partition_type = 'id';
+AND partition_type = 'partman';
 
-IF v_partition_interval IS NULL THEN
-    RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
+IF v_control IS NULL THEN
+    RAISE EXCEPTION 'No non-native configuration found for pg_partman for given parent table: %', p_parent_table;
 END IF;
+
+SELECT n.nspname, c.relname
+INTO v_parent_schema, v_parent_tablename 
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'id' THEN
+    RAISE EXCEPTION 'ERROR: Given parent table is not set up for id/serial partitioning';
+END IF;
+
+v_partition_interval := v_partition_int_text::bigint;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
 IF v_jobmon THEN
@@ -95,12 +112,6 @@ IF p_batch_interval IS NULL THEN
     p_batch_interval := v_partition_interval;
 END IF;
 
-SELECT schemaname, tablename 
-INTO v_parent_schema, v_parent_tablename 
-FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
-
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables and stop new id partitions from being made.
@@ -133,7 +144,8 @@ IF v_trig_name IS NOT NULL THEN
         END LOOP;
         IF NOT v_lock_obtained THEN
             RAISE NOTICE 'Unable to obtain lock on parent table to remove trigger';
-            RETURN -1;
+            partitions_undone = -1;
+            RETURN;
         END IF;
     END IF; -- END p_lock_wait IF
     EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', v_trig_name, v_parent_schema, v_parent_tablename);
@@ -185,7 +197,8 @@ LOOP
             END LOOP;
             IF NOT v_lock_obtained THEN
                 RAISE NOTICE 'Unable to obtain lock on child table for removal from partition set';
-                RETURN -1;
+                partitions_undone = -1;
+                RETURN;
             END IF;
         END IF; -- END p_lock_wait IF
         v_lock_obtained := FALSE; -- reset for reuse later
@@ -234,7 +247,8 @@ LOOP
             END LOOP;
             IF NOT v_lock_obtained THEN
                RAISE NOTICE 'Unable to obtain lock on batch of rows to move';
-               RETURN -1;
+               partitions_undone = -1;
+               RETURN;
             END IF;
         END IF;
 
@@ -270,6 +284,7 @@ END LOOP outer_child_loop;
 SELECT partition_tablename INTO v_child_table FROM @extschema@.show_partitions(p_parent_table, 'ASC') LIMIT 1;
 IF v_child_table IS NULL THEN
     DELETE FROM @extschema@.part_config WHERE parent_table = p_parent_table;
+    DELETE FROM @extschema@.part_config_sub WHERE sub_parent = p_parent_table;
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, 'Removing config from pg_partman');
         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -288,7 +303,8 @@ END IF;
 
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 
-RETURN v_total;
+partitions_undone := v_undo_count;
+rows_undone := v_total;
 
 EXCEPTION
     WHEN OTHERS THEN

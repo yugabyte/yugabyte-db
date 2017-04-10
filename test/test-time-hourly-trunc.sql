@@ -18,7 +18,7 @@ INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123456
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table_1234567890123456789012345678901234567890 TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table_1234567890123456789012345678901234567890 TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table_1234567890123456789012345678901234567890', 'col3', 'time', 'hourly');
+SELECT create_parent('partman_test.time_taptest_table_1234567890123456789012345678901234567890', 'col3', 'partman', 'hourly');
 SELECT has_table('partman_test', 'time_taptest_table_123456789012345678901234567_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI'), 'Check time_taptest_table_123456789012345678901234567_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_123456789012345678901234567_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_123456789012345678901234567_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI')||' exists');

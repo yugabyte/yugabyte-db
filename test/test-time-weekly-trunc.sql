@@ -19,7 +19,7 @@ INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123457
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table_123456789012345678901234567890123457890 TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table_123456789012345678901234567890123457890 TO partman_revoke;
 
-SELECT create_parent('partman_test.time_taptest_table_123456789012345678901234567890123457890', 'col3', 'time', 'weekly');
+SELECT create_parent('partman_test.time_taptest_table_123456789012345678901234567890123457890', 'col3', 'partman', 'weekly');
 SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 'Check time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP+'1 week'::interval, 'IYYY"w"IW'), 
     'Check time_taptest_table_12345678901234567890123456789012345_p'||to_char(CURRENT_TIMESTAMP+'1 week'::interval, 'IYYY"w"IW')||' exists');

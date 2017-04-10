@@ -1,6 +1,3 @@
-/*
- * Apply foreign keys that exist on the given parent to the given child table
- */
 CREATE FUNCTION apply_foreign_keys(p_parent_table text, p_child_table text, p_job_id bigint DEFAULT NULL, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql
     AS $$
@@ -19,6 +16,7 @@ v_parent_schema     text;
 v_parent_tablename  text;
 v_ref_schema        text;
 v_ref_table         text;
+v_relkind           char;
 v_row               record;
 v_schemaname        text;
 v_sql               text;
@@ -26,6 +24,9 @@ v_step_id           bigint;
 v_tablename         text;
 
 BEGIN
+/*
+ * Apply foreign keys that exist on the given parent to the given child table
+ */
 
 SELECT jobmon INTO v_jobmon FROM @extschema@.part_config WHERE parent_table = p_parent_table;
 
@@ -36,6 +37,24 @@ IF v_jobmon THEN
         EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
+
+SELECT n.nspname, c.relname, c.relkind INTO v_parent_schema, v_parent_tablename, v_relkind
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
+
+IF v_relkind = 'p' THEN
+    RAISE EXCEPTION 'This function cannot run on natively partitioned tables';
+ELSIF v_relkind IS NULL THEN
+    RAISE EXCEPTION 'Unable to find given table in system catalogs: %.%', v_parent_schema, v_parent_tablename;
+END IF;
+
+SELECT n.nspname, c.relname INTO v_schemaname, v_tablename 
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_child_table, '.', 1)::name
+AND c.relname = split_part(p_child_table, '.', 2)::name;
 
 IF v_jobmon_schema IS NOT NULL THEN
     IF p_job_id IS NULL THEN
@@ -48,16 +67,6 @@ END IF;
 IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, format('Applying foreign keys to %s if they exist on parent', p_child_table));
 END IF;
-
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
-FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
-
-SELECT schemaname, tablename INTO v_schemaname, v_tablename 
-FROM pg_catalog.pg_tables 
-WHERE schemaname = split_part(p_child_table, '.', 1)::name
-AND tablename = split_part(p_child_table, '.', 2)::name;
 
 IF v_tablename IS NULL THEN
     IF v_jobmon_schema IS NOT NULL THEN
@@ -128,4 +137,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

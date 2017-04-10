@@ -1,92 +1,71 @@
-/*
- * Check if parent table is a subpartition of an already existing partition set managed by pg_partman
- *  If so, return the limits of what child tables can be created under the given parent table based on its own suffix
- */
 CREATE FUNCTION check_subpartition_limits(p_parent_table text, p_type text, OUT sub_min text, OUT sub_max text) RETURNS record
     LANGUAGE plpgsql
     AS $$
 DECLARE
 
-v_datetime_string       text;
-v_id_position           int;
 v_parent_schema         text;
 v_parent_tablename      text;
-v_partition_interval    interval;
-v_quarter               text;
-v_sub_id_max            bigint;
-v_sub_id_min            bigint;
-v_sub_timestamp_max     timestamptz;
-v_sub_timestamp_min     timestamptz;
-v_time_position         int;
-v_top_datetime_string   text;
+v_top_control           text;
+v_top_control_type      text;
+v_top_epoch             text;
 v_top_interval          text;
-v_top_parent            text;
-v_top_type              text;
-v_year                  text;
+v_top_schema            text;
+v_top_tablename         text;
 
 BEGIN
+/*
+ * Check if parent table is a subpartition of an already existing partition set managed by pg_partman
+ *  If so, return the limits of what child tables can be created under the given parent table based on its own suffix
+ *  If not, return NULL. Allows caller to check for NULL and then know if the given parent has sub-partition limits.
+ */
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
-FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
+SELECT n.nspname, c.relname INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
 
--- CTE query is done individually for each type (time, id) because it should return NULL if the top parent is not the same type in a subpartition set (id->time or time->id)
+WITH top_oid AS (
+    SELECT i.inhparent AS top_parent_oid
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = v_parent_schema
+    AND c.relname = v_parent_tablename
+) 
+SELECT n.nspname, c.relname, p.partition_interval, p.control, p.epoch
+INTO v_top_schema, v_top_tablename, v_top_interval, v_top_control, v_top_epoch
+FROM pg_catalog.pg_class c
+JOIN top_oid t ON c.oid = t.top_parent_oid
+JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
+WHERE c.oid = t.top_parent_oid;
 
-IF p_type = 'id' THEN
+SELECT general_type INTO v_top_control_type
+FROM @extschema@.check_control_type(v_top_schema, v_top_tablename, v_top_control);
 
-    WITH top_oid AS (
-        SELECT i.inhparent AS top_parent_oid
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = v_parent_schema
-        AND c.relname = v_parent_tablename
-    ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.partition_interval, p.partition_type
-      INTO v_top_parent, v_top_datetime_string, v_top_interval, v_top_type
-      FROM pg_catalog.pg_class c
-      JOIN top_oid t ON c.oid = t.top_parent_oid
-      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-      JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
-      WHERE c.oid = t.top_parent_oid
-      AND p.partition_type = 'id';
+IF v_top_control_type = 'id' AND v_top_epoch <> 'none' THEN
+    v_top_control_type := 'time';
+END IF;
 
-    IF v_top_parent IS NOT NULL THEN 
-        SELECT child_start_id::text, child_end_id::text 
-        INTO sub_min, sub_max
-        FROM @extschema@.show_partition_info(p_parent_table, v_top_interval, v_top_parent);
-    END IF;
-
-ELSIF p_type = 'time' THEN
-
-    WITH top_oid AS (
-        SELECT i.inhparent AS top_parent_oid
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
-        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = v_parent_schema
-        AND c.relname = v_parent_tablename
-    ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.partition_interval, p.partition_type
-      INTO v_top_parent, v_top_datetime_string, v_top_interval, v_top_type
-      FROM pg_catalog.pg_class c
-      JOIN top_oid t ON c.oid = t.top_parent_oid
-      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-      JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
-      WHERE c.oid = t.top_parent_oid
-      AND p.partition_type = 'time' OR p.partition_type = 'time-custom';
-
-    IF v_top_parent IS NOT NULL THEN 
+-- If sub-partition is different type than top parent, no need to set limits
+IF p_type = v_top_control_type THEN
+    IF p_type = 'time' THEN
         SELECT child_start_time::text, child_end_time::text 
         INTO sub_min, sub_max
-        FROM @extschema@.show_partition_info(p_parent_table, v_top_interval, v_top_parent);
+        FROM @extschema@.show_partition_info(p_parent_table, v_top_interval, v_top_schema||'.'||v_top_tablename);
+    ELSIF p_type = 'id' THEN
+        SELECT child_start_id::text, child_end_id::text 
+        INTO sub_min, sub_max
+        FROM @extschema@.show_partition_info(p_parent_table, v_top_interval, v_top_schema||'.'||v_top_tablename);
+    ELSE
+        RAISE EXCEPTION 'Reached unknown state in check_subpartition_limits(). Please report what lead to this condition to author';
     END IF;
-
-ELSE
-    RAISE EXCEPTION 'Invalid type given as parameter to check_subpartition_limits()';
 END IF;
 
 RETURN;
 
 END
 $$;
+
 

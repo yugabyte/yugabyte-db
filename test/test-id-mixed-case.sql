@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(375);
+SELECT plan(374);
 CREATE SCHEMA "Partman_test";
 CREATE SCHEMA "Partman-retention-Test";
 
@@ -22,7 +22,7 @@ CREATE TABLE "Partman_test"."ID-taptest_Table" (
     , FOREIGN KEY (col2, col4) REFERENCES "Partman_test"."FK_test_reference"(col2, col4) MATCH FULL ON DELETE RESTRICT DEFERRABLE);
 INSERT INTO "Partman_test"."ID-taptest_Table" ("COL1") VALUES (generate_series(1,50000));
 
-SELECT create_parent('Partman_test.ID-taptest_Table', 'COL1', 'id', '10000', p_jobmon := false, p_premake := 2);
+SELECT create_parent('Partman_test.ID-taptest_Table', 'COL1', 'partman', '10000', p_jobmon := false, p_premake := 2);
 
 SELECT results_eq('SELECT partition_data_id(''Partman_test.ID-taptest_Table'', p_batch_count := 20)::int', ARRAY[50000], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY "Partman_test"."ID-taptest_Table"', 'Check that parent table has had data moved to partition');
@@ -52,8 +52,11 @@ SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p60000', ARRAY['col2', 'col4'
 SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p70000', ARRAY['col2', 'col4'], 'Check for inherited foreign key in ID-taptest_Table_p70000');
 
 
--- Insert remaining rows to check that 50% trigger is working before enabling sub-partitioning
-INSERT INTO "Partman_test"."ID-taptest_Table" ("COL1") VALUES (generate_series(50001, 100000));
+INSERT INTO "Partman_test"."ID-taptest_Table" ("COL1") VALUES (generate_series(50001, 70000));
+SELECT run_maintenance();
+INSERT INTO "Partman_test"."ID-taptest_Table" ("COL1") VALUES (generate_series(70001, 90000));
+SELECT run_maintenance();
+INSERT INTO "Partman_test"."ID-taptest_Table" ("COL1") VALUES (generate_series(90001, 100000));
 
 SELECT has_table('Partman_test', 'ID-taptest_Table_p80000', 'Check "ID-taptest_Table_p80000 exists');
 SELECT has_table('Partman_test', 'ID-taptest_Table_p90000', 'Check "ID-taptest_Table_p90000 exists');
@@ -78,13 +81,7 @@ SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p90000', ARRAY['col2', 'col4'
 SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p100000', ARRAY['col2', 'col4'], 'Check for inherited foreign key in ID-taptest_Table_p100000');
 SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p110000', ARRAY['col2', 'col4'], 'Check for inherited foreign key in ID-taptest_Table_p110000');
 
--- Have to set current parent table to use run_maintenance before subpartitioning can be used. First, check that this error is returned.
-SELECT throws_ok('SELECT create_sub_parent(''Partman_test.ID-taptest_Table'', ''COL1'', ''id'', ''1000'', p_jobmon := false, p_premake := 2)',
-    'P0001',
-    'Any parent table that will be part of a sub-partitioned set (on any level) must have use_run_maintenance set to true in part_config table, even for serial partitioning. See documentation for more info.',
-    'Make sure sub-partitioning checks that parent is using run_maintenance');
-UPDATE part_config SET use_run_maintenance = true WHERE parent_table = 'Partman_test.ID-taptest_Table';
-SELECT create_sub_parent('Partman_test.ID-taptest_Table', 'COL1', 'id', '1000', p_jobmon := false, p_premake := 2);
+SELECT create_sub_parent('Partman_test.ID-taptest_Table', 'COL1', 'partman', '1000', p_jobmon := false, p_premake := 2);
 -- Test for normal partitions that should be made based on current max value of 100,000
 SELECT has_table('Partman_test', 'ID-taptest_Table_p90000_p98000', 'Check ID-taptest_Table_p90000_p98000 exists');
 SELECT has_table('Partman_test', 'ID-taptest_Table_p90000_p99000', 'Check ID-taptest_Table_p90000_p99000 exists');
@@ -301,8 +298,6 @@ SELECT is_empty('SELECT * FROM ONLY "Partman_test"."ID-taptest_Table_p100000"', 
 SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."ID-taptest_Table_p100000_p100000"', ARRAY[1000], 'Check count from ID-taptest_Table_p100000_p100000');
 SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."ID-taptest_Table_p100000_p101000"', ARRAY[1000], 'Check count from ID-taptest_Table_p100000_p101000');
 SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."ID-taptest_Table_p100000_p102000"', ARRAY[1], 'Check count from ID-taptest_Table_p100000_p102000');
-
--- Run maintenance to check that tables are getting premade (since 50% trigger doesn't work on subpartitioning)
 
 SELECT run_maintenance();
 SELECT has_table('Partman_test', 'ID-taptest_Table_p100000_p103000', 'Check ID-taptest_Table_p100000_p103000 exists');

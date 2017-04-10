@@ -30,7 +30,6 @@ BEGIN
     WHERE t.conname = 'part_config_epoch_check'
     AND c.relname = 'part_config'
     AND n.nspname = '@extschema@';
-    RAISE NOTICE 'v_exists: %', v_exists;
 
     IF v_exists IS NULL THEN
         EXECUTE format('

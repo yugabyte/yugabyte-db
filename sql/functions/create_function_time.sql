@@ -1,6 +1,3 @@
-/*
- * Create the trigger function for the parent table of a time-based partition set
- */
 CREATE FUNCTION create_function_time(p_parent_table text, p_job_id bigint DEFAULT NULL) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -11,6 +8,7 @@ ex_detail                       text;
 ex_hint                         text;
 ex_message                      text;
 v_control                       text;
+v_control_type                  text;
 v_count                         int;
 v_current_partition_name        text;
 v_current_partition_timestamp   timestamptz;
@@ -32,6 +30,7 @@ v_partition_expression          text;
 v_partition_interval            interval;
 v_prev_partition_name           text;
 v_prev_partition_timestamp      timestamptz;
+v_relkind                       char;
 v_step_id                       bigint;
 v_trig_func                     text;
 v_optimize_trigger              int;
@@ -41,6 +40,9 @@ v_type                          text;
 v_upsert                        text;
 
 BEGIN
+/*
+ * Create the trigger function for the parent table of a time-based partition set
+ */
 
 SELECT partition_type
     , partition_interval::interval
@@ -64,10 +66,29 @@ INTO v_type
     , v_trigger_return_null
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND (partition_type = 'time' OR partition_type = 'time-custom');
+AND (partition_type = 'partman' OR partition_type = 'time-custom');
 
 IF NOT FOUND THEN
-    RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+    RAISE EXCEPTION 'ERROR: no non-native pg_partman config found for %', p_parent_table;
+END IF;
+
+SELECT n.nspname, c.relname, c.relkind INTO v_parent_schema, v_parent_tablename, v_relkind
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = split_part(p_parent_table, '.', 1)::name
+AND c.relname = split_part(p_parent_table, '.', 2)::name;
+
+IF v_relkind = 'p' THEN
+    RAISE EXCEPTION 'This function cannot run on natively partitioned tables';
+ELSIF v_relkind IS NULL THEN
+    RAISE EXCEPTION 'Unable to find given table in system catalogs: %.%', v_parent_schema, v_parent_tablename;
+END IF;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+IF v_control_type <> 'time' THEN 
+    IF (v_control_type = 'id' AND v_epoch = 'none') OR v_control_type <> 'id' THEN
+        RAISE EXCEPTION 'Cannot run on partition set without time based control column or epoch flag set with an id column. Found control: %, epoch: %', v_control_type, v_epoch;
+    END IF;
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -79,6 +100,8 @@ IF v_jobmon THEN
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
+v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
+
 IF v_jobmon_schema IS NOT NULL THEN
     IF p_job_id IS NULL THEN
         v_job_id := add_job(format('PARTMAN CREATE FUNCTION: %s', p_parent_table));
@@ -88,20 +111,13 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, format('Creating partition function for table %s', p_parent_table));
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
-FROM pg_catalog.pg_tables
-WHERE schemaname = split_part(p_parent_table, '.', 1)::name
-AND tablename = split_part(p_parent_table, '.', 2)::name;
-
-v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
-
 v_partition_expression := CASE
     WHEN v_epoch = 'seconds' THEN format('to_timestamp(NEW.%I)', v_control)
     WHEN v_epoch = 'milliseconds' THEN format('to_timestamp((NEW.%I/1000)::float)', v_control)
     ELSE format('NEW.%I', v_control)
 END;
 
-IF v_type = 'time' THEN
+IF v_type = 'partman' THEN
     v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUAGE plpgsql AS $t$
             DECLARE
             v_count                 int;
@@ -331,4 +347,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

@@ -1,6 +1,3 @@
-/*
- * Apply privileges that exist on a given parent to the given child table
- */
 CREATE FUNCTION apply_privileges(p_parent_schema text, p_parent_tablename text, p_child_schema text, p_child_tablename text, p_job_id bigint DEFAULT NULL) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -26,14 +23,27 @@ v_sql               text;
 v_step_id           bigint;
 
 BEGIN
+/*
+ * Apply privileges and ownership that exist on a given parent to the given child table
+ */
 
 SELECT jobmon INTO v_jobmon FROM @extschema@.part_config WHERE parent_table = p_parent_schema ||'.'|| p_parent_tablename;
 IF v_jobmon IS NULL THEN
     RAISE EXCEPTION 'Given table is not managed by this extention: %.%', p_parent_schema, p_parent_tablename;
 END IF;
 
-SELECT tableowner INTO v_parent_owner FROM pg_catalog.pg_tables WHERE schemaname = p_parent_schema::name AND tablename = p_parent_tablename::name;
-SELECT tableowner INTO v_child_owner FROM pg_catalog.pg_tables WHERE schemaname = p_child_schema::name AND tablename = p_child_tablename::name;
+SELECT pg_get_userbyid(c.relowner) INTO v_parent_owner 
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = p_parent_schema::name 
+AND c.relname = p_parent_tablename::name;
+
+SELECT pg_get_userbyid(c.relowner) INTO v_child_owner
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = p_child_schema::name
+AND c.relname = p_child_tablename::name;
+
 IF v_parent_owner IS NULL THEN
     RAISE EXCEPTION 'Given parent table does not exist: %.%', v_parent_schema, v_parent_tablename;
 END IF;
@@ -179,5 +189,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

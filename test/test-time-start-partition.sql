@@ -14,7 +14,7 @@ CREATE SCHEMA partman_retention_test;
 CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'daily', p_start_partition := (CURRENT_TIMESTAMP - '10 days'::interval)::text);
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', 'daily', p_start_partition := (CURRENT_TIMESTAMP - '10 days'::interval)::text);
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD')||' exists');
