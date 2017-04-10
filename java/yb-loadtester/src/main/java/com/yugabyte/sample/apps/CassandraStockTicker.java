@@ -1,4 +1,6 @@
-package org.yb.loadtester.workload;
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.sample.apps;
 
 import java.util.Date;
 import java.util.List;
@@ -8,16 +10,15 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.log4j.Logger;
-import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.Configuration;
-import org.yb.loadtester.common.TimeseriesLoadGenerator;
 
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.yugabyte.sample.common.CmdLineOpts;
+import com.yugabyte.sample.common.TimeseriesLoadGenerator;
 
-public class CassandraStockTicker extends Workload {
+public class CassandraStockTicker extends AppBase {
   private static final Logger LOG = Logger.getLogger(CassandraStockTicker.class);
   // Static initialization of this workload's config.
   static {
@@ -54,7 +55,7 @@ public class CassandraStockTicker extends Workload {
   Object prepareInitLock = new Object();
 
   @Override
-  public void initialize(Configuration configuration) {
+  public void initialize(CmdLineOpts configuration) {
     synchronized (tickers) {
       LOG.info("Initializing CassandraStockTicker app...");
       // If the datasources have already been created, we have already initialized the static

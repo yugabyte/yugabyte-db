@@ -1,4 +1,6 @@
-package org.yb.loadtester.workload;
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.sample.apps;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -10,14 +12,13 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.log4j.Logger;
-import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.Configuration;
-import org.yb.loadtester.common.TimeseriesLoadGenerator;
 
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.yugabyte.sample.common.CmdLineOpts;
+import com.yugabyte.sample.common.TimeseriesLoadGenerator;
 
 /**
  * A sample timeseries metric data application.
@@ -29,7 +30,7 @@ import com.datastax.driver.core.Row;
  *
  * The metricsTable has the metric timeseries data for all the users' nodes.
  */
-public class CassandraTimeseries extends Workload {
+public class CassandraTimeseries extends AppBase {
   private static final Logger LOG = Logger.getLogger(CassandraTimeseries.class);
   // Static initialization of this workload's config.
   static {
@@ -74,7 +75,7 @@ public class CassandraTimeseries extends Workload {
   Object prepareInitLock = new Object();
 
   @Override
-  public void initialize(Configuration configuration) {
+  public void initialize(CmdLineOpts configuration) {
     synchronized (dataSources) {
       // If the datasources have already been created, we have already initialized the static
       // variables, so nothing to do.

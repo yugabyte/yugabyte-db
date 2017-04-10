@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package org.yb.loadtester.common;
+package com.yugabyte.sample.common;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,40 +17,52 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import org.yb.loadtester.Workload;
 
-public class Configuration {
-  private static final Logger LOG = Logger.getLogger(Configuration.class);
+import com.yugabyte.sample.apps.AppBase;
 
+/**
+ * This is a helper class to parse the user specified command-line options if they were specified,
+ * print help messages when running the app, etc.
+ */
+public class CmdLineOpts {
+  private static final Logger LOG = Logger.getLogger(CmdLineOpts.class);
+
+  // This is a unique UUID that is created by each instance of the application. This UUID is used in
+  // various apps to make the keys unique. This allows us to run multiple instances of the app
+  // safely.
   public static final UUID loadTesterUUID = UUID.randomUUID();
 
-  // The types of workloads currently registered.
-  public static enum WorkLoadType {
-//    CassandraRetail,
+  // The various apps present in this sample.
+  public static enum AppName {
     CassandraKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
     RedisKeyValue,
   }
 
-  // The class type of the workload.
-  private Class<? extends Workload> workloadClass;
+  // The class type of the app needed to spawn new objects.
+  private Class<? extends AppBase> appClass;
+  // List of database nodes.
   public List<Node> nodes = new ArrayList<>();
-  Random random = new Random();
+  // The number of reader threads to spawn for OLTP apps.
   int numReaderThreads;
+  // The number of writer threads to spawn for OLTP apps.
   int numWriterThreads;
   boolean reuseExistingTable = false;
+  // Random number generator.
+  Random random = new Random();
+  // Command line opts parser.
   CommandLine commandLine;
 
   public void initialize(CommandLine commandLine) throws ClassNotFoundException {
     this.commandLine = commandLine;
     // Get the workload.
-    WorkLoadType workloadType = WorkLoadType.valueOf(commandLine.getOptionValue("workload"));
+    AppName appName = AppName.valueOf(commandLine.getOptionValue("workload"));
     // Get the proxy nodes.
     List<String> hostPortList = Arrays.asList(commandLine.getOptionValue("nodes").split(","));
     // Get the workload class.
-    workloadClass = getWorkloadClass(workloadType);
-    LOG.info("Workload: " + workloadClass.getSimpleName());
+    appClass = getAppClass(appName);
+    LOG.info("App: " + appClass.getSimpleName());
     for (String hostPort : hostPortList) {
       LOG.info("Adding node: " + hostPort);
       this.nodes.add(Node.fromHostPort(hostPort));
@@ -67,15 +79,15 @@ public class Configuration {
     }
   }
 
-  public Workload getWorkloadInstance() {
-    Workload workload = null;
+  public AppBase getAppInstance() {
+    AppBase workload = null;
     try {
       // Create a new workload object.
-      workload = workloadClass.newInstance();
+      workload = appClass.newInstance();
       // Initialize the workload.
       workload.workloadInit(this);
     } catch (Exception e) {
-      LOG.error("Could not create instance of " + workloadClass.getName(), e);
+      LOG.error("Could not create instance of " + appClass.getName(), e);
     }
     return workload;
   }
@@ -106,19 +118,19 @@ public class Configuration {
     return reuseExistingTable;
   }
 
-  private static Class<? extends Workload> getWorkloadClass(WorkLoadType workloadType)
+  private static Class<? extends AppBase> getAppClass(AppName workloadType)
       throws ClassNotFoundException{
     // Get the workload class.
-    return Class.forName("org.yb.loadtester.workload." + workloadType.toString())
-                         .asSubclass(Workload.class);
+    return Class.forName("com.yugabyte.sample.apps." + workloadType.toString())
+                         .asSubclass(AppBase.class);
   }
 
   private void initializeThreadCount(CommandLine cmd) {
     // Check if there are a fixed number of threads or variable.
     String numThreadsStr = cmd.getOptionValue("num_threads");
-    if (Workload.workloadConfig.readIOPSPercentage == -1) {
-      numReaderThreads = Workload.workloadConfig.numReaderThreads;
-      numWriterThreads = Workload.workloadConfig.numWriterThreads;
+    if (AppBase.workloadConfig.readIOPSPercentage == -1) {
+      numReaderThreads = AppBase.workloadConfig.numReaderThreads;
+      numWriterThreads = AppBase.workloadConfig.numWriterThreads;
     } else {
       int numThreads = 0;
       if (numThreadsStr != null) {
@@ -128,7 +140,7 @@ public class Configuration {
         numThreads = 8 * Runtime.getRuntime().availableProcessors();
       }
       numReaderThreads =
-          (int) Math.round(1.0 * numThreads * Workload.workloadConfig.readIOPSPercentage / 100);
+          (int) Math.round(1.0 * numThreads * AppBase.workloadConfig.readIOPSPercentage / 100);
       numWriterThreads = numThreads - numReaderThreads;
     }
 
@@ -146,32 +158,38 @@ public class Configuration {
 
   private void initializeNumKeys(CommandLine cmd) {
     if (cmd.hasOption("num_writes")) {
-      Workload.workloadConfig.numKeysToWrite = Long.parseLong(cmd.getOptionValue("num_writes"));
+      AppBase.workloadConfig.numKeysToWrite = Long.parseLong(cmd.getOptionValue("num_writes"));
     }
     if (cmd.hasOption("num_reads")) {
-      Workload.workloadConfig.numKeysToRead = Long.parseLong(cmd.getOptionValue("num_reads"));
+      AppBase.workloadConfig.numKeysToRead = Long.parseLong(cmd.getOptionValue("num_reads"));
     }
     if (cmd.hasOption("num_unique_keys")) {
-      Workload.workloadConfig.numUniqueKeysToWrite =
+      AppBase.workloadConfig.numUniqueKeysToWrite =
           Long.parseLong(cmd.getOptionValue("num_unique_keys"));
     }
-    LOG.info("Num keys to insert: " + Workload.workloadConfig.numUniqueKeysToWrite);
+    LOG.info("Num keys to insert: " + AppBase.workloadConfig.numUniqueKeysToWrite);
     LOG.info("Num keys to update: " +
-        (Workload.workloadConfig.numKeysToWrite - Workload.workloadConfig.numUniqueKeysToWrite));
-    LOG.info("Num keys to read: " + Workload.workloadConfig.numKeysToRead);
+        (AppBase.workloadConfig.numKeysToWrite - AppBase.workloadConfig.numUniqueKeysToWrite));
+    LOG.info("Num keys to read: " + AppBase.workloadConfig.numKeysToRead);
   }
 
   private void initializeTableProperties(CommandLine cmd) {
     // Initialize the TTL.
     if (cmd.hasOption("table_ttl_seconds")) {
-      Workload.workloadConfig.tableTTLSeconds =
+      AppBase.workloadConfig.tableTTLSeconds =
           Long.parseLong(cmd.getOptionValue("table_ttl_seconds"));
     }
 
-    LOG.info("Table TTL (secs): " + Workload.workloadConfig.tableTTLSeconds);
+    LOG.info("Table TTL (secs): " + AppBase.workloadConfig.tableTTLSeconds);
   }
 
-  public static Configuration createFromArgs(String[] args) throws Exception {
+  /**
+   * Creates a command line opts object from the arguments specified on the command line.
+   * @param
+   * @return a CmdLineOpts object
+   * @throws Exception
+   */
+  public static CmdLineOpts createFromArgs(String[] args) throws Exception {
     Options options = new Options();
 
     Option appType = OptionBuilder.create("workload");
@@ -248,7 +266,7 @@ public class Configuration {
       System.exit(0);
     }
 
-    Configuration configuration = new Configuration();
+    CmdLineOpts configuration = new CmdLineOpts();
     configuration.initialize(commandLine);
     return configuration;
   }
@@ -266,11 +284,11 @@ public class Configuration {
                   "platform.\n");
     String optsPrefix = "\t\t\t";
     String optsSuffix = " \\\n";
-    for (WorkLoadType workloadType : WorkLoadType.values()) {
+    for (AppName workloadType : AppName.values()) {
       int port = 0;
       if (workloadType.toString().startsWith("Cassandra")) port = 9042;
       else if (workloadType.toString().startsWith("Redis")) port = 6379;
-      Workload workload = getWorkloadClass(workloadType).newInstance();
+      AppBase workload = getAppClass(workloadType).newInstance();
 
       footer.append("\n - " + workloadType.toString() + " :\n");
       footer.append("   ");

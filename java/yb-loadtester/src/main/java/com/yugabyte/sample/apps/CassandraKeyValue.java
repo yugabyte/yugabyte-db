@@ -1,45 +1,59 @@
-package org.yb.loadtester.workload;
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.sample.apps;
 
 import java.util.List;
 
 import org.apache.log4j.Logger;
-import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.SimpleLoadGenerator.Key;
 
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
 /**
- * This workload writes and reads some random string keys from a CQL server. One reader and one
- * writer thread thread each is spawned.
+ * This workload writes and reads some random string keys from a CQL server. By default, this app
+ * inserts a million keys, and reads/updates them indefinitely.
  */
-public class CassandraKeyValue extends Workload {
+public class CassandraKeyValue extends AppBase {
   private static final Logger LOG = Logger.getLogger(CassandraKeyValue.class);
-  // The number of unique keys to write.
+
   private static final int NUM_UNIQUE_KEYS = 1000000;
-  // Static initialization of this workload's config.
+
+  // Static initialization of this workload's config. These are good defaults for getting a decent
+  // read dominated workload on a reasonably powered machine. Exact IOPS will of course vary
+  // depending on the machine and what resources it has to spare.
   static {
     // Disable the read-write percentage.
     workloadConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
     workloadConfig.numReaderThreads = 24;
     workloadConfig.numWriterThreads = 2;
-    // Set the number of keys to read and write.
+    // The number of keys to read.
     workloadConfig.numKeysToRead = -1;
+    // The number of keys to write. This is the combined total number of inserts and updates.
     workloadConfig.numKeysToWrite = -1;
-    workloadConfig.numUniqueKeysToWrite = NUM_UNIQUE_KEYS;
+    // The number of unique keys to write. This determines the number of inserts (as opposed to
+    // updates).
+    workloadConfig.numUniqueKeysToWrite = 1000000;
   }
+
   // The table name.
   private String tableName = CassandraKeyValue.class.getSimpleName();
+
   // The prepared select statement for fetching the data.
   PreparedStatement preparedSelect;
+
   // The prepared statement for inserting into the table.
   PreparedStatement preparedInsert;
+
   // Lock for initializing prepared statement objects.
   Object prepareInitLock = new Object();
 
+  /**
+   * Drop the table created by this app.
+   */
   @Override
   public void dropTable() {
     try {

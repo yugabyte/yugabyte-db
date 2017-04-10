@@ -1,4 +1,6 @@
-package org.yb.loadtester.metrics;
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.sample.common.metrics;
 
 import org.apache.log4j.Logger;
 

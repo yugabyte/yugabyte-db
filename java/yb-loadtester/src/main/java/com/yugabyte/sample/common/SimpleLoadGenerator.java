@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package org.yb.loadtester.common;
+package com.yugabyte.sample.common;
 
 import java.util.HashSet;
 import java.util.Random;
@@ -18,7 +18,7 @@ public class SimpleLoadGenerator {
     // The underlying key is an integer.
     Long key;
     // The randomized loadtester prefix.
-    String keyPrefix = Configuration.loadTesterUUID.toString();
+    String keyPrefix = CmdLineOpts.loadTesterUUID.toString();
 
     public Key(long key, String keyPrefix) {
       this.key = new Long(key);

@@ -1,14 +1,16 @@
-package org.yb.loadtester.workload;
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.sample.apps;
 
 import org.apache.log4j.Logger;
-import org.yb.loadtester.Workload;
-import org.yb.loadtester.common.SimpleLoadGenerator.Key;
+
+import com.yugabyte.sample.common.SimpleLoadGenerator.Key;
 
 /**
  * This workload writes and reads some random string keys from a Redis server. One reader and one
  * writer thread thread each is spawned.
  */
-public class RedisKeyValue extends Workload {
+public class RedisKeyValue extends AppBase {
   private static final Logger LOG = Logger.getLogger(RedisKeyValue.class);
   // The number of unique keys to write.
   private static final int NUM_UNIQUE_KEYS = 1000000;

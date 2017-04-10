@@ -106,7 +106,7 @@
           </descriptorRefs>
           <archive>
             <manifest>
-              <mainClass>org.yb.loadtester.LoadTester</mainClass>
+              <mainClass>com.yugabyte.sample.Main</mainClass>
             </manifest>
           </archive>
         </configuration>

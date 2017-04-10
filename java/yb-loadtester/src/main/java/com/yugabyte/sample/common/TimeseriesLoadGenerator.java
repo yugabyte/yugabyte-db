@@ -1,4 +1,6 @@
-package org.yb.loadtester.common;
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.sample.common;
 
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,7 +31,7 @@ public class TimeseriesLoadGenerator {
 
   public TimeseriesLoadGenerator(int idx, long dataEmitRateMs, long tableTTLMillis) {
     // Add a unique uuid for each load tester.
-    this.id = idx + "-" + Configuration.loadTesterUUID;
+    this.id = idx + "-" + CmdLineOpts.loadTesterUUID;
     this.dataEmitRateMs = dataEmitRateMs;
     this.tableTTLMillis = tableTTLMillis;
   }
