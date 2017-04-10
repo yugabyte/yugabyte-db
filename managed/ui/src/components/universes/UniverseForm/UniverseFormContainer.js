@@ -141,10 +141,10 @@ const mapDispatchToProps = (dispatch) => {
 }
 
 const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
-  'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'azSelectorFields'];
+  'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'azSelectorFields', 'accessKeyCode'];
 
 function mapStateToProps(state, ownProps) {
-  const {universe: {currentUniverse}} = state;
+  const {universe: { currentUniverse }} = state;
   var data = {
     "universeName": "",
     "ybSoftwareVersion": "",
@@ -152,6 +152,7 @@ function mapStateToProps(state, ownProps) {
     "isMultiAZ": true,
     "instanceType": "m3.medium",
     "formType": "create",
+    "accessKeyCode": "yugabyte-default"
   };
   if (isDefinedNotNull(currentUniverse)) {
     var userIntent = currentUniverse.universeDetails && currentUniverse.universeDetails.userIntent;
@@ -162,6 +163,7 @@ function mapStateToProps(state, ownProps) {
     data.isMultiAZ = userIntent && userIntent.isMultiAZ;
     data.instanceType = userIntent && userIntent.instanceType;
     data.ybSoftwareVersion = userIntent && userIntent.ybSoftwareVersion;
+    data.accessKeyCode = userIntent && userIntent.accessKeyCode;
     if (isDefinedNotNull(currentUniverse.universeDetails)  && userIntent.isMultiAZ) {
       data.regionList = currentUniverse.regions && currentUniverse.regions.map(function (item, idx) {
         return {value: item.uuid, name: item.name, label: item.name};
@@ -172,7 +174,6 @@ function mapStateToProps(state, ownProps) {
         name: currentUniverse.regions[0].name,
         label: currentUniverse.regions[0].name
       }];
-
     }
   }
 
@@ -183,10 +184,11 @@ function mapStateToProps(state, ownProps) {
     tasks: state.tasks,
     cloud: state.cloud,
     softwareVersions: state.customer.softwareVersions,
+    accessKeys: state.cloud.accessKeys,
     initialValues: data,
     formValues: selector(state,
       'formType', 'universeName', 'provider', 'providerType', 'regionList',
-      'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion')
+      'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'accessKeyCode')
   };
 }
 

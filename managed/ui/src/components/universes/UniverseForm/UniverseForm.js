@@ -21,7 +21,8 @@ const initialState = {
   replicationFactor: 3,
   deviceInfo: {},
   placementInfo: {},
-  ybSoftwareVersion: ''
+  ybSoftwareVersion: '',
+  accessKeyCode: 'yugabyte-default'
 };
 
 export default class UniverseForm extends Component {
@@ -74,7 +75,8 @@ export default class UniverseForm extends Component {
       ybSoftwareVersion: currentState.ybSoftwareVersion,
       replicationFactor: currentState.replicationFactor,
       isMultiAZ: true,
-      deviceInfo: currentState.deviceInfo
+      deviceInfo: currentState.deviceInfo,
+      accessKeyCode: currentState.accessKeyCode
     }
     if (isDefinedNotNull(currentState.instanceTypeSelected) && isValidArray(currentState.regionList)) {
       this.props.cloud.providers.forEach(function (providerItem, idx) {
@@ -129,7 +131,8 @@ export default class UniverseForm extends Component {
           instanceTypeSelected: userIntent.instanceType,
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
-          ybSoftwareVersion: userIntent.ybSoftwareVersion
+          ybSoftwareVersion: userIntent.ybSoftwareVersion,
+          accessKeyCode: userIntent.accessKeyCode
         });
       }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
@@ -271,7 +274,8 @@ export default class UniverseForm extends Component {
         this.setState({
           providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
           numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor,
-          ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList
+          ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList,
+          accessKeyCode: userIntent.accessKeyCode
         });
       }
     }
@@ -279,7 +283,7 @@ export default class UniverseForm extends Component {
 
   render() {
     var self = this;
-    const { visible, handleSubmit, title, universe, softwareVersions, cloud } = this.props;
+    const { visible, handleSubmit, title, universe, softwareVersions, cloud, accessKeys } = this.props;
     var universeProviderList = [];
     var currentProviderCode = "";
     if (isValidArray(cloud.providers)) {
@@ -350,6 +354,13 @@ export default class UniverseForm extends Component {
     var softwareVersionOptions = softwareVersions.map(function(item, idx){
       return <option key={idx} value={item}>{item}</option>
     })
+
+    var accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
+    if (isValidObject(accessKeys) && isValidArray(accessKeys.data)) {
+      accessKeyOptions = accessKeys.data.map(function(item, idx){
+        return <option key={idx} value={item.idKey.keyCode}>{item.idKey.keyCode}</option>
+      })
+    }
 
     var placementStatus = <span/>;
     if (self.props.universe.currentPlacementStatus) {
@@ -461,6 +472,12 @@ export default class UniverseForm extends Component {
             <div className="form-right-aligned-labels">
               <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel} defaultValue={this.state.ybSoftwareVersion}
                      options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged}/>
+            </div>
+          </Col>
+          <Col lg={4}>
+            <div className="form-right-aligned-labels">
+              <Field name="accessKeyCode" type="select" component={YBSelectWithLabel} label="Access Key"
+                     isReadOnly={true} defaultValue={this.state.accessKeyCode} options={accessKeyOptions} />
             </div>
           </Col>
        </Row>

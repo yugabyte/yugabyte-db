@@ -24,6 +24,7 @@ public class ApiUtils {
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails.userIntent = new UserIntent();
+        universeDetails.userIntent.accessKeyCode = "yugabyte-default";
         // Add a desired number of nodes.
         universeDetails.userIntent.numNodes = universeDetails.userIntent.replicationFactor;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
