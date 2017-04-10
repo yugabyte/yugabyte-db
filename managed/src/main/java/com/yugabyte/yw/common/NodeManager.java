@@ -15,21 +15,15 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Singleton
 public class NodeManager extends DevopsBase {
@@ -87,7 +81,9 @@ public class NodeManager extends DevopsBase {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         Universe.get(params.universeUUID).getUniverseDetails().userIntent;
 
-    if (userIntent != null && userIntent.accessKeyCode != null) {
+    // TODO: [ENG-1242] we shouldn't be using our keypair,
+    // until we fix our VPC to support VPN
+    if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase("yugabyte-default")) {
       AccessKey accessKey = AccessKey.get(params.getProvider().uuid, userIntent.accessKeyCode);
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       if (keyInfo.vaultFile != null) {
