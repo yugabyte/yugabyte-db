@@ -29,7 +29,7 @@ export default class UniverseForm extends Component {
   static propTypes = {
     type: PropTypes.oneOf(['Edit', 'Create']).isRequired,
     title: PropTypes.string.isRequired,
-  }
+  };
 
   constructor(props) {
     super(props);
@@ -77,7 +77,7 @@ export default class UniverseForm extends Component {
       isMultiAZ: true,
       deviceInfo: currentState.deviceInfo,
       accessKeyCode: currentState.accessKeyCode
-    }
+    };
     if (isDefinedNotNull(currentState.instanceTypeSelected) && isValidArray(currentState.regionList)) {
       this.props.cloud.providers.forEach(function (providerItem, idx) {
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
@@ -167,7 +167,7 @@ export default class UniverseForm extends Component {
       numVolumes: instanceTypeSelected.volumeCount,
       mountPoints: null,
       diskIops: 1000
-    }
+    };
     this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
   }
 
@@ -253,29 +253,36 @@ export default class UniverseForm extends Component {
           numVolumes: instanceTypeSelected.volumeCount,
           mountPoints: null,
           diskIops: 1000,
-        }
+        };
         this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
       }
     }
     // Set Default Software Package in case of Create
     if (nextProps.softwareVersions !== this.props.softwareVersions
-        && !isValidObject(this.props.universe.currentUniverse) && isValidArray(nextProps.softwareVersions)
+        && !isValidObject(this.props.universe.currentUniverse)
+        && isValidArray(nextProps.softwareVersions)
         && !isValidArray(this.props.softwareVersions)) {
-        this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
+      this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
     }
 
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
-    if (currentUniverse && isValidArray(Object.keys(currentUniverse)) && showModal && !this.props.universe.showModal && visibleModal === "universeModal") {
+    if (currentUniverse && isValidArray(Object.keys(currentUniverse)) && showModal
+        && !this.props.universe.showModal && visibleModal === "universeModal") {
       var userIntent  = currentUniverse.universeDetails.userIntent;
       this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
       var providerUUID = currentUniverse.provider.uuid;
       var isMultiAZ = true;
       if (userIntent && providerUUID) {
         this.setState({
-          providerSelected: providerUUID, azCheckState: isMultiAZ, instanceTypeSelected: userIntent.instanceType,
-          numNodes: userIntent.numNodes, replicationFactor: userIntent.replicationFactor,
-          ybSoftwareVersion: userIntent.ybSoftwareVersion, regionList: userIntent.regionList,
-          accessKeyCode: userIntent.accessKeyCode
+          providerSelected: providerUUID,
+          azCheckState: isMultiAZ,
+          instanceTypeSelected: userIntent.instanceType,
+          numNodes: userIntent.numNodes,
+          replicationFactor: userIntent.replicationFactor,
+          ybSoftwareVersion: userIntent.ybSoftwareVersion,
+          regionList: userIntent.regionList,
+          accessKeyCode: userIntent.accessKeyCode,
+          deviceInfo: userIntent.deviceInfo
         });
       }
     }
