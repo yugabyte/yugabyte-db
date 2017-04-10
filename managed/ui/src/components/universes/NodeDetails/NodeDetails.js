@@ -4,7 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
-import { isValidObject, isValidArray } from 'utils/ObjectUtils';
+import { isValidObject, isValidArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import NodeConnectModal from './NodeConnectModal';
 
 export default class NodeDetails extends Component {
@@ -54,12 +54,16 @@ export default class NodeDetails extends Component {
     }
 
     const nodeIPs = nodeDetailRows.map(function(node) {
-      return { privateIP: node.privateIP, publicIP: node.publicIP }
-    });
+      if (isDefinedNotNull(node.privateIP) && isDefinedNotNull(node.publicIP)) {
+        return { privateIP: node.privateIP, publicIP: node.publicIP }
+      } else {
+        return null
+      }
+    }).filter(Boolean);
 
     return (
       <YBPanelItem name="Node Details">
-        <NodeConnectModal nodeIPs={nodeIPs} />
+        { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} />}
         <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
           <TableHeaderColumn dataField="name" isKey={true}>Instance Name</TableHeaderColumn>
           <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>

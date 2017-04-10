@@ -98,7 +98,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Constraints.Required()
     public String ybSoftwareVersion;
 
-    // TODO: make this required at some point, when we have this coming from UI.
+    @Constraints.Required()
     public String accessKeyCode;
 
     public DeviceInfo deviceInfo;

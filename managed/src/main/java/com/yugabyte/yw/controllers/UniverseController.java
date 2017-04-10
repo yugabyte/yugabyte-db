@@ -3,14 +3,10 @@
 package com.yugabyte.yw.controllers;
 
 
-import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import com.yugabyte.yw.models.AccessKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,19 +15,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.cloud.AWSConstants;
-import com.yugabyte.yw.cloud.AWSResourceUtil;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -142,11 +134,6 @@ public class UniverseController extends AuthenticatedController {
       // Set the provider code.
       Provider provider = Provider.find.byId(UUID.fromString(taskParams.userIntent.provider));
       String providerCode = provider.code;
-      // TODO: the accesskey code should be sent from the UI.
-      List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
-      if (accessKeys.size() > 0) {
-        taskParams.userIntent.accessKeyCode = accessKeys.get(0).getKeyCode();
-      }
       taskParams.userIntent.providerType = CloudType.valueOf(providerCode);
       // Create a new universe. This makes sure that a universe of this name does not already exist
       // for this customer id.
@@ -214,12 +201,6 @@ public class UniverseController extends AuthenticatedController {
       Universe universe = Universe.get(universeUUID);
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
-      // TODO: the accesskey code should be sent from the UI.
-      Provider provider = Provider.find.byId(UUID.fromString(taskParams.userIntent.provider));
-      List<AccessKey> accessKeys = AccessKey.getAll(provider.uuid);
-      if (accessKeys.size() > 0) {
-        taskParams.userIntent.accessKeyCode = accessKeys.get(0).getKeyCode();
-      }
       UUID taskUUID = commissioner.submit(TaskInfo.Type.EditUniverse, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
         universe.universeUUID, universe.name, taskUUID);
