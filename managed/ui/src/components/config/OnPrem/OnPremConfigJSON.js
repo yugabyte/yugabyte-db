@@ -26,39 +26,46 @@ class ConfigFormTitle extends Component {
 
 export default class OnPremConfigJSON extends Component {
 
-  componentWillMount() {
-    this.state = {configJsonVal: JSON.stringify(this.props.config.onPremJsonFormData, null, 2)};
+  constructor(props) {
+    super(props);
+    this.sampleJsonPretty = JSON.stringify(JSON.parse(JSON.stringify(sampleDataCenterConfig)), null, 2);
+    this.onChange = this.onChange.bind(this);
+    this.copyTextToForm = this.copyTextToForm.bind(this);
   }
+
   componentWillUnmount() {
-    if (this.state.configJsonVal.length > 0) {
-      this.props.setOnPremJsonData(JSON.parse(this.state.configJsonVal));
+    if (this.props.configJsonVal.length > 0) {
+      this.props.setOnPremJsonData(JSON.parse(this.props.configJsonVal));
     }
   }
+
+  onChange(newValue) {
+    this.props.updateConfigJsonVal(newValue);
+  }
+
+  copyTextToForm() {
+    this.props.updateConfigJsonVal(this.sampleJsonPretty);
+  }
+
   render() {
-    var self = this;
-    var jsonPretty = JSON.stringify(JSON.parse(JSON.stringify(sampleDataCenterConfig)), null, 2);
-    var configTitle = "Enter your DataCenter Config here";
-    function onChange(newValue) {
-      self.setState({configJsonVal: newValue});
-    }
-    function copyTextToForm() {
-      self.setState({configJsonVal: jsonPretty});
-    }
+    const configTitle = "Enter your DataCenter Config here";
     return (
       <Row className="form-data-container">
         <Col lg={5} className="sample-config-item">
           <div className="color-light-grey">
-            <ConfigFormTitle text={jsonPretty} titleText={"Sample DataCenter Config"} copyTextToForm={copyTextToForm}/>
+            <ConfigFormTitle text={this.sampleJsonPretty}
+                             titleText={"Sample DataCenter Config"}
+                             copyTextToForm={this.copyTextToForm}/>
           </div>
-          <Highlight className='json'>{jsonPretty}</Highlight>
+          <Highlight className='json'>{this.sampleJsonPretty}</Highlight>
         </Col>
         <Col lg={5} id="sample-panel-item">
           <YBPanelItem name={configTitle} hideToolBox={true}>
             <AceEditor
               theme="github"
-              onChange={onChange}
+              onChange={this.onChange}
               name="dc-config-val"
-              value={self.state.configJsonVal}
+              value={this.props.configJsonVal}
             />
           </YBPanelItem>
         </Col>

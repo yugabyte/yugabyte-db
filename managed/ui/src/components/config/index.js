@@ -8,6 +8,7 @@ export { default as AWSProviderConfiguration } from './PublicCloud/AWSProviderCo
 export { default as OnPremConfigWizard } from './OnPrem/OnPremConfigWizard';
 export { default as OnPremConfigJSON } from './OnPrem/OnPremConfigJSON';
 export { default as OnPremConfiguration } from './OnPrem/OnPremConfiguration';
+export { default as OnPremConfigurationContainer } from './OnPrem/OnPremConfigurationContainer';
 export { default as AddHostDataForm } from './OnPrem/AddHostDataForm';
 export { default as DataCenterConfigurationContainer } from './ConfigProvider/DataCenterConfigurationContainer';
 export { default as GCPProviderConfigurationContainer } from './PublicCloud/GCPProviderConfigurationContainer';

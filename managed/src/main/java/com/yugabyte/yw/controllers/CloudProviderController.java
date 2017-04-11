@@ -160,7 +160,7 @@ public class CloudProviderController extends AuthenticatedController {
 
     Provider p = null;
     if (identification.uuid == null) {
-      if (identification.type == null || identification.name == null) {
+      if (identification.name == null) {
         ApiResponse.error(BAD_REQUEST, "Field <identification> must have either " +
                 "<uuid> or <name> and <type>");
       }

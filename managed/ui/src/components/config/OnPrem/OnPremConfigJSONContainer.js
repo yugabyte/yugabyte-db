@@ -7,9 +7,9 @@ import {setOnPremConfigData} from '../../../actions/config';
 const mapStateToProps = (state) => {
   return {
     cloud: state.cloud,
-    config: state.config,
+    config: state.config
   };
-}
+};
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -17,6 +17,6 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(setOnPremConfigData(formData))
     }
   }
-}
+};
 
 export default connect(mapStateToProps, mapDispatchToProps)(OnPremConfigJSON);

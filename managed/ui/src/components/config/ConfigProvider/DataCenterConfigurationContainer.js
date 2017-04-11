@@ -9,6 +9,6 @@ const mapStateToProps = (state) => {
     universe: state.universe,
     cloud: state.cloud
   };
-}
+};
 
 export default connect(mapStateToProps)(DataCenterConfiguration);
