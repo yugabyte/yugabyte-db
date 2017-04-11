@@ -29,7 +29,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // Variable to track start time of the workload.
   private long workloadStartTime = -1;
   // Instance of the workload configuration.
-  public static AppConfig workloadConfig = new AppConfig();
+  public static AppConfig appConfig = new AppConfig();
   // The configuration of the load tester.
   private CmdLineOpts configuration;
   // The number of keys written so far.
@@ -74,10 +74,10 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       cassandra_cluster = Cluster.builder()
                        .addContactPointsWithPorts(getNodesAsInet())
                        .build();
-      LOG.info("Connected to cluster: " + cassandra_cluster.getClusterName());
+      LOG.debug("Connected to cluster: " + cassandra_cluster.getClusterName());
     }
     if (cassandra_session == null) {
-      LOG.info("Creating a session...");
+      LOG.debug("Creating a session...");
       cassandra_session = cassandra_cluster.connect();
     }
   }
@@ -95,7 +95,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   }
 
 
-  ///////////////////// The following methods are overridden by the apps //////////////////////////
+  ///////////////////// The following methods are overridden by the apps ///////////////////////////
 
   /**
    * This method is called to allow the app to initialize itself with the various command line
@@ -117,13 +117,18 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * This call models an OLTP read for the app to perform read operations.
    * @return Number of reads done, a value <= 0 indicates no ops were done.
    */
-  public abstract long doRead();
+  public long doRead() { return 0; }
 
   /**
    * This call models an OLTP write for the app to perform write operations.
    * @return Number of writes done, a value <= 0 indicates no ops were done.
    */
-  public abstract long doWrite();
+  public long doWrite() { return 0; }
+
+  /**
+   * This call should implement the main logic in non-OLTP apps. Not called for OLTP apps.
+   */
+  public void run() {}
 
   /**
    * Default implementation of the status message appender. Override/add to this method any stats
@@ -166,10 +171,12 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     workloadStartTime = System.currentTimeMillis();
     this.configuration = configuration;
     initialize(configuration);
-    metricsTracker.createMetric(MetricName.Read);
-    metricsTracker.createMetric(MetricName.Write);
-    metricsTracker.registerStatusMessageAppender(this);
-    metricsTracker.start();
+    if (appConfig.appType == AppConfig.Type.OLTP) {
+      metricsTracker.createMetric(MetricName.Read);
+      metricsTracker.createMetric(MetricName.Write);
+      metricsTracker.registerStatusMessageAppender(this);
+      metricsTracker.start();
+    }
   }
 
   /**
@@ -207,7 +214,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public void performWrite() {
     // If we have written enough keys we are done.
-    if (workloadConfig.numKeysToWrite > 0 && numKeysWritten >= workloadConfig.numKeysToWrite - 1) {
+    if (appConfig.numKeysToWrite > 0 && numKeysWritten >= appConfig.numKeysToWrite - 1) {
       hasFinished = true;
       return;
     }
@@ -228,7 +235,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public void performRead() {
     // If we have read enough keys we are done.
-    if (workloadConfig.numKeysToRead > 0 && numKeysRead >= workloadConfig.numKeysToRead - 1) {
+    if (appConfig.numKeysToRead > 0 && numKeysRead >= appConfig.numKeysToRead - 1) {
       hasFinished = true;
       return;
     }
@@ -272,7 +279,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     if (loadGenerator == null) {
       synchronized (this) {
         if (loadGenerator == null) {
-          loadGenerator = new SimpleLoadGenerator(0, workloadConfig.numUniqueKeysToWrite);
+          loadGenerator = new SimpleLoadGenerator(0, appConfig.numUniqueKeysToWrite);
         }
       }
     }

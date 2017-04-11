@@ -15,7 +15,6 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
 import com.yugabyte.sample.apps.AppBase;
@@ -34,6 +33,7 @@ public class CmdLineOpts {
 
   // The various apps present in this sample.
   public static enum AppName {
+    CassandraHelloWorld,
     CassandraKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
@@ -128,9 +128,9 @@ public class CmdLineOpts {
   private void initializeThreadCount(CommandLine cmd) {
     // Check if there are a fixed number of threads or variable.
     String numThreadsStr = cmd.getOptionValue("num_threads");
-    if (AppBase.workloadConfig.readIOPSPercentage == -1) {
-      numReaderThreads = AppBase.workloadConfig.numReaderThreads;
-      numWriterThreads = AppBase.workloadConfig.numWriterThreads;
+    if (AppBase.appConfig.readIOPSPercentage == -1) {
+      numReaderThreads = AppBase.appConfig.numReaderThreads;
+      numWriterThreads = AppBase.appConfig.numWriterThreads;
     } else {
       int numThreads = 0;
       if (numThreadsStr != null) {
@@ -140,7 +140,7 @@ public class CmdLineOpts {
         numThreads = 8 * Runtime.getRuntime().availableProcessors();
       }
       numReaderThreads =
-          (int) Math.round(1.0 * numThreads * AppBase.workloadConfig.readIOPSPercentage / 100);
+          (int) Math.round(1.0 * numThreads * AppBase.appConfig.readIOPSPercentage / 100);
       numWriterThreads = numThreads - numReaderThreads;
     }
 
@@ -158,29 +158,29 @@ public class CmdLineOpts {
 
   private void initializeNumKeys(CommandLine cmd) {
     if (cmd.hasOption("num_writes")) {
-      AppBase.workloadConfig.numKeysToWrite = Long.parseLong(cmd.getOptionValue("num_writes"));
+      AppBase.appConfig.numKeysToWrite = Long.parseLong(cmd.getOptionValue("num_writes"));
     }
     if (cmd.hasOption("num_reads")) {
-      AppBase.workloadConfig.numKeysToRead = Long.parseLong(cmd.getOptionValue("num_reads"));
+      AppBase.appConfig.numKeysToRead = Long.parseLong(cmd.getOptionValue("num_reads"));
     }
     if (cmd.hasOption("num_unique_keys")) {
-      AppBase.workloadConfig.numUniqueKeysToWrite =
+      AppBase.appConfig.numUniqueKeysToWrite =
           Long.parseLong(cmd.getOptionValue("num_unique_keys"));
     }
-    LOG.info("Num keys to insert: " + AppBase.workloadConfig.numUniqueKeysToWrite);
+    LOG.info("Num unique keys to insert: " + AppBase.appConfig.numUniqueKeysToWrite);
     LOG.info("Num keys to update: " +
-        (AppBase.workloadConfig.numKeysToWrite - AppBase.workloadConfig.numUniqueKeysToWrite));
-    LOG.info("Num keys to read: " + AppBase.workloadConfig.numKeysToRead);
+        (AppBase.appConfig.numKeysToWrite - AppBase.appConfig.numUniqueKeysToWrite));
+    LOG.info("Num keys to read: " + AppBase.appConfig.numKeysToRead);
   }
 
   private void initializeTableProperties(CommandLine cmd) {
     // Initialize the TTL.
     if (cmd.hasOption("table_ttl_seconds")) {
-      AppBase.workloadConfig.tableTTLSeconds =
+      AppBase.appConfig.tableTTLSeconds =
           Long.parseLong(cmd.getOptionValue("table_ttl_seconds"));
     }
 
-    LOG.info("Table TTL (secs): " + AppBase.workloadConfig.tableTTLSeconds);
+    LOG.info("Table TTL (secs): " + AppBase.appConfig.tableTTLSeconds);
   }
 
   /**
@@ -255,7 +255,7 @@ public class CmdLineOpts {
     }
 
     // Set the appropriate log level.
-    Logger.getRootLogger().setLevel(commandLine.hasOption("verbose") ? Level.DEBUG : Level.INFO);
+    LogUtil.configureLogLevel(commandLine.hasOption("verbose"));
 
     if (commandLine.hasOption("help")) {
       try {
@@ -303,7 +303,7 @@ public class CmdLineOpts {
       }
       footer.append("\t\tUsage:\n");
       footer.append(optsPrefix);
-      footer.append("java -jar yb-loadtester-0.8.0-SNAPSHOT-jar-with-dependencies.jar");
+      footer.append("java -jar yb-sample-apps.jar");
       footer.append(optsSuffix);
       footer.append(optsPrefix + "--workload " + workloadType.toString() + optsSuffix);
       footer.append(optsPrefix + "--nodes 127.0.0.1:" + port);

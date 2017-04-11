@@ -35,15 +35,15 @@ public class CassandraTimeseries extends AppBase {
   // Static initialization of this workload's config.
   static {
     // Disable the read-write percentage.
-    workloadConfig.readIOPSPercentage = -1;
+    appConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 1;
-    workloadConfig.numWriterThreads = 16;
+    appConfig.numReaderThreads = 1;
+    appConfig.numWriterThreads = 16;
     // Set the number of keys to read and write.
-    workloadConfig.numKeysToRead = -1;
-    workloadConfig.numKeysToWrite = -1;
+    appConfig.numKeysToRead = -1;
+    appConfig.numKeysToWrite = -1;
     // Set the TTL for the raw table.
-    workloadConfig.tableTTLSeconds = 24 * 60 * 60;
+    appConfig.tableTTLSeconds = 24 * 60 * 60;
   }
 
   // The number of users.
@@ -144,8 +144,8 @@ public class CassandraTimeseries extends AppBase {
                          ", ts timestamp" +
                          ", value varchar" +
                          ", primary key ((user_id, metric_id), node_id, ts))";
-    if (workloadConfig.tableTTLSeconds > 0) {
-      create_stmt += " WITH default_time_to_live = " + workloadConfig.tableTTLSeconds;
+    if (appConfig.tableTTLSeconds > 0) {
+      create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
     }
     create_stmt += ";";
     getCassandraClient().execute(create_stmt);
@@ -293,7 +293,7 @@ public class CassandraTimeseries extends AppBase {
     long dataEmitRateMs;
 
     public DataSource(int user_idx, int node_idx, long dataEmitRateMs, int num_metrics) {
-      super(user_idx, dataEmitRateMs, workloadConfig.tableTTLSeconds * 1000L);
+      super(user_idx, dataEmitRateMs, appConfig.tableTTLSeconds * 1000L);
       this.dataEmitRateMs = dataEmitRateMs;
       this.user_id = super.getId();
       this.node_id = String.format("node-%05d", node_idx);
@@ -363,10 +363,10 @@ public class CassandraTimeseries extends AppBase {
   public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);
-    sb.append("--num_threads_read " + workloadConfig.numReaderThreads);
+    sb.append("--num_threads_read " + appConfig.numReaderThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_threads_write " + workloadConfig.numWriterThreads);
+    sb.append("--num_threads_write " + appConfig.numWriterThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
     sb.append("--num_users " + num_users);
@@ -387,7 +387,7 @@ public class CassandraTimeseries extends AppBase {
     sb.append("--data_emit_rate_millis " + data_emit_rate_millis);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--table_ttl_seconds " + workloadConfig.tableTTLSeconds);
+    sb.append("--table_ttl_seconds " + appConfig.tableTTLSeconds);
     sb.append(optsSuffix);
     return sb.toString();
   }

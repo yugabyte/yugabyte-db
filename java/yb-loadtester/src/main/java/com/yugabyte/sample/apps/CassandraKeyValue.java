@@ -26,17 +26,17 @@ public class CassandraKeyValue extends AppBase {
   // depending on the machine and what resources it has to spare.
   static {
     // Disable the read-write percentage.
-    workloadConfig.readIOPSPercentage = -1;
+    appConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 24;
-    workloadConfig.numWriterThreads = 2;
+    appConfig.numReaderThreads = 24;
+    appConfig.numWriterThreads = 2;
     // The number of keys to read.
-    workloadConfig.numKeysToRead = -1;
+    appConfig.numKeysToRead = -1;
     // The number of keys to write. This is the combined total number of inserts and updates.
-    workloadConfig.numKeysToWrite = -1;
+    appConfig.numKeysToWrite = -1;
     // The number of unique keys to write. This determines the number of inserts (as opposed to
     // updates).
-    workloadConfig.numUniqueKeysToWrite = 1000000;
+    appConfig.numUniqueKeysToWrite = 1000000;
   }
 
   // The table name.
@@ -71,8 +71,8 @@ public class CassandraKeyValue extends AppBase {
       String create_stmt =
           String.format("CREATE TABLE %s (k varchar, v varchar, primary key (k))",
                         tableName);
-      if (workloadConfig.tableTTLSeconds > 0) {
-        create_stmt += " WITH default_time_to_live = " + workloadConfig.tableTTLSeconds;
+      if (appConfig.tableTTLSeconds > 0) {
+        create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
       }
       create_stmt += ";";
       getCassandraClient().execute(create_stmt);
@@ -109,7 +109,7 @@ public class CassandraKeyValue extends AppBase {
     List<Row> rows = rs.all();
     if (rows.size() != 1) {
       // If TTL is enabled, turn off correctness validation.
-      if (workloadConfig.tableTTLSeconds <= 0) {
+      if (appConfig.tableTTLSeconds <= 0) {
         LOG.fatal("Read key: " + key.asString() + " expected 1 row in result, got " + rows.size());
       }
       return 1;
@@ -167,22 +167,22 @@ public class CassandraKeyValue extends AppBase {
   public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);
-    sb.append("--num_unique_keys " + workloadConfig.numUniqueKeysToWrite);
+    sb.append("--num_unique_keys " + appConfig.numUniqueKeysToWrite);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_reads " + workloadConfig.numKeysToRead);
+    sb.append("--num_reads " + appConfig.numKeysToRead);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_writes " + workloadConfig.numKeysToWrite);
+    sb.append("--num_writes " + appConfig.numKeysToWrite);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_threads_read " + workloadConfig.numReaderThreads);
+    sb.append("--num_threads_read " + appConfig.numReaderThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_threads_write " + workloadConfig.numWriterThreads);
+    sb.append("--num_threads_write " + appConfig.numWriterThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--table_ttl_seconds " + workloadConfig.tableTTLSeconds);
+    sb.append("--table_ttl_seconds " + appConfig.tableTTLSeconds);
     sb.append(optsSuffix);
     return sb.toString();
   }

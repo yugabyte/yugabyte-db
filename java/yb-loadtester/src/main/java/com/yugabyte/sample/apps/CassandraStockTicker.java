@@ -23,15 +23,15 @@ public class CassandraStockTicker extends AppBase {
   // Static initialization of this workload's config.
   static {
     // Disable the read-write percentage.
-    workloadConfig.readIOPSPercentage = -1;
+    appConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 32;
-    workloadConfig.numWriterThreads = 4;
+    appConfig.numReaderThreads = 32;
+    appConfig.numWriterThreads = 4;
     // Set the number of keys to read and write.
-    workloadConfig.numKeysToRead = -1;
-    workloadConfig.numKeysToWrite = -1;
+    appConfig.numKeysToRead = -1;
+    appConfig.numKeysToWrite = -1;
     // Set the TTL for the raw table.
-    workloadConfig.tableTTLSeconds = 24 * 60 * 60;
+    appConfig.tableTTLSeconds = 24 * 60 * 60;
   }
   private static int num_ticker_symbols = 10000;
   // The rate at which each metric is generated in millis.
@@ -122,8 +122,8 @@ public class CassandraStockTicker extends AppBase {
                          ", value varchar" +
                          ", primary key ((ticker_id), ts))" +
                          " WITH CLUSTERING ORDER BY (ts DESC)";
-    if (workloadConfig.tableTTLSeconds > 0) {
-      create_stmt += " AND default_time_to_live = " + workloadConfig.tableTTLSeconds;
+    if (appConfig.tableTTLSeconds > 0) {
+      create_stmt += " AND default_time_to_live = " + appConfig.tableTTLSeconds;
     }
     create_stmt += ";";
     try {
@@ -140,8 +140,8 @@ public class CassandraStockTicker extends AppBase {
                   ", value varchar" +
                   ", primary key ((ticker_id), ts))" +
                   " WITH CLUSTERING ORDER BY (ts DESC)";
-    if (workloadConfig.tableTTLSeconds > 0) {
-    create_stmt += " AND default_time_to_live = " + (60 * workloadConfig.tableTTLSeconds);
+    if (appConfig.tableTTLSeconds > 0) {
+    create_stmt += " AND default_time_to_live = " + (60 * appConfig.tableTTLSeconds);
     }
     create_stmt += ";";
     try {
@@ -271,7 +271,7 @@ public class CassandraStockTicker extends AppBase {
     long dataEmitRateMs;
 
     public TickerInfo(int ticker_idx, long dataEmitRateMs) {
-      super(ticker_idx, dataEmitRateMs, workloadConfig.tableTTLSeconds * 1000L);
+      super(ticker_idx, dataEmitRateMs, appConfig.tableTTLSeconds * 1000L);
       this.dataEmitRateMs = dataEmitRateMs;
       this.ticker_id = super.getId();
     }
@@ -324,10 +324,10 @@ public class CassandraStockTicker extends AppBase {
   public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);
-    sb.append("--num_threads_read " + workloadConfig.numReaderThreads);
+    sb.append("--num_threads_read " + appConfig.numReaderThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_threads_write " + workloadConfig.numWriterThreads);
+    sb.append("--num_threads_write " + appConfig.numWriterThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
     sb.append("--num_ticker_symbols " + num_ticker_symbols);
@@ -336,7 +336,7 @@ public class CassandraStockTicker extends AppBase {
     sb.append("--data_emit_rate_millis " + data_emit_rate_millis);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--table_ttl_seconds " + workloadConfig.tableTTLSeconds);
+    sb.append("--table_ttl_seconds " + appConfig.tableTTLSeconds);
     sb.append(optsSuffix);
     return sb.toString();
   }

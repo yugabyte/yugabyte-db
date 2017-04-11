@@ -5,12 +5,11 @@ package com.yugabyte.sample;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
 
 import com.yugabyte.sample.apps.AppBase;
+import com.yugabyte.sample.apps.AppConfig;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.IOPSThread;
 import com.yugabyte.sample.common.IOPSThread.IOType;
@@ -29,8 +28,9 @@ import com.yugabyte.sample.common.IOPSThread.IOType;
  *     |__ AppBase.java              : Base class for all the apps. Has helper methods for creating
  *                                     Cassandra and Redis clients.
  *     |__ AppConfig.java            : Configuration for all the apps.
- *     |__ CassandraKeyValue.java    : Simplest Cassandra app, good place to start for writing
- *                                     Cassandra apps.
+ *     |__ CassandraHelloWorld.java  : The simplest app that writes one employee record. Good
+ *                                     starting point to understand how to write a Cassandra app.
+ *     |__ CassandraKeyValue.java    : Simple key-value Cassandra app.
  *     |__ CassandraStockTicker.java : Sample stock-ticker app.
  *     |__ CassandraTimeseries.java  : Sample timeseries workload app/
  *     |__ RedisKeyValue.java     : Simple Redis app, good starting point for writing Redis apps.
@@ -52,16 +52,9 @@ public class Main {
   List<IOPSThread> iopsThreads = new ArrayList<IOPSThread>();
 
   static {
-    // Enable console logging.
-    ConsoleAppender console = new ConsoleAppender();
-    console.setName("Console");
-    String PATTERN = "%d [%p|%c|%C{1}] %m%n";
-    console.setLayout(new PatternLayout(PATTERN));
-    console.setThreshold(Level.INFO);
-    console.activateOptions();
-    Logger.getRootLogger().addAppender(console);
+    Logger.getRootLogger().setLevel(Level.ERROR);
+    Logger.getLogger("com.yugabyte.sample").setLevel(Level.INFO);
   }
-
 
   public Main(CmdLineOpts cmdLineOpts) {
     this.cmdLineOpts = cmdLineOpts;
@@ -70,6 +63,12 @@ public class Main {
 
   public void run() {
     try {
+      // If this is a simple app, run it and return.
+      if (app.appConfig.appType == AppConfig.Type.Simple) {
+        app.run();
+        return;
+      }
+
       // Create the table if needed.
       if (!cmdLineOpts.getReuseExistingTable()) {
         app.dropTable();

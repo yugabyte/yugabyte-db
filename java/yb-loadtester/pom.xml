@@ -81,6 +81,9 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
         <version>2.4</version>
+        <configuration>
+          <finalName>yb-sample-apps</finalName>
+        </configuration>
         <executions>
           <execution>
             <id>attach-sources</id>
@@ -101,6 +104,8 @@
         <artifactId>maven-assembly-plugin</artifactId>
         <version>2.2-beta-4</version>
         <configuration>
+          <finalName>yb-sample-apps</finalName>
+          <appendAssemblyId>false</appendAssemblyId>
           <descriptorRefs>
             <descriptorRef>jar-with-dependencies</descriptorRef>
           </descriptorRefs>

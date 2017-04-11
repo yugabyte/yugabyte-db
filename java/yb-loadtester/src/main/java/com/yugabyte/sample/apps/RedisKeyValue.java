@@ -17,14 +17,14 @@ public class RedisKeyValue extends AppBase {
   // Static initialization of this workload's config.
   static {
     // Disable the read-write percentage.
-    workloadConfig.readIOPSPercentage = -1;
+    appConfig.readIOPSPercentage = -1;
     // Set the read and write threads to 1 each.
-    workloadConfig.numReaderThreads = 32;
-    workloadConfig.numWriterThreads = 2;
+    appConfig.numReaderThreads = 32;
+    appConfig.numWriterThreads = 2;
     // Set the number of keys to read and write.
-    workloadConfig.numKeysToRead = -1;
-    workloadConfig.numKeysToWrite = -1;
-    workloadConfig.numUniqueKeysToWrite = NUM_UNIQUE_KEYS;
+    appConfig.numKeysToRead = -1;
+    appConfig.numKeysToWrite = -1;
+    appConfig.numUniqueKeysToWrite = NUM_UNIQUE_KEYS;
   }
 
   @Override
@@ -75,19 +75,19 @@ public class RedisKeyValue extends AppBase {
   public String getExampleUsageOptions(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);
-    sb.append("--num_unique_keys " + workloadConfig.numUniqueKeysToWrite);
+    sb.append("--num_unique_keys " + appConfig.numUniqueKeysToWrite);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_reads " + workloadConfig.numKeysToRead);
+    sb.append("--num_reads " + appConfig.numKeysToRead);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_writes " + workloadConfig.numKeysToWrite);
+    sb.append("--num_writes " + appConfig.numKeysToWrite);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_threads_read " + workloadConfig.numReaderThreads);
+    sb.append("--num_threads_read " + appConfig.numReaderThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--num_threads_write " + workloadConfig.numWriterThreads);
+    sb.append("--num_threads_write " + appConfig.numWriterThreads);
     sb.append(optsSuffix);
     return sb.toString();
   }
