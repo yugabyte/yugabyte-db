@@ -27,7 +27,7 @@ export default class NodeDetails extends Component {
     const nodeDetailRows = nodeDetails.filter(function(nodeDetail){
         return nodeDetail.state !== "Destroyed"
       }).map(function(nodeDetail){
-        return {
+       return {
           name: nodeDetail.nodeName,
           regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
           isMaster: nodeDetail.isMaster ? "Yes" : "No",
@@ -37,7 +37,8 @@ export default class NodeDetails extends Component {
           privateIP: nodeDetail.cloudInfo.private_ip,
           publicIP: nodeDetail.cloudInfo.public_ip,
           nodeStatus: nodeDetail.state,
-      }
+          cloudInfo: nodeDetail.cloudInfo
+        }
     });
 
     var formatIpPort = function(cell, row, type) {
@@ -61,11 +62,19 @@ export default class NodeDetails extends Component {
       }
     }).filter(Boolean);
 
+    var getNodeNameLink = function(cell, row) {
+      if (row.cloudInfo.cloud === "aws") {
+        var awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
+        return <a href={awsURI} target="_blank">{cell}</a>
+      } else {
+        return cell;
+      }
+    }
     return (
       <YBPanelItem name="Node Details">
         { nodeIPs && <NodeConnectModal nodeIPs={nodeIPs} />}
         <BootstrapTable ref='nodeDetailTable' data={nodeDetailRows} >
-          <TableHeaderColumn dataField="name" isKey={true}>Instance Name</TableHeaderColumn>
+          <TableHeaderColumn dataField="name" isKey={true} dataFormat={getNodeNameLink}>Instance Name</TableHeaderColumn>
           <TableHeaderColumn dataField="regionAz">Region/Zone</TableHeaderColumn>
           <TableHeaderColumn
               dataField="isMaster"
