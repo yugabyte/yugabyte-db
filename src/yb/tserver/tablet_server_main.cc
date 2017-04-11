@@ -106,10 +106,17 @@ static int TabletServerMain(int argc, char** argv) {
         (tablet_server_options.dump_info_path.empty()
              ? ""
              : tablet_server_options.dump_info_path + "-cql");
-    cql_server.reset(new CQLServer(cql_server_options));
+    boost::asio::io_service io;
+    cql_server.reset(new CQLServer(cql_server_options, io));
     LOG(INFO) << "Starting CQL server...";
     CHECK_OK(cql_server->Start());
     LOG(INFO) << "CQL server successfully started.";
+
+    // Should run forever unless there are some errors.
+    io.run();
+
+    LOG (WARNING) << "CQL Server shutting down";
+    CHECK_OK(cql_server->Shutdown());
   }
 
   while (true) {

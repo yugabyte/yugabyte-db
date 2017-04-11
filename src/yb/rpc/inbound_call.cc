@@ -187,5 +187,9 @@ const UserCredentials& InboundCall::user_credentials() const {
   return get_connection()->user_credentials();
 }
 
+void InboundCall::Serialize(std::vector<Slice>* slices) const {
+  SerializeResponseTo(slices);
+}
+
 }  // namespace rpc
 }  // namespace yb

@@ -4,8 +4,10 @@
 #ifndef YB_RPC_CQL_RPC_H
 #define YB_RPC_CQL_RPC_H
 
+#include "yb/cqlserver/cql_message.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/server_event.h"
 
 namespace yb {
 namespace rpc {
@@ -51,7 +53,7 @@ class CQLConnection : public Connection {
  protected:
   virtual void CreateInboundTransfer() override;
 
-  TransferCallbacks* GetResponseTransferCallback(InboundCallPtr call) override;
+  TransferCallbacks* GetResponseTransferCallback(OutboundDataPtr outbound_data) override;
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 

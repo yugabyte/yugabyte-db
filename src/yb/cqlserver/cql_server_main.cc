@@ -45,13 +45,17 @@ static int CQLServerMain(int argc, char** argv) {
   cql_server_options.webserver_opts.port = FLAGS_cql_proxy_webserver_port;
   cql_server_options.master_addresses_flag = FLAGS_cqlserver_master_addrs;
   cql_server_options.broadcast_rpc_address = FLAGS_cql_proxy_broadcast_rpc_address;
-  CQLServer server(cql_server_options);
+  boost::asio::io_service io;
+  CQLServer server(cql_server_options, io);
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server.Start());
   LOG(INFO) << "CQL server successfully started.";
-  while (true) {
-    SleepFor(MonoDelta::FromSeconds(60));
-  }
+
+  // Should continue running forever, unless there is some error.
+  io.run();
+
+  LOG (WARNING) << "Shutting down CQL server...";
+  CHECK_OK(server.Shutdown());
 
   return 0;
 }

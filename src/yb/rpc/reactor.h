@@ -210,7 +210,11 @@ class ReactorThread {
  private:
   friend class AssignOutboundCallTask;
   friend class RegisterConnectionTask;
+  friend class QueueServerEventTask;
   friend class DelayedTask;
+
+  // Queues a server event on all the connections, such that every client receives it.
+  CHECKED_STATUS QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event);
 
   // Run the main event loop of the reactor.
   void RunThread();
@@ -315,6 +319,9 @@ class Reactor {
   // Add any connections on this reactor thread into the given status dump.
   CHECKED_STATUS DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                          DumpRunningRpcsResponsePB* resp);
+
+  // Queues a server event on all the connections, such that every client receives it.
+  void QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event);
 
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.

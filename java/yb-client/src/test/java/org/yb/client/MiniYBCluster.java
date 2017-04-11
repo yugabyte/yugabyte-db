@@ -101,6 +101,9 @@ public class MiniYBCluster implements AutoCloseable {
   // TS and Master ports will be assigned starting with this one.
   private static final int PORT_START = 64030;
 
+  // How often to push node list refresh events to CQL clients (in seconds)
+  public static final int CQL_NODE_LIST_REFRESH = 5;
+
   // List of threads that print
   private final List<Thread> PROCESS_INPUT_PRINTERS = new ArrayList<>();
 
@@ -227,6 +230,7 @@ public class MiniYBCluster implements AutoCloseable {
           "--cql_proxy_bind_address=" + localhost + ":" + cql_port,
           "--yb_num_shards_per_tserver=3",
           "--logtostderr",
+          "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH,
           "--cql_proxy_webserver_port=" + cql_web_port);
       if (tserverArgs != null) {
         for (String arg : tserverArgs) {

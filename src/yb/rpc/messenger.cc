@@ -307,6 +307,14 @@ Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
   return Status::OK();
 }
 
+Status Messenger::QueueEventOnAllReactors(scoped_refptr<ServerEvent> server_event) {
+  shared_lock<rw_spinlock> guard(lock_.get_lock());
+  for (Reactor* reactor : reactors_) {
+    reactor->QueueEventOnAllConnections(server_event);
+  }
+  return Status::OK();
+}
+
 void Messenger::RemoveScheduledTask(int64_t id) {
   CHECK_NE(id, -1);
   std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);

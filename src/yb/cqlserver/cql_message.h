@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/rpc/server_event.h"
 #include "yb/sql/util/statement_params.h"
 #include "yb/sql/util/statement_result.h"
 #include "yb/util/slice.h"
@@ -189,7 +190,7 @@ class CQLMessage {
   explicit CQLMessage(const Header& header) : header_(header) { }
   virtual ~CQLMessage() { }
 
-  bool VersionIsCompatible(const Version min_version) {
+  bool VersionIsCompatible(const Version min_version) const {
     return (version() & ~kResponseVersion) >= min_version;
   }
 
@@ -409,15 +410,15 @@ class RegisterRequest : public CQLRequest {
 // ------------------------------------ CQL response -----------------------------------
 class CQLResponse : public CQLMessage {
  public:
-  virtual void Serialize(faststring* mesg);
+  virtual void Serialize(faststring* mesg) const;
   virtual ~CQLResponse();
  protected:
   CQLResponse(const CQLRequest& request, Opcode opcode);
   CQLResponse(StreamId stream_id, Opcode opcode);
-  void SerializeHeader(faststring* mesg);
+  void SerializeHeader(faststring* mesg) const;
 
   // Function to serialize a response body that all CQLResponse subclasses need to implement
-  virtual void SerializeBody(faststring* mesg) = 0;
+  virtual void SerializeBody(faststring* mesg) const = 0;
 
   // Serialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the integer type.
   // <converter> converts the number from machine byte-order to network order and <data_type>
@@ -425,7 +426,7 @@ class CQLResponse : public CQLMessage {
   // <num_type> may be signed or unsigned.
   template<typename num_type, typename data_type>
   inline void SerializeNum(
-      void (*converter)(void *, data_type), const num_type val, faststring* mesg) {
+      void (*converter)(void *, data_type), const num_type val, faststring* mesg) const {
     data_type byte_value;
     (*converter)(&byte_value, static_cast<data_type>(val));
     mesg->append(&byte_value, sizeof(byte_value));
@@ -435,30 +436,31 @@ class CQLResponse : public CQLMessage {
   // <len_serializer> serializes the byte length from machine byte-order to network order.
   template<typename len_type>
   inline void SerializeBytes(
-      void (CQLResponse::*len_serializer)(len_type, faststring* mesg), std::string val,
-      faststring* mesg) {
+      void (CQLResponse::*len_serializer)(len_type, faststring* mesg) const, std::string val,
+      faststring* mesg) const {
     (this->*len_serializer)(static_cast<len_type>(val.size()), mesg);
     mesg->append(val);
   }
 
-  void SerializeInt(int32_t value, faststring* mesg);
-  void SerializeLong(int64_t value, faststring* mesg);
-  void SerializeByte(uint8_t value, faststring* mesg);
-  void SerializeShort(uint16_t value, faststring* mesg);
-  void SerializeString(const std::string& value, faststring* mesg);
-  void SerializeLongString(const std::string& value, faststring* mesg);
-  void SerializeUUID(const std::string& value, faststring* mesg);
-  void SerializeStringList(const std::vector<std::string>& list, faststring* mesg);
-  void SerializeBytes(const std::string& value, faststring* mesg);
-  void SerializeShortBytes(const std::string& value, faststring* mesg);
-  void SerializeInet(const Sockaddr& value, faststring* mesg);
-  void SerializeConsistency(Consistency value, faststring* mesg);
+  void SerializeInt(int32_t value, faststring* mesg) const;
+  void SerializeLong(int64_t value, faststring* mesg) const;
+  void SerializeByte(uint8_t value, faststring* mesg) const;
+  void SerializeShort(uint16_t value, faststring* mesg) const;
+  void SerializeString(const std::string& value, faststring* mesg) const;
+  void SerializeLongString(const std::string& value, faststring* mesg) const;
+  void SerializeUUID(const std::string& value, faststring* mesg) const;
+  void SerializeStringList(const std::vector<std::string>& list, faststring* mesg) const;
+  void SerializeBytes(const std::string& value, faststring* mesg) const;
+  void SerializeShortBytes(const std::string& value, faststring* mesg) const;
+  void SerializeInet(const Sockaddr& value, faststring* mesg) const;
+  void SerializeConsistency(Consistency value, faststring* mesg) const;
   void SerializeStringMap(const std::unordered_map<std::string, std::string>& map,
-      faststring* mesg);
+      faststring* mesg) const;
   void SerializeStringMultiMap(
-      const std::unordered_map<std::string, std::vector<std::string>>& map, faststring* mesg);
-  void SerializeBytesMap(const std::unordered_map<std::string, std::string>& map, faststring* mesg);
-  void SerializeValue(const Value& value, faststring* mesg);
+      const std::unordered_map<std::string, std::vector<std::string>>& map, faststring* mesg) const;
+  void SerializeBytesMap(const std::unordered_map<std::string, std::string>& map,
+                         faststring* mesg) const;
+  void SerializeValue(const Value& value, faststring* mesg) const;
 };
 
 // ------------------------------ Individual CQL responses -----------------------------------
@@ -494,8 +496,8 @@ class ErrorResponse : public CQLResponse {
   virtual ~ErrorResponse() override;
 
  protected:
-  virtual void SerializeBody(faststring* mesg) override;
-  virtual void SerializeErrorBody(faststring* mesg);
+  virtual void SerializeBody(faststring* mesg) const override;
+  virtual void SerializeErrorBody(faststring* mesg) const;
 
  private:
   const Code code_;
@@ -509,7 +511,7 @@ class UnpreparedErrorResponse : public ErrorResponse {
   virtual ~UnpreparedErrorResponse() override;
 
  protected:
-  virtual void SerializeErrorBody(faststring* mesg) override;
+  virtual void SerializeErrorBody(faststring* mesg) const override;
 
  private:
   const QueryId query_id_;
@@ -521,7 +523,7 @@ class ReadyResponse : public CQLResponse {
   virtual ~ReadyResponse() override;
 
  protected:
-  virtual void SerializeBody(faststring* mesg) override;
+  virtual void SerializeBody(faststring* mesg) const override;
 
  private:
   friend class StartupRequest;
@@ -536,7 +538,7 @@ class AuthenticateResponse : public CQLResponse {
   virtual ~AuthenticateResponse() override;
 
  protected:
-  virtual void SerializeBody(faststring* mesg) override;
+  virtual void SerializeBody(faststring* mesg) const override;
 
  private:
   AuthenticateResponse(const CQLRequest& request, const std::string& authenticator);
@@ -550,7 +552,7 @@ class SupportedResponse : public CQLResponse {
   virtual ~SupportedResponse() override;
 
  protected:
-  virtual void SerializeBody(faststring* mesg) override;
+  virtual void SerializeBody(faststring* mesg) const override;
 
  private:
   friend class StartupRequest;
@@ -685,17 +687,17 @@ class ResultResponse : public CQLResponse {
   };
 
   ResultResponse(const CQLRequest& request, Kind kind);
-  virtual void SerializeBody(faststring* mesg) override;
+  virtual void SerializeBody(faststring* mesg) const override;
 
   // Function to serialize a result body that all ResultResponse subclasses need to implement
-  virtual void SerializeResultBody(faststring* mesg) = 0;
+  virtual void SerializeResultBody(faststring* mesg) const = 0;
 
   // Helper serialize functions
-  void SerializeType(const RowsMetadata::Type* type, faststring* mesg);
+  void SerializeType(const RowsMetadata::Type* type, faststring* mesg) const;
   void SerializeColSpecs(
       bool has_global_table_spec, const RowsMetadata::GlobalTableSpec& global_table_spec,
-      const std::vector<RowsMetadata::ColSpec>& col_specs, faststring* mesg);
-  void SerializeRowsMetadata(const RowsMetadata& metadata, faststring* mesg);
+      const std::vector<RowsMetadata::ColSpec>& col_specs, faststring* mesg) const;
+  void SerializeRowsMetadata(const RowsMetadata& metadata, faststring* mesg) const;
 
  private:
   const Kind kind_;
@@ -708,7 +710,7 @@ class VoidResultResponse : public ResultResponse {
   virtual ~VoidResultResponse() override;
 
  protected:
-  virtual void SerializeResultBody(faststring* mesg) override;
+  virtual void SerializeResultBody(faststring* mesg) const override;
 };
 
 //------------------------------------------------------------
@@ -719,7 +721,7 @@ class RowsResultResponse : public ResultResponse {
   virtual ~RowsResultResponse() override;
 
  protected:
-  virtual void SerializeResultBody(faststring* mesg) override;
+  virtual void SerializeResultBody(faststring* mesg) const override;
 
  private:
   const sql::RowsResult::SharedPtr result_;
@@ -732,7 +734,7 @@ class SetKeyspaceResultResponse : public ResultResponse {
   SetKeyspaceResultResponse(const CQLRequest& request, const sql::SetKeyspaceResult& result);
   virtual ~SetKeyspaceResultResponse() override;
  protected:
-  virtual void SerializeResultBody(faststring* mesg) override;
+  virtual void SerializeResultBody(faststring* mesg) const override;
  private:
   const std::string keyspace_;
 };
@@ -745,7 +747,7 @@ class PreparedResultResponse : public ResultResponse {
   virtual ~PreparedResultResponse() override;
 
  protected:
-  virtual void SerializeResultBody(faststring* mesg) override;
+  virtual void SerializeResultBody(faststring* mesg) const override;
 
  private:
   struct PreparedMetadata {
@@ -761,7 +763,7 @@ class PreparedResultResponse : public ResultResponse {
                      const std::vector<ColumnSchema>& bind_variable_schemas);
   };
 
-  void SerializePreparedMetadata(const PreparedMetadata& metadata, faststring* mesg);
+  void SerializePreparedMetadata(const PreparedMetadata& metadata, faststring* mesg) const;
 
   const QueryId query_id_;
   const PreparedMetadata prepared_metadata_;
@@ -774,10 +776,10 @@ class SchemaChangeResultResponse : public ResultResponse {
   SchemaChangeResultResponse(const CQLRequest& request, const sql::SchemaChangeResult& result);
   virtual ~SchemaChangeResultResponse() override;
 
-  virtual void Serialize(faststring* mesg) override;
+  virtual void Serialize(faststring* mesg) const override;
 
  protected:
-  virtual void SerializeResultBody(faststring* mesg) override;
+  virtual void SerializeResultBody(faststring* mesg) const override;
 
  private:
   const std::string change_type_;
@@ -789,11 +791,14 @@ class SchemaChangeResultResponse : public ResultResponse {
 
 //------------------------------------------------------------
 class EventResponse : public CQLResponse {
+ public:
+  virtual std::string ToString() const;
+  virtual ~EventResponse() override;
  protected:
   explicit EventResponse(const std::string& event_type);
-  virtual ~EventResponse() override;
-  virtual void SerializeBody(faststring* mesg) override;
-  virtual void SerializeEventBody(faststring* mesg) = 0;
+  virtual void SerializeBody(faststring* mesg) const override;
+  virtual void SerializeEventBody(faststring* mesg) const = 0;
+  virtual std::string BodyToString() const = 0;
  private:
   const std::string event_type_;
 };
@@ -801,14 +806,15 @@ class EventResponse : public CQLResponse {
 //------------------------------------------------------------
 class TopologyChangeEventResponse : public EventResponse {
  public:
+  static constexpr const char* const kMovedNode = "MOVED_NODE";
   virtual ~TopologyChangeEventResponse() override;
-
- protected:
-  virtual void SerializeEventBody(faststring* mesg) override;
-
- private:
   TopologyChangeEventResponse(const std::string& topology_change_type, const Sockaddr& node);
 
+ protected:
+  virtual void SerializeEventBody(faststring* mesg) const override;
+  std::string BodyToString() const override;
+
+ private:
   const std::string topology_change_type_;
   const Sockaddr node_;
 };
@@ -819,7 +825,8 @@ class StatusChangeEventResponse : public EventResponse {
   virtual ~StatusChangeEventResponse() override;
 
  protected:
-  virtual void SerializeEventBody(faststring* mesg) override;
+  virtual void SerializeEventBody(faststring* mesg) const override;
+  std::string BodyToString() const override;
 
  private:
   StatusChangeEventResponse(const std::string& status_change_type, const Sockaddr& node);
@@ -838,7 +845,8 @@ class SchemaChangeEventResponse : public EventResponse {
   virtual ~SchemaChangeEventResponse() override;
 
  protected:
-  virtual void SerializeEventBody(faststring* mesg) override;
+  virtual void SerializeEventBody(faststring* mesg) const override;
+  std::string BodyToString() const override;
 
  private:
   static const std::vector<std::string> kEmptyArgumentTypes;
@@ -856,7 +864,7 @@ class AuthChallengeResponse : public CQLResponse {
   virtual ~AuthChallengeResponse() override;
 
  protected:
-  virtual void SerializeBody(faststring* mesg) override;
+  virtual void SerializeBody(faststring* mesg) const override;
 
  private:
   AuthChallengeResponse(const CQLRequest& request, const std::string& token);
@@ -870,12 +878,25 @@ class AuthSuccessResponse : public CQLResponse {
   virtual ~AuthSuccessResponse() override;
 
  protected:
-  virtual void SerializeBody(faststring* mesg) override;
+  virtual void SerializeBody(faststring* mesg) const override;
 
  private:
   AuthSuccessResponse(const CQLRequest& request, const std::string& token);
 
   const std::string token_;
+};
+
+//------------------------------------------------------------
+class CQLServerEvent : public rpc::ServerEvent {
+ public:
+  explicit CQLServerEvent(std::unique_ptr<EventResponse> event_response);
+  void Serialize(std::vector<Slice>* slices) const override;
+  std::string ToString() const override;
+ private:
+  std::unique_ptr<EventResponse> event_response_;
+  // Need to keep the serialized response around since we return a reference to it via Slice in
+  // Serialize().
+  faststring serialized_response_;
 };
 
 }  // namespace cqlserver

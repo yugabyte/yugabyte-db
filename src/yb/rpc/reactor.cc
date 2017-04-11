@@ -205,6 +205,14 @@ Status ReactorThread::GetMetrics(ReactorMetrics *metrics) {
   return Status::OK();
 }
 
+Status ReactorThread::QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event) {
+  DCHECK(IsCurrentThread());
+  for (const scoped_refptr<Connection>& conn : server_conns_) {
+    conn->QueueOutboundData(server_event);
+  }
+  return Status::OK();
+}
+
 Status ReactorThread::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                       DumpRunningRpcsResponsePB* resp) {
   DCHECK(IsCurrentThread());
@@ -680,6 +688,25 @@ Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
       std::bind(&ReactorThread::DumpRunningRpcs, &thread_, boost::ref(req), resp));
 }
 
+class QueueServerEventTask : public ReactorTask {
+ public:
+  explicit QueueServerEventTask(scoped_refptr<ServerEvent> server_event)
+      : server_event_(server_event) {
+  }
+
+  virtual void Run(ReactorThread *thread) override {
+    CHECK_OK(thread->QueueEventOnAllConnections(server_event_));
+  }
+
+  virtual void Abort(const Status &status) override {
+    LOG (ERROR) << strings::Substitute("Aborted queueing event $0 due to $1",
+                                       server_event_->ToString(), status.ToString());
+  }
+
+ private:
+  scoped_refptr<ServerEvent> server_event_;
+};
+
 class RegisterConnectionTask : public ReactorTask {
  public:
   explicit RegisterConnectionTask(const scoped_refptr<Connection>& conn) :
@@ -699,6 +726,10 @@ class RegisterConnectionTask : public ReactorTask {
  private:
   scoped_refptr<Connection> conn_;
 };
+
+void Reactor::QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event) {
+  ScheduleReactorTask(std::make_shared<QueueServerEventTask>(server_event));
+}
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Sockaddr &remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote.ToString();

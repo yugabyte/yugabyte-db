@@ -36,6 +36,7 @@ class TestCQLService : public YBTableTestBase {
       const string& cmd, int expected_resp_length, int timeout_in_millis = 1000);
 
   Socket client_sock_;
+  unique_ptr<boost::asio::io_service> io_;
   unique_ptr<CQLServer> server_;
   int cql_server_port_ = 0;
   unique_ptr<FileLock> cql_port_lock_;
@@ -59,7 +60,8 @@ void TestCQLService::SetUp() {
   auto master_rpc_addrs = master_rpc_addresses_as_strings();
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
 
-  server_.reset(new CQLServer(opts));
+  io_.reset(new boost::asio::io_service());
+  server_.reset(new CQLServer(opts, *(io_.get())));
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";

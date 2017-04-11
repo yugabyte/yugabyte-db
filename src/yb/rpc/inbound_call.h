@@ -27,6 +27,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/connection_types.h"
+#include "yb/rpc/outbound_data.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -69,7 +70,7 @@ class InboundCall;
 typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 // Inbound call on server
-class InboundCall : public RpcCall {
+class InboundCall : public OutboundData {
  public:
   InboundCall();
   virtual ~InboundCall();
@@ -123,8 +124,6 @@ class InboundCall : public RpcCall {
 
   // See RpcContext::AddRpcSidecar()
   CHECKED_STATUS AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
-
-  virtual std::string ToString() const = 0;
 
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
 
@@ -210,6 +209,8 @@ class InboundCall : public RpcCall {
   // Proto service this calls belongs to. Used for routing.
   // This field is filled in when the inbound request header is parsed.
   RemoteMethod remote_method_;
+
+  void Serialize(std::vector<Slice>* slices) const override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(InboundCall);

@@ -42,6 +42,7 @@ python/kudu/*.cpp
 
 # Core dumps
 core*
+!java/yb-cql/src/test/java/com/datastax/driver/core
 
 # CLion directories
 /cmake-build-debug

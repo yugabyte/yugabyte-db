@@ -110,7 +110,7 @@ class RedisConnection : public Connection {
  protected:
   virtual void CreateInboundTransfer() override;
 
-  TransferCallbacks* GetResponseTransferCallback(InboundCallPtr call) override;
+  TransferCallbacks* GetResponseTransferCallback(OutboundDataPtr outbound_data) override;
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 

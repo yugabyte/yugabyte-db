@@ -662,7 +662,7 @@ CQLResponse::~CQLResponse() {
 #define SERIALIZE_LONG(buf, pos, value) \
   NetworkByteOrder::Store64(&(buf)[pos], static_cast<int64_t>(value))
 
-void CQLResponse::Serialize(faststring* mesg) {
+void CQLResponse::Serialize(faststring* mesg) const {
   const size_t start_pos = mesg->size(); // save the start position
   SerializeHeader(mesg);
   SerializeBody(mesg);
@@ -670,7 +670,7 @@ void CQLResponse::Serialize(faststring* mesg) {
       mesg->data(), start_pos + kHeaderPosLength, mesg->size() - start_pos - kMessageHeaderLength);
 }
 
-void CQLResponse::SerializeHeader(faststring* mesg) {
+void CQLResponse::SerializeHeader(faststring* mesg) const {
   uint8_t buffer[kMessageHeaderLength];
   SERIALIZE_BYTE(buffer, kHeaderPosVersion, version());
   SERIALIZE_BYTE(buffer, kHeaderPosFlags, flags());
@@ -685,35 +685,35 @@ void CQLResponse::SerializeHeader(faststring* mesg) {
 #undef SERIALIZE_INT
 #undef SERIALIZE_LONG
 
-void CQLResponse::SerializeInt(const int32_t value, faststring* mesg) {
+void CQLResponse::SerializeInt(const int32_t value, faststring* mesg) const {
   static_assert(sizeof(int32_t) == kIntSize, "inconsistent int size");
   SerializeNum(NetworkByteOrder::Store32, value, mesg);
 }
 
-void CQLResponse::SerializeLong(const int64_t value, faststring* mesg) {
+void CQLResponse::SerializeLong(const int64_t value, faststring* mesg) const {
   static_assert(sizeof(int64_t) == kLongSize, "inconsistent long size");
   SerializeNum(NetworkByteOrder::Store64, value, mesg);
 }
 
-void CQLResponse::SerializeByte(const uint8_t value, faststring* mesg) {
+void CQLResponse::SerializeByte(const uint8_t value, faststring* mesg) const {
   static_assert(sizeof(uint8_t) == kByteSize, "inconsistent byte size");
   SerializeNum(Store8, value, mesg);
 }
 
-void CQLResponse::SerializeShort(const uint16_t value, faststring* mesg) {
+void CQLResponse::SerializeShort(const uint16_t value, faststring* mesg) const {
   static_assert(sizeof(uint16_t) == kShortSize, "inconsistent short size");
   SerializeNum(NetworkByteOrder::Store16, value, mesg);
 }
 
-void CQLResponse::SerializeString(const string& value, faststring* mesg) {
+void CQLResponse::SerializeString(const string& value, faststring* mesg) const {
   SerializeBytes(&CQLResponse::SerializeShort, value, mesg);
 }
 
-void CQLResponse::SerializeLongString(const string& value, faststring* mesg) {
+void CQLResponse::SerializeLongString(const string& value, faststring* mesg) const {
   SerializeBytes(&CQLResponse::SerializeInt, value, mesg);
 }
 
-void CQLResponse::SerializeUUID(const string& value, faststring* mesg) {
+void CQLResponse::SerializeUUID(const string& value, faststring* mesg) const {
   if (value.size() == kUUIDSize) {
     mesg->append(value);
   } else {
@@ -723,22 +723,22 @@ void CQLResponse::SerializeUUID(const string& value, faststring* mesg) {
   }
 }
 
-void CQLResponse::SerializeStringList(const vector<string>& list, faststring* mesg) {
+void CQLResponse::SerializeStringList(const vector<string>& list, faststring* mesg) const {
   SerializeShort(list.size(), mesg);
   for (int i = 0; i < list.size(); ++i) {
     SerializeString(list[i], mesg);
   }
 }
 
-void CQLResponse::SerializeBytes(const string& value, faststring* mesg) {
+void CQLResponse::SerializeBytes(const string& value, faststring* mesg) const {
   SerializeBytes(&CQLResponse::SerializeInt, value, mesg);
 }
 
-void CQLResponse::SerializeShortBytes(const string& value, faststring* mesg) {
+void CQLResponse::SerializeShortBytes(const string& value, faststring* mesg) const {
   SerializeBytes(&CQLResponse::SerializeShort, value, mesg);
 }
 
-void CQLResponse::SerializeInet(const Sockaddr& value, faststring* mesg) {
+void CQLResponse::SerializeInet(const Sockaddr& value, faststring* mesg) const {
   // TODO(Robert): support IPv6
   SerializeByte(kIPv4Size, mesg);
   const auto& addr = value.addr();
@@ -747,12 +747,13 @@ void CQLResponse::SerializeInet(const Sockaddr& value, faststring* mesg) {
   SerializeInt(port, mesg);
 }
 
-void CQLResponse::SerializeConsistency(const Consistency value, faststring* mesg) {
+void CQLResponse::SerializeConsistency(const Consistency value, faststring* mesg) const {
   static_assert(sizeof(Consistency) == kConsistencySize, "inconsistent consistency size");
   SerializeNum(NetworkByteOrder::Store16, value, mesg);
 }
 
-void CQLResponse::SerializeStringMap(const unordered_map<string, string>& map, faststring* mesg) {
+void CQLResponse::SerializeStringMap(const unordered_map<string, string>& map,
+                                     faststring* mesg) const {
   SerializeShort(map.size(), mesg);
   for (const auto& element : map) {
     SerializeString(element.first, mesg);
@@ -761,7 +762,7 @@ void CQLResponse::SerializeStringMap(const unordered_map<string, string>& map, f
 }
 
 void CQLResponse::SerializeStringMultiMap(
-    const unordered_map<string, vector<string>>& map, faststring* mesg) {
+    const unordered_map<string, vector<string>>& map, faststring* mesg) const {
   SerializeShort(map.size(), mesg);
   for (const auto& element : map) {
     SerializeString(element.first, mesg);
@@ -769,7 +770,8 @@ void CQLResponse::SerializeStringMultiMap(
   }
 }
 
-void CQLResponse::SerializeBytesMap(const unordered_map<string, string>& map, faststring* mesg) {
+void CQLResponse::SerializeBytesMap(const unordered_map<string, string>& map,
+                                    faststring* mesg) const {
   SerializeShort(map.size(), mesg);
   for (const auto& element : map) {
     SerializeString(element.first, mesg);
@@ -777,7 +779,7 @@ void CQLResponse::SerializeBytesMap(const unordered_map<string, string>& map, fa
   }
 }
 
-void CQLResponse::SerializeValue(const Value& value, faststring* mesg) {
+void CQLResponse::SerializeValue(const Value& value, faststring* mesg) const {
   switch (value.kind) {
     case Value::Kind::NOT_NULL:
       SerializeInt(value.value.size(), mesg);
@@ -811,13 +813,13 @@ ErrorResponse::ErrorResponse(const StreamId stream_id, const Code code, const st
 ErrorResponse::~ErrorResponse() {
 }
 
-void ErrorResponse::SerializeBody(faststring* mesg) {
+void ErrorResponse::SerializeBody(faststring* mesg) const {
   SerializeInt(static_cast<int32_t>(code_), mesg);
   SerializeString(message_, mesg);
   SerializeErrorBody(mesg);
 }
 
-void ErrorResponse::SerializeErrorBody(faststring* mesg) {
+void ErrorResponse::SerializeErrorBody(faststring* mesg) const {
 }
 
 //----------------------------------------------------------------------------------------
@@ -828,7 +830,7 @@ UnpreparedErrorResponse::UnpreparedErrorResponse(const CQLRequest& request, cons
 UnpreparedErrorResponse::~UnpreparedErrorResponse() {
 }
 
-void UnpreparedErrorResponse::SerializeErrorBody(faststring* mesg) {
+void UnpreparedErrorResponse::SerializeErrorBody(faststring* mesg) const {
   SerializeShortBytes(query_id_, mesg);
 }
 
@@ -839,7 +841,7 @@ ReadyResponse::ReadyResponse(const CQLRequest& request) : CQLResponse(request, O
 ReadyResponse::~ReadyResponse() {
 }
 
-void ReadyResponse::SerializeBody(faststring* mesg) {
+void ReadyResponse::SerializeBody(faststring* mesg) const {
   // Ready body is empty
 }
 
@@ -851,7 +853,7 @@ AuthenticateResponse::AuthenticateResponse(const CQLRequest& request, const stri
 AuthenticateResponse::~AuthenticateResponse() {
 }
 
-void AuthenticateResponse::SerializeBody(faststring* mesg) {
+void AuthenticateResponse::SerializeBody(faststring* mesg) const {
   SerializeString(authenticator_, mesg);
 }
 
@@ -868,7 +870,7 @@ SupportedResponse::SupportedResponse(const CQLRequest& request)
 SupportedResponse::~SupportedResponse() {
 }
 
-void SupportedResponse::SerializeBody(faststring* mesg) {
+void SupportedResponse::SerializeBody(faststring* mesg) const {
   SerializeStringMultiMap(options_, mesg);
 }
 
@@ -1171,12 +1173,12 @@ ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name
   }
 }
 
-void ResultResponse::SerializeBody(faststring* mesg) {
+void ResultResponse::SerializeBody(faststring* mesg) const {
   SerializeInt(static_cast<int32_t>(kind_), mesg);
   SerializeResultBody(mesg);
 }
 
-void ResultResponse::SerializeType(const RowsMetadata::Type* type, faststring* mesg) {
+void ResultResponse::SerializeType(const RowsMetadata::Type* type, faststring* mesg) const {
   SerializeShort(static_cast<uint16_t>(type->id), mesg);
   switch (type->id) {
     case RowsMetadata::Type::Id::CUSTOM:
@@ -1234,7 +1236,7 @@ void ResultResponse::SerializeType(const RowsMetadata::Type* type, faststring* m
 
 void ResultResponse::SerializeColSpecs(
       const bool has_global_table_spec, const RowsMetadata::GlobalTableSpec& global_table_spec,
-      const vector<RowsMetadata::ColSpec>& col_specs, faststring* mesg) {
+      const vector<RowsMetadata::ColSpec>& col_specs, faststring* mesg) const {
   if (has_global_table_spec) {
     SerializeString(global_table_spec.keyspace, mesg);
     SerializeString(global_table_spec.table, mesg);
@@ -1249,7 +1251,7 @@ void ResultResponse::SerializeColSpecs(
   }
 }
 
-void ResultResponse::SerializeRowsMetadata(const RowsMetadata& metadata, faststring* mesg) {
+void ResultResponse::SerializeRowsMetadata(const RowsMetadata& metadata, faststring* mesg) const {
   SerializeInt(metadata.flags, mesg);
   SerializeInt(metadata.col_count, mesg);
   if (metadata.flags & RowsMetadata::kHasMorePages) {
@@ -1272,7 +1274,7 @@ VoidResultResponse::VoidResultResponse(const CQLRequest& request)
 VoidResultResponse::~VoidResultResponse() {
 }
 
-void VoidResultResponse::SerializeResultBody(faststring* mesg) {
+void VoidResultResponse::SerializeResultBody(faststring* mesg) const {
   // Void result response body is empty
 }
 
@@ -1292,7 +1294,7 @@ RowsResultResponse::RowsResultResponse(
 RowsResultResponse::~RowsResultResponse() {
 }
 
-void RowsResultResponse::SerializeResultBody(faststring* mesg) {
+void RowsResultResponse::SerializeResultBody(faststring* mesg) const {
   SerializeRowsMetadata(
       RowsMetadata(result_->table_name(), result_->column_schemas(),
                    result_->paging_state(), skip_metadata_), mesg);
@@ -1326,7 +1328,7 @@ PreparedResultResponse::~PreparedResultResponse() {
 }
 
 void PreparedResultResponse::SerializePreparedMetadata(
-    const PreparedMetadata& metadata, faststring* mesg) {
+    const PreparedMetadata& metadata, faststring* mesg) const {
   SerializeInt(metadata.flags, mesg);
   SerializeInt(metadata.col_specs.size(), mesg);
   if (VersionIsCompatible(kV4Version)) {
@@ -1340,7 +1342,7 @@ void PreparedResultResponse::SerializePreparedMetadata(
       metadata.col_specs, mesg);
 }
 
-void PreparedResultResponse::SerializeResultBody(faststring* mesg) {
+void PreparedResultResponse::SerializeResultBody(faststring* mesg) const {
   SerializeShortBytes(query_id_, mesg);
   SerializePreparedMetadata(prepared_metadata_, mesg);
   SerializeRowsMetadata(rows_metadata_, mesg);
@@ -1355,7 +1357,7 @@ SetKeyspaceResultResponse::SetKeyspaceResultResponse(
 SetKeyspaceResultResponse::~SetKeyspaceResultResponse() {
 }
 
-void SetKeyspaceResultResponse::SerializeResultBody(faststring* mesg) {
+void SetKeyspaceResultResponse::SerializeResultBody(faststring* mesg) const {
   SerializeString(keyspace_, mesg);
 }
 
@@ -1370,7 +1372,7 @@ SchemaChangeResultResponse::SchemaChangeResultResponse(
 SchemaChangeResultResponse::~SchemaChangeResultResponse() {
 }
 
-void SchemaChangeResultResponse::Serialize(faststring* mesg) {
+void SchemaChangeResultResponse::Serialize(faststring* mesg) const {
   ResultResponse::Serialize(mesg);
   // TODO: Replace this hack that piggybacks a SCHEMA_CHANGE event along a SCHEMA_CHANGE result
   // response with a formal event notification mechanism.
@@ -1378,7 +1380,7 @@ void SchemaChangeResultResponse::Serialize(faststring* mesg) {
   event.Serialize(mesg);
 }
 
-void SchemaChangeResultResponse::SerializeResultBody(faststring* mesg) {
+void SchemaChangeResultResponse::SerializeResultBody(faststring* mesg) const {
   SerializeString(change_type_, mesg);
   SerializeString(target_, mesg);
   if (target_ == "KEYSPACE") {
@@ -1401,14 +1403,18 @@ EventResponse::EventResponse(const string& event_type)
 EventResponse::~EventResponse() {
 }
 
-void EventResponse::SerializeBody(faststring* mesg) {
+void EventResponse::SerializeBody(faststring* mesg) const {
   SerializeString(event_type_, mesg);
   SerializeEventBody(mesg);
 }
 
+std::string EventResponse::ToString() const {
+  return event_type_ + ":" + BodyToString();
+}
+
 //----------------------------------------------------------------------------------------
-TopologyChangeEventResponse::TopologyChangeEventResponse(
-    const string& topology_change_type, const Sockaddr& node)
+TopologyChangeEventResponse::TopologyChangeEventResponse(const string& topology_change_type,
+                                                         const Sockaddr& node)
     : EventResponse("TOPOLOGY_CHANGE"), topology_change_type_(topology_change_type),
       node_(node) {
 }
@@ -1416,14 +1422,18 @@ TopologyChangeEventResponse::TopologyChangeEventResponse(
 TopologyChangeEventResponse::~TopologyChangeEventResponse() {
 }
 
-void TopologyChangeEventResponse::SerializeEventBody(faststring* mesg) {
+void TopologyChangeEventResponse::SerializeEventBody(faststring* mesg) const {
   SerializeString(topology_change_type_, mesg);
   SerializeInet(node_, mesg);
 }
 
+std::string TopologyChangeEventResponse::BodyToString() const {
+  return topology_change_type_;
+}
+
 //----------------------------------------------------------------------------------------
-StatusChangeEventResponse::StatusChangeEventResponse(
-    const string& status_change_type, const Sockaddr& node)
+StatusChangeEventResponse::StatusChangeEventResponse(const string& status_change_type,
+                                                     const Sockaddr& node)
     : EventResponse("STATUS_CHANGE"), status_change_type_(status_change_type),
       node_(node) {
 }
@@ -1431,9 +1441,13 @@ StatusChangeEventResponse::StatusChangeEventResponse(
 StatusChangeEventResponse::~StatusChangeEventResponse() {
 }
 
-void StatusChangeEventResponse::SerializeEventBody(faststring* mesg) {
+void StatusChangeEventResponse::SerializeEventBody(faststring* mesg) const {
   SerializeString(status_change_type_, mesg);
   SerializeInet(node_, mesg);
+}
+
+std::string StatusChangeEventResponse::BodyToString() const {
+  return status_change_type_;
 }
 
 //----------------------------------------------------------------------------------------
@@ -1449,7 +1463,11 @@ SchemaChangeEventResponse::SchemaChangeEventResponse(
 SchemaChangeEventResponse::~SchemaChangeEventResponse() {
 }
 
-void SchemaChangeEventResponse::SerializeEventBody(faststring* mesg) {
+std::string SchemaChangeEventResponse::BodyToString() const {
+  return change_type_;
+}
+
+void SchemaChangeEventResponse::SerializeEventBody(faststring* mesg) const {
   SerializeString(change_type_, mesg);
   SerializeString(target_, mesg);
   if (target_ == "KEYSPACE") {
@@ -1472,7 +1490,7 @@ AuthChallengeResponse::AuthChallengeResponse(const CQLRequest& request, const st
 AuthChallengeResponse::~AuthChallengeResponse() {
 }
 
-void AuthChallengeResponse::SerializeBody(faststring* mesg) {
+void AuthChallengeResponse::SerializeBody(faststring* mesg) const {
   SerializeBytes(token_, mesg);
 }
 
@@ -1484,8 +1502,22 @@ AuthSuccessResponse::AuthSuccessResponse(const CQLRequest& request, const string
 AuthSuccessResponse::~AuthSuccessResponse() {
 }
 
-void AuthSuccessResponse::SerializeBody(faststring* mesg) {
+void AuthSuccessResponse::SerializeBody(faststring* mesg) const {
   SerializeBytes(token_, mesg);
+}
+
+CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
+    : event_response_(std::move(event_response)) {
+  CHECK_NOTNULL(event_response_.get());
+  event_response_->Serialize(&serialized_response_);
+}
+
+void CQLServerEvent::Serialize(std::vector<Slice>* slices) const {
+  slices->push_back(Slice(serialized_response_));
+}
+
+std::string CQLServerEvent::ToString() const {
+  return event_response_->ToString();
 }
 
 }  // namespace cqlserver

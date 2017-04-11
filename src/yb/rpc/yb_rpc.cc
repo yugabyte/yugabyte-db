@@ -80,8 +80,8 @@ Status YBInboundTransfer::ReceiveBuffer(Socket& socket) {
 
 class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  YBResponseTransferCallbacks(InboundCallPtr call, YBConnection* conn)
-      : call_(std::move(call)), conn_(conn) {}
+  YBResponseTransferCallbacks(OutboundDataPtr outbound_data, YBConnection* conn)
+      : outbound_data_(std::move(outbound_data)), conn_(conn) {}
 
   ~YBResponseTransferCallbacks() {
     // If we were aborted with service unavailable status, it means that reactor is shutting down.
@@ -93,7 +93,7 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
     auto id = yb_call()->call_id();
     auto it = conn_->calls_being_handled_.find(id);
     if (it != conn_->calls_being_handled_.end()) {
-      DCHECK_EQ(it->second.get(), call_.get());
+      DCHECK_EQ(it->second.get(), outbound_data_.get());
       conn_->calls_being_handled_.erase(it);
     } else {
       LOG(DFATAL) << "Transfer done for unknown call: " << id;
@@ -108,16 +108,16 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
   }
 
  protected:
-  InboundCall* call() override {
-    return call_.get();
+  OutboundData* outbound_data() override {
+    return outbound_data_.get();
   }
 
   YBInboundCall* yb_call() {
-    return down_cast<YBInboundCall*>(call_.get());
+    return down_cast<YBInboundCall*>(outbound_data_.get());
   }
 
  private:
-  InboundCallPtr call_;
+  OutboundDataPtr outbound_data_;
   YBConnection* conn_;
   // We don't have to synchronize on this field because destructor is always invoked from
   // Notify* methods.
@@ -144,8 +144,8 @@ AbstractInboundTransfer *YBConnection::inbound() const {
   return inbound_.get();
 }
 
-TransferCallbacks* YBConnection::GetResponseTransferCallback(InboundCallPtr call) {
-  return new YBResponseTransferCallbacks(std::move(call), this);
+TransferCallbacks* YBConnection::GetResponseTransferCallback(OutboundDataPtr outbound_data) {
+  return new YBResponseTransferCallbacks(std::move(outbound_data), this);
 }
 
 Status YBConnection::InitSaslClient() {
@@ -302,7 +302,7 @@ void YBInboundCall::LogTrace() const {
 }
 
 void YBInboundCall::QueueResponseToConnection() {
-  conn_->QueueResponseForCall(InboundCallPtr(this));
+  conn_->QueueOutboundData(InboundCallPtr(this));
 }
 
 scoped_refptr<Connection> YBInboundCall::get_connection() {

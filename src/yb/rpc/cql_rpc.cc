@@ -85,20 +85,20 @@ string CQLInboundTransfer::StatusAsString() const {
 
 class CQLResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  CQLResponseTransferCallbacks(InboundCallPtr call, CQLConnection* conn)
-      : call_(std::move(call)), conn_(conn) {}
+  CQLResponseTransferCallbacks(OutboundDataPtr outbound_data, CQLConnection* conn)
+      : outbound_data_(std::move(outbound_data)), conn_(conn) {}
 
   ~CQLResponseTransferCallbacks() {
     conn_->FinishedHandlingACall();
   }
 
  protected:
-  InboundCall* call() override {
-    return call_.get();
+  OutboundData* outbound_data() override {
+    return outbound_data_.get();
   }
 
  private:
-  InboundCallPtr call_;
+  OutboundDataPtr outbound_data_;
   CQLConnection* conn_;
 };
 
@@ -120,8 +120,8 @@ AbstractInboundTransfer *CQLConnection::inbound() const {
   return inbound_.get();
 }
 
-TransferCallbacks* CQLConnection::GetResponseTransferCallback(InboundCallPtr call) {
-  return new CQLResponseTransferCallbacks(std::move(call), this);
+TransferCallbacks* CQLConnection::GetResponseTransferCallback(OutboundDataPtr outbound_data) {
+  return new CQLResponseTransferCallbacks(std::move(outbound_data), this);
 }
 
 void CQLConnection::HandleFinishedTransfer() {
@@ -200,7 +200,7 @@ Status CQLInboundCall::SerializeResponseBuffer(const MessageLite& response,
 }
 
 void CQLInboundCall::QueueResponseToConnection() {
-  conn_->QueueResponseForCall(InboundCallPtr(this));
+  conn_->QueueOutboundData(InboundCallPtr(this));
 }
 
 void CQLInboundCall::LogTrace() const {

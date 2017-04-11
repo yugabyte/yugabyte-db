@@ -37,6 +37,7 @@
 #include "yb/rpc/sasl_client.h"
 #include "yb/rpc/sasl_server.h"
 #include "yb/rpc/inbound_call.h"
+#include "yb/rpc/server_event.h"
 #include "yb/rpc/transfer.h"
 #include "yb/sql/sql_session.h"
 #include "yb/util/monotime.h"
@@ -155,7 +156,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Queue a call response back to the client on the server side.
   //
   // This may be called from a non-reactor thread.
-  void QueueResponseForCall(InboundCallPtr call);
+  void QueueOutboundData(OutboundDataPtr outbound_data);
 
   ReactorThread* reactor_thread() const { return reactor_thread_; }
 
@@ -202,7 +203,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
     return call_id;
   }
 
-  virtual TransferCallbacks* GetResponseTransferCallback(InboundCallPtr call) = 0;
+  virtual TransferCallbacks* GetResponseTransferCallback(OutboundDataPtr outbound_data) = 0;
 
   virtual void CreateInboundTransfer() = 0;
 
@@ -310,7 +311,7 @@ struct ResponseTransferCallbacks : public TransferCallbacks {
   virtual void NotifyTransferAborted(const Status& status) override;
 
  protected:
-  virtual InboundCall* call() = 0;
+  virtual OutboundData* outbound_data() = 0;
 };
 
 #define RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status) \

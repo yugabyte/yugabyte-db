@@ -216,20 +216,20 @@ Status RedisInboundTransfer::ReceiveBuffer(Socket& socket) {
 
 class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
  public:
-  RedisResponseTransferCallbacks(InboundCallPtr call, RedisConnection* conn)
-      : call_(std::move(call)), conn_(conn) {}
+  RedisResponseTransferCallbacks(OutboundDataPtr outbound_data, RedisConnection* conn)
+      : outbound_data_(std::move(outbound_data)), conn_(conn) {}
 
   ~RedisResponseTransferCallbacks() {
     conn_->FinishedHandlingACall();
   }
 
  protected:
-  InboundCall* call() override {
-    return call_.get();
+  OutboundData* outbound_data() override {
+    return outbound_data_.get();
   }
 
  private:
-  InboundCallPtr call_;
+  OutboundDataPtr outbound_data_;
   RedisConnection* conn_;
 };
 
@@ -251,8 +251,8 @@ AbstractInboundTransfer *RedisConnection::inbound() const {
   return inbound_.get();
 }
 
-TransferCallbacks* RedisConnection::GetResponseTransferCallback(InboundCallPtr call) {
-  return new RedisResponseTransferCallbacks(std::move(call), this);
+TransferCallbacks* RedisConnection::GetResponseTransferCallback(OutboundDataPtr outbound_data) {
+  return new RedisResponseTransferCallbacks(std::move(outbound_data), this);
 }
 
 void RedisConnection::HandleFinishedTransfer() {
@@ -379,7 +379,7 @@ void RedisInboundCall::LogTrace() const {
 }
 
 void RedisInboundCall::QueueResponseToConnection() {
-  conn_->QueueResponseForCall(InboundCallPtr(this));
+  conn_->QueueOutboundData(InboundCallPtr(this));
 }
 
 scoped_refptr<Connection> RedisInboundCall::get_connection() {
