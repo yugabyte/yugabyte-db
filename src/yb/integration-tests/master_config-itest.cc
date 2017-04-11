@@ -59,11 +59,6 @@ class MasterChangeConfigTest : public YBTest {
     if (!s.ok()) {
       LOG(FATAL) << "Unable to build messenger : " << s.ToString();
     }
-
-    OpId op_id;
-    ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
-    cur_log_index_ = op_id.index();
-    LOG(INFO) << "cur_log_index_ " << cur_log_index_;
   }
 
   virtual void TearDown() OVERRIDE {
@@ -112,6 +107,9 @@ class MasterChangeConfigTest : public YBTest {
   // loads the sys catalog, this api will timeout. If 'master' is not the leader it will surely
   // timeout. Return status of OK() implies leader is ready.
   Status WaitForMasterLeaderToBeReady(ExternalMaster* master, int timeout_sec);
+
+  // API to capture the latest commit index on the master leader.
+  void SetCurLogIndex();
 
   int num_masters_;
   int cur_log_index_;
@@ -180,10 +178,19 @@ Status MasterChangeConfigTest::WaitForMasterLeaderToBeReady(
                                      master->bound_rpc_hostport().ToString()));
 }
 
+void MasterChangeConfigTest::SetCurLogIndex() {
+  OpId op_id;
+  ASSERT_OK(cluster_->GetLastOpIdForLeader(&op_id));
+  cur_log_index_ = op_id.index();
+  LOG(INFO) << "cur_log_index_ " << cur_log_index_;
+}
+
 TEST_F(MasterChangeConfigTest, TestAddMaster) {
   // NOTE: Not using smart pointer as ExternalMaster is derived from a RefCounted base class.
   ExternalMaster* new_master = nullptr;
   cluster_->StartShellMaster(&new_master);
+
+  SetCurLogIndex();
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
@@ -202,6 +209,8 @@ TEST_F(MasterChangeConfigTest, TestSlowRemoteBootstrapDoesNotCrashMaster) {
   ExternalMaster* new_master = nullptr;
   cluster_->StartShellMaster(&new_master);
   ASSERT_OK(cluster_->SetFlag(new_master, "inject_latency_during_remote_bootstrap_secs", "8"));
+
+  SetCurLogIndex();
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error : ");
@@ -227,6 +236,8 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
 
   LOG(INFO) << "Going to remove master at port " << remove_master->bound_rpc_hostport().port();
 
+  SetCurLogIndex();
+
   s = cluster_->ChangeConfig(remove_master, consensus::REMOVE_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
 
@@ -242,6 +253,8 @@ TEST_F(MasterChangeConfigTest, TestRemoveMaster) {
 TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
   ExternalMaster* new_master = nullptr;
   cluster_->StartShellMaster(&new_master);
+
+  SetCurLogIndex();
 
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
@@ -271,6 +284,8 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   cluster_->StartShellMaster(&new_master);
 
   LOG(INFO) << "New master " << new_master->bound_rpc_hostport().ToString();
+
+  SetCurLogIndex();
 
   // This will disable new elections on the old masters.
   vector<ExternalDaemon*> masters = cluster_->master_daemons();
@@ -335,6 +350,8 @@ TEST_F(MasterChangeConfigTest, TestChangeAllMasters) {
     cluster_->StartShellMaster(&new_masters[idx]);
   }
 
+  SetCurLogIndex();
+
   for (int idx = 0; idx <= 2; idx++) {
     LOG(INFO) << "LOOP " << idx << " start.";
     LOG(INFO) << "ADD " << new_masters[idx]->bound_rpc_hostport().ToString();
@@ -357,6 +374,7 @@ TEST_F(MasterChangeConfigTest, TestAddPreObserverMaster) {
   ExternalMaster* new_master = nullptr;
   cluster_->StartShellMaster(&new_master);
 
+  SetCurLogIndex();
   ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER,
                                            consensus::RaftPeerPB::PRE_OBSERVER),
                     "Add Change Config returned error");
@@ -381,6 +399,7 @@ TEST_F(MasterChangeConfigTest, TestWaitForChangeRoleCompletion) {
 
   ASSERT_OK(cluster_->SetFlag(leader,
             "inject_delay_leader_change_role_append_secs", "8"));
+  SetCurLogIndex();
   ASSERT_OK_PREPEND(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER),
                     "Add Change Config returned error");
 
@@ -397,6 +416,7 @@ TEST_F(MasterChangeConfigTest, TestWaitForChangeRoleCompletion) {
 
 
 TEST_F(MasterChangeConfigTest, TestLeaderSteppedDownNotElected) {
+  SetCurLogIndex();
   ExternalMaster* old_leader = cluster_->GetLeaderMaster();
   LOG(INFO) << "Current leader bound to " << old_leader->bound_rpc_hostport().ToString();
   TabletServerErrorPB::Code dummy_err = TabletServerErrorPB::UNKNOWN_ERROR;
