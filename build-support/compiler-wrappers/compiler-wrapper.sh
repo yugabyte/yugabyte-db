@@ -462,7 +462,8 @@ for pattern in \
     "warning: reference to local variable .* returned" \
     "warning: enumeration value .* not handled in switch" \
     "warning: comparison between .* and .* .*-Wenum-compare" \
-    "will be initialized after .*Wreorder"
+    "will be initialized after .*Wreorder" \
+    "has virtual functions and accessible non-virtual destructor .*Wnon-virtual-dtor"
 do
   treat_warning_pattern_as_error "$pattern"
 done

@@ -11,6 +11,8 @@
 namespace yb {
 namespace sql {
 
+EvalValue::~EvalValue() {}
+
 Status Executor::GetBindVariable(const PTBindVar* var, YQLValue *value) const {
   return params_->GetBindVariable(string(var->name()->c_str()),
                                   var->pos(),

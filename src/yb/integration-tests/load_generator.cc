@@ -188,6 +188,7 @@ SingleThreadedReader* RedisSessionFactory::GetReader(MultiThreadedReader* reader
 SingleThreadedWriter* RedisNoopSessionFactory::GetWriter(MultiThreadedWriter* writer, int idx) {
   return new RedisNoopSingleThreadedWriter(writer, redis_server_addresses_, idx);
 }
+
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedAction
 // ------------------------------------------------------------------------------------------------
@@ -209,6 +210,8 @@ MultiThreadedAction::MultiThreadedAction(
           .set_max_threads(num_action_threads_ + num_extra_threads)
           .Build(&thread_pool_));
 }
+
+MultiThreadedAction::~MultiThreadedAction() {}
 
 string MultiThreadedAction::GetKeyByIndex(int64_t key_index) {
   string key_index_str(Substitute("key$0", key_index));

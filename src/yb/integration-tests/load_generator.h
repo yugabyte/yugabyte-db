@@ -104,6 +104,8 @@ class MultiThreadedAction {
       int num_extra_threads, const std::string& client_id, std::atomic_bool* stop_requested_flag,
       int value_size);
 
+  virtual ~MultiThreadedAction();
+
   virtual void Start();
   virtual void WaitForCompletion();
 

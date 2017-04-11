@@ -363,6 +363,7 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
 // Generic interface to handle scan results.
 class ScanResultCollector {
  public:
+  virtual ~ScanResultCollector() {}
   virtual void HandleRowBlock(const Schema* client_projection_schema,
                               const RowBlock& row_block) = 0;
 

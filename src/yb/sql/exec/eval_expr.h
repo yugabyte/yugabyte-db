@@ -14,6 +14,7 @@ namespace yb {
 namespace sql {
 
 struct EvalValue {
+  virtual ~EvalValue();
   virtual InternalType datatype() = 0;
   bool is_null() {
     return is_null_;

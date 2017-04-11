@@ -413,6 +413,9 @@ ADD_CXX_GLOBAL_COMMON_FLAGS("-Wno-deprecated-declarations")
 
 ADD_CXX_GLOBAL_COMMON_FLAGS("-DGFLAGS=gflags")
 
+# Don't allow virtual classes with non-virtual destructors.
+ADD_CXX_GLOBAL_COMMON_FLAGS("-Wnon-virtual-dtor")
+
 if(IS_CLANG)
   ADD_CXX_YB_COMMON_FLAGS("-Werror=string-plus-int")
 endif()

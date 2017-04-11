@@ -54,6 +54,8 @@ SqlEnv::SqlEnv(
   CHECK_OK(read_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
+SqlEnv::~SqlEnv() {}
+
 YBTableCreator *SqlEnv::NewTableCreator() {
   return client_->NewTableCreator();
 }

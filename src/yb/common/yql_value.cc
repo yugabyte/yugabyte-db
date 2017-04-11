@@ -47,6 +47,8 @@ static int GenericCompare(const T& lhs, const T& rhs) {
   return 0;
 }
 
+YQLValue::~YQLValue() {}
+
 //------------------------- instance methods for abstract YQLValue class -----------------------
 
 int YQLValue::CompareTo(const YQLValue& other) const {

@@ -29,10 +29,11 @@ class SqlEnv {
   static const int kSessionTimeoutMs = 60000;
 
   //------------------------------------------------------------------------------------------------
-  // Constructor & desructor.
+  // Constructor & destructor.
   SqlEnv(
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
       std::shared_ptr<client::YBTableCache> cache);
+  virtual ~SqlEnv();
 
   virtual client::YBTableCreator *NewTableCreator();
 

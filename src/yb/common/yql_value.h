@@ -20,6 +20,8 @@ class YQLValue {
   // The value type.
   typedef YQLValuePB::ValueCase InternalType;
 
+  virtual ~YQLValue();
+
   //-----------------------------------------------------------------------------------------
   // Interfaces to be implemented.
 
