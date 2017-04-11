@@ -9,14 +9,16 @@ import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
   CREATE_ACCESS_KEY, CREATE_ACCESS_KEY_SUCCESS, CREATE_ACCESS_KEY_FAILURE,
   INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS, INITIALIZE_PROVIDER_FAILURE,
   DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE, RESET_PROVIDER_BOOTSTRAP,
-  LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_SUCCESS, LIST_ACCESS_KEYS_FAILURE
+  LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_SUCCESS, LIST_ACCESS_KEYS_FAILURE,
+  CREATE_ONPREM_PROVIDER_RESPONSE, GET_PROVIDER_LIST_RESPONSE
 } from '../actions/cloud';
 
-import { setSuccessState, setFailureState, setLoadingState}  from './common';
+import { setSuccessState, setFailureState, setLoadingState }  from './common';
 import _ from 'lodash';
 
 const INITIAL_STATE = {regions: [], providers: [], instanceTypes: [], loading: {regions: false, providers: false, instanceTypes: false,
-  supportedRegions: false}, selectedProvider: null, error: null, accessKeys: {}, supportedRegionList: [], bootstrap: {}, status : 'init'};
+  supportedRegions: false}, selectedProvider: null, error: null, accessKeys: {}, supportedRegionList: [], bootstrap: {}, status : 'init',
+  createOnPremSucceeded: false, createOnPremFailed: false};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
@@ -30,6 +32,18 @@ export default function(state = INITIAL_STATE, action) {
       error = action.payload.data || {message: action.payload.message};//2nd one is network or server down errors
       return { ...state, providers: null, status: 'provider_fetch_failure', error: error, loading: _.assign(state.loading,
         {providers: false})};
+    case GET_PROVIDER_LIST_RESPONSE:
+      console.log(action.payload);
+      if (action.payload.status !== 200 ) {
+        // getProviderList failed
+        error = action.payload.data || {message: action.payload.message}; // 2nd is network or server down errors
+        return { ...state, providers: null, status: 'provider_fetch_failure', error: error,
+          loading: _.assign(state.loading, {providers: false})};
+      } else {
+        // getProviderList succeeded
+        return {...state, providers: _.sortBy(action.payload.data, "name"), status: 'provider_fetch_success',
+          error: null, loading: _.assign(state.loading, {providers: false})};
+      }
     case GET_REGION_LIST:
       return { ...state, regions: [], status: 'storage', error: null, loading: _.assign(state.loading, {regions: true})};
     case GET_REGION_LIST_SUCCESS:
@@ -61,6 +75,9 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, bootstrap: {type: 'provider', response: action.payload.data, loading: false}};
     case CREATE_PROVIDER_FAILURE:
       return { ...state, bootstrap: {type: 'provider', error: action.payload.data.error, loading: false}};
+    case CREATE_ONPREM_PROVIDER_RESPONSE:
+      let success = action.payload.status === 200;
+      return {...state, createOnPremSucceeded: success, createOnPremFailed: !success };
     case CREATE_REGION:
       return { ...state, bootstrap: {type: 'region', response: null, loading: true}};
     case CREATE_REGION_SUCCESS:

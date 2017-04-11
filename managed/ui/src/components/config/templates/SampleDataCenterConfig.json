@@ -1,36 +1,41 @@
 {
-  "regions": [
-    {
-      "name": "us-west-1",
-      "zones": [
-        {
-          "name": "west-1a",
-          "hosts": [
-            {
-              "name": "101.23.43.434"
-            },
-            {
-              "name": "109.23.43.434"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "us-asia-pacific",
-      "zones": [
-        {
-          "name": "us-asia-pacific-1",
-          "hosts": [
-            {
-              "name": "106.23.43.434"
-            },
-            {
-              "name": "104.23.43.434"
-            }
-          ]
-        }
-      ]
-    }
-  ]
+  "identification": {
+    "name": "My DC"
+  },
+  "description": {
+    "instanceTypes": [{
+      "code": "type.large",
+      "volumeDetailsList": [{
+        "volumeSizeGB": 100,
+        "volumeType": "SSD",
+        "mountPath": "/mnt/d0"
+      },{
+        "volumeSizeGB": 100,
+        "volumeType": "SSD",
+        "mountPath": "/mnt/d1"
+      }]
+    }],
+    "regions": [{
+      "code": "region1",
+      "zones": [{
+        "code": "region1-a",
+        "nodes": [{
+          "ip": "10.20.30.40",
+          "instanceTypeCode": "type.large"
+        }]
+      },{
+        "code": "region1-b",
+        "nodes": [{
+          "ip": "10.20.30.41",
+          "instanceTypeCode": "type.large"
+        }]
+      },{
+        "code": "region1-c",
+        "nodes": [{
+          "ip": "10.20.30.42",
+          "instanceTypeCode": "type.large"
+        }]
+      }]
+    }]
+  }
 }

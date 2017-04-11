@@ -5,7 +5,7 @@ import { withRouter } from 'react-router';
 import { GCPProviderConfigurationContainer, AzureProviderConfigurationContainer,
          DockerProviderConfigurationContainer, AWSProviderConfigurationContainer}
          from '../../config';
-import {OnPremConfiguration} from '../../config';
+import {OnPremConfigurationContainer} from '../../config';
 import {Tab} from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import './providerConfig.scss';
@@ -22,7 +22,7 @@ class DataCenterConfiguration extends Component {
 
   configProviderSelect(item) {
     let currentLocation = this.props.location;
-    currentLocation.query = { provider: item }
+    currentLocation.query = { provider: item };
     this.props.router.push(currentLocation);
   }
 
@@ -49,7 +49,7 @@ class DataCenterConfiguration extends Component {
             <DockerProviderConfigurationContainer />
           </Tab>
           <Tab eventKey={"onprem"} title={onPremiseTabContent} key="onprem-tab">
-            <OnPremConfiguration/>
+            <OnPremConfigurationContainer />
           </Tab>
         </YBTabsPanel>
       </div>

@@ -14,6 +14,7 @@ export const GET_REGION_LIST_FAILURE = 'GET_REGION_LIST_FAILURE';
 export const GET_PROVIDER_LIST = 'GET_PROVIDER_LIST';
 export const GET_PROVIDER_LIST_SUCCESS = 'GET_PROVIDER_LIST_SUCCESS';
 export const GET_PROVIDER_LIST_FAILURE = 'GET_PROVIDER_LIST_FAILURE';
+export const GET_PROVIDER_LIST_RESPONSE = 'GET_PROVIDER_LIST_RESPONSE';
 
 // Get Instance Type List
 export const GET_INSTANCE_TYPE_LIST = 'GET_INSTANCE_TYPE_LIST';
@@ -29,6 +30,9 @@ export const GET_SUPPORTED_REGION_DATA_FAILURE = 'GET_SUPPORTED_REGION_DATA_FAIL
 export const CREATE_PROVIDER = 'CREATE_PROVIDER';
 export const CREATE_PROVIDER_SUCCESS = 'CREATE_PROVIDER_SUCCESS';
 export const CREATE_PROVIDER_FAILURE = 'CREATE_PROVIDER_FAILURE';
+
+export const CREATE_ONPREM_PROVIDER = 'CREATE_ONPREM_PROVIDER';
+export const CREATE_ONPREM_PROVIDER_RESPONSE = 'CREATE_ONPREM_PROVIDER_RESPONSE';
 
 export const CREATE_REGION = 'CREATE_REGION';
 export const CREATE_REGION_SUCCESS = 'CREATE_REGION_SUCCESS';
@@ -58,6 +62,13 @@ export function getProviderList() {
   return {
     type: GET_PROVIDER_LIST,
     payload: request
+  }
+}
+
+export function getProviderListResponse(responsePayload) {
+  return {
+    type: GET_PROVIDER_LIST_RESPONSE,
+    payload: responsePayload
   }
 }
 
@@ -180,6 +191,22 @@ export function createProviderFailure(error) {
     type: CREATE_PROVIDER_FAILURE,
     payload: error
   }
+}
+
+export function createOnPremProvider(config) {
+  var customerUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers/onprem`, config);
+  return {
+    type: CREATE_ONPREM_PROVIDER,
+    payload: request
+  };
+}
+
+export function createOnPremProviderResponse(result) {
+  return {
+    type: CREATE_ONPREM_PROVIDER_RESPONSE,
+    payload: result
+  };
 }
 
 export function createRegion(providerUUID, regionCode, hostVPCId) {
