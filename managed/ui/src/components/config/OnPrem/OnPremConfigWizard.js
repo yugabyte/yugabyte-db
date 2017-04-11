@@ -333,12 +333,18 @@ class YBRegionDataList extends Component {
 }
 
 export default class OnPremConfigWizard extends Component {
+
   componentWillMount() {
     this.props.initialize(this.props.config.onPremJsonFormData);
   }
+
+  /*
+  TODO: Update wizard to match expected JSON blob and uncomment this to populate JSON blob from
+        whatever values are in the wizard.
   componentWillUnmount() {
     this.props.setOnPremJsonData({regions: this.props.formValues});
-  }
+  */
+
   render() {
     const {onFormSubmit} = this.props;
     return (
