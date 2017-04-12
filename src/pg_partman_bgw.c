@@ -171,7 +171,7 @@ _PG_init(void)
     worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
         BGWORKER_BACKEND_DATABASE_CONNECTION;
     worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
-    worker.bgw_restart_time = BGW_NEVER_RESTART;
+    worker.bgw_restart_time = 600;
     #if (PG_VERSION_NUM < 100000)
     worker.bgw_main = pg_partman_bgw_main;
     #endif
@@ -286,7 +286,7 @@ void pg_partman_bgw_main(Datum main_arg) {
 
                 elog(DEBUG1, "Registering dynamic background worker...");
                 if (!RegisterDynamicBackgroundWorker(&worker, &handle)) {
-                    elog(FATAL, "Unable to register dynamic background worker for pg_partman");
+                    elog(ERROR, "Unable to register dynamic background worker for pg_partman. Consider increasing max_worker_processes if you see this frequently.");
                 }
 
                 elog(DEBUG1, "Waiting for BGW startup...");

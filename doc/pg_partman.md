@@ -78,6 +78,7 @@ The following configuration options are available to add into postgresql.conf to
  - `pg_partman_bgw.jobmon`
     - Same purpose as the p_jobmon argument to `run_maintenance()`. See below for more detail. Set to 'on' for TRUE. Set to 'off' for FALSE. Default is 'on'.
 
+If for some reason the main background worker process crashes, it is set to try and restart every 10 minutes. Check the postgres logs for any issues if the background worker is not starting.
 
 Extension Objects
 -----------------
