@@ -89,3 +89,8 @@ export function areUniverseConfigsEqual(config1, config2) {
   }
   return dataObjectsEqual && userIntentsEqual;
 }
+
+export function normalizeToPositiveInt(value) {
+  return parseInt(Math.abs(value)) || 0;
+}
+

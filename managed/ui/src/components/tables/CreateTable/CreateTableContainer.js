@@ -3,6 +3,7 @@
 import { connect } from 'react-redux';
 import { CreateTable } from '../../tables';
 import { reduxForm } from 'redux-form';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
          fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure, toggleTableView } from '../../../actions/tables';
 
@@ -45,7 +46,6 @@ const mapDispatchToProps = (dispatch) => {
         "ttlInSeconds": values.ttlInSeconds
       };
       var universeUUID = currentUniverse.universeUUID;
-
       dispatch(createUniverseTable(universeUUID, payload)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(createUniverseTableFailure(response.payload));
@@ -70,9 +70,43 @@ const mapDispatchToProps = (dispatch) => {
   }
 }
 
+const validate = values => {
+  const errors = {};
+  errors.partitionKeyColumns = [];
+  errors.clusteringColumns = [];
+  errors.otherColumns = [];
+  if (!isDefinedNotNull(values.tableName)) {
+    errors.tableName = 'Table Name Is Required'
+  }
+  if (values.partitionKeyColumns && values.partitionKeyColumns.length) {
+    values.partitionKeyColumns.forEach((paritionKeyCol, colIndex) => {
+      if (!paritionKeyCol || !isDefinedNotNull(paritionKeyCol.name)) {
+        errors.partitionKeyColumns[colIndex] = {name: 'Required'};
+      }
+    });
+  }
+  if (values.clusteringColumns && values.clusteringColumns.length) {
+    values.clusteringColumns.forEach((clusteringCol, colIndex) => {
+      if (!clusteringCol || !isDefinedNotNull(clusteringCol.name)) {
+        errors.clusteringColumns[colIndex] = {name: 'Required'};
+      }
+    });
+  }
+  if (values.otherColumns && values.otherColumns.length) {
+    values.otherColumns.forEach((otherCol, colIndex) => {
+      if (!otherCol || !isDefinedNotNull(otherCol.name)) {
+        errors.otherColumns[colIndex] = {name: 'Required'};
+      }
+    });
+  }
+
+  return errors;
+}
+
 var createTableForm = reduxForm({
-  form: 'CreateTableForm'
-})
+  form: 'CreateTableForm',
+  validate,
+});
 
 
 function mapStateToProps(state) {

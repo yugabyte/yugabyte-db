@@ -4,7 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBInputField, YBButton, YBRadioButton, YBSelect } from '../../common/forms/fields';
 import { Field, FieldArray } from 'redux-form';
-import { isValidArray } from '../../../utils/ObjectUtils';
+import { isValidArray, normalizeToPositiveInt } from '../../../utils/ObjectUtils';
 import cassandraLogo from '../images/cassandra.png';
 import './CreateTables.scss';
 
@@ -174,6 +174,7 @@ export default class CreateTable extends Component {
     const {handleSubmit} = this.props;
     var onFormSubmit = handleSubmit(this.createTable);
     var cassandraLabel = <div><img src={cassandraLogo} alt="Apache Cassandra" className="table-type-logo"/>&nbsp;Apache Cassandra</div>;
+
     return (
       <div className="bottom-bar-padding">
         <h3>Create Table</h3>
@@ -204,7 +205,7 @@ export default class CreateTable extends Component {
               <div className="form-right-aligned-labels">
                 <Field name="ttlInSeconds" component={YBInputField}
                        className={`table-name-cell`} label="TTL (in seconds)"
-                       placeHolder={"0 seconds (optional)"} />
+                       placeHolder={"0 seconds (optional)"} normalize={normalizeToPositiveInt}/>
               </div>
             </Col>
           </Row>
