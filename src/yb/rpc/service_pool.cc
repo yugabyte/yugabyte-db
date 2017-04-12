@@ -75,6 +75,8 @@ ServicePool::~ServicePool() {
 }
 
 Status ServicePool::Init() {
+  LOG(INFO) << "Create ServicePool " << options_.name << ": "
+            << options_.num_threads << " threads, queue size " << options_.queue_length;
   for (int i = 0; i < options_.num_threads; i++) {
     scoped_refptr<yb::Thread> new_thread;
     CHECK_OK(yb::Thread::Create(options_.name, options_.short_name, &ServicePool::RunThread, this,

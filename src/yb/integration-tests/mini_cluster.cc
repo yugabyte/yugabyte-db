@@ -37,8 +37,14 @@
 
 using strings::Substitute;
 
+DECLARE_int32(master_svc_num_threads);
+DECLARE_int32(master_consensus_svc_num_threads);
+DECLARE_int32(master_remote_bootstrap_svc_num_threads);
+DECLARE_int32(generic_svc_num_threads);
 DECLARE_int32(tablet_server_svc_num_threads);
+DECLARE_int32(ts_admin_svc_num_threads);
 DECLARE_int32(ts_consensus_svc_num_threads);
+DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(default_num_replicas);
 
 namespace yb {
@@ -90,8 +96,17 @@ Status MiniCluster::Start() {
 
   // Use conservative number of threads for the mini cluster for unit test env
   // where several unit tests tend to run in parallel.
-  FLAGS_tablet_server_svc_num_threads = 64;
-  FLAGS_ts_consensus_svc_num_threads = 20;
+  // To get default number of threads - try to find SERVICE_POOL_OPTIONS macro usage.
+  FLAGS_master_svc_num_threads = 2;
+  FLAGS_master_consensus_svc_num_threads = 2;
+  FLAGS_master_remote_bootstrap_svc_num_threads = 2;
+  FLAGS_generic_svc_num_threads = 2;
+
+  FLAGS_tablet_server_svc_num_threads = 8;
+  FLAGS_ts_admin_svc_num_threads = 2;
+  FLAGS_ts_consensus_svc_num_threads = 8;
+  FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
+
   FLAGS_default_num_replicas = num_masters_initial_;
 
   // start the masters
