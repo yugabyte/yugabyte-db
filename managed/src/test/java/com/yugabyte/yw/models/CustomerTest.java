@@ -12,6 +12,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.Customer;
 
 import javax.persistence.PersistenceException;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -136,9 +138,15 @@ public class CustomerTest extends FakeDBApplication {
   public void testGetUniversesForProvider() {
     Customer c = ModelFactory.testCustomer();
     Provider p = ModelFactory.awsProvider(c);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     Universe universe = Universe.create("Universe-1", UUID.randomUUID(), c.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = p.code;
+    userIntent.regionList = new ArrayList<UUID>();
+    userIntent.regionList.add(r.uuid);
+    userIntent.isMultiAZ = false;
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     c.addUniverseUUID(universe.universeUUID);
     c.save();

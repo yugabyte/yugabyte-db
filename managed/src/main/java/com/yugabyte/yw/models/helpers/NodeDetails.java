@@ -75,11 +75,12 @@ public class NodeDetails {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
-    sb.append("name: ").append(nodeName).append(".")
+    sb.append("name: ").append(nodeName).append(", ")
       .append(cloudInfo.toString())
       .append(", isMaster: ").append(isMaster)
       .append(", isTserver: ").append(isTserver)
-      .append(", state: ").append(state);
+      .append(", state: ").append(state)
+      .append(", azUuid: ").append(azUuid);
     return sb.toString();
   }
 
