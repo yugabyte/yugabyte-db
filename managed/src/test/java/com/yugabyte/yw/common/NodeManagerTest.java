@@ -347,6 +347,9 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
+      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList.add(t.region.uuid);
+      userIntent.isMultiAZ = false;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater(userIntent)));
@@ -454,6 +457,9 @@ public class NodeManagerTest extends FakeDBApplication {
           new UniverseDefinitionTaskParams.UserIntent();
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
+      userIntent.regionList = new ArrayList<UUID>();
+      userIntent.regionList.add(t.region.uuid);
+      userIntent.isMultiAZ = false;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater(userIntent)));

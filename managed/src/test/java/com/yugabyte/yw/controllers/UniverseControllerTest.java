@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
+
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -25,13 +27,17 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
 
-import java.util.Iterator;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.Matchers;
 
@@ -53,6 +59,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 
+import org.w3c.dom.Node;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -60,6 +67,7 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
+import scala.Int;
 
 public class UniverseControllerTest extends WithApplication {
   private Customer customer;
@@ -141,11 +149,7 @@ public class UniverseControllerTest extends WithApplication {
   @Test
   public void testUniverseGetWithValidUniverseUUID() {
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
-    UserIntent userIntent = new UserIntent();
-    userIntent.replicationFactor = 3;
-    userIntent.isMultiAZ = true;
-    userIntent.numNodes = 5;
-    userIntent.provider = "aws";
+    UserIntent userIntent = getDefaultUserIntent();
 
     UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
@@ -557,4 +561,221 @@ public class UniverseControllerTest extends WithApplication {
       route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/find/FakeUniverse").cookie(validCookie));
     assertEquals(OK, result.status());
   }
+
+  @Test
+  public void testCustomConfigureCreateWithMultiAZMultiRegion() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+      InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.userIntent = getTestUserIntent(r, p, i, 5);
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.placementInfo = null;
+    PlacementInfoUtil.updateUniverseDefinition(taskParams, customer.getCustomerId());
+    List<PlacementInfo.PlacementAZ> azList = taskParams.placementInfo.cloudList.get(0).regionList.get(0).azList;
+    assertEquals(azList.size(), 2);
+    PlacementInfo.PlacementAZ paz = azList.get(0);
+    paz.numNodesInAZ += 2;
+    taskParams.userIntent.numNodes += 2;
+    Map<UUID, Integer> azUUIDToNumNodeMap = getAzUuidToNumNodes(taskParams.placementInfo);
+    ObjectNode topJson = (ObjectNode) Json.toJson(taskParams);
+    AvailabilityZone az = AvailabilityZone.find.byId(az1.uuid);
+    assertThat(az.region.name, is(notNullValue()));
+    Result result = route(fakeRequest("POST", "/api/customers/" + customer.uuid + "/universe_configure")
+      .cookie(validCookie).bodyJson(topJson));
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
+
+    assertEquals(nodeDetailJson.size(), 7);
+    assertTrue(areConfigObjectsEqual(nodeDetailJson, azUUIDToNumNodeMap));
+  }
+
+  @Test
+  public void testCustomConfigureEditWithPureExpand() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskInfo.Type.class),
+                                 Matchers.any(UniverseDefinitionTaskParams.class)))
+      .thenReturn(fakeTaskUUID);
+    Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
+
+    Provider p = ModelFactory.awsProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i =
+      InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
+    utd.userIntent = getTestUserIntent(r, p, i, 5);
+    PlacementInfoUtil.updateUniverseDefinition(utd, customer.getCustomerId());
+    universe.setUniverseDetails(utd);
+    universe.save();
+    int totalNumNodesAfterExpand = 0;
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(universe.getUniverseDetails().nodeDetailsSet);
+    for(Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
+      totalNumNodesAfterExpand += entry.getValue() + 1;
+      azUuidToNumNodes.put(entry.getKey(), entry.getValue() + 1);
+    }
+    UniverseDefinitionTaskParams editTestUTD = universe.getUniverseDetails();
+    editTestUTD.userIntent.numNodes = totalNumNodesAfterExpand;
+    editTestUTD.placementInfo = constructPlacementInfoObject(azUuidToNumNodes);
+    ObjectNode topJson = (ObjectNode) Json.toJson(editTestUTD);
+    Result result = route(fakeRequest("POST", "/api/customers/" +
+                          customer.uuid + "/universe_configure")
+                    .cookie(validCookie) .bodyJson(topJson));
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    ArrayNode nodeDetailJson = (ArrayNode) json.get("nodeDetailsSet");
+    assertEquals(nodeDetailJson.size(), totalNumNodesAfterExpand);
+    assertTrue(areConfigObjectsEqual(nodeDetailJson, azUuidToNumNodes));
+  }
+
+  private PlacementInfo constructPlacementInfoObject(Map<UUID, Integer> azToNumNodesMap) {
+    PlacementInfo placementInfo = new PlacementInfo();
+    placementInfo.cloudList = new ArrayList<>();
+    Iterator it = azToNumNodesMap.entrySet().iterator();
+    while (it.hasNext()) {
+      Map.Entry pair = (Map.Entry)it.next();
+      UUID azUUID = UUID.fromString(pair.getKey().toString());
+      int azCount = Integer.parseInt(pair.getValue().toString());
+      AvailabilityZone currentAz = AvailabilityZone.get(azUUID);
+      Region currentRegion = currentAz.region;
+      Provider currentProvider = currentAz.getProvider();
+      boolean cloudItemFound = false;
+      for (PlacementInfo.PlacementCloud cloudItem: placementInfo.cloudList) {
+        if (cloudItem.uuid.equals(currentProvider.uuid)) {
+          cloudItemFound = true;
+          boolean regionItemFound = false;
+          for (PlacementInfo.PlacementRegion regionItem: cloudItem.regionList) {
+            if (regionItem.uuid.equals(currentRegion.uuid)) {
+              PlacementInfo.PlacementAZ azItem = new PlacementInfo.PlacementAZ();
+              azItem.name = currentAz.name;
+              azItem.subnet = currentAz.subnet;
+              azItem.replicationFactor = 1;
+              azItem.uuid = currentAz.uuid;
+              azItem.numNodesInAZ = azCount;
+              regionItem.azList.add(azItem);
+              regionItemFound = true;
+            }
+          }
+          if (cloudItemFound && !regionItemFound) {
+            PlacementInfo.PlacementRegion newRegion = new PlacementInfo.PlacementRegion();
+            newRegion.uuid = currentRegion.uuid;
+            newRegion.name = currentRegion.name;
+            newRegion.code = currentRegion.code;
+            newRegion.azList = new ArrayList<>();
+            PlacementInfo.PlacementAZ azItem = new PlacementInfo.PlacementAZ();
+            azItem.name = currentAz.name;
+            azItem.subnet = currentAz.subnet;
+            azItem.replicationFactor = 1;
+            azItem.uuid = currentAz.uuid;
+            azItem.numNodesInAZ = azCount;
+            newRegion.azList.add(azItem);
+          }
+          }
+        }
+        if (!cloudItemFound) {
+          PlacementInfo.PlacementCloud newCloud = new PlacementInfo.PlacementCloud();
+          newCloud.uuid = currentProvider.uuid;
+          newCloud.code = currentProvider.code;
+          newCloud.regionList = new ArrayList<>();
+          PlacementInfo.PlacementRegion newRegion = new PlacementInfo.PlacementRegion();
+          newRegion.uuid = currentRegion.uuid;
+          newRegion.name = currentRegion.name;
+          newRegion.code = currentRegion.code;
+          newRegion.azList = new ArrayList<>();
+          PlacementInfo.PlacementAZ azItem = new PlacementInfo.PlacementAZ();
+          azItem.name = currentAz.name;
+          azItem.subnet = currentAz.subnet;
+          azItem.replicationFactor = 1;
+          azItem.uuid = currentAz.uuid;
+          azItem.numNodesInAZ = azCount;
+          newRegion.azList.add(azItem);
+          newCloud.regionList.add(newRegion);
+          placementInfo.cloudList.add(newCloud);
+        }
+      }
+      return placementInfo;
+    }
+
+    private static ObjectNode getTestTaskParams(UUID fakeTaskUUID, Customer customer, Region r, Provider p, InstanceType i, int numNodes) {
+      ObjectNode topJson = Json.newObject();
+      ObjectNode bodyJson = Json.newObject();
+      ArrayNode regionList = Json.newArray();
+      regionList.add(r.uuid.toString());
+      bodyJson.set("regionList", regionList);
+      bodyJson.put("universeName", "Single UserUniverse");
+      bodyJson.put("isMultiAZ", true);
+      bodyJson.put("instanceType", i.getInstanceTypeCode());
+      bodyJson.put("replicationFactor", 3);
+      bodyJson.put("numNodes", numNodes);
+      bodyJson.put("provider", p.uuid.toString());
+      topJson.put("nodePrefix", "univContTest");
+      topJson.set("userIntent", bodyJson);
+      return  topJson;
+    }
+
+    private UserIntent getDefaultUserIntent() {
+      Provider p = ModelFactory.awsProvider(customer);
+      Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+      AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+      AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+      InstanceType i =
+          InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+      int numNodes = 3;
+      UserIntent ui = new UserIntent();
+      ArrayList<UUID> regionList = new ArrayList<>();
+      regionList.add(r.uuid);
+      ui.replicationFactor = 3;
+      ui.regionList = regionList;
+      ui.provider = p.uuid.toString();
+      ui.numNodes = numNodes;
+      ui.instanceType = i.getInstanceTypeCode();
+      ui.isMultiAZ = true;
+      return ui;
+    }
+
+    private static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
+      UserIntent ui = new UserIntent();
+      ArrayList<UUID> regionList = new ArrayList<>();
+      regionList.add(r.uuid);
+      ui.regionList = regionList;
+      ui.provider = p.uuid.toString();
+      ui.numNodes = numNodes;
+      ui.instanceType = i.getInstanceTypeCode();
+      ui.isMultiAZ = true;
+      return ui;
+    }
+
+    private static boolean areConfigObjectsEqual(ArrayNode nodeDetailSet,
+                                                 Map<UUID, Integer> azToNodeMap) {
+      boolean nodeNotFound = false;
+      for (int nodeCounter = 0; nodeCounter < nodeDetailSet.size(); nodeCounter++) {
+        String azUUID = nodeDetailSet.get(nodeCounter).get("azUuid").asText();
+        if (azToNodeMap.get(UUID.fromString(azUUID)) != null) {
+          azToNodeMap.put(UUID.fromString(azUUID), azToNodeMap.get(UUID.fromString(azUUID))-1);
+        } else {
+          nodeNotFound = true;
+        }
+      }
+      boolean valueMatches = true;
+      for (Integer nodeDifference : azToNodeMap.values()) {
+        if (nodeDifference != 0) {
+          valueMatches = false;
+        }
+      }
+      if (valueMatches && !nodeNotFound) {
+        return true;
+      }
+      return false;
+    }
 }
