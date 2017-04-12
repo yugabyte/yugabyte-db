@@ -1,8 +1,9 @@
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
 import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
-import { isValidArray, isValidObject, areUniverseConfigsEqual, isNonEmptyObject } from 'utils/ObjectUtils';
+import { isValidArray, isValidObject, areUniverseConfigsEqual, isEmptyObject } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
+import _ from 'lodash';
 
 const nodeStates = {
   activeStates: ["ToBeAdded", "Provisioned", "SoftwareInstalled", "UpgradeSoftware", "UpdateGFlags", "Running"],
@@ -21,30 +22,33 @@ export default class AZSelectorTable extends Component {
   }
 
   handleAZChange(listKey, event) {
+    const {universe: {universeConfigTemplate}} = this.props;
     var currentAZState = this.state.azItemState;
+    var universeTemplate = _.clone(universeConfigTemplate.data);
     currentAZState[listKey].value = event.target.value;
-    this.updatePlacementInfo(currentAZState);
+    this.updatePlacementInfo(currentAZState, universeTemplate);
   }
 
   handleAZNodeCountChange(listKey, value) {
+    const {universe: {universeConfigTemplate}} = this.props;
+    var universeTemplate = _.clone(universeConfigTemplate.data);
     var currentAZState = this.state.azItemState;
     currentAZState[listKey].count = value;
-    this.setState({azItemState: currentAZState});
-    this.updatePlacementInfo(currentAZState);
+    this.updatePlacementInfo(currentAZState, universeTemplate);
   }
 
-  updatePlacementInfo(currentAZState) {
-    const {universe: {universeConfigTemplate, currentUniverse}, cloud, numNodesChanged} = this.props;
+  updatePlacementInfo(currentAZState, universeConfigTemplate) {
+    const {universe: {currentUniverse}, cloud, numNodesChangedViaAzList} = this.props;
     this.setState({azItemState: currentAZState});
     var totalNodesInConfig = 0;
     currentAZState.forEach(function(item){
       totalNodesInConfig += item.count;
     });
-    if (totalNodesInConfig !== universeConfigTemplate.data.userIntent.numNodes) {
-      numNodesChanged(totalNodesInConfig);
+    if (totalNodesInConfig !== universeConfigTemplate.userIntent.numNodes) {
+       numNodesChangedViaAzList(totalNodesInConfig);
     }
-    var newPlacementInfo = universeConfigTemplate.data.placementInfo;
-    newPlacementInfo.isCustom = true;
+    var newPlacementInfo = universeConfigTemplate.placementInfo;
+
     var newRegionList = [];
     cloud.regions.data.forEach(function(regionItem){
       var newAzList = [];
@@ -54,33 +58,39 @@ export default class AZSelectorTable extends Component {
           if (zoneItem.uuid === azItem.value) {
             zoneFoundInRegion = true;
             newAzList.push({
-              uuid: zoneItem.uuid, replicationFactor: 1,
-              subnet: zoneItem.subnet, name: zoneItem.name
-              });
-            }
-          });
+              uuid: zoneItem.uuid,
+              replicationFactor: 1,
+              subnet: zoneItem.subnet,
+              name: zoneItem.name,
+              numNodesInAZ: azItem.count
+            });
+          }
         });
-        if (zoneFoundInRegion) {
-          newRegionList.push({uuid: regionItem.uuid, code: regionItem.code,
-                            name: regionItem.name, azList: newAzList});
-        }
       });
-      newPlacementInfo.cloudList[0].regionList = newRegionList;
-      var newTaskParams = universeConfigTemplate.data;
-      newTaskParams.placementInfo = newPlacementInfo;
-      if (!currentUniverse) {
-        this.props.submitConfigureUniverse(newTaskParams);
-      } else {
-        if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.universeDetails)) {
-          this.props.submitConfigureUniverse(newTaskParams);
-        }
+      if (zoneFoundInRegion) {
+        newRegionList.push({uuid: regionItem.uuid, code: regionItem.code,
+          name: regionItem.name, azList: newAzList});
       }
+    });
+    newPlacementInfo.cloudList[0].regionList = newRegionList;
+    var newTaskParams = _.clone(universeConfigTemplate, true);
+    newTaskParams.placementInfo = newPlacementInfo;
+    newTaskParams.userIntent.numNodes = totalNodesInConfig;
+    if (isEmptyObject(currentUniverse.data)) {
+     this.props.submitConfigureUniverse(newTaskParams);
+    } else {
+      if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
+        newTaskParams.universeUUID = currentUniverse.data.universeUUID;
+        newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
+        this.props.submitConfigureUniverse(newTaskParams);
+      }
+    }
   }
 
-  getGroupWithCounts(universeConfigTemplateData) {
+  getGroupWithCounts(universeConfigTemplate) {
     var uniConfigArray = [];
-    if (isValidArray(universeConfigTemplateData.nodeDetailsSet)) {
-      universeConfigTemplateData.nodeDetailsSet.forEach(function(nodeItem){
+    if (isValidArray(universeConfigTemplate.nodeDetailsSet)) {
+      universeConfigTemplate.nodeDetailsSet.forEach(function(nodeItem) {
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           var nodeFound = false;
           for (var idx = 0; idx < uniConfigArray.length; idx++) {
@@ -98,50 +108,50 @@ export default class AZSelectorTable extends Component {
     }
     var groupsArray = [];
     var uniqueRegions = [];
-    if (isValidObject(universeConfigTemplateData.placementInfo)) {
-      universeConfigTemplateData.placementInfo.cloudList[0].regionList.forEach(function(regionItem){
-        regionItem.azList.forEach(function(azItem){
-           uniConfigArray.forEach(function(configArrayItem){
-             if(configArrayItem.value === azItem.uuid) {
-               groupsArray.push({value: azItem.uuid, count: configArrayItem.count})
-               if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
-                 uniqueRegions.push(regionItem.uuid);
-               }
-             }
-           });
+    if (isValidObject(universeConfigTemplate.placementInfo)) {
+      universeConfigTemplate.placementInfo.cloudList[0].regionList.forEach(function(regionItem) {
+        regionItem.azList.forEach(function(azItem) {
+          uniConfigArray.forEach(function(configArrayItem) {
+            if (configArrayItem.value === azItem.uuid) {
+              groupsArray.push({value: azItem.uuid, count: configArrayItem.count})
+              if (uniqueRegions.indexOf(regionItem.uuid) === -1) {
+                uniqueRegions.push(regionItem.uuid);
+              }
+            }
+          });
         });
       });
     }
-    return ({groups: groupsArray, uniqueRegions: uniqueRegions.length, uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length})
+    return ({groups: groupsArray,
+             uniqueRegions: uniqueRegions.length,
+             uniqueAzs: [...new Set(groupsArray.map(item => item.value))].length})
   };
 
   componentWillMount() {
-    const {universe: {universeConfigTemplate, currentUniverse}, type} = this.props;
+    const {universe: {currentUniverse}, type} = this.props;
     if (type === "Edit" &&  isValidObject(currentUniverse)) {
-      var azGroups = this.getGroupWithCounts(universeConfigTemplate.data).groups;
+      var azGroups = this.getGroupWithCounts(currentUniverse.data.universeDetails).groups;
       this.setState({azItemState: azGroups});
     }
   }
   componentWillReceiveProps(nextProps) {
-    const {universe: {universeConfigTemplate, currentUniverse}} = nextProps;
+    const {universe: {universeConfigTemplate}} = nextProps;
     var placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
     var azGroups = placementInfo.groups;
     if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)
-      && isValidObject(universeConfigTemplate.data.placementInfo) && !universeConfigTemplate.data.placementInfo.isCustom) {
-      this.setState({azItemState: azGroups});
-    } else if (isNonEmptyObject(currentUniverse.data) && universeConfigTemplate.data.userIntent && areUniverseConfigsEqual(universeConfigTemplate.data, currentUniverse.data.universeDetails)) {
-      this.setState({azItemState: this.getGroupWithCounts(currentUniverse.data.universeDetails).groups})
+        && isValidObject(universeConfigTemplate.data.placementInfo)) {
+       this.setState({azItemState: azGroups});
     }
     if (isValidObject(universeConfigTemplate.data) && isValidObject(universeConfigTemplate.data.placementInfo)) {
-        const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
-        if (isValidObject(uniqueAZs)) {
-          var placementStatusObject = {
-            numUniqueRegions: placementInfo.uniqueRegions,
-            numUniqueAzs: placementInfo.uniqueAzs,
-            replicationFactor: universeConfigTemplate.data.userIntent.replicationFactor
-          }
-          this.props.setPlacementStatus(placementStatusObject);
+      const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
+      if (isValidObject(uniqueAZs)) {
+        var placementStatusObject = {
+          numUniqueRegions: placementInfo.uniqueRegions,
+          numUniqueAzs: placementInfo.uniqueAzs,
+          replicationFactor: universeConfigTemplate.data.userIntent.replicationFactor
         }
+        this.props.setPlacementStatus(placementStatusObject);
+      }
     }
   }
 
@@ -154,39 +164,39 @@ export default class AZSelectorTable extends Component {
     var self = this;
     var azListForSelectedRegions = [];
     if (isValidObject(universeConfigTemplate.data.userIntent) && isValidArray(universeConfigTemplate.data.userIntent.regionList)) {
-       azListForSelectedRegions = regions.data.filter(
+      azListForSelectedRegions = regions.data.filter(
         region => universeConfigTemplate.data.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }
     var azListOptions = <option/>;
     if (isValidArray(azListForSelectedRegions)) {
-      azListOptions = azListForSelectedRegions.map(function(azItem, azIdx){
+      azListOptions = azListForSelectedRegions.map(function(azItem, azIdx) {
         return <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
       });
     }
     var azGroups = self.state.azItemState;
     var azList = [];
     if (isValidArray(azGroups) && azGroups.length && isValidArray(azListForSelectedRegions)) {
-      azList = azGroups.map(function(azGroupItem, idx){
+      azList = azGroups.map(function(azGroupItem, idx) {
         return (
           <Row key={idx} >
-            <Col sm={6}>
-              <Field name={`select${idx}`} component={YBControlledSelect}
-                     options={azListOptions} selectVal={azGroupItem.value}
-                     onInputChanged={self.handleAZChange.bind(self, idx)}/>
-            </Col>
-            <Col sm={6}>
-              <Field name={`nodes${idx}`} component={YBControlledNumericInput}
-                     val={azGroupItem.count}
-                     onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
-            </Col>
-          </Row>
-        )
-      });
-      return (
-        <div className={"az-table-container form-field-grid"}>
-          <h4>Availability Zones</h4>
-          {azList}
+          <Col sm={6}>
+            <Field name={`select${idx}`} component={YBControlledSelect}
+                   options={azListOptions} selectVal={azGroupItem.value}
+                   onInputChanged={self.handleAZChange.bind(self, idx)}/>
+          </Col>
+          <Col sm={6}>
+            <Field name={`nodes${idx}`} component={YBControlledNumericInput}
+              val={azGroupItem.count}
+              onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
+          </Col>
+        </Row>
+      )
+    });
+    return (
+      <div className={"az-table-container form-field-grid"}>
+        <h4>Availability Zones</h4>
+        {azList}
         </div>
       );
     }

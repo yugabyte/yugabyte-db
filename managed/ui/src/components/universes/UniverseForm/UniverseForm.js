@@ -18,7 +18,7 @@ const initialState = {
   providerSelected: '',
   regionList: [],
   numNodes: 3,
-  isCustom: false,
+  nodeSetViaAZList: false,
   replicationFactor: 3,
   deviceInfo: {},
   placementInfo: {},
@@ -94,9 +94,6 @@ export default class UniverseForm extends Component {
           return item.value;
         });
       }
-      if (isDefinedNotNull(universeTaskParams.placementInfo)) {
-        universeTaskParams.placementInfo.isCustom = this.state.isCustom;
-      }
       if (isNonEmptyObject(currentUniverse.data)) {
         if (!areIntentsEqual(currentUniverse.data.universeDetails.userIntent, universeTaskParams.userIntent)) {
           this.props.submitConfigureUniverse(universeTaskParams);
@@ -154,7 +151,7 @@ export default class UniverseForm extends Component {
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.props.resetConfig();
       this.props.dispatch(change("UniverseForm", "regionList", []));
-      this.setState({regionList: [], providerSelected: providerUUID, deviceInfo: {}});
+      this.setState({nodeSetViaAZList: false, regionList: [], providerSelected: providerUUID, deviceInfo: {}});
       this.props.getRegionListItems(providerUUID, this.state.azCheckState);
       this.props.getInstanceTypeListItems(providerUUID);
       this.props.getAccessKeys(providerUUID);
@@ -162,7 +159,7 @@ export default class UniverseForm extends Component {
   }
 
   regionListChanged(value) {
-    this.setState({regionList: value});
+    this.setState({nodeSetViaAZList: false, regionList: value});
   }
 
   instanceTypeChanged(instanceTypeValue) {
@@ -186,7 +183,7 @@ export default class UniverseForm extends Component {
         ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
         diskIops: null
       };
-      this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
+      this.setState({nodeSetViaAZList: false, deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
     }
   }
 
@@ -195,11 +192,11 @@ export default class UniverseForm extends Component {
   }
 
   numNodesChangedViaAzList(value) {
-    this.setState({numNodes: value, isCustom: true});
+    this.setState({nodeSetViaAZList: true, numNodes: value});
   }
 
   numNodesClicked() {
-    this.setState({isCustom: false});
+    this.setState({nodeSetViaAZList: false});
   }
 
   azChanged(event) {
@@ -207,15 +204,15 @@ export default class UniverseForm extends Component {
   }
 
   softwareVersionChanged(version) {
-    this.setState({ybSoftwareVersion: version, isCustom: false});
+    this.setState({ybSoftwareVersion: version, nodeSetViaAZList: false});
   }
 
   replicationFactorChanged(value) {
     var self = this;
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
-      this.setState({replicationFactor: value}, function () {
+      this.setState({nodeSetViaAZList: false, replicationFactor: value}, function () {
         if (self.state.numNodes <= value) {
-          self.setState({numNodes: value, isCustom: false});
+          self.setState({numNodes: value});
         }
       });
     }
@@ -230,7 +227,7 @@ export default class UniverseForm extends Component {
   componentDidUpdate(prevProps, prevState) {
     if (!_.isEqual(this.state, prevState)
       && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
-      if (this.state.numNodes >= this.state.replicationFactor) {
+      if (this.state.numNodes >= this.state.replicationFactor && !this.state.nodeSetViaAZList) {
         this.configureUniverseNodeList();
       }
     }
@@ -527,7 +524,7 @@ export default class UniverseForm extends Component {
             </div>
           </Col>
           <Col md={6} className={"universe-az-selector-container"}>
-            <AZSelectorTable {...this.props} numNodesChanged={this.numNodesChangedViaAzList} setPlacementInfo={this.setPlacementInfo}/>
+            <AZSelectorTable {...this.props} setPlacementInfo={this.setPlacementInfo} numNodesChangedViaAzList={this.numNodesChangedViaAzList}/>
             {placementStatus}
           </Col>
         </Row>

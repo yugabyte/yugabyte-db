@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -48,18 +49,151 @@ public class PlacementInfoUtil {
   // List of replication factors supported currently.
   private static final List<Integer> supportedRFs = ImmutableList.of(1, 3, 5, 7);
 
+  // Mode of node distribution across the given AZ configuration.
+  enum ConfigureNodesMode {
+    NEW_CONFIG,                       // Round robin nodes across server chosen AZ placement.
+    UPDATE_CONFIG_FROM_USER_INTENT,   // Use numNodes from userIntent with user chosen AZ's.
+    UPDATE_CONFIG_FROM_PLACEMENT_INFO // Use the placementInfo as per user chosen AZ distribution.
+  }
+
   /**
-   * Helper API to compare existing intent to a new task params intent and see if it is a pure
-   * universe expand or shrink case.
-   * @param taskIntent : Proposed user intent from universe task params.
-   * @param existingIntent : User intent that is part of the current universe.
-   * @return True iff the only difference between the intents is the number of nodes.
+   * Method to check if the given set of nodes match the placement info AZ to detect pure
+   * expand/shrink type.
+   * The following cases are _not_ considered Expand/Shrink and will be treated as full move.
+   * USWest1A - 3 , USWest1B - 1 => USWest1A - 2, USWest1B - 1  IFF all 3 in USWest1A are Masters.
+   * USWest1A - 3, USWest1B - 3 => USWest1A - 6.
+   * Basically any change in AZ will be treated as full move.
+   * Only if number of nodes is increased/decreased and only if there are enough (non-master)
+   * tserver only nodes to accomodate the change will it be treated as pure expand/shrink.
+   * In Edit case is that the existing user intent should also be compared to new intent.
+   * And for both edit and create, we need to compare previously chosen AZ's against the new
+   * placementInfo.
+   * @param universe   True iff it is an edit op, so need to honor existing nodes/tservers.
+   * @param taskParams Current user task and placement info with user proposed AZ distribution.
+   * @return True iff the number of nodes change acrossed AZ's.
    */
-  private static boolean isPureExpandOrShrink(UserIntent taskIntent, UserIntent existingIntent) {
-    LOG.info("Comparing task '{}' and existing '{}' intents.", taskIntent, existingIntent);
-    UserIntent tempIntent = taskIntent.clone();
-    tempIntent.numNodes = existingIntent.numNodes;
-    return tempIntent.equals(existingIntent) && taskIntent.numNodes != existingIntent.numNodes;
+  private static boolean isPureExpandOrShrink(Universe universe,
+                                              UniverseDefinitionTaskParams taskParams) {
+   boolean isEditUniverse = universe != null;
+   PlacementInfo placementInfo = taskParams.placementInfo;
+   Collection<NodeDetails> nodeDetailsSet = isEditUniverse ? universe.getNodes() :
+       taskParams.nodeDetailsSet;
+
+   boolean providerOrRegionListChanged = isProviderOrRegionChange(taskParams, nodeDetailsSet);
+
+   if (providerOrRegionListChanged) {
+     return false;
+   }
+
+   if (isEditUniverse) {
+     UserIntent existingIntent = universe.getUniverseDetails().userIntent;
+     UserIntent taskIntent = taskParams.userIntent;
+     LOG.info("Comparing task '{}' and existing '{}' intents.",
+              taskIntent, existingIntent);
+     UserIntent tempIntent = taskIntent.clone();
+     tempIntent.numNodes = existingIntent.numNodes;
+     boolean existingIntentsMatch = tempIntent.equals(existingIntent) &&
+                                    taskIntent.numNodes != existingIntent.numNodes;
+
+     if (!existingIntentsMatch) {
+       return false;
+     }
+   }
+
+   Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
+    for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
+      boolean targetAZFound = false;
+      for (PlacementCloud cloud : placementInfo.cloudList) {
+        for (PlacementRegion region : cloud.regionList) {
+          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+            PlacementAZ az =  region.azList.get(azIdx);
+            if (azUuidToNumNode.getKey().equals(az.uuid)) {
+              targetAZFound = true;
+              int numTservers = findCountActiveTServerOnlyInAZ(nodeDetailsSet,
+                                                               azUuidToNumNode.getKey());
+              int azDifference = az.numNodesInAZ - azUuidToNumNode.getValue();
+              LOG.info("AZ {} check, azDiff={}, numTservers={}.",
+                       az.name, azDifference, numTservers);
+              if (isEditUniverse && azDifference < 0  && -azDifference > numTservers) {
+                return false;
+              }
+            }
+          }
+        }
+      }
+      if (!targetAZFound) {
+        LOG.info("AZ {} not found in placement, so not pure expand/shrink.",
+                 azUuidToNumNode.getKey());
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Assumes that there is only single provider across all nodes in a given set.
+  private static UUID getProviderUUID(Collection<NodeDetails> nodes) {
+    if (nodes == null || nodes.isEmpty()) {
+      return null;
+    }
+    NodeDetails node = nodes.iterator().next();
+    LOG.info("NODE {} {}", node.azUuid, node.nodeName);
+    Provider cloud = AvailabilityZone.find.byId(node.azUuid).region.provider;
+    return cloud.uuid;
+  }
+
+  private static Set<UUID> getAllRegionUUIDs(Collection<NodeDetails> nodes) {
+    Set<UUID> nodeRegionSet = new HashSet<UUID>();
+    for (NodeDetails node : nodes) {
+      UUID regionUuid = AvailabilityZone.find.byId(node.azUuid).region.uuid;
+      nodeRegionSet.add(regionUuid);
+    }
+    return nodeRegionSet;
+  }
+
+  /* Helper API to check if the list of regions is the same in existing nodes of the placement
+   * and the new userIntent's region list.
+   * @param taskParams The current user proposed task parameters.
+   * @param nodes The set of nodes used to compare the current region layout.
+   * @return true if the provider or region list changed. false if neither changed.
+   */
+  private static boolean isProviderOrRegionChange(UniverseDefinitionTaskParams taskParams,
+                                                  Collection<NodeDetails> nodes) {
+    PlacementInfo placement = taskParams.placementInfo;
+    UUID nodeProvider = placement.cloudList.get(0).uuid;
+    if (nodes.isEmpty()) {
+      return false;
+    }
+    UUID intentProvider = getProviderUUID(nodes);
+
+    if (!intentProvider.equals(nodeProvider)) {
+      LOG.info("Provider in intent {} is different from provider in existing nodes {}.",
+               intentProvider, nodeProvider);
+      return false;
+    }
+
+    Set<UUID> nodeRegionSet = getAllRegionUUIDs(nodes);
+    Set<UUID> intentRegionSet = new HashSet<UUID>(taskParams.userIntent.regionList);
+    LOG.info("nodeRegions {} vs intentRegions {}.", nodeRegionSet, intentRegionSet);
+    return !intentRegionSet.equals(nodeRegionSet);
+  }
+
+  public static int getNodeCountInPlacement(PlacementInfo placementInfo) {
+    int count = 0;
+    for (PlacementCloud cloud : placementInfo.cloudList) {
+      for (PlacementRegion region : cloud.regionList) {
+        for (PlacementAZ az : region.azList) {
+          count += az.numNodesInAZ;
+        }
+      }
+    }
+    return count;
+  }
+
+  private static boolean isMultiAZSetup(UniverseDefinitionTaskParams taskParams) {
+    if (taskParams.userIntent.regionList.size() > 1) {
+      return true;
+    }
+    return getAzUuidToNumNodes(taskParams.placementInfo).size() > 1;
   }
 
   /**
@@ -67,17 +201,17 @@ public class PlacementInfoUtil {
    * @param taskParams : Universe task params.
    * @param customerId : Current customer's id.
    */
-  public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams, Long customerId) {
+  public static void updateUniverseDefinition(UniverseDefinitionTaskParams taskParams,
+                                              Long customerId) {
     // Setup the cloud.
     taskParams.cloud = taskParams.userIntent.providerType;
-    taskParams.nodeDetailsSet = new HashSet<>();
+    if (taskParams.nodeDetailsSet == null) {
+      taskParams.nodeDetailsSet = new HashSet<>();
+    }
 
     // Compose a unique name for the universe.
-    taskParams.nodePrefix = "yb-" + Long.toString(customerId) + "-" + taskParams.userIntent.universeName;
-    // If the universe already exists, figure out the delta change that is intended.
-    int numDeltaNodes = taskParams.userIntent.numNodes;
-    int numNewMasters = taskParams.userIntent.replicationFactor;
-    int startIndex = 1;
+    taskParams.nodePrefix =
+        "yb-" + Long.toString(customerId) + "-" + taskParams.userIntent.universeName;
     Universe universe = null;
     if (taskParams.universeUUID == null) {
       taskParams.universeUUID = UUID.randomUUID();
@@ -85,43 +219,75 @@ public class PlacementInfoUtil {
       try {
         universe = Universe.get(taskParams.universeUUID);
       } catch (Exception e) {
-        LOG.info("Universe with UUID {} not found, configuring new universe", taskParams.universeUUID);
+        LOG.info("Universe with UUID {} not found, configuring new universe.",
+                 taskParams.universeUUID);
       }
     }
-    // In the case of a valid universe we are in the edit path
+
+    if (taskParams.placementInfo == null) {
+      // This is the first create attempt as there is no placement info, we choose a new placement.
+      taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+      LOG.info("Placement created={}.", taskParams.placementInfo);
+      taskParams.userIntent.isMultiAZ = isMultiAZSetup(taskParams);
+      // Compute the node states that should be configured for this operation.
+      configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG);
+      return;
+    }
+
     if (universe != null) {
-      UserIntent existingIntent = universe.getUniverseDetails().userIntent;
-      verifyEditParams(taskParams.userIntent, existingIntent);
-      Collection<NodeDetails> existingNodes = universe.getNodes();
-      startIndex = getStartIndex(universe.getNodes());
-      if (isPureExpandOrShrink(existingIntent, taskParams.userIntent)) {
-        // Expand/shrink universe case with tserver addition/removal only.
-        numDeltaNodes = taskParams.userIntent.numNodes - existingIntent.numNodes;
-        numNewMasters = 0;
-        LOG.info("Num nodes changing from {} to {}.",
-                 existingIntent.numNodes, taskParams.userIntent.numNodes);
-        // If Placement Info has not been set by client.
-        if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
-          taskParams.placementInfo = universe.getUniverseDetails().placementInfo;
-          taskParams.placementInfo.isCustom = false;
-        }
+      verifyEditParams(taskParams, universe.getUniverseDetails());
+    }
+
+    LOG.info("Placement={}, nodes={}.", taskParams.placementInfo,
+             taskParams.nodeDetailsSet.size());
+
+    ConfigureNodesMode mode = ConfigureNodesMode.NEW_CONFIG;
+    if (isPureExpandOrShrink(universe, taskParams)) {
+      int placementCount = getNodeCountInPlacement(taskParams.placementInfo);
+      if (universe != null) {
+        Collection<NodeDetails> existingNodes = universe.getNodes();
+        LOG.info("Edit taskNumNodes={}, placementNumNodes={}, numNodes={}.",
+                 taskParams.userIntent.numNodes, placementCount, existingNodes.size());
+        // The nodeDetailsSet may have modified nodes based on an earlier edit intent, reset it as
+        // we want to start from existing configuration.
+        taskParams.nodeDetailsSet.clear();
         taskParams.nodeDetailsSet.addAll(existingNodes);
       } else {
-        // In the case of Full Move get placementInfo from UserIntent
-        if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
-          taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
-        }
-        // Here for full move based edit or full move + expand case.
-        for (NodeDetails node : existingNodes) {
-          node.state = NodeDetails.NodeState.ToBeDecommissioned;
-          taskParams.nodeDetailsSet.add(node);
-        }
+        LOG.info("Create taskNumNodes={}, placementNumNodes={}.", taskParams.userIntent.numNodes,
+                  placementCount);
       }
-    } else if (taskParams.placementInfo == null || !taskParams.placementInfo.isCustom) {
-      taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+
+      // If the user intent numNodes matches the sum of the nodes in the placement, then the
+      // user chose a custom placement across AZ's.
+      if (placementCount == taskParams.userIntent.numNodes) {
+        mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_PLACEMENT_INFO;
+      } else {
+        // Here numNodes in userIntent is honored, and AZ selected counts will be ignored.
+        // Chosen AZs are honored.
+        mode = ConfigureNodesMode.UPDATE_CONFIG_FROM_USER_INTENT;
+      }
+    } else {
+      // Not a pure expand or shrink.
+      boolean providerOrRegionListChanged =
+          isProviderOrRegionChange(taskParams,
+                                   universe != null ? universe.getNodes() : taskParams.nodeDetailsSet);
+      if (providerOrRegionListChanged) {
+        // If the provider or region list changed, we pick a new placement.
+        // This could be for a edit (full move) or create universe.
+        taskParams.placementInfo = getPlacementInfo(taskParams.userIntent);
+      } // else no new placement, full move case.
+
+      // Clear the nodes as it we will pick a new set of nodes.
+      taskParams.nodeDetailsSet.clear();
     }
+
+    taskParams.userIntent.isMultiAZ = isMultiAZSetup(taskParams);
+
     // Compute the node states that should be configured for this operation.
-    configureNodeStates(taskParams, startIndex, numDeltaNodes, numNewMasters);
+    configureNodeStates(taskParams, universe, mode);
+
+    LOG.info("Set of nodes after updating placement:{}.", taskParams.nodeDetailsSet);
+    LOG.info("Placement info:{}.", taskParams.placementInfo);
   }
 
   public static Set<NodeDetails> getMastersToBeRemoved(Set<NodeDetails> nodeDetailsSet) {
@@ -185,16 +351,47 @@ public class PlacementInfoUtil {
     return nodesToProvision;
   }
 
+  // Helper function to check if the AZ and per AZ node distribution is the same compared to
+  // given placementInfo.
+  private static boolean isSamePlacement(Collection<NodeDetails> nodeDetailsSet,
+                                         PlacementInfo placementInfo) {
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
+    for (Map.Entry<UUID, Integer> azUuidToNumNode : azUuidToNumNodes.entrySet()) {
+      boolean targetAZFound = false;
+      for (PlacementCloud cloud : placementInfo.cloudList) {
+        for (PlacementRegion region : cloud.regionList) {
+          for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+            PlacementAZ az =  region.azList.get(azIdx);
+            if (azUuidToNumNode.getKey().equals(az.uuid)) {
+              targetAZFound = true;
+               int azDifference = az.numNodesInAZ - azUuidToNumNode.getValue();
+               if (azDifference != 0) {
+                 return false;
+               }
+             }
+          }
+        }
+      }
+      if (!targetAZFound) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /**
    * Verify that the planned changes for an Edit Universe operation are allowed.
    *
-   * @param userIntent     target user intent.
-   * @param existingIntent existing universe intent.
+   * @param taskParams      The current task parameters.
+   * @param universeDetails The current universes' details.
    */
-  private static void verifyEditParams(UserIntent userIntent,
-                                       UserIntent existingIntent) {
+  private static void verifyEditParams(UniverseDefinitionTaskParams taskParams,
+                                       UniverseDefinitionTaskParams universeDetails) {
+    UserIntent existingIntent = universeDetails.userIntent;
+    UserIntent userIntent = taskParams.userIntent;
     // Error out if no fields are modified.
-    if (userIntent.equals(existingIntent)) {
+    if (userIntent.equals(existingIntent) &&
+        isSamePlacement(universeDetails.nodeDetailsSet, taskParams.placementInfo)) {
       LOG.error("No fields were modified for edit universe.");
       throw new IllegalArgumentException("Invalid operation: At least one field should be " +
                                          "modified for editing the universe.");
@@ -236,7 +433,7 @@ public class PlacementInfoUtil {
                                               " not allowed, must be one of 1,3,5 or 7.");
     }
 
-    if (numNodes < replicationFactor) {
+    if (numNodes > 0 && numNodes < replicationFactor) {
       LOG.error("Number of nodes {} cannot be below the replication factor of {}.",
                 numNodes, replicationFactor);
       throw new UnsupportedOperationException("Number of nodes cannot be less than the replication factor.");
@@ -267,28 +464,41 @@ public class PlacementInfoUtil {
     return sortedHashMap;
   }
 
+  public enum Action {
+    NONE,  // Just for initial/defaut value.
+    ADD,   // A node has to be added at this placement indices combination.
+    REMOVE // Remove the node at this placement indices combination.
+  }
   // Structure for tracking the calculated placement indexes on cloud/region/az.
   private static class PlacementIndexes {
     public int cloudIdx = 0;
     public int regionIdx = 0;
     public int azIdx = 0;
+    public Action action;
 
     public PlacementIndexes(int aIdx, int rIdx, int cIdx) {
       cloudIdx = cIdx;
       regionIdx= rIdx;
       azIdx = aIdx;
+      action = Action.NONE;
+    }
+
+    public PlacementIndexes(int aIdx, int rIdx, int cIdx, boolean isAdd) {
+      cloudIdx = cIdx;
+      regionIdx= rIdx;
+      azIdx = aIdx;
+      action = isAdd ? Action.ADD : Action.REMOVE;
     }
 
     public String toString() {
-      return "[" + cloudIdx + ":" + regionIdx + ":" + azIdx + "]";
+      return "[" + cloudIdx + ":" + regionIdx + ":" + azIdx + ":" + action + "]";
     }
   }
 
   // Create the ordered (by increasing node count per AZ) list of placement indices in the
   // given placement info.
-  private static LinkedHashSet<PlacementIndexes>
-  findPlacementsOfAZUuid(Map<UUID, Integer> azUuids,
-                         PlacementInfo placementInfo) {
+  private static LinkedHashSet<PlacementIndexes> findPlacementsOfAZUuid(Map<UUID, Integer> azUuids,
+       PlacementInfo placementInfo) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
     for (UUID targetAZUuid : azUuids.keySet()) {
       int cIdx = 0;
@@ -333,6 +543,22 @@ public class PlacementInfoUtil {
     return placements;
   }
 
+  public static Map<UUID, Integer> getAzUuidToNumNodes(PlacementInfo placement) {
+    Map<UUID, Integer> azUuidToNumNodes = new HashMap<UUID, Integer>();
+
+    for (PlacementCloud cloud : placement.cloudList) {
+      for (PlacementRegion region : cloud.regionList) {
+        for (PlacementAZ az : region.azList) {
+          azUuidToNumNodes.put(az.uuid, az.numNodesInAZ);
+        }
+      }
+    }
+
+    LOG.info("Az placement map {}", azUuidToNumNodes);
+
+    return azUuidToNumNodes;
+  }
+
   public static Map<UUID, Integer> getAzUuidToNumNodes(Collection<NodeDetails> nodeDetailsSet) {
     // Get node count per azUuid in the current universe.
     Map<UUID, Integer> azUuidToNumNodes = new HashMap<UUID, Integer>();
@@ -349,25 +575,19 @@ public class PlacementInfoUtil {
     return azUuidToNumNodes;
   }
 
-  // Return the set of indices for cloud/region/zone in the given placementInfo based on
-  // the current distribution of nodes in the zones.
-  private static LinkedHashSet<PlacementIndexes> getPlacementIndices(
-      Collection<NodeDetails> nodeDetailsSet,
-      int numNodes,
-      PlacementInfo placementInfo,
-      boolean isPureExpand) {
-    // For universe creation case, edit (full copy) or edit with expand, do a simple
-    // round robin list of placements.
-    if (!isPureExpand) {
-      return getBasePlacement(numNodes, placementInfo);
+  // Count number of active tserver-only nodes in the given AZ.
+  private static int findCountActiveTServerOnlyInAZ(Collection<NodeDetails> nodeDetailsSet,
+                                                    UUID targetAZUuid) {
+    int numActiveServers = 0;
+    for (NodeDetails node : nodeDetailsSet) {
+      if (node.isActive() && !node.isMaster && node.isTserver && node.azUuid.equals(targetAZUuid)) {
+        numActiveServers ++;
+      }
     }
-
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodeDetailsSet);
-    return findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, numNodes > 0),
-                                  placementInfo);
+    return numActiveServers;
   }
 
-  // Find a node running tserver only in the given AZ, but not already marked terminated.
+  // Find a node running tserver only in the given AZ.
   private static NodeDetails findActiveTServerOnlyInAz(Collection<NodeDetails> nodeDetailsSet,
                                                        UUID targetAZUuid) {
     for (NodeDetails node : nodeDetailsSet) {
@@ -379,23 +599,99 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Configures the state of the nodes that need to be created or the ones to be removed.
-   *
-   * @param taskParams the taskParams for the Universe to be configured.
-   * @param numDeltaNodes      number of nodes desired to be added or removed.
-   * @param numMastersToChoose number of masters to be chosen among these nodes.
-   * @return set of node details with their placement info filled in.
+   * Get new nodes per AZ that need to be added or removed for custom AZ placement scenarios.
+   * Assign nodes as per AZ distribution delta between placementInfo and existing nodes and
+   * save order of those indices.
+   * @param placementInfo has the distribution of Nodes in each AZ.
+   * @param nodes Set of currently allocated nodes.
+   * @return set of indexes in which to provision the nodes.
    */
-  private static void configureNodeStates(UniverseDefinitionTaskParams taskParams,
-                                          int startIndex,
-                                          int numDeltaNodes,
-                                          int numMastersToChoose) {
-    Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
+  private static LinkedHashSet<PlacementIndexes> getDeltaPlacementIndices(
+      PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
+    LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
 
+    for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
+      PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
+      for (int rIdx = 0; rIdx < cloud.regionList.size(); rIdx++) {
+        PlacementRegion region = cloud.regionList.get(rIdx);
+        for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+          PlacementAZ az = region.azList.get(azIdx);
+          int numDesired = az.numNodesInAZ;
+          int numPresent = azUuidToNumNodes.get(az.uuid);
+          LOG.info("AZ {} : Desired {}, present {}.", az.name, numDesired, numPresent);
+          int numChange = Math.abs(numDesired - numPresent);
+          while (numChange > 0) {
+            placements.add(new PlacementIndexes(azIdx, rIdx, cIdx, numDesired > numPresent));
+            numChange--;
+          }
+        }
+      }
+    }
+    LOG.debug("Delta placement indexes {}.", placements);
+    return placements;
+  }
+
+  /**
+   * Remove a node that belongs to the given AZ from the collection of nodes.
+   * @param nodes        the list of nodes from which to choose the victim.
+   * @param targetAZUuid AZ in which the node should be present.
+   */
+  private static void removeNodeInAZ(Collection<NodeDetails> nodes,
+                                     UUID targetAZUuid) {
+    Iterator<NodeDetails> nodeIter = nodes.iterator();
+    while (nodeIter.hasNext()) {
+      NodeDetails currentNode = nodeIter.next();
+      if (currentNode.azUuid.equals(targetAZUuid)) {
+        nodeIter.remove();
+        return;
+      }
+    }
+  }
+
+  private static void configureNodesUsingPlacementInfo(UniverseDefinitionTaskParams taskParams,
+                                                       boolean isEditUniverse,
+                                                       int startIndex) {
+    LinkedHashSet<PlacementIndexes> indexes =
+        getDeltaPlacementIndices(taskParams.placementInfo, taskParams.nodeDetailsSet);
+    Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
+    int iter = 0;
+    for (PlacementIndexes index : indexes) {
+      if (index.action == Action.ADD) {
+        NodeDetails nodeDetails =
+            createNodeDetailsWithPlacementIndex(taskParams, index, startIndex + iter);
+        deltaNodesSet.add(nodeDetails);
+      } else if (index.action == Action.REMOVE) {
+        PlacementCloud placementCloud = taskParams.placementInfo.cloudList.get(index.cloudIdx);
+        PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
+        PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
+        if (isEditUniverse) {
+          decommissionNodeInAZ(taskParams.nodeDetailsSet, placementAZ.uuid);
+        } else {
+          removeNodeInAZ(taskParams.nodeDetailsSet, placementAZ.uuid);
+        }
+        if (placementAZ.numNodesInAZ > 0) {
+          placementAZ.numNodesInAZ--;
+        } else {
+          placementRegion.azList.remove(index.azIdx);
+        }
+      }
+      iter++;
+    }
+    taskParams.nodeDetailsSet.addAll(deltaNodesSet);
+  }
+
+  private static void configureNodesUsingUserIntent(UniverseDefinitionTaskParams taskParams,
+                                                    boolean isEditUniverse,
+                                                    int startIndex) {
+    int numDeltaNodes = taskParams.userIntent.numNodes - taskParams.nodeDetailsSet.size();
+    Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(taskParams.nodeDetailsSet);
+    LOG.info("Nodes comparing userIntent={} and taskParams={}.",
+             taskParams.userIntent.numNodes, taskParams.nodeDetailsSet.size());
     if (numDeltaNodes < 0) {
       // For shrink case, order az's by decreasing number of nodes, and remove from them in
       // a round-robin fashion.
-      Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(taskParams.nodeDetailsSet);
       Set<UUID> azUuidSet = sortByValues(azUuidToNumNodes, false).keySet();
       Iterator<UUID> iter = azUuidSet.iterator();
       UUID targetAZUuid = null;
@@ -406,70 +702,164 @@ public class PlacementInfoUtil {
           iter = azUuidSet.iterator();
           targetAZUuid = iter.next();
         }
-        NodeDetails nodeDetails = findActiveTServerOnlyInAz(taskParams.nodeDetailsSet, targetAZUuid);
-        if (nodeDetails == null) {
-          LOG.error("Could not find an active node running tservers only in AZ {}. All nodes: {}.",
-                    targetAZUuid, taskParams.nodeDetailsSet);
-          throw new IllegalStateException("Should find an active running tserver.");
+        if (isEditUniverse) {
+          decommissionNodeInAZ(taskParams.nodeDetailsSet, targetAZUuid);
         } else {
-          nodeDetails.state = NodeDetails.NodeState.ToBeDecommissioned;
-          LOG.debug("Removing node [{}].", nodeDetails);
+          removeNodeInAZ(taskParams.nodeDetailsSet, targetAZUuid);
         }
       }
     } else {
-      PlacementInfo placementInfo = taskParams.placementInfo;
-      Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
       LinkedHashSet<PlacementIndexes> indexes =
-          getPlacementIndices(taskParams.nodeDetailsSet, numDeltaNodes, placementInfo,
-                              numMastersToChoose == 0);
+          findPlacementsOfAZUuid(sortByValues(azUuidToNumNodes, true), taskParams.placementInfo);
+      addNodeDetailSetToTaskParams(indexes, startIndex, numDeltaNodes, taskParams, deltaNodesMap);
+    }
+  }
 
-      // Create the names and known properties of all the nodes to be created.
-      Iterator<PlacementIndexes> iter = indexes.iterator();
-      for (int nodeIdx = startIndex; nodeIdx < startIndex + numDeltaNodes; nodeIdx++) {
-        PlacementIndexes index = null;
-        if (iter.hasNext()) {
-          index = iter.next();
-        } else {
-          iter = indexes.iterator();
-          index = iter.next();
-        }
-        NodeDetails nodeDetails = new NodeDetails();
-        // Create a temporary node name. These are fixed once the operation is actually run.
-        nodeDetails.nodeName = taskParams.nodePrefix + "-fake-n" + nodeIdx;
-        // Set the cloud.
-        PlacementCloud placementCloud = placementInfo.cloudList.get(index.cloudIdx);
-        nodeDetails.cloudInfo = new CloudSpecificInfo();
-        nodeDetails.cloudInfo.cloud = placementCloud.code;
-        // Set the region.
-        PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
-        nodeDetails.cloudInfo.region = placementRegion.code;
-        // Set the AZ and the subnet.
-        PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
-        nodeDetails.azUuid = placementAZ.uuid;
-        nodeDetails.cloudInfo.az = placementAZ.name;
-        nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
-        nodeDetails.cloudInfo.instance_type = taskParams.userIntent.instanceType;
-        // Set the tablet server role to true.
-        nodeDetails.isTserver = true;
-        // Set the node id.
-        nodeDetails.nodeIdx = nodeIdx;
-        // We are ready to add this node.
-        nodeDetails.state = NodeDetails.NodeState.ToBeAdded;
-        // Add the node to the set of nodes.
-        deltaNodesSet.add(nodeDetails);
-        if (numMastersToChoose > 0) deltaNodesMap.put(nodeDetails.nodeName, nodeDetails);
-          LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}.",
-                    nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx);
+  private static void configureDefaultNodeStates(UniverseDefinitionTaskParams taskParams,
+                                                 Universe universe) {
+    int startIndex = universe != null ? getStartIndex(universe.getNodes()) : 1;
+    int numNodes = taskParams.userIntent.numNodes;
+    int numMastersToChoose =  taskParams.userIntent.replicationFactor;
+    Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
+    LinkedHashSet<PlacementIndexes> indexes = getBasePlacement(numNodes, taskParams.placementInfo);
+    addNodeDetailSetToTaskParams(indexes, startIndex, numNodes, taskParams, deltaNodesMap);
+
+    if (universe != null) {
+      Collection<NodeDetails> existingNodes = universe.getNodes();
+      LOG.info("Decommissioning {} nodes.", existingNodes.size());
+      for (NodeDetails node : existingNodes) {
+        node.state = NodeDetails.NodeState.ToBeDecommissioned;
+        taskParams.nodeDetailsSet.add(node);
       }
-      taskParams.nodeDetailsSet.addAll(deltaNodesSet);
     }
 
-    // For expand/shrink universe case, we do not need to select any new masters and as such
-    // numMastersToChoose will be zero.
-    if (numMastersToChoose > 0) {
-      // Select the masters for this cluster based on subnets.
-      selectMasters(deltaNodesMap, numMastersToChoose);
+    // Select the masters for this cluster based on subnets.
+    selectMasters(deltaNodesMap, numMastersToChoose);
+  }
+
+  /**
+   * Configures the state of the nodes that need to be created or the ones to be removed.
+   *
+   * @param taskParams the taskParams for the Universe to be configured.
+   * @param universe   the current universe if it exists (only when called during edit universe).
+   * @param mode       mode in which to configure with user specified AZ's or round-robin (default).
+   *
+   * @return set of node details with their placement info filled in.
+   */
+  private static void configureNodeStates(UniverseDefinitionTaskParams taskParams,
+                                          Universe universe,
+                                          PlacementInfoUtil.ConfigureNodesMode mode) {
+    switch (mode) {
+      case NEW_CONFIG:
+        // This case covers create universe and full move edit.
+        configureDefaultNodeStates(taskParams, universe);
+        break;
+      case UPDATE_CONFIG_FROM_PLACEMENT_INFO:
+        // The case where there are custom expand/shrink in the placement info.
+        configureNodesUsingPlacementInfo(taskParams, universe != null, taskParams.nodeDetailsSet.size() + 1);
+        break;
+      case UPDATE_CONFIG_FROM_USER_INTENT:
+        // Case where userIntent numNodes has to be favored - as it is different from the
+        // sum of all per AZ node counts).
+        configureNodesUsingUserIntent(taskParams, universe != null, taskParams.nodeDetailsSet.size() + 1);
+        break;
+     }
+
+     int numMastersToChoose = taskParams.userIntent.replicationFactor -
+         getNumMasters(taskParams.nodeDetailsSet);
+     if (numMastersToChoose > 0) {
+       LOG.info("Selecting {} masters.", numMastersToChoose);
+       selectMasters(taskParams.nodeDetailsSet, numMastersToChoose);
+     }
+  }
+
+  /**
+   * Find a node which has tservers only to decommission, from the given AZ.
+   * Node should be an active T-Server and should not be Master.
+   * @param nodes   the list of nodes from which to choose the victim.
+   * @param targetAZUuid AZ in which the node should be present.
+   */
+  private static void decommissionNodeInAZ(Collection<NodeDetails> nodes,
+                                           UUID targetAZUuid) {
+    NodeDetails nodeDetails = findActiveTServerOnlyInAz(nodes, targetAZUuid);
+    if (nodeDetails == null) {
+      LOG.error("Could not find an active node running tservers only in AZ {}. All nodes: {}.",
+                targetAZUuid, nodes);
+      throw new IllegalStateException("Should find an active running tserver.");
+    } else {
+      nodeDetails.state = NodeDetails.NodeState.ToBeDecommissioned;
+      LOG.debug("Removing node [{}].", nodeDetails);
     }
+  }
+
+  /**
+   * Method takes a placementIndex and returns a NodeDetail object for it in order to add a node.
+   * @param taskParams The current user task parameters.
+   * @param index      The placement index combination.
+   * @param nodeIdx    node index to be used in node name.
+   * @return a node details object.
+   */
+  private static NodeDetails createNodeDetailsWithPlacementIndex(UniverseDefinitionTaskParams taskParams,
+     PlacementIndexes index, int nodeIdx) {
+    NodeDetails nodeDetails = new NodeDetails();
+    // Create a temporary node name. These are fixed once the operation is actually run.
+    nodeDetails.nodeName = taskParams.nodePrefix + "-fake-n" + nodeIdx;
+    // Set the cloud.
+    PlacementCloud placementCloud = taskParams.placementInfo.cloudList.get(index.cloudIdx);
+    nodeDetails.cloudInfo = new CloudSpecificInfo();
+    nodeDetails.cloudInfo.cloud = placementCloud.code;
+    // Set the region.
+    PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
+    nodeDetails.cloudInfo.region = placementRegion.code;
+    // Set the AZ and the subnet.
+    PlacementAZ placementAZ = placementRegion.azList.get(index.azIdx);
+    nodeDetails.azUuid = placementAZ.uuid;
+    nodeDetails.cloudInfo.az = placementAZ.name;
+    nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
+    nodeDetails.cloudInfo.instance_type = taskParams.userIntent.instanceType;
+    // Set the tablet server role to true.
+    nodeDetails.isTserver = true;
+    // Set the node id.
+    nodeDetails.nodeIdx = nodeIdx;
+    // We are ready to add this node.
+    nodeDetails.state = NodeDetails.NodeState.ToBeAdded;
+    LOG.debug("Placed new node [{}] at cloud:{}, region:{}, az:{}. uuid {}.",
+            nodeDetails, index.cloudIdx, index.regionIdx, index.azIdx, nodeDetails.azUuid);
+    return nodeDetails;
+  }
+
+  /**
+   * Construct a delta node set and add all those nodes to TaskParams.
+   */
+  private static void addNodeDetailSetToTaskParams(LinkedHashSet<PlacementIndexes> indexes,
+                                                   int startIndex,
+                                                   int numDeltaNodes,
+                                                   UniverseDefinitionTaskParams taskParams,
+                                                   Map<String, NodeDetails> deltaNodesMap) {
+    Set<NodeDetails> deltaNodesSet = new HashSet<NodeDetails>();
+    // Create the names and known properties of all the nodes to be created.
+    Iterator<PlacementIndexes> iter = indexes.iterator();
+    for (int nodeIdx = startIndex; nodeIdx < startIndex + numDeltaNodes; nodeIdx++) {
+      PlacementIndexes index = null;
+      if (iter.hasNext()) {
+        index = iter.next();
+      } else {
+        iter = indexes.iterator();
+        index = iter.next();
+      }
+      NodeDetails nodeDetails = createNodeDetailsWithPlacementIndex(taskParams, index, nodeIdx);
+      deltaNodesSet.add(nodeDetails);
+      deltaNodesMap.put(nodeDetails.nodeName, nodeDetails);
+    }
+    taskParams.nodeDetailsSet.addAll(deltaNodesSet);
+  }
+
+  private static void selectMasters(Collection<NodeDetails> nodes, int numMastersToChoose) {
+    Map<String, NodeDetails> deltaNodesMap = new HashMap<String, NodeDetails>();
+    for (NodeDetails node : nodes) {
+      deltaNodesMap.put(node.nodeName, node);
+    }
+    selectMasters(deltaNodesMap, numMastersToChoose);
   }
 
   /**
@@ -543,6 +933,10 @@ public class PlacementInfoUtil {
   }
 
   public static PlacementInfo getPlacementInfo(UserIntent userIntent) {
+    if (userIntent == null) {
+      return null;
+    }
+
     verifyNodesAndRF(userIntent.numNodes, userIntent.replicationFactor);
 
     // Make sure the preferred region is in the list of user specified regions.
@@ -577,7 +971,7 @@ public class PlacementInfoUtil {
         totalAzsInRegions.addAll(AvailabilityZone.getAZsForRegion(userIntent.regionList.get(idx)));
       }
       if (totalAzsInRegions.size() <= 2) {
-        for(int idx = 0; idx < userIntent.numNodes; idx++) {
+        for (int idx = 0; idx < userIntent.numNodes; idx++) {
           addPlacementZone(totalAzsInRegions.get(idx % totalAzsInRegions.size()).uuid, placementInfo);
         }
       } else {
@@ -637,6 +1031,16 @@ public class PlacementInfoUtil {
     }
   }
 
+  public static int getNumMasters(Set<NodeDetails> nodes) {
+    int count = 0;
+    for (NodeDetails node : nodes) {
+      if (node.isMaster) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   private static void addPlacementZone(UUID zone, PlacementInfo placementInfo) {
     // Get the zone, region and cloud.
     AvailabilityZone az = AvailabilityZone.find.byId(zone);
@@ -646,13 +1050,11 @@ public class PlacementInfoUtil {
     PlacementCloud placementCloud = null;
     for (PlacementCloud pCloud : placementInfo.cloudList) {
       if (pCloud.uuid.equals(cloud.uuid)) {
-        LOG.debug("Found cloud: " + cloud.name);
         placementCloud = pCloud;
         break;
       }
     }
     if (placementCloud == null) {
-      LOG.debug("Adding cloud: " + cloud.name);
       placementCloud = new PlacementCloud();
       placementCloud.uuid = cloud.uuid;
       placementCloud.code = cloud.code;
@@ -663,13 +1065,11 @@ public class PlacementInfoUtil {
     PlacementRegion placementRegion = null;
     for (PlacementRegion pRegion : placementCloud.regionList) {
       if (pRegion.uuid.equals(region.uuid)) {
-        LOG.debug("Found region: " + region.name);
         placementRegion = pRegion;
         break;
       }
     }
     if (placementRegion == null) {
-      LOG.debug("Adding region: " + region.name);
       placementRegion = new PlacementRegion();
       placementRegion.uuid = region.uuid;
       placementRegion.code = region.code;
@@ -681,13 +1081,11 @@ public class PlacementInfoUtil {
     PlacementAZ placementAZ = null;
     for (PlacementAZ pAz : placementRegion.azList) {
       if (pAz.uuid.equals(az.uuid)) {
-        LOG.debug("Found az: " + az.name);
         placementAZ = pAz;
         break;
       }
     }
     if (placementAZ == null) {
-      LOG.debug("Adding zone: " + az.name);
       placementAZ = new PlacementAZ();
       placementAZ.uuid = az.uuid;
       placementAZ.name = az.name;
@@ -696,6 +1094,6 @@ public class PlacementInfoUtil {
       placementRegion.azList.add(placementAZ);
     }
     placementAZ.replicationFactor++;
-    LOG.debug("Setting az " + az.name + " replication factor = " + placementAZ.replicationFactor);
+    placementAZ.numNodesInAZ++;
   }
 }

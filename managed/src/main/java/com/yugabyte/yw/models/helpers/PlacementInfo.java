@@ -21,6 +21,14 @@ public class PlacementInfo {
     public String code;
     // The list of region in this cloud we want to place data in.
     public List<PlacementRegion> regionList = new ArrayList<PlacementRegion>();
+    @Override
+    public String toString() {
+      String ret = "Cloud=" + code + " ";
+      for (PlacementRegion region : regionList) {
+        ret += region;
+      }
+      return ret;
+    }
   }
 
   public static class PlacementRegion {
@@ -32,6 +40,14 @@ public class PlacementInfo {
     public String name;
     // The list of AZs inside this region into which we want to place data.
     public List<PlacementAZ> azList = new ArrayList<PlacementAZ>();
+    @Override
+    public String toString() {
+      String ret = "Region=" + code + " : ";
+      for (PlacementAZ az : azList) {
+        ret += az;
+      }
+      return ret;
+    }
   }
 
   public static class PlacementAZ {
@@ -43,9 +59,23 @@ public class PlacementInfo {
     public int replicationFactor;
     // The subnet in the AZ.
     public String subnet;
+    // Number of nodes in each Az.
+    public int numNodesInAZ;
+    @Override
+    public String toString() {
+      return "(AZ=" + name + ", count=" + numNodesInAZ + ")";
+    }
   }
-  public Boolean isCustom = false;
 
   // The list of clouds to place data in.
   public List<PlacementCloud> cloudList = new ArrayList<PlacementCloud>();
+
+  @Override
+  public String toString() {
+    String ret = "";
+	for (PlacementCloud cloud : cloudList) {
+      ret += cloud;
+    }
+    return ret;
+  }
 }

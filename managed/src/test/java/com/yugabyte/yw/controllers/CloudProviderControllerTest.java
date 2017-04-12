@@ -31,6 +31,7 @@ import org.junit.Test;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 
@@ -40,6 +41,7 @@ import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -206,6 +208,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Universe universe = Universe.create("Universe-1", UUID.randomUUID(), customer.getCustomerId());
     UniverseDefinitionTaskParams.UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = p.code;
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    userIntent.regionList = new ArrayList<UUID>();
+    userIntent.regionList.add(r.uuid);
+    userIntent.isMultiAZ = false;
     universe = Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();

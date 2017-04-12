@@ -3,10 +3,13 @@
 package com.yugabyte.yw.common;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -27,6 +30,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 
 public class PlacementInfoUtilTest extends FakeDBApplication {
   private static final int REPLICATION_FACTOR = 3;
@@ -78,34 +85,40 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       this(cloud, REPLICATION_FACTOR, INITIAL_NUM_NODES);
     }
 
-    public Universe.UniverseUpdater setAzUUIDs(UserIntent userIntent) {
+    public void setAzUUIDs(Set<NodeDetails> nodes) {
+      for (NodeDetails node : nodes) {
+        switch (node.cloudInfo.az) {
+        case "az-1":
+        case "az-4":
+        case "az-7":
+        case "az-10":
+          node.azUuid = az1.uuid;
+          break;
+        case "az-2":
+        case "az-5":
+        case "az-8":
+          node.azUuid = az2.uuid;
+          break;
+        case "az-3":
+        case "az-6":
+        case "az-9":
+        default:
+          node.azUuid = az3.uuid;
+          break;
+        }
+      }
+    }
+
+    public void setAzUUIDs(UniverseDefinitionTaskParams taskParams) {
+      setAzUUIDs(taskParams.nodeDetailsSet);
+    }
+
+    public Universe.UniverseUpdater setAzUUIDs() {
       return new Universe.UniverseUpdater() {
         @Override
         public void run(Universe universe) {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          Set<NodeDetails> nodes = universe.getUniverseDetails().nodeDetailsSet;
-          for (NodeDetails node : nodes) {
-            switch (node.cloudInfo.az) {
-            case "az-1":
-            case "az-4":
-            case "az-7":
-            case "az-10":
-              node.azUuid = az1.uuid;
-              break;
-            case "az-2":
-            case "az-5":
-            case "az-8":
-              node.azUuid = az2.uuid;
-              break;
-            case "az-3":
-            case "az-6":
-            case "az-9":
-              node.azUuid = az3.uuid;
-              break;
-            }
-          }
-          universeDetails.placementInfo =
-            PlacementInfoUtil.getPlacementInfo(userIntent);
+          setAzUUIDs(universeDetails.nodeDetailsSet);
           universe.setUniverseDetails(universeDetails);
         }
       };
@@ -185,6 +198,43 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
   private List<TestData> testData = new ArrayList<TestData>();
 
+  private void increaseEachAZsNodesByOne(PlacementInfo placementInfo) {
+    changeEachAZsNodesByOne(placementInfo, true);
+  }
+
+  private void reduceEachAZsNodesByOne(PlacementInfo placementInfo) {
+    changeEachAZsNodesByOne(placementInfo, false);
+  }
+
+  private void changeEachAZsNodesByOne(PlacementInfo placementInfo, boolean isAdd) {
+    for (PlacementCloud cloud : placementInfo.cloudList) {
+	  for (PlacementRegion region : cloud.regionList) {
+	    for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+	      PlacementAZ az = region.azList.get(azIdx);
+	      if (isAdd) {
+            az.numNodesInAZ = az.numNodesInAZ + 1;
+          } else if (az.numNodesInAZ > 1) {
+            az.numNodesInAZ = az.numNodesInAZ - 1;
+          }
+        }
+      }
+    }
+  }
+
+  void setPerAZCounts(PlacementInfo placementInfo, Collection<NodeDetails> nodeDetailsSet) {
+    Map<UUID, Integer> azUuidToNumNodes = PlacementInfoUtil.getAzUuidToNumNodes(nodeDetailsSet);
+    for (PlacementCloud cloud : placementInfo.cloudList) {
+	  for (PlacementRegion region : cloud.regionList) {
+	    for (int azIdx = 0; azIdx < region.azList.size(); azIdx++) {
+	      PlacementAZ az = region.azList.get(azIdx);
+          if (azUuidToNumNodes.containsKey(az.uuid)) {
+            az.numNodesInAZ = azUuidToNumNodes.get(az.uuid);
+          }
+        }
+      }
+    }
+  }
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
@@ -199,9 +249,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       UUID univUuid = t.univUuid;
       UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
       ud.universeUUID = univUuid;
-      Universe.saveDetails(univUuid, t.setAzUUIDs(ud.userIntent));
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      t.setAzUUIDs(ud);
+      setPerAZCounts(ud.placementInfo, ud.nodeDetailsSet);
       ud.userIntent.numNodes = INITIAL_NUM_NODES + 2;
-      universe = Universe.get(univUuid);
       PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
       Set<NodeDetails> nodes = ud.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
@@ -217,12 +268,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       UUID univUuid = t.univUuid;
       UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
       ud.universeUUID = univUuid;
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
       Provider p = t.provider;
       Region r3 = Region.create(p, "region-3", "Region 3", "yb-image-3");
       // Create a new AZ with index 4 and 4 nodes.
       t.createAZ(r3, 4, 4);
       ud.userIntent.regionList.add(r3.uuid);
-
+      t.setAzUUIDs(ud);
+      setPerAZCounts(ud.placementInfo, ud.nodeDetailsSet);
       PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
       Set<NodeDetails> nodes = ud.nodeDetailsSet;
       assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
@@ -233,16 +286,62 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testPerAZShrinkPlacement() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UUID univUuid = t.univUuid;
+      UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
+      ud.universeUUID = univUuid;
+      t.setAzUUIDs(ud);
+      setPerAZCounts(ud.placementInfo, ud.nodeDetailsSet);
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      reduceEachAZsNodesByOne(ud.placementInfo);
+      ud.userIntent.numNodes = PlacementInfoUtil.getNodeCountInPlacement(ud.placementInfo);
+      PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+      Set<NodeDetails> nodes = ud.nodeDetailsSet;
+      assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(3, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getTserversToProvision(nodes).size());
+      t.removeNodesAndVerify(nodes);
+    }
+  }
+
+  @Test
+  public void testPerAZExpandPlacement() {
+    for (TestData t : testData) {
+      Universe universe = t.universe;
+      UUID univUuid = t.univUuid;
+      UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
+      ud.universeUUID = univUuid;
+      t.setAzUUIDs(ud);
+      setPerAZCounts(ud.placementInfo, ud.nodeDetailsSet);
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      increaseEachAZsNodesByOne(ud.placementInfo);
+      ud.userIntent.numNodes = PlacementInfoUtil.getNodeCountInPlacement(ud.placementInfo);
+      PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+      Set<NodeDetails> nodes = ud.nodeDetailsSet;
+      assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(0, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
+      assertEquals(3, PlacementInfoUtil.getTserversToProvision(nodes).size());
+      t.removeNodesAndVerify(nodes);
+    }
+  }
+
+  @Test
   public void testShrinkPlacement() {
     for (TestData t : testData) {
       Universe universe = t.universe;
       UUID univUuid = t.univUuid;
       UniverseDefinitionTaskParams ud = universe.getUniverseDetails();
-      Universe.saveDetails(univUuid, t.setAzUUIDs(ud.userIntent));
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
       ud.universeUUID = univUuid;
       ud.userIntent.numNodes = INITIAL_NUM_NODES - 2;
       ud.userIntent.instanceType = "m3.medium";
       ud.userIntent.ybSoftwareVersion = "0.0.1";
+      t.setAzUUIDs(ud);
+      setPerAZCounts(ud.placementInfo, ud.nodeDetailsSet);
       PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
       Set<NodeDetails> nodes = ud.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
@@ -266,15 +365,18 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   @Test
   public void testReplicationFactor() {
     for (TestData t : testData) {
+      UUID univUuid = t.univUuid;
       UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
-      PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+      Universe.saveDetails(univUuid, t.setAzUUIDs());
+      t.setAzUUIDs(ud);
       Set<NodeDetails> nodes = ud.nodeDetailsSet;
       assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
-      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToProvision(nodes).size());
+      assertEquals(REPLICATION_FACTOR, t.universe.getMasters().size());
+      assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getNumMasters(nodes));
       assertEquals(INITIAL_NUM_NODES, nodes.size());
     }
   }
-  
+
   @Test
   public void testReplicationFactorFive() {
     testData.clear();
@@ -282,10 +384,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     testData.add(new TestData(Common.CloudType.aws, 5, 10));
     TestData t = testData.get(0);
     UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
-    PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+    UUID univUuid = t.univUuid;
+    Universe.saveDetails(univUuid, t.setAzUUIDs());
+    t.setAzUUIDs(ud);
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
-    assertEquals(5, PlacementInfoUtil.getMastersToProvision(nodes).size());
+    assertEquals(5, t.universe.getMasters().size());
+    assertEquals(5, PlacementInfoUtil.getNumMasters(nodes));
     assertEquals(10, nodes.size());
  }
 
@@ -296,10 +401,14 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     testData.add(new TestData(Common.CloudType.aws, 1, 1));
     TestData t = testData.get(0);
     UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
+    UUID univUuid = t.univUuid;
+    Universe.saveDetails(univUuid, t.setAzUUIDs());
+    t.setAzUUIDs(ud);
     PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
     Set<NodeDetails> nodes = ud.nodeDetailsSet;
     assertEquals(0, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
-    assertEquals(1, PlacementInfoUtil.getMastersToProvision(nodes).size());
+    assertEquals(1, t.universe.getMasters().size());
+    assertEquals(1, PlacementInfoUtil.getNumMasters(nodes));
     assertEquals(1, nodes.size());
   }
 
@@ -307,11 +416,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testReplicationFactorNotAllowed() {
     testData.clear();
     customer = ModelFactory.testCustomer("c@d.com");
-    testData.add(new TestData(Common.CloudType.aws, 4, 10));
-    TestData t = testData.get(0);
-    UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
     try {
-      PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+      testData.add(new TestData(Common.CloudType.aws, 4, 10));
     } catch (UnsupportedOperationException e) {
       assertTrue(e.getMessage().contains("Replication factor 4 not allowed"));
     }
@@ -321,11 +427,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void testReplicationFactorAndNodesMismatch() {
     testData.clear();
     customer = ModelFactory.testCustomer("d@e.com");
-    testData.add(new TestData(Common.CloudType.aws, 7, 3));
-    TestData t = testData.get(0);
-    UniverseDefinitionTaskParams ud = t.universe.getUniverseDetails();
     try {
-      PlacementInfoUtil.updateUniverseDefinition(ud, customer.getCustomerId());
+      testData.add(new TestData(Common.CloudType.aws, 7, 3));
     } catch (UnsupportedOperationException e) {
        assertTrue(e.getMessage().contains("nodes cannot be less than the replication"));
     }

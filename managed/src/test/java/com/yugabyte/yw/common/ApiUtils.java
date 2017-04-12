@@ -47,6 +47,8 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         universeDetails = new UniverseDefinitionTaskParams();
         universeDetails.userIntent = userIntent;
+        universeDetails.placementInfo =
+                PlacementInfoUtil.getPlacementInfo(userIntent);
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         for (int idx = 1; idx <= universeDetails.userIntent.numNodes; idx++) {
           NodeDetails node =
