@@ -17,12 +17,14 @@ GET     /api/customer_count                           com.yugabyte.yw.controller
 GET     /api/customers/:cUUID/host_info               com.yugabyte.yw.controllers.CustomerController.getHostInfo(cUUID: java.util.UUID)
 
 # Initialize cloud information.
-GET     /api/providers/:pUUID/initialize              com.yugabyte.yw.cloud.AWSInitializer.run(pUUID: java.util.UUID)
 GET     /api/customers/:cUUID/regions                 com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)
 
 GET     /api/customers/:cUUID/providers               com.yugabyte.yw.controllers.CloudProviderController.list(cUUID: java.util.UUID)
+GET     /api/providers/:pUUID/initialize              com.yugabyte.yw.controllers.CloudProviderController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers               com.yugabyte.yw.controllers.CloudProviderController.create(cUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID/providers/:pUUID        com.yugabyte.yw.controllers.CloudProviderController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers/:pUUID/bootstrap  com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
+POST    /api/customers/:cUUID/providers/:pUUID/cleanup  com.yugabyte.yw.controllers.CloudProviderController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/onprem        com.yugabyte.yw.controllers.CloudProviderController.setupOnPrem(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)

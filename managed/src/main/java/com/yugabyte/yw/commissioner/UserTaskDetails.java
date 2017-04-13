@@ -1,6 +1,5 @@
 package com.yugabyte.yw.commissioner;
 
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +40,12 @@ public class UserTaskDetails {
 
     // Updating GFlags
     UpdatingGFlags,
+
+    // Bootstrap Cloud
+    BootstrappingCloud,
+
+    // Cleanup Cloud
+    CleanupCloud
   }
 
   // The user facing state of the various subtasks.
