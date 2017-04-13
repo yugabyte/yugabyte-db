@@ -41,7 +41,13 @@ public class TaskInfo extends Model {
     UpgradeUniverse,
 
     @EnumValue("CreateCassTable")
-    CreateCassandraTable
+    CreateCassandraTable,
+
+    @EnumValue("CloudBootstrap")
+    CloudBootstrap,
+
+    @EnumValue("CloudCleanup")
+    CloudCleanup
   }
 
   /**

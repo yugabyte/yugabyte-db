@@ -10,8 +10,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 
+import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.controllers.AuthenticatedController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,8 +29,11 @@ import com.yugabyte.yw.models.Region;
 import play.libs.Json;
 import play.mvc.Result;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 // TODO: move pricing data fetch to ybcloud.
-public class AWSInitializer extends AuthenticatedController {
+@Singleton
+public class AWSInitializer {
   public static final Logger LOG = LoggerFactory.getLogger(AWSInitializer.class);
 
   public static final boolean enableVerboseLogging = false;
@@ -41,20 +44,17 @@ public class AWSInitializer extends AuthenticatedController {
   // TODO: fetch the EC2 price URL from
   // 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json'  // The AWS EC2 price url.
 
-  private String awsEc2PriceUrl =
+  public  String awsEc2PriceUrl =
       "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json";
 
   Map<String, List<PriceDetails>> ec2SkuToPriceDetails = new HashMap<String, List<PriceDetails>>();
 
   List<Map<String, String>> ec2AvailableInstances = new ArrayList<Map<String, String>>();
 
-  public Result run(UUID providerUUID) {
+  public Result initialize(UUID customerUUID, UUID providerUUID) {
     try {
-      UUID customerUUID = (UUID) ctx().args.get("customer_uuid");
       Provider provider = Provider.get(customerUUID, providerUUID);
-      if (provider == null) {
-        ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
-      }
+
       LOG.info("Initializing AWS instance type and pricing info from {}", awsEc2PriceUrl);
       LOG.info("This operation may take a few minutes...");
       // Get the price Json object from the aws price url.
