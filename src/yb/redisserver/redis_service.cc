@@ -18,118 +18,41 @@
 #include "yb/rpc/redis_rpc.h"
 #include "yb/util/bytes_formatter.h"
 
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_get,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-    "yb.redisserver.RedisServerService.GetCommand() "
-    "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_hget,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.HGetCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_strlen,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.StrLenCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_exists,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.ExistsCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_getrange,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.GetRangeCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_set,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-    "yb.redisserver.RedisServerService.SetCommand() "
-    "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_hset,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.HSetCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_getset,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.GetSetCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_append,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.AppendCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_del,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.DelCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_setrange,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.SetRangeCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_incr,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-        "yb.redisserver.RedisServerService.IncrCommand() "
-        "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_echo,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-    "yb.redisserver.RedisServerService.EchoCommand() "
-    "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_error,
-    "yb.redisserver.RedisServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-    "yb.redisserver.RedisServerService.ErrorUnsupportedMethod() "
-    "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_get_internal,
-    "yb.redisserver.RedisServerService.Get RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-    "in yb.client.Get "
-    "RPC requests",
-    60000000LU, 2);
-METRIC_DEFINE_histogram(
-    server, handler_latency_yb_redisserver_RedisServerService_set_internal,
-    "yb.redisserver.RedisServerService.Set RPC Time", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent handling "
-    "yb.client.Set "
-    "RPC requests",
-    60000000LU, 2);
+#define DEFINE_REDIS_histogram_EX(name_identifier, label_str, desc_str) \
+  METRIC_DEFINE_histogram( \
+      server, BOOST_PP_CAT(handler_latency_yb_redisserver_RedisServerService_, name_identifier), \
+      (label_str), yb::MetricUnit::kMicroseconds, \
+      "Microseconds spent handling " desc_str " RPC requests", \
+      60000000LU, 2)
+
+#define DEFINE_REDIS_histogram(name_identifier, capitalized_name_str) \
+  DEFINE_REDIS_histogram_EX( \
+      name_identifier, \
+      "yb.redisserver.RedisServerService." BOOST_STRINGIZE(name_identifier) " RPC Time", \
+      "yb.redisserver.RedisServerService." capitalized_name_str "Command()")
+
+DEFINE_REDIS_histogram(get, "Get");
+DEFINE_REDIS_histogram(hget, "HGet");
+DEFINE_REDIS_histogram(strlen, "StrLen");
+DEFINE_REDIS_histogram(exists, "Exists");
+DEFINE_REDIS_histogram(getrange, "GetRange");
+DEFINE_REDIS_histogram(set, "SetCommand");
+DEFINE_REDIS_histogram(hset, "HSet");
+DEFINE_REDIS_histogram(getset, "GetSet");
+DEFINE_REDIS_histogram(append, "Append");
+DEFINE_REDIS_histogram(del, "Del");
+DEFINE_REDIS_histogram(setrange, "SetRange");
+DEFINE_REDIS_histogram(incr, "Incr");
+DEFINE_REDIS_histogram(echo, "Echo");
+DEFINE_REDIS_histogram_EX(error,
+                          "yb.redisserver.RedisServerService.AnyMethod RPC Time",
+                          "yb.redisserver.RedisServerService.ErrorUnsupportedMethod()");
+DEFINE_REDIS_histogram_EX(get_internal,
+                          "yb.redisserver.RedisServerService.Get RPC Time",
+                          "in yb.client.Get");
+DEFINE_REDIS_histogram_EX(set_internal,
+                          "yb.redisserver.RedisServerService.Set RPC Time",
+                          "in yb.client.Set");
 
 DEFINE_int32(redis_service_yb_client_timeout_millis, 60000,
              "Timeout in milliseconds for RPC calls from Redis service to master/tserver");
@@ -245,7 +168,9 @@ void RedisServiceImpl::ValidateAndHandle(const RedisServiceImpl::RedisCommandInf
     RespondWithFailure("Unsupported call.", std::move(call), c);
   } else if (cmd_info->arity < 0 && c->cmd_args.size() < -1 * cmd_info->arity) {
     // -X means that the command needs >= X arguments.
-    LOG(ERROR) << "Requested command " << c->cmd_args[0] << " does not have enough arguments.";
+    LOG(ERROR) << "Requested command " << c->cmd_args[0] << " does not have enough arguments."
+               << " At least " << -cmd_info->arity << " expected, but " << c->cmd_args.size()
+               << " found.";
     RespondWithFailure("Too few arguments.", std::move(call), c);
   } else if (cmd_info->arity > 0 && c->cmd_args.size() != cmd_info->arity) {
     // X (> 0) means that the command needs exactly X arguments.

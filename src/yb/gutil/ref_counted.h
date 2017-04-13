@@ -153,6 +153,16 @@ class RefCountedThreadSafe : public subtle::RefCountedThreadSafeBase {
   DISALLOW_COPY_AND_ASSIGN(RefCountedThreadSafe);
 };
 
+template <class T, typename Traits>
+void intrusive_ptr_add_ref(RefCountedThreadSafe<T, Traits>* px) {
+  px->AddRef();
+}
+
+template <class T, typename Traits>
+void intrusive_ptr_release(RefCountedThreadSafe<T, Traits>* px) {
+  px->Release();
+}
+
 //
 // A thread-safe wrapper for some piece of data so we can place other
 // things in scoped_refptrs<>.
@@ -162,7 +172,7 @@ class RefCountedData
     : public yb::RefCountedThreadSafe< yb::RefCountedData<T> > {
  public:
   RefCountedData() : data() {}
-  RefCountedData(const T& in_value) : data(in_value) {}
+  explicit RefCountedData(const T& in_value) : data(in_value) {}
 
   T data;
 
@@ -257,17 +267,9 @@ class scoped_refptr {
 
   T* get() const { return ptr_; }
 
-// The following is disabled in Cloudera's version of this file since it's
-// relatively dangerous. Chromium is planning on doing the same in their
-// tree, but hasn't done so yet. See http://code.google.com/p/chromium/issues/detail?id=110610
-#if SCOPED_REFPTR_ALLOW_IMPLICIT_CONVERSION_TO_PTR
-  // Allow scoped_refptr<C> to be used in boolean expression
-  // and comparison operations.
-  operator T*() const { return ptr_; }
-#else
-  typedef T* scoped_refptr::*Testable;
-  operator Testable() const { return ptr_ ? &scoped_refptr::ptr_ : NULL; }
-#endif
+  explicit operator bool() const { return ptr_ != nullptr; }
+
+  bool operator!() const { return ptr_ == nullptr; }
 
   T* operator->() const {
     assert(ptr_ != nullptr);
@@ -355,5 +357,30 @@ struct ScopedRefPtrHashFunctor {
     return reinterpret_cast<size_t>(p.get());
   }
 };
+
+template<class T>
+bool operator==(const scoped_refptr<T>& lhs, std::nullptr_t) {
+  return !lhs;
+}
+
+template<class T>
+bool operator!=(const scoped_refptr<T>& lhs, std::nullptr_t) {
+  return static_cast<bool>(lhs);
+}
+
+template<class T>
+bool operator==(std::nullptr_t, const scoped_refptr<T>& rhs) {
+  return !rhs;
+}
+
+template<class T>
+bool operator!=(std::nullptr_t, const scoped_refptr<T>& rhs) {
+  return static_cast<bool>(rhs);
+}
+
+template<class T>
+std::ostream& operator<<(std::ostream& out, const scoped_refptr<T>& ptr) {
+  return out << ptr.get();
+}
 
 #endif // YB_GUTIL_REF_COUNTED_H

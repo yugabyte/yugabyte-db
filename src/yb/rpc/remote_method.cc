@@ -27,8 +27,28 @@ namespace rpc {
 using strings::Substitute;
 
 RemoteMethod::RemoteMethod(std::string service_name,
-                           const std::string method_name)
-    : service_name_(std::move(service_name)), method_name_(method_name) {}
+                           std::string method_name)
+    : service_name_(std::move(service_name)), method_name_(std::move(method_name)) {}
+
+RemoteMethod::RemoteMethod(const RemoteMethod& rhs)
+    : service_name_(rhs.service_name_), method_name_(rhs.method_name_) {
+}
+
+RemoteMethod::RemoteMethod(RemoteMethod&& rhs)
+    : service_name_(std::move(rhs.service_name_)), method_name_(std::move(rhs.method_name_)) {
+}
+
+RemoteMethod& RemoteMethod::operator=(const RemoteMethod& rhs) {
+  service_name_ = rhs.service_name_;
+  method_name_ = rhs.method_name_;
+  return *this;
+}
+
+RemoteMethod& RemoteMethod::operator=(RemoteMethod&& rhs) {
+  service_name_ = std::move(rhs.service_name_);
+  method_name_ = std::move(rhs.method_name_);
+  return *this;
+}
 
 void RemoteMethod::FromPB(const RemoteMethodPB& pb) {
   DCHECK(pb.IsInitialized()) << "PB is uninitialized: " << pb.InitializationErrorString();

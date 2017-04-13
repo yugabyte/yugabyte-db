@@ -241,5 +241,14 @@ sql::SqlSession::SharedPtr CQLInboundCall::GetSqlSession() const {
   return conn_->sql_session();
 }
 
+bool CQLInboundCall::TryResume() {
+  if (resume_from_ == nullptr) {
+    return false;
+  }
+  VLOG(2) << "Resuming " << ToString();
+  resume_from_->Run();
+  return true;
+}
+
 } // namespace rpc
 } // namespace yb

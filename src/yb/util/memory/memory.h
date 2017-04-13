@@ -1001,6 +1001,18 @@ std::shared_ptr<U> shared_from(U* u) {
   return std::static_pointer_cast<U>(u->shared_from_this());
 }
 
+template<class Out, class In>
+Out PointerCast(In* in) {
+  void* temp = in;
+  return static_cast<Out>(temp);
+}
+
+template<class Out, class In>
+Out PointerCast(const In* in) {
+  const void* temp = in;
+  return static_cast<Out>(temp);
+}
+
 }  // namespace yb
 
 #endif // YB_UTIL_MEMORY_MEMORY_H_

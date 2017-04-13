@@ -30,6 +30,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
+#include "yb/util/tostring.h"
 
 DEFINE_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
              "Amount of time to delay commit of a PRE_VOTER to VOTER transition. To be used for "
@@ -547,8 +548,56 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
   return Status::OK();
 }
 
+Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
+  if(!OpIdEquals(last_committed_index_, MinimumOpId())) {
+    return STATUS_SUBSTITUTE(
+        IllegalState,
+        "Committed index already initialized to: $0, tried to set $1",
+        util::ToString(last_committed_index_),
+        util::ToString(committed_index));
+  }
+
+  if (!pending_txns_.empty() && committed_index.index() >= pending_txns_.begin()->first) {
+    return STATUS_SUBSTITUTE(
+        IllegalState,
+        "There is already pending operation $0, with index before new one: $1",
+        util::ToString(*pending_txns_.begin()),
+        util::ToString(committed_index));
+  }
+
+  last_committed_index_ = committed_index;
+
+  return Status::OK();
+}
+
+Status ReplicaState::CheckOperationExist(const OpId& committed_index,
+                                         IndexToRoundMap::iterator* end_iter) {
+  auto prev = pending_txns_.upper_bound(committed_index.index());
+  if (prev == pending_txns_.begin()) {
+    return STATUS_SUBSTITUTE(
+        NotFound,
+        "No pending entries before committed index: $0 => $1, stack: $2, pending: $3",
+        last_committed_index_.ShortDebugString(),
+        committed_index.ShortDebugString(),
+        GetStackTrace(),
+        yb::util::CollectionToString(pending_txns_));
+  }
+  *end_iter = prev;
+  --prev;
+  const auto prev_id = prev->second->id();
+  if (!OpIdEquals(prev_id, committed_index)) {
+    return STATUS_SUBSTITUTE(NotFound,
+        "No pending entry with committed index: $0 => $1, stack: $2, pending: $3",
+        last_committed_index_.ShortDebugString(),
+        committed_index.ShortDebugString(),
+        GetStackTrace(),
+        yb::util::CollectionToString(pending_txns_));
+  }
+  return Status::OK();
+}
+
+
 Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
-                                                   MustExist must_exist,
                                                    bool *committed_index_changed) {
   if (committed_index_changed) {
     *committed_index_changed = false;
@@ -576,23 +625,10 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   // Stop at the operation after the last one we must commit. This iterator by definition points to
   // the first entry greater than the committed index, so the entry preceding that must have the
   // OpId equal to commited_index.
-  auto end_iter = pending_txns_.upper_bound(committed_index.index());
-  if (must_exist == MustExist::YES) {
-    // The MustExist::YES mode is being used from StartElection, and in that case there is no
-    // guarantee that we'll have the new commited entry in our log, because the committed OpId does
-    // not arrive through the usual UpdateConsensus mechanism that also replicates the committed
-    // entry. Therefore, to maintain safety, we need to check that the committed entry is actually
-    // present in our log (and as a result, is either already committed locally, which means there
-    // is nothing to do, or present in the pending transactions map).
-    if (end_iter == pending_txns_.begin()) {
-      return STATUS(NotFound, "No pending entries before committed index");
-    }
-    auto prev = end_iter;
-    --prev;
-    auto prev_id = prev->second->id();
-    if (!OpIdEquals(prev_id, committed_index)) {
-      return STATUS(NotFound, "No pending entry with committed index");
-    }
+  IndexToRoundMap::iterator end_iter;
+  auto status = CheckOperationExist(committed_index, &end_iter);
+  if (!status.ok()) {
+    return status;
   }
   CHECK(iter != pending_txns_.end());
 

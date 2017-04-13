@@ -30,7 +30,13 @@ class RemoteMethodPB;
 class RemoteMethod {
  public:
   RemoteMethod() {}
-  RemoteMethod(std::string service_name, const std::string method_name);
+  RemoteMethod(std::string service_name, std::string method_name);
+  RemoteMethod(const RemoteMethod& rhs);
+  RemoteMethod(RemoteMethod&& rhs);
+
+  RemoteMethod& operator=(const RemoteMethod& rhs);
+  RemoteMethod& operator=(RemoteMethod&& rhs);
+
   std::string service_name() const { return service_name_; }
   std::string method_name() const { return method_name_; }
 

@@ -120,10 +120,27 @@ class ToStringable : public RefCountedThreadSafe<ToStringable> {
   }
 };
 
+class ToStringableChild : public ToStringable {
+};
+
+class WithShortDebugString {
+ public:
+  std::string ShortDebugString() const {
+    return std::string("ShortDebugString");
+  }
+};
+
+class WithShortDebugStringChild : public WithShortDebugString {
+};
+
 TEST_F(ToStringTest, TestCustomIntrusive) {
   scoped_refptr<ToStringable> ptr(new ToStringable);
+  scoped_refptr<ToStringableChild> child_ptr(new ToStringableChild);
   ASSERT_EQ("ToStringable", ToString(*ptr));
   CheckPointer("ToStringable", ptr);
+  CheckPointer("ToStringable", child_ptr);
+  ASSERT_EQ("ShortDebugString", ToString(WithShortDebugString()));
+  ASSERT_EQ("ShortDebugString", ToString(WithShortDebugStringChild()));
 
   std::vector<scoped_refptr<ToStringable>> v(2);
   v[1] = ptr;

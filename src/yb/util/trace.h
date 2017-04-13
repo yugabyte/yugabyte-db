@@ -203,4 +203,5 @@ class PlainTrace {
 };
 
 } // namespace yb
+
 #endif /* YB_UTIL_TRACE_H */

@@ -9,8 +9,6 @@
 #include "yb/client/callbacks.h"
 #include "yb/master/catalog_manager.h"
 
-#include "yb/rpc/cql_rpc.h"
-
 namespace yb {
 namespace sql {
 
@@ -132,7 +130,7 @@ void SqlEnv::FlushAsyncDone(const Status &s) {
 
   // Production/cqlserver usecase. Enqueue the callback to run in the server's handler thread.
   resume_execution_ = Bind(&SqlEnv::ResumeCQLCall, Unretained(this), s);
-  current_cql_call()->resume_from_ = &resume_execution_;
+  current_cql_call()->SetResumeFrom(&resume_execution_);
 
   auto messenger = messenger_.lock();
   DCHECK(messenger != nullptr) << "weak_ptr's messenger is null";

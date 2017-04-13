@@ -491,6 +491,11 @@ inline void Status::operator=(Status&& s) {
 #define SCHECK_GE(var1, var2, type, msg) SCHECK_OP(var1, >=, var2, type, msg)
 #define SCHECK_LT(var1, var2, type, msg) SCHECK_OP(var1, <, var2, type, msg)  // NOLINT.
 #define SCHECK_LE(var1, var2, type, msg) SCHECK_OP(var1, <=, var2, type, msg)
+#define SCHECK_BOUNDS(var1, lbound, rbound, type, msg) \
+    do { \
+      SCHECK_GE(var1, lbound, type, msg); \
+      SCHECK_LE(var1, rbound, type, msg); \
+    } while(false)
 
 #ifdef YB_HEADERS_NO_STUBS
 #define CHECKED_STATUS MUST_USE_RESULT yb::Status

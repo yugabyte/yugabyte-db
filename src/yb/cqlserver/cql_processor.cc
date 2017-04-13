@@ -3,13 +3,13 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/cqlserver/cql_processor.h"
-#include <yb/rpc/rpc_context.h>
 
 #include <sasl/md5global.h>
 #include <sasl/md5.h>
 
 #include "yb/cqlserver/cql_service.h"
 #include "yb/gutil/strings/escaping.h"
+#include "yb/rpc/rpc_context.h"
 
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
@@ -135,9 +135,10 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr cql_call) {
       parsed));
 }
 
-void CQLProcessor::ProcessCallDone(
-    rpc::InboundCallPtr call, const CQLRequest* request, const MonoTime& start,
-    CQLResponse* response) {
+void CQLProcessor::ProcessCallDone(rpc::InboundCallPtr call,
+                                   const CQLRequest* request,
+                                   const MonoTime& start,
+                                   CQLResponse* response) {
   // Reply to client.
   MonoTime begin_response = MonoTime::Now(MonoTime::FINE);
   cql_metrics_->time_to_execute_cql_request_->Increment(

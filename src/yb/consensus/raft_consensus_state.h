@@ -45,12 +45,6 @@ class Messenger;
 
 namespace consensus {
 
-// Used instead of bool flag must_exist to improve method call readability.
-enum class MustExist {
-  NO,
-  YES,
-};
-
 // Class that coordinates access to the replica state (independently of Role).
 // This has a 1-1 relationship with RaftConsensus and is essentially responsible for
 // keeping state and checking if state changes are viable.
@@ -253,17 +247,14 @@ class ReplicaState {
 
   // Advances the committed index.
   // This is a no-op if the committed index has not changed.
-  // `must_exist` - set to Yes to fail when specified commit index is not present in log.
   // Returns in '*committed_index_changed' whether the operation actually advanced
   // the index.
   CHECKED_STATUS AdvanceCommittedIndexUnlocked(const OpId& committed_index,
-                                               MustExist must_exist,
                                                bool* committed_index_changed = nullptr);
 
-  CHECKED_STATUS AdvanceCommittedIndexUnlocked(const OpId& committed_index,
-                                               bool* committed_index_changed = nullptr) {
-    return AdvanceCommittedIndexUnlocked(committed_index, MustExist::NO, committed_index_changed);
-  }
+  // Initializes the committed index.
+  // Function checks that we are in initial state, then updates committed index.
+  CHECKED_STATUS InitCommittedIndexUnlocked(const OpId& committed_index);
 
   // Returns the watermark below which all operations are known to
   // be committed according to consensus.
@@ -333,6 +324,11 @@ class ReplicaState {
   ReplicaState::State state() const;
 
  private:
+  // To maintain safety, we need to check that the committed entry is actually
+  // present in our log (and as a result, is either already committed locally, which means there
+  // is nothing to do, or present in the pending transactions map).
+  Status CheckOperationExist(const OpId& committed_index, IndexToRoundMap::iterator* end_iter);
+
   const ConsensusOptions options_;
 
   // The UUID of the local peer.

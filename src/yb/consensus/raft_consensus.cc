@@ -46,6 +46,7 @@
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 #include "yb/util/url-coding.h"
 
@@ -303,7 +304,7 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       RETURN_NOT_OK(StartReplicaTransactionUnlocked(replicate_ptr));
     }
 
-    RETURN_NOT_OK(state_->AdvanceCommittedIndexUnlocked(info.last_committed_id));
+    RETURN_NOT_OK(state_->InitCommittedIndexUnlocked(info.last_committed_id));
 
     queue_->Init(state_->GetLastReceivedOpIdUnlocked());
   }
@@ -413,7 +414,7 @@ Status RaftConsensus::StartElection(
     bool start_now = true;
     if (pending_commit) {
       auto required_id = opid.IsInitialized() ? opid : state_->GetPendingElectionOpIdUnlocked();
-      if (!state_->AdvanceCommittedIndexUnlocked(required_id, MustExist::YES).ok()) {
+      if (!state_->AdvanceCommittedIndexUnlocked(required_id).ok()) {
         LOG(WARNING) << "Starting an election but the latest committed OpId is not "
                         "present in this peer's log: "
                      << required_id.ShortDebugString();

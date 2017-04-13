@@ -1347,7 +1347,7 @@ TEST_F(ClientTest, TestScanTimeout) {
     YBScanner scanner(client_table_.get());
     ASSERT_OK(scanner.SetTimeoutMillis(0));
     ASSERT_TRUE(scanner.Open().IsTimedOut());
-    ASSERT_TRUE(scanner.data_->remote_) << "We should have located a tablet";
+    YB_ASSERT_TRUE(scanner.data_->remote_) << "We should have located a tablet";;
     ASSERT_EQ(0, scanner.data_->remote_->GetNumFailedReplicas());
   }
 
@@ -2272,7 +2272,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
 
   // Randomized testing
   LOG(INFO) << "Randomized mutations testing.";
-  SeedRandom();
+  unsigned int seed = SeedRandom();
   for (int i = 0; i <= 1000; ++i) {
     // Test correctness every so often
     if (i % 50 == 0) {
@@ -2282,7 +2282,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
       LOG(INFO) << "...complete";
     }
 
-    int change = rand() % FLAGS_test_scan_num_rows;
+    int change = rand_r(&seed) % FLAGS_test_scan_num_rows;
     // Insert if empty
     if (row[change] == -1) {
       ASSERT_OK(ApplyInsertToSession(session.get(),
@@ -2295,7 +2295,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
       VLOG(1) << "Insert " << change;
     } else {
       // Update or delete otherwise
-      int update = rand() & 1;
+      int update = rand_r(&seed) & 1;
       if (update) {
         ASSERT_OK(ApplyUpdateToSession(session.get(),
                                               client_table_,

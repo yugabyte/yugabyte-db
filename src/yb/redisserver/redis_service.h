@@ -10,7 +10,6 @@
 #include <mutex>
 #include <vector>
 
-#include "yb/rpc/transfer.h"
 #include "yb/util/string_case.h"
 
 using std::string;

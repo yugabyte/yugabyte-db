@@ -1,5 +1,5 @@
 //
-// Copyright 2017 YugaByte
+// Copyright (c) YugaByte, Inc.
 //
 
 #ifndef YB_UTIL_TOSTRING_H
@@ -8,7 +8,6 @@
 #include <string>
 #include <type_traits>
 
-#include <boost/tti/has_member_function.hpp>
 #include <boost/tti/has_type.hpp>
 
 // This utility actively use SFINAE (http://en.cppreference.com/w/cpp/language/sfinae)
@@ -16,14 +15,33 @@
 namespace yb {
 namespace util {
 
+#define HAS_MEMBER_FUNCTION(function) \
+    template<class T> \
+    struct BOOST_PP_CAT(HasMemberFunction, function) { \
+      typedef int Yes; \
+      typedef struct { Yes array[2]; } No; \
+      typedef typename std::remove_reference<T>::type StrippedT; \
+      template<class U> static Yes Test(decltype(static_cast<U*>(nullptr)->function())*); \
+      template<class U> static No Test(...); \
+      static const bool value = sizeof(Yes) == sizeof(Test<StrippedT>(nullptr)); \
+    };
+
 // If class has ToString member function - use it.
-BOOST_TTI_HAS_MEMBER_FUNCTION(ToString);
+HAS_MEMBER_FUNCTION(ToString);
 
 template <class T>
-typename std::enable_if<has_member_function_ToString<const T,
-                        std::string>::value, std::string>::type
+typename std::enable_if<HasMemberFunctionToString<T>::value, std::string>::type
 ToString(const T& value) {
   return value.ToString();
+}
+
+// If class has ShortDebugString member function - use it. For protobuf classes mostly.
+HAS_MEMBER_FUNCTION(ShortDebugString);
+
+template <class T>
+typename std::enable_if<HasMemberFunctionShortDebugString<T>::value, std::string>::type
+ToString(const T& value) {
+  return value.ShortDebugString();
 }
 
 // Various variants of integer types.

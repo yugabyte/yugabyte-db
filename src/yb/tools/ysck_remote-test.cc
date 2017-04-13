@@ -245,9 +245,13 @@ TEST_F(RemoteYsckTest, TestChecksumSnapshot) {
   scoped_refptr<Thread> writer_thread;
 
   CHECK_OK(
-      Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
-                     &RemoteYsckTest::GenerateRowWritesLoop, this,
-                     &started_writing, boost::cref(continue_writing), &promise,
+      Thread::Create("RemoteYsckTest",
+                     "TestChecksumSnapshot",
+                     &RemoteYsckTest::GenerateRowWritesLoop,
+                     this,
+                     &started_writing,
+                     std::cref(continue_writing),
+                     &promise,
                      &writer_thread));
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
 
@@ -287,9 +291,13 @@ TEST_F(RemoteYsckTest, DISABLED_TestChecksumSnapshotCurrentHybridTime) {
   scoped_refptr<Thread> writer_thread;
 
   CHECK_OK(
-      Thread::Create("RemoteYsckTest", "TestChecksumSnapshot",
-                     &RemoteYsckTest::GenerateRowWritesLoop, this,
-                     &started_writing, boost::cref(continue_writing), &promise,
+      Thread::Create("RemoteYsckTest",
+                     "TestChecksumSnapshot",
+                     &RemoteYsckTest::GenerateRowWritesLoop,
+                     this,
+                     &started_writing,
+                     std::cref(continue_writing),
+                     &promise,
                      &writer_thread));
   CHECK(started_writing.WaitFor(MonoDelta::FromSeconds(30)));
 

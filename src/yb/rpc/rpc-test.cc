@@ -89,10 +89,10 @@ TEST_F(TestRpc, TestAcceptorPoolStartStop) {
 
 TEST_F(TestRpc, TestConnHeaderValidation) {
   MessengerBuilder mb("TestRpc.TestConnHeaderValidation");
-  const int conn_hdr_len = kMagicNumberLength + kHeaderFlagsLength;
-  uint8_t buf[conn_hdr_len];
+  constexpr int kConnectionHeaderLength = kMagicNumberLength + kHeaderFlagsLength;
+  uint8_t buf[kConnectionHeaderLength];
   serialization::SerializeConnHeader(buf);
-  ASSERT_OK(serialization::ValidateConnHeader(Slice(buf, conn_hdr_len)));
+  ASSERT_OK(serialization::ValidateConnHeader(Slice(buf, kConnectionHeaderLength)));
 }
 
 // Test making successful RPC calls.
@@ -354,8 +354,9 @@ TEST_F(TestRpc, TestServerShutsDown) {
 
   // Send a call.
   AddRequestPB req;
-  req.set_x(rand());
-  req.set_y(rand());
+  unsigned int seed = SeedRandom();
+  req.set_x(rand_r(&seed));
+  req.set_y(rand_r(&seed));
   AddResponsePB resp;
 
   boost::ptr_vector<RpcController> controllers;
@@ -469,7 +470,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 
   // TODO: Implement an incoming queue latency test.
   // For now we just assert that the metric exists.
-  ASSERT_TRUE(FindOrDie(metric_map, &METRIC_rpc_incoming_queue_time));
+  YB_ASSERT_TRUE(FindOrDie(metric_map, &METRIC_rpc_incoming_queue_time));
 }
 
 static void DestroyMessengerCallback(shared_ptr<Messenger>* messenger,
@@ -484,8 +485,9 @@ TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
   CountDownLatch latch(1);
 
   AddRequestPB req;
-  req.set_x(rand());
-  req.set_y(rand());
+  unsigned int seed = SeedRandom();
+  req.set_x(rand_r(&seed));
+  req.set_y(rand_r(&seed));
   AddResponsePB resp;
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(1));

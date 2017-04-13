@@ -152,6 +152,28 @@ class YB_EXPORT MonoTime {
   uint64_t nanos_;
 };
 
+inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
+  lhs.AddDelta(rhs);
+  return lhs;
+}
+
+inline MonoTime operator+(MonoTime lhs, const MonoDelta& rhs) {
+  lhs += rhs;
+  return lhs;
+}
+
+inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
+  return lhs.GetDeltaSince(rhs);
+}
+
+inline bool operator<(const MonoTime& lhs, const MonoTime& rhs) {
+  return lhs.ComesBefore(rhs);
+}
+
+inline bool operator>(const MonoTime& lhs, const MonoTime& rhs) { return rhs < lhs; }
+inline bool operator<=(const MonoTime& lhs, const MonoTime& rhs) { return !(rhs < lhs); }
+inline bool operator>=(const MonoTime& lhs, const MonoTime& rhs) { return !(lhs < rhs); }
+
 // Sleep for a MonoDelta duration.
 //
 // This is preferred over sleep(3), usleep(3), and nanosleep(3). It's less prone to mixups with

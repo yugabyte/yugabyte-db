@@ -49,51 +49,6 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
   ASSERT_OK(cluster_->Start());
 }
 
-// Test crashing a server just before appending a COMMIT message.
-// We then restart the server and ensure that all rows successfully
-// inserted before the crash are recovered.
-// This test is only enabled on Kudu tables, because YB tables don't use local COMMIT messages.
-TEST_F(TsRecoveryITest, TestRestartWithOrphanedReplicates) {
-  NO_FATALS(StartCluster());
-
-  TestWorkload work(cluster_.get());
-  work.set_num_replicas(1);
-  work.set_num_write_threads(4);
-  work.set_write_timeout_millis(100);
-  work.set_timeout_allowed(true);
-  work.Setup(client::YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
-  work.Start();
-
-  ASSERT_OK(
-      cluster_->SetFlag(cluster_->tablet_server(0),
-                        "fault_crash_before_append_commit", "0.05"));
-
-  // Wait for the process to crash due to the injected fault.
-  while (cluster_->tablet_server(0)->IsProcessAlive()) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-
-  // Stop the writers.
-  work.StopAndJoin();
-
-  // Restart the server, and it should recover.
-  cluster_->tablet_server(0)->Shutdown();
-  ASSERT_OK(cluster_->tablet_server(0)->Restart());
-
-
-  // TODO(KUDU-796): after a restart, we may have to replay some
-  // orphaned replicates from the log. However, we currently
-  // allow reading while those are being replayed, which means we
-  // can "go back in time" briefly. So, we have some retries here.
-  // When KUDU-796 is fixed, remove the retries.
-  ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCountWithRetries(work.table_name(),
-      ClusterVerifier::AT_LEAST,
-      work.rows_inserted(),
-      MonoDelta::FromSeconds(20)));
-}
-
 // Test that we replay from the recovery directory, if it exists.
 TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
   NO_FATALS(StartCluster({ "--fault_crash_during_log_replay=0.05" }));

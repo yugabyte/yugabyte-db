@@ -10,8 +10,6 @@
 
 #include "yb/cqlserver/cql_message.h"
 #include "yb/cqlserver/cql_service.service.h"
-#include "yb/rpc/transfer.h"
-#include "yb/rpc/inbound_call.h"
 #include "yb/util/string_case.h"
 
 namespace yb {

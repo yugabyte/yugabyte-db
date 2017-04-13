@@ -22,11 +22,12 @@
 #ifndef YB_UTIL_SLICE_H_
 #define YB_UTIL_SLICE_H_
 
-#include <assert.h>
-#include <map>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
+
+#include <map>
 #include <string>
 
 #ifdef YB_HEADERS_USE_RICH_SLICE
@@ -48,6 +49,11 @@ class YB_EXPORT Slice {
 
   // Create a slice that refers to d[0,n-1].
   Slice(const uint8_t* d, size_t n) : data_(d), size_(n) { }
+
+  // Create a slice that refers to [begin, end).
+  Slice(const uint8_t* begin, const uint8_t* end) : data_(begin), size_(end - begin) {
+    CHECK_LE(begin, end);
+  }
 
   // Create a slice that refers to d[0,n-1].
   Slice(const char* d, size_t n) :
@@ -83,6 +89,8 @@ class YB_EXPORT Slice {
 
   // Return a mutable pointer to the beginning of the referenced data.
   uint8_t *mutable_data() { return const_cast<uint8_t *>(data_); }
+
+  const uint8_t* end() const { return data_ + size_; }
 
   // Return the length (in bytes) of the referenced data
   size_t size() const { return size_; }

@@ -107,7 +107,11 @@ class CQLInboundCall : public InboundCall {
   // Return the SQL session of this CQL call.
   sql::SqlSession::SharedPtr GetSqlSession() const;
 
-  Callback<void(void)>* resume_from_ = nullptr;
+  void SetResumeFrom(Callback<void(void)>* resume_from) {
+    resume_from_ = resume_from;
+  }
+
+  bool TryResume();
 
  protected:
   scoped_refptr<Connection> get_connection() override;
@@ -117,6 +121,8 @@ class CQLInboundCall : public InboundCall {
   // The connection on which this inbound call arrived.
   scoped_refptr<CQLConnection> conn_;
   faststring response_msg_buf_;
+
+  Callback<void(void)>* resume_from_ = nullptr;
 };
 
 } // namespace rpc

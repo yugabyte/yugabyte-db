@@ -48,6 +48,19 @@ TEST(TestMonoTime, TestComparison) {
   ASSERT_LT(now.GetDeltaSince(future).ToNanoseconds(), 0);
   ASSERT_EQ(now.GetDeltaSince(now).ToNanoseconds(), 0);
 
+  ASSERT_LT(now, future);
+  ASSERT_FALSE(now < now);
+  ASSERT_FALSE(future < now);
+  ASSERT_LE(now, now);
+  ASSERT_LE(now, future);
+  ASSERT_FALSE(future <= now);
+  ASSERT_GT(future, now);
+  ASSERT_FALSE(now > now);
+  ASSERT_FALSE(now > future);
+  ASSERT_GE(now, now);
+  ASSERT_GE(future, now);
+  ASSERT_FALSE(now >= future);
+
   MonoDelta nano(MonoDelta::FromNanoseconds(1L));
   MonoDelta mil(MonoDelta::FromMilliseconds(1L));
   MonoDelta sec(MonoDelta::FromSeconds(1.0));

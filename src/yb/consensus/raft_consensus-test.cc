@@ -448,12 +448,11 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   }
 
   info.last_committed_id.set_term(10);
-  info.last_committed_id.set_index(104);
+  info.last_committed_id.set_index(99);
 
   {
     InSequence dummy;
-    // On start we expect 10 NO_OPs to be enqueues, with 5 of those having
-    // their commit continuation called immediately.
+    // On start we expect 10 NO_OPs to be enqueued.
     EXPECT_CALL(*consensus_.get(), StartConsensusOnlyRoundUnlocked(_))
         .Times(10);
 
@@ -494,10 +493,10 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(txn_factory_.get()));
   ASSERT_TRUE(testing::Mock::VerifyAndClearExpectations(peer_manager_));
 
-  // Commit the 5 no-ops from the previous term, along with the one pushed to
+  // Commit the 11 no-ops from the previous term, along with the one pushed to
   // assert leadership.
   EXPECT_CALL(*consensus_.get(), NonTxRoundReplicationFinished(HasOpId(), _, IsOk()))
-      .Times(6);
+      .Times(12);
   EXPECT_CALL(*peer_manager_, SignalRequest(_))
       .Times(AnyNumber());
   // In the end peer manager and the queue get closed.
@@ -520,7 +519,9 @@ TEST_F(RaftConsensusTest, TestPendingTransactions) {
   // and we should be able to commit all previous rounds.
   OpId cc_round_id = info.orphaned_replicates.back()->id();
   cc_round_id.set_term(11);
-  cc_round_id.set_index(cc_round_id.index() + 1);
+  // +2 here because first time it is incremented in Start,
+  // and second time during emulated election.
+  cc_round_id.set_index(cc_round_id.index() + 2);
   consensus_->UpdateMajorityReplicated(cc_round_id,
                                        &committed_index);
   ASSERT_OPID_EQ(committed_index, cc_round_id);

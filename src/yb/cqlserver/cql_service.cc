@@ -9,6 +9,7 @@
 #include "yb/cqlserver/cql_processor.h"
 #include "yb/cqlserver/cql_server.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/cql_rpc.h"
 #include "yb/util/bytes_formatter.h"
 
 DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
@@ -73,11 +74,9 @@ void CQLServiceImpl::Handle(InboundCall* inbound_call) {
   TRACE("Handling the CQL call");
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call));
-  if (cql_call->resume_from_ != nullptr) {
+  if (cql_call->TryResume()) {
     // This is a continuation/callback from a previous request.
     // Call the call back, and we are done.
-    VLOG(2) << "Resuming " << cql_call->ToString();
-    cql_call->resume_from_->Run();
     return;
   }
   DVLOG(4) << "Handling " << cql_call->ToString();

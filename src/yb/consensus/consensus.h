@@ -455,6 +455,10 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   ConsensusRound(Consensus* consensus,
                  const ReplicateRefPtr& replicate_msg);
 
+  std::string ToString() const {
+    return replicate_msg_->get()->ShortDebugString();
+  }
+
   ReplicateMsg* replicate_msg() {
     return replicate_msg_->get();
   }

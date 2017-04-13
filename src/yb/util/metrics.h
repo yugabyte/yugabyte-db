@@ -230,6 +230,8 @@
 #include <vector>
 
 #include <gtest/gtest_prod.h>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
@@ -254,35 +256,46 @@
 // Convenience macros to define metric prototypes.
 // See the documentation at the top of this file for example usage.
 #define METRIC_DEFINE_counter(entity, name, label, unit, desc)   \
-  ::yb::CounterPrototype METRIC_##name(                        \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc))
+  ::yb::CounterPrototype BOOST_PP_CAT(METRIC_, name)(                        \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
+                                      BOOST_PP_STRINGIZE(name), \
+                                      label, \
+                                      unit, \
+                                      desc))
+
+#define METRIC_DEFINE_gauge(type, entity, name, label, unit, desc, ...) \
+  ::yb::GaugePrototype<type> BOOST_PP_CAT(METRIC_, name)(         \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
+                                      BOOST_PP_STRINGIZE(name), \
+                                      label, \
+                                      unit, \
+                                      desc, \
+                                      ## __VA_ARGS__))
 
 #define METRIC_DEFINE_gauge_string(entity, name, label, unit, desc, ...) \
-  ::yb::GaugePrototype<std::string> METRIC_##name(                 \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+    METRIC_DEFINE_gauge(std::string, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_bool(entity, name, label, unit, desc, ...) \
-  ::yb::GaugePrototype<bool> METRIC_##  name(                    \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+    METRIC_DEFINE_gauge(bool, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_int32(entity, name, label, unit, desc, ...) \
-  ::yb::GaugePrototype<int32_t> METRIC_##name(                   \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+    METRIC_DEFINE_gauge(int32_t, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_uint32(entity, name, label, unit, desc, ...) \
-  ::yb::GaugePrototype<uint32_t> METRIC_##name(                    \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+    METRIC_DEFINE_gauge(uint32_t, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_int64(entity, name, label, unit, desc, ...) \
-  ::yb::GaugePrototype<int64_t> METRIC_##name(                   \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+    METRIC_DEFINE_gauge(int64, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_uint64(entity, name, label, unit, desc, ...) \
-  ::yb::GaugePrototype<uint64_t> METRIC_##name(                    \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+    METRIC_DEFINE_gauge(uint64_t, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_double(entity, name, label, unit, desc, ...) \
-  ::yb::GaugePrototype<double> METRIC_##name(                      \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+    METRIC_DEFINE_gauge(double, entity, name, label, unit, desc, ## __VA_ARGS__)
 
 #define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val, num_sig_digits) \
-  ::yb::HistogramPrototype METRIC_##name(                                       \
-      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc), \
-    max_val, num_sig_digits)
+  ::yb::HistogramPrototype BOOST_PP_CAT(METRIC_, name)(                                   \
+      ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
+                                      BOOST_PP_STRINGIZE(name), \
+                                      label, \
+                                      unit, \
+                                      desc), \
+      max_val, \
+      num_sig_digits)
 
 // The following macros act as forward declarations for entity types and metric prototypes.
 #define METRIC_DECLARE_entity(name) \
