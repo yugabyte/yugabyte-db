@@ -2,13 +2,19 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.forms.CloudProviderFormData;
+import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,6 +54,13 @@ public class CloudProviderController extends AuthenticatedController {
 
   @Inject
   NetworkManager networkManager;
+
+  @Inject
+  AWSInitializer awsInitializer;
+
+  @Inject
+  Commissioner commissioner;
+
 
   /**
    * GET endpoint for listing providers
@@ -251,5 +264,58 @@ public class CloudProviderController extends AuthenticatedController {
     }
 
     return ApiResponse.success(responseJson);
+  }
+
+  public Result initialize(UUID customerUUID, UUID providerUUID) {
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null) {
+      ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
+    }
+    return awsInitializer.initialize(customerUUID, providerUUID);
+  }
+
+  public Result bootstrap(UUID customerUUID, UUID providerUUID) {
+    Form<CloudBootstrapFormData> formData = formFactory.form(CloudBootstrapFormData.class).bindFromRequest();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
+    }
+
+    CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
+    taskParams.providerUUID = providerUUID;
+    taskParams.regionList = formData.get().regionList;
+    taskParams.hostVPCId = formData.get().hostVPCId;
+    UUID taskUUID = commissioner.submit(TaskInfo.Type.CloudBootstrap, taskParams);
+
+    // TODO: add customer task
+    ObjectNode resultNode = Json.newObject();
+    resultNode.put("taskUUID", taskUUID.toString());
+    return ApiResponse.success(resultNode);
+  }
+
+  public Result cleanup(UUID customerUUID, UUID providerUUID) {
+    Form<CloudBootstrapFormData> formData = formFactory.form(CloudBootstrapFormData.class).bindFromRequest();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    Provider provider = Provider.get(customerUUID, providerUUID);
+    if (provider == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider UUID:" + providerUUID);
+    }
+
+    CloudCleanup.Params taskParams = new CloudCleanup.Params();
+    taskParams.providerUUID = providerUUID;
+    taskParams.regionList = formData.get().regionList;
+    UUID taskUUID = commissioner.submit(TaskInfo.Type.CloudCleanup, taskParams);
+
+    // TODO: add customer task
+    ObjectNode resultNode = Json.newObject();
+    resultNode.put("taskUUID", taskUUID.toString());
+    return ApiResponse.success(resultNode);
   }
 }
