@@ -20,7 +20,7 @@ GET     /api/customers/:cUUID/host_info               com.yugabyte.yw.controller
 GET     /api/customers/:cUUID/regions                 com.yugabyte.yw.controllers.RegionController.listAllRegions(cUUID: java.util.UUID)
 
 GET     /api/customers/:cUUID/providers               com.yugabyte.yw.controllers.CloudProviderController.list(cUUID: java.util.UUID)
-GET     /api/providers/:pUUID/initialize              com.yugabyte.yw.controllers.CloudProviderController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
+GET     /api/customers/:cUUID/providers/:pUUID/initialize              com.yugabyte.yw.controllers.CloudProviderController.initialize(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers               com.yugabyte.yw.controllers.CloudProviderController.create(cUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID/providers/:pUUID        com.yugabyte.yw.controllers.CloudProviderController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/bootstrap  com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
