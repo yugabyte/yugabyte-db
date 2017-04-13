@@ -7,7 +7,7 @@ import {
   FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS, FETCH_SOFTWARE_VERSIONS,
   FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE, FETCH_CUSTOMER_COUNT
 } from '../actions/customers';
-import {isValidObject} from '../utils/ObjectUtils';
+import {isValidObject, sortVersionStrings} from '../utils/ObjectUtils';
 import { setLoadingState }  from './common';
 
 const INITIAL_STATE = {customer: null, universes: [], tasks: [], status: null,
@@ -58,7 +58,7 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_SOFTWARE_VERSIONS:
       return {...state, softwareVersions: []}
     case FETCH_SOFTWARE_VERSIONS_SUCCESS:
-      return {...state, softwareVersions: action.payload.data}
+      return {...state, softwareVersions: sortVersionStrings(action.payload.data)}
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return {...state}
     case FETCH_HOST_INFO:
