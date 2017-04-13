@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 var _ = require('lodash');
+var semver = require('semver');
 
 export function isDefinedNotNull(obj) {
   return (typeof obj !== "undefined" && obj !== null);
@@ -94,3 +95,6 @@ export function normalizeToPositiveInt(value) {
   return parseInt(Math.abs(value)) || 0;
 }
 
+export function sortVersionStrings(arr) {
+  return arr.sort((a,b) => semver.lt(a,b));
+}
