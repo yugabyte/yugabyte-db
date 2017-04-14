@@ -46,6 +46,10 @@ public class CassandraTimeseries extends AppBase {
     appConfig.tableTTLSeconds = 24 * 60 * 60;
   }
 
+  // A 100 byte constant string suffixed to each value written.
+  private static String valueSuffix100Bytes = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+                                              "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+                                              "1234567890ABCDEFGHIJKLMNOPQR";
   // The number of users.
   private static int num_users = 100;
   // The minimum number of metrics emitted per data source.
@@ -148,7 +152,11 @@ public class CassandraTimeseries extends AppBase {
       create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
     }
     create_stmt += ";";
-    getCassandraClient().execute(create_stmt);
+    try{
+      getCassandraClient().execute(create_stmt);
+    } catch (Exception e) {
+      LOG.info("Ignoring exception when creating table: " + e.getMessage());
+    }
     LOG.info("Created a Cassandra table " + metricsTable + " using query: [" + create_stmt + "]");
   }
 
@@ -250,7 +258,7 @@ public class CassandraTimeseries extends AppBase {
       return 0; /* numKeysWritten */
     }
     if (ts > -1) {
-      String value = String.format("value-%s", ts);
+      String value = String.format("value-%s-%s", ts, valueSuffix100Bytes);
       for (String metric : dataSource.getMetrics()) {
         BoundStatement insert =
             getPreparedInsert().bind().setString("user_id", dataSource.getUserId())
@@ -325,7 +333,7 @@ public class CassandraTimeseries extends AppBase {
 
     public long getStartTs() {
       // Return an interval that reads 30-120 data points.
-      long deltaT = 30L * (1 + random.nextInt(90)) * dataEmitRateMs;
+      long deltaT = (30L + random.nextInt(90)) * dataEmitRateMs;
       return getEndTs() - deltaT;
     }
 
@@ -351,10 +359,10 @@ public class CassandraTimeseries extends AppBase {
     sb.append("the number of metrics written is a lot more than the number of metrics read as is");
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("typical in such workloads. Every read query fetches the last 1-3 hours of metrics");
+    sb.append("typical in such workloads, and the payload size for each write is 100 bytes. Every");
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("for a user's device.");
+    sb.append("read query fetches the last 1-3 hours of metrics for a user's device.");
     sb.append(optsSuffix);
     return sb.toString();
   }

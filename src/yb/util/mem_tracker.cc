@@ -44,7 +44,7 @@ DEFINE_int64(memory_limit_hard_bytes, 0,
              "A value of -1 disables all memory limiting.");
 TAG_FLAG(memory_limit_hard_bytes, stable);
 
-DEFINE_int32(memory_limit_soft_percentage, 60,
+DEFINE_int32(memory_limit_soft_percentage, 85,
              "Percentage of the hard memory limit that this daemon may "
              "consume before memory throttling of writes begins. The greater "
              "the excess, the higher the chance of throttling. In general, a "
@@ -120,11 +120,11 @@ static int64_t GetTCMallocCurrentAllocatedBytes() {
 void MemTracker::CreateRootTracker() {
   int64_t limit = FLAGS_memory_limit_hard_bytes;
   if (limit == 0) {
-    // If no limit is provided, we'll use 80% of system RAM.
+    // If no limit is provided, we'll use 90% of system RAM.
     int64_t total_ram;
     CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
-    limit = total_ram * 4;
-    limit /= 5;
+    limit = total_ram * 9;
+    limit /= 10;
   }
 
   ConsumptionFunction f;
