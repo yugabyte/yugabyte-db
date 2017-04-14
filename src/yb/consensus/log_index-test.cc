@@ -78,6 +78,9 @@ TEST_F(LogIndexTest, TestBasic) {
   VerifyEntry(MakeOpId(5, 1), 1, 50000);
 }
 
+// This test relies on kEntriesPerIndexChunk being 1000000, and that's no longer
+// the case after D1719 (2fe27d886390038bc734ea28638a1b1435e7d0d4) on Mac.
+#if !defined(__APPLE__)
 TEST_F(LogIndexTest, TestMultiSegmentWithGC) {
   ASSERT_OK(AddEntry(MakeOpId(1, 1), 1, 12345));
   ASSERT_OK(AddEntry(MakeOpId(1, 1000000), 1, 54321));
@@ -108,6 +111,7 @@ TEST_F(LogIndexTest, TestMultiSegmentWithGC) {
   VerifyNotFound(1500000);
   VerifyNotFound(2500000);
 }
+#endif
 
 } // namespace log
 } // namespace yb

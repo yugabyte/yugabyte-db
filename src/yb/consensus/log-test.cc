@@ -16,10 +16,11 @@
 // under the License.
 
 #include <algorithm>
+#include <vector>
+
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 #include <glog/stl_logging.h>
-#include <vector>
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log-test-base.h"
@@ -536,6 +537,9 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   }
 }
 
+// This test relies on kEntriesPerIndexChunk being 1000000, and that's no longer
+// the case after D1719 (2fe27d886390038bc734ea28638a1b1435e7d0d4) on Mac.
+#if !defined(__APPLE__)
 // Test that, when we are set to retain a given number of log segments,
 // we also retain any relevant log index chunks, even if those operations
 // are not necessary for recovery.
@@ -576,6 +580,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
   Status s = log_->GetLogReader()->LookupOpId(999995, &loaded_op);
   ASSERT_TRUE(s.IsNotFound()) << "unexpected status: " << s.ToString();
 }
+#endif
 
 // Tests that we can append FLUSH_MARKER messages to the log queue to make sure
 // all messages up to a certain point were fsync()ed without actually
