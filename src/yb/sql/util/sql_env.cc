@@ -168,7 +168,7 @@ shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool ref
   Status s = table_cache_->GetTable(table_name, &yb_table, refresh_cache, cache_used);
 
   if (!s.ok()) {
-    LOG(ERROR) << "GetTableDesc: Server returns an error: " << s.ToString();
+    VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
     return nullptr;
   }
 
