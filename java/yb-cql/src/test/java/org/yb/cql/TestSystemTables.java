@@ -35,8 +35,11 @@ public class TestSystemTables extends TestBase {
   }
 
   @Test
-  public void testSystemAggregatesTable() throws Exception {
-    // Table should be empty.
+  public void testEmptySystemTable() throws Exception {
+    // Tables should be empty.
     assertEquals(0, session.execute("SELECT * FROM system_schema.aggregates;").all().size());
+    assertEquals(0, session.execute("SELECT * FROM system_schema.columns;").all().size());
+    assertEquals(0, session.execute("SELECT * FROM system_schema.functions;").all().size());
+    assertEquals(0, session.execute("SELECT * FROM system_schema.indexes;").all().size());
   }
 }

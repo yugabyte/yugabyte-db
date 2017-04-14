@@ -52,7 +52,11 @@ std::make_tuple(kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId)
 std::make_tuple(kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, \
     kSystemSchemaNamespaceId), \
 std::make_tuple(kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, \
-    kSystemSchemaNamespaceId)
+    kSystemSchemaNamespaceId), \
+std::make_tuple(kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, \
+    kSystemSchemaNamespaceId), \
+std::make_tuple(kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, \
+    kSystemSchemaNamespaceId),
 
 namespace yb {
 namespace master {

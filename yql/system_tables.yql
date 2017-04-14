@@ -24,25 +24,6 @@ INSERT INTO system.local
     0, '127.0.0.1', '4', 'org.apache.cassandra.dht.Murmur3Partitioner', 'rack',
     '3.9-SNAPSHOT', '127.0.0.1', '20.1.0');
 
-CREATE TABLE system_schema.functions (
-    keyspace_name text,
-    function_name text,
-    argument_types list<text>,
-    argument_names list<text>,
-    body text,
-    called_on_null_input boolean,
-    language text,
-    return_type text,
-    PRIMARY KEY (keyspace_name, function_name));
-
-CREATE TABLE system_schema.indexes (
-    keyspace_name text,
-    table_name text,
-    index_name text,
-    kind text,
-    options map<text, text>,
-    PRIMARY KEY (keyspace_name, table_name, index_name));
-
 CREATE TABLE system_schema.keyspaces (
     keyspace_name text PRIMARY KEY,
     durable_writes boolean,

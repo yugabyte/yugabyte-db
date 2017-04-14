@@ -551,6 +551,10 @@ CatalogManager::CatalogManager(Master* master)
                              std::string(kSystemSchemaAggregatesTableName)),
               std::make_pair(std::string(kSystemSchemaNamespaceId),
                              std::string(kSystemSchemaColumnsTableName)),
+              std::make_pair(std::string(kSystemSchemaNamespaceId),
+                             std::string(kSystemSchemaFunctionsTableName)),
+              std::make_pair(std::string(kSystemSchemaNamespaceId),
+                             std::string(kSystemSchemaIndexesTableName)),
           }) {
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -775,7 +779,7 @@ Status CatalogManager::CreateAggregatesSchema(Schema* schema) {
   // TODO: argument_types should be part of the primary key, but since we don't support the CQL
   // 'frozen' type, we can't have collections in our primary key.
   RETURN_NOT_OK(builder.AddColumn("argument_types",
-                    YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
+                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
   RETURN_NOT_OK(builder.AddColumn("final_func", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("initcond", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("state_func", DataType::STRING));
@@ -785,7 +789,7 @@ Status CatalogManager::CreateAggregatesSchema(Schema* schema) {
 }
 
 Status CatalogManager::CreateColumnsSchema(Schema* schema) {
-  // system_schema.aggregates table.
+  // system_schema.columns table.
   SchemaBuilder builder;
   RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
   RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
@@ -799,10 +803,45 @@ Status CatalogManager::CreateColumnsSchema(Schema* schema) {
   return Status::OK();
 }
 
+Status CatalogManager::CreateFunctionsSchema(Schema* schema) {
+  // system_schema.functions table.
+  SchemaBuilder builder;
+  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddKeyColumn("function_name", DataType::STRING));
+  // TODO: argument_types should be part of the primary key, but since we don't support the CQL
+  // 'frozen' type, we can't have collections in our primary key.
+  RETURN_NOT_OK(builder.AddColumn("argument_types",
+                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
+  // TODO: argument_names should be a frozen list.
+  RETURN_NOT_OK(builder.AddColumn("argument_names",
+                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
+  RETURN_NOT_OK(builder.AddColumn("called_on_null_input", DataType::BOOL));
+  RETURN_NOT_OK(builder.AddColumn("language", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("return_type", DataType::STRING));
+  *schema = builder.Build();
+  return Status::OK();
+}
+
+Status CatalogManager::CreateIndexesSchema(Schema* schema) {
+  // system_schema.indexes table.
+  SchemaBuilder builder;
+  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddKeyColumn("index_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("kind", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(
+      "options",
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  *schema = builder.Build();
+  return Status::OK();
+}
+
 Status CatalogManager::PrepareSystemTables() {
   // Create the required system tables here.
   RETURN_NOT_OK(PrepareSystemPeersTable());
   RETURN_NOT_OK(PrepareSystemSchemaAggregatesTable());
+  RETURN_NOT_OK(PrepareSystemSchemaFunctionsTable());
+  RETURN_NOT_OK(PrepareSystemSchemaIndexesTable());
   return PrepareSystemSchemaColumnsTable();
 }
 
@@ -822,6 +861,24 @@ Status CatalogManager::PrepareSystemSchemaColumnsTable() {
   return PrepareSystemTable(kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName,
                             kSystemSchemaNamespaceId, schema, std::move(yql_storage),
                             &systemschema_columns_tablet);
+}
+
+Status CatalogManager::PrepareSystemSchemaFunctionsTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateFunctionsSchema(&schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
+  return PrepareSystemTable(kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName,
+                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
+                            &systemschema_functions_tablet);
+}
+
+Status CatalogManager::PrepareSystemSchemaIndexesTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateIndexesSchema(&schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
+  return PrepareSystemTable(kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName,
+                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
+                            &systemschema_indexes_tablet);
 }
 
 Status CatalogManager::PrepareSystemPeersTable() {
@@ -4476,6 +4533,12 @@ Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
     return Status::OK();
   } else if (table_name == kSystemSchemaColumnsTableName) {
     *tablet = systemschema_columns_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaFunctionsTableName) {
+    *tablet = systemschema_functions_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaIndexesTableName) {
+    *tablet = systemschema_indexes_tablet;
     return Status::OK();
   }
 
