@@ -124,7 +124,7 @@ class CassandraColumnSpecification extends Component {
             (In Order)
           </Col>
           <Col lg={9}>
-            <FieldArray name="partitionKeyColumns" component={KeyColumnList} columnType={"partitionKey"} {...this.props}/>
+            <FieldArray name="partitionKeyColumns" component={KeyColumnList} columnType={"partitionKey"} tables={this.props.tables}/>
           </Col>
         </Row>
         <hr />
@@ -134,7 +134,7 @@ class CassandraColumnSpecification extends Component {
             (In Order)
           </Col>
           <Col lg={9}>
-            <FieldArray name="clusteringColumns" component={KeyColumnList} columnType={"clustering"} {...this.props}/>
+            <FieldArray name="clusteringColumns" component={KeyColumnList} columnType={"clustering"} tables={this.props.tables}/>
           </Col>
         </Row>
         <hr />
@@ -143,7 +143,7 @@ class CassandraColumnSpecification extends Component {
             <h5 className="no-bottom-margin">Other Columns</h5>
           </Col>
           <Col lg={9}>
-            <FieldArray name="otherColumns" component={KeyColumnList} columnType={"other"} {...this.props} />
+            <FieldArray name="otherColumns" component={KeyColumnList} columnType={"other"} tables={this.props.tables} />
           </Col>
         </Row>
       </div>
@@ -174,7 +174,6 @@ export default class CreateTable extends Component {
     const {handleSubmit} = this.props;
     var onFormSubmit = handleSubmit(this.createTable);
     var cassandraLabel = <div><img src={cassandraLogo} alt="Apache Cassandra" className="table-type-logo"/>&nbsp;Apache Cassandra</div>;
-
     return (
       <div className="bottom-bar-padding">
         <h3>Create Table</h3>

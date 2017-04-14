@@ -5,7 +5,8 @@ import { CreateTable } from '../../tables';
 import { reduxForm } from 'redux-form';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
-         fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure, toggleTableView } from '../../../actions/tables';
+         fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure, toggleTableView }
+       from '../../../actions/tables';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -106,6 +107,7 @@ const validate = values => {
 var createTableForm = reduxForm({
   form: 'CreateTableForm',
   validate,
+  fields: ['tableName', 'ttlInSeconds', 'partitionKeyColumns[]', 'clusteringColumns[]', 'otherColumns[]']
 });
 
 
