@@ -24,8 +24,6 @@ INSERT INTO system.local
     0, '127.0.0.1', '4', 'org.apache.cassandra.dht.Murmur3Partitioner', 'rack',
     '3.9-SNAPSHOT', '127.0.0.1', '20.1.0');
 
-CREATE KEYSPACE system_schema;
-
 CREATE TABLE system_schema.aggregates (
     keyspace_name text,
     aggregate_name text,

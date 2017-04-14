@@ -739,7 +739,8 @@ Status CatalogManager::PrepareDefaultNamespace() {
 }
 
 Status CatalogManager::PrepareSystemNamespace() {
-  return PrepareNamespace(kSystemNamespaceName, kSystemNamespaceId);
+  RETURN_NOT_OK(PrepareNamespace(kSystemNamespaceName, kSystemNamespaceId));
+  return PrepareNamespace(kSystemSchemaNamespaceName, kSystemSchemaNamespaceId);
 }
 
 Status CatalogManager::PrepareSystemTables() {

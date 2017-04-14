@@ -15,15 +15,20 @@ static const char* const kDefaultNamespaceId = "00000000000000000000000000000000
 static const char* const kSystemNamespaceName = "system";
 static const char* const kSystemNamespaceId = "00000000000000000000000000000001";
 
+static const char* const kSystemSchemaNamespaceName = "system_schema";
+static const char* const kSystemSchemaNamespaceId = "00000000000000000000000000000002";
+
 static const char* const kSystemAuthNamespaceName = "system_auth";
 static const char* const kSystemDistributedNamespaceName = "system_distributed";
-static const char* const kSystemSchemaNamespaceName = "system_schema";
 static const char* const kSystemTracesNamespaceName = "system_traces";
 
 static const char* const kSystemPeersTableName = "peers";
 
 // Needs to be updated each time we add a new system table.
 static constexpr int kNumSystemTables = 1;
+
+// Needs to be updated each time we add a new system namespace.
+static constexpr int kNumSystemNamespaces = 2;
 
 // The system tables which are supported by the master as virtual tables.
 static const std::set<std::string> kMasterSupportedSystemTables = {

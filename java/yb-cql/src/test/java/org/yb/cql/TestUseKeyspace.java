@@ -34,6 +34,12 @@ public class TestUseKeyspace extends TestBase {
     // Use existing $$$_DEFAULT keyspace.
     testUseKeyspace("$$$_DEFAULT", false);
 
+    // Use existing system keyspace.
+    testUseKeyspace("system", false);
+
+    // Use existing system_schema keyspace.
+    testUseKeyspace("system_schema", false);
+
     // Create new keyspace and use it.
     testUseKeyspace("test_keyspace", true);
 

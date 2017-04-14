@@ -52,6 +52,10 @@ namespace master {
 
 using strings::Substitute;
 
+#define EXPECTED_SYSTEM_NAMESPACES \
+std::make_tuple(kSystemNamespaceName, kSystemNamespaceId), \
+std::make_tuple(kSystemSchemaNamespaceName, kSystemSchemaNamespaceId),
+
 class MasterTest : public YBTest {
  protected:
   virtual void SetUp() OVERRIDE {
@@ -649,11 +653,11 @@ TEST_F(MasterTest, TestNamespaces) {
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 
@@ -670,11 +674,11 @@ TEST_F(MasterTest, TestNamespaces) {
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
             std::make_tuple(other_ns_name, other_ns_id),
         }, namespaces);
   }
@@ -692,11 +696,11 @@ TEST_F(MasterTest, TestNamespaces) {
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
             std::make_tuple(other_ns_name, other_ns_id),
         }, namespaces);
   }
@@ -713,11 +717,11 @@ TEST_F(MasterTest, TestNamespaces) {
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 
@@ -732,11 +736,11 @@ TEST_F(MasterTest, TestNamespaces) {
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
             std::make_tuple(other_ns_name, other_ns_id),
         }, namespaces);
   }
@@ -753,11 +757,11 @@ TEST_F(MasterTest, TestNamespaces) {
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 
@@ -772,11 +776,11 @@ TEST_F(MasterTest, TestNamespaces) {
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 
@@ -797,11 +801,11 @@ TEST_F(MasterTest, TestNamespaces) {
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 
@@ -822,11 +826,11 @@ TEST_F(MasterTest, TestNamespaces) {
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 
@@ -847,11 +851,11 @@ TEST_F(MasterTest, TestNamespaces) {
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
     // Including system namespace.
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 }
@@ -872,11 +876,11 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
             std::make_tuple(other_ns_name, other_ns_id),
         }, namespaces);
   }
@@ -914,11 +918,11 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
             std::make_tuple(other_ns_name, other_ns_id),
         }, namespaces);
   }
@@ -941,11 +945,11 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
             std::make_tuple(other_ns_name, other_ns_id),
         }, namespaces);
   }
@@ -972,11 +976,11 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 }
@@ -1059,11 +1063,11 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
             std::make_tuple(other_ns_name, other_ns_id),
         }, namespaces);
   }
@@ -1166,11 +1170,11 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 }
@@ -1205,12 +1209,12 @@ TEST_F(MasterTest, TestFullTableName) {
     // Order is not important. It's defined by the internal implementation.
     // So, the default namespace can be first (index == 0) or last (index=1).
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(3, namespaces.namespaces_size());
+    ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
-            std::make_tuple(other_ns_name, other_ns_id)
+            std::make_tuple(other_ns_name, other_ns_id),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 
@@ -1317,11 +1321,11 @@ TEST_F(MasterTest, TestFullTableName) {
   }
   {
     ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
-    ASSERT_EQ(2, namespaces.namespaces_size());
+    ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
             std::make_tuple(kDefaultNamespaceName, kDefaultNamespaceId),
-            std::make_tuple(kSystemNamespaceName, kSystemNamespaceId),
+            EXPECTED_SYSTEM_NAMESPACES
         }, namespaces);
   }
 }

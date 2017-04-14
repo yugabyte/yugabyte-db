@@ -542,8 +542,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   unique_ptr<TestNamespaceLoader> loader(new TestNamespaceLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
-  // Default namespace and system namespace must be already created
-  ASSERT_EQ(2, loader->namespaces.size());
+  ASSERT_EQ(1 + kNumSystemNamespaces, loader->namespaces.size());
 
   scoped_refptr<NamespaceInfo> universe_ns(new NamespaceInfo(kDefaultNamespaceId));
   {
@@ -569,7 +568,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   // Verify it showed up.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(3, loader->namespaces.size());
+  ASSERT_EQ(2 + kNumSystemNamespaces, loader->namespaces.size());
   ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
   ASSERT_TRUE(MetadatasEqual(ns.get(), loader->namespaces[1]));
 
@@ -585,7 +584,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   // Verify it showed up.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(3, loader->namespaces.size());
+  ASSERT_EQ(2 + kNumSystemNamespaces, loader->namespaces.size());
   ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
   ASSERT_TRUE(MetadatasEqual(ns.get(), loader->namespaces[1]));
 
@@ -596,7 +595,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   // Verify the result.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->namespaces.size());
+  ASSERT_EQ(1 + kNumSystemNamespaces, loader->namespaces.size());
   ASSERT_TRUE(MetadatasEqual(universe_ns.get(), loader->namespaces[0]));
 }
 
