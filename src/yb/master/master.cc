@@ -357,5 +357,9 @@ Status Master::GoIntoShellMode() {
   return Status::OK();
 }
 
+size_t Master::NumSystemTables() const {
+  return catalog_manager_->NumSystemTables();
+}
+
 } // namespace master
 } // namespace yb

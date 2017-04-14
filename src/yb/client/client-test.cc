@@ -462,8 +462,7 @@ TEST_F(ClientTest, TestListTables) {
   std::sort(tables.begin(), tables.end(), [](const YBTableName& n1, const YBTableName& n2) {
     return n1.ToString() < n2.ToString();
   });
-  // Including system.peers table.
-  ASSERT_EQ(3, tables.size());
+  ASSERT_EQ(2 + cluster_->leader_mini_master()->NumSystemTables(), tables.size());
   ASSERT_EQ(kTableName, tables[0]);
   ASSERT_EQ(kTable2Name, tables[1]);
   tables.clear();

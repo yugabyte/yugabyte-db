@@ -6,10 +6,10 @@
 namespace yb {
 namespace master {
 
-SystemTablet::SystemTablet(const Schema& schema, common::YQLStorageIf* yql_storage,
+SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<common::YQLStorageIf> yql_storage,
                            const TabletId& tablet_id)
     : schema_(schema),
-      yql_storage_(yql_storage),
+      yql_storage_(std::move(yql_storage)),
       tablet_id_(tablet_id) {
 }
 

@@ -81,6 +81,8 @@ using PlacementId = std::string;
 using NamespaceId = std::string;
 using NamespaceName = std::string;
 using TServerId = std::string;
+typedef std::pair<NamespaceId, TableName> NamespaceIdTableNamePair;
+typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
 
 // This class is a base wrapper around the protos that get serialized in the data column of the
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
@@ -213,7 +215,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   std::string ToString() const;
 
   // Determines whether or not this tablet belongs to a system table.
-  bool IsSupportedSystemTable() const;
+  bool IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const;
 
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
@@ -291,7 +293,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   explicit TableInfo(TableId table_id);
 
   // Determines whether or not this table is a system table supported by the master
-  bool IsSupportedSystemTable() const;
+  bool IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const;
 
   const TableName name() const;
 
@@ -771,6 +773,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
 
+  size_t NumSystemTables() const {
+    return master_supported_system_tables_.size();
+  }
+
  private:
   friend class TableLoader;
   friend class TabletLoader;
@@ -817,7 +823,25 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemPeersTable();
 
+  CHECKED_STATUS PrepareSystemSchemaAggregatesTable();
+
+  CHECKED_STATUS PrepareSystemSchemaColumnsTable();
+
+  CHECKED_STATUS PrepareSystemTable(const TableName& table_name,
+                                    const NamespaceName& namespace_name,
+                                    const NamespaceId& namespace_id,
+                                    const Schema& schema,
+                                    std::unique_ptr<common::YQLStorageIf> yql_storage,
+                                    std::shared_ptr<tablet::AbstractTablet>* tablet);
+
+  // system.peers schema.
   CHECKED_STATUS CreateSystemPeersSchema(Schema* schema);
+
+  // system_schema.aggregates.
+  CHECKED_STATUS CreateAggregatesSchema(Schema* schema);
+
+  // system_schema.columns.
+  CHECKED_STATUS CreateColumnsSchema(Schema* schema);
 
   CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
 
@@ -1156,7 +1180,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS UpdateMastersListInMemoryAndDisk();
 
   // System tablets for virtual tables.
-  std::shared_ptr<tablet::AbstractTablet> system_peers_tablet; // system.peers;
+
+  // system.peers
+  std::shared_ptr<tablet::AbstractTablet> system_peers_tablet;
+
+  // system_schema.aggregates
+  std::shared_ptr<tablet::AbstractTablet> systemschema_aggregates_tablet;
+
+  // system_schema.columns
+  std::shared_ptr<tablet::AbstractTablet> systemschema_columns_tablet;
+
+  // The set of system tables supported by the master. No locks are needed for this set since its
+  // created once during initialization and after that all operations are read operations.
+  const SystemTableSet master_supported_system_tables_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

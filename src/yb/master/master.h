@@ -131,6 +131,9 @@ class Master : public server::RpcAndWebServerBase {
   // Called currently by cluster master leader which is removing this master from the quorum.
   CHECKED_STATUS GoIntoShellMode();
 
+  // Returns the number of system tables (used only for testing currently).
+  size_t NumSystemTables() const;
+
  private:
   friend class MasterTest;
 

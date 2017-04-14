@@ -155,7 +155,12 @@ public class TestBase {
     for (Master.ListTablesResponsePB.TableInfo tableInfo :
         miniCluster.getClient().getTablesList().getTableInfoList()) {
       // Drop all non-system tables.
-      if (!tableInfo.getNamespace().getName().equals("system")) {
+      String namespaceName = tableInfo.getNamespace().getName();
+      if (!namespaceName.equals("system") &&
+        !namespaceName.equals("system_auth") &&
+        !namespaceName.equals("system_distributed") &&
+        !namespaceName.equals("system_traces") &&
+        !namespaceName.equals("system_schema")) {
         DropTable(tableInfo.getName());
       }
     }

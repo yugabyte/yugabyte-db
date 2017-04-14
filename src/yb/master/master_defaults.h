@@ -5,6 +5,7 @@
 
 #include <set>
 #include <string>
+#include <utility>
 
 namespace yb {
 namespace master {
@@ -23,16 +24,16 @@ static const char* const kSystemDistributedNamespaceName = "system_distributed";
 static const char* const kSystemTracesNamespaceName = "system_traces";
 
 static const char* const kSystemPeersTableName = "peers";
-
-// Needs to be updated each time we add a new system table.
-static constexpr int kNumSystemTables = 1;
+static const char* const kSystemSchemaAggregatesTableName = "aggregates";
+static const char* const kSystemSchemaColumnsTableName = "columns";
 
 // Needs to be updated each time we add a new system namespace.
 static constexpr int kNumSystemNamespaces = 2;
 
-// The system tables which are supported by the master as virtual tables.
-static const std::set<std::string> kMasterSupportedSystemTables = {
-    std::string(kSystemPeersTableName) };
+// Needs to be updated each time we add a new system table. Currently, this is only used for unit
+// tests which don't have access to the master object (for ex: unit tests which use ExternalMaster).
+static constexpr int kNumSystemTables = 3;
+
 
 } // namespace master
 } // namespace yb

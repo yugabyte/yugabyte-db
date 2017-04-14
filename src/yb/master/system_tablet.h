@@ -15,7 +15,7 @@ namespace master {
 // This is a virtual tablet that is used for our virtual tables in the system namespace.
 class SystemTablet : public tablet::AbstractTablet {
  public:
-  SystemTablet(const Schema& schema, common::YQLStorageIf* yql_storage,
+  SystemTablet(const Schema& schema, std::unique_ptr<common::YQLStorageIf> yql_storage,
                const TabletId& tablet_id);
 
   const Schema& SchemaRef() const override;

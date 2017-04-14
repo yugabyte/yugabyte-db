@@ -24,27 +24,6 @@ INSERT INTO system.local
     0, '127.0.0.1', '4', 'org.apache.cassandra.dht.Murmur3Partitioner', 'rack',
     '3.9-SNAPSHOT', '127.0.0.1', '20.1.0');
 
-CREATE TABLE system_schema.aggregates (
-    keyspace_name text,
-    aggregate_name text,
-    argument_types list<text>,
-    final_func text,
-    initcond text,
-    return_type text,
-    state_func text,
-    state_type text,
-    PRIMARY KEY (keyspace_name, aggregate_name));
-
-CREATE TABLE system_schema.columns (
-    keyspace_name text,
-    table_name text,
-    column_name text,
-    clustering_order text,
-    kind text,
-    position int,
-    type text,
-    PRIMARY KEY (keyspace_name, table_name, column_name));
-
 CREATE TABLE system_schema.functions (
     keyspace_name text,
     function_name text,

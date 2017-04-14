@@ -77,6 +77,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/yql_empty_vtable.h"
 #include "yb/master/yql_peers_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
@@ -542,7 +543,15 @@ CatalogManager::CatalogManager(Master* master)
       state_(kConstructed),
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
-      load_balance_policy_(new ClusterLoadBalancer(this)) {
+      load_balance_policy_(new ClusterLoadBalancer(this)),
+      master_supported_system_tables_(
+          {
+              std::make_pair(std::string(kSystemNamespaceId), std::string(kSystemPeersTableName)),
+              std::make_pair(std::string(kSystemSchemaNamespaceId),
+                             std::string(kSystemSchemaAggregatesTableName)),
+              std::make_pair(std::string(kSystemSchemaNamespaceId),
+                             std::string(kSystemSchemaColumnsTableName)),
+          }) {
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&worker_pool_));
@@ -690,14 +699,12 @@ Status CatalogManager::VisitSysCatalog() {
       sys_catalog_->Visit(namespace_loader.get()),
       "Failed while visiting namespaces in sys catalog");
 
-  // These are only created if they don't already exist.
+  // Create the system namespaces (created only if they don't already exist).
   RETURN_NOT_OK(PrepareDefaultNamespace());
   RETURN_NOT_OK(PrepareSystemNamespace());
 
-  if (table_ids_map_.empty()) {
-    // Create the system tables.
-    RETURN_NOT_OK(PrepareSystemTables());
-  }
+  // Create the system tables (created only if they don't already exist).
+  RETURN_NOT_OK(PrepareSystemTables());
 
   // Clear current config.
   cluster_config_.reset();
@@ -743,12 +750,8 @@ Status CatalogManager::PrepareSystemNamespace() {
   return PrepareNamespace(kSystemSchemaNamespaceName, kSystemSchemaNamespaceId);
 }
 
-Status CatalogManager::PrepareSystemTables() {
-  // Create the required system tables here.
-  return PrepareSystemPeersTable();
-}
-
 Status CatalogManager::CreateSystemPeersSchema(Schema* schema) {
+  // system.peers table
   SchemaBuilder builder;
   // Using STRING here for some datatypes that are not yet supported.
   RETURN_NOT_OK(builder.AddKeyColumn("peer", DataType::INET));
@@ -759,33 +762,107 @@ Status CatalogManager::CreateSystemPeersSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
   RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::STRING)); // This should be UUID.
-  RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, {YQLType(DataType::STRING)})));
+  RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, { YQLType(DataType::STRING) })));
   *schema = builder.Build();
   return Status::OK();
 }
 
+Status CatalogManager::CreateAggregatesSchema(Schema* schema) {
+  // system_schema.aggregates table.
+  SchemaBuilder builder;
+  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddKeyColumn("aggregate_name", DataType::STRING));
+  // TODO: argument_types should be part of the primary key, but since we don't support the CQL
+  // 'frozen' type, we can't have collections in our primary key.
+  RETURN_NOT_OK(builder.AddColumn("argument_types",
+                    YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
+  RETURN_NOT_OK(builder.AddColumn("final_func", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("initcond", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("state_func", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("state_type", DataType::STRING));
+  *schema = builder.Build();
+  return Status::OK();
+}
+
+Status CatalogManager::CreateColumnsSchema(Schema* schema) {
+  // system_schema.aggregates table.
+  SchemaBuilder builder;
+  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddKeyColumn("column_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("clustering_order", DataType::STRING));
+  // TODO: column_name_bytes is missing since we don't support blob type yet.
+  RETURN_NOT_OK(builder.AddColumn("kind", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("position", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("type", DataType::STRING));
+  *schema = builder.Build();
+  return Status::OK();
+}
+
+Status CatalogManager::PrepareSystemTables() {
+  // Create the required system tables here.
+  RETURN_NOT_OK(PrepareSystemPeersTable());
+  RETURN_NOT_OK(PrepareSystemSchemaAggregatesTable());
+  return PrepareSystemSchemaColumnsTable();
+}
+
+Status CatalogManager::PrepareSystemSchemaAggregatesTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateAggregatesSchema(&schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
+  return PrepareSystemTable(kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName,
+                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
+                            &systemschema_aggregates_tablet);
+}
+
+Status CatalogManager::PrepareSystemSchemaColumnsTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateColumnsSchema(&schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
+  return PrepareSystemTable(kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName,
+                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
+                            &systemschema_columns_tablet);
+}
+
 Status CatalogManager::PrepareSystemPeersTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateSystemPeersSchema(&schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new PeersVTable(schema, master_));
+  return PrepareSystemTable(kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId,
+                            schema, std::move(yql_storage), &system_peers_tablet);
+}
+
+Status CatalogManager::PrepareSystemTable(const TableName& table_name,
+                                          const NamespaceName& namespace_name,
+                                          const NamespaceId& namespace_id,
+                                          const Schema& schema,
+                                          std::unique_ptr<common::YQLStorageIf> yql_storage,
+                                          std::shared_ptr<tablet::AbstractTablet>* tablet) {
+  // Verify we have the catalog manager lock.
+  if (!lock_.is_locked()) {
+    return STATUS(IllegalState, "We don't have the catalog manager lock!");
+  }
+
+  if (FindPtrOrNull(table_names_map_, std::make_pair(namespace_id, table_name)) != nullptr) {
+    LOG(INFO) << strings::Substitute("Table $0.$1 already created, skipping initialization",
+                                     namespace_name, table_name);
+    return Status::OK();
+  }
+
   scoped_refptr<TableInfo> table;
   vector<TabletInfo*> tablets;
 
-  // Verify we have catalog manager lock.
-  DCHECK(lock_.is_locked());
-
   // Fill in details for system.peers table.
   CreateTableRequestPB req;
-  req.set_name(kSystemPeersTableName);
+  req.set_name(table_name);
   req.set_table_type(TableType::YQL_TABLE_TYPE);
-
-  // Create schema for peers table.
-  Schema schema;
-  RETURN_NOT_OK(CreateSystemPeersSchema(&schema));
 
   // Create partitions.
   vector <Partition> partitions;
   PartitionSchema partition_schema;
   RETURN_NOT_OK(partition_schema.CreatePartitions(1, &partitions));
 
-  RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, kSystemNamespaceId, partitions,
+  RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, namespace_id, partitions,
                     &tablets, nullptr, &table));
   DCHECK_EQ(1, tablets.size());
   LOG (INFO) << "Inserted new table and tablet info into CatalogManager maps";
@@ -811,14 +888,17 @@ Status CatalogManager::PrepareSystemPeersTable() {
   }
 
   // Finally create the appropriate tablet object.
-  system_peers_tablet.reset(new SystemTablet(schema,
-                                             new PeersVTable(schema, master_),
-                                             tablets[0]->tablet_id()));
+  tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
 
   return Status::OK();
 }
 
 Status CatalogManager::PrepareNamespace(const NamespaceName& name, const NamespaceId& id) {
+  // Verify we have the catalog manager lock.
+  if (!lock_.is_locked()) {
+    return STATUS(IllegalState, "We don't have the catalog manager lock!");
+  }
+
   if (FindPtrOrNull(namespace_names_map_, name) != nullptr) {
     LOG(INFO) << strings::Substitute("Namespace $0 already created, skipping initialization",
                                      name);
@@ -4314,7 +4394,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
 Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                                TabletLocationsPB* locs_pb) {
   // For system tables, the set of replicas is always the set of masters.
-  if (tablet->IsSupportedSystemTable()) {
+  if (tablet->IsSupportedSystemTable(master_supported_system_tables_)) {
     consensus::ConsensusStatePB master_consensus;
     RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
     locs_pb->set_tablet_id(tablet->tablet_id());
@@ -4383,12 +4463,22 @@ Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
     }
   }
 
-  if (!tablet_info->IsSupportedSystemTable()) {
+  if (!tablet_info->IsSupportedSystemTable(master_supported_system_tables_)) {
     return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", tablet_id);
-  } else if (tablet_info->table()->name() == kSystemPeersTableName) {
+  }
+
+  const TableName& table_name = tablet_info->table()->name();
+  if (table_name == kSystemPeersTableName) {
     *tablet = system_peers_tablet;
     return Status::OK();
+  } else if (table_name == kSystemSchemaAggregatesTableName) {
+    *tablet = systemschema_aggregates_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaColumnsTableName) {
+    *tablet = systemschema_columns_tablet;
+    return Status::OK();
   }
+
   return STATUS_SUBSTITUTE(InvalidArgument, "$0 isn't a supported system table",
                            tablet_info->table()->name());
 }
@@ -5001,8 +5091,8 @@ uint32_t TabletInfo::reported_schema_version() const {
   return reported_schema_version_;
 }
 
-bool TabletInfo::IsSupportedSystemTable() const {
-  return table_->IsSupportedSystemTable();
+bool TabletInfo::IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const {
+  return table_->IsSupportedSystemTable(supported_system_tables);
 }
 
 std::string TabletInfo::ToString() const {
@@ -5024,9 +5114,9 @@ TableInfo::TableInfo(TableId table_id) : table_id_(std::move(table_id)) {}
 TableInfo::~TableInfo() {
 }
 
-bool TableInfo::IsSupportedSystemTable() const {
-  return (namespace_id() == kSystemNamespaceId &&
-      kMasterSupportedSystemTables.find(name()) != kMasterSupportedSystemTables.end());
+bool TableInfo::IsSupportedSystemTable(const SystemTableSet& supported_system_tables) const {
+  return supported_system_tables.find(std::make_pair(namespace_id(), name())) !=
+      supported_system_tables.end();
 }
 
 const TableName TableInfo::name() const {

@@ -79,6 +79,8 @@ class MiniMaster {
   // need a setter for the is_creating_ field.
   void SetIsCreatingForFailureTesting(bool is_creating) { is_creating_ = is_creating; }
 
+  size_t NumSystemTables() const;
+
  private:
   CHECKED_STATUS StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
                                        const std::vector<uint16_t>& peer_ports);

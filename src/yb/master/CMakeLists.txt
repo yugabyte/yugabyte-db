@@ -37,6 +37,7 @@ set(MASTER_SRCS
   system_tablet.cc
   yql_virtual_table.cc
   yql_peers_vtable.cc
+  yql_empty_vtable.cc
   yql_vtable_iterator.cc
   catalog_manager.cc
   cluster_balance.cc
