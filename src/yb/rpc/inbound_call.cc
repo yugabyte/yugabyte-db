@@ -44,15 +44,18 @@ DEFINE_bool(collect_end_to_end_traces, false,
             "If true, collected traces includes information for sub-components "
             "potentially running on a different server. ");
 DEFINE_int32(print_trace_every, 0,
-            "Controls the rate at which traces are printed. Setting this to 0 "
-            "disables printing the collected traces.");
+             "Controls the rate at which traces are printed. Setting this to 0 "
+             "disables printing the collected traces.");
+DEFINE_int32(rpc_slow_query_threshold_ms, 50,
+             "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_dump_all_traces, advanced);
 TAG_FLAG(rpc_dump_all_traces, runtime);
 TAG_FLAG(collect_end_to_end_traces, advanced);
 TAG_FLAG(collect_end_to_end_traces, runtime);
 TAG_FLAG(print_trace_every, advanced);
 TAG_FLAG(print_trace_every, runtime);
-
+TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
+TAG_FLAG(rpc_slow_query_threshold_ms, runtime);
 
 namespace yb {
 namespace rpc {

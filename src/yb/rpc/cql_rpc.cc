@@ -16,6 +16,7 @@ using google::protobuf::MessageLite;
 using strings::Substitute;
 
 DECLARE_bool(rpc_dump_all_traces);
+DECLARE_int32(rpc_slow_query_threshold_ms);
 
 namespace yb {
 
@@ -206,7 +207,7 @@ void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
-  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
     trace_->Dump(&LOG(INFO), true);
   }
