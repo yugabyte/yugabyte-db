@@ -208,10 +208,10 @@ public class CassandraStockTicker extends AppBase {
       synchronized (prepareInitLock) {
         if (preparedInsertMin == null) {
           // Create the prepared statement object.
-          String select_stmt =
+          String insert_stmt =
               String.format("INSERT INTO %s (ticker_id, ts, value) VALUES (?, ?, ?)",
                             tickerTableMin);
-          preparedInsertMin = getCassandraClient().prepare(select_stmt);
+          preparedInsertMin = getCassandraClient().prepare(insert_stmt);
         }
       }
     }

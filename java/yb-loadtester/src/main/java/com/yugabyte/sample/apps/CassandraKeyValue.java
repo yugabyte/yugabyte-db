@@ -176,6 +176,9 @@ public class CassandraKeyValue extends AppBase {
     sb.append("--num_writes " + appConfig.numKeysToWrite);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
+    sb.append("--value_size " + appConfig.valueSize);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
     sb.append("--num_threads_read " + appConfig.numReaderThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);

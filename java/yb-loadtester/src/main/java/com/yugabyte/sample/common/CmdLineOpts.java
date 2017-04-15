@@ -167,10 +167,14 @@ public class CmdLineOpts {
       AppBase.appConfig.numUniqueKeysToWrite =
           Long.parseLong(cmd.getOptionValue("num_unique_keys"));
     }
+    if (cmd.hasOption("value_size")) {
+      AppBase.appConfig.valueSize = Integer.parseInt(cmd.getOptionValue("value_size"));
+    }
     LOG.info("Num unique keys to insert: " + AppBase.appConfig.numUniqueKeysToWrite);
     LOG.info("Num keys to update: " +
         (AppBase.appConfig.numKeysToWrite - AppBase.appConfig.numUniqueKeysToWrite));
     LOG.info("Num keys to read: " + AppBase.appConfig.numKeysToRead);
+    LOG.info("Value size: " + AppBase.appConfig.valueSize);
   }
 
   private void initializeTableProperties(CommandLine cmd) {
@@ -215,6 +219,7 @@ public class CmdLineOpts {
     options.addOption("num_threads_write", true, "The number of threads that perform writes.");
     options.addOption("num_writes", true, "The total number of writes to perform.");
     options.addOption("num_reads", true, "The total number of reads to perform.");
+    options.addOption("value_size", true, "Size in bytes of the value. The bytes are random.");
     options.addOption("table_ttl_seconds", true, "The TTL in seconds to create the table with.");
 
     // Options for CassandraTimeseries workload.

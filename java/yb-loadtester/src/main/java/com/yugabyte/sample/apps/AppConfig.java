@@ -40,6 +40,9 @@ public class AppConfig {
   // no data has yet to be written.
   public long numKeysToRead;
 
+  // The size of the value to be written.
+  public int valueSize;
+
   // The number of unique keys to write, once these are written, the subsequent writes will be
   // updates to existing keys.
   public long numUniqueKeysToWrite;

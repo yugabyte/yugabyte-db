@@ -42,14 +42,12 @@ public class CassandraTimeseries extends AppBase {
     // Set the number of keys to read and write.
     appConfig.numKeysToRead = -1;
     appConfig.numKeysToWrite = -1;
+    // The size of the value.
+    appConfig.valueSize = 100;
     // Set the TTL for the raw table.
     appConfig.tableTTLSeconds = 24 * 60 * 60;
   }
 
-  // A 100 byte constant string suffixed to each value written.
-  private static String valueSuffix100Bytes = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
-                                              "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
-                                              "1234567890ABCDEFGHIJKLMNOPQR";
   // The number of users.
   private static int num_users = 100;
   // The minimum number of metrics emitted per data source.
@@ -258,14 +256,23 @@ public class CassandraTimeseries extends AppBase {
       return 0; /* numKeysWritten */
     }
     if (ts > -1) {
-      String value = String.format("value-%s-%s", ts, valueSuffix100Bytes);
+      // Add the timestamp as the value.
+      StringBuilder sb = new StringBuilder();
+      sb.append(ts);
+      int suffixSize = appConfig.valueSize <= sb.length() ? 0 : (appConfig.valueSize - sb.length());
+      // Pad with random bytes if needed to create a string of the desired length.
+      if (suffixSize > 0) {
+        byte[] randBytesArr = new byte[suffixSize];
+        random.nextBytes(randBytesArr);
+        sb.append(randBytesArr);
+      }
       for (String metric : dataSource.getMetrics()) {
         BoundStatement insert =
             getPreparedInsert().bind().setString("user_id", dataSource.getUserId())
                                       .setString("node_id", dataSource.getNodeId())
                                       .setString("metric_id", metric)
                                       .setTimestamp("ts", new Date(ts))
-                                      .setString("value", value);
+                                      .setString("value", sb.toString());
         ResultSet resultSet = getCassandraClient().execute(insert);
         numKeysWritten++;
       }
