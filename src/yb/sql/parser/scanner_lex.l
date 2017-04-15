@@ -244,7 +244,6 @@ xustop2                   {uescape}
 /* error rule to avoid backup */
 xufailed                  [uU]&
 
-
 /* C-style comments
  *
  * The "extended comment" syntax closely resembles allowable operator syntax.
@@ -937,7 +936,7 @@ other                     .
 
 {integer} {
   SET_YYLLOC();
-  return process_integer_literal(yytext);
+  return GramProcessor::make_ICONST(MakeString(yytext), cursor_);
 }
 
 {decimal} {
@@ -949,7 +948,7 @@ other                     .
   /* throw back the .., and treat as integer */
   yyless(yyleng-2);
   SET_YYLLOC();
-  return process_integer_literal(yytext);
+  return GramProcessor::make_ICONST(MakeString(yytext), cursor_);
 }
 
 {real} {

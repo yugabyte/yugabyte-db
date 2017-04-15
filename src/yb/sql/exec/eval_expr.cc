@@ -2,6 +2,8 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
+#include <string>
+
 #include "yb/sql/exec/eval_expr.h"
 #include "yb/sql/exec/executor.h"
 #include "yb/util/logging.h"
@@ -41,11 +43,25 @@ Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
       break;
     }
 
+    case InternalType::kVarintStringValue: {
+      EvalVarIntStringValue varint_value;
+      RETURN_NOT_OK(EvalVarIntExpr(expr, &varint_value));
+      RETURN_NOT_OK(ConvertFromVarInt(result, varint_value));
+      break;
+    }
+
     case InternalType::kFloatValue: FALLTHROUGH_INTENDED;
     case InternalType::kDoubleValue: {
       EvalDoubleValue double_value;
       RETURN_NOT_OK(EvalDoubleExpr(expr, &double_value));
       RETURN_NOT_OK(ConvertFromDouble(result, double_value));
+      break;
+    }
+
+    case InternalType::kDecimalValue: {
+      EvalDecimalValue decimal_value;
+      RETURN_NOT_OK(EvalDecimalExpr(expr, &decimal_value));
+      RETURN_NOT_OK(ConvertFromDecimal(result, decimal_value));
       break;
     }
 
@@ -74,7 +90,7 @@ Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
     }
 
     default:
-      LOG(FATAL) << "Unknown expression datatype";
+      LOG(FATAL) << "Unknown expression datatype " << expr->internal_type();
   }
 
   return Status::OK();
@@ -132,6 +148,30 @@ Status Executor::EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result
   return eval_status;
 }
 
+Status Executor::EvalVarIntExpr(const PTExpr::SharedPtr& expr, EvalVarIntStringValue *result) {
+  Status eval_status = Status::OK();
+
+  const PTExpr *e = expr.get();
+  switch (expr->expr_op()) {
+    case ExprOperator::kConst:
+      result->value_ = static_cast<const PTConstVarInt*>(e)->Eval();
+      break;
+
+    case ExprOperator::kUMinus:
+      result->value_ = static_cast<const PTConstVarInt*>(e->op1().get())->Eval();
+      CHECK_GT(result->value_->size(), 0);
+      // This method can be called more than twice. Ensure we don't keep prepending negative signs.
+      if (*result->value_->data() != '-') {
+        result->value_->insert(0, "-");
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Not supported operator";
+  }
+  return eval_status;
+}
+
 Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *result) {
   Status eval_status = Status::OK();
 
@@ -174,6 +214,31 @@ Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *
 
     default:
       LOG(FATAL) << "Not supported operator";
+  }
+  return eval_status;
+}
+
+Status Executor::EvalDecimalExpr(const PTExpr::SharedPtr& expr, EvalDecimalValue *result) {
+  Status eval_status = Status::OK();
+
+  const PTExpr *e = expr.get();
+  switch (expr->expr_op()) {
+
+    case ExprOperator::kConst:
+      result->value_ = static_cast<const PTConstDecimal *>(e)->Eval();
+      break;
+
+    case ExprOperator::kUMinus:
+      result->value_ = static_cast<const PTConstDecimal*>(e->op1().get())->Eval();
+      CHECK_GT(result->value_->size(), 0);
+      // This method can be called more than twice. Ensure we don't keep prepending negative signs.
+      if (*result->value_->data() != '-') {
+        result->value_->insert(0, "-");
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Operator not supported";
   }
   return eval_status;
 }
@@ -311,6 +376,49 @@ Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value
   return Status::OK();
 }
 
+Status Executor::ConvertFromVarInt(EvalValue *result, const EvalVarIntStringValue& varint_value) {
+  switch (result->datatype()) {
+    case InternalType::kVarintValue:
+      LOG(FATAL) << "VARINT type not supported";
+
+    case InternalType::kVarintStringValue:
+      static_cast<EvalVarIntStringValue *>(result)->value_ = varint_value.value_;
+      break;
+
+    case InternalType::kInt64Value: {
+      auto *value = &(static_cast<EvalIntValue *>(result)->value_);
+      *value = std::stol(varint_value.value_->c_str());
+      break;
+    }
+
+    case InternalType::kDoubleValue: {
+      auto *value = &(static_cast<EvalDoubleValue *>(result)->value_);
+      *value = std::stold(varint_value.value_->c_str());
+      break;
+    }
+
+    case InternalType::kDecimalValue: {
+      util::Decimal decimal;
+      CHECK_OK(decimal.FromString(varint_value.value_->c_str()));
+      static_cast<EvalDecimalValue *>(result)->value_ =
+          MCString::MakeShared(varint_value.value_->mem_ctx(),
+                               decimal.EncodeToComparable().c_str());
+      break;
+    }
+
+    case InternalType::kTimestampValue: {
+      int64_t val = std::stol(varint_value.value_->c_str());
+      int64_t ts = DateTime::TimestampFromInt(val).ToInt64();
+      static_cast<EvalTimestampValue *>(result)->value_ = ts;
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Illegal datatype conversion";
+  }
+  return Status::OK();
+}
+
 Status Executor::ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value) {
   switch (result->datatype()) {
     case InternalType::kDoubleValue:
@@ -342,6 +450,42 @@ Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& str
       InetAddress addr;
       RETURN_NOT_OK(addr.FromString(s));
       static_cast<EvalInetaddressValue*>(result)->value_ = addr;
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Illegal datatype conversion";
+  }
+  return Status::OK();
+}
+
+Status Executor::ConvertFromDecimal(EvalValue *result, const EvalDecimalValue& decimal_value) {
+  switch (result->datatype()) {
+    case InternalType::kDecimalValue: {
+      util::Decimal decimal;
+      CHECK_OK(decimal.FromString(decimal_value.value_->c_str()));
+      static_cast<EvalDecimalValue *>(result)->value_ =
+          MCString::MakeShared(decimal_value.value_->mem_ctx(),
+                               decimal.EncodeToComparable().c_str());
+
+      auto s = decimal.EncodeToComparable();
+      string r;
+      for (int i = 0; i < s.size(); i++) {
+        r += StringPrintf("\\x%02x", (unsigned char)s[i]);
+      }
+
+      decimal.Negate();
+      s = decimal.EncodeToComparable();
+      r = "";
+      for (int i = 0; i < s.size(); i++) {
+        r += StringPrintf("\\x%02x", (unsigned char)s[i]);
+      }
+
+      break;
+    }
+
+    case InternalType::kDoubleValue: {
+      static_cast<EvalDoubleValue *>(result)->value_ = std::stold(decimal_value.value_->c_str());
       break;
     }
 

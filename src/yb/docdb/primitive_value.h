@@ -14,6 +14,7 @@
 #include "yb/docdb/value_type.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/util/decimal.h"
 #include "yb/util/timestamp.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
@@ -57,6 +58,9 @@ class PrimitiveValue {
         || other.type_ == ValueType::kInetaddressDescending) {
       type_ = other.type_;
       inetaddress_val_ = new InetAddress(*(other.inetaddress_val_));
+    } else if (other.type_ == ValueType::kDecimal || other.type_ == ValueType::kDecimalDescending) {
+      type_ = other.type_;
+      new(&decimal_val_) std::string(other.decimal_val_);
     } else {
       memmove(this, &other, sizeof(PrimitiveValue));
     }
@@ -165,6 +169,8 @@ class PrimitiveValue {
       str_val_.~basic_string();
     } else if (type_ == ValueType::kInetaddress || type_ == ValueType::kInetaddressDescending) {
       delete inetaddress_val_;
+    } else if (type_ == ValueType::kDecimal || type_ == ValueType::kDecimalDescending) {
+      decimal_val_.~basic_string();
     }
     // HybridTime does not need its destructor to be called, because it is a simple wrapper over an
     // unsigned 64-bit integer.
@@ -179,6 +185,8 @@ class PrimitiveValue {
   CHECKED_STATUS DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
 
   static PrimitiveValue Double(double d);
+  // decimal_str represents a human readable string representing the decimal number, e.g. "0.03".
+  static PrimitiveValue Decimal(const std::string& decimal_str, SortOrder sort_order);
   static PrimitiveValue ArrayIndex(int64_t index);
   static PrimitiveValue UInt16Hash(uint16_t hash);
   static PrimitiveValue SystemColumnId(ColumnId column_id);
@@ -228,6 +236,11 @@ class PrimitiveValue {
     return double_val_;
   }
 
+  const std::string& GetDecimal() const {
+    DCHECK(ValueType::kDecimal == type_ || ValueType::kDecimalDescending == type_);
+    return decimal_val_;
+  }
+
   Timestamp GetTimestamp() const {
     DCHECK(ValueType::kTimestamp == type_ || ValueType::kTimestampDescending == type_);
     return timestamp_val_;
@@ -271,6 +284,7 @@ class PrimitiveValue {
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
     ColumnId column_id_val_;
+    std::string decimal_val_;
   };
 
  private:
@@ -290,6 +304,10 @@ class PrimitiveValue {
         || other->type_ == ValueType::kInetaddressDescending) {
       type_ = other->type_;
       inetaddress_val_ = new InetAddress(std::move(*(other->inetaddress_val_)));
+    } else if (other->type_ == ValueType::kDecimal ||
+               other->type_ == ValueType::kDecimalDescending) {
+      type_ = other->type_;
+      new (&decimal_val_) std::string(std::move(other->decimal_val_));
     } else {
       // Non-string primitive values only have plain old data. We are assuming there is no overlap
       // between the two objects, so we're using memcpy instead of memmove.

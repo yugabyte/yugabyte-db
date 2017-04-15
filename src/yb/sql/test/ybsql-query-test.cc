@@ -69,7 +69,6 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
-
   LOG(INFO) << "Running simple query test.";
   // Create the table 1.
   const char *create_stmt =

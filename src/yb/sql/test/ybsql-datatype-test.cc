@@ -4,6 +4,7 @@
 
 #include "yb/sql/test/ybsql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/decimal.h"
 
 using std::string;
 using std::unique_ptr;
@@ -90,6 +91,91 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   ival = row.column(16).double_value();;
   CHECK(ival >= 206 && ival <= 207);
   CHECK_EQ(row.column(17).bool_value(), false);
+}
+
+#define CHECK_EXPECTED_ROW(processor, name, balance, rate)                                         \
+do {                                                                                               \
+  std::shared_ptr<YQLRowBlock> row_block = processor->row_block();                                 \
+  CHECK_EQ(row_block->row_count(), 1);                                                             \
+  CHECK_EQ(row_block->row(0).column(0).string_value(), name);                                      \
+  util::Decimal expected_decimal(balance), ret_decimal;                                            \
+  auto s = ret_decimal.DecodeFromSerializedBigDecimal(row_block->row(0).column(1).decimal_value());\
+  CHECK(s.ok());                                                                                   \
+  CHECK_EQ(ret_decimal, expected_decimal);                                                         \
+  CHECK_EQ(row_block->row(0).column(2).double_value(), rate);                                      \
+} while(0)
+
+TEST_F(YbSqlQuery, TestSqlDecimalType) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Create the table.
+  const char *create_stmt =
+      "CREATE TABLE accounts(name varchar, balance decimal, rate double, primary key(name))";
+  CHECK_VALID_STMT(create_stmt);
+
+  string stmt;
+  string balance = "123456789123456789123456789123456789123456789123456390482039482309482309481.99";
+  double rate = .01;
+  stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('neil', $0, $1)",
+                    balance, rate);
+  LOG(INFO) << "Executing " << stmt;
+  CHECK_VALID_STMT(stmt);
+  CHECK_VALID_STMT("SELECT name, balance, rate FROM accounts WHERE name='neil'");
+  CHECK_EXPECTED_ROW(processor, "neil", balance, rate);
+}
+
+TEST_F(YbSqlQuery, TestSqlDecimalTypeInKey) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Create the table.
+  auto create_stmt = "CREATE TABLE accounts(name varchar, balance decimal, rate double, "
+                     "primary key(name, balance))";
+  CHECK_VALID_STMT(create_stmt);
+
+  vector<string> names = { "hector", "kannan", "karthik", "neil" };
+  vector<string> balances = {
+      "1.0",
+      "100.01",
+      "100.02",
+      "123456789123456789123456789123456789123456789123456390482039482309482309481.99"
+  };
+  vector<double> rates = { .0001, .022, 0001, .0001 };
+
+  for (int i = 0; i < names.size(); i++) {
+    auto insert_stmt = Substitute("INSERT INTO accounts(name, balance, rate) VALUES('$0', $1, $2)",
+                                  names[i], balances[i], rates[i]);
+    LOG(INFO) << "Executing: " << insert_stmt;
+    CHECK_VALID_STMT(insert_stmt);
+    auto select_stmt1 =
+        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance = $1",
+                   names[i], balances[i]);
+    LOG(INFO) << "Executing: " << select_stmt1;
+    CHECK_VALID_STMT(select_stmt1);
+    CHECK_EXPECTED_ROW(processor, names[i], balances[i], rates[i]);
+
+    auto select_stmt2 =
+        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance > 0.001",
+                   names[i]);
+    LOG(INFO) << "Executing: " << select_stmt2;
+    CHECK_VALID_STMT(select_stmt2);
+    CHECK_EXPECTED_ROW(processor, names[i], balances[i], rates[i]);
+
+    auto select_stmt3 =
+        Substitute("SELECT name, balance, rate FROM accounts WHERE name = '$0' AND balance < $1",
+            names[i],
+            "123456789123456789123456789123456789123456789123456390482039482309482309482.99");
+    LOG(INFO) << "Executing : " << select_stmt3;
+    CHECK_VALID_STMT(select_stmt3);
+    CHECK_EXPECTED_ROW(processor, names[i], balances[i], rates[i]);
+  }
 }
 
 } // namespace sql

@@ -106,8 +106,8 @@ YBPartialRow& YBPartialRow::operator=(YBPartialRow other) {
 
 template<typename T>
 Status YBPartialRow::Set(const Slice& col_name,
-                           const typename T::cpp_type& val,
-                           bool owned) {
+                         const typename T::cpp_type& val,
+                         bool owned) {
   int col_idx;
   RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
   return Set<T>(col_idx, val, owned);
@@ -115,8 +115,8 @@ Status YBPartialRow::Set(const Slice& col_name,
 
 template<typename T>
 Status YBPartialRow::Set(int col_idx,
-                           const typename T::cpp_type& val,
-                           bool owned) {
+                         const typename T::cpp_type& val,
+                         bool owned) {
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
     // TODO: at some point we could allow type coercion here.
@@ -194,6 +194,7 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
       RETURN_NOT_OK(SetInet(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
+    case DECIMAL: FALLTHROUGH_INTENDED;
     default: {
       return STATUS(InvalidArgument, "Unknown column type in schema",
                                      column_schema.ToString());
@@ -262,6 +263,9 @@ Status YBPartialRow::SetBinary(const Slice& col_name, const Slice& val) {
 Status YBPartialRow::SetInet(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_name, val);
 }
+Status YBPartialRow::SetDecimal(const Slice& col_name, const Slice& val) {
+  return Set<TypeTraits<DECIMAL> >(col_name, val, false);
+}
 Status YBPartialRow::SetBool(int col_idx, bool val) {
   return Set<TypeTraits<BOOL> >(col_idx, val);
 }
@@ -288,6 +292,9 @@ Status YBPartialRow::SetBinary(int col_idx, const Slice& val) {
 }
 Status YBPartialRow::SetInet(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_idx, val);
+}
+Status YBPartialRow::SetDecimal(int col_idx, const Slice& val) {
+  return Set<TypeTraits<DECIMAL> >(col_idx, val, false);
 }
 Status YBPartialRow::SetFloat(int col_idx, float val) {
   return Set<TypeTraits<FLOAT> >(col_idx, val);
@@ -626,7 +633,6 @@ Status YBPartialRow::Get(int col_idx, typename T::cpp_type* val) const {
   return Status::OK();
 }
 
-
 //------------------------------------------------------------
 // Key-encoding related functions
 //------------------------------------------------------------
@@ -694,6 +700,5 @@ std::string YBPartialRow::ToString() const {
 //------------------------------------------------------------
 // Serialization/deserialization
 //------------------------------------------------------------
-
 
 } // namespace yb

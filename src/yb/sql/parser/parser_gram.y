@@ -292,7 +292,6 @@ DECLARE_bool(yql_experiment_support_expression);
 %type <KeywordType>       iso_level opt_encoding opt_boolean_or_string row_security_cmd
                           RowSecurityDefaultForCmd explain_option_name all_Op MathOp extract_arg
 
-
 %type <PChar>             enable_trigger
 
 %type <PString>           createdb_opt_name RoleId opt_type foreign_server_version
@@ -555,7 +554,7 @@ DECLARE_bool(yql_experiment_support_expression);
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
                           UNLOGGED UNTIL UPDATE USE USER USING
 
-                          VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC
+                          VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARINT
                           VARYING VERBOSE VERSION_P VIEW VIEWS VOLATILE
 
                           WHEN WHERE WHITESPACE_P WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
@@ -577,7 +576,7 @@ DECLARE_bool(yql_experiment_support_expression);
 %token <PString>          FCONST SCONST BCONST XCONST Op
 
 // Integer constants.
-%token <PInt64>           ICONST
+%token <PString>          ICONST
 
 // Character constants.
 %token <PChar>            CCONST
@@ -1305,7 +1304,6 @@ ExistingIndex:
     PARSER_UNSUPPORTED(@1);
   }
 ;
-
 
 OptTypedTableElementList:
   /*EMPTY*/ {
@@ -2312,7 +2310,6 @@ table_ref:
   }
 ;
 
-
 // It may seem silly to separate joined_table from table_ref, but there is
 // method in SQL's madness: if you don't do it this way you get reduce-
 // reduce conflicts, because it's not clear to the parser generator whether
@@ -2414,7 +2411,6 @@ join_qual:
   }
 ;
 
-
 relation_expr:
   qualified_name {
     $$ = $1;
@@ -2510,7 +2506,6 @@ opt_ordinality:
   WITH_LA ORDINALITY            { $$ = true; }
   | /*EMPTY*/                   { $$ = false; }
 ;
-
 
 opt_where_clause:
   /*EMPTY*/                     { $$ = nullptr; }
@@ -3123,7 +3118,6 @@ xmlexists_argument:
   }
 ;
 
-
 // Aggregate decoration clauses
 within_group_clause:
   /*EMPTY*/ {
@@ -3144,7 +3138,6 @@ filter_clause:
     $$ = nullptr;
   }
 ;
-
 
 // Window Definitions
 opt_window_clause:
@@ -3543,7 +3536,7 @@ bindvar:
   | ':' unreserved_keyword {
     $$ = MAKE_NODE(@1, PTBindVar, parser_->MakeString($2));
   }
-  | ':' ICONST {
+  | ':' Iconst {
     if ($2 <= 0) {
       PARSER_CQL_INVALID_MSG(@2, "bind position must be a positive integer");
       $$ = nullptr;
@@ -3773,14 +3766,13 @@ collection_expr:
   }
 ;
 
-
 // Constants.
 AexprConst:
-  Iconst {
-    $$ = MAKE_NODE(@1, PTConstInt, $1);
+  ICONST {
+    $$ = MAKE_NODE(@1, PTConstVarInt, $1);
   }
   | FCONST {
-    $$ = MAKE_NODE(@1, PTConstDouble, stold($1->c_str()));
+    $$ = MAKE_NODE(@1, PTConstDecimal, $1);
   }
   | Sconst {
     $$ = MAKE_NODE(@1, PTConstText, $1);
@@ -3817,7 +3809,7 @@ AexprConst:
   }
 ;
 
-Iconst:   ICONST                  { $$ = $1; };
+Iconst:   ICONST                  { $$ = stoll($1->c_str()); };
 Sconst:   SCONST                  { $$ = $1; };
 
 SignedIconst:
@@ -4011,7 +4003,7 @@ GenericType:
 
 opt_type_modifiers:
   '(' expr_list ')' {
-    $$ = $2;
+    PARSER_UNSUPPORTED(@1);
   }
   | /* EMPTY */ {
   }
@@ -4050,6 +4042,9 @@ Numeric:
     $$ = MAKE_NODE(@1, PTDouble);
   }
   | DECIMAL_P opt_type_modifiers {
+    $$ = MAKE_NODE(@1, PTDecimal);
+  }
+  | VARINT opt_type_modifiers {
     PARSER_UNSUPPORTED(@1);
   }
   | DEC opt_type_modifiers {
@@ -4585,6 +4580,7 @@ col_name_keyword:
   | TRIM { $$ = $1; }
   | VALUES { $$ = $1; }
   | VARCHAR { $$ = $1; }
+  | VARINT { $$ = $1; }
   | XMLATTRIBUTES { $$ = $1; }
   | XMLCONCAT { $$ = $1; }
   | XMLELEMENT { $$ = $1; }
@@ -4721,12 +4717,6 @@ reserved_keyword:
   | WITH { $$ = $1; }
 ;
 
-
-
-
-
-
-
 //--------------------------------------------------------------------------------------------------
 // INACTIVE PARSING RULES. INACTIVE PARSING RULES. INACTIVE PARSING RULES. INACTIVE PARSING RULES.
 //
@@ -4859,7 +4849,6 @@ CreateRoleStmt: CREATE ROLE RoleId opt_with OptRoleList {
   }
 ;
 
-
 opt_with: WITH {}
   | WITH_LA {}
   | /*EMPTY*/ {}
@@ -4929,7 +4918,6 @@ CreateOptRoleElem:
   }
 ;
 
-
 /*****************************************************************************
  *
  * Create a new Postgres DBMS user (role with implied login ability)
@@ -4940,7 +4928,6 @@ CreateUserStmt:
   CREATE USER RoleId opt_with OptRoleList {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -4965,7 +4952,6 @@ AlterRoleSetStmt:
   }
 ;
 
-
 /*****************************************************************************
  *
  * Alter a postgresql DBMS user
@@ -4976,11 +4962,9 @@ AlterUserStmt: ALTER USER RoleSpec opt_with AlterOptRoleList {
   }
 ;
 
-
 AlterUserSetStmt: ALTER USER RoleSpec SetResetClause {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -5031,7 +5015,6 @@ inactive_schema_stmt:
   | GrantStmt
   | ViewStmt
 ;
-
 
 /*****************************************************************************
  *
@@ -5210,7 +5193,6 @@ VariableShowStmt:
   }
 ;
 
-
 ConstraintsSetStmt:
   SET CONSTRAINTS constraints_set_list constraints_set_mode {
   }
@@ -5226,7 +5208,6 @@ constraints_set_mode:
   | IMMEDIATE { $$ = false; }
 ;
 
-
 /*
  * Checkpoint statement
  */
@@ -5234,7 +5215,6 @@ CheckPointStmt:
   CHECKPOINT {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -5254,7 +5234,6 @@ DiscardStmt:
   | DISCARD SEQUENCES {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -5525,7 +5504,6 @@ alter_type_cmd:
   }
 ;
 
-
 /*****************************************************************************
  *
  *    QUERY :
@@ -5537,7 +5515,6 @@ ClosePortalStmt:
   CLOSE cursor_name {}
   | CLOSE ALL {}
 ;
-
 
 /*****************************************************************************
  *
@@ -5723,7 +5700,6 @@ OptNoLog:
   | /*EMPTY*/         { }
 ;
 
-
 /*****************************************************************************
  *
  *    QUERY :
@@ -5735,7 +5711,6 @@ RefreshMatViewStmt:
   REFRESH MATERIALIZED VIEW opt_concurrently qualified_name opt_with_data {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -6586,7 +6561,6 @@ DropAssertStmt:
   }
 ;
 
-
 /*****************************************************************************
  *
  *    QUERY :
@@ -6712,7 +6686,6 @@ opt_if_not_exists:
   | /* empty */              { $$ = false; }
 ;
 
-
 /*****************************************************************************
  *
  *    QUERIES :
@@ -6774,7 +6747,6 @@ opt_recheck:
   }
   | /*EMPTY*/             { $$ = false; }
 ;
-
 
 CreateOpFamilyStmt:
   CREATE OPERATOR FAMILY any_name USING access_method {
@@ -6949,7 +6921,6 @@ comment_text:
   | NULL_P              { $$ = nullptr; }
 ;
 
-
 /*****************************************************************************
  *
  *  SECURITY LABEL [FOR <provider>] ON <object> IS <label>
@@ -7058,7 +7029,6 @@ opt_from_in:
   from_in               {}
   | /* EMPTY */         {}
 ;
-
 
 /*****************************************************************************
  *
@@ -7170,7 +7140,6 @@ grantee:
   }
 ;
 
-
 opt_grant_grant_option:
   WITH GRANT OPTION        { $$ = true; }
   | /*EMPTY*/              { $$ = false; }
@@ -7270,7 +7239,6 @@ defacl_privilege_target:
   | TYPES_P     { $$ = ACL_OBJECT_TYPE; }
 ;
 
-
 /*****************************************************************************
  *
  *    QUERY: CREATE INDEX
@@ -7357,7 +7325,6 @@ opt_nulls_order:
   | NULLS_LA LAST_P    { $$ = PTOrderBy::NullPlacement::kLAST; }
   | /*EMPTY*/          { $$ = PTOrderBy::NullPlacement::kFIRST; }
 ;
-
 
 /*****************************************************************************
  *
@@ -7660,7 +7627,6 @@ opt_restrict:
   | /* EMPTY */
 ;
 
-
 /*****************************************************************************
  *
  *    QUERY:
@@ -7771,7 +7737,6 @@ opt_if_exists:
   IF_P EXISTS               { $$ = true; }
   | /*EMPTY*/               { $$ = false; }
 ;
-
 
 /*****************************************************************************
  *
@@ -8071,7 +8036,6 @@ AlterOwnerStmt:
   }
 ;
 
-
 /*****************************************************************************
  *
  *    QUERY:  Define Rewrite Rule
@@ -8140,7 +8104,6 @@ DropRuleStmt:
   }
 ;
 
-
 /*****************************************************************************
  *
  *    QUERY:
@@ -8170,7 +8133,6 @@ UnlistenStmt:
   | UNLISTEN '*' {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -8246,7 +8208,6 @@ transaction_mode_list_or_empty:
   | /* EMPTY */ {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -8351,7 +8312,6 @@ opt_equal:
   | /*EMPTY*/           {}
 ;
 
-
 /*****************************************************************************
  *
  *    ALTER DATABASE
@@ -8372,7 +8332,6 @@ AlterDatabaseSetStmt:
   }
 ;
 
-
 /*****************************************************************************
  *
  *    DROP DATABASE [ IF EXISTS ]
@@ -8387,7 +8346,6 @@ DropdbStmt:
   }
 ;
 
-
 /*****************************************************************************
  *
  *    ALTER SYSTEM
@@ -8401,7 +8359,6 @@ AlterSystemStmt:
   | ALTER SYSTEM_P RESET generic_reset{
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -8443,7 +8400,6 @@ opt_as:
   | /* EMPTY */             {}
 ;
 
-
 /*****************************************************************************
  *
  * Manipulate a text search dictionary or configuration
@@ -8476,7 +8432,6 @@ any_with:
   WITH                    {}
   | WITH_LA               {}
 ;
-
 
 /*****************************************************************************
  *
@@ -8515,7 +8470,6 @@ cluster_index_specification:
   USING index_name    { $$ = $2; }
   | /*EMPTY*/         { $$ = nullptr; }
 ;
-
 
 /*****************************************************************************
  *
@@ -8584,7 +8538,6 @@ opt_name_list:
   | /*EMPTY*/ {
   }
 ;
-
 
 /*****************************************************************************
  *
@@ -8761,7 +8714,6 @@ opt_nowait_or_skip:
   | SKIP LOCKED         { }
   | /*EMPTY*/           { }
 ;
-
 
 /*****************************************************************************
  *

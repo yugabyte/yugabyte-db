@@ -31,6 +31,7 @@ enum class ValueType : char {
   kInetaddressDescending = '.',  // ASCII code 46
   kArray = 'A',  // ASCII code 65. TODO: do we need this at the this layer?
   kDouble = 'D',  // ASCII code 68
+  kDecimal = 'E',  // ASCII code 69
   kFalse = 'F',  // ASCII code 70
   kUInt16Hash = 'G',  // ASCII code 71
   kInt64 = 'I',  // ASCII code 73
@@ -47,6 +48,7 @@ enum class ValueType : char {
   kStringDescending = 'a',  // ASCII code 97
   kInt64Descending = 'b',  // ASCII code 98
   kTimestampDescending = 'c',  // ASCII code 99
+  kDecimalDescending = 'd',  // ASCII code 100
 
   // Timestamp value in microseconds
   kTimestamp = 's',  // ASCII code 115

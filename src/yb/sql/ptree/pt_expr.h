@@ -485,6 +485,14 @@ using PTConstText = PTExprConst<InternalType::kStringValue,
                                 DataType::STRING,
                                 MCString::SharedPtr>;
 
+using PTConstVarInt = PTExprConst<InternalType::kVarintStringValue,
+                                  DataType::VARINT,
+                                  MCString::SharedPtr>;
+
+using PTConstDecimal = PTExprConst<InternalType::kDecimalValue,
+                                   DataType::DECIMAL,
+                                   MCString::SharedPtr>;
+
 using PTConstBool = PTExprConst<InternalType::kBoolValue,
                                 DataType::BOOL,
                                 bool>;

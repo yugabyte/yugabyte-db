@@ -208,9 +208,6 @@ class LexProcessor : public yyFlexLexer {
   void addlitchar(unsigned char ychar);
   char *litbuf_udeescape(unsigned char escape);
 
-  // Scan integer literal.
-  GramProcessor::symbol_type process_integer_literal(const char *token);
-
   // Unicode support.
   unsigned char unescape_single_char(unsigned char c);
   void addunicode(pg_wchar c);

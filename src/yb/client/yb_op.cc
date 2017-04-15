@@ -222,6 +222,7 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
     case INT64:    return row->SetInt64(column_idx, YQLValue::int64_value(value));
     case FLOAT:    return row->SetFloat(column_idx, YQLValue::float_value(value));
     case DOUBLE:   return row->SetDouble(column_idx, YQLValue::double_value(value));
+    case DECIMAL:  return row->SetDecimal(column_idx, YQLValue::decimal_value(value));
     case STRING:   return row->SetString(column_idx, Slice(YQLValue::string_value(value)));
     case BOOL:     return row->SetBool(column_idx, YQLValue::bool_value(value));
     case TIMESTAMP:
@@ -234,7 +235,6 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case BINARY: FALLTHROUGH_INTENDED;
-    case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;

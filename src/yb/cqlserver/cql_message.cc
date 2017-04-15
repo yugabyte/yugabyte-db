@@ -1020,10 +1020,12 @@ ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
       new (&map_type) shared_ptr<const MapType>(std::make_shared<MapType>(MapType{key, value}));
       return;
     }
+    case DataType::DECIMAL:
+      id = Id::DECIMAL;
+      return;
 
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::BINARY: FALLTHROUGH_INTENDED;
-    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
     case DataType::VARINT: FALLTHROUGH_INTENDED;
     case DataType::UUID: FALLTHROUGH_INTENDED;
     case DataType::TIMEUUID: FALLTHROUGH_INTENDED;

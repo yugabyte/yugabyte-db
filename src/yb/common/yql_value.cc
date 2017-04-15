@@ -10,14 +10,14 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/escaping.h"
-#include "yb/util/date_time.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/date_time.h"
+#include "yb/util/decimal.h"
 
 // The list of unsupported datypes to use in switch statements
 #define YQL_UNSUPPORTED_TYPES_IN_SWITCH \
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
   case BINARY: FALLTHROUGH_INTENDED;    \
-  case DECIMAL: FALLTHROUGH_INTENDED;   \
   case VARINT: FALLTHROUGH_INTENDED;    \
   case UUID: FALLTHROUGH_INTENDED;      \
   case TIMEUUID: FALLTHROUGH_INTENDED;  \
@@ -35,6 +35,7 @@ namespace yb {
 
 using std::string;
 using std::to_string;
+using util::Decimal;
 using util::FormatBytesAsStr;
 
 template<typename T>
@@ -59,6 +60,8 @@ int YQLValue::CompareTo(const YQLValue& other) const {
     case InternalType::kInt64Value:  return GenericCompare(int64_value(), other.int64_value());
     case InternalType::kFloatValue:  return GenericCompare(float_value(), other.float_value());
     case InternalType::kDoubleValue: return GenericCompare(double_value(), other.double_value());
+    // Encoded decimal is byte-comparable.
+    case InternalType::kDecimalValue: return decimal_value().compare(other.decimal_value());
     case InternalType::kStringValue: return string_value().compare(other.string_value());
     case InternalType::kBoolValue:
       LOG(FATAL) << "Internal error: bool type not comparable";
@@ -73,7 +76,9 @@ int YQLValue::CompareTo(const YQLValue& other) const {
     case YQLValuePB::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
-
+    case InternalType::kVarintStringValue: FALLTHROUGH_INTENDED;
+    case InternalType::kVarintValue:
+      LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;
@@ -112,6 +117,16 @@ void YQLValue::Serialize(
     case DOUBLE:
       CQLEncodeFloat(NetworkByteOrder::Store64, double_value(), buffer);
       return;
+    case DECIMAL: {
+      auto decimal = util::DecimalFromComparable(decimal_value());
+      bool is_out_of_range = false;
+      CQLEncodeBytes(decimal.EncodeToSerializedBigDecimal(&is_out_of_range), buffer);
+      if(is_out_of_range) {
+        LOG(ERROR) << "Out of range: Unable to encode decimal " << decimal.ToString()
+                   << " into a BigDecimal serialized representation";
+      }
+      return;
+    }
     case STRING:
       CQLEncodeBytes(string_value(), buffer);
       return;
@@ -215,6 +230,12 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
       return CQLDeserializeFloat(
           len, NetworkByteOrder::Load64,
           static_cast<void (YQLValue::*)(double)>(&YQLValue::set_double_value), data);
+    case DECIMAL: {
+      string value;
+      RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
+      set_decimal_value(value);
+      return Status::OK();
+    }
     case STRING: {
       string value;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
@@ -310,6 +331,8 @@ string YQLValue::ToString() const {
     case InternalType::kInt64Value: return "int64:" + to_string(int64_value());
     case InternalType::kFloatValue: return "float:" + to_string(float_value());
     case InternalType::kDoubleValue: return "double:" + to_string(double_value());
+    case InternalType::kDecimalValue:
+      return "decimal: " + util::DecimalFromComparable(decimal_value()).ToString();
     case InternalType::kStringValue: return "string:" + FormatBytesAsStr(string_value());
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
     case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
@@ -357,6 +380,9 @@ string YQLValue::ToString() const {
       return ss.str();
     }
 
+    case InternalType::kVarintStringValue: FALLTHROUGH_INTENDED;
+    case InternalType::kVarintValue:
+      LOG(FATAL) << "Internal error: varint not implemented";
     case InternalType::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       return "null";
@@ -376,6 +402,7 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kInt64Value:  v->clear_int64_value(); return;
     case YQLValuePB::kFloatValue:  v->clear_float_value(); return;
     case YQLValuePB::kDoubleValue: v->clear_double_value(); return;
+    case YQLValuePB::kDecimalValue: v->clear_decimal_value(); return;
     case YQLValuePB::kStringValue: v->clear_string_value(); return;
     case YQLValuePB::kBoolValue:   v->clear_bool_value(); return;
     case YQLValuePB::kTimestampValue: v->clear_timestamp_value(); return;
@@ -384,7 +411,9 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kMapValue:    v->clear_map_value(); return;
     case YQLValuePB::kSetValue:    v->clear_set_value(); return;
     case YQLValuePB::kListValue:   v->clear_list_value(); return;
-
+    case YQLValuePB::kVarintStringValue: FALLTHROUGH_INTENDED;
+    case YQLValuePB::kVarintValue:
+      LOG(FATAL) << "Internal error: varint not implemented";
     case YQLValuePB::VALUE_NOT_SET: return;
   }
   LOG(FATAL) << "Internal error: unknown or unsupported type " << v->value_case();
@@ -400,6 +429,8 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     case YQLValuePB::kInt64Value:  return GenericCompare(lhs.int64_value(), rhs.int64_value());
     case YQLValuePB::kFloatValue:  return GenericCompare(lhs.float_value(), rhs.float_value());
     case YQLValuePB::kDoubleValue: return GenericCompare(lhs.double_value(), rhs.double_value());
+    // Encoded decimal is byte-comparable.
+    case YQLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
     case YQLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
     case YQLValuePB::kBoolValue:
       LOG(FATAL) << "Internal error: bool type not comparable";
@@ -414,7 +445,9 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
     case YQLValuePB::kListValue:
       LOG(FATAL) << "Internal error: collection types are not comparable";
       return 0;
-
+    case InternalType::kVarintStringValue: FALLTHROUGH_INTENDED;
+    case InternalType::kVarintValue:
+      LOG(FATAL) << "Internal error: varint not implemented";
     case YQLValuePB::VALUE_NOT_SET:
       LOG(FATAL) << "Internal error: value should not be null";
       break;

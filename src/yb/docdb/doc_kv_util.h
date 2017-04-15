@@ -12,6 +12,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/endian.h"
+#include "yb/util/decimal.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"

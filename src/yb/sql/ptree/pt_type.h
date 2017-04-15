@@ -96,6 +96,9 @@ using PTSmallInt = PTSimpleType<InternalType::kInt16Value, DataType::INT16>;
 using PTInt = PTSimpleType<InternalType::kInt32Value, DataType::INT32>;
 using PTBigInt = PTSimpleType<InternalType::kInt64Value, DataType::INT64>;
 
+using PTVarInt = PTPrimitiveType<InternalType::kVarintValue, DataType::VARINT>;
+using PTDecimal = PTPrimitiveType<InternalType::kDecimalValue, DataType::DECIMAL>;
+
 class PTFloat : public PTSimpleType<InternalType::kFloatValue, DataType::FLOAT> {
  public:
   typedef MCSharedPtr<PTFloat> SharedPtr;

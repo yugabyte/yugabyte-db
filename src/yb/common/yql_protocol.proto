@@ -31,6 +31,9 @@ message YQLValuePB {
     YQLMapValuePB map_value = 12;
     YQLSeqValuePB set_value = 13;
     YQLSeqValuePB list_value = 14;
+    string decimal_value = 15;
+    string varint_value = 16;
+    string varint_string_value = 17;
   }
 }
 

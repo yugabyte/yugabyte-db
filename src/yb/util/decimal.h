@@ -35,7 +35,7 @@ namespace util {
 //  array for the corresponding BigInt's serialization.
 //  See:
 //    https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec
-//    https://github.com/apache/cassandra/blob/81f6c784ce967fadb6ed7f58de1328e713eaf53c/ \
+//    https://github.com/apache/cassandra/blob/81f6c784ce967fadb6ed7f58de1328e713eaf53c/
 //    src/java/org/apache/cassandra/serializers/DecimalSerializer.java
 //  Note that the byte buffer for Java BigInt doesn't have a size prefix or something similar. So
 //  the length is not known. The Decode(slice) function expects the whole slice to encode the
@@ -132,10 +132,15 @@ class Decimal {
     return DecodeFromComparable(Slice(string), num_decoded_bytes);
   }
 
+  CHECKED_STATUS DecodeFromComparable(const Slice& string);
+  CHECKED_STATUS DecodeFromComparable(const std::string& string);
+
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
 
   CHECKED_STATUS DecodeFromSerializedBigDecimal(const Slice &slice);
+
+  const Decimal& Negate() { is_positive_ = !is_positive_; return *this; }
 
  private:
   friend class DecimalTest;
@@ -153,10 +158,12 @@ class Decimal {
   bool is_positive_;
 };
 
+Decimal DecimalFromComparable(const Slice& slice);
+Decimal DecimalFromComparable(const std::string& string);
+
 std::ostream& operator<<(ostream& os, const Decimal& d);
 
 } // namespace util
 } // namespace yb
-
 
 #endif // YB_UTIL_DECIMAL_H

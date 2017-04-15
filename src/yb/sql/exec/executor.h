@@ -93,15 +93,19 @@ class Executor {
   // Expression evaluation.
   CHECKED_STATUS EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result);
   CHECKED_STATUS EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result);
+  CHECKED_STATUS EvalVarIntExpr(const PTExpr::SharedPtr& expr, EvalVarIntStringValue *result);
   CHECKED_STATUS EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *result);
   CHECKED_STATUS EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *result);
   CHECKED_STATUS EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *result);
   CHECKED_STATUS EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampValue *result);
   CHECKED_STATUS EvalInetaddressExpr(const PTExpr::SharedPtr& expr, EvalInetaddressValue *result);
+  CHECKED_STATUS EvalDecimalExpr(const PTExpr::SharedPtr& expr, EvalDecimalValue *result);
 
   CHECKED_STATUS ConvertFromInt(EvalValue *result, const EvalIntValue& int_value);
+  CHECKED_STATUS ConvertFromVarInt(EvalValue *result, const EvalVarIntStringValue& varint_value);
   CHECKED_STATUS ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value);
   CHECKED_STATUS ConvertFromString(EvalValue *result, const EvalStringValue& string_value);
+  CHECKED_STATUS ConvertFromDecimal(EvalValue *result, const EvalDecimalValue& decimal_value);
   CHECKED_STATUS ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_value);
 
  private:

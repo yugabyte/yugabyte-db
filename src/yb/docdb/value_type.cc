@@ -16,12 +16,14 @@ string ValueTypeToStr(ValueType value_type) {
     case ValueType::kNull: return "Null";
     case ValueType::kFalse: return "False";
     case ValueType::kTrue: return "True";
-    case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kStringDescending: return "StingDescending";
     case ValueType::kString: return "String";
-    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt64Descending: return "Int64Descending";
     case ValueType::kInt64: return "Int64";
     case ValueType::kDouble: return "Double";
-    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;;
+    case ValueType::kDecimalDescending: return "DecimalDescending";
+    case ValueType::kDecimal: return "Decimal";
+    case ValueType::kTimestampDescending: return "TimestampDescending";
     case ValueType::kTimestamp: return "Timestamp";
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;;
     case ValueType::kInetaddress: return "InetAddress";

@@ -10,12 +10,14 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/decimal.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/docdb/subdocument.h"
 
 using std::string;
 using strings::Substitute;
 using yb::YQLValuePB;
+using yb::util::Decimal;
 using yb::util::FormatBytesAsStr;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
@@ -61,6 +63,16 @@ string PrimitiveValue::ToString() const {
         return StringPrintf("%E", double_val_);
       }
       return s;
+    }
+    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kDecimal: {
+      util::Decimal decimal;
+      auto status = decimal.DecodeFromComparable(decimal_val_);
+      if (!status.ok()) {
+        LOG(ERROR) << "Unable to decode decimal";
+        return "";
+      }
+      return decimal.ToString();
     }
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
@@ -119,6 +131,14 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kDouble:
       LOG(FATAL) << "Double cannot be used as a key";
+      return;
+
+    case ValueType::kDecimal:
+      key_bytes->AppendDecimal(decimal_val_);
+      return;
+
+    case ValueType::kDecimalDescending:
+      key_bytes->AppendDecimalDescending(decimal_val_);
       return;
 
     case ValueType::kTimestamp:
@@ -197,6 +217,11 @@ string PrimitiveValue::ToValue() const {
       AppendBigEndianUInt64(int64_val_, &result);
       return result;
 
+    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kDecimal:
+      result.append(decimal_val_);
+      return result;
+
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
       AppendBigEndianUInt64(timestamp_val_.ToInt64(), &result);
@@ -266,6 +291,24 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result));
       new(&str_val_) string(result);
       // Only set type to string after string field initialization succeeds.
+      type_ = value_type;
+      return Status::OK();
+    }
+
+    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kDecimal: {
+      util::Decimal decimal;
+      Slice slice_temp(slice->data(), slice->size());
+      size_t num_decoded_bytes = 0;
+      RETURN_NOT_OK(decimal.DecodeFromComparable(slice_temp, &num_decoded_bytes));
+      if (value_type == ValueType::kDecimalDescending) {
+        // When we encode a descending decimal, we do a bitwise negation of each byte, which changes
+        // the sign of the number. This way we reverse the sorting order. decimal.Negate() restores
+        // the original sign of the number.
+        decimal.Negate();
+      }
+      new (&decimal_val_) string(decimal.EncodeToComparable());
+      slice->remove_prefix(num_decoded_bytes);
       type_ = value_type;
       return Status::OK();
     }
@@ -418,6 +461,15 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       int64_val_ = BigEndian::Load64(slice.data());
       return Status::OK();
 
+    case ValueType::kDecimal: {
+      util::Decimal decimal;
+      size_t num_decoded_bytes = 0;
+      RETURN_NOT_OK(decimal.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
+      type_ = value_type;
+      new(&decimal_val_) string(decimal.EncodeToComparable());
+      return Status::OK();
+    }
+
     case ValueType::kTimestamp:
       if (slice.size() != sizeof(Timestamp)) {
         return STATUS(Corruption,
@@ -455,7 +507,8 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kTimestampDescending:
+    case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kDecimalDescending:
       return STATUS(Corruption,
           Substitute("$0 is not allowed in a RocksDB PrimitiveValue", ValueTypeToStr(value_type)));
   }
@@ -467,6 +520,17 @@ PrimitiveValue PrimitiveValue::Double(double d) {
   PrimitiveValue primitive_value;
   primitive_value.type_ = ValueType::kDouble;
   primitive_value.double_val_ = d;
+  return primitive_value;
+}
+
+PrimitiveValue PrimitiveValue::Decimal(const string& encoded_decimal_str, SortOrder sort_order) {
+  PrimitiveValue primitive_value;
+  if (sort_order == SortOrder::kDescending) {
+    primitive_value.type_ = ValueType::kDecimalDescending;
+  } else {
+    primitive_value.type_ = ValueType::kDecimal;
+  }
+  new(&primitive_value.decimal_val_) string(encoded_decimal_str);
   return primitive_value;
 }
 
@@ -517,6 +581,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
 
     case ValueType::kDouble: return double_val_ == other.double_val_;
+    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kDecimal: return decimal_val_ == other.decimal_val_;
     case ValueType::kUInt16Hash: return uint16_val_ == other.uint16_val_;
 
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
@@ -550,6 +616,9 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return GenericCompare(int64_val_, other.int64_val_);
     case ValueType::kDouble:
       return GenericCompare(double_val_, other.double_val_);
+    case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
+    case ValueType::kDecimal:
+      return decimal_val_.compare(other.decimal_val_);
     case ValueType::kUInt16Hash:
       return GenericCompare(uint16_val_, other.uint16_val_);
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
@@ -577,6 +646,8 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
   } else if (value_type == ValueType::kInetaddress
       || value_type == ValueType::kInetaddressDescending) {
     inetaddress_val_ = new InetAddress();
+  } else if (value_type == ValueType::kDecimal || value_type == ValueType::kDecimalDescending) {
+    new(&decimal_val_) std::string();
   }
 }
 
@@ -633,6 +704,7 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
         LOG(ERROR) << "Ignoring invalid sort order for DOUBLE. Using SortOrder::kAscending.";
       }
       return PrimitiveValue::Double(YQLValue::double_value(value));
+    case DECIMAL: return PrimitiveValue::Decimal(YQLValue::decimal_value(value), sort_order);
     case STRING:  return PrimitiveValue(YQLValue::string_value(value), sort_order);
     case BINARY:
       if (sort_order != SortOrder::kAscending) {
@@ -648,7 +720,6 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
     case INET: return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
@@ -696,6 +767,9 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
     case DOUBLE:
       YQLValue::set_double_value(primitive_value.GetDouble(), yql_value);
       return;
+    case DECIMAL:
+      YQLValue::set_decimal_value(primitive_value.GetDecimal(), yql_value);
+      return;
     case BOOL:
       YQLValue::set_bool_value((primitive_value.value_type() == ValueType::kTrue), yql_value);
       return;
@@ -713,7 +787,6 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
       return;
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case DECIMAL: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;

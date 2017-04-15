@@ -146,6 +146,8 @@ class MCString : public MCStringBase {
   MCString(MemoryContext *mem_ctx, const char *str, size_t len);
   MCString(MemoryContext *mem_ctx, size_t len, char c);
 
+  MemoryContext *mem_ctx() { return mem_ctx_; }
+
   // Destructor.
   virtual ~MCString();
 
@@ -154,6 +156,9 @@ class MCString : public MCStringBase {
   static MCString::SharedPtr MakeShared(MemoryContext *mem_ctx, TypeArgs&&... args) {
     return mem_ctx->AllocateShared<MCString>(mem_ctx, std::forward<TypeArgs>(args)...);
   }
+
+ private:
+  MemoryContext *mem_ctx_;
 };
 
 // MCString operators.

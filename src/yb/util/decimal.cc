@@ -287,6 +287,15 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
   return Status::OK();
 }
 
+Status Decimal::DecodeFromComparable(const Slice& slice) {
+  size_t num_decoded_bytes;
+  return DecodeFromComparable(slice, &num_decoded_bytes);
+}
+
+Status Decimal::DecodeFromComparable(const string& str) {
+  return DecodeFromComparable(Slice(str));
+}
+
 string Decimal::EncodeToSerializedBigDecimal(bool* is_out_of_range) const {
   // Note that BigDecimal's scale is not the same as our exponent, but related by the following:
   VarInt varint_scale = VarInt(static_cast<int64_t> (digits_.size())) - exponent_;
@@ -357,6 +366,16 @@ void Decimal::make_canonical() {
   if (digits_.empty()) {
     clear();
   }
+}
+
+Decimal DecimalFromComparable(const Slice& slice) {
+  Decimal decimal;
+  CHECK_OK(decimal.DecodeFromComparable(slice));
+  return decimal;
+}
+
+Decimal DecimalFromComparable(const std::string& str) {
+  return DecimalFromComparable(Slice(str));
 }
 
 std::ostream& operator<<(ostream& os, const Decimal& d) {

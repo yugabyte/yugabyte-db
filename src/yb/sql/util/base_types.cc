@@ -24,19 +24,19 @@ char *MCStrdup(MemoryContext *memctx, const char *str) {
 //--------------------------------------------------------------------------------------------------
 
 MCString::MCString(MemoryContext *mem_ctx)
-    : MCStringBase(mem_ctx->GetAllocator<char>()) {
+    : MCStringBase(mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
 }
 
 MCString::MCString(MemoryContext *mem_ctx, const char *str)
-    : MCStringBase(str, mem_ctx->GetAllocator<char>()) {
+    : MCStringBase(str, mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
 }
 
 MCString::MCString(MemoryContext *mem_ctx, const char *str, size_t len)
-    : MCStringBase(str, len, mem_ctx->GetAllocator<char>()) {
+    : MCStringBase(str, len, mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
 }
 
 MCString::MCString(MemoryContext *mem_ctx, size_t len, char c)
-    : MCStringBase(len, c, mem_ctx->GetAllocator<char>()) {
+    : MCStringBase(len, c, mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
 }
 
 MCString::~MCString() {

@@ -7,6 +7,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/common/partition.h"
 #include "yb/sql/sql_processor.h"
+#include "yb/util/decimal.h"
 
 namespace yb {
 namespace sql {
@@ -537,6 +538,25 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
+    case InternalType::kDecimalValue: {
+      EvalDecimalValue decimal_value;
+      RETURN_NOT_OK(EvalExpr(expr, &decimal_value));
+
+      if (decimal_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        YQLValue::set_decimal_value(decimal_value.value_->data(),
+                                    decimal_value.value_->size(),
+                                    col_pb);
+        VLOG(3) << "Expr actual value = " << decimal_value.value_->c_str();
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetDecimal(col_index, Slice(decimal_value.value_->data(),
+                                                         decimal_value.value_->size())));
+        }
+      }
+      break;
+    }
+
     case InternalType::kSetValue: {
       if (row != nullptr) {
         return STATUS(NotSupported, "Cannot have collection types in key");
@@ -608,6 +628,10 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       }
       break;
     }
+    // TODO (hector): Add support for varint.
+    case InternalType::kVarintValue:
+      LOG(FATAL) << "VarInt type is not yet supported";
+      break;
 
     case InternalType::VALUE_NOT_SET: FALLTHROUGH_INTENDED;
     default:
@@ -970,9 +994,11 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   EvalIntValue limit_value;
+  EvalVarIntStringValue varint_value;
   if (tnode->has_limit()) {
     const PTExpr::SharedPtr limit_expr = tnode->limit();
-    CB_RETURN_NOT_OK(cb, EvalIntExpr(limit_expr, &limit_value));
+    CB_RETURN_NOT_OK(cb, EvalVarIntExpr(limit_expr, &varint_value));
+    CB_RETURN_NOT_OK(cb, ConvertFromVarInt(&limit_value, varint_value));
     if (limit_value.value_ < 0) {
       CB_RETURN(
           cb, exec_context_->Error(

@@ -393,6 +393,17 @@ struct DataTypeTraits<LIST> : public DerivedTypeTraits<BINARY>{
   // of Kudu Slice [ENG-1235]
 };
 
+template<>
+struct DataTypeTraits<DECIMAL> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "decimal";
+  }
+  static void AppendDebugDecimalForValue(const void* val, string* str) {
+    const Slice *s = reinterpret_cast<const Slice *>(val);
+    str->append(strings::Utf8SafeCEscape(s->ToString()));
+  }
+};
+
 static const char* kDateFormat = "%Y-%m-%d %H:%M:%S";
 static const char* kDateMicrosAndTzFormat = "%s.%06d GMT";
 
@@ -519,7 +530,8 @@ class Variant {
       case LIST:
         LOG(FATAL) << "Default values for collection types not supported, found: "
                    << DataType_Name(type_);
-
+      case DECIMAL:
+        LOG(FATAL) << "Unsupported data type: " << DataType_Name(type_);
       default: LOG(FATAL) << "Unknown data type: " << DataType_Name(type_);
     }
   }
@@ -575,6 +587,7 @@ class Variant {
         LOG(FATAL) << "Default values for collection types not supported, found: "
                    << DataType_Name(type_);
 
+      case DECIMAL:      LOG(FATAL) << "Unsupported data type: " << type_;
       default: LOG(FATAL) << "Unknown data type: " << type_;
     }
     CHECK(false) << "not reached!";
@@ -621,4 +634,4 @@ class Variant {
 
 }  // namespace yb
 
-#endif // YB_COMMON_TYPES_H
+#endif  // YB_COMMON_TYPES_H

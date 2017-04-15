@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "yb/common/yql_protocol.pb.h"
+#include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
 #include "yb/common/yql_type.h"
@@ -44,6 +45,7 @@ class YQLValue {
   virtual int64_t int64_value() const = 0;
   virtual float float_value() const = 0;
   virtual double double_value() const = 0;
+  virtual const std::string& decimal_value() const = 0;
   virtual bool bool_value() const = 0;
   virtual const std::string& string_value() const = 0;
   virtual Timestamp timestamp_value() const = 0;
@@ -61,6 +63,7 @@ class YQLValue {
   virtual void set_int64_value(int64_t val) = 0;
   virtual void set_float_value(float val) = 0;
   virtual void set_double_value(double val) = 0;
+  virtual void set_decimal_value(const std::string& val) = 0;
   virtual void set_bool_value(bool val) = 0;
   virtual void set_string_value(const std::string& val) = 0;
   virtual void set_string_value(const char* val) = 0;
@@ -137,6 +140,10 @@ class YQLValue {
   static int64_t int64_value(const YQLValuePB& v) { YQL_GET_VALUE(v, int64_t, int64_value); }
   static float float_value(const YQLValuePB& v) { YQL_GET_VALUE(v, float, float_value); }
   static double double_value(const YQLValuePB& v) { YQL_GET_VALUE(v, double, double_value); }
+  static const std::string& decimal_value(const YQLValuePB& v) {
+    CHECK(v.has_decimal_value());
+    return v.decimal_value();
+  }
   static bool bool_value(const YQLValuePB& v) { YQL_GET_VALUE(v, bool, bool_value); }
   static const std::string& string_value(const YQLValuePB& v) {
     CHECK(v.has_string_value());
@@ -180,6 +187,12 @@ class YQLValue {
   static void set_int64_value(const int64_t val, YQLValuePB *v) { v->set_int64_value(val); }
   static void set_float_value(const float val, YQLValuePB *v) { v->set_float_value(val); }
   static void set_double_value(const double val, YQLValuePB *v) { v->set_double_value(val); }
+  static void set_decimal_value(const std::string& val, YQLValuePB *v) {
+    v->set_decimal_value(val);
+  }
+  static void set_decimal_value(const char* val, const size_t size, YQLValuePB *v) {
+    v->set_decimal_value(val, size);
+  }
   static void set_bool_value(const bool val, YQLValuePB *v) { v->set_bool_value(val); }
   static void set_string_value(const std::string& val, YQLValuePB *v) { v->set_string_value(val); }
   static void set_string_value(const char* val, YQLValuePB *v) { v->set_string_value(val); }
@@ -299,6 +312,9 @@ class YQLValueWithPB : public YQLValue {
   virtual int64_t int64_value() const override { return YQLValue::int64_value(value_); }
   virtual float float_value() const override { return YQLValue::float_value(value_); }
   virtual double double_value() const override { return YQLValue::double_value(value_); }
+  virtual const std::string& decimal_value() const override {
+    return YQLValue::decimal_value(value_);
+  }
   virtual bool bool_value() const override { return YQLValue::bool_value(value_); }
   virtual const std::string& string_value() const override {
     return YQLValue::string_value(value_);
@@ -327,6 +343,9 @@ class YQLValueWithPB : public YQLValue {
   virtual void set_int64_value(int64_t val) override { YQLValue::set_int64_value(val, &value_); }
   virtual void set_float_value(float val) override { YQLValue::set_float_value(val, &value_); }
   virtual void set_double_value(double val) override { YQLValue::set_double_value(val, &value_); }
+  virtual void set_decimal_value(const std::string& val) override {
+    YQLValue::set_decimal_value(val, &value_);
+  }
   virtual void set_bool_value(bool val) override { YQLValue::set_bool_value(val, &value_); }
   virtual void set_string_value(const std::string& val) override {
     YQLValue::set_string_value(val, &value_);

@@ -92,7 +92,6 @@ class YQLRowBlock {
   void Serialize(YQLClient client, faststring* buffer) const;
   CHECKED_STATUS Deserialize(YQLClient client, Slice* data);
 
-
  private:
   // Schema of the selected columns. (Note: this schema has no key column definitions)
   std::shared_ptr<Schema> schema_;

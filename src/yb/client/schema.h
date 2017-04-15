@@ -113,6 +113,8 @@ class YB_EXPORT YBColumnSchema {
         return InternalType::kFloatValue;
       case DOUBLE:
         return InternalType::kDoubleValue;
+      case DECIMAL:
+        return InternalType::kDecimalValue;
       case STRING:
         return InternalType::kStringValue;
       case TIMESTAMP:
@@ -132,7 +134,6 @@ class YB_EXPORT YBColumnSchema {
 
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case BINARY: FALLTHROUGH_INTENDED;
-      case DECIMAL: FALLTHROUGH_INTENDED;
       case VARINT: FALLTHROUGH_INTENDED;
       case UUID: FALLTHROUGH_INTENDED;
       case TIMEUUID: FALLTHROUGH_INTENDED;

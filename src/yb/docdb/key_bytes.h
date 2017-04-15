@@ -11,6 +11,7 @@
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/value_type.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/decimal.h"
 #include "yb/util/enums.h"
 
 namespace yb {
@@ -51,6 +52,17 @@ class KeyBytes {
 
   void AppendDescendingString(const std::string &raw_string) {
     ComplementZeroEncodeAndAppendStrToKey(raw_string, &data_);
+  }
+
+  void AppendDecimal(const std::string& encoded_decimal_str) {
+    data_.append(encoded_decimal_str);
+  }
+
+  void AppendDecimalDescending(const std::string& encoded_decimal_str) {
+    // Flipping all the bits negates the decimal number this string represents.
+    for (auto c : encoded_decimal_str) {
+      data_.push_back(~c);
+    }
   }
 
   void AppendInt64(int64_t x) {

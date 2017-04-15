@@ -472,31 +472,6 @@ void LexProcessor::addunicode(pg_wchar c) {
 
 //--------------------------------------------------------------------------------------------------
 
-GramProcessor::symbol_type LexProcessor::process_integer_literal(const char *token) {
-  int64_t  ival;
-  char    *endptr;
-
-  // Find ICONST token.
-  errno = 0;
-  const uint64_t uval = strtoull(token, &endptr, 10);
-
-  // NEIL NEIL NEIL: make sure that value fits "int64" and is smaller than "unsigned int64".
-  // NEIL NEIL NEIL: make sure "token" does NOT have the '-' sign.
-  // NEIL NEIL NEIL: make sure SQL scanner handles NEGATIVE value.
-  if (*endptr != '\0' || errno == ERANGE || uval > INT64_MAX) {
-    // This is a FCONST.
-    // if long > 32 bits, check for overflow of int4.
-    // integer too large, treat it as a float.
-    return GramProcessor::make_FCONST(MakeString(token), cursor_);
-
-  } else {
-    ival = int64_t(uval);
-    return GramProcessor::make_ICONST(ival, cursor_);
-  }
-}
-
-//--------------------------------------------------------------------------------------------------
-
 static const ScanKeyword& kInvalidKeyword {
   "", GramProcessor::token::TOK_NULL_P, ScanKeyword::KeywordCategory::INVALID_KEYWORD
 };
@@ -529,7 +504,6 @@ const ScanKeyword& LexProcessor::ScanKeywordLookup(const char *text) {
   }
   return kInvalidKeyword;
 }
-
 
 //--------------------------------------------------------------------------------------------------
 // Class ScanStatus - Not yet implemented.

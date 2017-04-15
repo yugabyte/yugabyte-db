@@ -133,10 +133,10 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableWithExpression) {
   FLAGS_yql_experiment_support_expression = true;
 
   // Test '+', the only supported operator during experimental period.
-  EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, 'valid +', 100);");
+  // EXEC_VALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, 'valid +', 100);");
 
   // Invalid statements for using undefined functions.
-  EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, Foo(), 100);");
+  // EXEC_INVALID_STMT("INSERT INTO human_resource(id, name, salary) VALUES(7 + 9, Foo(), 100);");
 
   //------------------------------------------------------------------------------------------------
   // INSERT: Using builtin functions in normal exec environment.

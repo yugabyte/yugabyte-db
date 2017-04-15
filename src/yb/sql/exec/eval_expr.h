@@ -28,7 +28,6 @@ struct EvalValue {
   bool is_null_ = false;
 };
 
-// To avoid overflow, all integer expressions are resulted in "int64_t".
 struct EvalIntValue : public EvalValue {
   InternalType datatype() {
     return InternalType::kInt64Value;
@@ -37,7 +36,15 @@ struct EvalIntValue : public EvalValue {
   int64_t value_;
 };
 
-// To avoid overflow, all floating expressions are resulted in "long double".
+// To avoid overflow, all integer expressions are resulted in varint.
+struct EvalVarIntStringValue : public EvalValue {
+  InternalType datatype() {
+    return InternalType::kVarintValue;
+  }
+
+  MCString::SharedPtr value_;
+};
+
 struct EvalDoubleValue : public EvalValue {
   InternalType datatype() {
     return InternalType::kDoubleValue;
@@ -52,6 +59,16 @@ struct EvalStringValue : public EvalValue {
     return InternalType::kStringValue;
   }
 
+  MCString::SharedPtr value_;
+};
+
+// To avoid overflow, all floating expressions are resulted in decimal.
+struct EvalDecimalValue : public EvalValue {
+  InternalType datatype() {
+    return InternalType::kDecimalValue;
+  }
+
+  bool encoded_ = false;
   MCString::SharedPtr value_;
 };
 
