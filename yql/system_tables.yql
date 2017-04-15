@@ -50,43 +50,6 @@ CREATE TABLE system_schema.tables (
     speculative_retry text,
     PRIMARY KEY (keyspace_name, table_name));
 
-CREATE TABLE system_schema.triggers (
-    keyspace_name text,
-    table_name text,
-    trigger_name text,
-    options map<text, text>,
-    PRIMARY KEY (keyspace_name, table_name, trigger_name));
-
-CREATE TABLE system_schema.types (
-    keyspace_name text,
-    type_name text,
-    field_names list<text>,
-    field_types list<text>,
-    PRIMARY KEY (keyspace_name, type_name));
-
-CREATE TABLE system_schema.views (
-    keyspace_name text,
-    view_name text,
-    base_table_name text,
-    bloom_filter_fp_chance double,
-    caching map<text, text>,
-    cdc boolean,
-    comment text,
-    compaction map<text, text>,
-    compression map<text, text>,
-    crc_check_chance double,
-    dclocal_read_repair_chance double,
-    default_time_to_live int,
-    gc_grace_seconds int,
-    include_all_columns boolean,
-    max_index_interval int,
-    memtable_flush_period_in_ms int,
-    min_index_interval int,
-    read_repair_chance double,
-    speculative_retry text,
-    where_clause text,
-    PRIMARY KEY (keyspace_name, view_name));
-
 INSERT INTO system_schema.keyspaces (keyspace_name, durable_writes) VALUES ('system', true);
 INSERT INTO system_schema.keyspaces (keyspace_name, durable_writes) VALUES ('system_schema', true);
 

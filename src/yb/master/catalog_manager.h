@@ -831,6 +831,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemSchemaIndexesTable();
 
+  CHECKED_STATUS PrepareSystemSchemaTriggersTable();
+
+  CHECKED_STATUS PrepareSystemSchemaTypesTable();
+
+  CHECKED_STATUS PrepareSystemSchemaViewsTable();
+
   CHECKED_STATUS PrepareSystemTable(const TableName& table_name,
                                     const NamespaceName& namespace_name,
                                     const NamespaceId& namespace_id,
@@ -852,6 +858,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // system_schema.indexes.
   CHECKED_STATUS CreateIndexesSchema(Schema* schema);
+
+  // system_schema.triggers.
+  CHECKED_STATUS CreateTriggersSchema(Schema* schema);
+
+  // system_schema.types.
+  CHECKED_STATUS CreateTypesSchema(Schema* schema);
+
+  // system_schema.views.
+  CHECKED_STATUS CreateViewsSchema(Schema* schema);
 
   CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
 
@@ -1205,6 +1220,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // system_schema.indexes
   std::shared_ptr<tablet::AbstractTablet> systemschema_indexes_tablet;
+
+  // system_schema.triggers
+  std::shared_ptr<tablet::AbstractTablet> systemschema_triggers_tablet;
+
+  // system_schema.types
+  std::shared_ptr<tablet::AbstractTablet> systemschema_types_tablet;
+
+  // system_schema.views
+  std::shared_ptr<tablet::AbstractTablet> systemschema_views_tablet;
 
   // The set of system tables supported by the master. No locks are needed for this set since its
   // created once during initialization and after that all operations are read operations.
