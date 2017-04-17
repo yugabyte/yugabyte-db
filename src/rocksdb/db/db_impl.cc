@@ -2709,11 +2709,11 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
 void DBImpl::BackgroundCallFlush() {
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
-  assert(bg_flush_scheduled_);
 
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
   {
     InstrumentedMutexLock l(&mutex_);
+    assert(bg_flush_scheduled_);
     num_running_flushes_++;
 
     auto pending_outputs_inserted_elem =
@@ -5551,14 +5551,15 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   }
 
   DBImpl* impl = new DBImpl(db_options, dbname);
-  s = impl->env_->CreateDirIfMissing(impl->db_options_.wal_dir);
-  if (s.ok()) {
-    for (auto db_path : impl->db_options_.db_paths) {
-      s = impl->env_->CreateDirIfMissing(db_path.path);
-      if (!s.ok()) {
-        break;
-      }
+  for (auto db_path : impl->db_options_.db_paths) {
+    s = impl->env_->CreateDirIfMissing(db_path.path);
+    if (!s.ok()) {
+      break;
     }
+  }
+  // WAL dir could be inside other paths, so we create it after.
+  if (s.ok()) {
+    s = impl->env_->CreateDirIfMissing(impl->db_options_.wal_dir);
   }
 
   if (!s.ok()) {
