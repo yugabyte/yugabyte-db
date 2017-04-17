@@ -29,7 +29,7 @@ public class CmdLineOpts {
   // This is a unique UUID that is created by each instance of the application. This UUID is used in
   // various apps to make the keys unique. This allows us to run multiple instances of the app
   // safely.
-  public static final UUID loadTesterUUID = UUID.randomUUID();
+  public static UUID loadTesterUUID;
 
   // The various apps present in this sample.
   public static enum AppName {
@@ -56,6 +56,14 @@ public class CmdLineOpts {
 
   public void initialize(CommandLine commandLine) throws ClassNotFoundException {
     this.commandLine = commandLine;
+    if (commandLine.hasOption("uuid")) {
+      loadTesterUUID = UUID.fromString(commandLine.getOptionValue("uuid"));
+      LOG.info("Using given UUID : " + loadTesterUUID);
+    } else {
+      loadTesterUUID = UUID.randomUUID();
+      LOG.info("Using a randomly generated UUID : " + loadTesterUUID);
+    }
+
     // Get the workload.
     AppName appName = AppName.valueOf(commandLine.getOptionValue("workload"));
     // Get the proxy nodes.
@@ -213,6 +221,7 @@ public class CmdLineOpts {
     options.addOption("help", false, "Show help message.");
     options.addOption("verbose", false, "Enable debug level logging.");
 
+    options.addOption("uuid", true, "The UUID to use for this loadtester.");
     options.addOption("reuse_table", false, "Reuse table if it already exists.");
     options.addOption("num_threads", true, "The total number of threads.");
     options.addOption("num_threads_read", true, "The number of threads that perform reads.");
