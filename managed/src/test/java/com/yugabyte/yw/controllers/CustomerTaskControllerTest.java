@@ -22,6 +22,7 @@ import play.test.Helpers;
 import java.util.Calendar;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -76,7 +77,7 @@ public class CustomerTaskControllerTest extends WithApplication {
     CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
 
     ObjectNode getResponseJson = Json.newObject();
-    getResponseJson.put("status", "Success");
+    getResponseJson.put("status", "Running");
     getResponseJson.put("percent", "50");
     when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
 
@@ -92,12 +93,46 @@ public class CustomerTaskControllerTest extends WithApplication {
     assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
-    assertThat(universeTasks.get(0).get("status").asText(), allOf(notNullValue(), equalTo("Success")));
+    assertThat(universeTasks.get(0).get("status").asText(), allOf(notNullValue(), equalTo("Running")));
     assertTrue(universeTasks.get(0).get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
     assertTrue(universeTasks.get(0).get("completionTime").isNull());
     assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
   }
 
+  @Test
+  public void testTaskCompletionTime() {
+    String authToken = customer.createAuthToken();
+    UUID taskUUID = UUID.randomUUID();
+    CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
+
+    ObjectNode getResponseJson = Json.newObject();
+    getResponseJson.put("status", "Success");
+    getResponseJson.put("percent", "100");
+
+    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
+
+    Result firstQuery = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
+      .header("X-AUTH-TOKEN", authToken));
+    assertEquals(OK, firstQuery.status());
+    JsonNode resultA = Json.parse(contentAsString(firstQuery));
+    JsonNode universeTasksA = resultA.get(universe.universeUUID.toString());
+    String markedCompletionTime = universeTasksA.get(0).get("completionTime").asText();
+    Result secondQuery = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
+      .header("X-AUTH-TOKEN", authToken));
+    try {
+      TimeUnit.SECONDS.sleep(1);
+      // Query Task for second time to make sure the completion time is what was set before
+      JsonNode resultB = Json.parse(contentAsString(secondQuery));
+      assertTrue(resultB.isObject());
+      JsonNode universeTasks = resultB.get(universe.universeUUID.toString());
+      assertTrue(universeTasks.isArray());
+      assertEquals(1, universeTasks.size());
+      assertEquals(universeTasks.get(0).get("completionTime").asText(), markedCompletionTime);
+      assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
+  }
   @Test
   public void testTaskHistoryUniverseList() {
     String authToken = customer.createAuthToken();
