@@ -6,7 +6,9 @@ import { reduxForm } from 'redux-form';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
          fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure, toggleTableView }
-       from '../../../actions/tables';
+        from '../../../actions/tables';
+import { fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure, resetUniverseTasks}
+        from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -52,7 +54,15 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(createUniverseTableFailure(response.payload));
         } else {
           dispatch(createUniverseTableSuccess(response.payload));
-          dispatch(toggleTableView("list"));
+          dispatch(fetchUniverseTasks(universeUUID))
+            .then((response) => {
+              dispatch(toggleTableView("list"));
+              if (!response.error) {
+                dispatch(fetchUniverseTasksSuccess(response.payload));
+              } else {
+                dispatch(fetchUniverseTasksFailure(response.payload));
+              }
+            });
         }
       });
     },

@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Link } from 'react-router';
-import { Button, Image } from 'react-bootstrap';
+import { Button, Image, ProgressBar } from 'react-bootstrap';
 import cassandraLogo from '../images/cassandra.png';
 import redisLogo from '../images/redis.png';
 import './ListTables.scss';
@@ -10,6 +10,7 @@ import {isValidArray} from '../../../utils/ObjectUtils';
 import { CreateTableContainer } from '../../tables';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import _ from 'lodash';
 
 class TableTitle extends Component {
   render() {
@@ -101,27 +102,36 @@ class ListTableGrid extends Component {
       this.props.fetchUniverseTables(universeUUID);
     }
   }
+
   render(){
     var self = this;
-    const {universe: {currentUniverse}} = this.props;
+    const {universe: {currentUniverse: {universeUUID}, universeTasks}} = this.props;
     var getTableIcon = function(tableType) {
-      if (tableType === "YQL_TABLE_TYPE") {
-        return <Image src={cassandraLogo} className="table-type-logo"/>;
-      } else {
-        return <Image src={redisLogo} className="table-type-logo"/>;
-      }
+      return <Image src={tableType === "YQL_TABLE_TYPE" ? cassandraLogo : redisLogo} className="table-type-logo" />;
     }
 
     var getTableName = function (tableName, data) {
-      return <Link to={`/universes/${currentUniverse.universeUUID}/tables/${data.tableID}`}>{tableName}</Link>;
+      if (data.status === "success") {
+        return <Link to={`/universes/${universeUUID}/tables/${data.tableID}`}>{tableName}</Link>;
+      } else {
+        return tableName
+      }
     }
 
     const tablePlacementDummyData = {"read": "-", "write": "-"};
 
-    var isTableMultiAZ = function(item) {
-      if (item === true) {
-        return <i className="indicator-orange fa fa-check"/>
-      } else {
+    var formatTableStatus = function(item, row) {
+      if (item === "success") {
+        return <i className="yb-success-color fa fa-check"/>
+      } else if (item === "pending") {
+        return (
+        <div>
+          <span className="yb-orange">Pending {row.percentComplete} % complete</span>
+          <ProgressBar className={"pending-action-progress"} now={row.percentComplete}/>
+        </div>
+        )
+      }
+      else {
         return <i className="indicator-orange fa fa-times"/>
       }
     }
@@ -133,24 +143,44 @@ class ListTableGrid extends Component {
           "tableID": item.tableUUID,
           "tableType": item.tableType,
           "tableName": item.tableName,
-          "isMultiAZ": JSON.parse(self.props.universe.currentUniverse.universeDetails.userIntent.isMultiAZ),
+          "status": "success",
           "read": tablePlacementDummyData.read,
           "write": tablePlacementDummyData.write
         }
       });
     }
 
+    if (universeTasks && universeTasks[universeUUID]) {
+      var pendingTableTasks = universeTasks[universeUUID].find(function(taskItem, taskIdx){
+        return taskItem.target === "Table" && taskItem.status === "Running" && taskItem.percentComplete < 100
+      });
+      if (pendingTableTasks) {
+        // Split title string to extract table name from the title.
+        var pendingTableName = pendingTableTasks.title.replace(/.*:\s*/, '');
+        if (listItems.findIndex(lItem => lItem.tableName === pendingTableName) === -1) {
+          var pendingTableRow = {
+            tableID: pendingTableTasks.id,
+            tableType: "YQL_TABLE_TYPE",
+            tableName: pendingTableName,
+            status: "pending",
+            percentComplete: pendingTableTasks.percentComplete
+          };
+          listItems.push(pendingTableRow);
+        }
+      }
+    }
+    var sortedListItems = _.sortBy(listItems, "tableName");
     var tableListDisplay =
-      <BootstrapTable data={listItems} >
+      <BootstrapTable data={sortedListItems} >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
                            columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}/>
         <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
                            columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
           Table Name</TableHeaderColumn>
-        <TableHeaderColumn dataField={"isMultiAZ"}
-                           columnClassName={"yb-table-cell"} dataFormat={isTableMultiAZ}>
-          Multi AZ</TableHeaderColumn>
+        <TableHeaderColumn dataField={"status"}
+                           columnClassName={"yb-table-cell"} dataFormat={formatTableStatus}>
+          Status</TableHeaderColumn>
         <TableHeaderColumn dataField={"read"}
                            columnClassName={"yb-table-cell"} >
           Read</TableHeaderColumn>
