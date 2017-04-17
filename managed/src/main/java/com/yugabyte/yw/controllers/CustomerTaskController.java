@@ -85,7 +85,7 @@ public class CustomerTaskController extends AuthenticatedController {
         LOG.error("Error fetching Task Progress for " + task.getTaskUUID() + ", Error: " + taskProgress.get("error"));
       } else {
         taskData.percentComplete = taskProgress.get("percent").asInt();
-        if (taskData.percentComplete == 100) {
+        if (taskData.percentComplete == 100 && task.getCompletionTime() == null) {
           task.markAsCompleted();
         }
         taskData.status = taskProgress.get("status").asText();
