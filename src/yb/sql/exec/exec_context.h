@@ -59,6 +59,10 @@ class ExecContext : public ProcessContextBase {
     return sql_env_->CurrentKeyspace();
   }
 
+  SqlEnv* sql_env() const {
+    return sql_env_;
+  }
+
   // Apply YBClient write operator.
   void ApplyWriteAsync(
       std::shared_ptr<client::YBqlWriteOp> yb_op, const TreeNode* tnode,

@@ -14,6 +14,7 @@ namespace cqlserver {
 class CQLServerOptions : public yb::server::ServerBaseOptions {
  public:
   CQLServerOptions();
+  std::string broadcast_rpc_address;
 
   ~CQLServerOptions() {}
 };

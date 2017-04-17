@@ -551,6 +551,8 @@ CatalogManager::CatalogManager(Master* master)
           {
               std::make_pair(std::string(kSystemNamespaceId),
                              std::string(kSystemPeersTableName)),
+              std::make_pair(std::string(kSystemNamespaceId),
+                             std::string(kSystemLocalTableName)),
               std::make_pair(std::string(kSystemSchemaNamespaceId),
                              std::string(kSystemSchemaAggregatesTableName)),
               std::make_pair(std::string(kSystemSchemaNamespaceId),
@@ -785,6 +787,31 @@ Status CatalogManager::CreateSystemPeersSchema(Schema* schema) {
   return Status::OK();
 }
 
+Status CatalogManager::CreateSystemLocalSchema(Schema* schema) {
+  // system.local table
+  SchemaBuilder builder;
+  RETURN_NOT_OK(builder.AddKeyColumn("key", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("bootstrapped", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("broadcast_address", DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn("cluster_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("cql_version", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("data_center", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("gossip_generation", DataType::INT32));
+  // TODO: host_id is missing since we need UUID for it.
+  RETURN_NOT_OK(builder.AddColumn("listen_address", DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn("native_protocol_version", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("partitioner", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("rack", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
+  // TODO: schema_version is missing since we need UUID for it.
+  RETURN_NOT_OK(builder.AddColumn("thrift_version", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, { YQLType(DataType::STRING) })));
+  // TODO: truncated_at is missing since we don't support blob.
+  *schema = builder.Build();
+  return Status::OK();
+}
+
 Status CatalogManager::CreateAggregatesSchema(Schema* schema) {
   // system_schema.aggregates table.
   SchemaBuilder builder;
@@ -968,6 +995,7 @@ Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
 Status CatalogManager::PrepareSystemTables() {
   // Create the required system tables here.
   RETURN_NOT_OK(PrepareSystemPeersTable());
+  RETURN_NOT_OK(PrepareSystemLocalTable());
   RETURN_NOT_OK(PrepareSystemSchemaAggregatesTable());
   RETURN_NOT_OK(PrepareSystemSchemaFunctionsTable());
   RETURN_NOT_OK(PrepareSystemSchemaIndexesTable());
@@ -1068,6 +1096,17 @@ Status CatalogManager::PrepareSystemPeersTable() {
                             schema, std::move(yql_storage), &system_peers_tablet);
 }
 
+Status CatalogManager::PrepareSystemLocalTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateSystemLocalSchema(&schema));
+  // Note that the system.local table is special in the sense that it only has metadata in the
+  // master. This table is supposed to contain just a single row consisting of information about
+  // the node that the CQL client is connected to. As a result, currently we just short-circuit
+  // this call in the CQL proxy.
+  return PrepareSystemTable(kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId,
+                            schema, nullptr, nullptr);
+}
+
 Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const NamespaceName& namespace_name,
                                           const NamespaceId& namespace_id,
@@ -1123,8 +1162,10 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  // Finally create the appropriate tablet object.
-  tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+  if (tablet != nullptr) {
+    // Finally create the appropriate tablet object.
+    tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+  }
 
   return Status::OK();
 }

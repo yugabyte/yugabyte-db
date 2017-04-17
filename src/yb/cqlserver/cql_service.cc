@@ -35,11 +35,15 @@ using yb::rpc::InboundCall;
 using yb::rpc::CQLInboundCall;
 
 CQLServiceImpl::CQLServiceImpl(
-    CQLServer* server, shared_ptr<rpc::Messenger> messenger, const string& yb_tier_master_addresses)
-    : CQLServerServiceIf(server->metric_entity()), messenger_(messenger) {
+    CQLServer* server, shared_ptr<rpc::Messenger> messenger,
+    const CQLServerOptions& opts)
+    : CQLServerServiceIf(server->metric_entity()),
+      messenger_(messenger),
+      cql_rpcserver_env_(new rpc::CQLRpcServerEnv(server->first_rpc_address().host(),
+                                                  opts.broadcast_rpc_address)) {
   // TODO(ENG-446): Handle metrics for all the methods individually.
   // Setup client.
-  SetUpYBClient(yb_tier_master_addresses, server->metric_entity());
+  SetUpYBClient(opts.master_addresses_flag, server->metric_entity());
   cql_metrics_ = std::make_shared<CQLMetrics>(server->metric_entity());
 
   // Setup processors.

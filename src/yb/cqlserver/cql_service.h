@@ -11,6 +11,8 @@
 
 #include "yb/cqlserver/cql_message.h"
 #include "yb/cqlserver/cql_service.service.h"
+#include "yb/cqlserver/cql_server_options.h"
+#include "yb/rpc/cql_rpcserver_env.h"
 #include "yb/util/string_case.h"
 #include "yb/client/client.h"
 
@@ -47,7 +49,7 @@ class CQLServiceImpl : public CQLServerServiceIf {
   // Constructor.
   CQLServiceImpl(
       CQLServer* server, std::shared_ptr<rpc::Messenger> messenger,
-      const std::string& yb_tier_master_address);
+      const CQLServerOptions& opts);
 
   // Processing all incoming request from RPC and sending response back.
   void Handle(yb::rpc::InboundCall* call) override;
@@ -81,6 +83,9 @@ class CQLServiceImpl : public CQLServerServiceIf {
 
   // Return the messenger.
   std::weak_ptr<rpc::Messenger> messenger() { return messenger_; }
+
+  // Return the CQL RPC environment.
+  rpc::CQLRpcServerEnv* cql_rpc_env() { return cql_rpcserver_env_.get(); }
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
@@ -130,6 +135,9 @@ class CQLServiceImpl : public CQLServerServiceIf {
   std::shared_ptr<CQLMetrics> cql_metrics_;
   // Used to requeue the cql_inbound call to handle the response callback(s).
   std::weak_ptr<rpc::Messenger> messenger_;
+
+  // RPC environment for CQL proxy.
+  std::unique_ptr<rpc::CQLRpcServerEnv> cql_rpcserver_env_;
 };
 
 }  // namespace cqlserver

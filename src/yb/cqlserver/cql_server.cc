@@ -28,10 +28,11 @@ Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
   gscoped_ptr<ServiceIf> cql_service(
-      new CQLServiceImpl(this, messenger_, opts_.master_addresses_flag));
+      new CQLServiceImpl(this, messenger_, opts_));
   RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(cql_service, cqlsvc), cql_service.Pass()));
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
+
 
   return Status::OK();
 }

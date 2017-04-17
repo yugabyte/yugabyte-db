@@ -49,6 +49,7 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 
 #define EXPECTED_SYSTEM_TABLES \
 std::make_tuple(kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId), \
+std::make_tuple(kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId), \
 std::make_tuple(kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, \
     kSystemSchemaNamespaceId), \
 std::make_tuple(kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, \

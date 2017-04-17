@@ -103,6 +103,7 @@ class RowsResult : public ExecutedResult {
 
   // Constructors.
   explicit RowsResult(client::YBqlOp *op);
+  RowsResult(client::YBTable* table, const std::string& rows_data);
   virtual ~RowsResult() override;
 
   // Result type.

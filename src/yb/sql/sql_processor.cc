@@ -87,11 +87,12 @@ SqlMetrics::SqlMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
 
 SqlProcessor::SqlProcessor(
     std::weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
-    shared_ptr<YBTableCache> cache, SqlMetrics* sql_metrics)
+    shared_ptr<YBTableCache> cache, SqlMetrics* sql_metrics,
+    rpc::CQLRpcServerEnv* cql_rpcserver_env)
     : parser_(new Parser()),
       analyzer_(new Analyzer()),
       executor_(new Executor(sql_metrics)),
-      sql_env_(new SqlEnv(messenger, client, cache)),
+      sql_env_(new SqlEnv(messenger, client, cache, cql_rpcserver_env)),
       sql_metrics_(sql_metrics),
       is_used_(false) {}
 

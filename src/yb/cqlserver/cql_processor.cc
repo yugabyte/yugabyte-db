@@ -104,7 +104,7 @@ CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const strin
 CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl)
     : SqlProcessor(
           service_impl->messenger(), service_impl->client(), service_impl->table_cache(),
-          service_impl->cql_metrics().get()),
+          service_impl->cql_metrics().get(), service_impl->cql_rpc_env()),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()) {}
 

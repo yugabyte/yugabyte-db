@@ -38,13 +38,15 @@ using client::YBqlWriteOp;
   } while (0)
 
 SqlEnv::SqlEnv(
-    weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client, shared_ptr<YBTableCache> cache)
+    weak_ptr<rpc::Messenger> messenger, shared_ptr<YBClient> client,
+    shared_ptr<YBTableCache> cache, rpc::CQLRpcServerEnv* cql_rpcserver_env)
     : client_(client),
       table_cache_(cache),
       write_session_(client_->NewSession(false /* read_only */)),
       read_session_(client->NewSession(true /* read_only */)),
       messenger_(messenger),
-      flush_done_cb_(this, &SqlEnv::FlushAsyncDone) {
+      flush_done_cb_(this, &SqlEnv::FlushAsyncDone),
+      cql_rpcserver_env_(cql_rpcserver_env) {
   write_session_->SetTimeoutMillis(kSessionTimeoutMs);
   CHECK_OK(write_session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 

@@ -930,6 +930,68 @@ CHECKED_STATUS Executor::BoolExprToPB(YQLConditionPB *cond, const PTExpr* expr) 
   return Status::OK();
 }
 
+namespace {
+  void SetStringValue(const std::string& value, const size_t col_idx, YQLRow* row) {
+    YQLValuePB value_pb;
+    YQLValue::set_string_value(value, &value_pb);
+    *(row->mutable_column(col_idx)) = value_pb;
+  }
+
+  void SetInetValue(const InetAddress& value, const size_t col_idx, YQLRow* row) {
+    YQLValuePB value_pb;
+    YQLValue::set_inetaddress_value(value, &value_pb);
+    *(row->mutable_column(col_idx)) = value_pb;
+  }
+
+  void SetIntValue(const int32_t value, const size_t col_idx, YQLRow* row) {
+    YQLValuePB value_pb;
+    YQLValue::set_int32_value(value, &value_pb);
+    *(row->mutable_column(col_idx)) = value_pb;
+  }
+
+  CHECKED_STATUS HandleSystemLocal(const shared_ptr<client::YBTable>& table,
+                                   const ExecContext* exec_context,
+                                   ExecutedResult::SharedPtr* result) {
+    // Retrieve the current address of the node.
+    InetAddress rpc_addr;
+    InetAddress broadcast_addr;
+    rpc::CQLRpcServerEnv* cql_rpcserver_env = exec_context->sql_env()->cql_rpcserver_env();
+    if (cql_rpcserver_env != nullptr) {
+      RETURN_NOT_OK(rpc_addr.FromString(cql_rpcserver_env->rpc_address()));
+      RETURN_NOT_OK(broadcast_addr.FromString(cql_rpcserver_env->broadcast_address()));
+    } else {
+      // cql_rpcserver_env might be null since this codepath might be invoked without a cql proxy
+      // running (ex: unit tests, ybcmd).
+      RETURN_NOT_OK(rpc_addr.FromString("127.0.0.1"));
+      RETURN_NOT_OK(broadcast_addr.FromString("127.0.0.1"));
+    }
+
+    // Now populate the row for system.local.
+    YQLRowBlock row_block(table->InternalSchema());
+    YQLRow& row = row_block.Extend();
+    SetStringValue("local", 0, &row); // key
+    SetStringValue("COMPLETED", 1, &row); // bootstrapped
+    SetInetValue(broadcast_addr, 2, &row); // broadcast_address
+    SetStringValue("local cluster", 3, &row); // cluster_name
+    SetStringValue("3.4.2", 4, &row); // cql_version
+    SetStringValue("datacenter", 5, &row); // data_center
+    SetIntValue(0, 6, &row); // gossip_generation
+    SetInetValue(broadcast_addr, 7, &row); // listen_address
+    SetStringValue("4", 8, &row); // native_protocol_version
+    SetStringValue("org.apache.cassandra.dht.Murmur3Partitioner", 9, &row); // partitioner
+    SetStringValue("rack", 10, &row); // rack
+    SetStringValue("3.9-SNAPSHOT", 11, &row); // release_version
+    SetInetValue(rpc_addr, 12, &row); // rpc_address
+    SetStringValue("20.1.0", 13, &row); // thrift_version
+
+    // Serialize the row and return result.
+    faststring buffer;
+    row_block.Serialize(YQL_CLIENT_CQL, &buffer);
+    result->reset(new RowsResult(table.get(), buffer.ToString()));
+    return Status::OK();
+  }
+} // anonymous namespace.
+
 //--------------------------------------------------------------------------------------------------
 
 void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallback cb) {
@@ -941,6 +1003,15 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
     CB_RETURN(cb,
               tnode->is_system() ? Status::OK() :
               exec_context_->Error(tnode->loc(), ErrorCode::TABLE_NOT_FOUND));
+  }
+
+  if (table->name().namespace_name() == master::kSystemNamespaceName &&
+      table->name().table_name() == master::kSystemLocalTableName) {
+    // We can return the information for system.local directly here.
+    ExecutedResult::SharedPtr result;
+    CB_RETURN_NOT_OK(cb, HandleSystemLocal(table, exec_context_.get(), &result));
+    cb.Run(Status::OK(), result);
+    return;
   }
 
   // If there is a table id in the statement parameter's paging state, this is a continuation of

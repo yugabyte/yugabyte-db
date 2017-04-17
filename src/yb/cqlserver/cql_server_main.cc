@@ -14,6 +14,9 @@
 
 using yb::cqlserver::CQLServer;
 
+DEFINE_string(cql_proxy_broadcast_rpc_address, "",
+              "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
+                  " system.local table");
 DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 DEFINE_string(cqlserver_master_addrs, "127.0.0.1:7051",
@@ -41,6 +44,7 @@ static int CQLServerMain(int argc, char** argv) {
   cql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
   cql_server_options.webserver_opts.port = FLAGS_cql_proxy_webserver_port;
   cql_server_options.master_addresses_flag = FLAGS_cqlserver_master_addrs;
+  cql_server_options.broadcast_rpc_address = FLAGS_cql_proxy_broadcast_rpc_address;
   CQLServer server(cql_server_options);
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server.Start());

@@ -842,6 +842,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemPeersTable();
 
+  CHECKED_STATUS PrepareSystemLocalTable();
+
   CHECKED_STATUS PrepareSystemSchemaAggregatesTable();
 
   CHECKED_STATUS PrepareSystemSchemaColumnsTable();
@@ -869,6 +871,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // system.peers schema.
   CHECKED_STATUS CreateSystemPeersSchema(Schema* schema);
+
+  // system.local schema.
+  CHECKED_STATUS CreateSystemLocalSchema(Schema* schema);
 
   // system_schema.aggregates.
   CHECKED_STATUS CreateAggregatesSchema(Schema* schema);

@@ -15,6 +15,7 @@
 #include "yb/sql/sql_session.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/cql_rpc.h"
+#include "yb/rpc/cql_rpcserver_env.h"
 
 namespace yb {
 
@@ -32,7 +33,8 @@ class SqlEnv {
   // Constructor & destructor.
   SqlEnv(
       std::weak_ptr<rpc::Messenger> messenger, std::shared_ptr<client::YBClient> client,
-      std::shared_ptr<client::YBTableCache> cache);
+      std::shared_ptr<client::YBTableCache> cache,
+      rpc::CQLRpcServerEnv* cql_rpcserver_env = nullptr);
   virtual ~SqlEnv();
 
   virtual client::YBTableCreator *NewTableCreator();
@@ -74,6 +76,8 @@ class SqlEnv {
   void Reset();
 
   void SetCurrentCall(rpc::InboundCallPtr call);
+
+  rpc::CQLRpcServerEnv* cql_rpcserver_env() { return cql_rpcserver_env_; }
 
  private:
 
@@ -122,6 +126,8 @@ class SqlEnv {
 
   // The current keyspace. Used only in test environment when there is no current call.
   std::unique_ptr<std::string> current_keyspace_;
+
+  rpc::CQLRpcServerEnv* cql_rpcserver_env_;
 };
 
 }  // namespace sql

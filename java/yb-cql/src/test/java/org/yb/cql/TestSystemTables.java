@@ -65,6 +65,30 @@ public class TestSystemTables extends TestBase {
   }
 
   @Test
+  public void testSystemLocalTables() throws Exception {
+    InetAddress contactPoint = miniCluster.getCQLContactPoints().get(0).getAddress();
+    List <Row> results = session.execute(
+      "SELECT * FROM system.local;").all();
+    assertEquals(1, results.size());
+    Row row = results.get(0);
+    assertEquals("local", row.getString("key"));
+    assertEquals("COMPLETED", row.getString("bootstrapped"));
+    assertEquals(contactPoint, row.getInet("broadcast_address"));
+    assertEquals("local cluster", row.getString("cluster_name"));
+    assertEquals("3.4.2", row.getString("cql_version"));
+    assertEquals("datacenter", row.getString("data_center"));
+    assertEquals(0, row.getInt("gossip_generation"));
+    assertEquals(contactPoint, row.getInet("listen_address"));
+    assertEquals("4", row.getString("native_protocol_version"));
+    assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
+    assertEquals("rack", row.getString("rack"));
+    assertEquals("3.9-SNAPSHOT", row.getString("release_version"));
+    assertEquals(contactPoint, row.getInet("rpc_address"));
+    assertEquals("20.1.0", row.getString("thrift_version"));
+    assertTrue(row.isNull("tokens"));
+  }
+
+  @Test
   public void testSystemKeyspacesAndTables() throws Exception {
     List <Row> results = session.execute(
       "SELECT * FROM system_schema.keyspaces;").all();
@@ -78,7 +102,7 @@ public class TestSystemTables extends TestBase {
 
     results = session.execute(
       "SELECT * FROM system_schema.tables;").all();
-    assertEquals(10, results.size());
+    assertEquals(11, results.size());
     verifySystemSchemaTables(results, "system_schema", "aggregates");
     verifySystemSchemaTables(results, "system_schema", "columns");
     verifySystemSchemaTables(results, "system_schema", "functions");
@@ -89,6 +113,7 @@ public class TestSystemTables extends TestBase {
     verifySystemSchemaTables(results, "system_schema", "keyspaces");
     verifySystemSchemaTables(results, "system_schema", "tables");
     verifySystemSchemaTables(results, "system", "peers");
+    verifySystemSchemaTables(results, "system", "local");
 
     // Create keyspace and table and verify it shows up.
     session.execute("CREATE KEYSPACE my_keyspace;");

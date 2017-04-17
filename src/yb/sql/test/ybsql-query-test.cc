@@ -792,5 +792,22 @@ TEST_F(YbSqlQuery, TestCollectionTypes) {
   EXPECT_EQ("b", list_value.elems(5).string_value());
 }
 
+TEST_F(YbSqlQuery, TestSystemLocal) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  auto set_select_stmt = "SELECT * FROM system.local";
+  CHECK_OK(processor->Run(set_select_stmt));
+
+  // Validate rows.
+  auto row_block = processor->row_block();
+  EXPECT_EQ(1, row_block->row_count());
+  YQLRow& row = row_block->row(0);
+  EXPECT_EQ("127.0.0.1", row.column(2).inetaddress_value().ToString()); // broadcast address.
+}
+
 } // namespace sql
 } // namespace yb
