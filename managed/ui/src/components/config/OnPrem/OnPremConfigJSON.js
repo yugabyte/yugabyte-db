@@ -15,9 +15,9 @@ class ConfigFormTitle extends Component {
     const { titleText, copyTextToForm} = this.props;
     return (
       <div className="sample-config-item-label">
-        <Col lg={10} className="color-grey">{titleText}</Col>
-        <Col lg={2}>
-            <YBButton btnIcon="fa fa-files-o" onClick={copyTextToForm}/>
+        <Col lg={9} className="color-grey">{titleText}</Col>
+        <Col lg={3} className="text-right">
+            <YBButton btnIcon="fa fa-files-o" btnText={"Copy"} onClick={copyTextToForm}/>
         </Col>
       </div>
     )
@@ -48,15 +48,15 @@ export default class OnPremConfigJSON extends Component {
   }
 
   render() {
-    const configTitle = "Enter your DataCenter Config here";
+    const configTitle = "Enter Datacenter Configuration JSON:";
     return (
       <Row className="form-data-container">
         <Col lg={5} className="sample-config-item">
-          <div className="color-light-grey">
+          <Row className="color-light-grey">
             <ConfigFormTitle text={this.sampleJsonPretty}
-                             titleText={"Sample DataCenter Config"}
+                             titleText={"Example Datacenter Configuration"}
                              copyTextToForm={this.copyTextToForm}/>
-          </div>
+          </Row>
           <Highlight className='json'>{this.sampleJsonPretty}</Highlight>
         </Col>
         <Col lg={5} id="sample-panel-item">
@@ -66,6 +66,8 @@ export default class OnPremConfigJSON extends Component {
               onChange={this.onChange}
               name="dc-config-val"
               value={this.props.configJsonVal}
+              height="470px"
+              width="560px"
             />
           </YBPanelItem>
         </Col>
