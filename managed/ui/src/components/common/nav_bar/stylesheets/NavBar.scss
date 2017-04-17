@@ -66,6 +66,32 @@
     font-weight: 400;
     font-size: 10px;
     padding: 10px 5px;
+
+    i {
+      font-size: 25px !important;
+      text-align: center;
+      width: 100% !important;
+      margin-bottom: 5px;
+
+      &.toggle-up {
+        display: none !important;
+      }
+    }
+
+    @media screen and ( max-height: 560px ) {
+      span {
+        display: none;
+      }
+    }
+
+    @media screen and ( max-height: 460px ) {
+      margin: 0 !important;
+
+      i {
+        font-size: 18px;
+        margin: 0 !important;
+      }
+    }
   }
   .nav.child_menu li.active,
   .nav.side-menu li.active-sm {
@@ -79,15 +105,6 @@
   }
   > .nav.side-menu > li.active-sm > a {
     color: #333 !important;
-  }
-  .nav.side-menu li a i.toggle-up {
-    display: none !important;
-  }
-  .nav.side-menu li a i {
-    font-size: 25px !important;
-    text-align: center;
-    width: 100% !important;
-    margin-bottom: 5px;
   }
   ul.nav.child_menu {
     left: 100%;

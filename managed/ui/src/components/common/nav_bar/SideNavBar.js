@@ -6,7 +6,7 @@ import './stylesheets/SideNavBar.scss';
 
 class NavLink extends Component {
   render () {
-    const { router, index, to, children, icon, ...props } = this.props;
+    const { router, index, to, children, icon, text, ...props } = this.props;
 
     // Added by withRouter in React Router 3.0.
     delete props.params;
@@ -17,7 +17,7 @@ class NavLink extends Component {
 
     return (
       <li className={isActive ? 'active' : ''}>
-        <LinkComponent to={to} {...props}><i className={icon}></i>{children}</LinkComponent>
+        <LinkComponent to={to} title={text} {...props}><i className={icon}></i><span>{text}</span></LinkComponent>
       </li>
     )
   }
@@ -33,32 +33,18 @@ export default class SideNavBar extends Component {
       <div className="side-nav-container">
         <div className="col-md-3 left_col" >
           <div className="left_col scroll-view">
-            <div id="sidebar-menu" className="main_menu_side hidden-print main_menu">
+            <div id="sidebar-menu" className="main-menu-side hidden-print main-menu">
               <div className="menu_section">
                 <ul className="nav side-menu">
-                  <NavLink to="/" index={true} icon="fa fa-dashboard">
-                    Dashboard
-                  </NavLink>
-                  <NavLink to="/universes" icon="fa fa-globe">
-                    Universes
-                  </NavLink>
-                  <NavLink to="/metrics" icon="fa fa-line-chart">
-                    Metrics
-                  </NavLink>
-                  <NavLink to="/tasks" icon="fa fa-list">
-                    Tasks
-                  </NavLink>
-                  <NavLink to="/alerts" icon="fa fa-bell-o">
-                    Alerts
-                  </NavLink>
-                  <NavLink to="/config" icon="fa fa-cloud-upload">
-                    Configuration
-                  </NavLink>
+                  <NavLink to="/" index={true} icon="fa fa-dashboard" text="Dashboard" />
+                  <NavLink to="/universes" icon="fa fa-globe" text="Universes" />
+                  <NavLink to="/metrics" icon="fa fa-line-chart" text="Metrics" />
+                  <NavLink to="/tasks" icon="fa fa-list" text="Tasks" />
+                  <NavLink to="/alerts" icon="fa fa-bell-o" text="Alerts" />
+                  <NavLink to="/config" icon="fa fa-cloud-upload" text="Configuration" />
                 </ul>
                 <ul className="nav side-menu position-bottom">
-                  <NavLink to="/help" icon="fa fa-question-circle-o">
-                    Help
-                  </NavLink>
+                  <NavLink to="/help" icon="fa fa-question-circle-o" text="Help" />
                 </ul>
               </div>
             </div>
