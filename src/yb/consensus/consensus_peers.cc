@@ -373,6 +373,13 @@ void RpcPeerProxy::RunLeaderElectionAsync(const RunLeaderElectionRequestPB* requ
   consensus_proxy_->RunLeaderElectionAsync(*request, response, controller, callback);
 }
 
+void RpcPeerProxy::LeaderElectionLostAsync(const LeaderElectionLostRequestPB* request,
+                                           LeaderElectionLostResponsePB* response,
+                                           rpc::RpcController* controller,
+                                           const rpc::ResponseCallback& callback) {
+  consensus_proxy_->LeaderElectionLostAsync(*request, response, controller, callback);
+}
+
 void RpcPeerProxy::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* request,
                                         StartRemoteBootstrapResponsePB* response,
                                         rpc::RpcController* controller,

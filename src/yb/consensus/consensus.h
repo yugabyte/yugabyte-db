@@ -143,9 +143,21 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     // between a leader and one of its replicas.
     ELECT_EVEN_IF_LEADER_IS_ALIVE
   };
+  // pending_commit - we should start election only after we have specified entry committed..
+  // opid - if specified we would wait until this entry is committed,
+  // if not specified it is taken from previous call to StartElection with pending_commit = true.
+  // originator_uuid - if election is initiated by old leader as part of step down procedure, it
+  // would contain uuid of old leader.
   virtual CHECKED_STATUS StartElection(
-      ElectionMode mode, const bool pending_commit = false,
-      const OpId& opid = OpId::default_instance()) = 0;
+      ElectionMode mode,
+      const bool pending_commit = false,
+      const OpId& opid = OpId::default_instance(),
+      const std::string& originator_uuid = std::string()) = 0;
+
+  // We tried to step down, so you protege become leader.
+  // But it failed to win election, so we should reset our withhold time and try to reelect ourself.
+  // election_lost_by_uuid - uuid of protege that lost election.
+  virtual CHECKED_STATUS ElectionLostByProtege(const std::string& election_lost_by_uuid) = 0;
 
   // Implement a LeaderStepDown() request.
   virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req,

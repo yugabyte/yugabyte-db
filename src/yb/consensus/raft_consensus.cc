@@ -378,7 +378,10 @@ Status RaftConsensus::EmulateElection() {
 }
 
 Status RaftConsensus::StartElection(
-    ElectionMode mode, const bool pending_commit, const OpId& opid) {
+    ElectionMode mode,
+    const bool pending_commit,
+    const OpId& opid,
+    const std::string& originator_uuid) {
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
                "tablet", tablet_id());
@@ -429,7 +432,6 @@ Status RaftConsensus::StartElection(
             << " detected. Triggering leader election, mode=" << mode;
       } else {
         LOG_WITH_PREFIX_UNLOCKED(INFO)
-            << "No leader contacted us within the election timeout. "
             << "Triggering leader election, mode=" << mode;
       }
 
@@ -468,10 +470,13 @@ Status RaftConsensus::StartElection(
       *request.mutable_candidate_status()->mutable_last_received() =
         state_->GetLastReceivedOpIdUnlocked();
 
-      election.reset(new LeaderElection(active_config,
-                                        peer_proxy_factory_.get(),
-                                        request, counter.Pass(), timeout,
-                                        Bind(&RaftConsensus::ElectionCallback, this)));
+      election.reset(new LeaderElection(
+          active_config,
+          peer_proxy_factory_.get(),
+          request,
+          counter.Pass(),
+          timeout,
+          Bind(&RaftConsensus::ElectionCallback, this, originator_uuid)));
 
       // Clear the pending election op id so that we won't start the same pending election again.
       state_->ClearPendingElectionOpIdUnlocked();
@@ -546,11 +551,12 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
     return Status::OK();
   }
 
+  std::string new_leader_uuid;
   // If a new leader is nominated, find it among peers to send RunLeaderElection request.
   // See https://ramcloud.stanford.edu/~ongaro/thesis.pdf, section 3.10 for this mechanism
   // to transfer the leadership.
   if (req->has_new_leader_uuid()) {
-    const auto& new_leader_uuid = req->new_leader_uuid();
+    new_leader_uuid = req->new_leader_uuid();
     const auto& tablet_id = req->tablet_id();
     bool new_leader_found = false;
     const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
@@ -559,6 +565,7 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
           peer.permanent_uuid() == new_leader_uuid) {
         auto election_state = std::make_shared<RunLeaderElectionState>();
         RETURN_NOT_OK(peer_proxy_factory_->NewProxy(peer, &election_state->proxy));
+        election_state->req.set_originator_uuid(req->dest_uuid());
         election_state->req.set_dest_uuid(new_leader_uuid);
         election_state->req.set_tablet_id(tablet_id);
         election_state->req.mutable_committed_index()->CopyFrom(
@@ -586,13 +593,40 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
 
   RETURN_NOT_OK(BecomeReplicaUnlocked());
 
-  WithholdElectionAfterStepDown();
+  WithholdElectionAfterStepDown(new_leader_uuid);
 
   return Status::OK();
 }
 
-void RaftConsensus::WithholdElectionAfterStepDown() {
+Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_uuid) {
+  if (election_lost_by_uuid.empty()) {
+    return STATUS(InvalidArgument, "election_lost_by_uuid could not be empty");
+  }
+
+  auto start_election = false;
+  {
+    ReplicaState::UniqueLock lock;
+    RETURN_NOT_OK(state_->LockForConfigChange(&lock));
+    if (election_lost_by_uuid == protege_leader_uuid_) {
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Our protege " << election_lost_by_uuid
+                                     << ", lost election. Has leader: "
+                                     << state_->HasLeaderUnlocked();
+      just_stepped_down_ = false;
+
+      start_election = !state_->HasLeaderUnlocked();
+    }
+  }
+
+  if (start_election) {
+    return StartElection(NORMAL_ELECTION);
+  }
+
+  return Status::OK();
+}
+
+void RaftConsensus::WithholdElectionAfterStepDown(const std::string& protege_uuid) {
   just_stepped_down_ = true;
+  protege_leader_uuid_ = protege_uuid;
   withhold_election_start_until_ = MonoTime::Now(MonoTime::FINE);
   withhold_election_start_until_.AddDelta(MonoDelta::FromMilliseconds(
       FLAGS_after_stepdown_delay_election_multiplier *
@@ -684,7 +718,7 @@ Status RaftConsensus::BecomeReplicaUnlocked() {
                                  << state_->ToStringUnlocked();
 
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
-    WithholdElectionAfterStepDown();
+    WithholdElectionAfterStepDown(std::string());
   }
 
   state_->ClearLeaderUnlocked();
@@ -1469,7 +1503,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
         << state_->ToString() << " Request: " << request->ShortDebugString();
   }
 
-  // If an election pending on a specific op id and it has just been commmitted, start it now.
+  // If an election pending on a specific op id and it has just been committed, start it now.
   // StartElection will ensure the pending election will be started just once only even if
   // UpdateReplica happens in multiple threads in parallel.
   if (start_election) {
@@ -2131,15 +2165,63 @@ ReplicaState* RaftConsensus::GetReplicaStateForTests() {
   return state_.get();
 }
 
-void RaftConsensus::ElectionCallback(const ElectionResult& result) {
+void RaftConsensus::ElectionCallback(const std::string& originator_uuid,
+                                     const ElectionResult& result) {
   // The election callback runs on a reactor thread, so we need to defer to our
   // threadpool. If the threadpool is already shut down for some reason, it's OK --
   // we're OK with the callback never running.
-  WARN_NOT_OK(thread_pool_->SubmitClosure(Bind(&RaftConsensus::DoElectionCallback, this, result)),
+  WARN_NOT_OK(thread_pool_->SubmitClosure(
+              Bind(&RaftConsensus::DoElectionCallback, this, originator_uuid, result)),
               state_->LogPrefixThreadSafe() + "Unable to run election callback");
 }
 
-void RaftConsensus::DoElectionCallback(const ElectionResult& result) {
+void RaftConsensus::NotifyOriginatorAboutLostElection(const std::string& originator_uuid) {
+  if (originator_uuid.empty()) {
+    return;
+  }
+
+  ReplicaState::UniqueLock lock;
+  Status s = state_->LockForConfigChange(&lock);
+  if (PREDICT_FALSE(!s.ok())) {
+    LOG_WITH_PREFIX(INFO) << "Unable to notify originator about lost election, lock failed: "
+                          << s.ToString();
+    return;
+  }
+
+  const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
+  for (const RaftPeerPB& peer : active_config.peers()) {
+    if (peer.permanent_uuid() == originator_uuid) {
+      gscoped_ptr<PeerProxy> proxy;
+      auto status = peer_proxy_factory_->NewProxy(peer, &proxy);
+      if (!status.ok()) {
+        LOG_WITH_PREFIX_UNLOCKED(INFO) << "Unable to notify originator about lost election, "
+                                       << "failed to create proxy: " << s.ToString();
+        return;
+      }
+      LeaderElectionLostRequestPB req;
+      req.set_dest_uuid(originator_uuid);
+      req.set_election_lost_by_uuid(state_->GetPeerUuid());
+      req.set_tablet_id(state_->GetOptions().tablet_id);
+      auto resp = std::make_shared<LeaderElectionLostResponsePB>();
+      auto rpc = std::make_shared<rpc::RpcController>();
+      proxy->LeaderElectionLostAsync(&req, resp.get(), rpc.get(), [this, resp, rpc] {
+        if (!rpc->status().ok()) {
+          LOG_WITH_PREFIX(WARNING) << "Notify about lost election RPC failure: "
+                                   << rpc->status().ToString();
+        } else if (resp->has_error()) {
+          LOG_WITH_PREFIX(WARNING) << "Notify about lost election failed: "
+                                   << StatusFromPB(resp->error().status()).ToString();
+        }
+      });
+      return;
+    }
+  }
+  LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Failed to find originators peer: " << originator_uuid
+                                    << ", config: " << active_config.ShortDebugString();
+}
+
+void RaftConsensus::DoElectionCallback(const std::string& originator_uuid,
+                                       const ElectionResult& result) {
   // Snooze to avoid the election timer firing again as much as possible.
   {
     ReplicaState::UniqueLock lock;
@@ -2157,7 +2239,9 @@ void RaftConsensus::DoElectionCallback(const ElectionResult& result) {
   if (result.decision == VOTE_DENIED) {
     LOG_WITH_PREFIX(INFO) << "Leader election lost for term " << result.election_term
                              << ". Reason: "
-                             << (!result.message.empty() ? result.message : "None given");
+                             << (!result.message.empty() ? result.message : "None given")
+                             << ". Originator: " << originator_uuid;
+    NotifyOriginatorAboutLostElection(originator_uuid);
     return;
   }
 

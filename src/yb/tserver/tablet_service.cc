@@ -1047,46 +1047,107 @@ void ConsensusServiceImpl::GetNodeInstance(const GetNodeInstanceRequestPB* req,
   context->RespondSuccess();
 }
 
+namespace {
+
+class RpcScope {
+ public:
+  template<class Req, class Resp>
+  RpcScope(TabletPeerLookupIf* tablet_manager,
+           const char* method_name,
+           const Req* req,
+           Resp* resp,
+           rpc::RpcContext* context)
+      : context_(context) {
+    if (!CheckUuidMatchOrRespond(tablet_manager, method_name, req, resp, context)) {
+      return;
+    }
+    scoped_refptr<TabletPeer> tablet_peer;
+    if (!LookupTabletPeerOrRespond(tablet_manager, req->tablet_id(), resp, context, &tablet_peer)) {
+      return;
+    }
+
+    if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus_)) {
+      return;
+    }
+    responded_ = false;
+  }
+
+  ~RpcScope() {
+    if (!responded_) {
+      context_->RespondSuccess();
+    }
+  }
+
+  template<class Resp>
+  void CheckStatus(const Status& status, Resp* resp) {
+    if (!status.ok()) {
+      LOG(INFO) << "Status failed: " << status.ToString();
+      SetupErrorAndRespond(resp->mutable_error(), status,
+                           TabletServerErrorPB::UNKNOWN_ERROR,
+                           context_);
+      responded_ = true;
+    }
+  }
+
+  Consensus* operator->() {
+    return consensus_.get();
+  }
+
+  explicit operator bool() const {
+    return !responded_;
+  }
+
+ private:
+  rpc::RpcContext* context_;
+  bool responded_ = true;
+  scoped_refptr<Consensus> consensus_;
+};
+
+} // namespace
+
 void ConsensusServiceImpl::RunLeaderElection(const RunLeaderElectionRequestPB* req,
                                              RunLeaderElectionResponsePB* resp,
                                              rpc::RpcContext* context) {
   DVLOG(3) << "Received Run Leader Election RPC: " << req->DebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "RunLeaderElection", req, resp, context)) {
+  RpcScope scope(tablet_manager_, "RunLeaderElection", req, resp, context);
+  if (!scope) {
     return;
   }
-  scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context, &tablet_peer)) {
-    return;
-  }
-
-  scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
-  Status s = consensus->StartElection(
+  Status s = scope->StartElection(
       consensus::Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE,
-      req->has_committed_index(), req->committed_index());
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
-  context->RespondSuccess();
+      req->has_committed_index(),
+      req->committed_index(),
+      req->has_originator_uuid() ? req->originator_uuid() : std::string());
+  scope.CheckStatus(s, resp);
+}
+
+void ConsensusServiceImpl::LeaderElectionLost(const consensus::LeaderElectionLostRequestPB *req,
+                                              consensus::LeaderElectionLostResponsePB *resp,
+                                              ::yb::rpc::RpcContext *context) {
+  LOG(INFO) << "LeaderElectionLost, req: " << req->ShortDebugString();
+  RpcScope scope(tablet_manager_, "LeaderElectionLost", req, resp, context);
+  if (!scope) {
+    return;
+  }
+  auto status = scope->ElectionLostByProtege(req->election_lost_by_uuid());
+  scope.CheckStatus(status, resp);
+  LOG(INFO) << "LeaderElectionLost, outcome: " << (scope ? "success" : "failure") << "req: "
+            << req->ShortDebugString();
 }
 
 void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
                                           LeaderStepDownResponsePB* resp,
                                           RpcContext* context) {
   LOG(INFO) << "Received Leader stepdown RPC: " << req->ShortDebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "LeaderStepDown", req, resp, context)) {
-    return;
-  }
-  scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context, &tablet_peer)) {
-    return;
-  }
 
-  scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
-  Status s = consensus->StepDown(req, resp);
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
+  RpcScope scope(tablet_manager_, "LeaderStepDown", req, resp, context);
+  if (!scope) {
+    return;
+  }
+  Status s = scope->StepDown(req, resp);
+  scope.CheckStatus(s, resp);
   LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success. Resp code="
             << TabletServerErrorPB::Code_Name(resp->error().code());
-  context->RespondSuccess();
 }
 
 void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *req,
@@ -1123,16 +1184,11 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
                                              consensus::GetConsensusStateResponsePB *resp,
                                              rpc::RpcContext *context) {
   DVLOG(3) << "Received GetConsensusState RPC: " << req->DebugString();
-  if (!CheckUuidMatchOrRespond(tablet_manager_, "GetConsensusState", req, resp, context)) {
-    return;
-  }
-  scoped_refptr<TabletPeer> tablet_peer;
-  if (!LookupTabletPeerOrRespond(tablet_manager_, req->tablet_id(), resp, context, &tablet_peer)) {
-    return;
-  }
 
-  scoped_refptr<Consensus> consensus;
-  if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
+  RpcScope scope(tablet_manager_, "GetConsensusState", req, resp, context);
+  if (!scope) {
+    return;
+  }
   ConsensusConfigType type = req->type();
   if (PREDICT_FALSE(type != CONSENSUS_CONFIG_ACTIVE && type != CONSENSUS_CONFIG_COMMITTED)) {
     HandleUnknownError(
@@ -1141,8 +1197,7 @@ void ConsensusServiceImpl::GetConsensusState(const consensus::GetConsensusStateR
         resp, context);
     return;
   }
-  *resp->mutable_cstate() = consensus->ConsensusState(req->type());
-  context->RespondSuccess();
+  *resp->mutable_cstate() = scope->ConsensusState(req->type());
 }
 
 void ConsensusServiceImpl::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* req,

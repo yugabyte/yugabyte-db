@@ -174,6 +174,10 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                                  consensus::RunLeaderElectionResponsePB* resp,
                                  rpc::RpcContext* context) OVERRIDE;
 
+  virtual void LeaderElectionLost(const consensus::LeaderElectionLostRequestPB *req,
+                                  consensus::LeaderElectionLostResponsePB *resp,
+                                  ::yb::rpc::RpcContext *context) override;
+
   virtual void LeaderStepDown(const consensus::LeaderStepDownRequestPB* req,
                               consensus::LeaderStepDownResponsePB* resp,
                               rpc::RpcContext* context) OVERRIDE;

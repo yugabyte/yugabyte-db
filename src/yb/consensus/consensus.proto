@@ -387,9 +387,31 @@ message RunLeaderElectionRequestPB {
   // When specified, the peer must wait till the operation has been committed
   // to its log before starting the election to be qualified as a leader.
   optional OpId committed_index = 3;
+
+  // UUID of old leader, that requested this election.
+  // If we lost election, we would notify originator about this fact.
+  // So it would reset its withold timeout and try to become a leader again.
+  optional bytes originator_uuid = 4;
 }
 
 message RunLeaderElectionResponsePB {
+  // A generic error message (such as tablet not found).
+  optional tserver.TabletServerErrorPB error = 1;
+}
+
+message LeaderElectionLostRequestPB {
+  // UUID of server this request is addressed to.
+  // It is originator_uuid from RunLeaderElectionRequestPB
+  optional bytes dest_uuid = 1;
+
+  // the id of the tablet
+  optional bytes tablet_id = 2;
+
+  // UUID of server that lost election
+  optional bytes election_lost_by_uuid = 3;
+}
+
+message LeaderElectionLostResponsePB {
   // A generic error message (such as tablet not found).
   optional tserver.TabletServerErrorPB error = 1;
 }
@@ -488,6 +510,9 @@ service ConsensusService {
 
   // Force this node to run a leader election.
   rpc RunLeaderElection(RunLeaderElectionRequestPB) returns (RunLeaderElectionResponsePB);
+
+  // Notify originator about lost election, so it could reset its timeout.
+  rpc LeaderElectionLost(LeaderElectionLostRequestPB) returns (LeaderElectionLostResponsePB);
 
   // Force this node to step down as leader.
   rpc LeaderStepDown(LeaderStepDownRequestPB) returns (LeaderStepDownResponsePB);

@@ -265,6 +265,13 @@ class PeerProxy {
     LOG(DFATAL) << "Not implemented";
   }
 
+  virtual void LeaderElectionLostAsync(const LeaderElectionLostRequestPB* request,
+                                       LeaderElectionLostResponsePB* response,
+                                       rpc::RpcController* controller,
+                                       const rpc::ResponseCallback& callback) {
+    LOG(DFATAL) << "Not implemented";
+  }
+
   virtual ~PeerProxy() {}
 };
 
@@ -304,6 +311,11 @@ class RpcPeerProxy : public PeerProxy {
                                       RunLeaderElectionResponsePB* response,
                                       rpc::RpcController* controller,
                                       const rpc::ResponseCallback& callback) OVERRIDE;
+
+  virtual void LeaderElectionLostAsync(const LeaderElectionLostRequestPB* request,
+                                       LeaderElectionLostResponsePB* response,
+                                       rpc::RpcController* controller,
+                                       const rpc::ResponseCallback& callback) OVERRIDE;
 
   virtual ~RpcPeerProxy();
 

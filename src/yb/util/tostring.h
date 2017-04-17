@@ -78,19 +78,7 @@ typename std::enable_if<std::is_integral<typename std::remove_reference<Int>::ty
 }
 
 template <class Pointer>
-std::string PointerToString(Pointer&& ptr) {
-  if (ptr) {
-    char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x and ->
-    buffer[0] = '0';
-    buffer[1] = 'x';
-    FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
-    char * end = buffer + strlen(buffer);
-    memcpy(end, " -> ", 4);
-    return buffer + ToString(*ptr);
-  } else {
-    return "<NULL>";
-  }
-}
+std::string PointerToString(Pointer&& ptr);
 
 // This class is used to determine whether T is similar to pointer.
 // We suppose that if class provides * and -> operators so it is pointer.
@@ -132,6 +120,36 @@ inline const std::string& ToString(const std::string& str) { return str; }
 inline std::string ToString(const char* str) { return str; }
 
 template <class First, class Second>
+std::string ToString(const std::pair<First, Second>& pair);
+
+template <class Collection>
+std::string CollectionToString(const Collection& collection);
+// We suppose that if class has nested const_iterator then it is collection.
+BOOST_TTI_HAS_TYPE(const_iterator);
+
+template <class T>
+typename std::enable_if<has_type_const_iterator<T>::value,
+                        std::string>::type ToString(const T& value) {
+  return CollectionToString(value);
+}
+
+// Definition of functions that use ToString chaining should be declared after all declarations.
+template <class Pointer>
+std::string PointerToString(Pointer&& ptr) {
+  if (ptr) {
+    char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x and ->
+    buffer[0] = '0';
+    buffer[1] = 'x';
+    FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
+    char * end = buffer + strlen(buffer);
+    memcpy(end, " -> ", 4);
+    return buffer + ToString(*ptr);
+  } else {
+    return "<NULL>";
+  }
+}
+
+template <class First, class Second>
 std::string ToString(const std::pair<First, Second>& pair) {
   return "{" + ToString(pair.first) + ", " + ToString(pair.second) + "}";
 }
@@ -150,15 +168,6 @@ std::string CollectionToString(const Collection& collection) {
   }
   result += "]";
   return result;
-}
-
-// We suppose that if class has nested const_iterator then it is collection.
-BOOST_TTI_HAS_TYPE(const_iterator);
-
-template <class T>
-typename std::enable_if<has_type_const_iterator<T>::value,
-                        std::string>::type ToString(const T& value) {
-  return CollectionToString(value);
 }
 
 } // namespace util

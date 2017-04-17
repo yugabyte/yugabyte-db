@@ -105,8 +105,12 @@ class RaftConsensus : public Consensus,
   virtual CHECKED_STATUS EmulateElection() OVERRIDE;
 
   virtual CHECKED_STATUS StartElection(
-      ElectionMode mode, const bool pending_commit = false,
-      const OpId& opid = OpId::default_instance()) OVERRIDE;
+      ElectionMode mode,
+      const bool pending_commit = false,
+      const OpId& opid = OpId::default_instance(),
+      const std::string& originator_uuid = std::string()) override;
+
+  virtual CHECKED_STATUS ElectionLostByProtege(const std::string& election_lost_by_uuid) override;
 
   virtual CHECKED_STATUS WaitUntilLeaderForTests(const MonoDelta& timeout) OVERRIDE;
 
@@ -352,8 +356,9 @@ class RaftConsensus : public Consensus,
 
   // Callback for leader election driver. ElectionCallback is run on the
   // reactor thread, so it simply defers its work to DoElectionCallback.
-  void ElectionCallback(const ElectionResult& result);
-  void DoElectionCallback(const ElectionResult& result);
+  void ElectionCallback(const std::string& originator_uuid, const ElectionResult& result);
+  void DoElectionCallback(const std::string& originator_uuid, const ElectionResult& result);
+  void NotifyOriginatorAboutLostElection(const std::string& originator_uuid);
 
   // Helper struct that tracks the RunLeaderElection as part of leadership transferral.
   struct RunLeaderElectionState {
@@ -446,7 +451,15 @@ class RaftConsensus : public Consensus,
   string ServersInTransitionMessage();
 
   // Prevent starting new election for some time, after we stepped down.
-  void WithholdElectionAfterStepDown();
+  // protege_uuid - in case of step down we remember our protege.
+  // After that we use its UUID to check whether node that lost election is our active protege.
+  // There could be case that we already initiated another stepdown, and after that we received
+  // delayed packet from old protege.
+  // So this field allows us to filter out this situation.
+  // Also we could introduce serial number of stepdown and filter using it.
+  // That woule be more robust, since it handles also situation when we tried to stepdown
+  // to the same node twice, and first retry was delayed, but second procedure is on the way.
+  void WithholdElectionAfterStepDown(const std::string& protege_uuid);
 
   // Threadpool for constructing requests to peers, handling RPC callbacks,
   // etc.
@@ -479,6 +492,9 @@ class RaftConsensus : public Consensus,
   // again too soon. Once it waits for the extended delay before starting an election, it will
   // go back to the same delay as before.
   bool just_stepped_down_ = false;
+
+  // UUID of new desired leader
+  std::string protege_leader_uuid_;
 
   // This is the time for which election should not start on this peer.
   MonoTime withhold_election_start_until_;

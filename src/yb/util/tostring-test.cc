@@ -68,12 +68,18 @@ TEST_F(ToStringTest, TestCollection) {
   const std::string expected = "[1, 2, 3, 4, 5]";
   std::vector<int> v = {1, 2, 3, 4, 5};
   ASSERT_EQ(expected, ToString(v));
+  CheckPointer(expected, &v);
 
   std::deque<int> d(v.begin(), v.end());
   ASSERT_EQ(expected, ToString(d));
+  CheckPointer(expected, &d);
 
   std::list<int> l(v.begin(), v.end());
   ASSERT_EQ(expected, ToString(l));
+  CheckPointer(expected, &l);
+
+  auto pair = std::make_pair(v, d);
+  ASSERT_EQ("{" + expected + ", " + expected + "}", ToString(pair));
 }
 
 TEST_F(ToStringTest, TestMap) {
