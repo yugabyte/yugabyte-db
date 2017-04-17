@@ -185,8 +185,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "region 1", "yb image");
     AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
     Result result = deleteProvider(p.uuid);
-    verify(mockAccessManager, times(1)).deleteKey(r.uuid, "access-key-code");
-    verify(mockNetworkManager, times(1)).cleanup(r.uuid);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.asText(),
@@ -199,8 +197,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithInvalidProviderUUID() {
     UUID providerUUID = UUID.randomUUID();
     Result result = deleteProvider(providerUUID);
-    verify(mockAccessManager, times(0)).deleteKey(any(), eq("access-key-code"));
-    verify(mockNetworkManager, times(0)).cleanup(any());
     assertBadRequest(result, "Invalid Provider UUID: " + providerUUID);
   }
 
@@ -214,7 +210,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     customer.addUniverseUUID(universe.universeUUID);
     customer.save();
     Result result = deleteProvider(p.uuid);
-    verify(mockAccessManager, times(0)).deleteKey(p.uuid, "access-key-code");
     assertBadRequest(result, "Cannot delete Provider with Universes");
   }
 
@@ -222,42 +217,10 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithoutAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     Result result = deleteProvider(p.uuid);
-    verify(mockAccessManager, times(0)).deleteKey(any(), any());
-    verify(mockNetworkManager, times(0)).cleanup(any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.asText(),
         allOf(notNullValue(), equalTo("Deleted provider: " + p.uuid)));
     assertNull(Provider.get(p.uuid));
-  }
-
-  @Test
-  public void testDeleteProviderAccessManagerError() {
-    Provider p = ModelFactory.awsProvider(customer);
-    Region r = Region.create(p, "region-1", "region 1", "yb image");
-    AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
-    when(mockAccessManager.deleteKey(r.uuid, "access-key-code")).thenThrow(
-        new RuntimeException("Unable to delete access key")
-    );
-    Result result = deleteProvider(p.uuid);
-    verify(mockAccessManager, times(1)).deleteKey(r.uuid, "access-key-code");
-    verify(mockNetworkManager, times(0)).cleanup(r.uuid);
-    assertInternalServerError(result, "Unable to delete provider: " + p.uuid);
-    assertNotNull(Provider.get(p.uuid));
-  }
-
-  @Test
-  public void testDeleteProviderNetworkManagerError() {
-    Provider p = ModelFactory.awsProvider(customer);
-    Region r = Region.create(p, "region-1", "region 1", "yb image");
-    AccessKey.create(p.uuid, "access-key-code", new AccessKey.KeyInfo());
-    when(mockNetworkManager.cleanup(r.uuid)).thenThrow(
-        new RuntimeException("Unable to do network cleanup")
-    );
-    Result result = deleteProvider(p.uuid);
-    verify(mockAccessManager, times(1)).deleteKey(r.uuid, "access-key-code");
-    verify(mockNetworkManager, times(1)).cleanup(r.uuid);
-    assertInternalServerError(result, "Unable to delete provider: " + p.uuid);
-    assertNotNull(Provider.get(p.uuid));
   }
 }
