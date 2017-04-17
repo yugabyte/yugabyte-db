@@ -71,6 +71,8 @@ public class CloudProviderController extends AuthenticatedController {
     return ok(Json.toJson(providerList));
   }
 
+  // This endpoint we are using only for deleting provider for integration test purpose. our
+  // UI should call cleanup endpoint.
   public Result delete(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.get(customerUUID, providerUUID);
 
@@ -87,11 +89,6 @@ public class CloudProviderController extends AuthenticatedController {
     try {
       List<AccessKey> accessKeys = AccessKey.getAll(providerUUID);
       accessKeys.forEach((accessKey) -> {
-        provider.regions.forEach((region) -> {
-          accessManager.deleteKey(region.uuid, accessKey.getKeyCode());
-          // Delete yugabyte vpc and subnets
-          networkManager.cleanup(region.uuid);
-        });
         accessKey.delete();
       });
 
