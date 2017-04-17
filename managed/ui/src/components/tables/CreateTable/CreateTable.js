@@ -35,7 +35,7 @@ class KeyColumnList extends Component {
                               DESC
                             </option>];
     if (columnType === "clustering") {
-      return <Col lg={2}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
+      return <Col md={2}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
     }
   }
 
@@ -86,25 +86,25 @@ class KeyColumnList extends Component {
       <div className="form-field-grid">
         {fields.map((item, index) =>
           <Row key={item+index}>
-            <Col lg={5}>
+            <Col md={5}>
               <Field
                 name={`${item}.name`} component={YBInputField} placeHolder={"Column Name"}
                 checkState={true} />
             </Col>
-            <Col lg={4}>
+            <Col md={4}>
               <Field
                 name={`${item}.selected`} options={typeOptions}
                 component={YBSelect} placeHolder={"Type"}
               />
             </Col>
             {this.columnListSort(item)}
-            <Col lg={1} className="text-center">
+            <Col md={1} className="text-center">
               {this.removeRowItem(index)}
             </Col>
           </Row>
         )}
         <Row>
-          <Col lg={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
+          <Col md={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
             <i className="fa fa-plus"></i>&nbsp;Add {getFieldLabel()} Column
           </Col>
         </Row>
@@ -119,30 +119,30 @@ class CassandraColumnSpecification extends Component {
       <div>
         <hr />
         <Row>
-          <Col lg={3}>
+          <Col md={3}>
             <h5 className="no-bottom-margin">Partition Key Columns</h5>
             (In Order)
           </Col>
-          <Col lg={9}>
+          <Col md={9}>
             <FieldArray name="partitionKeyColumns" component={KeyColumnList} columnType={"partitionKey"} tables={this.props.tables}/>
           </Col>
         </Row>
         <hr />
         <Row>
-          <Col lg={3}>
+          <Col md={3}>
             <h5 className="no-bottom-margin">Clustering Columns</h5>
             (In Order)
           </Col>
-          <Col lg={9}>
+          <Col md={9}>
             <FieldArray name="clusteringColumns" component={KeyColumnList} columnType={"clustering"} tables={this.props.tables}/>
           </Col>
         </Row>
         <hr />
         <Row>
-          <Col lg={3}>
+          <Col md={3}>
             <h5 className="no-bottom-margin">Other Columns</h5>
           </Col>
-          <Col lg={9}>
+          <Col md={9}>
             <FieldArray name="otherColumns" component={KeyColumnList} columnType={"other"} tables={this.props.tables} />
           </Col>
         </Row>
@@ -177,15 +177,15 @@ export default class CreateTable extends Component {
     return (
       <div className="bottom-bar-padding">
         <h3>Create Table</h3>
-        <form name="CreateTableForm" onSubmit={onFormSubmit}>
+        <form name="CreateTableForm" className="create-table-form" onSubmit={onFormSubmit}>
           <Row className="create-table-name-container">
-            <Col lg={6}>
+            <Col md={5}>
               <div className="form-right-aligned-labels">
                 <Field name="tableName" component={YBInputField} className={`table-name-cell`}
                        label="Name" placeHolder={"Table Name"}/>
               </div>
             </Col>
-            <Col lg={6}>
+            <Col md={4}>
               <div className="form-right-aligned-labels">
                 <div className="form-group">
                   <label className="form-item-label">
@@ -198,13 +198,11 @@ export default class CreateTable extends Component {
                 </div>
               </div>
             </Col>
-          </Row>
-          <Row className="create-table-name-container">
-            <Col lg={6}>
+            <Col md={3}>
               <div className="form-right-aligned-labels">
                 <Field name="ttlInSeconds" component={YBInputField}
-                       className={`table-name-cell`} label="TTL (in seconds)"
-                       placeHolder={"0 seconds (optional)"} normalize={normalizeToPositiveInt}/>
+                       className={`table-name-cell`} label="TTL (sec)"
+                       placeHolder={"optional"} normalize={normalizeToPositiveInt}/>
               </div>
             </Col>
           </Row>
