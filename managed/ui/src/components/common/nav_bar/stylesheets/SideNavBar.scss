@@ -10,6 +10,7 @@
   position: fixed;
   overflow: hidden;
   width: 90px;
+  min-height: 322px;
 }
 
 /* From gentelella.css need to cleanup */
@@ -47,11 +48,11 @@
   display: none;
 }
 
-.main_menu_side {
+.main-menu-side {
   padding: 0;
 }
 
-.main_menu span.fa {
+.main-menu span.fa {
   float: right;
   text-align: center;
   margin-top: 5px;
@@ -60,7 +61,7 @@
   color: #C4CFDA;
 }
 
-.main_menu .fa {
+.main-menu .fa {
   width: 26px;
   opacity: .99;
   display: inline-block;
