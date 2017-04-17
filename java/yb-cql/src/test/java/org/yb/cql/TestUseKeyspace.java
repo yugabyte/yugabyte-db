@@ -32,7 +32,7 @@ public class TestUseKeyspace extends TestBase {
     LOG.info("Begin test");
 
     // Use existing $$$_DEFAULT keyspace.
-    testUseKeyspace("$$$_DEFAULT", false);
+    testUseKeyspace(DEFAULT_KEYSPACE, false);
 
     // Use existing system keyspace.
     testUseKeyspace("system", false);

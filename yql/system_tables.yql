@@ -24,46 +24,4 @@ INSERT INTO system.local
     0, '127.0.0.1', '4', 'org.apache.cassandra.dht.Murmur3Partitioner', 'rack',
     '3.9-SNAPSHOT', '127.0.0.1', '20.1.0');
 
-CREATE TABLE system_schema.keyspaces (
-    keyspace_name text PRIMARY KEY,
-    durable_writes boolean,
-    replication map<text, text>);
-
-CREATE TABLE system_schema.tables (
-    keyspace_name text,
-    table_name text,
-    bloom_filter_fp_chance double,
-    caching map<text, text>,
-    cdc boolean,
-    comment text,
-    compaction map<text, text>,
-    compression map<text, text>,
-    crc_check_chance double,
-    dclocal_read_repair_chance double,
-    flags set<text>,
-    default_time_to_live int,
-    gc_grace_seconds int,
-    max_index_interval int,
-    memtable_flush_period_in_ms int,
-    min_index_interval int,
-    read_repair_chance double,
-    speculative_retry text,
-    PRIMARY KEY (keyspace_name, table_name));
-
-INSERT INTO system_schema.keyspaces (keyspace_name, durable_writes) VALUES ('system', true);
-INSERT INTO system_schema.keyspaces (keyspace_name, durable_writes) VALUES ('system_schema', true);
-
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system', 'local');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system', 'peers');
-
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'aggregates');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'columns');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'functions');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'indexes');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'keyspaces');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'tables');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'triggers');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'types');
-INSERT INTO system_schema.tables (keyspace_name, table_name) VALUES ('system_schema', 'views');
-
 exit;

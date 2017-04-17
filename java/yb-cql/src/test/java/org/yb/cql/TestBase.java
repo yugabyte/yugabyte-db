@@ -56,6 +56,8 @@ public class TestBase {
   // to store the ttl, which uses nanoseconds.
   protected static final long MAX_TTL_SEC = Long.MAX_VALUE / 1000000000;
 
+  protected static final String DEFAULT_KEYSPACE = "$$$_DEFAULT";
+
   protected Cluster cluster;
   protected Session session;
 
@@ -161,7 +163,12 @@ public class TestBase {
         !namespaceName.equals("system_distributed") &&
         !namespaceName.equals("system_traces") &&
         !namespaceName.equals("system_schema")) {
-        DropTable(tableInfo.getName());
+        if (namespaceName.equals(DEFAULT_KEYSPACE)) {
+          // Don't need namespace name for default namespace.
+          DropTable(tableInfo.getName());
+        } else {
+          DropTable(namespaceName + "." + tableInfo.getName());
+        }
       }
     }
   }

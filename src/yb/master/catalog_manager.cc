@@ -78,7 +78,9 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_empty_vtable.h"
+#include "yb/master/yql_keyspaces_vtable.h"
 #include "yb/master/yql_peers_vtable.h"
+#include "yb/master/yql_tables_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -562,6 +564,10 @@ CatalogManager::CatalogManager(Master* master)
                              std::string(kSystemSchemaTypesTableName)),
               std::make_pair(std::string(kSystemSchemaNamespaceId),
                              std::string(kSystemSchemaViewsTableName)),
+              std::make_pair(std::string(kSystemSchemaNamespaceId),
+                             std::string(kSystemSchemaKeyspacesTableName)),
+              std::make_pair(std::string(kSystemSchemaNamespaceId),
+                             std::string(kSystemSchemaTablesTableName)),
           }) {
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -910,6 +916,52 @@ Status CatalogManager::CreateViewsSchema(Schema* schema) {
   return Status::OK();
 }
 
+Status CatalogManager::CreateKeyspacesSchema(Schema* schema) {
+  // system_schema.keyspaces table.
+  SchemaBuilder builder;
+  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("durable_writes", DataType::BOOL));
+  // TODO: replication needs to be a frozen map.
+  RETURN_NOT_OK(builder.AddColumn(
+      "replication",
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  *schema = builder.Build();
+  return Status::OK();
+}
+
+Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
+  // system_schema.tables table.
+  SchemaBuilder builder;
+  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn("bloom_filter_fp_chance", DataType::DOUBLE));
+  RETURN_NOT_OK(builder.AddColumn(
+      "caching",
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  RETURN_NOT_OK(builder.AddColumn("cdc", DataType::BOOL));
+  RETURN_NOT_OK(builder.AddColumn("comment", DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(
+      "compaction",
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  RETURN_NOT_OK(builder.AddColumn(
+      "compression",
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
+  RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
+  RETURN_NOT_OK(builder.AddColumn(
+      "flags",
+      YQLType(DataType::SET, { YQLType(DataType::STRING) })));
+  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("read_repair_chance", DataType::DOUBLE));
+  RETURN_NOT_OK(builder.AddColumn("speculative_retry", DataType::STRING));
+  *schema = builder.Build();
+  return Status::OK();
+}
+
 Status CatalogManager::PrepareSystemTables() {
   // Create the required system tables here.
   RETURN_NOT_OK(PrepareSystemPeersTable());
@@ -919,6 +971,8 @@ Status CatalogManager::PrepareSystemTables() {
   RETURN_NOT_OK(PrepareSystemSchemaTriggersTable());
   RETURN_NOT_OK(PrepareSystemSchemaTypesTable());
   RETURN_NOT_OK(PrepareSystemSchemaViewsTable());
+  RETURN_NOT_OK(PrepareSystemSchemaKeyspacesTable());
+  RETURN_NOT_OK(PrepareSystemSchemaTablesTable());
   return PrepareSystemSchemaColumnsTable();
 }
 
@@ -983,6 +1037,24 @@ Status CatalogManager::PrepareSystemSchemaViewsTable() {
   return PrepareSystemTable(kSystemSchemaViewsTableName, kSystemSchemaNamespaceName,
                             kSystemSchemaNamespaceId, schema, std::move(yql_storage),
                             &systemschema_views_tablet);
+}
+
+Status CatalogManager::PrepareSystemSchemaKeyspacesTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateKeyspacesSchema(&schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLKeyspacesVTable(schema, master_));
+  return PrepareSystemTable(kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName,
+                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
+                            &systemschema_keyspaces_tablet);
+}
+
+Status CatalogManager::PrepareSystemSchemaTablesTable() {
+  Schema schema;
+  RETURN_NOT_OK(CreateSystemTablesSchema(&schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLTablesVTable(schema, master_));
+  return PrepareSystemTable(kSystemSchemaTablesTableName, kSystemSchemaNamespaceName,
+                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
+                            &systemschema_tables_tablet);
 }
 
 Status CatalogManager::PrepareSystemPeersTable() {
@@ -2223,6 +2295,14 @@ void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables
   boost::shared_lock<LockType> l(lock_);
   for (const TableInfoMap::value_type& e : table_ids_map_) {
     tables->push_back(e.second);
+  }
+}
+
+void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces) {
+  namespaces->clear();
+  boost::shared_lock<LockType> l(lock_);
+  for (const NamespaceInfoMap::value_type& e : namespace_ids_map_) {
+    namespaces->push_back(e.second);
   }
 }
 
@@ -4652,6 +4732,12 @@ Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
     return Status::OK();
   } else if (table_name == kSystemSchemaViewsTableName) {
     *tablet = systemschema_views_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaKeyspacesTableName) {
+    *tablet = systemschema_keyspaces_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaTablesTableName) {
+    *tablet = systemschema_tables_tablet;
     return Status::OK();
   }
 

@@ -62,6 +62,10 @@ std::make_tuple(kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, \
 std::make_tuple(kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, \
     kSystemSchemaNamespaceId), \
 std::make_tuple(kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, \
+    kSystemSchemaNamespaceId), \
+std::make_tuple(kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, \
+    kSystemSchemaNamespaceId), \
+std::make_tuple(kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, \
     kSystemSchemaNamespaceId),
 
 namespace yb {

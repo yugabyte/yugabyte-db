@@ -694,9 +694,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TableInfo> GetTableInfo(const TableId& table_id);
   scoped_refptr<TableInfo> GetTableInfoUnlocked(const TableId& table_id);
 
-  // Return all the available TableInfo, which also may include not running tables
-  // NOTE: This should only be used by tests or web-ui
   void GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables);
+
+  void GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces);
 
   // Return true if the specified table name exists
   // NOTE: This should only be used by tests
@@ -777,6 +777,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     return master_supported_system_tables_.size();
   }
 
+  CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
+                               scoped_refptr<NamespaceInfo>* ns_info);
+
  private:
   friend class TableLoader;
   friend class TabletLoader;
@@ -837,6 +840,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemSchemaViewsTable();
 
+  CHECKED_STATUS PrepareSystemSchemaKeyspacesTable();
+
+  CHECKED_STATUS PrepareSystemSchemaTablesTable();
+
   CHECKED_STATUS PrepareSystemTable(const TableName& table_name,
                                     const NamespaceName& namespace_name,
                                     const NamespaceId& namespace_id,
@@ -867,6 +874,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // system_schema.views.
   CHECKED_STATUS CreateViewsSchema(Schema* schema);
+
+  // system_schema.keyspaces.
+  CHECKED_STATUS CreateKeyspacesSchema(Schema* schema);
+
+  // system_schema.tables.
+  CHECKED_STATUS CreateSystemTablesSchema(Schema* schema);
 
   CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
 
@@ -914,9 +927,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS FindTable(const TableIdentifierPB& table_identifier,
                    scoped_refptr<TableInfo>* table_info);
-
-  CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
-                       scoped_refptr<NamespaceInfo>* ns_info);
 
   // Handle one of the tablets in a tablet reported.
   // Requires that the lock is already held.
@@ -1229,6 +1239,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // system_schema.views
   std::shared_ptr<tablet::AbstractTablet> systemschema_views_tablet;
+
+  // system_schema.keyspaces
+  std::shared_ptr<tablet::AbstractTablet> systemschema_keyspaces_tablet;
+
+  // system_schema.tables
+  std::shared_ptr<tablet::AbstractTablet> systemschema_tables_tablet;
 
   // The set of system tables supported by the master. No locks are needed for this set since its
   // created once during initialization and after that all operations are read operations.
