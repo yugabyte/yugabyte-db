@@ -66,9 +66,7 @@ export default class UniverseDetail extends Component {
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
         <UniverseAppsModal nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
         {isDefinedNotNull(currentUniverse.resources) &&
-          <div className="universe-detail-resources">
-            <UniverseResources resources={currentUniverse.resources} />
-          </div>
+          <UniverseResources resources={currentUniverse.resources} />
         }
         <Row>
           <Col lg={5}>
@@ -157,7 +155,7 @@ export default class UniverseDetail extends Component {
         </Row>
 
         <Measure onMeasure={this.onResize.bind(this)}>
-          <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"}>
+          <YBTabsPanel activeTab={"overview"} id={"universe-tab-panel"} className="universe-detail">
             { tabElements }
           </YBTabsPanel>
         </Measure>

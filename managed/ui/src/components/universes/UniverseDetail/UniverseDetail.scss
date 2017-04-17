@@ -26,10 +26,14 @@
   .status-pending-progress-container {
     top: 4px;
   }
+  .status-pending {
+    margin-top: -30px;
+  }
 }
 
-.universe-detail-resources {
-  padding-left: 14px;
-  padding-top: 10px;
+.universe-detail .universe-resources {
+  padding: 10px 0 10px 14px;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 10px;
   text-align: center;
 }
