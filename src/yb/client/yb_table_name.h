@@ -107,14 +107,6 @@ class YB_EXPORT YBTableName {
     return *this;
   }
 
-  bool operator ==(const YBTableName& name) const {
-    return (namespace_name_ == name.namespace_name_ && table_name_ == name.table_name_);
-  }
-
-  bool operator !=(const YBTableName& name) const {
-    return !operator ==(name);
-  }
-
   // ProtoBuf helpers.
   void SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const;
 
@@ -126,6 +118,17 @@ class YB_EXPORT YBTableName {
   std::string namespace_name_; // Can be empty, that means the namespace has not been set yet.
   std::string table_name_;
 };
+
+inline bool operator ==(const YBTableName& lhs, const YBTableName& rhs) {
+  return (lhs.namespace_name() == rhs.namespace_name() && lhs.table_name() == rhs.table_name());
+}
+
+inline bool operator !=(const YBTableName& lhs, const YBTableName& rhs) {
+  return !(lhs == rhs);
+}
+
+// In order to be able to use YBTableName with boost::hash
+size_t hash_value(const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb

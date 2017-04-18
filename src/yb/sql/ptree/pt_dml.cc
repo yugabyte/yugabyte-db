@@ -52,7 +52,7 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
   }
 
   VLOG(3) << "Loading table descriptor for " << name.ToString();
-  table_ = sem_context->GetTableDesc(name);
+  table_ = sem_context->GetTableDesc(name, is_system_);
   if (table_ == nullptr) {
     return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
   }

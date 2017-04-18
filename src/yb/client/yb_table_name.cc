@@ -1,6 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 #include "yb/client/yb_table_name.h"
+
+#include <boost/functional/hash/hash.hpp>
+
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.pb.h"
 
@@ -27,6 +30,15 @@ bool YBTableName::IsSystemNamespace(const std::string& namespace_name) {
           namespace_name == master::kSystemDistributedNamespaceName ||
           namespace_name == master::kSystemSchemaNamespaceName      ||
           namespace_name == master::kSystemTracesNamespaceName);
+}
+
+size_t hash_value(const YBTableName& table_name) {
+  size_t seed = 0;
+
+  boost::hash_combine(seed, table_name.namespace_name());
+  boost::hash_combine(seed, table_name.table_name());
+
+  return seed;
 }
 
 } // namespace client

@@ -45,9 +45,14 @@ def check_remote_files(args, files):
     for changed in remote_changed:
         if changed not in files:
             unexpected.append(changed)
-    for file in unexpected:
-        print("Reverting: {0}".format(file))
-        remote_communicate(args, "cd {0} && git checkout -- '{1}'".format(args.remote_path, file))
+    if unexpected:
+        command = 'cd {0}'.format(args.remote_path)
+        message = 'Reverting:\n'
+        for file in unexpected:
+            message += '  {0}\n'.format(file)
+            command += ' && git checkout -- {0}'.format(shlex.quote(file))
+        print(message)
+        remote_communicate(args, command)
 
 
 def main():
@@ -59,6 +64,11 @@ def main():
                         help='path used for build')
     parser.add_argument('--branch', type=str, default='master', help='base branch for build')
     parser.add_argument('--build-type', type=str, default='debug', help='build type')
+    parser.add_argument('--skip-build',
+                        action='store_const',
+                        const=True,
+                        default=False,
+                        help='skip build, only sync files')
     parser.add_argument('args', nargs=argparse.REMAINDER, help='arguments for yb_build.sh')
 
     args = parser.parse_args()
@@ -88,6 +98,9 @@ def main():
             sys.exit(proc.returncode)
 
     check_remote_files(args, files)
+
+    if args.skip_build:
+        sys.exit(0)
 
     ybd_args = [args.build_type]
     if len(args.args) != 0 and args.args[0] == '--':

@@ -87,7 +87,8 @@ class SemContext : public ProcessContext {
   }
 
   // Find table descriptor from metadata server.
-  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name);
+  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
+                                                bool is_system);
 
   // Find column descriptor from symbol table.
   PTColumnDefinition *GetColumnDefinition(const MCString& col_name) const;

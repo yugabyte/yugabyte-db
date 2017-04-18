@@ -63,6 +63,19 @@ class YbSqlQuery : public YbSqlTestBase {
 
 };
 
+TEST_F(YbSqlQuery, TestMissingSystemTable) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+  const char* statement = "SELECT * FROM system.invalid_system_table_name";
+  constexpr auto kRepetitions = 10;
+  for (auto i = 0; i != kRepetitions; ++i) {
+    CHECK_VALID_STMT(statement);
+  }
+}
+
 TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   // Init the simulated cluster.
   NO_FATALS(CreateSimulatedCluster());

@@ -640,12 +640,14 @@ Status YBClient::TableExists(const YBTableName& table_name, bool* exists) {
 }
 
 Status YBTableCache::GetTable(
-    const YBTableName& table_name, shared_ptr<YBTable>* table, bool force_refresh,
+    const YBTableName& table_name,
+    shared_ptr<YBTable>* table,
+    bool force_refresh,
+    bool is_system,
     bool* cache_used) {
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    auto itr = cached_tables_.find(
-        YBTableMap::key_type(table_name.namespace_name(), table_name.table_name()));
+    auto itr = cached_tables_.find(table_name);
     if (itr != cached_tables_.end()) {
       if (!force_refresh) {
         *table = itr->second;
@@ -657,14 +659,32 @@ Status YBTableCache::GetTable(
         cached_tables_.erase(itr);
       }
     }
+
+    if (is_system) {
+      auto it = missing_system_tables_.find(table_name);
+      if (it != missing_system_tables_.end()) {
+        if (!force_refresh) {
+          return it->second;
+        } else {
+          missing_system_tables_.erase(it);
+        }
+      }
+    }
   }
 
-  RETURN_NOT_OK(client_->OpenTable(table_name, table));
+  auto status = client_->OpenTable(table_name, table);
+  if (!status.ok()) {
+    if (is_system && status.IsNotFound()) {
+      std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+      missing_system_tables_.emplace(table_name, status);
+    }
+
+    return status;
+  }
   *cache_used = false;
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    cached_tables_[YBTableMap::key_type(table_name.namespace_name(), table_name.table_name())]
-        = *table;
+    cached_tables_[table_name] = *table;
   }
   return Status::OK();
 }
@@ -684,8 +704,11 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  shared_ptr<YBTable> ret(new YBTable(shared_from_this(), table_name, table_id, schema,
-    partition_schema));
+  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(),
+                                           table_name,
+                                           table_id,
+                                           schema,
+                                           partition_schema));
   RETURN_NOT_OK(ret->data_->Open());
   table->swap(ret);
   return Status::OK();

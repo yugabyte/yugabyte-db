@@ -25,6 +25,8 @@
 #include <utility>
 #include <mutex>
 
+#include <boost/functional/hash/hash.hpp>
+
 #include "yb/client/row_result.h"
 #include "yb/client/scan_batch.h"
 #include "yb/client/scan_predicate.h"
@@ -399,16 +401,22 @@ class YBTableCache {
   // from cached_tables_. If the table has not been opened before
   // in this client, or if force_refresh is true, this will do an RPC to ensure
   // that the table exists and look up its schema.
-  CHECKED_STATUS GetTable(
-      const YBTableName& table_name, std::shared_ptr<YBTable>* table, bool force_refresh,
-      bool* cache_used);
+  CHECKED_STATUS GetTable(const YBTableName& table_name,
+                          std::shared_ptr<YBTable>* table,
+                          bool force_refresh,
+                          bool is_system,
+                          bool* cache_used);
 
  private:
   std::shared_ptr<YBClient> client_;
 
   // Map from table-name to YBTable instances.
-  typedef std::map< std::pair<std::string, std::string>, std::shared_ptr<YBTable> > YBTableMap;
+  typedef std::unordered_map<YBTableName,
+                             std::shared_ptr<YBTable>,
+                             boost::hash<YBTableName>> YBTableMap;
   YBTableMap cached_tables_;
+  // Temporary fix until we support system tables natively
+  std::unordered_map<YBTableName, Status, boost::hash<YBTableName>> missing_system_tables_;
   std::mutex cached_tables_mutex_;
 };
 

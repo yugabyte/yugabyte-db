@@ -163,9 +163,9 @@ Status SqlEnv::ProcessReadResult(const Status &s) {
 }
 
 shared_ptr<YBTable> SqlEnv::GetTableDesc(const YBTableName& table_name, bool refresh_cache,
-                                         bool* cache_used) {
+                                         bool is_system, bool* cache_used) {
   shared_ptr<YBTable> yb_table;
-  Status s = table_cache_->GetTable(table_name, &yb_table, refresh_cache, cache_used);
+  Status s = table_cache_->GetTable(table_name, &yb_table, refresh_cache, is_system, cache_used);
 
   if (!s.ok()) {
     VLOG(3) << "GetTableDesc: Server returns an error: " << s.ToString();
