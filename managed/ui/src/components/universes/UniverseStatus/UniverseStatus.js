@@ -31,17 +31,17 @@ export default class UniverseStatus extends Component {
       if (updateInProgress && isValidObject(universePendingTask) && isValidArray(Object.keys(universePendingTask))) {
         if (showLabelText) {
           statusDisplay =
-            <div className={"status-pending"}>
-              <Row className={"status-pending-display-container"}>
-                <i className={"fa fa fa-spinner fa-spin"}/>
-                <Col className={"status-pending-name"}>
+            <div className="status-pending">
+              <div className="status-pending-display-container">
+                <i className="fa fa fa-spinner fa-spin"/>
+                <span className="status-pending-name">
                   Pending&hellip;
                   {universePendingTask.percentComplete}%
-                </Col>
-              </Row>
-              <Row className={"status-pending-progress-container "}>
-                <ProgressBar className={"pending-action-progress"} now={universePendingTask.percentComplete}/>
-              </Row>
+                </span>
+                <span className="status-pending-progress-container">
+                  <ProgressBar className={"pending-action-progress"} now={universePendingTask.percentComplete}/>
+                </span>
+              </div>
             </div>;
         } else {
            statusDisplay = <div className={"yb-orange"}><i className={"fa fa fa-spinner fa-spin"}/></div>;
