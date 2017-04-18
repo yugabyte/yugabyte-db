@@ -786,15 +786,23 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
 
 }  // namespace
 
-yb::Status GetSubDocument(rocksdb::DB *rocksdb,
+yb::Status GetSubDocument(rocksdb::DB *db,
+    const SubDocKey& subdocument_key,
+    SubDocument *result,
+    bool *doc_found,
+    HybridTime scan_ht,
+    MonoDelta table_ttl) {
+  auto iter = CreateRocksDBIterator(db);
+  return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl);
+}
+
+yb::Status GetSubDocument(rocksdb::Iterator *iter,
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
     HybridTime scan_ht,
     MonoDelta table_ttl) {
   DOCDB_DEBUG_LOG("GetSubDocument for key $0", subdocument_key.ToString());
-
-  auto iter = CreateRocksDBIterator(rocksdb);
   HybridTime max_deleted_ts = HybridTime::kMin;
 
   SubDocKey found_subdoc_key;
@@ -805,18 +813,18 @@ yb::Status GetSubDocument(rocksdb::DB *rocksdb,
 
   for (const PrimitiveValue& subkey : subdocument_key.subkeys()) {
     RETURN_NOT_OK(SeekToValidKvAtTs(
-        iter.get(), key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
+        iter, key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
     if (is_found && key_bytes.OnlyLacksHybridTimeFrom(iter->key()) &&
         max_deleted_ts < found_subdoc_key.hybrid_time() && max_deleted_ts <= scan_ht) {
       max_deleted_ts = found_subdoc_key.hybrid_time();
-      SeekPastSubKey(found_subdoc_key, iter.get());
+      SeekPastSubKey(found_subdoc_key, iter);
     }
     subkey.AppendToKey(&key_bytes);
   }
   RETURN_NOT_OK(SeekToValidKvAtTs(
-      iter.get(), key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
+      iter, key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
   *result = SubDocument(ValueType::kInvalidValueType);
-  RETURN_NOT_OK(BuildSubDocument(iter.get(), subdocument_key, result, scan_ht, max_deleted_ts,
+  RETURN_NOT_OK(BuildSubDocument(iter, subdocument_key, result, scan_ht, max_deleted_ts,
                                  table_ttl));
   *doc_found = result->value_type() != ValueType::kInvalidValueType;
   return Status::OK();

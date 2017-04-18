@@ -230,7 +230,16 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
 // This function works with or without object init markers present.
 // If tombstone and other values are inserted at the same timestamp, it results in undefined
 // behavior. TODO: We should have write-id's to make sure timestamps are always unique.
-yb::Status GetSubDocument(rocksdb::DB *rocksdb,
+yb::Status GetSubDocument(rocksdb::Iterator *iter,
+    const SubDocKey& subdocument_key,
+    SubDocument *result,
+    bool *doc_found,
+    HybridTime scan_ts = HybridTime::kMax,
+    MonoDelta table_ttl = Value::kMaxTtl);
+
+// This version of GetSubDocument creates a new iterator every time. This is not recommended for
+// multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.
+yb::Status GetSubDocument(rocksdb::DB *db,
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,

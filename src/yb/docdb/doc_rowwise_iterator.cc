@@ -365,7 +365,8 @@ Status DocRowwiseIterator::GetValues(const Schema& projection, vector<SubDocumen
     subdoc_key_.AppendSubKeysAndMaybeHybridTime(PrimitiveValue(column_id));
     SubDocument sub_doc;
     bool doc_found;
-    RETURN_NOT_OK(GetSubDocument(db_, subdoc_key_, &sub_doc, &doc_found, hybrid_time_, table_ttl));
+    RETURN_NOT_OK(GetSubDocument(
+        db_iter_.get(), subdoc_key_, &sub_doc, &doc_found, hybrid_time_, table_ttl));
     if (doc_found) {
       values->emplace_back(std::move(sub_doc));
     } else {
