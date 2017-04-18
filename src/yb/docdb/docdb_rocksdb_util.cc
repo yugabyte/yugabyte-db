@@ -16,6 +16,12 @@
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/trace.h"
 
+DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
+DEFINE_int32(rocksdb_base_background_compactions, 2,
+             "Number threads to do background compactions.");
+DEFINE_int32(rocksdb_max_background_compactions, 4,
+             "Increased number of threads to do background compactions (used when compactions need "
+             "to catch up.)");
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
              "Number of files to trigger level-0 compaction. -1 if compaction should not be "
              "triggered by number of files at all.");
@@ -179,6 +185,9 @@ void InitRocksDBOptions(
   // Set the number of levels to 1.
   options->num_levels = 1;
 
+  options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
+  options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
+  options->max_background_flushes = FLAGS_rocksdb_max_background_flushes;
   options->level0_file_num_compaction_trigger = FLAGS_rocksdb_level0_file_num_compaction_trigger;
   options->level0_slowdown_writes_trigger = FLAGS_rocksdb_level0_slowdown_writes_trigger;
   options->level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
