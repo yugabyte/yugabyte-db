@@ -44,7 +44,7 @@ class Heartbeater {
   // heartbeat interval has not expired.
   void TriggerASAP();
 
-  void set_master_addresses(std::shared_ptr<std::vector<HostPort>> master_addresses);
+  void set_master_addresses(std::shared_ptr<const std::vector<HostPort>> master_addresses);
 
   ~Heartbeater();
 
