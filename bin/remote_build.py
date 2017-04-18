@@ -58,12 +58,20 @@ def check_remote_files(args, files):
 def main():
     parser = argparse.ArgumentParser(prog=sys.argv[0])
     parser.add_argument('--host', type=str, default=None, help='host for build')
+    home = os.path.expanduser('~')
+    cwd = os.getcwd()
+    default_path = '~/{0}'.format(cwd[len(home) + 1:] if cwd.startswith(home) else 'code/yugabyte')
     parser.add_argument('--remote-path',
                         type=str,
-                        default='~/code/yugabyte',
+                        default=default_path,
                         help='path used for build')
     parser.add_argument('--branch', type=str, default='master', help='base branch for build')
     parser.add_argument('--build-type', type=str, default='debug', help='build type')
+    parser.add_argument('--build-java',
+                        action='store_const',
+                        const=True,
+                        default=False,
+                        help='build java, skipped by default')
     parser.add_argument('--skip-build',
                         action='store_const',
                         const=True,
@@ -73,14 +81,17 @@ def main():
 
     args = parser.parse_args()
 
-    host = args.host
-    if host is None and "YB_REMOTE_BUILD_HOST" in os.environ:
-        host = os.environ["YB_REMOTE_BUILD_HOST"]
+    if args.host is None and "YB_REMOTE_BUILD_HOST" in os.environ:
+        args.host = os.environ["YB_REMOTE_BUILD_HOST"]
 
-    if host is None:
+    if args.host is None:
         sys.stderr.write(
             "Please specify host with --host option or YB_REMOTE_BUILD_HOST variable\n")
         sys.exit(1)
+
+    print("Host: {0}, build type: {1}, remote path: {2}".format(args.host,
+                                                                args.build_type,
+                                                                args.remote_path))
 
     commit = check_output_line(['git', 'merge-base', args.branch, 'HEAD'])
     print("Base commit: {0}".format(commit))
@@ -103,6 +114,8 @@ def main():
         sys.exit(0)
 
     ybd_args = [args.build_type]
+    if not args.build_java:
+        ybd_args.append("--sj")
     if len(args.args) != 0 and args.args[0] == '--':
         ybd_args += args.args[1:]
     else:

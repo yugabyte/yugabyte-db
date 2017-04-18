@@ -142,5 +142,11 @@ void TryRunLsof(const Sockaddr& addr, std::vector<std::string>* log = NULL);
 //                  another call to this function, possibly in another process.
 uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock);
 
+enum class AddressFilter {
+  ANY, // all IPv4 interfaces would be listed.
+  EXTERNAL, // don't list local loopbacks
+};
+Status GetLocalAddresses(std::vector<Sockaddr>* result, AddressFilter filter);
+
 } // namespace yb
 #endif  // YB_UTIL_NET_NET_UTIL_H

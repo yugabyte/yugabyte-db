@@ -30,7 +30,9 @@ class ClusterManager(object):
         default_pem = os.path.join(os.environ["HOME"], ".yugabyte/yugabyte-dev-aws-keypair.pem")
         self.pem_file = ClusterManager.get_arg(args, 'pem_file', default_pem)
         self.repo = ClusterManager.get_arg(args, 'repo', '~/code/yugabyte')
-        self.tar_prefix = args.tar_prefix
+        default_tar_prefix = "yugabyte.{0}-release".format(
+            subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())
+        self.tar_prefix = ClusterManager.get_arg(args, 'tar_prefix', default_tar_prefix)
         self.port = ClusterManager.get_arg(args, 'port', 54422)
 
         self.master_hosts = parse_hosts(self.master_ips)
@@ -113,8 +115,10 @@ def error(message, print_help=True):
     sys.exit(1)
 
 
-def print_output(process, title, host):
-    print("================= {0} at {1} =================".format(title, host))
+def print_output(process, title, host=None):
+    if host is not None:
+        title = '{0} at {1}'.format(title, host)
+    print("================= {0} =================".format(title))
     for line in process.stdout.readlines():
         sys.stdout.write(line.decode('utf-8'))
 
@@ -135,14 +139,35 @@ class SimpleProcedure(Procedure):
         self.return_code = None
 
     def check(self):
-        if self.process.poll() is not None:
+        if self.return_code is None and self.process.poll() is not None:
             self.return_code = self.process.returncode
             print_output(self.process, self.title, self.host)
-            return True
-        return False
+        return self.return_code is not None
 
     def describe(self):
         return "{0} at {1}".format(self.title, self.host)
+
+
+class CopyProcedure(Procedure):
+    def __init__(self, manager, upload, host, src_path, dst_path):
+        if upload:
+            self.src_path = src_path
+            self.dst_path = '{0}:{1}'.format(host, dst_path)
+        else:
+            self.src_path = '{0}:{1}'.format(host, src_path)
+            self.dst_path = '{0}.{1}'.format(dst_path, host)
+        self.process = manager.scp(self.src_path, self.dst_path)
+        self.host = host
+        self.return_code = None
+
+    def check(self):
+        if self.return_code is None and self.process.poll() is not None:
+            self.return_code = self.process.returncode
+            print_output(self.process, self.describe())
+        return self.return_code is not None
+
+    def describe(self):
+        return "Copy {0} to {1}".format(self.src_path, self.dst_path)
 
 
 class StopProcedure(Procedure):
@@ -336,6 +361,14 @@ class YBControl:
             error('Please specify: tar_prefix')
         wait_all([CopyTarProcedure(self.manager, host) for host in self.manager.all_hosts], 90)
 
+    def copy(self, upload):
+        if len(self.parameters) == 1:
+            self.parameters.append(self.parameters[0])
+        elif len(self.parameters) != 2:
+            error('Usage {0} src_path dst_path'.format('upload' if upload else 'download'))
+        wait_all([CopyProcedure(self.manager, upload, host, self.parameters[0], self.parameters[1])
+                  for host in self.manager.all_hosts], 60)
+
     def masters_create(self):
         self.manager.execute_service_commands(['master'], ['create'])
 
@@ -388,6 +421,12 @@ class YBControl:
                            'Start the YB master processes for the cluster in cluster create mode.')
         self.__add_command('status', 'Status of masters and servers.')
         self.__add_command('copy_tar', 'Copy the tar file to all the nodes.')
+        self.__add_command_ex('upload',
+                              lambda: self.copy(True),
+                              'Upload local file to all hosts')
+        self.__add_command_ex('download',
+                              lambda: self.copy(False),
+                              'Download file from all hosts')
         self.__add_commands('stop', "Stop {0} processes.")
         self.__add_commands('start', "Start {0} processes.")
         self.__add_commands('clean', "Clean {0} data and logs.")

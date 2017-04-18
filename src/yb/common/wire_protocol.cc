@@ -183,12 +183,26 @@ Status AddHostPortPBs(const vector<Sockaddr>& addrs,
                       RepeatedPtrField<HostPortPB>* pbs) {
   for (const Sockaddr& addr : addrs) {
     HostPortPB* pb = pbs->Add();
+    pb->set_port(addr.port());
     if (addr.IsWildcard()) {
-      RETURN_NOT_OK(GetFQDN(pb->mutable_host()));
+      auto status = GetFQDN(pb->mutable_host());
+      if (!status.ok()) {
+        std::vector<Sockaddr> locals;
+        if (!GetLocalAddresses(&locals, AddressFilter::EXTERNAL).ok() || locals.empty()) {
+          return status;
+        }
+        for (auto& address : locals) {
+          if (pb == nullptr) {
+            pb = pbs->Add();
+            pb->set_port(addr.port());
+          }
+          pb->set_host(address.host());
+          pb = nullptr;
+        }
+      }
     } else {
       pb->set_host(addr.host());
     }
-    pb->set_port(addr.port());
   }
   return Status::OK();
 }

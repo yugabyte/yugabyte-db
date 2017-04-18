@@ -611,22 +611,37 @@ Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
 }
 
 Status YBClient::Data::InitLocalHostNames() {
-  // Currently, we just use our configured hostname, and resolve it to come up with
-  // a list of potentially local hosts. It would be better to iterate over all of
-  // the local network adapters. See KUDU-327.
-  string hostname;
-  RETURN_NOT_OK(GetFQDN(&hostname));
-
-  // We don't want to consider 'localhost' to be local - otherwise if a misconfigured
-  // server reports its own name as localhost, all clients will hammer it.
-  if (hostname != "localhost" && hostname != "localhost.localdomain") {
-    local_host_names_.insert(hostname);
-    VLOG(1) << "Considering host " << hostname << " local";
+  vector<Sockaddr> addresses;
+  auto status = GetLocalAddresses(&addresses, AddressFilter::EXTERNAL);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to enumerate network interfaces" << status.ToString();
   }
 
-  vector<Sockaddr> addresses;
-  RETURN_NOT_OK_PREPEND(HostPort(hostname, 0).ResolveAddresses(&addresses),
-                        Substitute("Could not resolve local host name '$0'", hostname));
+  string hostname;
+  status = GetFQDN(&hostname);
+
+  if (status.ok()) {
+    // We don't want to consider 'localhost' to be local - otherwise if a misconfigured
+    // server reports its own name as localhost, all clients will hammer it.
+    if (hostname != "localhost" && hostname != "localhost.localdomain") {
+      local_host_names_.insert(hostname);
+      VLOG(1) << "Considering host " << hostname << " local";
+    }
+
+    status = HostPort(hostname, 0).ResolveAddresses(&addresses);
+    if (!status.ok()) {
+      const auto message = Substitute("Could not resolve local host name '$0'", hostname);
+      LOG(WARNING) << message;
+      if (addresses.empty()) {
+        return status.CloneAndPrepend(message);
+      }
+    }
+  } else {
+    LOG(WARNING) << "Failed to get hostname: " << status.ToString();
+    if (addresses.empty()) {
+      return status;
+    }
+  }
 
   for (const Sockaddr& addr : addresses) {
     // Similar to above, ignore local or wildcard addresses.

@@ -15,7 +15,8 @@
           "build/latest/bin/yb_load_test_tool",
           "thirdparty/installed/uninstrumented/bin/*"],
   "java"     : ["java/yb-cli/target/yb-cli-0.8.0-SNAPSHOT.jar",
-                "java/yb-loadtester/target/yb-loadtester-0.8.0-SNAPSHOT-jar-with-dependencies.jar"],
+                "java/yb-loadtester/target/yb-sample-apps.jar",
+                "java/yb-loadtester/target/yb-sample-apps-sources.jar"],
   "java/lib" : ["java/yb-cli/target/lib/*.jar",
                 "java/yb-loadtester/target/lib/*.jar"]
 }

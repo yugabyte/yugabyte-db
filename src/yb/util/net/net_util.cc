@@ -15,16 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/net/net_util.h"
+
 #include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netdb.h>
-#include <iostream>
 
 #include <algorithm>
+#include <iostream>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <boost/scope_exit.hpp>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
@@ -34,12 +39,13 @@
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/random.h"
@@ -260,6 +266,37 @@ Status GetHostname(string* hostname) {
   return Status::OK();
 }
 
+Status GetLocalAddresses(std::vector<Sockaddr>* result, AddressFilter filter) {
+  ifaddrs* addresses;
+  if (getifaddrs(&addresses)) {
+    return STATUS(NetworkError,
+                  "Failed to list network interfaces: $0",
+                  ErrnoToString(errno),
+                  errno);
+  }
+
+  BOOST_SCOPE_EXIT(addresses) {
+      freeifaddrs(addresses);
+  } BOOST_SCOPE_EXIT_END
+
+  for (auto address = addresses; address; address = address->ifa_next) {
+    if (address->ifa_addr->sa_family == AF_INET) {
+      Sockaddr temp(*PointerCast<sockaddr_in*>(address->ifa_addr));
+      switch (filter) {
+        case AddressFilter::ANY:
+          result->push_back(temp);
+          break;
+        case AddressFilter::EXTERNAL:
+          if (!temp.IsWildcard() && !temp.IsAnyLocalAddress()) {
+            result->push_back(temp);
+          }
+          break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status GetFQDN(string* hostname) {
   TRACE_EVENT0("net", "GetFQDN");
   // Start with the non-qualified hostname
@@ -305,7 +342,16 @@ Status SockaddrFromHostPort(const HostPort& host_port, Sockaddr* addr) {
 Status HostPortFromSockaddrReplaceWildcard(const Sockaddr& addr, HostPort* hp) {
   string host;
   if (addr.IsWildcard()) {
-    RETURN_NOT_OK(GetFQDN(&host));
+    auto status = GetFQDN(&host);
+    if (!status.ok()) {
+      std::vector<Sockaddr> locals;
+      if (GetLocalAddresses(&locals, AddressFilter::EXTERNAL).ok() && !locals.empty()) {
+        hp->set_host(locals.front().host());
+        hp->set_port(addr.port());
+        return Status::OK();
+      }
+      return status;
+    }
   } else {
     host = addr.host();
   }
