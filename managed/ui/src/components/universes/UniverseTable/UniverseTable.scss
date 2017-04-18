@@ -152,12 +152,10 @@
 .status-pending-display-container {
   color: $YB_ORANGE;
   float: right;
-  margin-top: 6px;
 
   .fa-spin {
     font-weight: 600;
     font-size: 18px;
-    line-height: 1.8em;
   }
 }
 
@@ -169,7 +167,6 @@
 }
 
 .pending-action-progress {
-  width:200px;
   display: block;
 }
 
