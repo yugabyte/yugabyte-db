@@ -368,123 +368,81 @@
       instanceTypeCode: n1-standard-1
     numCores: 1
     memSizeGB: 3.75
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &gcp-n1-standard-8 !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: gcp
       instanceTypeCode: n1-standard-8
     numCores: 8
     memSizeGB: 30
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &gcp-n1-standard-16 !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: gcp
       instanceTypeCode: n1-standard-16
     numCores: 16
     memSizeGB: 60
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &gcp-n1-standard-32 !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: gcp
       instanceTypeCode: n1-standard-32
     numCores: 32
     memSizeGB: 120
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &gcp-n1-highmem-4 !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: gcp
       instanceTypeCode: n1-highmem-4
     numCores: 4
     memSizeGB: 26
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &gcp-n1-highmem-8 !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: gcp
       instanceTypeCode: n1-highmem-8
     numCores: 8
     memSizeGB: 52
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &gcp-n1-highmem-16 !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: gcp
       instanceTypeCode: n1-highmem-16
     numCores: 16
     memSizeGB: 104
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &gcp-n1-highmem-32 !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: gcp
       instanceTypeCode: n1-highmem-32
     numCores: 32
     memSizeGB: 208
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &docker-local-container-small !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: docker
       instanceTypeCode: container.small
     numCores: 2
     memSizeGB: 3.7
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &aws-c3large !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: aws
       instanceTypeCode: c3.large
     numCores: 2
     memSizeGB: 3.7
-    volumeCount: 2
-    volumeSizeGB: 16
-    volumeType: SSD
 - &aws-c3xlarge !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: aws
       instanceTypeCode: c3.xlarge
     numCores: 4
     memSizeGB: 7.5
-    volumeCount: 2
-    volumeSizeGB: 40
-    volumeType: SSD
 - &aws-c32xlarge !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: aws
       instanceTypeCode: c3.2xlarge
     numCores: 8
     memSizeGB: 15
-    volumeCount: 2
-    volumeSizeGB: 80
-    volumeType: SSD
 - &aws-c34xlarge !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: aws
       instanceTypeCode: c3.4xlarge
     numCores: 16
     memSizeGB: 30
-    volumeCount: 2
-    volumeSizeGB: 160
-    volumeType: SSD
 - &aws-c38xlarge !!com.yugabyte.yw.models.InstanceType
     idKey: !!com.yugabyte.yw.models.InstanceTypeKey
       providerCode: aws
       instanceTypeCode: c3.8xlarge
     numCores: 32
     memSizeGB: 60
-    volumeCount: 2
-    volumeSizeGB: 320
-    volumeType: SSD

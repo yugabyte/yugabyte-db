@@ -159,16 +159,18 @@ export default class UniverseForm extends Component {
 
   instanceTypeChanged(instanceTypeValue) {
     this.setState({instanceTypeSelected: instanceTypeValue});
-    var instanceTypeSelected = this.props.cloud.instanceTypes.find(function(item){
+    let instanceTypeSelected = this.props.cloud.instanceTypes.find(function(item){
       return item.instanceTypeCode ===  instanceTypeValue;
     });
-    var deviceInfo = {
-      volumeSize: instanceTypeSelected.volumeSizeGB,
-      numVolumes: instanceTypeSelected.volumeCount,
+    let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
+    let volumeDetail = volumesList[0];
+    let deviceInfo = {
+      volumeSize: volumeDetail.volumeSizeGB,
+      numVolumes: volumesList.length,
       mountPoints: null,
       diskIops: 1000
     };
-    this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
+    this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
   }
 
   numNodesChanged(value) {
@@ -242,19 +244,21 @@ export default class UniverseForm extends Component {
     var self = this;
     const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
     if (nextProps.cloud.instanceTypes !== this.props.cloud.instanceTypes
-       && isValidArray(nextProps.cloud.instanceTypes) && !isValidArray(Object.keys(this.state.deviceInfo))
-       && isValidObject(this.state.instanceTypeSelected)) {
-       var instanceTypeSelected = nextProps.cloud.instanceTypes.find(function(item){
+        && isValidArray(nextProps.cloud.instanceTypes) && !isValidArray(Object.keys(this.state.deviceInfo))
+        && isValidObject(this.state.instanceTypeSelected)) {
+      let instanceTypeSelected = nextProps.cloud.instanceTypes.find(function(item){
         return item.instanceTypeCode ===  self.state.instanceTypeSelected;
       });
       if (isValidObject(instanceTypeSelected) && isValidArray(Object.keys(instanceTypeSelected))) {
-        var deviceInfo = {
-          volumeSize: instanceTypeSelected.volumeSizeGB,
-          numVolumes: instanceTypeSelected.volumeCount,
+        let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
+        let volumeDetail = volumesList[0];
+        let deviceInfo = {
+          volumeSize: volumeDetail.volumeSizeGB,
+          numVolumes: volumesList.length,
           mountPoints: null,
           diskIops: 1000,
         };
-        this.setState({deviceInfo: deviceInfo, volumeType: instanceTypeSelected.volumeType});
+        this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
       }
     }
     // Set Default Software Package in case of Create
