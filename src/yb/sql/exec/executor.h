@@ -9,7 +9,6 @@
 
 #include "yb/common/partial_row.h"
 #include "yb/sql/exec/exec_context.h"
-#include "yb/sql/exec/eval_expr.h"
 #include "yb/sql/ptree/pt_create_keyspace.h"
 #include "yb/sql/ptree/pt_use_keyspace.h"
 #include "yb/sql/ptree/pt_create_table.h"
@@ -94,43 +93,64 @@ class Executor {
 
   //------------------------------------------------------------------------------------------------
   // Expression evaluation.
-  CHECKED_STATUS EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result);
-  CHECKED_STATUS EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result);
-  CHECKED_STATUS EvalVarIntExpr(const PTExpr::SharedPtr& expr, EvalVarIntStringValue *result);
-  CHECKED_STATUS EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *result);
-  CHECKED_STATUS EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *result);
-  CHECKED_STATUS EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *result);
-  CHECKED_STATUS EvalBinaryExpr(const PTExpr::SharedPtr& expr, EvalBinaryValue *result);
-  CHECKED_STATUS EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampValue *result);
-  CHECKED_STATUS EvalInetaddressExpr(const PTExpr::SharedPtr& expr, EvalInetaddressValue *result);
-  CHECKED_STATUS EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *result);
-  CHECKED_STATUS EvalTimeUuidExpr(const PTExpr::SharedPtr& expr, EvalTimeUuidValue *result);
-  CHECKED_STATUS EvalDecimalExpr(const PTExpr::SharedPtr& expr, EvalDecimalValue *result);
 
-  CHECKED_STATUS ConvertFromInt(EvalValue *result, const EvalIntValue& int_value);
-  CHECKED_STATUS ConvertFromVarInt(EvalValue *result, const EvalVarIntStringValue& varint_value);
-  CHECKED_STATUS ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value);
-  CHECKED_STATUS ConvertFromString(EvalValue *result, const EvalStringValue& string_value);
-  CHECKED_STATUS ConvertFromDecimal(EvalValue *result, const EvalDecimalValue& decimal_value);
-  CHECKED_STATUS ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_value);
-  CHECKED_STATUS ConvertFromBinary(EvalValue *result, const EvalBinaryValue& binary_value);
-  CHECKED_STATUS ConvertFromUuid(EvalValue *result, const EvalUuidValue& uuid_value);
-  CHECKED_STATUS ConvertFromTimeUuid(EvalValue *result, const EvalTimeUuidValue& uuid_value);
+  // CHECKED_STATUS EvalTimeUuidExpr(const PTExpr::SharedPtr& expr, EvalTimeUuidValue *result);
+  // CHECKED_STATUS ConvertFromTimeUuid(EvalValue *result, const EvalTimeUuidValue& uuid_value);
+  CHECKED_STATUS PTExprToPB(const PTExpr::SharedPtr& expr, YQLExpressionPB *expr_pb);
+
+  // Constant expressions.
+  CHECKED_STATUS PTConstToPB(const PTExpr::SharedPtr& const_pt, YQLValuePB *const_pb,
+                             bool negate = false);
+  CHECKED_STATUS PTExprToPB(const PTConstVarInt *const_pt, YQLValuePB *const_pb, bool negate);
+  CHECKED_STATUS PTExprToPB(const PTConstDecimal *const_pt, YQLValuePB *const_pb, bool negate);
+  CHECKED_STATUS PTExprToPB(const PTConstInt *const_pt, YQLValuePB *const_pb, bool negate);
+  CHECKED_STATUS PTExprToPB(const PTConstDouble *const_pt, YQLValuePB *const_pb, bool negate);
+  CHECKED_STATUS PTExprToPB(const PTConstText *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTConstBool *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTConstUuid *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTConstBinary *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTMapExpr *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTSetExpr *const_pt, YQLValuePB *const_pb);
+  CHECKED_STATUS PTExprToPB(const PTListExpr *const_pt, YQLValuePB *const_pb);
+
+  // Bind variable.
+  CHECKED_STATUS PTExprToPB(const PTBindVar *bind_pt, YQLExpressionPB *bind_pb);
+  // Get a bind variable.
+  CHECKED_STATUS GetBindVariable(const PTBindVar* var, YQLValue *value) const;
+
+  // Column types.
+  CHECKED_STATUS PTExprToPB(const PTRef *ref_pt, YQLExpressionPB *ref_pb);
+
+  // Operators.
+  // There's only one, so call it PTUMinus for now.
+  CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, YQLExpressionPB *op_pb);
+  CHECKED_STATUS PTUMinusToPB(const PTOperator1 *op_pt, YQLValuePB *const_pb);
+
+  // Builtins.
+  CHECKED_STATUS PTExprToPB(const PTBcall *bcall_pt, YQLExpressionPB *bcall_pb);
+
+  // Logic expressions.
+  CHECKED_STATUS PTExprToPB(const PTLogic1 *logic_pt, YQLExpressionPB *logic_pb);
+  CHECKED_STATUS PTExprToPB(const PTLogic2 *logic_pt, YQLExpressionPB *logic_pb);
+
+  // Relation expressions.
+  CHECKED_STATUS PTExprToPB(const PTRelation0 *relation_pt, YQLExpressionPB *relation_pb);
+  CHECKED_STATUS PTExprToPB(const PTRelation1 *relation_pt, YQLExpressionPB *relation_pb);
+  CHECKED_STATUS PTExprToPB(const PTRelation2 *relation_pt, YQLExpressionPB *relation_pb);
+  CHECKED_STATUS PTExprToPB(const PTRelation3 *relation_pt, YQLExpressionPB *relation_pb);
+
  private:
   //------------------------------------------------------------------------------------------------
-  // Convert expression to protobuf.
-  template<typename PBType>
-  CHECKED_STATUS ExprToPB(const PTExpr::SharedPtr& expr,
-                          YQLType col_type,
-                          PBType* col_pb,
-                          YBPartialRow *row = nullptr,
-                          int col_index = -1);
-
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToWriteRequestPB(const std::shared_ptr<client::YBTable>& table,
                                             const PTDmlStmt *tnode,
                                             YQLWriteRequestPB *req,
                                             YBPartialRow *row);
+
+  // Set up partial row for computing hash value.
+  CHECKED_STATUS SetupPartialRow(const ColumnDesc *col_desc,
+                                 const YQLExpressionPB *col_expr,
+                                 YBPartialRow *row);
 
   // Convert where clause to protobuf for read request.
   CHECKED_STATUS WhereClauseToPB(YQLReadRequestPB *req,
@@ -146,27 +166,6 @@ class Executor {
 
   // Convert an expression op in where clause to protobuf.
   CHECKED_STATUS WhereOpToPB(YQLConditionPB *condition, const ColumnOp& col_op);
-
-  // Convert a bool expression to protobuf.
-  CHECKED_STATUS BoolExprToPB(YQLConditionPB *condition, const PTExpr* expr);
-
-  // Convert a relational op to protobuf.
-  CHECKED_STATUS RelationalOpToPB(YQLConditionPB *condition,
-                                  YQLOperator opr,
-                                  const PTExpr *relation);
-
-  // Convert a column condition to protobuf.
-  CHECKED_STATUS ColumnConditionToPB(YQLConditionPB *condition,
-                                     YQLOperator opr,
-                                     const PTExpr *cond);
-
-  // Convert a between (not) to protobuf.
-  CHECKED_STATUS BetweenToPB(YQLConditionPB *condition,
-                             YQLOperator opr,
-                             const PTExpr *between);
-
-  // Get a bind variable.
-  CHECKED_STATUS GetBindVariable(const PTBindVar* var, YQLValue *value) const;
 
   void SelectAsyncDone(
       const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,

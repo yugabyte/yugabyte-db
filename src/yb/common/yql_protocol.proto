@@ -54,7 +54,7 @@ message YQLMapValuePB {
 // A column value
 message YQLColumnValuePB {
   optional int32 column_id = 1;
-  optional YQLValuePB value = 2;
+  optional YQLExpressionPB expr = 2;
 }
 
 // An expression in a WHERE condition
@@ -63,36 +63,41 @@ message YQLExpressionPB {
     YQLValuePB value = 1;
     int32 column_id = 2;
     YQLConditionPB condition = 3;
+    YQLBFCallPB bfcall = 4;
   }
 }
 
-// Condition operators
+// Expression operators.
 enum YQLOperator {
   YQL_OP_NOOP = 0;
 
-  // Operators that take one operand.
+  // Logic operators that take one operand.
   YQL_OP_NOT = 1;
-  YQL_OP_IS_NULL = 2;
-  YQL_OP_IS_NOT_NULL = 3;
-  YQL_OP_IS_TRUE = 4;
-  YQL_OP_IS_FALSE = 5;
+  YQL_OP_IS_TRUE = 2;
+  YQL_OP_IS_FALSE = 3;
 
-  // Operators that take two operands.
-  YQL_OP_EQUAL = 6;
-  YQL_OP_LESS_THAN = 7;
-  YQL_OP_LESS_THAN_EQUAL = 8;
-  YQL_OP_GREATER_THAN = 9;
-  YQL_OP_GREATER_THAN_EQUAL = 10;
-  YQL_OP_NOT_EQUAL = 11;
+  // Logic operators that take two operands.
+  YQL_OP_AND = 4;
+  YQL_OP_OR = 5;
 
-  YQL_OP_AND = 12;
-  YQL_OP_OR = 13;
+  // Relation operators that take one operand.
+  YQL_OP_IS_NULL = 6;
+  YQL_OP_IS_NOT_NULL = 7;
+
+  // Relation operators that take two operands.
+  YQL_OP_EQUAL = 8;
+  YQL_OP_LESS_THAN = 9;
+  YQL_OP_LESS_THAN_EQUAL = 10;
+  YQL_OP_GREATER_THAN = 11;
+  YQL_OP_GREATER_THAN_EQUAL = 12;
+  YQL_OP_NOT_EQUAL = 13;
+
   YQL_OP_LIKE = 14;
   YQL_OP_NOT_LIKE = 15;
   YQL_OP_IN = 16;
   YQL_OP_NOT_IN = 17;
 
-  // Operators that take three operands.
+  // Relation operators that take three operands.
   YQL_OP_BETWEEN = 18;
   YQL_OP_NOT_BETWEEN = 19;
 
@@ -104,6 +109,12 @@ enum YQLOperator {
 // A logical condition that evaluates to true/false. Used in the WHERE clause.
 message YQLConditionPB {
   optional YQLOperator op = 1;
+  repeated YQLExpressionPB operands = 2;
+}
+
+// Builtin call expression.
+message YQLBFCallPB {
+  optional int32 bfopcode = 1;
   repeated YQLExpressionPB operands = 2;
 }
 
@@ -183,7 +194,7 @@ message YQLWriteRequestPB {
   repeated YQLColumnValuePB column_values = 8;
 
   // If clause condition
-  optional YQLConditionPB if_condition = 9;
+  optional YQLExpressionPB if_expr = 9;
 
   // Time to live in millisecondss.
   optional uint64 ttl = 10;
@@ -208,7 +219,7 @@ message YQLReadRequestPB {
   repeated YQLColumnValuePB hashed_column_values = 5;
 
   // Where clause condition
-  optional YQLConditionPB where_condition = 6;
+  optional YQLExpressionPB where_expr = 6;
 
   // Column ids to read (select)
   repeated int32 column_ids = 7; // required

@@ -122,7 +122,7 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
       YBPartialRow *prow = nullptr, int prow_index = -1) {
 
     column_value->set_column_id(ColumnId(column_name));
-    column_value->mutable_value()->set_int32_value(value);
+    column_value->mutable_expr()->mutable_value()->set_int32_value(value);
 
     if (prow != nullptr) {
       CHECK_OK(prow->SetInt32(prow_index, value));
@@ -134,7 +134,7 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
       YBPartialRow *prow = nullptr, int prow_index = -1) {
 
     column_value->set_column_id(ColumnId(column_name));
-    column_value->mutable_value()->set_string_value(value);
+    column_value->mutable_expr()->mutable_value()->set_string_value(value);
 
     if (prow != nullptr) {
       CHECK_OK(prow->SetString(prow_index, value));

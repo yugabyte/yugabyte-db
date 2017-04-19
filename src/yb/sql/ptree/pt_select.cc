@@ -84,7 +84,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
   MemoryContext *psem_mem = sem_context->PSemMem();
-  selected_columns_.reset(psem_mem->NewObject<MCVector<const ColumnDesc*>>(psem_mem));
+  selected_columns_ = MCMakeShared<MCVector<const ColumnDesc*>>(psem_mem);
 
   // Get the table descriptor.
   if (from_clause_->size() > 1) {
@@ -123,10 +123,14 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   if (limit_clause_ == nullptr) {
     return Status::OK();
   }
-  if (!YQLType::IsInteger(limit_clause_->yql_type_id())) {
-    return sem_context->Error(loc(), "Only integer limit is allowed.",
+  if (limit_clause_->expr_op() != ExprOperator::kConst) {
+    return sem_context->Error(loc(), "Limit value must be an integer literal",
                               ErrorCode::INVALID_DATATYPE);
   }
+
+  SemState sem_state(sem_context, DataType::INT64, InternalType::kInt64Value);
+  RETURN_NOT_OK(limit_clause_->Analyze(sem_context));
+
   return Status::OK();
 }
 
@@ -174,6 +178,8 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
       selected_columns_->push_back(col_desc);
     }
   } else { // Add the column descriptor to selected_columns_.
+    // Set expected type to UNKNOWN as we don't expected any datatype.
+    SemState sem_state(sem_context);
     RETURN_NOT_OK(ref->Analyze(sem_context));
     const ColumnDesc *col_desc = ref->desc();
     if (distinct_) {

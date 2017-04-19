@@ -108,29 +108,27 @@ class BFCompileApi {
   // various collection types.
 
   // Interface for any collections of shared_ptrs.
-  template<template<typename, typename> class Collection, typename AllocType>
+  template<template<typename, typename> class CType, typename AType>
   static Status FindYqlOpcodeImpl(const string& yql_name,
-                                  const Collection<std::shared_ptr<PType>, AllocType>& param_types,
+                                  const CType<std::shared_ptr<PType>, AType>& param_types,
                                   BFOpcode *opcode,
                                   const BFDecl **bfdecl,
                                   const std::shared_ptr<RType>& result) {
-    Status s =
-      FindOpcode<Collection<std::shared_ptr<PType>, AllocType>,
-                 const std::shared_ptr<RType>&>(yql_name, param_types, opcode, bfdecl, result);
+    Status s = FindOpcode<CType<std::shared_ptr<PType>, AType>, const std::shared_ptr<RType>&>(
+                   yql_name, param_types, opcode, bfdecl, result);
     VLOG(3) << "Compiled function call " << yql_name << ". Status: " << s.ToString();
     return s;
   }
 
   // Interface for any collections of raw pointers.
-  template<template<typename, typename> class Collection, typename AllocType>
+  template<template<typename, typename> class CType, typename AType>
   static Status FindYqlOpcodeImpl(const string& yql_name,
-                                  const Collection<PType*, AllocType>& param_types,
+                                  const CType<PType*, AType>& param_types,
                                   BFOpcode *opcode,
                                   const BFDecl **bfdecl,
                                   const std::shared_ptr<RType>& result) {
-    Status s =
-      FindOpcode<Collection<PType*, AllocType>,
-                 const std::shared_ptr<RType>&>(yql_name, param_types, opcode, bfdecl, result);
+    Status s = FindOpcode<CType<PType*, AType>, const std::shared_ptr<RType>&>(
+                   yql_name, param_types, opcode, bfdecl, result);
     VLOG(3) << "Compiled function call " << yql_name << ". Status: " << s.ToString();
     return s;
   }
@@ -211,7 +209,10 @@ class BFCompileApi {
 // - Builtin-calls don't do implicit data conversion. They expect parameters to have the expected
 //   type, and they always return data of the expected type. Arguments must be converted to correct
 //   types before passing by using "cast" operator.
-template<typename PType, typename RType>
+template<typename PType,
+         typename RType,
+         template<typename, typename> class CType = std::vector,
+         template<typename> class AType = std::allocator>
 class BFExecApi {
  public:
   // Declare table of function pointers that take shared_ptr as inputs.
@@ -227,13 +228,25 @@ class BFExecApi {
   //   kBFExecFuncs[opcode](args)
   static Status ExecYqlOpcode(BFOpcode opcode,
                               const std::vector<std::shared_ptr<PType>>& params,
-                              const std::shared_ptr<RType>& result);
+                              const std::shared_ptr<RType>& result) {
+    // TODO(neil) There has to be some sanity error check here.
+    RETURN_NOT_OK(CheckError(opcode, params, result));
+    Status s = kBFExecFuncs[static_cast<int>(opcode)](params, result);
+    VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
+    return s;
+  }
 
   // Runs the associated entry in the table of function pointers on the given raw pointers.
   //   kBFExecFuncs[opcode](args)
   static Status ExecYqlOpcode(BFOpcode opcode,
                               const std::vector<PType*>& params,
-                              RType *result);
+                              RType *result) {
+    // TODO(neil) There has to be some sanity error check here.
+    RETURN_NOT_OK(CheckError(opcode, params, result));
+    Status s = kBFExecFuncsRaw[static_cast<int>(opcode)](params, result);
+    VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
+    return s;
+  }
 
   // TODO(neil) Because opcodes are created and executed by different processes, some sanity error
   // checking must be done at run time in logging mode.
@@ -260,33 +273,14 @@ class BFExecApi {
   }
 };
 
-template<typename PType, typename RType>
-Status BFExecApi<PType, RType>::ExecYqlOpcode(BFOpcode opcode,
-                                              const std::vector<std::shared_ptr<PType>>& params,
-                                              const std::shared_ptr<RType>& result) {
-  // TODO(neil) There has to be some sanity error check here.
-  RETURN_NOT_OK(CheckError(opcode, params, result));
-  Status s = kBFExecFuncs[static_cast<int>(opcode)](params, result);
-  VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
-  return s;
-}
-
-template<typename PType, typename RType>
-Status BFExecApi<PType, RType>::ExecYqlOpcode(BFOpcode opcode,
-                                              const std::vector<PType*>& params,
-                                              RType *result) {
-  // TODO(neil) There has to be some sanity error check here.
-  RETURN_NOT_OK(CheckError(opcode, params, result));
-  Status s = kBFExecFuncsRaw[static_cast<int>(opcode)](params, result);
-  VLOG(3) << "Executed builtin call(" << int(opcode) << "). Status: " << s.ToString();
-  return s;
-}
-
 //--------------------------------------------------------------------------------------------------
 // This class is conveniently and ONLY for testing purpose. It executes builtin calls by names
 // instead of opcode.
-template<typename PType, typename RType>
-class BFExecImmediateApi : public BFExecApi<PType, RType> {
+template<typename PType,
+         typename RType,
+         template<typename, typename> class CType = std::vector,
+         template<typename> class AType = std::allocator>
+class BFExecImmediateApi : public BFExecApi<PType, RType, CType, AType> {
  public:
   // Interface for shared_ptr.
   static Status ExecYqlFunc(const string& yql_name,

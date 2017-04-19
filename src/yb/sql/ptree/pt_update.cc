@@ -20,19 +20,14 @@ PTAssign::PTAssign(MemoryContext *memctx,
       lhs_(lhs),
       rhs_(rhs),
       col_desc_(nullptr) {
-  // Set the name of unnamed bind marker for "UPDATE tab SET <column> = ? ..."
-  if (lhs_ != nullptr && rhs_ != nullptr && rhs_->expr_op() == ExprOperator::kBindVar) {
-    PTBindVar *var = static_cast<PTBindVar*>(rhs_.get());
-    if (var->name() == nullptr) {
-      var->set_name(memctx, lhs_->last_name());
-    }
-  }
 }
 
 PTAssign::~PTAssign() {
 }
 
 CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
+  SemState sem_state(sem_context);
+
   // Analyze left value (column name).
   RETURN_NOT_OK(lhs_->Analyze(sem_context));
 
@@ -41,17 +36,11 @@ CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
     return sem_context->Error(loc(), "Column doesn't exist", ErrorCode::UNDEFINED_COLUMN);
   }
 
-  // Analyze right value.
+  // Setup the expected datatypes, and analyze the rhs value.
+  sem_state.SetExprState(col_desc_->yql_type(), col_desc_->internal_type(),
+                         col_desc_, lhs_->bindvar_name());
   RETURN_NOT_OK(rhs_->Analyze(sem_context));
   RETURN_NOT_OK(rhs_->CheckRhsExpr(sem_context));
-
-  if (rhs_->expr_op() == ExprOperator::kBindVar) {
-    // For "<column> = <bindvar>", set up the bind var column description.
-    PTBindVar *var = static_cast<PTBindVar*>(rhs_.get());
-    var->set_desc(col_desc_);
-  } else if (!sem_context->IsConvertible(rhs_, col_desc_->yql_type())) {
-    return sem_context->Error(loc(), ErrorCode::DATATYPE_MISMATCH);
-  }
 
   return Status::OK();
 }

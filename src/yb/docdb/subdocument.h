@@ -123,10 +123,18 @@ class SubDocument : public PrimitiveValue {
 
   // Construct a SubDocument from a YQLValuePB.
   static SubDocument FromYQLValuePB(YQLType yql_type, const YQLValuePB& value,
-                                       ColumnSchema::SortingType sorting_type);
+                                    ColumnSchema::SortingType sorting_type);
 
   // Construct a YQLValuePB from a SubDocument.
   static void ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* v);
+
+  // Construct a SubDocument from a YQLExpressionPB.
+  static SubDocument FromYQLExpressionPB(YQLType yql_type,
+                                         const YQLExpressionPB& yql_expr,
+                                         ColumnSchema::SortingType sorting_type);
+
+  // Construct a YQLExpressionPB from a SubDocument.
+  static void ToYQLExpressionPB(SubDocument doc, YQLType yql_type, YQLExpressionPB* yql_expr);
 
  private:
 

@@ -242,7 +242,7 @@ class PTSelectStmt : public PTDmlStmt {
   PTExpr::SharedPtr limit_clause_;
 
   // Members that will be constructed by semantic analyzer.
-  MCUniPtr<MCVector<const ColumnDesc*>> selected_columns_;
+  MCSharedPtr<MCVector<const ColumnDesc*>> selected_columns_;
 };
 
 }  // namespace sql

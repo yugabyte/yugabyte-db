@@ -66,26 +66,19 @@ class ColumnOp : public ColumnArg {
 
   ColumnOp(const ColumnDesc *desc = nullptr,
            const PTExpr::SharedPtr& expr = nullptr,
-           ExprOperator expr_op = ExprOperator::kNoOp,
            yb::YQLOperator yb_op = yb::YQLOperator::YQL_OP_NOOP)
-      : ColumnArg(desc, expr), expr_op_(expr_op), yb_op_(yb_op) {
+      : ColumnArg(desc, expr), yb_op_(yb_op) {
   }
   ColumnOp(const ColumnOp &column_op)
-      : ColumnOp(column_op.desc_, column_op.expr_, column_op.expr_op_, column_op.yb_op_) {
+      : ColumnOp(column_op.desc_, column_op.expr_, column_op.yb_op_) {
   }
   virtual ~ColumnOp() {
   }
 
-  void Init(const ColumnDesc *desc, const PTExpr::SharedPtr& expr,
-            ExprOperator expr_op, yb::YQLOperator yb_op) {
+  void Init(const ColumnDesc *desc, const PTExpr::SharedPtr& expr, yb::YQLOperator yb_op) {
     desc_ = desc;
     expr_ = expr;
-    expr_op_ = expr_op;
     yb_op_ = yb_op;
-  }
-
-  ExprOperator expr_op() const {
-    return expr_op_;
   }
 
   yb::YQLOperator yb_op() const {
@@ -93,7 +86,6 @@ class ColumnOp : public ColumnArg {
   }
 
  private:
-  ExprOperator expr_op_;
   yb::YQLOperator yb_op_;
 };
 

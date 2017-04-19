@@ -2762,93 +2762,95 @@ a_expr:
     $$ = $2;
   }
   | '-' a_expr                                                 %prec UMINUS {
-    $$ = MAKE_NODE(@1, PTOperator1, ExprOperator::kUMinus, $2);
+    $$ = MAKE_NODE(@1, PTOperator1, ExprOperator::kUMinus, YQL_OP_NOOP, $2);
   }
 
-  // Predicates that have no operand.
-  | EXISTS {
-    $$ = MAKE_NODE(@1, PTPredicate0, ExprOperator::kExists);
-  }
-  | NOT_LA EXISTS {
-    $$ = MAKE_NODE(@1, PTPredicate0, ExprOperator::kNotExists);
-  }
-
-  // Predicates that have one operand.
+  // Logical expression.
   | NOT a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kNot, $2);
-  }
-  | a_expr IS NULL_P                                           %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNull, $1);
-  }
-  | a_expr ISNULL {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNull, $1);
-  }
-  | a_expr IS NOT NULL_P                                       %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNotNull, $1);
-  }
-  | a_expr NOTNULL {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsNotNull, $1);
+    $$ = MAKE_NODE(@1, PTLogic1, ExprOperator::kLogic1, YQL_OP_NOT, $2);
   }
   | a_expr IS TRUE_P                                           %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsTrue, $1);
+    $$ = MAKE_NODE(@1, PTLogic1, ExprOperator::kLogic1, YQL_OP_IS_TRUE, $1);
   }
   | a_expr IS NOT TRUE_P                                       %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsFalse, $1);
+    $$ = MAKE_NODE(@1, PTLogic1, ExprOperator::kLogic1, YQL_OP_IS_FALSE, $1);
   }
   | a_expr IS FALSE_P                                          %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsFalse, $1);
+    $$ = MAKE_NODE(@1, PTLogic1, ExprOperator::kLogic1, YQL_OP_IS_FALSE, $1);
   }
   | a_expr IS NOT FALSE_P                                      %prec IS {
-    $$ = MAKE_NODE(@1, PTPredicate1, ExprOperator::kIsTrue, $1);
-  }
-
-  // Predicates that have two operands.
-  | a_expr '=' a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kEQ, $1, $3);
-  }
-  | a_expr '<' a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kLT, $1, $3);
-  }
-  | a_expr '>' a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kGT, $1, $3);
-  }
-  | a_expr LESS_EQUALS a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kLE, $1, $3);
-  }
-  | a_expr GREATER_EQUALS a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kGE, $1, $3);
-  }
-  | a_expr NOT_EQUALS a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNE, $1, $3);
+    $$ = MAKE_NODE(@1, PTLogic1, ExprOperator::kLogic1, YQL_OP_IS_TRUE, $1);
   }
   | a_expr AND a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kAND, $1, $3);
+    $$ = MAKE_NODE(@1, PTLogic2, ExprOperator::kLogic2, YQL_OP_AND, $1, $3);
   }
   | a_expr OR a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kOR, $1, $3);
-  }
-  | a_expr LIKE a_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kLike, $1, $3);
-  }
-  | a_expr NOT_LA LIKE a_expr                                  %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotLike, $1, $4);
+    $$ = MAKE_NODE(@1, PTLogic2, ExprOperator::kLogic2, YQL_OP_OR, $1, $3);
   }
 
-  // Predicates that have 3 operands.
+  // Relations that have no operand.
+  | EXISTS {
+    $$ = MAKE_NODE(@1, PTRelation0, ExprOperator::kRelation0, YQL_OP_EXISTS);
+  }
+  | NOT_LA EXISTS {
+    $$ = MAKE_NODE(@1, PTRelation0, ExprOperator::kRelation0, YQL_OP_NOT_EXISTS);
+  }
+
+  // Relations that have one operand.
+  | a_expr IS NULL_P                                           %prec IS {
+    $$ = MAKE_NODE(@1, PTRelation1, ExprOperator::kRelation1, YQL_OP_IS_NULL, $1);
+  }
+  | a_expr ISNULL {
+    $$ = MAKE_NODE(@1, PTRelation1, ExprOperator::kRelation1, YQL_OP_IS_NULL, $1);
+  }
+  | a_expr IS NOT NULL_P                                       %prec IS {
+    $$ = MAKE_NODE(@1, PTRelation1, ExprOperator::kRelation1, YQL_OP_IS_NOT_NULL, $1);
+  }
+  | a_expr NOTNULL {
+    $$ = MAKE_NODE(@1, PTRelation1, ExprOperator::kRelation1, YQL_OP_IS_NOT_NULL, $1);
+  }
+
+  // Relations that have two operands.
+  | a_expr '=' a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_EQUAL, $1, $3);
+  }
+  | a_expr '<' a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_LESS_THAN, $1, $3);
+  }
+  | a_expr '>' a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_GREATER_THAN, $1, $3);
+  }
+  | a_expr LESS_EQUALS a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_LESS_THAN_EQUAL, $1, $3);
+  }
+  | a_expr GREATER_EQUALS a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_GREATER_THAN_EQUAL, $1, $3);
+  }
+  | a_expr NOT_EQUALS a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_NOT_EQUAL, $1, $3);
+  }
+  | a_expr LIKE a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_LIKE, $1, $3);
+  }
+  | a_expr NOT_LA LIKE a_expr                                  %prec NOT_LA {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_NOT_LIKE, $1, $4);
+  }
+
+  // Relations that have 3 operands.
   | a_expr BETWEEN opt_asymmetric b_expr AND a_expr            %prec BETWEEN {
-    $$ = MAKE_NODE(@1, PTPredicate3, ExprOperator::kBetween, $1, $4, $6);
+    $$ = MAKE_NODE(@1, PTRelation3, ExprOperator::kRelation3, YQL_OP_BETWEEN, $1, $4, $6);
   }
   | a_expr NOT_LA BETWEEN opt_asymmetric b_expr AND a_expr     %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTPredicate3, ExprOperator::kNotBetween, $1, $5, $7);
+    $$ = MAKE_NODE(@1, PTRelation3, ExprOperator::kRelation3, YQL_OP_NOT_BETWEEN, $1, $5, $7);
   }
 
   // Predicates that have variable number of operands.
   | a_expr IN_P in_expr {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kIn, $1, $3);
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_IN, $1, $3);
     PARSER_UNSUPPORTED(@2);
   }
   | a_expr NOT_LA IN_P in_expr                                 %prec NOT_LA {
-    $$ = MAKE_NODE(@1, PTPredicate2, ExprOperator::kNotIn, $1, $4);
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, YQL_OP_NOT_IN, $1, $4);
     PARSER_UNSUPPORTED(@3);
   }
   | collection_expr {
@@ -2862,7 +2864,7 @@ a_expr:
     PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode, $1);
     args->Append($3);
     MCString::SharedPtr name = parser_->MakeString("+");
-    $$ = MAKE_NODE(@2, PTBfunc, name, args);
+    $$ = MAKE_NODE(@2, PTBcall, name, args);
   }
   | inactive_a_expr {
     PARSER_CQL_INVALID(@1);
@@ -3092,13 +3094,13 @@ func_expr:
 func_application:
   func_name '(' ')' {
     PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
-    $$ = MAKE_NODE(@1, PTBfunc, $1, args);
+    $$ = MAKE_NODE(@1, PTBcall, $1, args);
   }
   | func_name '(' func_arg_list opt_sort_clause ')' {
     if ($4 != nullptr) {
       PARSER_UNSUPPORTED(@1);
     }
-    $$ = MAKE_NODE(@1, PTBfunc, $1, $3);
+    $$ = MAKE_NODE(@1, PTBcall, $1, $3);
   }
   | func_name '(' VARIADIC func_arg_expr opt_sort_clause ')' {
     PARSER_UNSUPPORTED(@1);

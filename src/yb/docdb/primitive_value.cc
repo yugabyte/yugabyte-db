@@ -875,5 +875,28 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
   LOG(FATAL) << "Unsupported datatype " << yql_type.ToString();
 }
 
+PrimitiveValue PrimitiveValue::FromYQLExpressionPB(const YQLType& yql_type,
+                                                   const YQLExpressionPB& yql_expr,
+                                                   ColumnSchema::SortingType sorting_type) {
+  switch (yql_expr.expr_case()) {
+    case YQLExpressionPB::ExprCase::kValue:
+      return FromYQLValuePB(yql_type, yql_expr.value(), sorting_type);
+    case YQLExpressionPB::ExprCase::kBfcall:
+      LOG(FATAL) << "Builtin call execution is not yet supported";
+      break;
+    case YQLExpressionPB::ExprCase::kColumnId: FALLTHROUGH_INTENDED;
+    case YQLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
+    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+      break;
+  }
+  LOG(FATAL) << "Internal error: invalid column or value expression: " << yql_expr.expr_case();
+}
+
+void PrimitiveValue::ToYQLExpressionPB(const PrimitiveValue& pv,
+                                       const YQLType& yql_type,
+                                       YQLExpressionPB* yql_expr) {
+  ToYQLValuePB(pv, yql_type, yql_expr->mutable_value());
+}
+
 }  // namespace docdb
 }  // namespace yb

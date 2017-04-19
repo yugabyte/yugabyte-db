@@ -329,6 +329,29 @@ void SubDocument::ToYQLValuePB(SubDocument doc, YQLType yql_type, YQLValuePB* yq
   LOG(FATAL) << "Unsupported datatype in SubDocument: " << yql_type.ToString();
 }
 
+SubDocument SubDocument::FromYQLExpressionPB(YQLType yql_type, const YQLExpressionPB& yql_expr,
+                                             ColumnSchema::SortingType sorting_type) {
+  switch (yql_expr.expr_case()) {
+    case YQLExpressionPB::ExprCase::kValue:
+      return FromYQLValuePB(yql_type, yql_expr.value(), sorting_type);
+    case YQLExpressionPB::ExprCase::kBfcall:
+      LOG(FATAL) << "Builtin call execution is not yet supported";
+      break;
+    case YQLExpressionPB::ExprCase::kColumnId:
+      LOG(FATAL) << "Internal error: Column reference is not allowed in this context";
+      break;
+    case YQLExpressionPB::ExprCase::kCondition:
+      LOG(FATAL) << "Internal error: Conditional expression is not allowed in this context";
+      break;
+    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+      break;
+  }
+  LOG(FATAL) << "Internal error: invalid column or value expression: " << yql_expr.expr_case();
+}
+
+void SubDocument::ToYQLExpressionPB(SubDocument doc, YQLType yql_type, YQLExpressionPB* yql_expr) {
+  ToYQLValuePB(doc, yql_type, yql_expr->mutable_value());
+}
 
 }  // namespace docdb
 }  // namespace yb

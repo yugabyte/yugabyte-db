@@ -22,7 +22,8 @@ SemContext::SemContext(const char *sql_stmt,
       symtab_(ptemp_mem_.get()),
       sql_env_(sql_env),
       refresh_cache_(refresh_cache),
-      cache_used_(false) {
+      cache_used_(false),
+      sem_state_(nullptr) {
 }
 
 SemContext::~SemContext() {
@@ -94,22 +95,22 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
 
 //--------------------------------------------------------------------------------------------------
 
-bool SemContext::IsConvertible(PTExpr::SharedPtr expr, YQLType type) const {
+bool SemContext::IsConvertible(const PTExpr *expr, YQLType type) const {
   switch (type.main()) {
     // Collection types : we only use conversion table for their elements
     case MAP: {
       // the empty set "{}" is a valid map expression
       if (expr->yql_type_id() == SET) {
-        PTSetExpr *set_expr = static_cast<PTSetExpr *>(expr.get());
+        const PTSetExpr *set_expr = static_cast<const PTSetExpr *>(expr);
         return set_expr->elems().empty();
       }
 
       if (expr->yql_type_id() != MAP) {
         return expr->yql_type_id() == NULL_VALUE_TYPE;
       }
-      YQLType keys_type = type.params()->at(0);
-      YQLType values_type = type.params()->at(1);
-      PTMapExpr *map_expr = static_cast<PTMapExpr *>(expr.get());
+      YQLType keys_type = type.param_type(0);
+      YQLType values_type = type.param_type(1);
+      const PTMapExpr *map_expr = static_cast<const PTMapExpr *>(expr);
       for (auto &key : map_expr->keys()) {
         if (!IsConvertible(key, keys_type)) {
           return false;
@@ -129,7 +130,7 @@ bool SemContext::IsConvertible(PTExpr::SharedPtr expr, YQLType type) const {
         return expr->yql_type_id() == NULL_VALUE_TYPE;
       }
       YQLType elem_type = type.params()->at(0);
-      PTSetExpr *set_expr = static_cast<PTSetExpr*>(expr.get());
+      const PTSetExpr *set_expr = static_cast<const PTSetExpr*>(expr);
       for (auto &elem : set_expr->elems()) {
         if (!IsConvertible(elem, elem_type)) {
           return false;
@@ -143,7 +144,7 @@ bool SemContext::IsConvertible(PTExpr::SharedPtr expr, YQLType type) const {
         return expr->yql_type_id() == NULL_VALUE_TYPE;
       }
       YQLType elem_type = type.params()->at(0);
-      PTListExpr *list_expr = static_cast<PTListExpr*>(expr.get());
+      const PTListExpr *list_expr = static_cast<const PTListExpr*>(expr);
       for (auto &elem : list_expr->elems()) {
         if (!IsConvertible(elem, elem_type)) {
           return false;

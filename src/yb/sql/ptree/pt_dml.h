@@ -19,6 +19,55 @@
 namespace yb {
 namespace sql {
 
+//--------------------------------------------------------------------------------------------------
+// Counter of operators on each column.
+class ColumnOpCounter {
+ public:
+  ColumnOpCounter() : gt_count_(0), lt_count_(0), eq_count_(0) { }
+  int gt_count() const { return gt_count_; }
+  int lt_count() const { return lt_count_; }
+  int eq_count() const { return eq_count_; }
+
+  void increase_gt() { gt_count_++; }
+  void increase_lt() { lt_count_++; }
+  void increase_eq() { eq_count_++; }
+
+ private:
+  int gt_count_;
+  int lt_count_;
+  int eq_count_;
+};
+
+// State variables for where clause.
+class WhereExprState {
+ public:
+  WhereExprState(MCList<ColumnOp> *ops,
+                 MCVector<ColumnOp> *key_ops,
+                 MCVector<ColumnOpCounter> *op_counters,
+                 bool write_only)
+      : ops_(ops), key_ops_(key_ops), op_counters_(op_counters), write_only_(write_only) {
+  }
+
+  CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
+                                 const PTRelationExpr *expr,
+                                 const ColumnDesc *col_desc,
+                                 PTExpr::SharedPtr value);
+
+ private:
+  // Operators on all columns.
+  MCList<ColumnOp> *ops_;
+
+  // Operators on key columns.
+  MCVector<ColumnOp> *key_ops_;
+
+  // Counters of '=', '<', and '>' operators for each column in the where expression.
+  MCVector<ColumnOpCounter> *op_counters_;
+
+  // update, insert, delete.
+  bool write_only_;
+};
+
+//--------------------------------------------------------------------------------------------------
 // This class represents the data of collection type. PostgreSql syntax rules dictate how we form
 // the hierarchy of our C++ classes, so classes for VALUES and SELECT clause must share the same
 // base class.
@@ -134,31 +183,8 @@ class PTDmlStmt : public PTCollection {
   virtual void Reset() override;
 
  protected:
-  // Data types.
-  struct WhereSemanticStats {
-    WhereSemanticStats() : has_gt_(false), has_lt_(false), has_eq_(false) {
-    }
-
-    bool has_gt_;
-    bool has_lt_;
-    bool has_eq_;
-  };
-
   // Protected functions.
-  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context,
-                                  PTExpr *expr,
-                                  MCVector<WhereSemanticStats> *col_stats);
-  CHECKED_STATUS AnalyzeIfExpr(SemContext *sem_context,
-                               PTExpr *expr);
-  CHECKED_STATUS AnalyzeCompareExpr(SemContext *sem_context,
-                                    PTExpr *expr,
-                                    const ColumnDesc **col_desc = nullptr,
-                                    PTExpr::SharedPtr *value = nullptr);
-  CHECKED_STATUS AnalyzeBetweenExpr(SemContext *sem_context,
-                                    PTExpr *expr);
-  CHECKED_STATUS AnalyzeCompareExpr(SemContext *sem_context,
-                                    PTRef *lhs,
-                                    PTExpr *rhs);
+  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
 
   // Semantic-analyzing the USING TTL clause.
   CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
@@ -194,7 +220,7 @@ class PTDmlStmt : public PTCollection {
   MCVector<PTBindVar*> bind_variables_;
 
   // Semantic phase will decorate the following fields.
-  MCUniPtr<MCVector<ColumnArg>> column_args_;
+  MCSharedPtr<MCVector<ColumnArg>> column_args_;
 };
 
 }  // namespace sql

@@ -167,6 +167,16 @@ class PrimitiveValue {
   // Set a primitive value in a YQLValuePB.
   static void ToYQLValuePB(const PrimitiveValue& pv, const YQLType& yql_type, YQLValuePB* yql_val);
 
+  // Construct a primitive value from a YQLExpressionPB.
+  static PrimitiveValue FromYQLExpressionPB(const YQLType& yql_type,
+                                            const YQLExpressionPB& yql_expr,
+                                            ColumnSchema::SortingType sorting_type);
+
+  // Set a primitive value in a YQLExpressionPB.
+  static void ToYQLExpressionPB(const PrimitiveValue& pv,
+                                const YQLType& yql_type,
+                                YQLExpressionPB* yql_expr);
+
   ValueType value_type() const { return type_; }
 
   void AppendToKey(KeyBytes* key_bytes) const;

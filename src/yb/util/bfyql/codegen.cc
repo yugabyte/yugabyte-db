@@ -62,7 +62,7 @@ class BFCodegen {
 
     // Start an enum class with a NO_OP.
     operator_ids_.reserve(kBFDirectory.size());
-    fopcode << "enum class BFOpcode : int {" << endl;
+    fopcode << "enum class BFOpcode : int32_t {" << endl;
 
     // All builtin operators should be prefix with "OP_".
     string min_opcode;
@@ -300,10 +300,12 @@ class BFCodegen {
            << kFileNamespace;
 
     // Generating table of functions whose outputs are shared pointers.
-    ftable << "template<typename PType, typename RType>" << endl
+    ftable << "template<typename PType, typename RType," << endl
+           << "         template<typename, typename> class CType," << endl
+           << "         template<typename> class AType>" << endl
            << "const vector<std::function<Status(const std::vector<std::shared_ptr<PType>>&, "
            << "const std::shared_ptr<RType>&)>>" << endl
-           << "    BFExecApi<PType, RType>::kBFExecFuncs = {" << endl;
+           << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncs = {" << endl;
     for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "Exec<PType, RType>," << endl;
@@ -312,10 +314,12 @@ class BFCodegen {
            << endl;
 
     // Generating table of functions whose outputs are raw pointers.
-    ftable << "template<typename PType, typename RType>" << endl
+    ftable << "template<typename PType, typename RType," << endl
+           << "         template<typename, typename> class CType," << endl
+           << "         template<typename> class AType>" << endl
            << "const vector<std::function<Status(const std::vector<PType*>&, RType*)>>"
            << endl
-           << "    BFExecApi<PType, RType>::kBFExecFuncsRaw = {" << endl;
+           << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRaw = {" << endl;
     for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "ExecRaw<PType, RType>," << endl;

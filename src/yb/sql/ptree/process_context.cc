@@ -86,7 +86,6 @@ CHECKED_STATUS ProcessContextBase::Error(const YBLocation& l,
 
   // Append this error message to the context.
   error_msgs_.append(msg);
-
   VLOG(3) << msg;
   return STATUS(SqlError, msg.c_str(), Slice(), static_cast<int64_t>(error_code_));
 }

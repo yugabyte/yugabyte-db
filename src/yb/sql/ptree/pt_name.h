@@ -41,6 +41,10 @@ class PTName : public TreeNode {
     return *name_;
   }
 
+  const MCString::SharedPtr& name_ptr() {
+    return name_;
+  }
+
  private:
   MCString::SharedPtr name_;
 };
@@ -102,6 +106,11 @@ class PTQualifiedName : public PTName {
 
   const MCString& last_name() const {
     return ptnames_.back()->name();
+  }
+
+  // Construct bind variable name from this name.
+  const MCString::SharedPtr& bindvar_name() {
+    return ptnames_.back()->name_ptr();
   }
 
   client::YBTableName ToTableName() const {

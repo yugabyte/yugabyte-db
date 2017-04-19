@@ -17,7 +17,7 @@ CHECKED_STATUS YQLColumnValuesToPrimitiveValues(
     }
 
     components->push_back(PrimitiveValue::FromYQLValuePB(
-        schema.column(column_idx).type(), column_value.value(),
+        schema.column(column_idx).type(), column_value.expr().value(),
         schema.column(column_idx).sorting_type()));
     column_idx++;
   }

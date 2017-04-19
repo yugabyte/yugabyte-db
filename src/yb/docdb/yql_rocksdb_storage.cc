@@ -61,7 +61,7 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
   // Construct the scan spec basing on the WHERE condition.
   spec->reset(new DocYQLScanSpec(
       schema, hash_code, hashed_components,
-      request.has_where_condition() ? &request.where_condition() : nullptr,
+      request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       include_static_columns, start_sub_doc_key.doc_key()));
   return Status::OK();
 }

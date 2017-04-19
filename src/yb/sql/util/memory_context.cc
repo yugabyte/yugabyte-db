@@ -41,6 +41,14 @@ void *MemoryContext::Malloc(size_t size) {
 }
 
 void MemoryContext::Reset() {
+  for (auto allocator_entry : allocator_map_) {
+    // In GetAllocator() function, MemoryContext called Arena::NewObject() to allocate spaces for
+    // MCAllocator objects, so only the destructors should be called. Delete expression should not
+    // be used here as it also calls free().
+    AllocatorBase *allocator = allocator_entry.second;
+    allocator->~AllocatorBase();
+  }
+
   // Clear allocators allocated from Arena before resetting Arena to release allocated memory.
   allocator_map_.clear();
   manager_->Reset();

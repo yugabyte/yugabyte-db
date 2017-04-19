@@ -160,6 +160,9 @@ YQLValuePB EvaluateValue(const YQLExpressionPB& expr, const YQLValueMap& row) {
     }
     case YQLExpressionPB::ExprCase::kValue:
       return expr.value();
+    case YQLExpressionPB::ExprCase::kBfcall:
+      LOG(FATAL) << "Builtin call is not yet supported";
+      break;
     case YQLExpressionPB::ExprCase::kCondition: FALLTHROUGH_INTENDED;
     case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
       break;

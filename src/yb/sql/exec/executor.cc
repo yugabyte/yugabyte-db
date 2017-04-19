@@ -329,389 +329,75 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
 
 //--------------------------------------------------------------------------------------------------
 
-template<typename PBType>
-CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
-                                  YQLType col_type,
-                                  PBType* col_pb,
-                                  YBPartialRow *row,
-                                  int col_index) {
-  InternalType itype = client::YBColumnSchema::ToInternalDataType(col_type);
-  switch (itype) {
-    case InternalType::kInt8Value: {
-      EvalIntValue int_value;
-      RETURN_NOT_OK(EvalExpr(expr, &int_value));
+CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
+                                         const YQLExpressionPB *expr_pb,
+                                         YBPartialRow *row) {
+  DCHECK(expr_pb->has_value()) << "Expecting literals for hash columns";
 
-      // TODO(neil): Check for overflow and raise runtime error if needed.
-      if (int_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        int8_t actual_value = static_cast<int8_t>(int_value.value_);
-        VLOG(3) << "Expr actual value = " << actual_value;
-        YQLValue::set_int8_value(actual_value, col_pb);
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetInt8(col_index, actual_value));
-        }
-      }
+  const YQLValuePB& value_pb = expr_pb->value();
+  if (YQLValue::IsNull(value_pb)) {
+    return Status::OK();
+  }
+
+  switch (YQLValue::type(value_pb)) {
+    case InternalType::kInt8Value:
+      RETURN_NOT_OK(row->SetInt8(col_desc->index(), YQLValue::int8_value(value_pb)));
       break;
-    }
-
-    case InternalType::kInt16Value: {
-      EvalIntValue int_value;
-      RETURN_NOT_OK(EvalExpr(expr, &int_value));
-
-      // TODO(neil): Check for overflow and raise runtime error if needed.
-      if (int_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        int16_t actual_value = static_cast<int16_t>(int_value.value_);
-        VLOG(3) << "Expr actual value = " << actual_value;
-        YQLValue::set_int16_value(actual_value, col_pb);
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetInt16(col_index, actual_value));
-        }
-      }
+    case InternalType::kInt16Value:
+      RETURN_NOT_OK(row->SetInt16(col_desc->index(), YQLValue::int16_value(value_pb)));
       break;
-    }
-
-    case InternalType::kInt32Value: {
-      EvalIntValue int_value;
-      RETURN_NOT_OK(EvalExpr(expr, &int_value));
-
-      // TODO(neil): Check for overflow and raise runtime error if needed.
-      if (int_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        int32_t actual_value = static_cast<int32_t>(int_value.value_);
-        VLOG(3) << "Expr actual value = " << actual_value;
-        YQLValue::set_int32_value(actual_value, col_pb);
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetInt32(col_index, actual_value));
-        }
-      }
+    case InternalType::kInt32Value:
+      RETURN_NOT_OK(row->SetInt32(col_desc->index(), YQLValue::int32_value(value_pb)));
       break;
-    }
-
-    case InternalType::kInt64Value: {
-      EvalIntValue int_value;
-      RETURN_NOT_OK(EvalExpr(expr, &int_value));
-
-      // TODO(neil): Check for overflow and raise runtime error if needed.
-      if (int_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        int64_t actual_value = int_value.value_;
-        VLOG(3) << "Expr actual value = " << actual_value;
-        YQLValue::set_int64_value(actual_value, col_pb);
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetInt64(col_index, actual_value));
-        }
-      }
+    case InternalType::kInt64Value:
+      RETURN_NOT_OK(row->SetInt64(col_desc->index(), YQLValue::int64_value(value_pb)));
       break;
-    }
-
-    case InternalType::kStringValue: {
-      EvalStringValue string_value;
-      RETURN_NOT_OK(EvalExpr(expr, &string_value));
-
-      if (string_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        YQLValue::set_string_value(string_value.value_->data(),
-                                   string_value.value_->size(),
-                                   col_pb);
-        VLOG(3) << "Expr actual value = " << string_value.value_->c_str();
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetString(
-              col_index, Slice(string_value.value_->data(), string_value.value_->size())));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kFloatValue: {
-      EvalDoubleValue double_value;
-      RETURN_NOT_OK(EvalExpr(expr, &double_value));
-
-      if (double_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        float actual_value = double_value.value_;
-        VLOG(3) << "Expr actual value = " << actual_value;
-        YQLValue::set_float_value(actual_value, col_pb);
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetFloat(col_index, actual_value));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kDoubleValue: {
-      EvalDoubleValue double_value;
-      RETURN_NOT_OK(EvalExpr(expr, &double_value));
-
-      if (double_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        double actual_value = double_value.value_;
-        VLOG(3) << "Expr actual value = " << actual_value;
-        YQLValue::set_double_value(actual_value, col_pb);
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetDouble(col_index, actual_value));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kBoolValue: {
-      EvalBoolValue bool_value;
-      RETURN_NOT_OK(EvalExpr(expr, &bool_value));
-
-      if (bool_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        YQLValue::set_bool_value(bool_value.value_, col_pb);
-        VLOG(3) << "Expr actual value = " << bool_value.value_;
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetBool(col_index, bool_value.value_));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kTimestampValue: {
-      EvalTimestampValue timestamp_value;
-      RETURN_NOT_OK(EvalExpr(expr, &timestamp_value));
-
-      if (timestamp_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        int64_t actual_value = timestamp_value.value_;
-        VLOG(3) << "Expr actual value = " << actual_value;
-        YQLValue::set_timestamp_value(actual_value, col_pb);
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetTimestamp(col_index, actual_value));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kInetaddressValue: {
-      EvalInetaddressValue inetaddress_value;
-      RETURN_NOT_OK(EvalExpr(expr, &inetaddress_value));
-
-      if (inetaddress_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        InetAddress &actual_value = inetaddress_value.value_;
-        VLOG(3) << "Expr actual value = " << actual_value.ToString();
-        YQLValue::set_inetaddress_value(actual_value, col_pb);
-        string bytes;
-        RETURN_NOT_OK(actual_value.ToBytes(&bytes));
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetInet(col_index, Slice(bytes)));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kUuidValue: {
-      EvalUuidValue uuid_value;
-      RETURN_NOT_OK(EvalExpr(expr, &uuid_value));
-
-      if (uuid_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        Uuid &actual_value = uuid_value.value_;
-        VLOG(3) << "Expr actual value = " << actual_value.ToString();
-        YQLValue::set_uuid_value(actual_value, col_pb);
-        string bytes;
-        RETURN_NOT_OK(actual_value.ToBytes(&bytes));
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetUuid(col_index, Slice(bytes)));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kTimeuuidValue: {
-      EvalTimeUuidValue timeuuid_value;
-      RETURN_NOT_OK(EvalExpr(expr, &timeuuid_value));
-
-      if (timeuuid_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        Uuid &actual_value = timeuuid_value.value_;
-        RETURN_NOT_OK(actual_value.IsTimeUuid());
-        VLOG(3) << "Expr actual value = " << actual_value.ToString();
-        YQLValue::set_timeuuid_value(actual_value, col_pb);
-        string bytes;
-        RETURN_NOT_OK(actual_value.ToBytes(&bytes));
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetTimeUuid(col_index, Slice(bytes)));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kBinaryValue: {
-      EvalBinaryValue binary_value;
-      RETURN_NOT_OK(EvalExpr(expr, &binary_value));
-      if (binary_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        YQLValue::set_binary_value(binary_value.value_->data(),
-                                   binary_value.value_->size(),
-                                   col_pb);
-        VLOG(3) << "Expr actual value = " << b2a_hex(col_pb->binary_value());
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetBinary(
-              col_index, Slice(binary_value.value_->data(), binary_value.value_->size())));
-        }
-      }
-      break;
-    }
-
-    case InternalType::kMapValue: {
-      if (row != nullptr) {
-        return STATUS(NotSupported, "Cannot have collection types in key");
-      }
-      if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
-        // This is a null node -- nothing to do.
-        return Status::OK();
-      }
-
-      switch (expr->expr_op()) {
-        case ExprOperator::kBindVar: {
-          if (params_ == nullptr) {
-            return STATUS(RuntimeError, "no bind variable supplied");
-          }
-          const PTBindVar *var = static_cast<const PTBindVar *>(expr.get());
-          YQLValueWithPB value;
-          RETURN_NOT_OK(GetBindVariable(var, &value));
-          // TODO (mihnea) refactor YQLValue to avoid copying here and below
-          col_pb->CopyFrom(value.value());
-          break;
-        }
-        case ExprOperator::kCollection: {
-          YQLValue::set_map_value(col_pb);
-          if (expr->yql_type_id() == MAP) {
-            // adding elements
-            PTMapExpr *map_expr = static_cast<PTMapExpr *>(expr.get());
-            for (auto &key : map_expr->keys()) {
-              PBType *key_pb = YQLValue::add_map_key(col_pb);
-              RETURN_NOT_OK(ExprToPB(key, col_type.params()->at(0), key_pb));
-            }
-            for (auto &value : map_expr->values()) {
-              PBType *value_pb = YQLValue::add_map_value(col_pb);
-              RETURN_NOT_OK(ExprToPB(value, col_type.params()->at(1), value_pb));
-            }
-          }  // else can be empty SET "{}" so nothing to do -- checking is done before getting here
-          break;
-        }
-        default:
-          LOG(FATAL) << "Unsupported expression operator for map";
-      }
-      break;
-    }
-
     case InternalType::kDecimalValue: {
-      EvalDecimalValue decimal_value;
-      RETURN_NOT_OK(EvalExpr(expr, &decimal_value));
-
-      if (decimal_value.is_null()) {
-        VLOG(3) << "Expr actual value = null";
-      } else {
-        YQLValue::set_decimal_value(decimal_value.value_->data(),
-                                    decimal_value.value_->size(),
-                                    col_pb);
-        VLOG(3) << "Expr actual value = " << decimal_value.value_->c_str();
-        if (row != nullptr) {
-          RETURN_NOT_OK(row->SetDecimal(col_index, Slice(decimal_value.value_->data(),
-                                                         decimal_value.value_->size())));
-        }
-      }
+      const string& decimal_value = YQLValue::decimal_value(value_pb);
+      RETURN_NOT_OK(row->SetDecimal(col_desc->index(),
+                                    Slice(decimal_value.data(), decimal_value.size())));
       break;
     }
-
-    case InternalType::kSetValue: {
-      if (row != nullptr) {
-        return STATUS(NotSupported, "Cannot have collection types in key");
-      }
-      if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
-        // This is a null node -- nothing to do.
-        return Status::OK();
-      }
-
-      switch (expr->expr_op()) {
-        case ExprOperator::kBindVar: {
-          if (params_ == nullptr) {
-            return STATUS(RuntimeError, "no bind variable supplied");
-          }
-          const PTBindVar *var = static_cast<const PTBindVar *>(expr.get());
-          YQLValueWithPB value;
-          RETURN_NOT_OK(GetBindVariable(var, &value));
-          col_pb->CopyFrom(value.value());
-          break;
-        }
-        case ExprOperator::kCollection: {
-          YQLValue::set_set_value(col_pb);
-          // adding elements
-          PTSetExpr *set_expr = static_cast<PTSetExpr *>(expr.get());
-          for (auto &elem : set_expr->elems()) {
-            PBType *elem_pb = YQLValue::add_set_elem(col_pb);
-            RETURN_NOT_OK(ExprToPB(elem, col_type.params()->at(0), elem_pb));
-          }
-          break;
-        }
-        default:
-          LOG(FATAL) << "Unsupported expression operator for set";
-      }
+    case InternalType::kStringValue:
+      RETURN_NOT_OK(row->SetString(col_desc->index(), YQLValue::string_value(value_pb)));
+      break;
+    case InternalType::kTimestampValue:
+      RETURN_NOT_OK(row->SetTimestamp(col_desc->index(),
+                                      YQLValue::timestamp_value(value_pb).ToInt64()));
+      break;
+    case InternalType::kInetaddressValue: {
+      std::string bytes;
+      RETURN_NOT_OK(YQLValue::inetaddress_value(value_pb).ToBytes(&bytes));
+      RETURN_NOT_OK(row->SetInet(col_desc->index(), Slice(bytes)));
       break;
     }
-
-    case InternalType::kListValue: {
-      if (row != nullptr) {
-        return STATUS(NotSupported, "Cannot have collection types in key");
-      }
-      if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
-        // This is a null node -- nothing to do.
-        return Status::OK();
-      }
-
-      switch (expr->expr_op()) {
-        case ExprOperator::kBindVar: {
-          if (params_ == nullptr) {
-            return STATUS(RuntimeError, "no bind variable supplied");
-          }
-          const PTBindVar *var = static_cast<const PTBindVar *>(expr.get());
-          YQLValueWithPB value;
-          RETURN_NOT_OK(GetBindVariable(var, &value));
-          col_pb->CopyFrom(value.value());
-          break;
-        }
-        case ExprOperator::kCollection: {
-          YQLValue::set_list_value(col_pb);
-          // adding elements
-          PTListExpr *list_expr = static_cast<PTListExpr *>(expr.get());
-          for (auto &elem : list_expr->elems()) {
-            PBType *elem_pb = YQLValue::add_list_elem(col_pb);
-            RETURN_NOT_OK(ExprToPB(elem, col_type.params()->at(0), elem_pb));
-          }
-          break;
-        }
-        default:
-          LOG(FATAL) << "Unsupported expression operator for list";
-      }
+    case InternalType::kUuidValue: {
+      std::string bytes;
+      RETURN_NOT_OK(YQLValue::uuid_value(value_pb).ToBytes(&bytes));
+      RETURN_NOT_OK(row->SetUuid(col_desc->index(), Slice(bytes)));
       break;
     }
-    // TODO (hector): Add support for varint.
-    case InternalType::kVarintValue:
-      LOG(FATAL) << "VarInt type is not yet supported";
+    case InternalType::kTimeuuidValue: {
+      std::string bytes;
+      RETURN_NOT_OK(YQLValue::timeuuid_value(value_pb).ToBytes(&bytes));
+      RETURN_NOT_OK(row->SetTimeUuid(col_desc->index(), Slice(bytes)));
+      break;
+    }
+    case InternalType::kBinaryValue:
+      RETURN_NOT_OK(row->SetBinary(col_desc->index(), YQLValue::binary_value(value_pb)));
       break;
 
-    case InternalType::VALUE_NOT_SET: FALLTHROUGH_INTENDED;
+    case InternalType::kBoolValue: FALLTHROUGH_INTENDED;
+    case InternalType::kFloatValue: FALLTHROUGH_INTENDED;
+    case InternalType::kDoubleValue: FALLTHROUGH_INTENDED;
+    case InternalType::kMapValue: FALLTHROUGH_INTENDED;
+    case InternalType::kSetValue: FALLTHROUGH_INTENDED;
+    case InternalType::kListValue:
+      LOG(FATAL) << "Invalid datatype for partition column";
+
+    case InternalType::kVarintValue: FALLTHROUGH_INTENDED;
     default:
-      LOG(FATAL) << "Not a valid type";
+      LOG(FATAL) << "DataType not yet supported";
   }
 
   return Status::OK();
@@ -748,12 +434,12 @@ CHECKED_STATUS Executor::ColumnArgsToWriteRequestPB(const shared_ptr<client::YBT
 
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
+    YQLExpressionPB *expr_pb = col_pb->mutable_expr();
     if (col_desc->is_hash()) {
-      RETURN_NOT_OK(ExprToPB<YQLValuePB>(
-          col.expr(), col_desc->yql_type(), col_pb->mutable_value(), row, col_desc->index()));
+      RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+      RETURN_NOT_OK(SetupPartialRow(col_desc, expr_pb, row));
     } else {
-      RETURN_NOT_OK(ExprToPB<YQLValuePB>(
-          col.expr(), col_desc->yql_type(), col_pb->mutable_value()));
+      RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
     }
   }
 
@@ -779,9 +465,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
     }
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(
-      ExprToPB<YQLValuePB>(op.expr(), col_desc->yql_type(), col_pb->mutable_value(), row,
-          col_desc->index()));
+    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
+    RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
   }
 
   // Setup the rest of the columns.
@@ -795,7 +480,7 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
       col_pb = req->add_column_values();
     }
     col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(ExprToPB<YQLValuePB>(op.expr(), col_desc->yql_type(), col_pb->mutable_value()));
+    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
   }
 
   return Status::OK();
@@ -817,11 +502,8 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
     }
     VLOG(3) << "READ request, column id = " << col_desc->id();
     col_pb->set_column_id(col_desc->id());
-    RETURN_NOT_OK(ExprToPB<YQLValuePB>(op.expr(),
-        col_desc->yql_type(),
-                                             col_pb->mutable_value(),
-                                             row,
-                                             col_desc->index()));
+    RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb->mutable_expr()));
+    RETURN_NOT_OK(SetupPartialRow(col_desc, col_pb->mutable_expr(), row));
   }
 
   // Not generate any code if where clause is empty.
@@ -830,20 +512,20 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
   }
 
   // Setup the rest of the where clause.
-  YQLConditionPB *current_cond = req->mutable_where_condition();
+  YQLConditionPB *cond_pb = req->mutable_where_expr()->mutable_condition();
   for (const auto& col_op : where_ops) {
     if (&col_op == &where_ops.back()) {
       // This is the last operator. Use the current ConditionPB.
-      RETURN_NOT_OK(WhereOpToPB(current_cond, col_op));
+      RETURN_NOT_OK(WhereOpToPB(cond_pb, col_op));
 
     } else {
       // Current ConditionPB would be AND of this op and the next one.
-      current_cond->set_op(YQL_OP_AND);
-      YQLExpressionPB *op = current_cond->add_operands();
+      cond_pb->set_op(YQL_OP_AND);
+      YQLExpressionPB *op = cond_pb->add_operands();
       RETURN_NOT_OK(WhereOpToPB(op->mutable_condition(), col_op));
 
       // Create a new the ConditionPB for the next operand.
-      current_cond = current_cond->add_operands()->mutable_condition();
+      cond_pb = cond_pb->add_operands()->mutable_condition();
     }
   }
 
@@ -856,154 +538,13 @@ CHECKED_STATUS Executor::WhereOpToPB(YQLConditionPB *condition, const ColumnOp& 
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = col_op.desc();
-  YQLExpressionPB *op = condition->add_operands();
+  YQLExpressionPB *expr_pb = condition->add_operands();
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
-  op->set_column_id(col_desc->id());
+  expr_pb->set_column_id(col_desc->id());
 
   // Operand 2: The expression.
-  op = condition->add_operands();
-  return ExprToPB<YQLValuePB>(col_op.expr(), col_desc->yql_type(), op->mutable_value());
-}
-
-CHECKED_STATUS Executor::RelationalOpToPB(YQLConditionPB *condition,
-                                          const YQLOperator opr,
-                                          const PTExpr *relation) {
-  const PTPredicate2* pred = static_cast<const PTPredicate2*>(relation);
-
-  // Set the operator.
-  condition->set_op(opr);
-
-  // Operand 1: The column.
-  const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
-  YQLExpressionPB *op = condition->add_operands();
-  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
-  op->set_column_id(col_desc->id());
-
-  // Operand 2: The expression.
-  const PTExpr::SharedPtr& expr = pred->op2();
-  op = condition->add_operands();
-  return ExprToPB<YQLValuePB>(expr, col_desc->yql_type(), op->mutable_value());
-}
-
-CHECKED_STATUS Executor::ColumnConditionToPB(YQLConditionPB *condition,
-                                             const YQLOperator opr,
-                                             const PTExpr *cond) {
-  const PTPredicate1* pred = static_cast<const PTPredicate1*>(cond);
-
-  // Set the operator.
-  condition->set_op(opr);
-
-  // Operand 1: The column.
-  const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
-  YQLExpressionPB *op = condition->add_operands();
-  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
-  op->set_column_id(col_desc->id());
-  return Status::OK();
-}
-
-CHECKED_STATUS Executor::BetweenToPB(YQLConditionPB *condition,
-                                     const YQLOperator opr,
-                                     const PTExpr *between) {
-  const PTPredicate3* pred = static_cast<const PTPredicate3*>(between);
-
-  // Set the operator.
-  condition->set_op(opr);
-
-  // Operand 1: The column.
-  const ColumnDesc *col_desc = static_cast<PTRef*>(pred->op1().get())->desc();
-  YQLExpressionPB *op = condition->add_operands();
-  VLOG(3) << "WHERE condition, column id = " << col_desc->id();
-  op->set_column_id(col_desc->id());
-
-  // Operand 2: The lower-bound expression.
-  const PTExpr::SharedPtr& lower_bound = pred->op2();
-  op = condition->add_operands();
-  RETURN_NOT_OK(ExprToPB<YQLValuePB>(lower_bound, col_desc->yql_type(), op->mutable_value()));
-
-  // Operand 3: The upper-bound expression.
-  const PTExpr::SharedPtr& upper_bound = pred->op3();
-  op = condition->add_operands();
-  return ExprToPB<YQLValuePB>(upper_bound, col_desc->yql_type(), op->mutable_value());
-}
-
-CHECKED_STATUS Executor::BoolExprToPB(YQLConditionPB *cond, const PTExpr* expr) {
-
-  switch (expr->expr_op()) {
-
-    case ExprOperator::kAND: {
-      cond->set_op(YQL_OP_AND);
-      const PTPredicate2 *pred = static_cast<const PTPredicate2*>(expr);
-      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
-      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op2().get()));
-      break;
-    }
-    case ExprOperator::kOR: {
-      cond->set_op(YQL_OP_OR);
-      const PTPredicate2 *pred = static_cast<const PTPredicate2*>(expr);
-      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
-      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op2().get()));
-      break;
-    }
-    case ExprOperator::kNot: {
-      cond->set_op(YQL_OP_NOT);
-      const PTPredicate1 *pred = static_cast<const PTPredicate1*>(expr);
-      RETURN_NOT_OK(BoolExprToPB(cond->add_operands()->mutable_condition(), pred->op1().get()));
-      break;
-    }
-
-    case ExprOperator::kEQ:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_EQUAL, expr));
-      break;
-    case ExprOperator::kLT:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_LESS_THAN, expr));
-      break;
-    case ExprOperator::kGT:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_GREATER_THAN, expr));
-      break;
-    case ExprOperator::kLE:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_LESS_THAN_EQUAL, expr));
-      break;
-    case ExprOperator::kGE:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_GREATER_THAN_EQUAL, expr));
-      break;
-    case ExprOperator::kNE:
-      RETURN_NOT_OK(RelationalOpToPB(cond, YQL_OP_NOT_EQUAL, expr));
-      break;
-
-    case ExprOperator::kIsNull:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_NULL, expr));
-      break;
-    case ExprOperator::kIsNotNull:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_NOT_NULL, expr));
-      break;
-    case ExprOperator::kIsTrue:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_TRUE, expr));
-      break;
-    case ExprOperator::kIsFalse:
-      RETURN_NOT_OK(ColumnConditionToPB(cond, YQL_OP_IS_FALSE, expr));
-      break;
-
-    case ExprOperator::kBetween:
-      RETURN_NOT_OK(BetweenToPB(cond, YQL_OP_BETWEEN, expr));
-      break;
-
-    case ExprOperator::kNotBetween:
-      RETURN_NOT_OK(BetweenToPB(cond, YQL_OP_NOT_BETWEEN, expr));
-      break;
-
-    case ExprOperator::kExists:
-      cond->set_op(YQL_OP_EXISTS);
-      break;
-    case ExprOperator::kNotExists:
-      cond->set_op(YQL_OP_NOT_EXISTS);
-      break;
-
-    default:
-      LOG(FATAL) << "Illegal op = " << int(expr->expr_op());
-      break;
-  }
-
-  return Status::OK();
+  expr_pb = condition->add_operands();
+  return PTExprToPB(col_op.expr(), expr_pb);
 }
 
 namespace {
@@ -1205,26 +746,26 @@ void Executor::ExecPTNodeAsync(
   req->set_return_paging_state(true);
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
-  EvalIntValue limit_value;
-  EvalVarIntStringValue varint_value;
   if (tnode->has_limit()) {
-    const PTExpr::SharedPtr limit_expr = tnode->limit();
-    CB_RETURN_NOT_OK(cb, EvalVarIntExpr(limit_expr, &varint_value));
-    CB_RETURN_NOT_OK(cb, ConvertFromVarInt(&limit_value, varint_value));
-    if (limit_value.value_ < 0) {
+    YQLExpressionPB limit_pb;
+    CB_RETURN_NOT_OK(cb, PTExprToPB(tnode->limit(), &limit_pb));
+    DCHECK(limit_pb.has_value()) << "Integer constant expected";
+
+    int64_t limit = limit_pb.value().int64_value();
+    if (limit < 0) {
       CB_RETURN(
           cb, exec_context_->Error(
               tnode->loc(), "LIMIT clause cannot be a negative value.",
               ErrorCode::INVALID_ARGUMENTS));
     }
-    if (limit_value.value_ == 0 || paging_params->total_num_rows_read() >= limit_value.value_) {
+    if (limit == 0 || paging_params->total_num_rows_read() >= limit) {
       CB_RETURN(cb, Status::OK());
     }
 
     // If the LIMIT clause, subtracting the number of rows we have returned so far, is lower than
     // the page size limit set from above, set the lower limit and do not return paging state when
     // this limit is hit.
-    uint64_t limit = limit_value.value_ - paging_params->total_num_rows_read();
+    limit -= paging_params->total_num_rows_read();
     if (limit < req->limit()) {
       req->set_limit(limit);
       req->set_return_paging_state(false);
@@ -1311,7 +852,7 @@ void Executor::ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallb
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    s = BoolExprToPB(insert_op->mutable_request()->mutable_if_condition(), tnode->if_clause());
+    s = PTExprToPB(tnode->if_clause(), insert_op->mutable_request()->mutable_if_expr());
     if (!s.ok()) {
       CB_RETURN(
           cb,
@@ -1343,8 +884,7 @@ void Executor::ExecPTNodeAsync(const PTDeleteStmt *tnode, StatementExecutedCallb
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    Status s = BoolExprToPB(delete_op->mutable_request()->mutable_if_condition(),
-                            tnode->if_clause());
+    Status s = PTExprToPB(tnode->if_clause(), delete_op->mutable_request()->mutable_if_expr());
     if (!s.ok()) {
       CB_RETURN(
           cb,
@@ -1387,8 +927,7 @@ void Executor::ExecPTNodeAsync(const PTUpdateStmt *tnode, StatementExecutedCallb
 
   // Set the IF clause.
   if (tnode->if_clause() != nullptr) {
-    Status s = BoolExprToPB(update_op->mutable_request()->mutable_if_condition(),
-                            tnode->if_clause());
+    Status s = PTExprToPB(tnode->if_clause(), update_op->mutable_request()->mutable_if_expr());
     if (!s.ok()) {
       CB_RETURN(
           cb,

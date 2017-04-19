@@ -64,8 +64,8 @@ class PTInsertStmt : public PTDmlStmt {
   }
 
   // IF clause.
-  const PTExpr* if_clause() const {
-    return if_clause_.get();
+  const PTExpr::SharedPtr& if_clause() const {
+    return if_clause_;
   }
 
  private:

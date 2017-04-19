@@ -10,16 +10,27 @@
 #include <glog/logging.h>
 
 #include "yb/common/key_encoder.h"
+#include "yb/common/common.pb.h"
 #include "yb/util/status.h"
 
 namespace yb {
 
 class YQLType {
  public:
-  explicit YQLType(DataType main = DataType::UNKNOWN_DATA, vector<YQLType> params = {})
-      : main_(main),
-        params_(std::make_shared<vector<YQLType>>(params)) {
+  YQLType(DataType main = DataType::UNKNOWN_DATA, vector<YQLType> params = {})
+      : main_(main), params_(std::make_shared<vector<YQLType>>(params)) {
     DCHECK(IsValid());
+  }
+
+  YQLType(const YQLType& source)
+      : main_(source.main_), params_(source.params_) {
+    DCHECK(IsValid());
+  }
+
+  YQLType& operator=(const YQLType& source) {
+    main_ = source.main_;
+    params_ = source.params_;
+    return *this;
   }
 
   explicit YQLType(YQLTypePB pb_type) : main_(pb_type.main()),
@@ -30,11 +41,28 @@ class YQLType {
     DCHECK(IsValid());
   }
 
+  ~YQLType() {
+    params_ = nullptr;
+  }
+
   void ToYQLTypePB(YQLTypePB *pb_type) const {
     pb_type->set_main(main_);
     for (auto &param : *params_) {
       param.ToYQLTypePB(pb_type->add_params());
     }
+  }
+
+  static YQLType CreateTypeMap(DataType key_type = DataType::UNKNOWN_DATA,
+                               DataType value_type = DataType::UNKNOWN_DATA) {
+    return YQLType(DataType::MAP, vector<YQLType>({key_type, value_type}));
+  }
+
+  static YQLType CreateTypeList(DataType value_type = DataType::UNKNOWN_DATA) {
+    return YQLType(DataType::LIST, vector<YQLType>(1, value_type));
+  }
+
+  static YQLType CreateTypeSet(DataType value_type = DataType::UNKNOWN_DATA) {
+    return YQLType(DataType::SET, vector<YQLType>(1, value_type));
   }
 
   const DataType main() const {
@@ -43,6 +71,16 @@ class YQLType {
 
   const std::shared_ptr<const vector<YQLType>> params() const {
     return params_;
+  }
+
+  const YQLType& param_type(int member_index = 0) const {
+    DCHECK_LT(member_index, params_->size());
+    return (*params_)[member_index];
+  }
+
+  void set_param_type(int member_index, const YQLType& yql_type) {
+    DCHECK_LT(member_index, params_->size());
+    (*params_)[member_index] = yql_type;
   }
 
   const TypeInfo* type_info() const {
@@ -55,6 +93,10 @@ class YQLType {
 
   bool IsElementary() const {
     return !IsParametric();
+  }
+
+  bool IsUnknown() const {
+    return IsUnknown(main_);
   }
 
   bool IsInteger() const {
@@ -126,6 +168,7 @@ class YQLType {
       case DataType::UINT64: return "uint64";
     }
     LOG (FATAL) << "Invalid datatype: " << datatype;
+    return "Undefined Type";
   }
 
   void ToString(std::stringstream& os) const {

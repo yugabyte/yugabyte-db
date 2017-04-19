@@ -75,7 +75,7 @@ class ColumnDesc {
     return is_static_;
   }
 
-  YQLType yql_type() const {
+  const YQLType& yql_type() const {
     return yql_type_;
   }
 

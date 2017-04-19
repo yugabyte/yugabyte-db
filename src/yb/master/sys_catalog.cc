@@ -153,11 +153,11 @@ class SysCatalogWriter {
   }
 
   void SetBinaryValue(const std::string& binary_value, YQLColumnValuePB* col_pb) {
-    YQLValue::set_binary_value(binary_value, col_pb->mutable_value());
+    YQLValue::set_binary_value(binary_value, col_pb->mutable_expr()->mutable_value());
   }
 
   void SetInt8Value(const int8_t int8_value, YQLColumnValuePB* col_pb) {
-    YQLValue::set_int8_value(int8_value, col_pb->mutable_value());
+    YQLValue::set_int8_value(int8_value, col_pb->mutable_expr()->mutable_value());
   }
 
   SysCatalogTable* sys_catalog_;

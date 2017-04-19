@@ -42,6 +42,7 @@ RowOperationsPB_Type ToInternalWriteType(YBOperation::Type type) {
     case YBOperation::DELETE: return RowOperationsPB_Type_DELETE;
     default: LOG(FATAL) << "Unexpected write operation type: " << type;
   }
+  return RowOperationsPB_Type_UNKNOWN;
 }
 
 // WriteOperation --------------------------------------------------------------
@@ -266,12 +267,34 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
   return STATUS(RuntimeError, "unsupported datatype");
 }
 
+Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLExpressionPB& yql_expr) {
+  switch (yql_expr.expr_case()) {
+    case YQLExpressionPB::ExprCase::kValue:
+      return SetColumn(row, column_id, yql_expr.value());
+
+    case YQLExpressionPB::ExprCase::kBfcall:
+      LOG(FATAL) << "Builtin call is not yet supported";
+      return Status::OK();
+
+    case YQLExpressionPB::ExprCase::kColumnId:
+      return STATUS(RuntimeError, "unexpected column reference");
+
+    case YQLExpressionPB::ExprCase::kCondition:
+      return STATUS(RuntimeError, "unexpected relational expression");
+
+    case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
+      return STATUS(Corruption, "expression not set");
+  }
+
+  return STATUS(RuntimeError, "unexpected case");
+}
+
 Status SetPartialRowKey(
     YBPartialRow* row,
     const google::protobuf::RepeatedPtrField<YQLColumnValuePB>& hashed_column_values) {
   // Set the partition key in partial row from the hashed columns.
   for (const auto& column_value : hashed_column_values) {
-    RETURN_NOT_OK(SetColumn(row, column_value.column_id(), column_value.value()));
+    RETURN_NOT_OK(SetColumn(row, column_value.column_id(), column_value.expr()));
   }
   // Verify that all hashed columns have been specified.
   const auto* schema = row->schema();

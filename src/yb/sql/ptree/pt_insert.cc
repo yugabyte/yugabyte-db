@@ -30,27 +30,6 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
       columns_(columns),
       value_clause_(value_clause),
       if_clause_(if_clause) {
-  // Set the name of unnamed bind markers for "INSERT tab (<column>, ...) VALUES (?, ...)"
-  if (value_clause != nullptr && columns != nullptr) {
-    PTValues *values = static_cast<PTValues *>(value_clause_.get());
-    if (values->TupleCount() > 0) {
-      const MCList<PTExpr::SharedPtr>& exprs = values->Tuple(0)->node_list();
-      const MCList<PTQualifiedName::SharedPtr>& names = columns_->node_list();
-      auto itr = names.cbegin();
-      for (auto& expr : exprs) {
-        if (itr == names.cend()) {
-          break;
-        }
-        if (expr->expr_op() == ExprOperator::kBindVar) {
-          PTBindVar *var = static_cast<PTBindVar*>(expr.get());
-          if (var->name() == nullptr) {
-            var->set_name(memctx, (*itr)->last_name());
-          }
-        }
-        itr++;
-      }
-    }
-  }
 }
 
 PTInsertStmt::~PTInsertStmt() {
@@ -71,18 +50,16 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   if (value_clause->TupleCount() == 0) {
     return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
   }
-  const MCList<PTExpr::SharedPtr>& exprs = value_clause->Tuple(0)->node_list();
-  for (const auto& expr : exprs) {
-    RETURN_NOT_OK(expr->Analyze(sem_context));
-    RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
-  }
 
   int idx = 0;
+  const MCList<PTExpr::SharedPtr>& exprs = value_clause->Tuple(0)->node_list();
   column_args_->resize(num_cols);
   if (columns_) {
-    // Mismatch between column names and their values.
+    // Processing insert statement that has column list.
+    //   INSERT INTO <table>(names) VALUES(exprs).
     const MCList<PTQualifiedName::SharedPtr>& names = columns_->node_list();
     if (names.size() != exprs.size()) {
+      // Mismatch between number column names and their associated values.
       if (names.size() > exprs.size()) {
         return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_FEW_ARGUMENTS);
       } else {
@@ -100,14 +77,12 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
         return sem_context->Error(name->loc(), ErrorCode::UNDEFINED_COLUMN);
       }
 
-      // If argument is a bind variable, set up the column description. Else check that the
-      // expression can be converted to the expected datatype.
-      if ((*iter)->expr_op() == ExprOperator::kBindVar) {
-        PTBindVar *var = static_cast<PTBindVar*>((*iter).get());
-        var->set_desc(col_desc);
-      } else if (!sem_context->IsConvertible(*iter, col_desc->yql_type())) {
-        return sem_context->Error((*iter)->loc(), ErrorCode::DATATYPE_MISMATCH);
-      }
+      // Process values arguments.
+      const PTExpr::SharedPtr& expr = *iter;
+      SemState sem_state(sem_context, col_desc->yql_type(), col_desc->internal_type(),
+                         col_desc, name->bindvar_name());
+      RETURN_NOT_OK(expr->Analyze(sem_context));
+      RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
       // Check that the given column is not a duplicate and initialize the argument entry.
       idx = col_desc->index();
@@ -118,8 +93,11 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       iter++;
     }
   } else {
-    // Check number of arguments.
+    // This case is not yet supported as it's not CQL syntax.
+    // Processing insert statement that doesn't has column list.
+    //   INSERT INTO <table> VALUES(exprs);
     if (exprs.size() != num_cols) {
+      // Wrong number of arguments.
       if (exprs.size() > num_cols) {
         return sem_context->Error(value_clause_->loc(), ErrorCode::TOO_MANY_ARGUMENTS);
       } else {
@@ -133,12 +111,12 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     MCList<PTQualifiedName::SharedPtr>::const_iterator iter = columns_->node_list().cbegin();
     for (const auto& expr : exprs) {
       ColumnDesc *col_desc = &table_columns_[idx];
-      if (expr->expr_op() == ExprOperator::kBindVar) {
-        PTBindVar *var = static_cast<PTBindVar*>(expr.get());
-        var->set_desc(col_desc);
-      } else if (!sem_context->IsConvertible(expr, col_desc->yql_type())) {
-        return sem_context->Error(expr->loc(), ErrorCode::DATATYPE_MISMATCH);
-      }
+
+      // Process values arguments.
+      SemState sem_state(sem_context, col_desc->yql_type(), col_desc->internal_type(),
+                         col_desc, (*iter)->bindvar_name());
+      RETURN_NOT_OK(expr->Analyze(sem_context));
+      RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
       // Initialize the argument entry.
       column_args_->at(idx).Init(col_desc, expr);

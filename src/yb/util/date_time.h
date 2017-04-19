@@ -68,13 +68,13 @@ class DateTime {
   static DateTimeInputFormat CqlDateTimeInputFormat;
   static DateTimeOutputFormat CqlDateTimeOutputFormat;
 
-  static Status TimestampFromString(std::string str,
+  static Status TimestampFromString(const std::string& str,
                                     Timestamp* timestamp,
                                     DateTimeInputFormat input_format = CqlDateTimeInputFormat);
   static Timestamp TimestampFromInt(int64_t val,
                                     DateTimeInputFormat input_format = CqlDateTimeInputFormat);
-  static std::string TimestampToString(Timestamp timestamp,
-                                  DateTimeOutputFormat output_format = CqlDateTimeOutputFormat);
+  static std::string TimestampToString(
+      Timestamp timestamp, DateTimeOutputFormat output_format = CqlDateTimeOutputFormat);
 
   static tz_ptr_type GetSystemTimezone();
   static tz_ptr_type GetUtcTimezone();

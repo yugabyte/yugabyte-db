@@ -39,7 +39,7 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(const YQLReadRequestPB& request
     return STATUS(IllegalState, "system table contains no static columns");
   }
   spec->reset(new common::YQLScanSpec(
-      request.has_where_condition() ? &request.where_condition() : nullptr));
+      request.has_where_expr() ? &request.where_expr().condition() : nullptr));
   *req_hybrid_time = hybrid_time;
   return Status::OK();
 }

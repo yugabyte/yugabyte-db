@@ -18,9 +18,10 @@ add_library(ybsql_ptree
             pt_delete.cc
             pt_update.cc
             pt_expr.cc
-            pt_bfunc.cc
+            pt_bcall.cc
             process_context.cc
-            sem_context.cc)
+            sem_context.cc
+            sem_state.cc)
 
 target_link_libraries(ybsql_ptree ybsql_util yb_client yb_util yb_bfyql yb_common)
 add_dependencies(ybsql_ptree yb_bfyql)

@@ -11,6 +11,7 @@
 #include "yb/sql/ptree/process_context.h"
 #include "yb/sql/ptree/column_desc.h"
 #include "yb/sql/ptree/pt_create_table.h"
+#include "yb/sql/ptree/sem_state.h"
 
 namespace yb {
 namespace sql {
@@ -96,7 +97,10 @@ class SemContext : public ProcessContext {
   const ColumnDesc *GetColumnDesc(const MCString& col_name) const;
 
   // Check if the expression `expr` can be implicitly converted to type `type`
-  bool IsConvertible(PTExpr::SharedPtr expr, YQLType type) const;
+  bool IsConvertible(PTExpr::SharedPtr expr, YQLType type) const {
+    return IsConvertible(expr.get(), type);
+  }
+  bool IsConvertible(const PTExpr *expr, YQLType type) const;
 
   // Check if two types are comparable -- parametric types are never comparable so we only take
   // DataType not YQLType as arguments
@@ -108,6 +112,45 @@ class SemContext : public ProcessContext {
 
   // Access function to cache_used.
   bool cache_used() const { return cache_used_; }
+
+  // Acess functions for semantic states.
+  SemState *sem_state() const {
+    return sem_state_;
+  }
+
+  const YQLType& expr_expected_yql_type() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->expected_yql_type();
+  }
+
+  InternalType expr_expected_internal_type() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->expected_internal_type();
+  }
+
+  WhereExprState *where_state() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->where_state();
+  }
+
+  const ColumnDesc *bindvar_desc() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->bindvar_desc();
+  }
+
+  const MCString::SharedPtr& bindvar_name() const {
+    DCHECK(sem_state_) << "State variable is not set for the expression";
+    return sem_state_->bindvar_name();
+  }
+
+  void set_sem_state(SemState *new_state, SemState **existing_state_holder) {
+    *existing_state_holder = sem_state_;
+    sem_state_ = new_state;
+  }
+
+  void reset_sem_state(SemState *previous_state) {
+    sem_state_ = previous_state;
+  }
 
  private:
   // Find symbol.
@@ -127,6 +170,10 @@ class SemContext : public ProcessContext {
 
   // Is metadata cache used?
   bool cache_used_;
+
+  // sem_state_ consists of state variables that are used to process one tree node. It is generally
+  // set and reset at the beginning and end of the semantic analyzation of one treenode.
+  SemState *sem_state_;
 };
 
 }  // namespace sql

@@ -229,6 +229,7 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
     case YQL_OP_NOT_EXISTS: FALLTHROUGH_INTENDED;
     case YQL_OP_NOOP:
       break;
+
     // default: fall through
   }
 

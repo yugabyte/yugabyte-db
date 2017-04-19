@@ -429,6 +429,9 @@ CHECKED_STATUS GetNonKeyColumns(
         RETURN_NOT_OK(
             GetNonKeyColumns(schema, operand.condition(), static_columns, non_static_columns));
         continue;
+      case YQLExpressionPB::ExprCase::kBfcall:
+        LOG(FATAL) << "NEIL: Read & double check this code";
+        continue;
       case YQLExpressionPB::ExprCase::EXPR_NOT_SET:
         return STATUS(Corruption, "expression not set");
     }
@@ -581,7 +584,7 @@ Status YQLWriteOperation::InitializeKeys(const bool hashed_key, const bool prima
 }
 
 bool YQLWriteOperation::RequireReadSnapshot() const {
-  return request_.has_if_condition();
+  return request_.has_if_expr();
 }
 
 list<DocPath> YQLWriteOperation::DocPathsToLock() const {
@@ -659,9 +662,12 @@ Status YQLWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
 
   bool should_apply = true;
-  if (request_.has_if_condition()) {
-    RETURN_NOT_OK(IsConditionSatisfied(
-        request_.if_condition(), rocksdb, hybrid_time, &should_apply, &rowblock_));
+  if (request_.has_if_expr()) {
+    RETURN_NOT_OK(IsConditionSatisfied(request_.if_expr().condition(),
+                                       rocksdb,
+                                       hybrid_time,
+                                       &should_apply,
+                                       &rowblock_));
   }
 
   if (should_apply) {
@@ -695,8 +701,9 @@ Status YQLWriteOperation::Apply(
                 column.is_static() ?
                 hashed_doc_path_->encoded_doc_key() : pk_doc_path_->encoded_doc_key(),
                 PrimitiveValue(column_id));
-            const auto sub_doc = SubDocument::FromYQLValuePB(column.type(), column_value.value(),
-                                                             column.sorting_type());
+            const auto sub_doc = SubDocument::FromYQLExpressionPB(column.type(),
+                                                                  column_value.expr(),
+                                                                  column.sorting_type());
             RETURN_NOT_OK(doc_write_batch->InsertSubDocument(
                 sub_path, sub_doc, InitMarkerBehavior::kOptional, ttl));
           }
@@ -757,7 +764,7 @@ Status YQLReadOperation::Execute(
   Schema static_projection, non_static_projection;
   RETURN_NOT_OK(CreateProjections(
       schema, &rowblock->schema(),
-      request_.has_where_condition() ? &request_.where_condition() : nullptr,
+      request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
       &static_projection, &non_static_projection));
   const bool read_static_columns = !static_projection.columns().empty();
   const bool read_distinct_columns = request_.distinct();

@@ -66,7 +66,7 @@ locale DateTimeOutputFormat::output_locale() const {
   return output_locale_;
 }
 
-Status DateTime::TimestampFromString(const string str,
+Status DateTime::TimestampFromString(const string& str,
                                      Timestamp* timestamp,
                                      const DateTimeInputFormat input_format) {
   local_date_time ldt(not_a_date_time);
