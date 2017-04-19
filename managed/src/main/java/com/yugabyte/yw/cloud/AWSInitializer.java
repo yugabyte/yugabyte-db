@@ -348,6 +348,13 @@ public class AWSInitializer {
       }
       if (instanceType.instanceTypeDetails == null) {
         instanceType.instanceTypeDetails = new InstanceTypeDetails();
+        for (int i = 0; i < volumeCount; ++i) {
+          InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+          volumeDetails.volumeSizeGB = volumeSizeGB;
+          volumeDetails.volumeType = volumeType;
+          instanceType.instanceTypeDetails.volumeDetailsList.add(volumeDetails);
+        }
+        instanceType.instanceTypeDetails.setDefaultMountPaths();
       }
       List<InstanceTypeRegionDetails> detailsList =
           instanceType.instanceTypeDetails.regionCodeToDetailsMap.get(regionCode);
@@ -361,19 +368,14 @@ public class AWSInitializer {
 
       // Update the object.
       if (enableVerboseLogging) {
-        LOG.debug("Saving {} ({} cores, {}GB, {}x{}GB {}) with details {}",
+        LOG.debug("Saving {} ({} cores, {}GB) with details {}",
             instanceType.idKey.toString(), instanceType.numCores, instanceType.memSizeGB,
-            instanceType.volumeCount, instanceType.volumeSizeGB,
-            instanceType.volumeType.toString(),
             Json.stringify(Json.toJson(instanceType.instanceTypeDetails)));
       }
       InstanceType.upsert(providerCode,
                           instanceTypeCode,
                           numCores,
                           memSizeGB,
-                          volumeCount,
-                          volumeSizeGB,
-                          volumeType,
                           instanceType.instanceTypeDetails);
     }
   }

@@ -33,6 +33,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.VolumeDetails;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 
 import play.libs.Json;
@@ -96,16 +98,39 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID() {
-    InstanceType.upsert(awsProvider.code, "test-i1", 2, 10.5, 1, 100,
-                        InstanceType.VolumeType.EBS, null);
-    InstanceType.upsert(awsProvider.code, "test-i2", 3, 9.0, 1, 80, InstanceType.VolumeType.EBS, null);
+    InstanceType[] instanceTypes = new InstanceType[2];
+
+    // Add first InstanceType.
+    InstanceType.VolumeDetails i1VolDetails = new InstanceType.VolumeDetails();
+    i1VolDetails.volumeSizeGB = 100;
+    i1VolDetails.volumeType = InstanceType.VolumeType.EBS;
+    InstanceTypeDetails i1InstanceDetails = new InstanceTypeDetails();
+    i1InstanceDetails.volumeDetailsList.add(i1VolDetails);
+    i1InstanceDetails.setDefaultMountPaths();
+    instanceTypes[0] = InstanceType.upsert(awsProvider.code, "test-i1", 2, 10.5, i1InstanceDetails);
+
+    // Add second InstanceType.
+    InstanceType.VolumeDetails i2VolDetails = new InstanceType.VolumeDetails();
+    i2VolDetails.volumeSizeGB = 80;
+    i2VolDetails.volumeType = InstanceType.VolumeType.EBS;
+    InstanceTypeDetails i2InstanceDetails = new InstanceTypeDetails();
+    i2InstanceDetails.volumeDetailsList.add(i2VolDetails);
+    i2InstanceDetails.setDefaultMountPaths();
+    instanceTypes[1] = InstanceType.upsert(awsProvider.code, "test-i2", 3, 9.0, i2InstanceDetails);
+
     JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
     assertEquals(2, json.size());
 
-    int idx = 1;
-    for (JsonNode instance : json) {
-      assertThat(instance.get("instanceTypeCode").asText(), allOf(notNullValue(), equalTo("test-i" + idx)));
-      idx++;
+    for (int idx = 0; idx < json.size(); ++idx) {
+      JsonNode instance = json.get(idx);
+      assertValue(instance, "instanceTypeCode", instanceTypes[idx].getInstanceTypeCode());
+      assertThat(instance.get("numCores").asInt(), allOf(notNullValue(), equalTo(instanceTypes[idx].numCores)));
+      assertThat(instance.get("memSizeGB").asDouble(), allOf(notNullValue(), equalTo(instanceTypes[idx].memSizeGB)));
+      VolumeDetails targetDetails = instanceTypes[idx].instanceTypeDetails.volumeDetailsList.get(0);
+      JsonNode jsonDetails = instance.get("instanceTypeDetails").get("volumeDetailsList").get(0);
+      assertThat(jsonDetails.get("volumeSizeGB").asInt(), allOf(notNullValue(), equalTo(targetDetails.volumeSizeGB)));
+      assertValue(jsonDetails, "volumeType", targetDetails.volumeType.toString());
+      assertValue(jsonDetails, "mountPath", targetDetails.mountPath);
     }
     List<String> expectedCodes = ImmutableList.of("test-i1", "test-i2");
     assertValues(json, "instanceTypeCode", expectedCodes);
@@ -119,8 +144,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     idKey.put("providerCode", "aws");
     instanceTypeJson.put("memSizeGB", 10.9);
     instanceTypeJson.put("volumeCount", 1);
-    instanceTypeJson.put("volumeSizeGB", 10);
-    instanceTypeJson.put("volumeType", "EBS");
     instanceTypeJson.put("numCores", 3);
     instanceTypeJson.set("idKey", idKey);
     UUID randomUUID = UUID.randomUUID();
@@ -133,8 +156,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     JsonNode json = doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST);
     assertErrorNodeValue(json, "idKey", "This field is required");
     assertErrorNodeValue(json, "memSizeGB", "This field is required");
-    assertErrorNodeValue(json, "volumeSizeGB", "This field is required");
-    assertErrorNodeValue(json, "volumeType", "This field is required");
     assertErrorNodeValue(json, "numCores", "This field is required");
   }
 
@@ -152,18 +173,12 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     idKey.put("providerCode", "aws");
     instanceTypeJson.set("idKey", idKey);
     instanceTypeJson.put("memSizeGB", 10.9);
-    instanceTypeJson.put("volumeCount", 1);
-    instanceTypeJson.put("volumeSizeGB", 10);
-    instanceTypeJson.put("volumeType", "EBS");
     instanceTypeJson.put("numCores", 3);
     instanceTypeJson.set("instanceTypeDetails", Json.toJson(details));
     JsonNode json = doCreateInstanceTypeAndVerify(awsProvider.uuid, instanceTypeJson, OK);
     assertValue(json, "instanceTypeCode", "test-i1");
-    assertValue(json, "volumeCount", "1");
-    assertValue(json, "volumeSizeGB", "10");
     assertValue(json, "memSizeGB", "10.9");
     assertValue(json, "numCores", "3");
-    assertValue(json, "volumeType", "EBS");
     assertValue(json, "active", "true");
     JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
     assertThat(machineDetailsNode, notNullValue());
@@ -180,15 +195,11 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 20;
     volumeDetails.mountPath = "/tmp/path/";
     details.volumeDetailsList.add(volumeDetails);
-    InstanceType it = InstanceType.upsert(onPremProvider.code, "test-i1", 3, 5.0, 1, 20,
-            InstanceType.VolumeType.SSD, details);
+    InstanceType it = InstanceType.upsert(onPremProvider.code, "test-i1", 3, 5.0, details);
     JsonNode json = doGetInstanceTypeAndVerify(onPremProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
-    assertValue(json, "volumeCount", "1");
-    assertValue(json, "volumeSizeGB", "20");
     assertValue(json, "memSizeGB", "5.0");
     assertValue(json, "numCores", "3");
-    assertValue(json, "volumeType", "SSD");
     assertValue(json, "active", "true");
     JsonNode machineDetailsNode = json.get("instanceTypeDetails").get("volumeDetailsList").get(0);
     assertThat(machineDetailsNode, notNullValue());
@@ -200,20 +211,20 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testGetInstanceTypeWithValidParams() {
     InstanceType.InstanceTypeDetails details = new InstanceType.InstanceTypeDetails();
-    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0, 2, 20,
-        InstanceType.VolumeType.SSD, details);
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeType = InstanceType.VolumeType.SSD;
+    volumeDetails.volumeSizeGB = 20;
+    details.volumeDetailsList.add(volumeDetails);
+    details.volumeDetailsList.add(volumeDetails);
+    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0, details);
     JsonNode json = doGetInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
-    assertValue(json, "volumeSizeGB", "20");
     assertValue(json, "memSizeGB", "5.0");
     assertValue(json, "numCores", "3");
-    assertValue(json, "volumeType", "SSD");
     assertValue(json, "active", "true");
-    int volumeCount = json.get("volumeCount").asInt();
-    assertEquals(volumeCount, 2);
     JsonNode volumeDetailsListNode = json.get("instanceTypeDetails").get("volumeDetailsList");
     assertNotNull(volumeDetailsListNode);
-    for (int i = 0; i < volumeCount; ++i) {
+    for (int i = 0; i < 2; ++i) {
       JsonNode machineDetailsNode = volumeDetailsListNode.get(i);
       assertThat(machineDetailsNode, notNullValue());
       assertValue(machineDetailsNode, "volumeSizeGB", "20");
@@ -239,8 +250,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteInstanceTypeWithValidParams() {
-    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0, 1, 20,
-            InstanceType.VolumeType.EBS, new InstanceType.InstanceTypeDetails());
+    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0,
+        new InstanceType.InstanceTypeDetails());
     JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
     it = InstanceType.get(awsProvider.code, it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());

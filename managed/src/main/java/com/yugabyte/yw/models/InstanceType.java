@@ -59,21 +59,6 @@ public class InstanceType extends Model {
   @Column(nullable = false)
   public Double memSizeGB;
 
-  // The number of instance-local drives. Not valid for EBS.
-  @Constraints.Required
-  @Column(nullable = false)
-  public Integer volumeCount;
-
-  // The size of each instance-local drive.  Not valid for EBS.
-  @Constraints.Required
-  @Column(nullable = false)
-  public Integer volumeSizeGB;
-
-  // The type of the volume.
-  @Constraints.Required
-  @Column(nullable = false)
-  public VolumeType volumeType;
-
   @Column(columnDefinition = "TEXT")
   private String instanceTypeDetailsJson;
   public InstanceTypeDetails instanceTypeDetails;
@@ -134,21 +119,12 @@ public class InstanceType extends Model {
                                     String instanceTypeCode,
                                     Integer numCores,
                                     Double memSize,
-                                    Integer volumeCount,
-                                    Integer volumeSize,
-                                    VolumeType volumeType,
                                     InstanceTypeDetails instanceTypeDetails) {
     InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
     if (instanceType == null) {
       instanceType = new InstanceType();
       instanceType.idKey = InstanceTypeKey.create(instanceTypeCode, providerCode);
     }
-    if (instanceTypeDetails == null) {
-      instanceTypeDetails = new InstanceTypeDetails();
-    }
-    instanceType.volumeCount = volumeCount;
-    instanceType.volumeSizeGB = volumeSize;
-    instanceType.volumeType = volumeType;
     instanceType.memSizeGB = memSize;
     instanceType.numCores = numCores;
     instanceType.instanceTypeDetails = instanceTypeDetails;
@@ -222,6 +198,12 @@ public class InstanceType extends Model {
     public InstanceTypeDetails() {
       regionCodeToDetailsMap = new HashMap<String, List<InstanceTypeRegionDetails>>();
       volumeDetailsList = new LinkedList<VolumeDetails>();
+    }
+
+    public void setDefaultMountPaths() {
+      for (int idx = 0; idx < volumeDetailsList.size(); ++idx) {
+        volumeDetailsList.get(idx).mountPath = String.format("/mnt/d%d", idx);
+      }
     }
   }
 
