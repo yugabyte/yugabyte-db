@@ -96,5 +96,5 @@ export function normalizeToPositiveInt(value) {
 }
 
 export function sortVersionStrings(arr) {
-  return arr.sort((a,b) => semver.lt(a,b));
+  return arr.sort((a,b) => semver.valid(a) && semver.valid(b) ? semver.lt(a,b) : a < b);
 }
