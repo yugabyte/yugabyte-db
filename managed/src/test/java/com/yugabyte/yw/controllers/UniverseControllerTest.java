@@ -218,7 +218,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone az1 = AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
     InstanceType i =
-        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
+        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode topJson = Json.newObject();
     ObjectNode bodyJson = Json.newObject();
@@ -274,7 +274,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     InstanceType i =
-        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
+        InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode topJson = Json.newObject();
     ObjectNode bodyJson = Json.newObject();
@@ -322,7 +322,7 @@ public class UniverseControllerTest extends WithApplication {
     AvailabilityZone az3 = AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe universe = Universe.create("Test Universe", UUID.randomUUID(), customer.getCustomerId());
     InstanceType i =
-      InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, 1, 20, InstanceType.VolumeType.EBS, null);
+      InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
     ObjectNode topJson = Json.newObject();
     ObjectNode bodyJson = Json.newObject();

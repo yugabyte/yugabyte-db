@@ -20,16 +20,23 @@ import com.yugabyte.yw.common.FakeDBApplication;
 public class InstanceTypeTest extends FakeDBApplication {
   private Provider defaultProvider;
   private Customer defaultCustomer;
+  private InstanceType.InstanceTypeDetails defaultDetails;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
+    volumeDetails.volumeSizeGB = 100;
+    volumeDetails.volumeType = InstanceType.VolumeType.EBS;
+    defaultDetails = new InstanceType.InstanceTypeDetails();
+    defaultDetails.volumeDetailsList.add(volumeDetails);
+    defaultDetails.setDefaultMountPaths();
   }
 
   @Test
   public void testCreate() {
-    InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, 1, 100,
-                                          InstanceType.VolumeType.EBS, null);
+    InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, defaultDetails);
     assertNotNull(i1);
     assertEquals("aws", i1.getProviderCode());
     assertEquals("foo", i1.getInstanceTypeCode());
@@ -38,10 +45,8 @@ public class InstanceTypeTest extends FakeDBApplication {
   @Test
   public void testFindByProvider() {
     Provider newProvider = ModelFactory.gceProvider(defaultCustomer);
-    InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, 1, 100,
-                                          InstanceType.VolumeType.EBS, null);
-    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, 1, 100,
-                        InstanceType.VolumeType.EBS, null);
+    InstanceType i1 = InstanceType.upsert(defaultProvider.code, "foo", 3, 10.0, defaultDetails);
+    InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
     assertNotNull(instanceTypeList);
     assertEquals(1, instanceTypeList.size());

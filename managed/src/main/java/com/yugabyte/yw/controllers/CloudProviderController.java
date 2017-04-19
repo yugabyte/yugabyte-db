@@ -185,9 +185,6 @@ public class CloudProviderController extends AuthenticatedController {
                 i.code,
                 0, // numCores
                 0.0, // memSizeGB
-                0, // volumeCount
-                0, // volumeSizeGB
-                InstanceType.VolumeType.SSD,
                 details
             );
           }

@@ -13,7 +13,6 @@ import play.mvc.Result;
 import play.test.Helpers;
 
 import java.util.List;
-import java.util.Map;
 
 public class FakeApiHelper {
   private static String getAuthToken() {

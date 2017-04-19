@@ -74,9 +74,6 @@ public class InstanceTypeController extends AuthenticatedController {
                                             formData.get().getInstanceTypeCode(),
                                             formData.get().numCores,
                                             formData.get().memSizeGB,
-                                            formData.get().volumeCount,
-                                            formData.get().volumeSizeGB,
-                                            formData.get().volumeType,
                                             formData.get().instanceTypeDetails);
       return ApiResponse.success(it);
     } catch (Exception e) {
@@ -136,14 +133,7 @@ public class InstanceTypeController extends AuthenticatedController {
     }
     // Mount paths are not persisted for non-onprem clouds, but we know the default details.
     if (!provider.code.equals(onprem.toString())) {
-      List<VolumeDetails> detailsList = instanceType.instanceTypeDetails.volumeDetailsList;
-      for (int count = 0; count < instanceType.volumeCount; ++count) {
-        VolumeDetails details = new VolumeDetails();
-        details.mountPath = String.format("/mnt/d%d", count);
-        details.volumeType = instanceType.volumeType;
-        details.volumeSizeGB = instanceType.volumeSizeGB;
-        detailsList.add(details);
-      }
+      instanceType.instanceTypeDetails.setDefaultMountPaths();
     }
     return ApiResponse.success(instanceType);
   }
