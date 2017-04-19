@@ -139,10 +139,6 @@ public class TablesController extends AuthenticatedController {
         resultNode.add(node);
       }
       return ok(resultNode);
-    } catch (RuntimeException e) {
-      String errMsg = "Invalid Universe UUID: " + universeUUID;
-      LOG.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
     } catch (Exception e) {
       LOG.error("Failed to get list of tables in universe " + universeUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
@@ -181,10 +177,6 @@ public class TablesController extends AuthenticatedController {
     } catch (IllegalArgumentException e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
-    } catch (RuntimeException e) {
-      String errMsg = "Invalid Universe UUID: " + universeUUID;
-      LOG.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
     } catch (Exception e) {
       LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
