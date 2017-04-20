@@ -7,11 +7,9 @@ weight: 0
 
 ## Introduction
 
-YugaByte is a new cloud native, strongly consistent, multi-model NoSQL database that’s built ground-up for today’s mission-critical Online Transaction Processing (OLTP) and Hybrid Transactional & Analytical (HTAP) applications. It brings together the best of two worlds (strong consistency from SQL/NewSQL and high availability & multi-model from NoSQL) while adding the critical aspect of cloud native for modern technical operations. It’s designed with 3 foundational principles in mind: operational simplicity, developer productivity and customer delight. 
-
+YugaByte is a new cloud native, tunably consistent, multi-model NoSQL database that’s built ground-up for today’s mission-critical Online Transaction Processing (OLTP) and Hybrid Transactional & Analytical (HTAP) applications. It brings together the best of two worlds (strong consistency from SQL/NewSQL and high availability & multi-model from NoSQL) while adding the critical aspect of cloud native for modern technical operations. It’s designed with 3 foundational principles in mind: operational simplicity, developer productivity and customer delight. 
 
 ![YugaByte Design Principles](/images/design-principles.png)
-
 
 ## Features
 
@@ -26,7 +24,7 @@ YugaByte is a new cloud native, strongly consistent, multi-model NoSQL database 
 ### Agile application development
 
 - **Apache Cassandra & Redis compatible**: Choose from 2 popular NoSQL options, [Apache Cassandra Query Language (CQL)](https://docs.datastax.com/en/cql/3.1/cql/cql_reference/cqlReferenceTOC.html) and [Redis] (https://redis.io/commands)
-- **Strong consistency**: Strongly consistent writes and linearizable reads as default, additional tunable bounded staleness options for reads
+- **Tunable consistency**: Strongly consistent writes and linearizable reads as default, additional tunable bounded staleness options for reads
 - **Multi-model**: Support for flexible schema, time series and key-value workloads with converged cache benefits
 
 

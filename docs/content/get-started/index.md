@@ -35,7 +35,7 @@ If you plan to create YugaByte clusters on public cloud providers such as Amazon
 If you are using AWS, you will also need to share your AWS Account ID with YugaByte Support so that we can make our YugaByte base AMI accessible to your account. You can find your AWS Account ID at the top of the [AWS My Account](https://console.aws.amazon.com/billing/home?#/account) page.
 
 {{< note title="Note" >}}
-You will need to agree to AWS Marketplace Terms [here](https://aws.amazon.com/marketplace/library/ref=mrc_prm_manage_subscriptions) before you can spin up AWS instances based on marketplace AMIs (such as the one used by YugaByte). 
+You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.com/marketplace/pp/B00O7WM7QW) for Centos 7 before you can spin up YugaByte instances that are based on Centos 7. 
 {{< /note >}}
 
 #### Private cloud or on-premises data centers
@@ -152,6 +152,13 @@ replicated app <appid> stop
 
 # remove yugaware app
 replicated app <appid> rm
+
+# remove all yugaware containers
+docker images | grep "yuga" | awk '{print $1}' | xargs docker rm
+
+# delete the mapped directory
+rm -rf /opt/yugabyte
+
 ```
 
 And then uninstall Replicated itself by following instructions documented [here](https://www.replicated.com/docs/distributing-an-application/installing-via-script/#removing-replicated)
