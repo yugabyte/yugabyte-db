@@ -15,7 +15,7 @@ YQLTablesVTable::YQLTablesVTable(const Schema& schema, Master* master)
 Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<TableInfo> > tables;
-  master_->catalog_manager()->GetAllTables(&tables);
+  master_->catalog_manager()->GetAllTables(&tables, true);
   for (scoped_refptr<TableInfo> table : tables) {
     // Get namespace for table.
     NamespaceIdentifierPB nsId;

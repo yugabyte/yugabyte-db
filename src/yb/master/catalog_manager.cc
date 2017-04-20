@@ -77,6 +77,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/yql_columns_vtable.h"
 #include "yb/master/yql_empty_vtable.h"
 #include "yb/master/yql_keyspaces_vtable.h"
 #include "yb/master/yql_peers_vtable.h"
@@ -810,7 +811,7 @@ Status CatalogManager::CreateColumnsSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn("clustering_order", DataType::STRING));
   // TODO: column_name_bytes is missing since we don't support blob type yet.
   RETURN_NOT_OK(builder.AddColumn("kind", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("position", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("position", DataType::INT32));
   RETURN_NOT_OK(builder.AddColumn("type", DataType::STRING));
   *schema = builder.Build();
   return Status::OK();
@@ -901,14 +902,14 @@ Status CatalogManager::CreateViewsSchema(Schema* schema) {
       YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
   RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT32));
   // TODO: extensions is missing since we don't support blob yet.
-  RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT32));
   // TODO: id is missing since we don't support uuid yet.
   RETURN_NOT_OK(builder.AddColumn("include_all_columns", DataType::BOOL));
-  RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT64));
-  RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT64));
-  RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT32));
+  RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT32));
+  RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT32));
   RETURN_NOT_OK(builder.AddColumn("read_repair_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("speculative_retry", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("where_clause", DataType::STRING));
@@ -953,11 +954,11 @@ Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn(
       "flags",
       YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT32));
   // TODO: id is currently not supported since we don't support the 'uuid' type.
-  RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT64));
-  RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT64));
-  RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT32));
+  RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT32));
+  RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT32));
   RETURN_NOT_OK(builder.AddColumn("read_repair_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("speculative_retry", DataType::STRING));
   *schema = builder.Build();
@@ -990,7 +991,7 @@ Status CatalogManager::PrepareSystemSchemaAggregatesTable() {
 Status CatalogManager::PrepareSystemSchemaColumnsTable() {
   Schema schema;
   RETURN_NOT_OK(CreateColumnsSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
+  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLColumnsVTable(schema, master_));
   return PrepareSystemTable(kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName,
                             kSystemSchemaNamespaceId, schema, std::move(yql_storage),
                             &systemschema_columns_tablet);
@@ -1723,7 +1724,7 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
 }
 
 Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
-                                     scoped_refptr<NamespaceInfo>* ns_info) {
+                                     scoped_refptr<NamespaceInfo>* ns_info) const {
   boost::shared_lock<LockType> l(lock_);
 
   if (ns_identifier.has_id()) {
@@ -2292,10 +2293,14 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& tab
   return FindPtrOrNull(table_ids_map_, table_id);
 }
 
-void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables) {
+void CatalogManager::GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables,
+                                  bool includeOnlyRunningTables) {
   tables->clear();
   boost::shared_lock<LockType> l(lock_);
   for (const TableInfoMap::value_type& e : table_ids_map_) {
+    if (includeOnlyRunningTables && !e.second->is_running()) {
+      continue;
+    }
     tables->push_back(e.second);
   }
 }
@@ -5392,6 +5397,11 @@ const TableName TableInfo::name() const {
   return l.data().pb.name();
 }
 
+bool TableInfo::is_running() const {
+  TableMetadataLock l(this, TableMetadataLock::READ);
+  return l.data().is_running();
+}
+
 std::string TableInfo::ToString() const {
   TableMetadataLock l(this, TableMetadataLock::READ);
   return Substitute("$0 [id=$1]", l.data().pb.name(), table_id_);
@@ -5400,6 +5410,12 @@ std::string TableInfo::ToString() const {
 const NamespaceId TableInfo::namespace_id() const {
   TableMetadataLock l(this, TableMetadataLock::READ);
   return l.data().namespace_id();
+}
+
+const Status TableInfo::GetSchema(Schema* schema) const {
+  TableMetadataLock l(this, TableMetadataLock::READ);
+  RETURN_NOT_OK(SchemaFromPB(l.data().schema(), schema));
+  return Status::OK();
 }
 
 bool TableInfo::RemoveTablet(const std::string& partition_key_start) {

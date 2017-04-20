@@ -96,13 +96,45 @@ class YQLType {
     return ss.str();
   }
 
+  const string ToCQLString(const DataType& datatype) const {
+    switch (datatype) {
+      case DataType::UNKNOWN_DATA: return "unknown";
+      case DataType::NULL_VALUE_TYPE: return "null";
+      case DataType::INT8: return "tinyint";
+      case DataType::INT16: return "smallint";
+      case DataType::INT32: return "int";
+      case DataType::INT64: return "bigint";
+      case DataType::STRING: return "text";
+      case DataType::BOOL: return "boolean";
+      case DataType::FLOAT: return "float";
+      case DataType::DOUBLE: return "double";
+      case DataType::BINARY: return "blob";
+      case DataType::TIMESTAMP: return "timestamp";
+      case DataType::DECIMAL: return "decimal";
+      case DataType::VARINT: return "varint";
+      case DataType::INET: return "inet";
+      case DataType::LIST: return "list";
+      case DataType::MAP: return "map";
+      case DataType::SET: return "set";
+      case DataType::UUID: return "uuid";
+      case DataType::TIMEUUID: return "timeuuid";
+      case DataType::TUPLE: return "tuple";
+      case DataType::TYPEARGS: return "typeargs";
+      case DataType::UINT8: return "uint8";
+      case DataType::UINT16: return "uint16";
+      case DataType::UINT32: return "uint32";
+      case DataType::UINT64: return "uint64";
+    }
+    LOG (FATAL) << "Invalid datatype: " << datatype;
+  }
+
   void ToString(std::stringstream& os) const {
-    os << DataType_Name(main_);
+    os << ToCQLString(main_);
     if (!params_->empty()) {
       os << "<";
       for (int i = 0; i < params_->size(); i++) {
         if (i > 0) {
-          os << ",";
+          os << ", ";
         }
         params_->at(i).ToString(os);
       }

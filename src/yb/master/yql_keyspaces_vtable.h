@@ -15,7 +15,7 @@ class YQLKeyspacesVTable : public YQLVirtualTable {
   YQLKeyspacesVTable(const Schema& schema, Master* master);
   CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const override;
  private:
-  Master* const master_;
+  const Master* const master_;
 };
 
 }  // namespace master

@@ -15,7 +15,7 @@ class PeersVTable : public YQLVirtualTable {
   PeersVTable(const Schema& schema, Master* master_);
   CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const override;
  private:
-  Master *const master_;
+  const Master *const master_;
   // Index of columns in the peers table.
   static constexpr size_t kPeerColumnIndex = 0; // peer column.
   static constexpr size_t kRpcAddrColumnIndex = 6; // rpc_address column.

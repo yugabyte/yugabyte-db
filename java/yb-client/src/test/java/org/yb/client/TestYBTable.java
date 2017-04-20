@@ -133,7 +133,12 @@ public class TestYBTable extends BaseYBTest {
     Schema noneOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.NONE);
     YBTable table = BaseYBTest.createTable(tableName, noneOrderSchema, null);
     for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
-      assertEquals(ColumnSchema.SortOrder.NONE, columnSchema.getSortOrder());
+      if (columnSchema.getName().equals("key1") || columnSchema.getName().equals("key2")) {
+        // Default sort order for range keys is ASC.
+        assertEquals(ColumnSchema.SortOrder.ASC, columnSchema.getSortOrder());
+      } else {
+        assertEquals(ColumnSchema.SortOrder.NONE, columnSchema.getSortOrder());
+      }
     }
   }
 
@@ -143,7 +148,8 @@ public class TestYBTable extends BaseYBTest {
     Schema ascOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.ASC);
     YBTable table = BaseYBTest.createTable(tableName, ascOrderSchema, null);
     for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
-      if (columnSchema.getName().equals("key1")) {
+      if (columnSchema.getName().equals("key1") || columnSchema.getName().equals("key2")) {
+        // Default sort order for range keys is ASC.
         assertEquals(ColumnSchema.SortOrder.ASC, columnSchema.getSortOrder());
       } else {
         assertEquals(ColumnSchema.SortOrder.NONE, columnSchema.getSortOrder());
@@ -159,6 +165,9 @@ public class TestYBTable extends BaseYBTest {
     for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
       if (columnSchema.getName().equals("key1")) {
         assertEquals(ColumnSchema.SortOrder.DESC, columnSchema.getSortOrder());
+      }  else if (columnSchema.getName().equals("key2")) {
+        // Default sort order for range keys is ASC.
+        assertEquals(ColumnSchema.SortOrder.ASC, columnSchema.getSortOrder());
       } else {
         assertEquals(ColumnSchema.SortOrder.NONE, columnSchema.getSortOrder());
       }

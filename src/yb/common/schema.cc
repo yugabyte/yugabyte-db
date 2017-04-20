@@ -204,6 +204,14 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
     id_to_index_.set(ids[i], i);
   }
 
+  // Ensure clustering columns have a default sorting type of 'ASC' if not specified.
+  for (int i = num_hash_key_columns_; i < num_key_columns(); i++) {
+    ColumnSchema& col = cols_[i];
+    if (col.sorting_type() == ColumnSchema::SortingType::kNotSpecified) {
+      col.set_sorting_type(ColumnSchema::SortingType::kAscending);
+    }
+  }
+
   return Status::OK();
 }
 

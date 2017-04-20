@@ -277,6 +277,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.namespace_id();
   }
 
+  const SchemaPB& schema() const {
+    return pb.schema();
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 };
@@ -297,9 +301,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
 
   const TableName name() const;
 
+  bool is_running() const;
+
   std::string ToString() const;
 
   const NamespaceId namespace_id() const;
+
+  const CHECKED_STATUS GetSchema(Schema* schema) const;
 
   // Return the table's ID. Does not require synchronization.
   virtual const std::string& id() const override { return table_id_; }
@@ -694,7 +702,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TableInfo> GetTableInfo(const TableId& table_id);
   scoped_refptr<TableInfo> GetTableInfoUnlocked(const TableId& table_id);
 
-  void GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables);
+  // Return all the available TableInfo. The flag 'includeOnlyRunningTables' determines whether
+  // to retrieve all Tables irrespective of their state or just the tables with the state
+  // 'RUNNING'. Typically, if you want to retrieve all the live tables in the system, you should
+  // set this flag to true.
+  void GetAllTables(std::vector<scoped_refptr<TableInfo> > *tables,
+                    bool includeOnlyRunningTables = false);
 
   void GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces);
 
@@ -781,7 +794,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   }
 
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
-                               scoped_refptr<NamespaceInfo>* ns_info);
+                               scoped_refptr<NamespaceInfo>* ns_info) const;
 
  private:
   friend class TableLoader;

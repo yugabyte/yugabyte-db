@@ -57,7 +57,6 @@ public class TestSystemTables extends TestBase {
   public void testEmptySystemTables() throws Exception {
     // Tables should be empty.
     assertEquals(0, session.execute("SELECT * FROM system_schema.aggregates;").all().size());
-    assertEquals(0, session.execute("SELECT * FROM system_schema.columns;").all().size());
     assertEquals(0, session.execute("SELECT * FROM system_schema.functions;").all().size());
     assertEquals(0, session.execute("SELECT * FROM system_schema.indexes;").all().size());
     assertEquals(0, session.execute("SELECT * FROM system_schema.triggers;").all().size());
@@ -121,5 +120,36 @@ public class TestSystemTables extends TestBase {
     assertEquals("my_keyspace", results.get(0).getString("keyspace_name"));
     assertEquals("my_table", results.get(0).getString("table_name"));
     assertFalse(results.get(0).getColumnDefinitions().contains("flags")); // flags was not selected.
+  }
+
+  private void verifyColumnSchema(Row row, String table_name, String column_name, String kind,
+                                  int position, String type, String clustering_order) {
+    assertEquals(DEFAULT_KEYSPACE, row.getString("keyspace_name"));
+    assertEquals(table_name, row.getString("table_name"));
+    assertEquals(column_name, row.getString("column_name"));
+    assertEquals(clustering_order, row.getString("clustering_order"));
+    assertEquals(kind, row.getString("kind"));
+    assertEquals(position, row.getInt("position"));
+    assertEquals(type, row.getString("type"));
+  }
+
+  @Test
+  public void testSystemColumnsTable() throws Exception {
+    session.execute("CREATE TABLE many_columns (c1 int, c2 text, c3 int, c4 text, c5 int, c6 int," +
+      " c7 map <text, text>, c8 list<text>, c9 set<int>, PRIMARY KEY((c1, c2, c3), c4, c5, c6)) " +
+      "WITH CLUSTERING ORDER BY (c4 DESC);");
+    List<Row> results = session.execute(String.format("SELECT * FROM system_schema.columns WHERE " +
+      "keyspace_name = '%s' AND table_name = 'many_columns'", DEFAULT_KEYSPACE)).all();
+    assertEquals(9, results.size());
+    verifyColumnSchema(results.get(0), "many_columns", "c1", "partition_key", 0, "int", "none");
+    verifyColumnSchema(results.get(1), "many_columns", "c2", "partition_key", 1, "text", "none");
+    verifyColumnSchema(results.get(2), "many_columns", "c3", "partition_key", 2, "int", "none");
+    verifyColumnSchema(results.get(3), "many_columns", "c4", "clustering", 0, "text", "desc");
+    verifyColumnSchema(results.get(4), "many_columns", "c5", "clustering", 1, "int", "asc");
+    verifyColumnSchema(results.get(5), "many_columns", "c6", "clustering", 2, "int", "asc");
+    verifyColumnSchema(results.get(6), "many_columns", "c7", "regular", -1, "map<text, text>",
+      "none");
+    verifyColumnSchema(results.get(7), "many_columns", "c8", "regular", -1, "list<text>", "none");
+    verifyColumnSchema(results.get(8), "many_columns", "c9", "regular", -1, "set<int>", "none");
   }
 }

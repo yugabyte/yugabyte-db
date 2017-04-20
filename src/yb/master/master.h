@@ -81,9 +81,9 @@ class Master : public server::RpcAndWebServerBase {
 
   std::string ToString() const;
 
-  TSManager* ts_manager() { return ts_manager_.get(); }
+  TSManager* ts_manager() const { return ts_manager_.get(); }
 
-  CatalogManager* catalog_manager() { return catalog_manager_.get(); }
+  CatalogManager* catalog_manager() const { return catalog_manager_.get(); }
 
   scoped_refptr<MetricEntity> metric_entity_cluster() { return metric_entity_cluster_; }
 

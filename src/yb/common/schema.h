@@ -212,6 +212,22 @@ class ColumnSchema {
     return sorting_type_;
   }
 
+  void set_sorting_type(SortingType sorting_type) {
+    sorting_type_ = sorting_type;
+  }
+
+  const string sorting_type_string() const {
+    switch (sorting_type_) {
+      case kNotSpecified:
+        return "none";
+      case kAscending:
+        return "asc";
+      case kDescending:
+        return "desc";
+    }
+    LOG (FATAL) << "Invalid sorting type: " << sorting_type_;
+  }
+
   const string &name() const {
     return name_;
   }
