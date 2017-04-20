@@ -172,8 +172,10 @@ export default class CreateTable extends Component {
 
   render() {
     const {handleSubmit} = this.props;
-    var onFormSubmit = handleSubmit(this.createTable);
-    var cassandraLabel = <div><img src={cassandraLogo} alt="Apache Cassandra" className="table-type-logo"/>&nbsp;Apache Cassandra</div>;
+    const onFormSubmit = handleSubmit(this.createTable);
+    const cassandraLabel = <div><img src={cassandraLogo} alt="Apache Cassandra" className="table-type-logo"/>&nbsp;Apache Cassandra</div>;
+    const tableNameRegex = /^[a-zA-Z0-9_]*$/;
+    const tableNameTest = (value, previousValue) => tableNameRegex.test(value) ? value : previousValue;
     return (
       <div className="bottom-bar-padding">
         <h3>Create Table</h3>
@@ -182,7 +184,7 @@ export default class CreateTable extends Component {
             <Col md={5}>
               <div className="form-right-aligned-labels">
                 <Field name="tableName" component={YBInputField} className={`table-name-cell`}
-                       label="Name" placeHolder={"Table Name"}/>
+                       label="Name" placeHolder={"Table Name"} normalize={tableNameTest} />
               </div>
             </Col>
             <Col md={4}>
