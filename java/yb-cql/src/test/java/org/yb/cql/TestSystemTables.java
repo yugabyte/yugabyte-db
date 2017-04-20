@@ -1,6 +1,8 @@
 package org.yb.cql;
 
 import java.net.InetAddress;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 import org.junit.Test;
@@ -8,7 +10,9 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class TestSystemTables extends TestBase {
 
@@ -101,12 +105,14 @@ public class TestSystemTables extends TestBase {
     assertTrue(results.get(0).getBool("durable_writes"));
 
     results = session.execute(
-      String.format("SELECT keyspace_name, table_name FROM system_schema.tables WHERE " +
+      String.format("SELECT keyspace_name, table_name, flags FROM system_schema.tables WHERE " +
         "keyspace_name = " +
         "'%s' and table_name = 'my_table';", DEFAULT_KEYSPACE)).all();
     assertEquals(1, results.size());
     assertEquals(DEFAULT_KEYSPACE, results.get(0).getString("keyspace_name"));
     assertEquals("my_table", results.get(0).getString("table_name"));
+    assertEquals(new HashSet<String>(Arrays.asList("compound")),
+      results.get(0).getSet("flags", String.class));
 
     results = session.execute(
       "SELECT keyspace_name, table_name FROM system_schema.tables WHERE keyspace_name = " +
@@ -114,5 +120,6 @@ public class TestSystemTables extends TestBase {
     assertEquals(1, results.size());
     assertEquals("my_keyspace", results.get(0).getString("keyspace_name"));
     assertEquals("my_table", results.get(0).getString("table_name"));
+    assertFalse(results.get(0).getColumnDefinitions().contains("flags")); // flags was not selected.
   }
 }

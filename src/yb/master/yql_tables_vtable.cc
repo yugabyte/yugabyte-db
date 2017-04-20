@@ -29,8 +29,16 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
     YQLValuePB table_name;
     YQLValue::set_string_value(nsInfo->name(), &keyspace_name);
     YQLValue::set_string_value(table->name(), &table_name);
-    *row.mutable_column(0) = keyspace_name;
-    *row.mutable_column(1) = table_name;
+    *row.mutable_column(0) = keyspace_name; // keyspace_name
+    *row.mutable_column(1) = table_name; // table_name
+
+    // Create appropriate flags entry.
+    YQLValuePB flags_set;
+    YQLValue::set_set_value(&flags_set);
+    YQLValuePB flags_elem;
+    YQLValue::set_string_value("compound", &flags_elem);
+    *YQLValue::add_set_elem(&flags_set) = flags_elem;
+    *row.mutable_column(11) = flags_set; // flags
   }
 
   return Status::OK();

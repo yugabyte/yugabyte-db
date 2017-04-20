@@ -948,11 +948,13 @@ Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
       YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
   RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
+  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT64));
+  // TODO: extensions is currently not supported since we don't support the 'blob' type.
   RETURN_NOT_OK(builder.AddColumn(
       "flags",
       YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT64));
   RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT64));
+  // TODO: id is currently not supported since we don't support the 'uuid' type.
   RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT64));
   RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT64));
   RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT64));
