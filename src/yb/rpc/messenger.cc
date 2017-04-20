@@ -26,6 +26,9 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <thread>
+
+#include <boost/scope_exit.hpp>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -40,7 +43,6 @@
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/sasl_common.h"
-#include "yb/rpc/transfer.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
@@ -186,6 +188,7 @@ Status Messenger::RegisterService(const string& service_name,
   DCHECK(service);
   std::lock_guard<percpu_rwlock> guard(lock_);
   if (InsertIfNotPresent(&rpc_services_, service_name, service)) {
+    UpdateServicesCache(&guard);
     return Status::OK();
   } else {
     return STATUS(AlreadyPresent, "This service is already present");
@@ -198,6 +201,7 @@ Status Messenger::UnregisterAllServices() {
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
     rpc_services_.swap(rpc_services_copy);
+    UpdateServicesCache(&guard);
   }
   rpc_services_copy.clear();
   return Status::OK();
@@ -207,6 +211,7 @@ Status Messenger::UnregisterAllServices() {
 Status Messenger::UnregisterService(const string& service_name) {
   std::lock_guard<percpu_rwlock> guard(lock_);
   if (rpc_services_.erase(service_name)) {
+    UpdateServicesCache(&guard);
     return Status::OK();
   } else {
     return STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
@@ -214,15 +219,13 @@ Status Messenger::UnregisterService(const string& service_name) {
   }
 }
 
-void Messenger::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
+void Messenger::QueueOutboundCall(const OutboundCallPtr& call) {
   Reactor *reactor = RemoteToReactor(call->conn_id().remote(), call->conn_id().idx());
   reactor->QueueOutboundCall(call);
 }
 
 void Messenger::QueueInboundCall(InboundCallPtr call) {
-  shared_lock<rw_spinlock> guard(lock_.get_lock());
-  scoped_refptr<RpcService>* service = FindOrNull(rpc_services_,
-                                                  call->remote_method().service_name());
+  auto service = rpc_service(call->remote_method().service_name());
   if (PREDICT_FALSE(!service)) {
     Status s =  STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
                                                       call->remote_method().service_name(), name_));
@@ -232,7 +235,7 @@ void Messenger::QueueInboundCall(InboundCallPtr call) {
   }
 
   // The RpcService will respond to the client on success or failure.
-  WARN_NOT_OK((*service)->QueueInboundCall(std::move(call)), "Unable to handle RPC call");
+  WARN_NOT_OK(service->QueueInboundCall(std::move(call)), "Unable to handle RPC call");
 }
 
 void Messenger::RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote) {
@@ -261,6 +264,7 @@ Messenger::~Messenger() {
   std::lock_guard<percpu_rwlock> guard(lock_);
   CHECK(closing_) << "Should have already shut down";
   STLDeleteElements(&reactors_);
+  delete rpc_services_cache_.load();
 }
 
 size_t Messenger::max_concurrent_requests() const {
@@ -344,14 +348,34 @@ int64_t Messenger::ScheduleOnReactor(const std::function<void(const Status&)>& f
   return task_id;
 }
 
-const scoped_refptr<RpcService> Messenger::rpc_service(const string& service_name) const {
-  std::lock_guard<percpu_rwlock> guard(lock_);
-  scoped_refptr<RpcService> service;
-  if (FindCopy(rpc_services_, service_name, &service)) {
-    return service;
-  } else {
-    return scoped_refptr<RpcService>(nullptr);
+void Messenger::UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard) {
+  assert(guard != nullptr);
+
+  auto* new_cache = !rpc_services_.empty() ? new RpcServicesMap(rpc_services_) : nullptr;
+  auto* old = rpc_services_cache_.exchange(new_cache);
+
+  if (old) {
+    while (rpc_services_lock_count_ != 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    delete old;
   }
+}
+
+const scoped_refptr<RpcService> Messenger::rpc_service(const string& service_name) const {
+  BOOST_SCOPE_EXIT(&rpc_services_lock_count_) {
+    --rpc_services_lock_count_;
+  } BOOST_SCOPE_EXIT_END;
+  ++rpc_services_lock_count_;
+  scoped_refptr<RpcService> result;
+  auto* cache = atomic_load(&rpc_services_cache_);
+  if (cache != nullptr) {
+    auto it = cache->find(service_name);
+    if (it != cache->end()) {
+      result = it->second;
+    }
+  }
+  return result;
 }
 
 } // namespace rpc

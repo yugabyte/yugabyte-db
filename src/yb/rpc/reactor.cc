@@ -252,7 +252,7 @@ void ReactorThread::RegisterConnection(const scoped_refptr<Connection>& conn) {
   server_conns_.push_back(conn);
 }
 
-void ReactorThread::AssignOutboundCall(const shared_ptr<OutboundCall> &call) {
+void ReactorThread::AssignOutboundCall(const OutboundCallPtr& call) {
   DCHECK(IsCurrentThread());
   scoped_refptr<Connection> conn;
 
@@ -717,7 +717,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Sockaddr &remote) {
 // to a connection.
 class AssignOutboundCallTask : public ReactorTask {
  public:
-  explicit AssignOutboundCallTask(shared_ptr<OutboundCall> call)
+  explicit AssignOutboundCallTask(OutboundCallPtr call)
       : call_(std::move(call)) {}
 
   virtual void Run(ReactorThread *reactor) OVERRIDE {
@@ -729,10 +729,10 @@ class AssignOutboundCallTask : public ReactorTask {
   }
 
  private:
-  shared_ptr<OutboundCall> call_;
+  OutboundCallPtr call_;
 };
 
-void Reactor::QueueOutboundCall(const shared_ptr<OutboundCall> &call) {
+void Reactor::QueueOutboundCall(const OutboundCallPtr &call) {
   DVLOG(3) << name_ << ": queueing outbound call "
            << call->ToString() << " to remote " << call->conn_id().remote().ToString();
   ScheduleReactorTask(std::make_shared<AssignOutboundCallTask>(call));

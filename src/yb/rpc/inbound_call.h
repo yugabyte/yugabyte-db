@@ -28,6 +28,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/connection_types.h"
 #include "yb/rpc/remote_method.h"
+#include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/transfer.h"
 #include "yb/sql/sql_session.h"
@@ -63,7 +64,7 @@ struct InboundCallTiming {
 };
 
 // Inbound call on server
-class InboundCall : public RefCountedThreadSafe<InboundCall> {
+class InboundCall : public RpcCall {
  public:
   InboundCall();
   virtual ~InboundCall();

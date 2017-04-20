@@ -27,6 +27,7 @@
 #include "yb/rpc/constants.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
+#include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/transfer.h"
@@ -171,7 +172,7 @@ struct OutboundCallMetrics {
 // then passed to the reactor thread to send on the wire. It's typically
 // kept using a shared_ptr because a call may terminate in any number
 // of different threads, making it tricky to enforce single ownership.
-class OutboundCall {
+class OutboundCall : public RpcCall {
  public:
   OutboundCall(const ConnectionId& conn_id, const RemoteMethod& remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
@@ -318,6 +319,8 @@ class OutboundCall {
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };
+
+typedef scoped_refptr<OutboundCall> OutboundCallPtr;
 
 // A response to a call, on the client side.
 // Upon receiving a response, this is allocated in the reactor thread and filled

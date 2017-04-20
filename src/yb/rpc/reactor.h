@@ -26,10 +26,10 @@
 #include <set>
 #include <string>
 
+#include <ev++.h> // NOLINT
+
 #include <boost/intrusive/list.hpp>
 #include <boost/utility.hpp>
-
-#include <ev++.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/connection.h"
@@ -107,7 +107,7 @@ class DelayedTask : public ReactorTask {
   bool MarkAsDone();
 
   // libev callback for when the registered timer fires.
-  void TimerHandler(ev::timer& watcher, int revents);
+  void TimerHandler(ev::timer& watcher, int revents); // NOLINT
 
   // User function to invoke when timer fires or when task is aborted.
   const std::function<void(const Status&)> func_;
@@ -169,10 +169,10 @@ class ReactorThread {
   void WakeThread();
 
   // libev callback for handling async notifications in our epoll thread.
-  void AsyncHandler(ev::async &watcher, int revents);
+  void AsyncHandler(ev::async &watcher, int revents); // NOLINT
 
   // libev callback for handling timer events in our epoll thread.
-  void TimerHandler(ev::timer &watcher, int revents);
+  void TimerHandler(ev::timer &watcher, int revents); // NOLINT
 
   // Register an epoll timer watcher with our event loop.
   // Does not set a timeout or start it.
@@ -243,7 +243,7 @@ class ReactorThread {
 
   // Assign a new outbound call to the appropriate connection object.
   // If this fails, the call is marked failed and completed.
-  void AssignOutboundCall(const std::shared_ptr<OutboundCall> &call);
+  void AssignOutboundCall(const OutboundCallPtr &call);
 
   // Register a new connection.
   void RegisterConnection(const scoped_refptr<Connection>& conn);
@@ -321,7 +321,7 @@ class Reactor {
 
   // Queue a new call to be sent. If the reactor is already shut down, marks
   // the call as failed.
-  void QueueOutboundCall(const std::shared_ptr<OutboundCall> &call);
+  void QueueOutboundCall(const OutboundCallPtr &call);
 
   // Schedule the given task's Run() method to be called on the
   // reactor thread.
@@ -377,4 +377,4 @@ class Reactor {
 }  // namespace rpc
 }  // namespace yb
 
-#endif
+#endif // YB_RPC_REACTOR_H_

@@ -160,7 +160,7 @@ class Messenger {
 
   // Queue a call for transmission. This will pick the appropriate reactor,
   // and enqueue a task on that reactor to assign and send the call.
-  void QueueOutboundCall(const std::shared_ptr<OutboundCall> &call);
+  void QueueOutboundCall(const OutboundCallPtr& call);
 
   // Enqueue a call for processing on the server.
   void QueueInboundCall(InboundCallPtr call);
@@ -215,6 +215,7 @@ class Messenger {
   CHECKED_STATUS Init();
   void RunTimeoutThread();
   void UpdateCurTime();
+  void UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard);
 
   // Called by external-facing shared_ptr when the user no longer holds
   // any references. See 'retain_self_' for more info.
@@ -237,6 +238,8 @@ class Messenger {
 
   // RPC services that handle inbound requests.
   RpcServicesMap rpc_services_;
+  std::atomic<RpcServicesMap*> rpc_services_cache_ = {nullptr};
+  mutable std::atomic<int> rpc_services_lock_count_ = {0};
 
   std::vector<Reactor*> reactors_;
 

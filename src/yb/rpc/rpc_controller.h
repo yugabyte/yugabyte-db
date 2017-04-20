@@ -17,8 +17,9 @@
 #ifndef YB_RPC_RPC_CONTROLLER_H
 #define YB_RPC_RPC_CONTROLLER_H
 
-#include <glog/logging.h>
 #include <memory>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/locks.h"
@@ -31,6 +32,7 @@ namespace rpc {
 
 class ErrorStatusPB;
 class OutboundCall;
+typedef scoped_refptr<OutboundCall> OutboundCallPtr;
 
 // Controller for managing properties of a single RPC call, on the client side.
 //
@@ -123,11 +125,11 @@ class RpcController {
   mutable simple_spinlock lock_;
 
   // Once the call is sent, it is tracked here.
-  std::shared_ptr<OutboundCall> call_;
+  OutboundCallPtr call_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };
 
 } // namespace rpc
 } // namespace yb
-#endif
+#endif // YB_RPC_RPC_CONTROLLER_H

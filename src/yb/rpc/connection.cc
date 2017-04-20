@@ -215,7 +215,7 @@ void Connection::HandleOutboundCallTimeout(CallAwaitingResponse* car) {
 // has been fully transmitted.
 struct CallTransferCallbacks : public TransferCallbacks {
  public:
-  explicit CallTransferCallbacks(shared_ptr<OutboundCall> call)
+  explicit CallTransferCallbacks(OutboundCallPtr call)
       : call_(std::move(call)) {}
 
   void NotifyTransferFinished() override {
@@ -237,10 +237,10 @@ struct CallTransferCallbacks : public TransferCallbacks {
   }
 
  private:
-  shared_ptr<OutboundCall> call_;
+  OutboundCallPtr call_;
 };
 
-void Connection::QueueOutboundCall(const shared_ptr<OutboundCall>& call) {
+void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   DCHECK(call);
   DCHECK_EQ(direction_, CLIENT);
   DCHECK(reactor_thread_->IsCurrentThread());

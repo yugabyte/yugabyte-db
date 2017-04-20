@@ -125,7 +125,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // marked failed.
   // Takes ownership of the 'call' object regardless of whether it succeeds or fails.
   // This may be called from a non-reactor thread.
-  void QueueOutboundCall(const std::shared_ptr<OutboundCall>& call);
+  void QueueOutboundCall(const OutboundCallPtr& call);
 
   // The address of the remote end of the connection.
   const Sockaddr& remote() const { return remote_; }
@@ -182,7 +182,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
     void HandleTimeout(ev::timer& watcher, int revents);  // NOLINT
 
     Connection* conn;
-    std::shared_ptr<OutboundCall> call;
+    OutboundCallPtr call;
     ev::timer timeout_timer;
   };
 
