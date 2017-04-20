@@ -34,12 +34,19 @@ inline std::string TrimStr(const std::string& s,
   return LeftTrimStr(RightTrimStr(s, chars_to_trim), chars_to_trim);
 }
 
+// Remove the maximum number of leading spaces found in any non-empty line of the given multi-line
+// text block from each of its lines. Lines only containing spaces are considered empty.
+//
+// Note: lines containing whitespace-only characters but not all spaces (e.g. those with tabs, etc.)
+// are currently not considered empty by this function.
+std::string LeftShiftTextBlock(const std::string& s);
+
 // Concatenates lines if the final character of a line is "\". Also removes whitespace in the
 // next line after such continuation backslash (hence "eager" in the name). This is useful in
 // respecting the maximum line length rule in expected test output specified using raw literals.
 std::string ApplyEagerLineContinuation(const std::string& s);
 
-}
-}
+}  // namespace util
+}  // namespace yb
 
-#endif
+#endif  // YB_UTIL_STRING_TRIM_H

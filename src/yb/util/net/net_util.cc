@@ -280,7 +280,7 @@ Status GetLocalAddresses(std::vector<Sockaddr>* result, AddressFilter filter) {
   } BOOST_SCOPE_EXIT_END
 
   for (auto address = addresses; address; address = address->ifa_next) {
-    if (address->ifa_addr->sa_family == AF_INET) {
+    if (address->ifa_addr != nullptr && address->ifa_addr->sa_family == AF_INET) {
       Sockaddr temp(*PointerCast<sockaddr_in*>(address->ifa_addr));
       switch (filter) {
         case AddressFilter::ANY:

@@ -27,6 +27,12 @@
 
 namespace yb {
 
+enum class StackTraceLineFormat {
+  SHORT,
+  CLION_CLICKABLE,
+  DEFAULT = SHORT
+};
+
 // Return a list of all of the thread IDs currently running in this process.
 // Not async-safe.
 Status ListThreads(std::vector<pid_t>* tids);
@@ -50,7 +56,9 @@ Status SetStackTraceSignal(int signum);
 std::string DumpThreadStack(int64_t tid);
 
 // Return the current stack trace, stringified.
-std::string GetStackTrace();
+std::string GetStackTrace(
+    StackTraceLineFormat source_file_path_format = StackTraceLineFormat::DEFAULT,
+    int num_top_frames_to_skip = 0);
 
 // Return the current stack trace, in hex form. This is significantly
 // faster than GetStackTrace() above, so should be used in performance-critical
@@ -136,7 +144,8 @@ class StackTrace {
   // Return a string with a symbolized backtrace in a format suitable for
   // printing to a log file.
   // This is not async-safe.
-  std::string Symbolize() const;
+  std::string Symbolize(
+      StackTraceLineFormat source_file_path_format = StackTraceLineFormat::DEFAULT) const;
 
   // Return a string with a hex-only backtrace in the format typically used in
   // log files. Similar to the format given by Symbolize(), but symbols are not

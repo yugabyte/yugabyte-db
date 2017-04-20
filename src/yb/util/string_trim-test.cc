@@ -28,5 +28,19 @@ TEST(StringTrimTest, TestApplyEagerLineContinuation) {
   ASSERT_EQ("  foo bar\n  baz  ", ApplyEagerLineContinuation("  foo \\\n   \\\n    bar\n  baz  "));
 }
 
+TEST(StringTrimTest, TestTrimLeadingSpaces) {
+  ASSERT_EQ(
+      R"#(
+This is my
+
+  Text block
+)#",
+      LeftShiftTextBlock(R"#(
+      This is my
+
+        Text block
+      )#"));
 }
-}
+
+}  // namespace util
+}  // namespace yb

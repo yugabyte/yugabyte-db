@@ -20,6 +20,7 @@
 #include <string>
 
 #include "yb/util/string_trim.h"
+#include "yb/util/debug-util.h"
 
 // ASSERT_NO_FATAL_FAILURE is just too long to type.
 #define NO_FATALS ASSERT_NO_FATAL_FAILURE
@@ -85,32 +86,35 @@
     << "Expected file not to exist: " << _s; \
   } while (0)
 
-// A wrapper around ASSERT_EQ that trims expected and actual strings and outputs expected and actual
-// values without any escaping.
+// Wrappers around ASSERT_EQ and EXPECT_EQ that trim expected and actual strings and outputs
+// expected and actual values without any escaping. We're also printing a stack trace to allow
+// easier debugging.
+#define _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_SETUP(expected, actual) \
+    const auto expected_tmp = ::yb::util::TrimStr(yb::util::LeftShiftTextBlock(expected)); \
+    const auto actual_tmp = ::yb::util::TrimStr(yb::util::LeftShiftTextBlock(actual));
+
+#define _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG \
+       "\nActual (trimmed):\n" << actual_tmp \
+    << "\n\nExpected (trimmed):\n" << expected_tmp \
+    << "\n\nInvoked from:\n" << ::yb::GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE)
+
 #define ASSERT_STR_EQ_VERBOSE_TRIMMED(expected, actual) \
   do { \
-    const auto expected_tmp = yb::util::TrimStr(expected); \
-    const auto actual_tmp = yb::util::TrimStr(actual); \
-    ASSERT_EQ(expected_tmp, actual_tmp) \
-        << "\nActual (trimmed):\n" << actual_tmp \
-        << "\n\nExpected (trimmed):\n" << expected_tmp; \
+    _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_SETUP(expected, actual) \
+    ASSERT_EQ(expected_tmp, actual_tmp) << _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG; \
   } while(0)
 
 // A wrapper around EXPECT_EQ that trims expected and actual strings and outputs expected and actual
 // values without any escaping.
 #define EXPECT_STR_EQ_VERBOSE_TRIMMED(expected, actual) \
   do { \
-    const auto expected_tmp = yb::util::TrimStr(expected); \
-    const auto actual_tmp = yb::util::TrimStr(actual); \
-    EXPECT_EQ(expected_tmp, actual_tmp) \
-        << "\nActual (trimmed):\n" << actual_tmp \
-        << "\n\nExpected (trimmed):\n" << expected_tmp; \
+    _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_SETUP(expected, actual) \
+    EXPECT_EQ(expected_tmp, actual_tmp) << _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG; \
   } while(0)
 
 #define YB_ASSERT_TRUE(condition) \
   GTEST_TEST_BOOLEAN_((condition) ? true : false, #condition, false, true, \
                       GTEST_FATAL_FAILURE_)
-
 
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()

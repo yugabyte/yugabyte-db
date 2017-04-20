@@ -34,12 +34,13 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/singleton.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/singleton.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/thread.h"
 
@@ -222,11 +223,29 @@ void BacktraceErrorCallback(void* data, const char* msg, int errnum) {
   buf->append(StringPrintf("Backtrace error: %s (errnum=%d)\n", msg, errnum));
 }
 
+class GlobalBacktraceState {
+ public:
+  GlobalBacktraceState() {
+    bt_state_ = backtrace_create_state(
+        nullptr, /* threaded = */ 1, BacktraceErrorCallback, nullptr);
+  }
+
+  backtrace_state* GetState() { return bt_state_; }
+ private:
+  struct backtrace_state* bt_state_;
+};
+
+struct SymbolizationContext {
+  StackTraceLineFormat stack_trace_line_format = StackTraceLineFormat::DEFAULT;
+  string* buf = nullptr;
+};
+
 int BacktraceFullCallback(void *const data, const uintptr_t pc,
                           const char* const filename, const int lineno,
                           const char* const original_function_name) {
-
-  string* const buf = reinterpret_cast<string*>(data);
+  assert(data != nullptr);
+  const SymbolizationContext& context = *PointerCast<SymbolizationContext*>(data);
+  string* const buf = context.buf;
   int demangle_status = 0;
   char* const demangled_function_name =
       original_function_name != nullptr ?
@@ -258,15 +277,24 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
     function_name_to_use = kUnknownSymbol;
   }
 
-  StringAppendF(buf, kStackTraceEntryFormat, kPrintfPointerFieldWidth,
-      reinterpret_cast<void*>(pc), function_name_to_use);
+  const string frame_without_file_line =
+      StringPrintf(kStackTraceEntryFormat, kPrintfPointerFieldWidth,
+          reinterpret_cast<void*>(pc), function_name_to_use);
   // We have not appended an end-of-line character yet. Let's see if we have file name / line number
   // information first. BTW kStackTraceEntryFormat is used both here and in glog-based
   // symbolization.
   if (filename != nullptr) {
     // Got filename and line number from libbacktrace! No need to filter the output through
     // addr2line, etc.
-    StringAppendF(buf, " (%s:%d)", NormalizeSourceFilePath(filename), lineno);
+    if (context.stack_trace_line_format == StackTraceLineFormat::CLION_CLICKABLE) {
+      const string file_line_prefix = StringPrintf("%s:%d: ", filename, lineno);
+      StringAppendF(buf, "%-100s", file_line_prefix.c_str());
+      *buf += frame_without_file_line;
+    } else {
+      // Must be StackTraceLineFormat::SHORT.
+      *buf += frame_without_file_line;
+      StringAppendF(buf, " (%s:%d)", NormalizeSourceFilePath(filename), lineno);
+    }
   }
   buf->push_back('\n');
   // No need to check for nullptr, free is a no-op in that case.
@@ -276,7 +304,7 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
 
 #endif  // __linux__
 
-}  // namespace
+}  // anonymous namespace
 
 Status SetStackTraceSignal(int signum) {
   base::SpinLockHolder h(&g_dumper_thread_lock);
@@ -321,7 +349,7 @@ std::string DumpThreadStack(int64_t tid) {
   // The main reason that a thread would not respond is that it has blocked signals. For
   // example, glibc's timer_thread doesn't respond to our signal, so we always time out
   // on that one.
-  string ret;
+  string buf;
   int i = 0;
   while (!base::subtle::Acquire_Load(&g_comm.result_ready) &&
          i++ < 100) {
@@ -333,15 +361,15 @@ std::string DumpThreadStack(int64_t tid) {
     CHECK_EQ(tid, g_comm.target_tid);
 
     if (!g_comm.result_ready) {
-      ret = "(thread did not respond: maybe it is blocking signals)";
+      buf = "(thread did not respond: maybe it is blocking signals)";
     } else {
-      ret = g_comm.stack.Symbolize();
+      buf = g_comm.stack.Symbolize();
     }
 
     g_comm.target_tid = 0;
     g_comm.result_ready = 0;
   }
-  return ret;
+  return buf;
 #else // defined(__linux__)
   return "(unsupported platform)";
 #endif
@@ -369,39 +397,26 @@ Status ListThreads(vector<pid_t> *tids) {
   return Status::OK();
 }
 
+std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
+                          int num_top_frames_to_skip) {
+  std::string buf;
 #ifdef __linux__
-namespace {
-
-class GlobalBacktraceState {
- public:
-  GlobalBacktraceState() {
-    bt_state_ = backtrace_create_state(
-        nullptr, /* threaded = */ 1, BacktraceErrorCallback, nullptr);
-  }
-
-  backtrace_state* GetState() { return bt_state_; }
- private:
-  struct backtrace_state* bt_state_;
-};
-
-}  // anonymous namespace
-#endif
-
-std::string GetStackTrace() {
-  std::string s;
-#ifdef __linux__
+  SymbolizationContext context;
+  context.buf = &buf;
+  context.stack_trace_line_format = stack_trace_line_format;
   // Use libbacktrace on Linux because that gives us file names and line numbers.
   struct backtrace_state* const backtrace_state =
-    Singleton<GlobalBacktraceState>::get()->GetState();
-  const int backtrace_full_rv = backtrace_full(backtrace_state, /* skip = */ 1,
-      BacktraceFullCallback, BacktraceErrorCallback, &s);
+      Singleton<GlobalBacktraceState>::get()->GetState();
+  const int backtrace_full_rv = backtrace_full(
+      backtrace_state, /* skip = */ num_top_frames_to_skip + 1, BacktraceFullCallback,
+      BacktraceErrorCallback, &context);
   if (backtrace_full_rv != 0) {
-    StringAppendF(&s, "Error: backtrace_full return value is %d", backtrace_full_rv);
+    StringAppendF(&buf, "Error: backtrace_full return value is %d", backtrace_full_rv);
   }
 #else
-  google::glog_internal_namespace_::DumpStackTraceToString(&s);
+  google::glog_internal_namespace_::DumpStackTraceToString(&buf);
 #endif
-  return s;
+  return buf;
 }
 
 std::string GetStackTraceHex() {
@@ -456,9 +471,9 @@ string StackTrace::ToHexString(int flags) const {
   return string(buf);
 }
 
-// Symbolization function borrowed from glog.
-string StackTrace::Symbolize() const {
-  string ret;
+// Symbolization function borrowed from glog and modified to use libbacktrace on Linux.
+string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format) const {
+  string buf;
 #ifdef __linux__
   // Use libbacktrace for symbolization.
   struct backtrace_state* const backtrace_state =
@@ -496,8 +511,11 @@ string StackTrace::Symbolize() const {
     void* const adjusted_pc = reinterpret_cast<char *>(pc) - 1;
 
 #ifdef __linux__
+    SymbolizationContext context;
+    context.stack_trace_line_format = stack_trace_line_format;
+    context.buf = &buf;
     backtrace_pcinfo(backtrace_state, reinterpret_cast<uintptr_t>(adjusted_pc),
-        BacktraceFullCallback, BacktraceErrorCallback, &ret);
+        BacktraceFullCallback, BacktraceErrorCallback, &context);
 #else
     char tmp[1024];
     const char* symbol = kUnknownSymbol;
@@ -505,25 +523,25 @@ string StackTrace::Symbolize() const {
     if (google::Symbolize(adjusted_pc, tmp, sizeof(tmp))) {
       symbol = tmp;
     }
-    StringAppendF(&ret, kStackTraceEntryFormat, kPrintfPointerFieldWidth, adjusted_pc, symbol);
+    StringAppendF(&buf, kStackTraceEntryFormat, kPrintfPointerFieldWidth, adjusted_pc, symbol);
     // We are appending the end-of-line character separately because we want to reuse the same
     // format string for libbacktrace callback and glog-based symbolization, and we have an extra
     // file name / line number component before the end-of-line in the libbacktrace case.
-    ret.push_back('\n');
+    buf.push_back('\n');
 #endif  // Non-linux implementation
   }
 
   // TODO: what do we need to do to free the backtrace state?
-  return ret;
+  return buf;
 }
 
 string StackTrace::ToLogFormatHexString() const {
-  string ret;
+  string buf;
   for (int i = 0; i < num_frames_; i++) {
     void* pc = frames_[i];
-    StringAppendF(&ret, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
+    StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
   }
-  return ret;
+  return buf;
 }
 
 uint64_t StackTrace::HashCode() const {

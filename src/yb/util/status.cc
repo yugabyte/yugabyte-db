@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+// Portions Copyright (c) YugaByte, Inc.
+
 #include "yb/util/status.h"
 
 #include <stdio.h>
@@ -44,6 +46,21 @@ Status::Status(Code code,
     memcpy(result + kMsgPos + 2 + len1, msg2.data(), len2);
   }
   state_ = result;
+#ifndef NDEBUG
+  static const bool print_stack_trace = getenv("YB_STACK_TRACE_ON_ERROR_STATUS") != nullptr;
+  if (print_stack_trace) {
+    // We skip a couple of top frames like these:
+    //    ~/code/yugabyte/src/yb/util/status.cc:53:
+    //        @ yb::Status::Status(yb::Status::Code, yb::Slice const&, yb::Slice const&, long,
+    //                             char const*, int)
+    //    ~/code/yugabyte/src/yb/util/status.h:137:
+    //        @ yb::Status::Corruption(char const*, int, yb::Slice const&, yb::Slice const&, short)
+    //    ~/code/yugabyte/src/yb/common/hybrid_time_with_write_id.cc:94:
+    //        @ yb::HybridTimeWithWriteId::DecodeFrom(yb::Slice*)
+    LOG(WARNING) << "Non-OK status generated: " << ToString() << ", stack trace:\n"
+                 << GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE, /* skip frames: */ 2);
+  }
+#endif
 }
 
 std::string Status::CodeAsString() const {
