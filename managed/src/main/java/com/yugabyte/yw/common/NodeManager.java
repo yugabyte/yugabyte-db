@@ -152,6 +152,8 @@ public class NodeManager extends DevopsBase {
         }
         subcommand.add("--package");
         subcommand.add(ybServerPackage);
+        subcommand.add("--durable_wal_write");
+        subcommand.add(taskParam.durableWalWrite ? "true" : "false");
         break;
       case Software:
         {

@@ -210,6 +210,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public TaskList createConfigureServerTasks(Collection<NodeDetails> nodes,
                                              boolean isMasterInShellMode) {
     TaskList taskList = new TaskList("AnsibleConfigureServers", executor);
+    int numAZs = PlacementInfoUtil.getAzUuidToNumNodes(nodes).size();
+    boolean trulyMultiAZ = taskParams().userIntent.isMultiAZ &&
+        numAZs >= taskParams().userIntent.replicationFactor;
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
@@ -222,6 +225,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.universeUUID = taskParams().universeUUID;
       // Add the az uuid.
       params.azUuid = node.azUuid;
+      // Set directIO to false for multiAZ and has numAZ >= RF.
+      if (trulyMultiAZ) {
+        params.durableWalWrite = false;
+      }
       // Set if this node is a master in shell mode.
       params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
