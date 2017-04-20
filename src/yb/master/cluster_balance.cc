@@ -617,6 +617,11 @@ void ClusterLoadBalancer::RunLoadBalancer() {
 
   // Loop over all tables.
   for (const auto& table : GetTableMap()) {
+
+    if (SkipLoadBalancing(*table.second)) {
+      continue;
+    }
+
     ResetState();
 
     // Prepare the in-memory structures.
@@ -1191,6 +1196,11 @@ const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
   ClusterConfigMetadataLock l(
       catalog_manager_->cluster_config_.get(), ClusterConfigMetadataLock::READ);
   return l.data().pb.server_blacklist();
+}
+
+bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
+  // Skip load-balancing of system tables. They are virtual tables not hosted by tservers.
+  return catalog_manager_->IsSystemTable(table);
 }
 
 void ClusterLoadBalancer::SendReplicaChanges(

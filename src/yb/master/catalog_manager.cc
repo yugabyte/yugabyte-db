@@ -2312,6 +2312,10 @@ bool CatalogManager::TableNameExists(const NamespaceId& namespace_id,
   return table_names_map_.find({namespace_id, table_name}) != table_names_map_.end();
 }
 
+bool CatalogManager::IsSystemTable(const TableInfo& table) const {
+  return table.IsSupportedSystemTable(master_supported_system_tables_);
+}
+
 void CatalogManager::NotifyTabletDeleteFinished(const TServerId& tserver_uuid,
                                                 const TabletId& tablet_id) {
   scoped_refptr<DeletedTableInfo> deleted_table;

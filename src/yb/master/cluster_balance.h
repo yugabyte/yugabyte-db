@@ -133,6 +133,9 @@ class ClusterLoadBalancer {
   // Get the blacklist information.
   virtual const BlacklistPB& GetServerBlacklist() const;
 
+  // Should skip load-balancing of this table?
+  virtual bool SkipLoadBalancing(const TableInfo& table) const;
+
   // Issue the call to CatalogManager to change the config for this particular tablet, either
   // adding or removing the peer at ts_uuid, based on the is_add argument. Removing the peer
   // is optional. When neither adding nor removing peer, it means just moving a leader from one

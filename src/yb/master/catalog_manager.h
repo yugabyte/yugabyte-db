@@ -705,6 +705,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   bool TableNameExists(const TableName& table_name) const
       { return TableNameExists(kDefaultNamespaceId, table_name); }
 
+  // Is the table a system table?
+  bool IsSystemTable(const TableInfo& table) const;
+
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
   void NotifyTabletDeleteFinished(const TServerId& tserver_uuid, const TableId& table_id);
