@@ -79,7 +79,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(toggleTableView("list"));
     }
   }
-}
+};
 
 const validate = values => {
   const errors = {};
@@ -87,7 +87,7 @@ const validate = values => {
   errors.clusteringColumns = [];
   errors.otherColumns = [];
   if (!isDefinedNotNull(values.tableName)) {
-    errors.tableName = 'Table Name Is Required'
+    errors.tableName = 'Table Name Is Required';
   }
   if (values.partitionKeyColumns && values.partitionKeyColumns.length) {
     values.partitionKeyColumns.forEach((paritionKeyCol, colIndex) => {
@@ -112,7 +112,7 @@ const validate = values => {
   }
 
   return errors;
-}
+};
 
 var createTableForm = reduxForm({
   form: 'CreateTableForm',
