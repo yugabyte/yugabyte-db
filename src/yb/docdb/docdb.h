@@ -227,15 +227,22 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
     HybridTime scan_ts = HybridTime::kMax);
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
+// subdocument_key should not have a timestamp.
+// Before the function is called, the iterator is expected to be positioned on or before
+// the first key.
+// After this, the iter should be positioned just outside the SubDocument.
 // This function works with or without object init markers present.
 // If tombstone and other values are inserted at the same timestamp, it results in undefined
 // behavior. TODO: We should have write-id's to make sure timestamps are always unique.
-yb::Status GetSubDocument(rocksdb::Iterator *iter,
+// The projection, if set, restricts the scan to a subset of keys in the first level.
+// The projection is used for YQL selects to get only a subset of columns.
+yb::Status GetSubDocument(rocksdb::Iterator *iterator,
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
     HybridTime scan_ts = HybridTime::kMax,
-    MonoDelta table_ttl = Value::kMaxTtl);
+    MonoDelta table_ttl = Value::kMaxTtl,
+    const std::vector<PrimitiveValue>* projection = nullptr);
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in eg. doc_rowwise_iterator.

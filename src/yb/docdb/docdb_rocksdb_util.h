@@ -21,6 +21,12 @@ Status SeekToValidKvAtTs(
     Value *found_value,
     bool *is_found);
 
+// See to a rocksdb point that is at least sub_doc_key.
+// If the iterator is already positioned far enough, does not perform a seek.
+void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter);
+
+void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
+
 // Debug mode: allow printing detailed information about RocksDB seeks.
 void PerformRocksDBSeek(
     rocksdb::Iterator *iter,

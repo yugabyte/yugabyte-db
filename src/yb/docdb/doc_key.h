@@ -322,7 +322,7 @@ class SubDocKey {
   // representation of a SubDocKey that extends the vector of subkeys present in the current one,
   // or has the same vector of subkeys, i.e. key/value pairs #3-6 in the above example. HybridTime
   // is omitted from the resulting encoded representation.
-  KeyBytes AdvanceOutOfSubDoc();
+  KeyBytes AdvanceOutOfSubDoc() const;
 
   // Similar to AdvanceOutOfSubDoc, but seek to the smallest key that skips documents with this
   // DocKey and DocKeys that have the same hash components but add more range components to it.

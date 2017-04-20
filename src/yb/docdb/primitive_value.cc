@@ -43,6 +43,8 @@ string PrimitiveValue::ToString() const {
       return "false";
     case ValueType::kTrue:
       return "true";
+    case ValueType::kInvalidValueType:
+      return "invalid";
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString:
       return FormatBytesAsStr(str_val_);
@@ -102,7 +104,6 @@ string PrimitiveValue::ToString() const {
       return "[]";
 
     case ValueType::kGroupEnd: FALLTHROUGH_INTENDED;
-    case ValueType::kInvalidValueType: FALLTHROUGH_INTENDED;
     case ValueType::kTtl:
       break;
   }
@@ -806,7 +807,10 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
 
 void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const YQLType& yql_type,
                                   YQLValuePB* yql_value) {
-  if (primitive_value.value_type() == ValueType::kNull) {
+  // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
+  // to be set to Null in YQLValue.
+  if (primitive_value.value_type() == ValueType::kNull ||
+      primitive_value.value_type() == ValueType::kInvalidValueType) {
     YQLValue::SetNull(yql_value);
     return;
   }

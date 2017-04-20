@@ -666,12 +666,31 @@ class SubDocumentBuildingVisitor : public DocVisitor {
   bool doc_found_ = false;
 };
 
+// If there is a key equal to key_bytes + some timestamp, we return its hybridtime.
+// This should not be used for leaf nodes.
+// TODO: We could also check that the value is kTombStone or kObject type for sanity checking.
+HybridTime FindLastWriteTime(const KeyBytes& key_bytes,
+    HybridTime scan_ht, rocksdb::Iterator* iter) {
+  KeyBytes key_with_ts = key_bytes;
+  key_with_ts.AppendValueType(ValueType::kHybridTime);
+  key_with_ts.AppendHybridTime(scan_ht);
+  SeekForward(key_with_ts, iter);
+  if (iter->Valid() && key_bytes.OnlyLacksHybridTimeFrom(iter->key())) {
+    return DecodeHybridTimeFromKey(iter->key());
+    // TODO when we support ttl on non-leaf nodes, we need to take that into account here.
+  } else {
+    return HybridTime::kMin;
+  }
+}
+
 // When we replace HybridTime::kMin in the end of seek key, next seek will skip older
-// versions of this key, but will not skip any subkeys in its subtree. So it is similar
-// to AdvanceOutOfSubDoc() but different.
-void SeekPastSubKey(SubDocKey sub_doc_key, rocksdb::Iterator* iter) {
-  sub_doc_key.set_hybrid_time(HybridTime::kMin);
-  iter->Seek(sub_doc_key.Encode().AsSlice());
+// versions of this key, but will not skip any subkeys in its subtree.
+// If the iterator is already positioned far enough, does not perform a seek.
+void SeekPastSubKey(const SubDocKey& sub_doc_key, rocksdb::Iterator* iter) {
+  KeyBytes key_bytes = sub_doc_key.Encode(/* include_hybrid_time */ false);
+  key_bytes.AppendValueType(ValueType::kHybridTime);
+  key_bytes.AppendHybridTime(HybridTime::kMin);
+  SeekForward(key_bytes, iter);
 }
 
 // This works similar to the ScanSubDocument function, but doesn't assume that object init_markers
@@ -680,6 +699,9 @@ void SeekPastSubKey(SubDocKey sub_doc_key, rocksdb::Iterator* iter) {
 // TODO(akashnil): ENG-1152: If object init markers were required, this read path may be optimized.
 // We look at all rocksdb keys with prefix = subdocument_key, and construct a subdocument out of
 // them, between the timestamp range high_ts and low_ts
+// The iterator is expected to be placed at the smallest key that is subdocument_key or later, and
+// after the function returns, the iterator should be placed just completely outside the
+// subdocument_key prefix.
 yb::Status BuildSubDocument(rocksdb::Iterator* iter,
     const SubDocKey &subdocument_key,
     SubDocument* subdocument,
@@ -697,6 +719,7 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
     if (!iter->Valid()) {
       return Status::OK();
     }
+
     if (!iter->key().starts_with(encoded_key.AsSlice())) {
       return Status::OK();
     }
@@ -707,7 +730,7 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
 
     if (high_ts < found_key.hybrid_time()) {
       found_key.set_hybrid_time(high_ts);
-      iter->Seek(found_key.Encode().AsSlice());
+      SeekForward(found_key.Encode(), iter);
       continue;
     }
 
@@ -716,51 +739,52 @@ yb::Status BuildSubDocument(rocksdb::Iterator* iter,
       continue;
     }
 
-    MonoDelta ttl;
-    RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
-    ttl = ComputeTTL(ttl, table_ttl);
-
-    if (!ttl.Equals(Value::kMaxTtl)) {
-      const HybridTime expiry =
-          server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), ttl);
-      if (high_ts.CompareTo(expiry) > 0) {
-        // Treat expired keys as tombstones. We are scanning in higher -> lower order of timestamps,
-        // so this cannot invalidate values written at higher timestamp at this key (subkeys before
-        // expiry time will be treated as deleted.
-        if (low_ts > expiry) {
-          // We should have expiry > hybrid time from key > low_ts.
-          return STATUS_SUBSTITUTE(Corruption,
-              "Unexpected expiry time $0 found, should be higher than $1",
-              expiry.ToString(), low_ts.ToString());
-        }
-        low_ts = expiry;
-        SeekPastSubKey(found_key, iter);
-        continue;
-      }
-    }
-
     RETURN_NOT_OK(doc_value.Decode(value));
     if (encoded_key.OnlyLacksHybridTimeFrom(iter->key())) {
+
+      MonoDelta ttl;
+      RETURN_NOT_OK(Value::DecodeTTL(&value, &ttl));
+      ttl = ComputeTTL(ttl, table_ttl);
+
+      HybridTime write_time = found_key.hybrid_time();
+
+      if (!ttl.Equals(Value::kMaxTtl)) {
+        const HybridTime expiry =
+            server::HybridClock::AddPhysicalTimeToHybridTime(found_key.hybrid_time(), ttl);
+        if (high_ts.CompareTo(expiry) > 0) {
+          // Treat the value as a tombstone written at expiry time.
+          if (low_ts > expiry) {
+            // We should have expiry > hybrid time from key > low_ts.
+            return STATUS_SUBSTITUTE(Corruption,
+                "Unexpected expiry time $0 found, should be higher than $1",
+                expiry.ToString(), low_ts.ToString());
+          }
+          doc_value = Value(PrimitiveValue(ValueType::kTombstone));
+          write_time = expiry;
+        }
+      }
+
       // We have found some key that matches our entire subdocument_key, i.e. we didn't skip ahead
       // to a lower level key (with optional object init markers).
       if (doc_value.value_type() == ValueType::kObject ||
           doc_value.value_type() == ValueType::kTombstone) {
-        if (low_ts < found_key.hybrid_time()) {
-          low_ts = found_key.hybrid_time();
+        if (low_ts < write_time) {
+          low_ts = write_time;
         }
         if (doc_value.value_type() == ValueType::kObject) {
           *subdocument = SubDocument();
         }
         SeekPastSubKey(found_key, iter);
+        continue;
       } else {
         if (!IsPrimitiveValueType(doc_value.value_type())) {
           return STATUS_SUBSTITUTE(Corruption,
               "Expected primitive value type, got $0", ValueTypeToStr(doc_value.value_type()));
         }
         *subdocument = SubDocument(doc_value.primitive_value());
-        iter->Seek(found_key.AdvanceOutOfSubDoc().AsSlice());
+        SeekForward(found_key.AdvanceOutOfSubDoc(), iter);
+        return Status::OK();
       }
-      continue;
     }
 
     SubDocument descendant = SubDocument(PrimitiveValue(ValueType::kInvalidValueType));
@@ -793,15 +817,18 @@ yb::Status GetSubDocument(rocksdb::DB *db,
     HybridTime scan_ht,
     MonoDelta table_ttl) {
   auto iter = CreateRocksDBIterator(db);
+  iter->SeekToFirst();
   return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl);
 }
 
-yb::Status GetSubDocument(rocksdb::Iterator *iter,
+yb::Status GetSubDocument(rocksdb::Iterator *iterator,
     const SubDocKey& subdocument_key,
     SubDocument *result,
     bool *doc_found,
     HybridTime scan_ht,
-    MonoDelta table_ttl) {
+    MonoDelta table_ttl,
+    const vector<PrimitiveValue>* projection) {
+  *doc_found = false;
   DOCDB_DEBUG_LOG("GetSubDocument for key $0", subdocument_key.ToString());
   HybridTime max_deleted_ts = HybridTime::kMin;
 
@@ -811,22 +838,48 @@ yb::Status GetSubDocument(rocksdb::Iterator *iter,
 
   KeyBytes key_bytes = subdocument_key.doc_key().Encode();
 
+  SeekForward(key_bytes, iterator);
+
+  // Check ancestors for init markers and tombstones, update max_deleted_ts with them.
   for (const PrimitiveValue& subkey : subdocument_key.subkeys()) {
-    RETURN_NOT_OK(SeekToValidKvAtTs(
-        iter, key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
-    if (is_found && key_bytes.OnlyLacksHybridTimeFrom(iter->key()) &&
-        max_deleted_ts < found_subdoc_key.hybrid_time() && max_deleted_ts <= scan_ht) {
-      max_deleted_ts = found_subdoc_key.hybrid_time();
-      SeekPastSubKey(found_subdoc_key, iter);
+    const HybridTime overwrite_ts = FindLastWriteTime(key_bytes, scan_ht, iterator);
+    if (max_deleted_ts < overwrite_ts) {
+      max_deleted_ts = overwrite_ts;
     }
     subkey.AppendToKey(&key_bytes);
   }
-  RETURN_NOT_OK(SeekToValidKvAtTs(
-      iter, key_bytes.AsSlice(), scan_ht, &found_subdoc_key, &doc_value, &is_found));
-  *result = SubDocument(ValueType::kInvalidValueType);
-  RETURN_NOT_OK(BuildSubDocument(iter, subdocument_key, result, scan_ht, max_deleted_ts,
-                                 table_ttl));
-  *doc_found = result->value_type() != ValueType::kInvalidValueType;
+  if (projection == nullptr) {
+    // This is only to initialize the iterator properly for BuildSubDocument call.
+    SeekForward(key_bytes, iterator);
+    *result = SubDocument(ValueType::kInvalidValueType);
+    RETURN_NOT_OK(BuildSubDocument(iterator, subdocument_key, result, scan_ht, max_deleted_ts,
+        table_ttl));
+    *doc_found = result->value_type() != ValueType::kInvalidValueType;
+
+    return Status::OK();
+  }
+  // Check for init-marker / tombstones at the top level, update max_deleted_ts.
+  HybridTime overwrite_ts = FindLastWriteTime(key_bytes, scan_ht, iterator);
+  if (max_deleted_ts < overwrite_ts) {
+    max_deleted_ts = overwrite_ts;
+  }
+  // For each subkey in the projection, build subdocument.
+  *result = SubDocument();
+  for (const PrimitiveValue& subkey : *projection) {
+    SubDocument descendant(ValueType::kInvalidValueType);
+    SubDocKey projection_subdockey = subdocument_key;
+    projection_subdockey.AppendSubKeysAndMaybeHybridTime(subkey);
+    // This seek is to initialize the iterator for BuildSubDocument call.
+    SeekForward(projection_subdockey.Encode(/* include_hybrid_time */ false), iterator);
+    RETURN_NOT_OK(BuildSubDocument(iterator,
+        projection_subdockey, &descendant, scan_ht, max_deleted_ts, table_ttl));
+    if (descendant.value_type() != ValueType::kInvalidValueType) {
+      *doc_found = true;
+    }
+    result->SetChild(subkey, std::move(descendant));
+  }
+  // Make sure the iterator is placed outside the whole document in the end.
+  SeekForward(subdocument_key.AdvanceOutOfSubDoc(), iterator);
   return Status::OK();
 }
 

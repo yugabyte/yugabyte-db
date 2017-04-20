@@ -16,6 +16,7 @@
 #include "yb/common/yql_rowwise_iterator_interface.h"
 #include "yb/common/yql_scanspec.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/subdocument.h"
 #include "yb/docdb/value.h"
 #include "yb/util/status.h"
 #include "yb/util/pending_op_counter.h"
@@ -125,17 +126,18 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Indicates whether we've already finished iterating.
   mutable bool done_;
 
-  // HasNext sets this to the subdocument key corresponding to the top of the document
-  // (document key and a generation hybrid time).
-  mutable SubDocKey subdoc_key_;
+  // HasNext constructs the whole row SubDocument.
+  mutable SubDocument row_;
 
-  // HasNext sets this to the value of the first valid column found for a given row.
-  mutable Value top_level_value_;
+  // The current row's Primary key. It is set to lower bound in the beginning.
+  mutable DocKey row_key_;
 
-  // While iterating within a row we keep the delete timestamp for the row, to determine which
-  // columns are valid.
-  mutable HybridTime row_delete_marker_time_;
-  mutable DocKey row_delete_marker_key_;
+  // When HasNext constructs a row, row_ready_ is set to true.
+  // When NextBlock/NextRow consumes the row, this variable is set to false.
+  // It is initialized to false, to make sure first HasNext constructs a new row.
+  mutable bool row_ready_;
+
+  mutable std::vector<PrimitiveValue> projection_subkeys_;
 
   // Used for keeping track of errors that happen in HasNext. Returned
   mutable Status status_;

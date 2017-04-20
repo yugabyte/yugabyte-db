@@ -392,7 +392,7 @@ int SubDocKey::NumSharedPrefixComponents(const SubDocKey& other) const {
   return min_num_subkeys + 1;
 }
 
-KeyBytes SubDocKey::AdvanceOutOfSubDoc() {
+KeyBytes SubDocKey::AdvanceOutOfSubDoc() const {
   KeyBytes subdoc_key_no_ts = Encode(/* include_hybrid_time = */ false);
   subdoc_key_no_ts.AppendRawBytes("\xff", 1);
   return subdoc_key_no_ts;

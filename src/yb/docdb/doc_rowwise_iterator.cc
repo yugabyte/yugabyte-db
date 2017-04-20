@@ -50,8 +50,13 @@ DocRowwiseIterator::DocRowwiseIterator(const Schema &projection,
       db_(db),
       has_upper_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false),
-      row_delete_marker_time_(HybridTime::kInvalidHybridTime) {
+      done_(false) {
+  projection_subkeys_.reserve(projection.num_columns() + 1);
+  projection_subkeys_.push_back(PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
+  for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
+    projection_subkeys_.emplace_back(projection.column_id(i));
+  }
+  std::sort(projection_subkeys_.begin(), projection_subkeys_.end());
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() {
@@ -63,12 +68,12 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   db_iter_ = CreateRocksDBIterator(db_, false /* use_bloom_on_scan */);
 
   if (spec->lower_bound_key() != nullptr) {
-    ROCKSDB_SEEK(db_iter_.get(), SubDocKey(KuduToDocKey(*spec->lower_bound_key()),
-                                           hybrid_time_).Encode().AsSlice());
+    row_key_ = KuduToDocKey(*spec->lower_bound_key());
   } else {
-    // The equivalent of db_iter_->SeekToFirst().
-    ROCKSDB_SEEK(db_iter_.get(), "");
+    row_key_ = DocKey();
   }
+  ROCKSDB_SEEK(db_iter_.get(), SubDocKey(row_key_, hybrid_time_).Encode().AsSlice());
+  row_ready_ = false;
 
   if (spec->exclusive_upper_bound_key() != nullptr) {
     has_upper_bound_key_ = true;
@@ -76,7 +81,6 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   } else {
     has_upper_bound_key_ = false;
   }
-
   return Status::OK();
 }
 
@@ -92,12 +96,9 @@ Status DocRowwiseIterator::Init(const common::YQLScanSpec& spec) {
   db_iter_ = CreateRocksDBIterator(db_, is_fixed_point_get /* use_bloom_on_scan */);
 
   // Start scan with the lower bound doc key.
-  // If there is no lower bound, start from the beginning.
-  if (!lower_doc_key.empty()) {
-    ROCKSDB_SEEK(db_iter_.get(), SubDocKey(lower_doc_key, hybrid_time_).Encode().AsSlice());
-  } else {
-    ROCKSDB_SEEK(db_iter_.get(), "");
-  }
+  row_key_ = std::move(lower_doc_key);
+  ROCKSDB_SEEK(db_iter_.get(), row_key_.Encode().AsSlice());
+  row_ready_ = false;
 
   // End scan with the upper bound key bytes.
   if (!upper_doc_key.empty()) {
@@ -109,276 +110,69 @@ Status DocRowwiseIterator::Init(const common::YQLScanSpec& spec) {
   return Status::OK();
 }
 
-bool DocRowwiseIterator::IsDeletedByRowDeletion(const SubDocKey& subdoc_key) const {
-  if (subdoc_key.doc_key() != row_delete_marker_key_) {
-    // The current delete marker key doesn't apply for this column.
-    return false;
-  }
-
-  if (row_delete_marker_time_ != HybridTime::kInvalidHybridTime &&
-      subdoc_key.hybrid_time() < row_delete_marker_time_) {
-    // This column isn't valid since there is a row level delete marker at a higher timestamp.
-    // TODO: If we have an insert and delete at the same timestamp (could be possible in
-    // transactions), we currently choose the insert to win. This isn't correct since we could
-    // have deletes after an insert in a transaction and in that case we want to keep the delete.
-    // This behavior will be fixed in the future.
-    return true;
-  }
-  return false;
-}
-
-Status DocRowwiseIterator::FindValidColumn(bool* column_found) const {
-  // We've found a column for the row, now check if the column is valid.
-  *column_found = false;
-  RETURN_NOT_OK(CheckColumnValidity(subdoc_key_, top_level_value_, column_found))
-
-  if (!(*column_found)) {
-    // This column has expired or has been deleted or is not part of the projection, look for the
-    // next column.
-    ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfSubDoc().AsSlice());
-  }
-
-  // Otherwise, we've found a valid column and as a result the row exists.
-  return Status::OK();
-}
-
-Status DocRowwiseIterator::ProcessColumnsForHasNext(bool* column_found) const {
-  const PrimitiveValue& last_key = subdoc_key_.last_subkey();
-
-  switch (last_key.value_type()) {
-    case ValueType::kColumnId: {
-      RETURN_NOT_OK(FindValidColumn(column_found));
-      break;
-    }
-    case ValueType::kSystemColumnId: {
-      // We have a system column id here.
-      if (last_key.GetColumnId() !=
-          ColumnId(static_cast<ColumnIdRep>(SystemColumnIds::kLivenessColumn))) {
-        // We found an invalid system column here.
-        return STATUS_SUBSTITUTE(Corruption,
-                                 "Expected system column id $0, found $1",
-                                 static_cast<int32_t>(SystemColumnIds::kLivenessColumn),
-                                 last_key.GetColumnId());
-      }
-      RETURN_NOT_OK(FindValidColumn(column_found));
-      break;
-    }
-    default:
-      return STATUS_SUBSTITUTE(Corruption,
-                               "Expected value type $0 or $1 in first subkey, found $2",
-                               ValueTypeToStr(ValueType::kColumnId),
-                               ValueTypeToStr(ValueType::kSystemColumnId),
-                               ValueTypeToStr(last_key.value_type()));
-  }
-  return Status::OK();
-}
-
 bool DocRowwiseIterator::HasNext() const {
-  if (!status_.ok()) {
-    // Unfortunately, we don't have a way to return an error status here, so we save it until the
-    // next time NextBlock is called. This is also the reason why we have to return true in error
-    // cases.
+  if (!status_.ok() || row_ready_) {
+    // If row is ready, then HasNext returns true. In case of error, NextBlock() / NextRow() will
+    // eventually report the error. HasNext is unable to return an error status.
     return true;
   }
 
   if (done_) return false;
 
-  // Use empty string as initial previous key value in order to not be equal to real key.
-  string prev_rocksdb_key;
-
-  while (true) {
-    if (db_iter_ == nullptr || !db_iter_->Valid() ||
-        (has_upper_bound_key_ && exclusive_upper_bound_key_.CompareTo(db_iter_->key()) <= 0)) {
+  bool doc_found = false;
+  while (!doc_found) {
+    if (!db_iter_->Valid()) {
       done_ = true;
       return false;
     }
-
-    status_ = subdoc_key_.FullyDecodeFrom(db_iter_->key());
+    rocksdb::Slice rocksdb_key(db_iter_->key());
+    status_ = row_key_.DecodeFrom(&rocksdb_key);
     if (!status_.ok()) {
-      // Defer error reporting to NextBlock.
+      // Defer error reporting to NextBlock().
       return true;
     }
-
-    if (subdoc_key_.doc_key() != row_delete_marker_key_) {
-      // The delete marker is no longer valid for this subdoc key.
-      row_delete_marker_time_ = HybridTime::kInvalidHybridTime;
-      row_delete_marker_key_.Clear();
+    if (has_upper_bound_key_ &&
+        db_iter_->key().compare(exclusive_upper_bound_key_.AsSlice()) >= 0) {
+      done_ = true;
+      return false;
     }
-
-    if (prev_rocksdb_key == db_iter_->key()) {
-      // Infinite loop detected, defer error reporting to NextBlock.
-      status_ = STATUS_SUBSTITUTE(Corruption,
-          "Infinite loop detected at $0", subdoc_key_.ToString());
-      return true;
-    }
-    prev_rocksdb_key = db_iter_->key().ToString();
-
-    // We expect to find a tombstone, a liveness column or a regular column which all have
-    // num_subkeys <= 1. Since we don't support non-primitive column values yet, we can't have
-    // more than 1 subkey.
-    if (subdoc_key_.num_subkeys() > 1) {
-      // Defer error reporting to NextBlock.
-      status_ = STATUS_SUBSTITUTE(Corruption,
-                                  "Did not expect to find any subkeys when starting row "
-                                  "iteration, found $0", subdoc_key_.num_subkeys());
-      return true;
-    }
-
-    if (subdoc_key_.hybrid_time().CompareTo(hybrid_time_) > 0) {
-      // This document was fully overwritten after the hybrid_time we are trying to scan at. We have
-      // to read the latest version of the document that existed at the specified hybrid_time
-      // instead.
-      subdoc_key_.set_hybrid_time(hybrid_time_);
-      ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.Encode().AsSlice());
-      continue;
-    }
-
-    status_ = top_level_value_.Decode(db_iter_->value());
+    KeyBytes old_key(db_iter_->key());
+    // The iterator is positioned by the previous GetSubDocument call
+    // (which places the iterator outside the previous doc_key).
+    status_ = GetSubDocument(db_iter_.get(), SubDocKey(row_key_), &row_, &doc_found, hybrid_time_,
+        TableTTL(schema_), &projection_subkeys_);
+    // After this, the iter should be positioned right after the subdocument.
     if (!status_.ok()) {
-      // Defer error reporting to NextBlock.
+      // Defer error reporting to NextBlock().
       return true;
     }
-    const auto value_type = top_level_value_.value_type();
 
-    if (subdoc_key_.num_subkeys() == 1) {
-      // We should expect a liveness column or a regular user column here. We could have a regular
-      // column since the liveness column might have been compacted away or the row was added
-      // using an UPDATE statement.
-      bool column_found = false;
-      status_ = ProcessColumnsForHasNext(&column_found);
+    if (!doc_found) {
+      SubDocument full_row;
+      // If doc is not found, decide if some non-projection column exists.
+      // Currently we read the whole doc here,
+      // may be optimized by exiting on the first column in future.
+      ROCKSDB_SEEK(db_iter_.get(), row_key_.Encode().AsSlice()); // Position it for GetSubDocument.
+      status_ = GetSubDocument(db_iter_.get(), SubDocKey(row_key_), &full_row, &doc_found,
+          hybrid_time_, TableTTL(schema_));
       if (!status_.ok()) {
-        // Defer error reporting to NextBlock.
+        // Defer error reporting to NextBlock().
         return true;
       }
-
-      if (!column_found) {
-        // Continue looking for valid columns.
-        continue;
-      }
+    }
+    // GetSubDocument must ensure that iterator is pushed forward, to avoid loops.
+    if (db_iter_->Valid() && old_key.AsSlice().compare(db_iter_->key()) >= 0) {
+      status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
+          FormatRocksDBSliceAsStr(old_key.AsSlice()));
       return true;
     }
-
-    // Otherwise, the only possibility left here is that we have a tombstone marker for the row.
-    if (value_type != ValueType::kTombstone) {
-      // Defer error reporting to NextBlock.
-      status_ = STATUS_SUBSTITUTE(Corruption,
-          "Invalid value type at the top of a document, row tombstone expected, found: $0",
-          ValueTypeToStr(value_type));
-      return true;
-    }
-
-    // We have a tombstone marker here, store its timestamp and continue looking for columns
-    // since there could have been columns created after the delete timestamp.
-    row_delete_marker_time_ = subdoc_key_.hybrid_time();
-    row_delete_marker_key_ = subdoc_key_.doc_key();
-    // Seek for the first system column within a row since its sorted at the top.
-    KeyBytes encoded_subdoc_key = subdoc_key_.Encode(/* include_hybrid_time = */ false);
-    encoded_subdoc_key.AppendValueType(ValueType::kSystemColumnId);
-    ROCKSDB_SEEK(db_iter_.get(), encoded_subdoc_key.AsSlice());
   }
+  row_ready_ = true;
+  return true;
 }
 
 string DocRowwiseIterator::ToString() const {
   return "DocRowwiseIterator";
-}
-
-Status DocRowwiseIterator::CheckColumnValidity(const SubDocKey& subdoc_key,
-                                               const Value& value,
-                                               bool* is_valid) const {
-  // At this point, we could be pointing to a liveness system column or a regular column.
-  const ValueType value_type = subdoc_key.last_subkey().value_type();
-  if (value_type != ValueType::kColumnId && value_type != ValueType::kSystemColumnId) {
-    return STATUS_SUBSTITUTE(Corruption, "Expected $0 or $1, found $2",
-                             ValueTypeToStr(ValueType::kColumnId),
-                             ValueTypeToStr(ValueType::kSystemColumnId),
-                             ValueTypeToStr(value_type));
-  }
-
-  // Check for TTL.
-  bool has_expired = false;
-  *is_valid = false;
-  RETURN_NOT_OK(HasExpiredTTL(subdoc_key.hybrid_time(), ComputeTTL(value.ttl(), schema_),
-                              hybrid_time_, &has_expired));
-
-  if (value.value_type() != ValueType::kTombstone &&
-      !has_expired && !IsDeletedByRowDeletion(subdoc_key)) {
-    *is_valid = true;
-  }
-  return Status::OK();
-}
-
-Status DocRowwiseIterator::ProcessValues(const Value& value, const SubDocKey& subdoc_key,
-                                         vector<PrimitiveValue>* values,
-                                         bool *is_null) const {
-  *is_null = true;
-  bool is_valid = false;
-  RETURN_NOT_OK(CheckColumnValidity(subdoc_key, value, &is_valid));
-
-  if (is_valid) {
-    DOCDB_DEBUG_LOG("Found a non-null value for column #$0: $1", i, value.ToString());
-    values->emplace_back(value.primitive_value());
-    *is_null = false;
-  } else {
-    DOCDB_DEBUG_LOG("Found a null value for column #$0: $1", i, value.ToString());
-  }
-  return Status::OK();
-}
-
-// Get the non-key column values of a YQL row and advance to the next row before return.
-Status DocRowwiseIterator::GetValues(const Schema& projection, vector<SubDocument>* values) {
-
-  values->reserve(projection.num_columns() - projection.num_key_columns());
-
-  // This column should be valid considering we checked this in HasNext(), although double
-  // check here for sanity.
-  bool is_valid = false;
-  RETURN_NOT_OK(CheckColumnValidity(subdoc_key_, top_level_value_, &is_valid));
-  if (!is_valid) {
-    return STATUS_SUBSTITUTE(Corruption, "Expected $0 with value $1 to be a valid key, but found "
-        "otherwise. Contract between HasNext and GetValues is violated!", subdoc_key_.ToString(),
-                             top_level_value_.ToString());
-  }
-
-  ColumnId column_id_processed(kInvalidColumnId);
-  PrimitiveValue column_processed_value(ValueType::kNull);
-  ValueType value_type = subdoc_key_.last_subkey().value_type();
-  if (value_type == ValueType::kColumnId) {
-    // If this is a regular column, save its value so that we don't have to seek for it in the
-    // loop below.
-    column_processed_value = top_level_value_.primitive_value();
-    column_id_processed = subdoc_key_.last_subkey().GetColumnId();
-  }
-
-  // At this point, we could be pointing to a liveness system column or a regular column.
-  // Remove the last subkey, to allow searches for the next column.
-  subdoc_key_.RemoveLastSubKey();
-
-  MonoDelta table_ttl = TableTTL(schema_);
-  for (size_t i = projection_.num_key_columns(); i < projection.num_columns(); i++) {
-    const auto& column_id = projection.column_id(i);
-    if (column_id == column_id_processed) {
-      // Fill in this column id since we already processed it above.
-      values->emplace_back(column_processed_value);
-      continue;
-    }
-    subdoc_key_.RemoveHybridTime();
-    subdoc_key_.AppendSubKeysAndMaybeHybridTime(PrimitiveValue(column_id));
-    SubDocument sub_doc;
-    bool doc_found;
-    RETURN_NOT_OK(GetSubDocument(
-        db_iter_.get(), subdoc_key_, &sub_doc, &doc_found, hybrid_time_, table_ttl));
-    if (doc_found) {
-      values->emplace_back(std::move(sub_doc));
-    } else {
-      values->emplace_back(PrimitiveValue(ValueType::kNull));
-    }
-    subdoc_key_.RemoveLastSubKey();
-  }
-
-  // Advance to the next row of our document since we are done processing columns for this row.
-  ROCKSDB_SEEK(db_iter_.get(), subdoc_key_.AdvanceOutOfDocKeyPrefix().AsSlice());
-
-  return Status::OK();
 }
 
 namespace {
@@ -521,25 +315,22 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
         << "projection's hash column count does not match schema's";
     RETURN_NOT_OK(SetKuduPrimaryKeyColumnValues(
         projection_, 0, projection_.num_hash_key_columns(),
-        "hash", subdoc_key_.doc_key().hashed_group(), &dst_row));
+        "hash", row_key_.hashed_group(), &dst_row));
   }
   if (projection_.num_range_key_columns() > 0) {
     CHECK_EQ(projection_.num_range_key_columns(), schema_.num_range_key_columns())
         << "projection's range column count does not match schema's";
     RETURN_NOT_OK(SetKuduPrimaryKeyColumnValues(
         projection_, projection_.num_hash_key_columns(), projection_.num_range_key_columns(),
-        "range", subdoc_key_.doc_key().range_group(), &dst_row));
+        "range", row_key_.range_group(), &dst_row));
   }
 
-  // Get the non-key column values of a row.
-  vector<SubDocument> values;
-  RETURN_NOT_OK(GetValues(projection_, &values));
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
-    const auto& value = values[i - projection_.num_key_columns()];
-    const bool is_null = (value.value_type() == ValueType::kNull);
+    const SubDocument* value = row_.GetChild(PrimitiveValue(projection_.column_id(i)));
+    const bool is_null = value->value_type() == ValueType::kInvalidValueType;
     const bool is_nullable = dst->column_block(i).is_nullable();
     if (!is_null) {
-      RETURN_NOT_OK(PrimitiveValueToKudu(projection_, i, value, &dst_row));
+      RETURN_NOT_OK(PrimitiveValueToKudu(projection_, i, *value, &dst_row));
     }
     if (is_null && !is_nullable) {
       return STATUS_SUBSTITUTE(IllegalState,
@@ -549,7 +340,7 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
       dst->column_block(i).SetCellIsNull(0, is_null);
     }
   }
-
+  row_ready_ = false;
   return Status::OK();
 }
 
@@ -567,20 +358,18 @@ Status DocRowwiseIterator::NextRow(YQLValueMap* value_map) {
   // written in the same order as in the table schema (see DocKeyFromYQLKey).
   RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
       schema_, 0, schema_.num_hash_key_columns(),
-      "hash", subdoc_key_.doc_key().hashed_group(), value_map));
+      "hash", row_key_.hashed_group(), value_map));
   RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
       schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
-      "range", subdoc_key_.doc_key().range_group(), value_map));
+      "range", row_key_.range_group(), value_map));
 
-  // Get the non-key column values of a YQL row.
-  vector<SubDocument> values;
-  RETURN_NOT_OK(GetValues(projection_, &values));
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     const auto& column_id = projection_.column_id(i);
     const auto yql_type = projection_.column(i).type();
-    SubDocument::ToYQLValuePB(values[i - projection_.num_key_columns()], yql_type,
-                              &(*value_map)[column_id]);
+    SubDocument::ToYQLValuePB(*row_.GetChild(PrimitiveValue(column_id)), yql_type,
+        &(*value_map)[column_id]);
   }
+  row_ready_ = false;
   return Status::OK();
 }
 
@@ -596,15 +385,13 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
   if (db_iter_ == nullptr) {
     return STATUS(Corruption, "Iterator not initialized.");
   }
+
   // There are no more rows to fetch, so no next SubDocKey to read.
   if (!HasNext()) {
     DVLOG(3) << "No Next SubDocKey";
     return Status::OK();
   }
-  DocKey doc_key;
-  rocksdb::Slice slice(db_iter_->key());
-  RETURN_NOT_OK(doc_key.DecodeFrom(&slice));
-  *sub_doc_key = SubDocKey(doc_key, hybrid_time_);
+  *sub_doc_key = SubDocKey(row_key_, hybrid_time_);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
   return Status::OK();
 }

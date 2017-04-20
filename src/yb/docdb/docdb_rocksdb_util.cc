@@ -103,6 +103,17 @@ Status SeekToValidKvAtTs(
   return Status::OK();
 }
 
+void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
+  if (!iter->Valid() || iter->key().compare(slice) >= 0) {
+    return;
+  }
+  ROCKSDB_SEEK(iter, slice);
+}
+
+void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
+  SeekForward(key_bytes.AsSlice(), iter);
+}
+
 void PerformRocksDBSeek(
     rocksdb::Iterator *iter,
     const rocksdb::Slice &key,
