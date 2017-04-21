@@ -244,6 +244,9 @@ public class TablesControllerTest extends WithApplication {
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("test_table")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
+    // TODO: Ideally i think the targetUUID for tables should be tableUUID, but currently
+    // we don't control the UUID generation for tables from middleware side.
+    assertThat(task.getTargetUUID(), allOf(notNullValue(), equalTo(universe.universeUUID)));
   }
 
   @Test
