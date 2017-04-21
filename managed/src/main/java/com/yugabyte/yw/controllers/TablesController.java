@@ -72,8 +72,10 @@ public class TablesController extends AuthenticatedController {
         taskParams.tableUUID, taskParams.tableDetails.tableName, taskUUID);
 
       // Add this task uuid to the user universe.
+      // TODO: check as to why we aren't populating the tableUUID from middleware
+      // Which means all the log statements above and below are basically logging null?
       CustomerTask.create(customer,
-        universe,
+        universe.universeUUID,
         taskUUID,
         CustomerTask.TargetType.Table,
         CustomerTask.TaskType.Create,
@@ -86,6 +88,7 @@ public class TablesController extends AuthenticatedController {
       return Results.status(OK, resultNode);
     } catch (NullPointerException e) {
       LOG.error("Error creating table", e);
+      // This error isn't useful at all, why send a NullPointerException as api response?
       return ApiResponse.error(BAD_REQUEST, "NullPointerException");
     } catch (RuntimeException e) {
       LOG.error("Error creating table", e);

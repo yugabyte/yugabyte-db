@@ -4,7 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -22,8 +24,10 @@ import play.test.Helpers;
 import java.util.Calendar;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
+import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.*;
@@ -70,116 +74,107 @@ public class CustomerTaskControllerTest extends WithApplication {
     assertEquals(0, json.size());
   }
 
+  private UUID createTaskWithStatus(UUID targetUUID, CustomerTask.TargetType targetType,
+                                    CustomerTask.TaskType taskType, String targetName,
+                                    String status, int percentComplete) {
+    UUID taskUUID = UUID.randomUUID();
+    CustomerTask.create(customer, targetUUID, taskUUID, targetType, taskType, targetName);
+
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("status", status);
+    responseJson.put("percent", percentComplete);
+    when(mockCommissioner.getStatus(taskUUID)).thenReturn(responseJson);
+    return taskUUID;
+  }
+
   @Test
   public void testTaskHistoryList() {
     String authToken = customer.createAuthToken();
-    UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
+    UUID universeUUID = UUID.randomUUID();
+    UUID universeTaskUUID = createTaskWithStatus(universeUUID, CustomerTask.TargetType.Universe,
+        Create, "Foo", "Running", 50);
 
-    ObjectNode getResponseJson = Json.newObject();
-    getResponseJson.put("status", "Running");
-    getResponseJson.put("percent", "50");
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
+    UUID providerUUID = UUID.randomUUID();
+    UUID providerTaskUUID1 = createTaskWithStatus(providerUUID, CustomerTask.TargetType.Provider,
+        Create, "Foo", "Success", 100);
+    UUID providerTaskUUID2 = createTaskWithStatus(providerUUID, CustomerTask.TargetType.Provider,
+        Update, "Foo", "Running", 10);
 
-    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
-                            .header("X-AUTH-TOKEN", authToken));
-
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
-    JsonNode universeTasks = json.get(universe.universeUUID.toString());
+    assertEquals(2, json.size());
+    JsonNode universeTasks = json.get(universeUUID.toString());
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
-    assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
+    assertValues(universeTasks, "id", ImmutableList.of(universeTaskUUID.toString()));
     assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Foo")));
     assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
     assertThat(universeTasks.get(0).get("status").asText(), allOf(notNullValue(), equalTo("Running")));
     assertTrue(universeTasks.get(0).get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
     assertTrue(universeTasks.get(0).get("completionTime").isNull());
     assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
+
+    JsonNode providerTasks = json.get(providerUUID.toString());
+    assertTrue(providerTasks.isArray());
+    assertEquals(2, providerTasks.size());
+    assertValues(providerTasks, "id", ImmutableList.of(providerTaskUUID1.toString(),
+        providerTaskUUID2.toString()));
   }
 
   @Test
   public void testTaskCompletionTime() {
     String authToken = customer.createAuthToken();
-    UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
+    createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
+        Create, "Foo", "Success", 100);
 
-    ObjectNode getResponseJson = Json.newObject();
-    getResponseJson.put("status", "Success");
-    getResponseJson.put("percent", "100");
-
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
-
-    Result firstQuery = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
-      .header("X-AUTH-TOKEN", authToken));
-    assertEquals(OK, firstQuery.status());
-    JsonNode resultA = Json.parse(contentAsString(firstQuery));
-    JsonNode universeTasksA = resultA.get(universe.universeUUID.toString());
-    String markedCompletionTime = universeTasksA.get(0).get("completionTime").asText();
-    Result secondQuery = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
-      .header("X-AUTH-TOKEN", authToken));
-    try {
-      TimeUnit.SECONDS.sleep(1);
-      // Query Task for second time to make sure the completion time is what was set before
-      JsonNode resultB = Json.parse(contentAsString(secondQuery));
-      assertTrue(resultB.isObject());
-      JsonNode universeTasks = resultB.get(universe.universeUUID.toString());
-      assertTrue(universeTasks.isArray());
-      assertEquals(1, universeTasks.size());
-      assertEquals(universeTasks.get(0).get("completionTime").asText(), markedCompletionTime);
-      assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
-    } catch (InterruptedException e) {
-      e.printStackTrace();
+    String markedCompletionTime = null;
+    for (int idx = 0; idx < 2; idx++) {
+      Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
+      assertEquals(OK, result.status());
+      JsonNode tasksJson = Json.parse(contentAsString(result));
+      JsonNode universeTasks = tasksJson.get(universe.universeUUID.toString());
+      if (idx == 0) {
+        markedCompletionTime = universeTasks.get(0).get("completionTime").asText();
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      } else {
+        assertEquals(universeTasks.get(0).get("completionTime").asText(), markedCompletionTime);
+      }
     }
   }
   @Test
   public void testTaskHistoryUniverseList() {
     String authToken = customer.createAuthToken();
     Universe universe1 = Universe.create("Universe 2", UUID.randomUUID(), customer.getCustomerId());
-    UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, universe1, UUID.randomUUID(), CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
-    CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Bar");
 
-    ObjectNode getResponseJson = Json.newObject();
-    getResponseJson.put("status", "Success");
-    getResponseJson.put("percent", "50");
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
-
-    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/tasks")
-                            .header("X-AUTH-TOKEN", authToken));
-
+    UUID taskUUID1 = createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
+        Create, "Foo", "Running", 50);
+    createTaskWithStatus(universe1.universeUUID, CustomerTask.TargetType.Universe,
+        Create, "Bar", "Running", 90);
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
+        customer.uuid +  "/universes/" + universe.universeUUID + "/tasks", authToken);
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.isObject());
     JsonNode universeTasks = json.get(universe.universeUUID.toString());
     assertTrue(universeTasks.isArray());
     assertEquals(1, universeTasks.size());
-    assertThat(universeTasks.get(0).get("id").asText(), allOf(notNullValue(), equalTo(taskUUID.toString())));
-    assertThat(universeTasks.get(0).get("title").asText(), allOf(notNullValue(), equalTo("Creating Universe : Bar")));
-    assertThat(universeTasks.get(0).get("percentComplete").asInt(), allOf(notNullValue(), equalTo(50)));
-    assertThat(universeTasks.get(0).get("status").asText(), allOf(notNullValue(), equalTo("Success")));
-    assertTrue(universeTasks.get(0).get("createTime").asLong() < Calendar.getInstance().getTimeInMillis());
-    assertTrue(universeTasks.get(0).get("completionTime").isNull());
-    assertThat(universeTasks.get(0).get("target").asText(), allOf(notNullValue(), equalTo("Universe")));
+    assertValues(universeTasks, "id", ImmutableList.of(taskUUID1.toString()));
   }
 
   @Test
   public void testTaskHistoryProgressCompletes() {
     String authToken = customer.createAuthToken();
-    UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
-
-    ObjectNode getResponseJson = Json.newObject();
-    getResponseJson.put("status", "Success");
-    getResponseJson.put("percent", "100");
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
-
-    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks")
-                            .header("X-AUTH-TOKEN", authToken));
-
+    UUID taskUUID = createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
+        Create, "Foo", "Success", 100);
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
+        customer.uuid + "/tasks", authToken);
     CustomerTask ct = CustomerTask.find.where().eq("task_uuid", taskUUID.toString()).findUnique();
-
     assertEquals(OK, result.status());
     assertThat(contentAsString(result), allOf(notNullValue(), containsString("Created Universe : Foo")));
     assertTrue(ct.getCreateTime().before(ct.getCompletionTime()));
@@ -188,16 +183,10 @@ public class CustomerTaskControllerTest extends WithApplication {
   @Test
   public void testTaskStatusWithValidUUID() {
     String authToken = customer.createAuthToken();
-    UUID taskUUID = UUID.randomUUID();
-    CustomerTask.create(customer, universe, taskUUID, CustomerTask.TargetType.Universe, CustomerTask.TaskType.Create, "Foo");
-
-    ObjectNode getResponseJson = Json.newObject();
-    getResponseJson.put("status", "Success");
-    getResponseJson.put("percent", "100");
-    when(mockCommissioner.getStatus(taskUUID)).thenReturn(getResponseJson);
-
-    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID)
-                            .header("X-AUTH-TOKEN", authToken));
+    UUID taskUUID = createTaskWithStatus(universe.universeUUID, CustomerTask.TargetType.Universe,
+        Create, "Foo", "Success", 100);
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
+        customer.uuid + "/tasks/" + taskUUID, authToken);
 
     assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
@@ -210,11 +199,10 @@ public class CustomerTaskControllerTest extends WithApplication {
     String authToken = customer.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
 
-    Result result = route(fakeRequest("GET", "/api/customers/" + customer.uuid + "/tasks/" + taskUUID)
-                            .header("X-AUTH-TOKEN", authToken));
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
+        customer.uuid + "/tasks/" + taskUUID, authToken);
 
     assertEquals(BAD_REQUEST, result.status());
-
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(json.get("error").asText(), allOf(notNullValue(), equalTo("Invalid Customer Task UUID: " + taskUUID)));
   }
@@ -224,9 +212,8 @@ public class CustomerTaskControllerTest extends WithApplication {
     String authToken = customer.createAuthToken();
     UUID taskUUID = UUID.randomUUID();
     UUID customerUUID = UUID.randomUUID();
-
-    Result result = route(fakeRequest("GET", "/api/customers/" + customerUUID + "/tasks/" + taskUUID)
-                            .header("X-AUTH-TOKEN", authToken));
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
+        customerUUID + "/tasks/" + taskUUID, authToken);
 
     assertEquals(BAD_REQUEST, result.status());
 

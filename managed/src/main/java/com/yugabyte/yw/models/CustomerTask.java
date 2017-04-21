@@ -23,7 +23,10 @@ public class CustomerTask extends Model {
     Universe,
 
     @EnumValue("Table")
-    Table
+    Table,
+
+    @EnumValue("Provider")
+    Provider
   }
 
   public enum TaskType {
@@ -40,7 +43,24 @@ public class CustomerTask extends Model {
     UpgradeSoftware,
 
     @EnumValue("UpgradeGflags")
-    UpgradeGflags,
+    UpgradeGflags;
+
+    public String toString(boolean completed) {
+      switch(this) {
+        case Create:
+          return completed ? "Created " : "Creating ";
+        case Update:
+          return completed ? "Updated " : "Updating ";
+        case Delete:
+          return completed ? "Deleted " : "Deleting ";
+        case UpgradeSoftware:
+          return completed ? "Upgraded Software " : "Upgrading Software ";
+        case UpgradeGflags:
+          return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
+        default:
+          return null;
+      }
+    }
   }
 
   @Id @GeneratedValue
@@ -73,8 +93,8 @@ public class CustomerTask extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
-  private UUID universeUUID;
-  public UUID getUniverseUUID() { return universeUUID; }
+  private UUID targetUUID;
+  public UUID getTargetUUID() { return targetUUID; }
 
   @Constraints.Required
   @Column(nullable = false)
@@ -87,16 +107,19 @@ public class CustomerTask extends Model {
   private Date completionTime;
   public Date getCompletionTime() { return completionTime; }
   public void markAsCompleted() {
-    completionTime = new Date();
-    save();
+    if (completionTime == null) {
+      completionTime = new Date();
+      save();
+    }
   }
 
   public static final Find<Long, CustomerTask> find = new Find<Long, CustomerTask>(){};
 
-  public static CustomerTask create(Customer customer, Universe universe, UUID taskUUID, TargetType targetType, TaskType type, String targetName) {
+  public static CustomerTask create(Customer customer, UUID targetUUID, UUID taskUUID,
+                                    TargetType targetType, TaskType type, String targetName) {
     CustomerTask th = new CustomerTask();
     th.customerUUID = customer.uuid;
-    th.universeUUID = universe.universeUUID;
+    th.targetUUID = targetUUID;
     th.taskUUID = taskUUID;
     th.targetType = targetType;
     th.type = type;
@@ -108,27 +131,7 @@ public class CustomerTask extends Model {
 
   public String getFriendlyDescription() {
     StringBuilder sb = new StringBuilder();
-
-    switch(this.type) {
-      case Create:
-        sb.append( (completionTime != null) ? "Created " : "Creating ");
-        break;
-      case Update:
-        sb.append( (completionTime != null) ? "Updated " : "Updating ");
-        break;
-      case Delete:
-        sb.append( (completionTime != null) ? "Deleted " : "Deleting ");
-        break;
-      case UpgradeSoftware:
-        sb.append( (completionTime != null) ? "Upgraded " : "Upgrading ");
-        sb.append("software ");
-        break;
-      case UpgradeGflags:
-        sb.append( (completionTime != null) ? "Upgraded " : "Upgrading ");
-        sb.append("gflags ");
-        break;
-    }
-
+    sb.append(type.toString(completionTime != null));
     sb.append(targetType.name());
     sb.append(" : " + targetName);
     return sb.toString();
