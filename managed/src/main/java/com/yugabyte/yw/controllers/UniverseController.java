@@ -156,7 +156,7 @@ public class UniverseController extends AuthenticatedController {
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-                          universe,
+                          universe.universeUUID,
                           taskUUID,
                           CustomerTask.TargetType.Universe,
                           CustomerTask.TaskType.Create,
@@ -207,7 +207,7 @@ public class UniverseController extends AuthenticatedController {
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-        universe,
+        universe.universeUUID,
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Update,
@@ -290,7 +290,7 @@ public class UniverseController extends AuthenticatedController {
 
     // Add this task uuid to the user universe.
     CustomerTask.create(customer,
-      universe,
+      universe.universeUUID,
       taskUUID,
       CustomerTask.TargetType.Universe,
       CustomerTask.TaskType.Delete,
@@ -415,7 +415,7 @@ public class UniverseController extends AuthenticatedController {
 
       // Add this task uuid to the user universe.
       CustomerTask.create(customer,
-        universe,
+        universe.universeUUID,
         taskUUID,
         CustomerTask.TargetType.Universe,
         customerTaskType,

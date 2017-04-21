@@ -61,14 +61,14 @@ public class CustomerTaskController extends AuthenticatedController {
     }
   }
 
-  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID universeUUID) {
+  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
     Query<CustomerTask> taskQuery = CustomerTask.find.where()
       .eq("customer_uuid", customerUUID)
       .orderBy("create_time desc")
       .setMaxRows(TASK_HISTORY_LIMIT);
 
-    if (universeUUID != null) {
-      taskQuery.where().eq("universe_uuid", universeUUID);
+    if (targetUUID != null) {
+      taskQuery.where().eq("target_uuid", targetUUID);
     }
 
     Set<CustomerTask> pendingTasks = taskQuery.findSet();
@@ -85,7 +85,7 @@ public class CustomerTaskController extends AuthenticatedController {
         LOG.error("Error fetching Task Progress for " + task.getTaskUUID() + ", Error: " + taskProgress.get("error"));
       } else {
         taskData.percentComplete = taskProgress.get("percent").asInt();
-        if (taskData.percentComplete == 100 && task.getCompletionTime() == null) {
+        if (taskData.percentComplete == 100) {
           task.markAsCompleted();
         }
         taskData.status = taskProgress.get("status").asText();
@@ -96,9 +96,9 @@ public class CustomerTaskController extends AuthenticatedController {
         taskData.target = task.getTarget().name();
         taskData.type = task.getType().name();
 
-        List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getUniverseUUID(), new ArrayList<>());
+        List<CustomerTaskFormData> taskList = taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
         taskList.add(taskData);
-        taskListMap.put(task.getUniverseUUID(), taskList);
+        taskListMap.put(task.getTargetUUID(), taskList);
       }
     }
     return taskListMap;
