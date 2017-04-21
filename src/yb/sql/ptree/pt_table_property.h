@@ -51,7 +51,7 @@ class PTTableProperty : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   MCString::SharedPtr lhs() const {
@@ -129,7 +129,7 @@ class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
     return MCMakeShared<PTTablePropertyListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 };
 
 } // namespace sql

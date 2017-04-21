@@ -41,7 +41,7 @@ class RaftConsensusStateTest : public YBTest {
       txn_factory_(new MockTransactionFactory()) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     ASSERT_OK(fs_manager_.CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_.Open());

@@ -278,12 +278,12 @@ class DiskRowSet : public RowSet {
   ////////////////////////////////////////////////////////////
 
   // Flush all accumulated delta data to disk.
-  CHECKED_STATUS FlushDeltas() OVERRIDE;
+  CHECKED_STATUS FlushDeltas() override;
 
   // Perform delta store minor compaction.
   // This compacts the delta files down to a single one.
   // If there is already only a single delta file, this does nothing.
-  CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE;
+  CHECKED_STATUS MinorCompactDeltaStores() override;
 
   ////////////////////////////////////////////////////////////
   // RowSet implementation
@@ -301,29 +301,29 @@ class DiskRowSet : public RowSet {
                    const RowChangeList &update,
                    const consensus::OpId& op_id,
                    ProbeStats* stats,
-                   OperationResultPB* result) OVERRIDE;
+                   OperationResultPB* result) override;
 
   CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe,
                          bool *present,
-                         ProbeStats* stats) const OVERRIDE;
+                         ProbeStats* stats) const override;
 
   ////////////////////
   // Read functions.
   ////////////////////
   virtual CHECKED_STATUS NewRowIterator(const Schema *projection,
                                 const MvccSnapshot &snap,
-                                gscoped_ptr<RowwiseIterator>* out) const OVERRIDE;
+                                gscoped_ptr<RowwiseIterator>* out) const override;
 
   virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot &snap,
-                                    gscoped_ptr<CompactionInput>* out) const OVERRIDE;
+                                    gscoped_ptr<CompactionInput>* out) const override;
 
   // Count the number of rows in this rowset.
-  CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE;
+  CHECKED_STATUS CountRows(rowid_t *count) const override;
 
   // See RowSet::GetBounds(...)
   virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
-                           Slice *max_encoded_key) const OVERRIDE;
+                           Slice *max_encoded_key) const override;
 
   // Estimate the number of bytes on-disk for the base data.
   uint64_t EstimateBaseDataDiskSize() const;
@@ -333,22 +333,22 @@ class DiskRowSet : public RowSet {
 
   // Estimate the total number of bytes on-disk, excluding the bloom files and the ad hoc index.
   // TODO Offer a version that has the real total disk space usage.
-  uint64_t EstimateOnDiskSize() const OVERRIDE;
+  uint64_t EstimateOnDiskSize() const override;
 
-  size_t DeltaMemStoreSize() const OVERRIDE;
+  size_t DeltaMemStoreSize() const override;
 
-  bool DeltaMemStoreEmpty() const OVERRIDE;
+  bool DeltaMemStoreEmpty() const override;
 
-  int64_t MinUnflushedLogIndex() const OVERRIDE;
+  int64_t MinUnflushedLogIndex() const override;
 
   size_t CountDeltaStores() const;
 
-  double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const OVERRIDE;
+  double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const override;
 
   // Major compacts all the delta files for all the columns.
   CHECKED_STATUS MajorCompactDeltaStores();
 
-  std::mutex *compact_flush_lock() OVERRIDE {
+  std::mutex *compact_flush_lock() override {
     return &compact_flush_lock_;
   }
 
@@ -356,15 +356,15 @@ class DiskRowSet : public RowSet {
     return DCHECK_NOTNULL(delta_tracker_.get());
   }
 
-  std::shared_ptr<RowSetMetadata> metadata() OVERRIDE {
+  std::shared_ptr<RowSetMetadata> metadata() override {
     return rowset_metadata_;
   }
 
-  std::string ToString() const OVERRIDE {
+  std::string ToString() const override {
     return rowset_metadata_->ToString();
   }
 
-  virtual CHECKED_STATUS DebugDump(std::vector<std::string> *out = NULL) OVERRIDE;
+  virtual CHECKED_STATUS DebugDump(std::vector<std::string> *out = NULL) override;
 
  private:
   FRIEND_TEST(TestRowSet, TestRowSetUpdate);

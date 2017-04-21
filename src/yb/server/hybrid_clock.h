@@ -37,28 +37,28 @@ class HybridClock : public Clock {
  public:
   HybridClock();
 
-  virtual CHECKED_STATUS Init() OVERRIDE;
+  virtual CHECKED_STATUS Init() override;
 
   // Obtains the hybrid_time corresponding to the current time.
-  virtual HybridTime Now() OVERRIDE;
+  virtual HybridTime Now() override;
 
   // Obtains the hybrid_time corresponding to latest possible current
   // time.
-  virtual HybridTime NowLatest() OVERRIDE;
+  virtual HybridTime NowLatest() override;
 
   // Obtain a hybrid_time which is guaranteed to be later than the current time
   // on any machine in the cluster.
   //
   // NOTE: this is not a very tight bound.
-  virtual CHECKED_STATUS GetGlobalLatest(HybridTime* t) OVERRIDE;
+  virtual CHECKED_STATUS GetGlobalLatest(HybridTime* t) override;
 
   // Updates the clock with a hybrid_time originating on another machine.
-  virtual CHECKED_STATUS Update(const HybridTime& to_update) OVERRIDE;
+  virtual CHECKED_STATUS Update(const HybridTime& to_update) override;
 
-  virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) OVERRIDE;
+  virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
 
   // HybridClock supports all external consistency modes.
-  virtual bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) OVERRIDE;
+  virtual bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) override;
 
   // Blocks the caller thread until the true time is after 'then'.
   // In other words, waits until the HybridClock::Now() on _all_ nodes
@@ -91,7 +91,7 @@ class HybridClock : public Clock {
   // we'll have to wait, in contrast to most Wait() methods which are waiting
   // on some external condition to become true.
   virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
-                                const MonoTime& deadline) OVERRIDE;
+                                const MonoTime& deadline) override;
 
   // Blocks the caller thread until the local time is after 'then'.
   // This is in contrast to the above method, which waits until the time
@@ -101,7 +101,7 @@ class HybridClock : public Clock {
   // hybrid_time. NOTE: unlike most "wait" methods, this may return _immediately_
   // with a timeout. See WaitUntilAfter() for details.
   virtual CHECKED_STATUS WaitUntilAfterLocally(const HybridTime& then,
-                                       const MonoTime& deadline) OVERRIDE;
+                                       const MonoTime& deadline) override;
 
   // Return true if the given time has passed (i.e any future call
   // to Now() would return a higher value than t).
@@ -109,7 +109,7 @@ class HybridClock : public Clock {
   // NOTE: this only refers to the _local_ clock, and is not a guarantee
   // that other nodes' clocks have definitely passed this hybrid_time.
   // This is in contrast to WaitUntilAfter() above.
-  virtual bool IsAfter(HybridTime t) OVERRIDE;
+  virtual bool IsAfter(HybridTime t) override;
 
   // Obtains the hybrid_time corresponding to the current time and the associated
   // error in micros. This may fail if the clock is unsynchronized or synchronized
@@ -117,7 +117,7 @@ class HybridClock : public Clock {
   // LOG(FATAL)'s in that case.
   void NowWithError(HybridTime* hybrid_time, uint64_t* max_error_usec);
 
-  virtual std::string Stringify(HybridTime hybrid_time) OVERRIDE;
+  virtual std::string Stringify(HybridTime hybrid_time) override;
 
   // Static encoding/decoding methods for hybrid_times. Public mostly
   // for testing/debugging purposes.

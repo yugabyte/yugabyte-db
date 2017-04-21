@@ -53,7 +53,7 @@ static const int kTestKeyvalValue = 1;
 
 class TestPBUtil : public YBTest {
  public:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     path_ = GetTestPath(kTestFileName);
   }

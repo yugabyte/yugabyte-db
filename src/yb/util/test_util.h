@@ -43,7 +43,7 @@ class YBTest : public ::testing::Test {
 
   virtual ~YBTest();
 
-  virtual void SetUp() OVERRIDE;
+  virtual void SetUp() override;
 
  protected:
   // Returns absolute path based on a unit test-specific work directory, given

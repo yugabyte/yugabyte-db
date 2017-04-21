@@ -46,7 +46,7 @@ class RpcLineItemDAOTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   RpcLineItemDAOTest() {}
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
     // Start minicluster
@@ -61,7 +61,7 @@ class RpcLineItemDAOTest : public YBMiniClusterTestBase<MiniCluster> {
     dao_->Init();
   }
 
-  virtual void DoTearDown() OVERRIDE {
+  virtual void DoTearDown() override {
     cluster_->Shutdown();
     YBMiniClusterTestBase::DoTearDown();
   }

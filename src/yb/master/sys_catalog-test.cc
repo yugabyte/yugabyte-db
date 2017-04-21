@@ -47,7 +47,7 @@ namespace master {
 
 class SysCatalogTest : public YBTest {
  protected:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
 
     // Start master with the create flag on.
@@ -64,7 +64,7 @@ class SysCatalogTest : public YBTest {
     proxy_.reset(new MasterServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     mini_master_->Shutdown();
     YBTest::TearDown();
   }
@@ -87,7 +87,7 @@ class TestTableLoader : public TableVisitor {
     tables.clear();
   }
 
-  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
     // Setup the table info
     TableInfo *table = new TableInfo(table_id);
     TableMetadataLock l(table, TableMetadataLock::WRITE);
@@ -212,7 +212,7 @@ class TestTabletLoader : public TabletVisitor {
     tablets.clear();
   }
 
-  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
     // Setup the tablet info
     TabletInfo *tablet = new TabletInfo(nullptr, tablet_id);
     TabletMetadataLock l(tablet, TabletMetadataLock::WRITE);
@@ -376,7 +376,7 @@ class TestClusterConfigLoader : public ClusterConfigVisitor {
   ~TestClusterConfigLoader() { Reset(); }
 
   virtual Status Visit(
-      const std::string& fake_id, const SysClusterConfigEntryPB& metadata) OVERRIDE {
+      const std::string& fake_id, const SysClusterConfigEntryPB& metadata) override {
     CHECK(!config_info) << "We either got multiple config_info entries, or we didn't Reset()";
     config_info = new ClusterConfigInfo();
     ClusterConfigMetadataLock l(config_info, ClusterConfigMetadataLock::WRITE);
@@ -520,7 +520,7 @@ class TestNamespaceLoader : public NamespaceVisitor {
     namespaces.clear();
   }
 
-  virtual Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) override {
     // Setup the namespace info
     NamespaceInfo* const ns = new NamespaceInfo(ns_id);
     NamespaceMetadataLock l(ns, NamespaceMetadataLock::WRITE);

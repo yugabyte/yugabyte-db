@@ -35,12 +35,12 @@ class PTUseKeyspace : public TreeNode {
   }
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTUseKeyspace;
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   const char* name() const {

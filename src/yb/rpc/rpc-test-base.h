@@ -85,7 +85,7 @@ class GenericCalculatorService : public ServiceIf {
     // this test doesn't generate metrics, so we ignore the argument.
   }
 
-  virtual void Handle(InboundCall *incoming) OVERRIDE {
+  virtual void Handle(InboundCall *incoming) override {
     if (incoming->remote_method().method_name() == kAddMethodName) {
       DoAdd(incoming);
     } else if (incoming->remote_method().method_name() == kSleepMethodName) {
@@ -98,7 +98,7 @@ class GenericCalculatorService : public ServiceIf {
     }
   }
 
-  std::string service_name() const OVERRIDE { return kFullServiceName; }
+  std::string service_name() const override { return kFullServiceName; }
   static std::string static_service_name() { return kFullServiceName; }
 
  private:
@@ -168,14 +168,14 @@ class CalculatorService : public CalculatorServiceIf {
 
   virtual void Add(const AddRequestPB *req,
                    AddResponsePB *resp,
-                   RpcContext *context) OVERRIDE {
+                   RpcContext *context) override {
     resp->set_result(req->x() + req->y());
     context->RespondSuccess();
   }
 
   virtual void Sleep(const SleepRequestPB *req,
                      SleepResponsePB *resp,
-                     RpcContext *context) OVERRIDE {
+                     RpcContext *context) override {
     if (req->return_app_error()) {
       CalculatorError my_error;
       my_error.set_extra_error_data("some application-specific error data");
@@ -210,14 +210,14 @@ class CalculatorService : public CalculatorServiceIf {
 
   virtual void Echo(const EchoRequestPB *req,
                     EchoResponsePB *resp,
-                    RpcContext *context) OVERRIDE {
+                    RpcContext *context) override {
     resp->set_data(req->data());
     context->RespondSuccess();
   }
 
   virtual void WhoAmI(const WhoAmIRequestPB* req,
                       WhoAmIResponsePB* resp,
-                      RpcContext* context) OVERRIDE {
+                      RpcContext* context) override {
     const UserCredentials& creds = context->user_credentials();
     if (creds.has_effective_user()) {
       resp->mutable_credentials()->set_effective_user(creds.effective_user());
@@ -229,20 +229,20 @@ class CalculatorService : public CalculatorServiceIf {
 
   virtual void TestArgumentsInDiffPackage(const ReqDiffPackagePB *req,
                                           RespDiffPackagePB *resp,
-                                          ::yb::rpc::RpcContext *context) OVERRIDE {
+                                          ::yb::rpc::RpcContext *context) override {
     context->RespondSuccess();
   }
 
   virtual void Panic(const PanicRequestPB* req,
                      PanicResponsePB* resp,
-                     RpcContext* context) OVERRIDE {
+                     RpcContext* context) override {
     TRACE("Got panic request");
     PANIC_RPC(context, "Test method panicking!");
   }
 
   virtual void Ping(const PingRequestPB* req,
                     PingResponsePB* resp,
-                    RpcContext* context) OVERRIDE {
+                    RpcContext* context) override {
     auto now = MonoTime::Now(MonoTime::FINE);
     resp->set_time(now.ToUint64());
     context->RespondSuccess();
@@ -276,11 +276,11 @@ class RpcTestBase : public YBTest {
       metric_entity_(METRIC_ENTITY_server.Instantiate(&metric_registry_, "test.rpc_test")) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     if (service_pool_) {
       const Status unregister_service_status = server_messenger_->UnregisterService(service_name_);
       if (!unregister_service_status.IsServiceUnavailable()) {

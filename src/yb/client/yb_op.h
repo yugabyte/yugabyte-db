@@ -111,16 +111,16 @@ class YB_EXPORT YBInsert : public YBOperation {
  public:
   virtual ~YBInsert();
 
-  virtual std::string ToString() const OVERRIDE { return "INSERT " + row_.ToString(); }
+  virtual std::string ToString() const override { return "INSERT " + row_.ToString(); }
 
-  virtual bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
   // when YBInsert / YBUpdate / YBDelete are deprecated.
-  void SetHashCode(uint16_t hash_code) OVERRIDE {};
+  void SetHashCode(uint16_t hash_code) override {};
 
  protected:
-  virtual Type type() const OVERRIDE {
+  virtual Type type() const override {
     return INSERT;
   }
 
@@ -138,16 +138,16 @@ class YB_EXPORT YBUpdate : public YBOperation {
  public:
   virtual ~YBUpdate();
 
-  virtual std::string ToString() const OVERRIDE { return "UPDATE " + row_.ToString(); }
+  virtual std::string ToString() const override { return "UPDATE " + row_.ToString(); }
 
-  virtual bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
   // when YBInsert / YBUpdate / YBDelete are deprecated.
-  void SetHashCode(uint16_t hash_code) OVERRIDE {};
+  void SetHashCode(uint16_t hash_code) override {};
 
  protected:
-  virtual Type type() const OVERRIDE {
+  virtual Type type() const override {
     return UPDATE;
   }
 
@@ -165,16 +165,16 @@ class YB_EXPORT YBDelete : public YBOperation {
  public:
   virtual ~YBDelete();
 
-  virtual std::string ToString() const OVERRIDE { return "DELETE " + row_.ToString(); }
+  virtual std::string ToString() const override { return "DELETE " + row_.ToString(); }
 
-  virtual bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() override { return false; };
 
   // Note: SetHashCode only needed for Redis and YBQL operations. The empty method will be gone
   // when YBInsert / YBUpdate / YBDelete are deprecated.
-  void SetHashCode(uint16_t hash_code) OVERRIDE {};
+  void SetHashCode(uint16_t hash_code) override {};
 
  protected:
-  virtual Type type() const OVERRIDE {
+  virtual Type type() const override {
     return DELETE;
   }
 
@@ -195,15 +195,15 @@ class YB_EXPORT YBRedisWriteOp : public YBOperation {
 
   RedisResponsePB* mutable_response();
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
-  virtual bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() override { return false; };
 
   // Set the hash key in the WriteRequestPB.
-  void SetHashCode(uint16_t hash_code) OVERRIDE;
+  void SetHashCode(uint16_t hash_code) override;
 
  protected:
-  virtual Type type() const OVERRIDE {
+  virtual Type type() const override {
     return REDIS_WRITE;
   }
 
@@ -229,15 +229,15 @@ class YB_EXPORT YBRedisReadOp : public YBOperation {
 
   RedisResponsePB* mutable_response();
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
-  virtual bool read_only() OVERRIDE { return true; };
+  virtual bool read_only() override { return true; };
 
   // Set the hash key in the ReadRequestPB.
-  void SetHashCode(uint16_t hash_code) OVERRIDE;
+  void SetHashCode(uint16_t hash_code) override;
 
  protected:
-  virtual Type type() const OVERRIDE { return REDIS_READ; }
+  virtual Type type() const override { return REDIS_READ; }
 
  private:
   friend class YBTable;
@@ -280,16 +280,16 @@ class YB_EXPORT YBqlWriteOp : public YBqlOp {
 
   YQLWriteRequestPB* mutable_request() { return yql_write_request_.get(); }
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
-  virtual bool read_only() OVERRIDE { return false; };
+  virtual bool read_only() override { return false; };
 
-  virtual CHECKED_STATUS SetKey() OVERRIDE;
+  virtual CHECKED_STATUS SetKey() override;
 
-  virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
+  virtual void SetHashCode(uint16_t hash_code) override;
 
  protected:
-  virtual Type type() const OVERRIDE {
+  virtual Type type() const override {
     return YQL_WRITE;
   }
 
@@ -311,19 +311,19 @@ class YB_EXPORT YBqlReadOp : public YBqlOp {
 
   YQLReadRequestPB* mutable_request() { return yql_read_request_.get(); }
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
-  virtual bool read_only() OVERRIDE { return true; };
+  virtual bool read_only() override { return true; };
 
-  virtual CHECKED_STATUS SetKey() OVERRIDE;
+  virtual CHECKED_STATUS SetKey() override;
 
-  virtual void SetHashCode(uint16_t hash_code) OVERRIDE;
+  virtual void SetHashCode(uint16_t hash_code) override;
 
   // Returns the partition key of the read request if it exists.
-  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const OVERRIDE;
+  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
 
  protected:
-  virtual Type type() const OVERRIDE { return YQL_READ; }
+  virtual Type type() const override { return YQL_READ; }
 
  private:
   friend class YBTable;

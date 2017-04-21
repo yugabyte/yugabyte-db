@@ -154,15 +154,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   virtual CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
                                scoped_refptr<tablet::TabletPeer>* tablet_peer) const
-                               OVERRIDE;
+                               override;
 
-  virtual const NodeInstancePB& NodeInstance() const OVERRIDE;
+  virtual const NodeInstancePB& NodeInstance() const override;
 
   // Initiate remote bootstrap of the specified tablet.
   // See the StartRemoteBootstrap() RPC declaration in consensus.proto for details.
   // Currently this runs the entire procedure synchronously.
   // TODO: KUDU-921: Run this procedure on a background thread.
-  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) OVERRIDE;
+  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
   // Generate an incremental tablet report.
   //

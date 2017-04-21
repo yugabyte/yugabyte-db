@@ -52,7 +52,7 @@ class TestEncoding : public ::testing::Test {
   }
 
  protected:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     arena_.Reset();
   }
 

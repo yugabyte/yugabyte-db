@@ -95,15 +95,15 @@ class TimedFailureDetector : public FailureDetector {
 
   virtual CHECKED_STATUS Track(const std::string& name,
                        const MonoTime& now,
-                       const FailureDetectedCallback& callback) OVERRIDE;
+                       const FailureDetectedCallback& callback) override;
 
-  virtual CHECKED_STATUS UnTrack(const std::string& name) OVERRIDE;
+  virtual CHECKED_STATUS UnTrack(const std::string& name) override;
 
-  virtual bool IsTracking(const std::string& name) OVERRIDE;
+  virtual bool IsTracking(const std::string& name) override;
 
-  virtual CHECKED_STATUS MessageFrom(const std::string& name, const MonoTime& now) OVERRIDE;
+  virtual CHECKED_STATUS MessageFrom(const std::string& name, const MonoTime& now) override;
 
-  virtual void CheckForFailures(const MonoTime& now) OVERRIDE;
+  virtual void CheckForFailures(const MonoTime& now) override;
 
  private:
   typedef std::unordered_map<std::string, Node*> NodeMap;

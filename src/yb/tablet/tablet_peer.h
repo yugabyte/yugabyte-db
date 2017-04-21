@@ -122,7 +122,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
 
   // Used by consensus to create and start a new ReplicaTransaction.
   virtual CHECKED_STATUS StartReplicaTransaction(
-      const scoped_refptr<consensus::ConsensusRound>& round) OVERRIDE;
+      const scoped_refptr<consensus::ConsensusRound>& round) override;
 
   consensus::Consensus* consensus() const {
     std::lock_guard<simple_spinlock> lock(lock_);

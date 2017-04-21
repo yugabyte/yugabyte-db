@@ -47,19 +47,19 @@ class GVIntBlockBuilder : public BlockBuilder {
  public:
   explicit GVIntBlockBuilder(const WriterOptions *options);
 
-  bool IsBlockFull(size_t limit) const OVERRIDE;
+  bool IsBlockFull(size_t limit) const override;
 
-  int Add(const uint8_t *vals, size_t count) OVERRIDE;
+  int Add(const uint8_t *vals, size_t count) override;
 
-  Slice Finish(rowid_t ordinal_pos) OVERRIDE;
+  Slice Finish(rowid_t ordinal_pos) override;
 
-  void Reset() OVERRIDE;
+  void Reset() override;
 
-  size_t Count() const OVERRIDE;
+  size_t Count() const override;
 
   // Return the first added key.
   // key should be a uint32_t *
-  CHECKED_STATUS GetFirstKey(void *key) const OVERRIDE;
+  CHECKED_STATUS GetFirstKey(void *key) const override;
 
  private:
 
@@ -98,35 +98,35 @@ class GVIntBlockDecoder : public BlockDecoder {
  public:
   explicit GVIntBlockDecoder(Slice slice);
 
-  CHECKED_STATUS ParseHeader() OVERRIDE;
+  CHECKED_STATUS ParseHeader() override;
   void SeekToStart() {
     SeekToPositionInBlock(0);
   }
 
-  void SeekToPositionInBlock(uint pos) OVERRIDE;
+  void SeekToPositionInBlock(uint pos) override;
 
-  CHECKED_STATUS SeekAtOrAfterValue(const void *value, bool *exact_match) OVERRIDE;
+  CHECKED_STATUS SeekAtOrAfterValue(const void *value, bool *exact_match) override;
 
-  CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
+  CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) override;
 
   // Copy the integers to a temporary buffer, it is used by StringDictDecoder
   // in its CopyNextValues() method.
   CHECKED_STATUS CopyNextValuesToArray(size_t *n, uint8_t* array);
 
-  size_t GetCurrentIndex() const OVERRIDE {
+  size_t GetCurrentIndex() const override {
     DCHECK(parsed_) << "must parse header first";
     return cur_idx_;
   }
 
-  virtual rowid_t GetFirstRowId() const OVERRIDE {
+  virtual rowid_t GetFirstRowId() const override {
     return ordinal_pos_base_;
   }
 
-  size_t Count() const OVERRIDE {
+  size_t Count() const override {
     return num_elems_;
   }
 
-  bool HasNext() const OVERRIDE {
+  bool HasNext() const override {
     return (num_elems_ - cur_idx_) > 0;
   }
 

@@ -47,7 +47,7 @@ static const int kKeyShift = 2;
 
 class BloomFileTestBase : public YBTest {
  public:
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     YBTest::SetUp();
 
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));

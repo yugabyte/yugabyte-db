@@ -57,7 +57,7 @@ using strings::Split;
 class KVTableTest : public YBTableTestBase {
  protected:
 
-  virtual bool use_external_mini_cluster() OVERRIDE { return false; }
+  virtual bool use_external_mini_cluster() override { return false; }
 
  protected:
 

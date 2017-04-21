@@ -57,7 +57,7 @@ class TestDeltaFile : public ::testing::Test {
   }
 
  public:
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     fs_manager_.reset(new FsManager(env_.get(), kTestPath));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());

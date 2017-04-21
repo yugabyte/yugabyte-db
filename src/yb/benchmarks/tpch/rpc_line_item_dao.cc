@@ -68,7 +68,7 @@ class FlushCallback : public YBStatusCallback {
     sem_->Acquire();
   }
 
-  virtual void Run(const Status& s) OVERRIDE {
+  virtual void Run(const Status& s) override {
     BatchFinished();
     CHECK_OK(s);
     sem_->Release();

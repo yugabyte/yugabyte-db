@@ -32,25 +32,25 @@ class GenericServiceImpl : public GenericServiceIf {
 
   virtual void SetFlag(const SetFlagRequestPB* req,
                        SetFlagResponsePB* resp,
-                       rpc::RpcContext* rpc) OVERRIDE;
+                       rpc::RpcContext* rpc) override;
 
   virtual void FlushCoverage(const FlushCoverageRequestPB* req,
                              FlushCoverageResponsePB* resp,
-                             rpc::RpcContext* rpc) OVERRIDE;
+                             rpc::RpcContext* rpc) override;
 
   virtual void ServerClock(const ServerClockRequestPB* req,
                            ServerClockResponsePB* resp,
-                           rpc::RpcContext* rpc) OVERRIDE;
+                           rpc::RpcContext* rpc) override;
 
   virtual void SetServerWallClockForTests(const SetServerWallClockForTestsRequestPB *req,
                                           SetServerWallClockForTestsResponsePB *resp,
-                                          rpc::RpcContext *context) OVERRIDE;
+                                          rpc::RpcContext *context) override;
 
   virtual void GetStatus(const GetStatusRequestPB* req,
                          GetStatusResponsePB* resp,
-                         rpc::RpcContext* rpc) OVERRIDE;
+                         rpc::RpcContext* rpc) override;
 
-  virtual void Ping(const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext* rpc) OVERRIDE;
+  virtual void Ping(const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext* rpc) override;
 
  private:
   RpcServerBase* server_;

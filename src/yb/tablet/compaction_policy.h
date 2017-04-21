@@ -81,9 +81,9 @@ class BudgetedCompactionPolicy : public CompactionPolicy {
   virtual CHECKED_STATUS PickRowSets(const RowSetTree &tree,
                              std::unordered_set<RowSet*>* picked,
                              double* quality,
-                             std::vector<std::string>* log) OVERRIDE;
+                             std::vector<std::string>* log) override;
 
-  virtual uint64_t target_rowset_size() const OVERRIDE;
+  virtual uint64_t target_rowset_size() const override;
 
  private:
   void SetupKnapsackInput(const RowSetTree &tree,

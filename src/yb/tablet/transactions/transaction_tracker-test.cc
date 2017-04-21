@@ -50,8 +50,8 @@ class TransactionTrackerTest : public YBTest {
   class NoOpTransactionState : public TransactionState {
    public:
     NoOpTransactionState() : TransactionState(nullptr) {}
-    virtual const google::protobuf::Message* request() const OVERRIDE { return &req_; }
-    virtual std::string ToString() const OVERRIDE { return "NoOpTransactionState"; }
+    virtual const google::protobuf::Message* request() const override { return &req_; }
+    virtual std::string ToString() const override { return "NoOpTransactionState"; }
    private:
     consensus::ReplicateMsg req_;
   };
@@ -62,16 +62,16 @@ class TransactionTrackerTest : public YBTest {
         state_(state) {
     }
 
-    virtual void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) OVERRIDE {
+    virtual void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) override {
       replicate_msg->reset(new consensus::ReplicateMsg());
     }
 
-    virtual Status Prepare() OVERRIDE { return Status::OK(); }
-    virtual void Start() OVERRIDE {}
-    virtual Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE {
+    virtual Status Prepare() override { return Status::OK(); }
+    virtual void Start() override {}
+    virtual Status Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override {
       return Status::OK();
     }
-    virtual std::string ToString() const OVERRIDE {
+    virtual std::string ToString() const override {
       return "NoOp";
     }
    private:

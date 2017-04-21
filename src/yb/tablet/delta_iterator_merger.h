@@ -47,17 +47,17 @@ class DeltaIteratorMerger : public DeltaIterator {
   ////////////////////////////////////////////////////////////
   // Implementations of DeltaIterator
   ////////////////////////////////////////////////////////////
-  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
-  virtual CHECKED_STATUS SeekToOrdinal(rowid_t idx) OVERRIDE;
-  virtual CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
-  virtual CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
-  virtual CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
-  virtual CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) override;
+  virtual CHECKED_STATUS SeekToOrdinal(rowid_t idx) override;
+  virtual CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) override;
+  virtual CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) override;
+  virtual CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) override;
+  virtual CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) override;
   virtual CHECKED_STATUS FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
                                                  vector<DeltaKeyAndUpdate>* out,
-                                                 Arena* arena) OVERRIDE;
-  virtual bool HasNext() OVERRIDE;
-  virtual std::string ToString() const OVERRIDE;
+                                                 Arena* arena) override;
+  virtual bool HasNext() override;
+  virtual std::string ToString() const override;
 
  private:
   explicit DeltaIteratorMerger(vector<std::shared_ptr<DeltaIterator> > iters);

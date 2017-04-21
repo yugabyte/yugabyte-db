@@ -19,19 +19,19 @@ class KeyValueIterator : public RowwiseIterator {
   KeyValueIterator(const Schema* projection, rocksdb::DB* db);
   virtual ~KeyValueIterator();
 
-  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
-  virtual bool HasNext() const OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) override;
+  virtual bool HasNext() const override;
 
-  virtual string ToString() const OVERRIDE {
+  virtual string ToString() const override {
     return "KeyValueIterator";
   }
 
-  virtual const Schema& schema() const OVERRIDE {
+  virtual const Schema& schema() const override {
     return *projection_;
   }
 
-  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) override;
+  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
  private:
   const Schema* const projection_;

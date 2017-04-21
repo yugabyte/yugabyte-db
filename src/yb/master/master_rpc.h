@@ -53,12 +53,12 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
 
   ~GetMasterRegistrationRpc();
 
-  virtual void SendRpc() OVERRIDE;
+  virtual void SendRpc() override;
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
  private:
-  virtual void SendRpcCb(const Status& status) OVERRIDE;
+  virtual void SendRpcCb(const Status& status) override;
 
   StatusCallback user_cb_;
   Sockaddr addr_;
@@ -100,14 +100,14 @@ class GetLeaderMasterRpc : public rpc::Rpc,
                      const MonoTime& deadline,
                      const std::shared_ptr<rpc::Messenger>& messenger);
 
-  virtual void SendRpc() OVERRIDE;
+  virtual void SendRpc() override;
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
  private:
   friend class RefCountedThreadSafe<GetLeaderMasterRpc>;
   ~GetLeaderMasterRpc();
 
-  virtual void SendRpcCb(const Status& status) OVERRIDE;
+  virtual void SendRpcCb(const Status& status) override;
 
   // Invoked when a response comes back from a Master with address
   // 'node_addr'.

@@ -61,7 +61,7 @@ class SimpleTask : public Runnable {
     : n_(n), counter_(counter) {
   }
 
-  void Run() OVERRIDE {
+  void Run() override {
     SimpleTaskMethod(n_, counter_);
   }
 
@@ -121,7 +121,7 @@ class SlowTask : public Runnable {
     : latch_(latch) {
   }
 
-  void Run() OVERRIDE {
+  void Run() override {
     latch_->Wait();
   }
 

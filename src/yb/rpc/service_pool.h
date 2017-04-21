@@ -78,7 +78,7 @@ class ServicePool : public RpcService {
   // Shut down the queue and the thread pool.
   virtual void Shutdown();
 
-  virtual CHECKED_STATUS QueueInboundCall(InboundCallPtr call) OVERRIDE;
+  virtual CHECKED_STATUS QueueInboundCall(InboundCallPtr call) override;
 
   const Counter* RpcsTimedOutInQueueMetricForTests() const {
     return rpcs_timed_out_in_queue_.get();

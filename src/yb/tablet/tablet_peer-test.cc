@@ -88,7 +88,7 @@ class TabletPeerTest : public YBTabletTest,
       delete_counter_(0) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTabletTest::SetUp();
 
     table_type_ = GetParam();
@@ -157,7 +157,7 @@ class TabletPeerTest : public YBTabletTest,
               << ". Reason: " << context->ToString();
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     tablet_peer_->Shutdown();
     apply_pool_->Shutdown();
     YBTabletTest::TearDown();
@@ -293,7 +293,7 @@ class DelayedApplyTransaction : public WriteTransaction {
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
 
-  virtual Status Apply(gscoped_ptr<CommitMsg>* commit_msg) OVERRIDE {
+  virtual Status Apply(gscoped_ptr<CommitMsg>* commit_msg) override {
     apply_started_->CountDown();
     LOG(INFO) << "Delaying apply...";
     apply_continue_->Wait();

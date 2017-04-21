@@ -51,8 +51,8 @@ class AlterSchemaTransactionState : public TransactionState {
         response_(response) {
   }
 
-  const tserver::AlterSchemaRequestPB* request() const OVERRIDE { return request_; }
-  tserver::AlterSchemaResponsePB* response() OVERRIDE { return response_; }
+  const tserver::AlterSchemaRequestPB* request() const override { return request_; }
+  tserver::AlterSchemaResponsePB* response() override { return response_; }
 
   void set_schema(const Schema* schema) { schema_ = schema; }
   const Schema* schema() const { return schema_; }
@@ -83,7 +83,7 @@ class AlterSchemaTransactionState : public TransactionState {
     response_ = NULL;
   }
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
  private:
 
@@ -105,27 +105,27 @@ class AlterSchemaTransaction : public Transaction {
  public:
   AlterSchemaTransaction(AlterSchemaTransactionState* tx_state, consensus::DriverType type);
 
-  virtual AlterSchemaTransactionState* state() OVERRIDE { return state_.get(); }
-  virtual const AlterSchemaTransactionState* state() const OVERRIDE { return state_.get(); }
+  virtual AlterSchemaTransactionState* state() override { return state_.get(); }
+  virtual const AlterSchemaTransactionState* state() const override { return state_.get(); }
 
-  void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) OVERRIDE;
+  void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) override;
 
   // Executes a Prepare for the alter schema transaction.
   //
   // TODO: need a schema lock?
 
-  virtual CHECKED_STATUS Prepare() OVERRIDE;
+  virtual CHECKED_STATUS Prepare() override;
 
   // Starts the AlterSchemaTransaction by assigning it a timestamp.
-  virtual void Start() OVERRIDE;
+  virtual void Start() override;
 
   // Executes an Apply for the alter schema transaction
-  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE;
+  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
 
   // Actually commits the transaction.
-  virtual void Finish(TransactionResult result) OVERRIDE;
+  virtual void Finish(TransactionResult result) override;
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
  private:
   gscoped_ptr<AlterSchemaTransactionState> state_;

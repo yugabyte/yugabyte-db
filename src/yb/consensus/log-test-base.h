@@ -131,7 +131,7 @@ class LogTestBase : public YBTest {
       log_anchor_registry_(new LogAnchorRegistry()) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     current_index_ = 1;
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
@@ -146,7 +146,7 @@ class LogTestBase : public YBTest {
     FLAGS_log_min_seconds_to_retain = 0;
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     YBTest::TearDown();
     STLDeleteElements(&entries_);
   }

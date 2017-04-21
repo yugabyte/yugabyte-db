@@ -66,7 +66,7 @@ class BShufBlockBuilder : public BlockBuilder {
     Reset();
   }
 
-  void Reset() OVERRIDE {
+  void Reset() override {
     count_ = 0;
     data_.clear();
     data_.reserve(options_->storage_attributes.cfile_block_size);
@@ -74,11 +74,11 @@ class BShufBlockBuilder : public BlockBuilder {
     buffer_.resize(kMaxHeaderSize);
   }
 
-  bool IsBlockFull(size_t limit) const OVERRIDE {
+  bool IsBlockFull(size_t limit) const override {
     return EstimateEncodedSize() > limit;
   }
 
-  int Add(const uint8_t* vals_void, size_t count) OVERRIDE {
+  int Add(const uint8_t* vals_void, size_t count) override {
     const CppType* vals = reinterpret_cast<const CppType* >(vals_void);
     int added = 0;
     // If the current block is full, stop adding more items.
@@ -92,11 +92,11 @@ class BShufBlockBuilder : public BlockBuilder {
     return added;
   }
 
-  size_t Count() const OVERRIDE {
+  size_t Count() const override {
     return count_;
   }
 
-  CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE {
+  CHECKED_STATUS GetFirstKey(void* key) const override {
     if (count_ == 0) {
       return STATUS(NotFound, "no keys in data block");
     }
@@ -104,7 +104,7 @@ class BShufBlockBuilder : public BlockBuilder {
     return Status::OK();
   }
 
-  Slice Finish(rowid_t ordinal_pos) OVERRIDE {
+  Slice Finish(rowid_t ordinal_pos) override {
     return Finish(ordinal_pos, size_of_type);
   }
 
@@ -183,7 +183,7 @@ class BShufBlockDecoder : public BlockDecoder {
         cur_idx_(0) {
   }
 
-  CHECKED_STATUS ParseHeader() OVERRIDE {
+  CHECKED_STATUS ParseHeader() override {
     CHECK(!parsed_);
     if (data_.size() < kHeaderSize) {
       return STATUS(Corruption,
@@ -229,7 +229,7 @@ class BShufBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  void SeekToPositionInBlock(uint pos) OVERRIDE {
+  void SeekToPositionInBlock(uint pos) override {
     CHECK(parsed_) << "Must call ParseHeader()";
     if (PREDICT_FALSE(num_elems_ == 0)) {
       DCHECK_EQ(0, pos);
@@ -240,7 +240,7 @@ class BShufBlockDecoder : public BlockDecoder {
     cur_idx_ = pos;
   }
 
-  CHECKED_STATUS SeekAtOrAfterValue(const void* value_void, bool* exact) OVERRIDE {
+  CHECKED_STATUS SeekAtOrAfterValue(const void* value_void, bool* exact) override {
     CppType target = *reinterpret_cast<const CppType*>(value_void);
     int32_t left = 0;
     int32_t right = num_elems_;
@@ -267,7 +267,7 @@ class BShufBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  CHECKED_STATUS CopyNextValues(size_t* n, ColumnDataView* dst) OVERRIDE {
+  CHECKED_STATUS CopyNextValues(size_t* n, ColumnDataView* dst) override {
     DCHECK_EQ(dst->stride(), sizeof(CppType));
     return CopyNextValuesToArray(n, dst->data());
   }
@@ -293,20 +293,20 @@ class BShufBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  size_t GetCurrentIndex() const OVERRIDE {
+  size_t GetCurrentIndex() const override {
     DCHECK(parsed_) << "must parse header first";
     return cur_idx_;
   }
 
-  virtual rowid_t GetFirstRowId() const OVERRIDE {
+  virtual rowid_t GetFirstRowId() const override {
     return ordinal_pos_base_;
   }
 
-  size_t Count() const OVERRIDE {
+  size_t Count() const override {
     return num_elems_;
   }
 
-  bool HasNext() const OVERRIDE {
+  bool HasNext() const override {
     return (num_elems_ - cur_idx_) > 0;
   }
 

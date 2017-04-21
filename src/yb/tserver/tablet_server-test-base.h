@@ -98,7 +98,7 @@ class TabletServerTestBase : public YBTest {
   }
 
   // Starts the tablet server, override to start it later.
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
 
     key_schema_ = schema_.CreateKeyProjection();

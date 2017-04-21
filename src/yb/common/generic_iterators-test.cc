@@ -49,11 +49,11 @@ class VectorIterator : public ColumnwiseIterator {
         cur_idx_(0) {
   }
 
-  Status Init(ScanSpec *spec) OVERRIDE {
+  Status Init(ScanSpec *spec) override {
     return Status::OK();
   }
 
-  virtual Status PrepareBatch(size_t *nrows) OVERRIDE {
+  virtual Status PrepareBatch(size_t *nrows) override {
     int rem = ints_.size() - cur_idx_;
     if (rem < *nrows) {
       *nrows = rem;
@@ -62,12 +62,12 @@ class VectorIterator : public ColumnwiseIterator {
     return Status::OK();
   }
 
-  virtual Status InitializeSelectionVector(SelectionVector *sel_vec) OVERRIDE {
+  virtual Status InitializeSelectionVector(SelectionVector *sel_vec) override {
     sel_vec->SetAllTrue();
     return Status::OK();
   }
 
-  virtual Status MaterializeColumn(size_t col, ColumnBlock *dst) OVERRIDE {
+  virtual Status MaterializeColumn(size_t col, ColumnBlock *dst) override {
     CHECK_EQ(UINT32, dst->type_info()->physical_type());
     DCHECK_LE(prepared_, dst->nrows());
 
@@ -78,24 +78,24 @@ class VectorIterator : public ColumnwiseIterator {
     return Status::OK();
   }
 
-  virtual Status FinishBatch() OVERRIDE {
+  virtual Status FinishBatch() override {
     prepared_ = 0;
     return Status::OK();
   }
 
-  virtual bool HasNext() const OVERRIDE {
+  virtual bool HasNext() const override {
     return cur_idx_ < ints_.size();
   }
 
-  virtual string ToString() const OVERRIDE {
+  virtual string ToString() const override {
     return string("VectorIterator");
   }
 
-  virtual const Schema &schema() const OVERRIDE {
+  virtual const Schema &schema() const override {
     return kIntSchema;
   }
 
-  virtual void GetIteratorStats(vector<IteratorStats>* stats) const OVERRIDE {
+  virtual void GetIteratorStats(vector<IteratorStats>* stats) const override {
     stats->resize(schema().num_columns());
   }
 

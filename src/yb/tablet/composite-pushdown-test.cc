@@ -40,7 +40,7 @@ class CompositePushdownTest : public YBTabletTest {
                               4)) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTabletTest::SetUp();
 
     FillTestTablet();

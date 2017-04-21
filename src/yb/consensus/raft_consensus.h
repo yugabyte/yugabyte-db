@@ -94,15 +94,15 @@ class RaftConsensus : public Consensus,
 
   virtual ~RaftConsensus();
 
-  virtual CHECKED_STATUS Start(const ConsensusBootstrapInfo& info) OVERRIDE;
+  virtual CHECKED_STATUS Start(const ConsensusBootstrapInfo& info) override;
 
-  virtual bool IsRunning() const OVERRIDE;
+  virtual bool IsRunning() const override;
 
   // Emulates an election by increasing the term number and asserting leadership
   // in the configuration by sending a NO_OP to other peers.
   // This is NOT safe to use in a distributed configuration with failure detection
   // enabled, as it could result in a split-brain scenario.
-  virtual CHECKED_STATUS EmulateElection() OVERRIDE;
+  virtual CHECKED_STATUS EmulateElection() override;
 
   virtual CHECKED_STATUS StartElection(
       ElectionMode mode,
@@ -112,46 +112,46 @@ class RaftConsensus : public Consensus,
 
   virtual CHECKED_STATUS ElectionLostByProtege(const std::string& election_lost_by_uuid) override;
 
-  virtual CHECKED_STATUS WaitUntilLeaderForTests(const MonoDelta& timeout) OVERRIDE;
+  virtual CHECKED_STATUS WaitUntilLeaderForTests(const MonoDelta& timeout) override;
 
   virtual CHECKED_STATUS StepDown(const LeaderStepDownRequestPB* req,
-                          LeaderStepDownResponsePB* resp) OVERRIDE;
+                          LeaderStepDownResponsePB* resp) override;
 
   // Call StartElection(), log a warning if the call fails (usually due to
   // being shut down).
   void ReportFailureDetected(const std::string& name, const Status& msg);
 
-  virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& round) OVERRIDE;
+  virtual CHECKED_STATUS Replicate(const scoped_refptr<ConsensusRound>& round) override;
 
   virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round)
-      OVERRIDE;
+      override;
 
   virtual CHECKED_STATUS Update(const ConsensusRequestPB* request,
-                        ConsensusResponsePB* response) OVERRIDE;
+                        ConsensusResponsePB* response) override;
 
   virtual CHECKED_STATUS RequestVote(const VoteRequestPB* request,
-                             VoteResponsePB* response) OVERRIDE;
+                             VoteResponsePB* response) override;
 
   virtual CHECKED_STATUS ChangeConfig(const ChangeConfigRequestPB& req,
                               const StatusCallback& client_cb,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
-                              OVERRIDE;
+                              override;
 
-  virtual RaftPeerPB::Role role() const OVERRIDE;
+  virtual RaftPeerPB::Role role() const override;
 
-  virtual std::string peer_uuid() const OVERRIDE;
+  virtual std::string peer_uuid() const override;
 
-  virtual std::string tablet_id() const OVERRIDE;
+  virtual std::string tablet_id() const override;
 
-  virtual ConsensusStatePB ConsensusState(ConsensusConfigType type) const OVERRIDE;
+  virtual ConsensusStatePB ConsensusState(ConsensusConfigType type) const override;
 
-  virtual ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const OVERRIDE;
+  virtual ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const override;
 
-  virtual RaftConfigPB CommittedConfig() const OVERRIDE;
+  virtual RaftConfigPB CommittedConfig() const override;
 
-  virtual void DumpStatusHtml(std::ostream& out) const OVERRIDE;
+  virtual void DumpStatusHtml(std::ostream& out) const override;
 
-  virtual void Shutdown() OVERRIDE;
+  virtual void Shutdown() override;
 
   // Return the active (as opposed to committed) role.
   RaftPeerPB::Role GetActiveRole() const;
@@ -165,15 +165,15 @@ class RaftConsensus : public Consensus,
   // transactions were pending.
   // This is idempotent.
   void UpdateMajorityReplicated(const OpId& majority_replicated,
-                                OpId* committed_index) OVERRIDE;
+                                OpId* committed_index) override;
 
-  virtual void NotifyTermChange(int64_t term) OVERRIDE;
+  virtual void NotifyTermChange(int64_t term) override;
 
   virtual void NotifyFailedFollower(const std::string& uuid,
                                     int64_t term,
-                                    const std::string& reason) OVERRIDE;
+                                    const std::string& reason) override;
 
-  virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) OVERRIDE;
+  virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) override;
 
  protected:
   // Trigger that a non-Transaction ConsensusRound has finished replication.

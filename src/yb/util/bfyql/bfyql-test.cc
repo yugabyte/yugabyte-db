@@ -60,11 +60,11 @@ class BfYqlTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test start and cleanup functions.
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     YBTest::TearDown();
   }
 

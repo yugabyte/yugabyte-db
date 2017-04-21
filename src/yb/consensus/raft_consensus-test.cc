@@ -71,7 +71,7 @@ class MockQueue : public PeerMessageQueue {
                                    const RaftConfigPB& active_config));
   MOCK_METHOD0(SetNonLeaderMode, void());
   virtual Status AppendOperations(const vector<ReplicateRefPtr>& msgs,
-                                  const StatusCallback& callback) OVERRIDE {
+                                  const StatusCallback& callback) override {
     return AppendOperationsMock(msgs, callback);
   }
   MOCK_METHOD2(AppendOperationsMock, Status(const vector<ReplicateRefPtr>& msgs,
@@ -174,7 +174,7 @@ class RaftConsensusTest : public YBTest {
     options_.tablet_id = kTestTablet;
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     LogOptions options;
     string test_path = GetTestPath("test-peer-root");
 

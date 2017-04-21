@@ -295,27 +295,27 @@ class RpcPeerProxy : public PeerProxy {
   virtual void UpdateAsync(const ConsensusRequestPB* request,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) OVERRIDE;
+                           const rpc::ResponseCallback& callback) override;
 
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
                                          VoteResponsePB* response,
                                          rpc::RpcController* controller,
-                                         const rpc::ResponseCallback& callback) OVERRIDE;
+                                         const rpc::ResponseCallback& callback) override;
 
   virtual void StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* request,
                                     StartRemoteBootstrapResponsePB* response,
                                     rpc::RpcController* controller,
-                                    const rpc::ResponseCallback& callback) OVERRIDE;
+                                    const rpc::ResponseCallback& callback) override;
 
   virtual void RunLeaderElectionAsync(const RunLeaderElectionRequestPB* request,
                                       RunLeaderElectionResponsePB* response,
                                       rpc::RpcController* controller,
-                                      const rpc::ResponseCallback& callback) OVERRIDE;
+                                      const rpc::ResponseCallback& callback) override;
 
   virtual void LeaderElectionLostAsync(const LeaderElectionLostRequestPB* request,
                                        LeaderElectionLostResponsePB* response,
                                        rpc::RpcController* controller,
-                                       const rpc::ResponseCallback& callback) OVERRIDE;
+                                       const rpc::ResponseCallback& callback) override;
 
   virtual ~RpcPeerProxy();
 
@@ -330,7 +330,7 @@ class RpcPeerProxyFactory : public PeerProxyFactory {
   explicit RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger);
 
   virtual CHECKED_STATUS NewProxy(const RaftPeerPB& peer_pb,
-                          gscoped_ptr<PeerProxy>* proxy) OVERRIDE;
+                          gscoped_ptr<PeerProxy>* proxy) override;
 
   virtual ~RpcPeerProxyFactory();
  private:

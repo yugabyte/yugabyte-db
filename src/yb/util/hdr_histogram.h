@@ -299,8 +299,8 @@ class RecordedValuesIterator : public AbstractHistogramIterator {
   explicit RecordedValuesIterator(const HdrHistogram* histogram);
 
  protected:
-  virtual void IncrementIterationLevel() OVERRIDE;
-  virtual bool ReachedIterationLevel() const OVERRIDE;
+  virtual void IncrementIterationLevel() override;
+  virtual bool ReachedIterationLevel() const override;
 
  private:
   int visited_sub_bucket_index_;
@@ -323,13 +323,13 @@ class PercentileIterator : public AbstractHistogramIterator {
   // TODO: Explain percentile_ticks_per_half_distance.
   PercentileIterator(const HdrHistogram* histogram,
                      int percentile_ticks_per_half_distance);
-  virtual bool HasNext() const OVERRIDE;
-  virtual double PercentileIteratedTo() const OVERRIDE;
-  virtual double PercentileIteratedFrom() const OVERRIDE;
+  virtual bool HasNext() const override;
+  virtual double PercentileIteratedTo() const override;
+  virtual double PercentileIteratedFrom() const override;
 
  protected:
-  virtual void IncrementIterationLevel() OVERRIDE;
-  virtual bool ReachedIterationLevel() const OVERRIDE;
+  virtual void IncrementIterationLevel() override;
+  virtual bool ReachedIterationLevel() const override;
 
  private:
   int percentile_ticks_per_half_distance_;

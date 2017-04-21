@@ -44,7 +44,7 @@ class RemoteBootstrapTest : public TabletServerTestBase {
   explicit RemoteBootstrapTest(TableType table_type = DEFAULT_TABLE_TYPE)
       : TabletServerTestBase(table_type) {}
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     TabletServerTestBase::SetUp();
     StartTabletServer();
     // Prevent logs from being deleted out from under us until / unless we want
@@ -56,7 +56,7 @@ class RemoteBootstrapTest : public TabletServerTestBase {
     ASSERT_NO_FATAL_FAILURE(GenerateTestData());
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     ASSERT_OK(tablet_peer_->log_anchor_registry()->Unregister(&anchor_));
     TabletServerTestBase::TearDown();
   }

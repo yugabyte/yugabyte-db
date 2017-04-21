@@ -138,26 +138,26 @@ class CFileSet : public std::enable_shared_from_this<CFileSet> {
 class CFileSet::Iterator : public ColumnwiseIterator {
  public:
 
-  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  virtual CHECKED_STATUS PrepareBatch(size_t *nrows) OVERRIDE;
+  virtual CHECKED_STATUS PrepareBatch(size_t *nrows) override;
 
-  virtual CHECKED_STATUS InitializeSelectionVector(SelectionVector *sel_vec) OVERRIDE;
+  virtual CHECKED_STATUS InitializeSelectionVector(SelectionVector *sel_vec) override;
 
-  virtual CHECKED_STATUS MaterializeColumn(size_t col_idx, ColumnBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS MaterializeColumn(size_t col_idx, ColumnBlock *dst) override;
 
-  virtual CHECKED_STATUS FinishBatch() OVERRIDE;
+  virtual CHECKED_STATUS FinishBatch() override;
 
-  virtual bool HasNext() const OVERRIDE {
+  virtual bool HasNext() const override {
     DCHECK(initted_);
     return cur_idx_ < upper_bound_idx_;
   }
 
-  virtual string ToString() const OVERRIDE {
+  virtual string ToString() const override {
     return string("rowset iterator for ") + base_data_->ToString();
   }
 
-  const Schema &schema() const OVERRIDE {
+  const Schema &schema() const override {
     return *projection_;
   }
 
@@ -168,7 +168,7 @@ class CFileSet::Iterator : public ColumnwiseIterator {
   }
 
   // Collect the IO statistics for each of the underlying columns.
-  virtual void GetIteratorStats(vector<IteratorStats> *stats) const OVERRIDE;
+  virtual void GetIteratorStats(vector<IteratorStats> *stats) const override;
 
   virtual ~Iterator();
  private:

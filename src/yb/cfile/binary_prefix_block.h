@@ -37,24 +37,24 @@ class BinaryPrefixBlockBuilder : public BlockBuilder {
  public:
   explicit BinaryPrefixBlockBuilder(const WriterOptions *options);
 
-  bool IsBlockFull(size_t limit) const OVERRIDE;
+  bool IsBlockFull(size_t limit) const override;
 
-  int Add(const uint8_t *vals, size_t count) OVERRIDE;
+  int Add(const uint8_t *vals, size_t count) override;
 
   // Return a Slice which represents the encoded data.
   //
   // This Slice points to internal data of this class
   // and becomes invalid after the builder is destroyed
   // or after Finish() is called again.
-  Slice Finish(rowid_t ordinal_pos) OVERRIDE;
+  Slice Finish(rowid_t ordinal_pos) override;
 
-  void Reset() OVERRIDE;
+  void Reset() override;
 
-  size_t Count() const OVERRIDE;
+  size_t Count() const override;
 
   // Return the first added key.
   // key should be a Slice *
-  CHECKED_STATUS GetFirstKey(void *key) const OVERRIDE;
+  CHECKED_STATUS GetFirstKey(void *key) const override;
 
  private:
   // Return the length of the common prefix shared by the two strings.
@@ -85,28 +85,28 @@ class BinaryPrefixBlockDecoder : public BlockDecoder {
  public:
   explicit BinaryPrefixBlockDecoder(Slice slice);
 
-  virtual CHECKED_STATUS ParseHeader() OVERRIDE;
-  virtual void SeekToPositionInBlock(uint pos) OVERRIDE;
+  virtual CHECKED_STATUS ParseHeader() override;
+  virtual void SeekToPositionInBlock(uint pos) override;
   virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value,
-                                    bool *exact_match) OVERRIDE;
-  CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE;
+                                    bool *exact_match) override;
+  CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) override;
 
-  virtual bool HasNext() const OVERRIDE {
+  virtual bool HasNext() const override {
     DCHECK(parsed_);
     return cur_idx_ < num_elems_;
   }
 
-  virtual size_t Count() const OVERRIDE {
+  virtual size_t Count() const override {
     DCHECK(parsed_);
     return num_elems_;
   }
 
-  virtual size_t GetCurrentIndex() const OVERRIDE {
+  virtual size_t GetCurrentIndex() const override {
     DCHECK(parsed_);
     return cur_idx_;
   }
 
-  virtual rowid_t GetFirstRowId() const OVERRIDE {
+  virtual rowid_t GetFirstRowId() const override {
     DCHECK(parsed_);
     return ordinal_pos_base_;
   }

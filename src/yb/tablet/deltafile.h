@@ -121,30 +121,30 @@ class DeltaFileReader : public DeltaStore,
                            std::shared_ptr<DeltaFileReader>* reader_out,
                            DeltaType delta_type);
 
-  virtual CHECKED_STATUS Init() OVERRIDE;
+  virtual CHECKED_STATUS Init() override;
 
-  virtual bool Initted() OVERRIDE {
+  virtual bool Initted() override {
     return init_once_.initted();
   }
 
   // See DeltaStore::NewDeltaIterator(...)
   CHECKED_STATUS NewDeltaIterator(const Schema *projection,
                           const MvccSnapshot &snap,
-                          DeltaIterator** iterator) const OVERRIDE;
+                          DeltaIterator** iterator) const override;
 
   // See DeltaStore::CheckRowDeleted
-  virtual CHECKED_STATUS CheckRowDeleted(rowid_t row_idx, bool *deleted) const OVERRIDE;
+  virtual CHECKED_STATUS CheckRowDeleted(rowid_t row_idx, bool *deleted) const override;
 
-  virtual uint64_t EstimateSize() const OVERRIDE;
+  virtual uint64_t EstimateSize() const override;
 
   const BlockId& block_id() const { return block_id_; }
 
-  virtual const DeltaStats& delta_stats() const OVERRIDE {
+  virtual const DeltaStats& delta_stats() const override {
     DCHECK(init_once_.initted());
     return *delta_stats_;
   }
 
-  virtual std::string ToString() const OVERRIDE {
+  virtual std::string ToString() const override {
     return reader_->ToString();
   }
 
@@ -186,18 +186,18 @@ class DeltaFileReader : public DeltaStore,
 // See DeltaIterator for details.
 class DeltaFileIterator : public DeltaIterator {
  public:
-  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  CHECKED_STATUS SeekToOrdinal(rowid_t idx) OVERRIDE;
-  CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
-  CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
-  CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
-  CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
+  CHECKED_STATUS SeekToOrdinal(rowid_t idx) override;
+  CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) override;
+  CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) override;
+  CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) override;
+  CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) override;
   CHECKED_STATUS FilterColumnIdsAndCollectDeltas(const std::vector<ColumnId>& col_ids,
                                          vector<DeltaKeyAndUpdate>* out,
-                                         Arena* arena) OVERRIDE;
-  string ToString() const OVERRIDE;
-  virtual bool HasNext() OVERRIDE;
+                                         Arena* arena) override;
+  string ToString() const override;
+  virtual bool HasNext() override;
 
  private:
   friend class DeltaFileReader;

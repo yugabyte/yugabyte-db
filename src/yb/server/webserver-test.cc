@@ -46,7 +46,7 @@ class WebserverTest : public YBTest {
     server_.reset(new Webserver(opts, "WebserverTest"));
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
 
     AddDefaultPathHandlers(server_.get());

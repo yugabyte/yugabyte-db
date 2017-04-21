@@ -188,7 +188,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
 
   TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
-  virtual const std::string& id() const OVERRIDE { return tablet_id_; }
+  virtual const std::string& id() const override { return tablet_id_; }
 
   const TabletId& tablet_id() const { return tablet_id_; }
   const scoped_refptr<TableInfo>& table() const { return table_; }
@@ -302,7 +302,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>, public MemoryState<Per
   const NamespaceId namespace_id() const;
 
   // Return the table's ID. Does not require synchronization.
-  virtual const std::string& id() const OVERRIDE { return table_id_; }
+  virtual const std::string& id() const override { return table_id_; }
 
   // Add a tablet to this table.
   void AddTablet(TabletInfo *tablet);
@@ -419,7 +419,7 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
  public:
   explicit NamespaceInfo(NamespaceId ns_id);
 
-  virtual const std::string& id() const OVERRIDE { return namespace_id_; };
+  virtual const std::string& id() const override { return namespace_id_; };
 
   const NamespaceName& name() const;
 
@@ -448,7 +448,7 @@ class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
  public:
   ClusterConfigInfo() {}
 
-  virtual const std::string& id() const OVERRIDE { return fake_id_; };
+  virtual const std::string& id() const override { return fake_id_; };
 
  private:
   friend class RefCountedThreadSafe<ClusterConfigInfo>;
@@ -717,14 +717,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // See also: TabletPeerLookupIf, ConsensusServiceImpl.
   virtual CHECKED_STATUS GetTabletPeer(const TabletId& tablet_id,
-                               scoped_refptr<tablet::TabletPeer>* tablet_peer) const OVERRIDE;
+                               scoped_refptr<tablet::TabletPeer>* tablet_peer) const override;
 
-  virtual const NodeInstancePB& NodeInstance() const OVERRIDE;
+  virtual const NodeInstancePB& NodeInstance() const override;
 
   bool IsInitialized() const;
 
   virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req)
-      OVERRIDE;
+      override;
 
   // Set the current committed config.
   CHECKED_STATUS GetCurrentConfig(consensus::ConsensusStatePB *cpb) const;

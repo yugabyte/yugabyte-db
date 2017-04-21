@@ -37,7 +37,7 @@ namespace yb {
 // setup routines useful for integration tests.
 class ExternalMiniClusterITestBase : public YBTest {
  public:
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     if (cluster_) {
       if (HasFatalFailure()) {
         LOG(INFO) << "Found fatal failure";

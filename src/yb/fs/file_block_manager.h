@@ -75,21 +75,21 @@ class FileBlockManager : public BlockManager {
 
   virtual ~FileBlockManager();
 
-  virtual CHECKED_STATUS Create() OVERRIDE;
+  virtual CHECKED_STATUS Create() override;
 
-  virtual CHECKED_STATUS Open() OVERRIDE;
+  virtual CHECKED_STATUS Open() override;
 
   virtual CHECKED_STATUS CreateBlock(const CreateBlockOptions& opts,
-                             gscoped_ptr<WritableBlock>* block) OVERRIDE;
+                             gscoped_ptr<WritableBlock>* block) override;
 
-  virtual CHECKED_STATUS CreateBlock(gscoped_ptr<WritableBlock>* block) OVERRIDE;
+  virtual CHECKED_STATUS CreateBlock(gscoped_ptr<WritableBlock>* block) override;
 
   virtual CHECKED_STATUS OpenBlock(const BlockId& block_id,
-                           gscoped_ptr<ReadableBlock>* block) OVERRIDE;
+                           gscoped_ptr<ReadableBlock>* block) override;
 
-  virtual CHECKED_STATUS DeleteBlock(const BlockId& block_id) OVERRIDE;
+  virtual CHECKED_STATUS DeleteBlock(const BlockId& block_id) override;
 
-  virtual CHECKED_STATUS CloseBlocks(const std::vector<WritableBlock*>& blocks) OVERRIDE;
+  virtual CHECKED_STATUS CloseBlocks(const std::vector<WritableBlock*>& blocks) override;
 
  private:
   friend class internal::FileBlockLocation;

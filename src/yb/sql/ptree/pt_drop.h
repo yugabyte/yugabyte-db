@@ -36,7 +36,7 @@ class PTDropStmt : public TreeNode {
   virtual ~PTDropStmt();
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTDropStmt;
   }
 
@@ -47,7 +47,7 @@ class PTDropStmt : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   ObjectType drop_type() const {

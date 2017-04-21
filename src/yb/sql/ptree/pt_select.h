@@ -45,7 +45,7 @@ class PTValues : public PTCollection {
   void Prepend(const PTExprListNode::SharedPtr& tnode);
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Access function for tuples_.
@@ -122,7 +122,7 @@ class PTTableRef : public TreeNode {
     return MCMakeShared<PTTableRef>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   client::YBTableName table_name() const {
     return name_->ToTableName();
@@ -164,13 +164,13 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   CHECKED_STATUS AnalyzeLimitClause(SemContext *sem_context);
   CHECKED_STATUS AnalyzeTarget(TreeNode *target, SemContext *sem_context);
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Execution opcode.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTSelectStmt;
   }
 
@@ -200,18 +200,18 @@ class PTSelectStmt : public PTDmlStmt {
   }
 
   // Returns table name.
-  virtual client::YBTableName table_name() const OVERRIDE {
+  virtual client::YBTableName table_name() const override {
     // CQL only allows one table at a time.
     return from_clause_->element(0)->table_name();
   }
 
   // Returns location of table name.
-  virtual const YBLocation& table_loc() const OVERRIDE {
+  virtual const YBLocation& table_loc() const override {
     return from_clause_->loc();
   }
 
   // Reset to clear and release previous semantics analysis results.
-  virtual void Reset() OVERRIDE;
+  virtual void Reset() override;
 
  private:
   // The following members represent different components of SELECT statement. However, Cassandra

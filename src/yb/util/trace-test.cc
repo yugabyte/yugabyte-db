@@ -311,12 +311,12 @@ TEST_F(TraceTest, TestChromeSampling) {
 
 class TraceEventCallbackTest : public YBTest {
  public:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     ASSERT_EQ(nullptr, s_instance);
     s_instance = this;
   }
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     TraceLog::GetInstance()->SetDisabled();
 
     // Flush the buffer so that one test doesn't end up leaving any
@@ -646,7 +646,7 @@ class TraceEventSyntheticDelayTest : public YBTest,
   }
 
   // TraceEventSyntheticDelayClock implementation.
-  virtual MonoTime Now() OVERRIDE {
+  virtual MonoTime Now() override {
     AdvanceTime(MonoDelta::FromMilliseconds(kShortDurationMs / 10));
     return now_;
   }

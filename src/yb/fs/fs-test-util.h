@@ -47,26 +47,26 @@ class CountingReadableBlock : public ReadableBlock {
       bytes_read_(bytes_read) {
   }
 
-  virtual const BlockId& id() const OVERRIDE {
+  virtual const BlockId& id() const override {
     return block_->id();
   }
 
-  virtual CHECKED_STATUS Close() OVERRIDE {
+  virtual CHECKED_STATUS Close() override {
     return block_->Close();
   }
 
-  virtual CHECKED_STATUS Size(uint64_t* sz) const OVERRIDE {
+  virtual CHECKED_STATUS Size(uint64_t* sz) const override {
     return block_->Size(sz);
   }
 
   virtual CHECKED_STATUS Read(uint64_t offset, size_t length,
-                      Slice* result, uint8_t* scratch) const OVERRIDE {
+                      Slice* result, uint8_t* scratch) const override {
     RETURN_NOT_OK(block_->Read(offset, length, result, scratch));
     *bytes_read_ += length;
     return Status::OK();
   }
 
-  virtual size_t memory_footprint() const OVERRIDE {
+  virtual size_t memory_footprint() const override {
     return block_->memory_footprint();
   }
 

@@ -753,19 +753,19 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   }
 
   // Overrides for base class functionality to bypass calling CatalogManager.
-  void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const OVERRIDE { *ts_descs = ts_descs_; }
+  void GetAllLiveDescriptors(TSDescriptorVector* ts_descs) const override { *ts_descs = ts_descs_; }
 
-  const TabletInfoMap& GetTabletMap() const OVERRIDE { return tablet_map_; }
+  const TabletInfoMap& GetTabletMap() const override { return tablet_map_; }
 
-  const TableInfoMap& GetTableMap() const OVERRIDE { return table_map_; }
+  const TableInfoMap& GetTableMap() const override { return table_map_; }
 
-  const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const OVERRIDE {
+  const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const override {
     return FindPtrOrNull(table_map_, table_uuid);
   }
 
-  const PlacementInfoPB& GetClusterPlacementInfo() const OVERRIDE { return cluster_placement_; }
+  const PlacementInfoPB& GetClusterPlacementInfo() const override { return cluster_placement_; }
 
-  const BlacklistPB& GetServerBlacklist() const OVERRIDE { return blacklist_; }
+  const BlacklistPB& GetServerBlacklist() const override { return blacklist_; }
 
   void AddRunningReplica(TabletInfo* tablet, shared_ptr<TSDescriptor> ts_desc) {
     TabletInfo::ReplicaMap replicas;
@@ -801,7 +801,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
   void SendReplicaChanges(
       scoped_refptr<TabletInfo> tablet, const string& ts_uuid, const bool is_add,
-      const bool should_remove, const string& new_leader_uuid) OVERRIDE {
+      const bool should_remove, const string& new_leader_uuid) override {
     // Do nothing.
   }
 

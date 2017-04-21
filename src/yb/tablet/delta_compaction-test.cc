@@ -82,7 +82,7 @@ class TestDeltaCompaction : public YBTest {
     return DeltaFileReader::Open(block.Pass(), block_id, dfr, REDO);
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     SeedRandom();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));

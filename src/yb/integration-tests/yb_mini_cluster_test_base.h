@@ -12,7 +12,7 @@ namespace yb {
 template <class T>
 class YBMiniClusterTestBase: public YBTest {
  public:
-  virtual void SetUp() OVERRIDE;
+  virtual void SetUp() override;
 
   // We override TearDown finally here, because we need to make sure DoBeforeTearDown is always
   // called before actual tear down which is to be performed in DoTearDown. Subclasses should
@@ -22,7 +22,7 @@ class YBMiniClusterTestBase: public YBTest {
   // Actually, subclasses should never know if TearDown method even exists, they should use/override
   // DoTearDown instead. For YBMiniClusterTestBase and its subclasses TearDown method is only
   // intended for calling from test framework and is a part of exclusively external interface.
-  virtual void TearDown() OVERRIDE final;
+  virtual void TearDown() override final;
 
   // In some tests we don't want to verify cluster at the end, because it can be broken on purpose.
   void DontVerifyClusterBeforeNextTearDown();

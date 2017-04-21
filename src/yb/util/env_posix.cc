@@ -235,7 +235,7 @@ class PosixSequentialFile: public SequentialFile {
       : filename_(std::move(fname)), file_(f) {}
   virtual ~PosixSequentialFile() { fclose(file_); }
 
-  virtual Status Read(size_t n, Slice* result, uint8_t* scratch) OVERRIDE {
+  virtual Status Read(size_t n, Slice* result, uint8_t* scratch) override {
     ThreadRestrictions::AssertIOAllowed();
     Status s;
     size_t r = fread_unlocked(scratch, 1, n, file_);
@@ -251,7 +251,7 @@ class PosixSequentialFile: public SequentialFile {
     return s;
   }
 
-  virtual Status Skip(uint64_t n) OVERRIDE {
+  virtual Status Skip(uint64_t n) override {
     TRACE_EVENT1("io", "PosixSequentialFile::Skip", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     if (fseek(file_, n, SEEK_CUR)) {
@@ -260,7 +260,7 @@ class PosixSequentialFile: public SequentialFile {
     return Status::OK();
   }
 
-  virtual const string& filename() const OVERRIDE { return filename_; }
+  virtual const string& filename() const override { return filename_; }
 };
 
 // pread() based random-access
@@ -275,7 +275,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
   virtual ~PosixRandomAccessFile() { close(fd_); }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      uint8_t *scratch) const OVERRIDE {
+                      uint8_t *scratch) const override {
     ThreadRestrictions::AssertIOAllowed();
     Status s;
     ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
@@ -287,7 +287,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
     return s;
   }
 
-  virtual Status Size(uint64_t *size) const OVERRIDE {
+  virtual Status Size(uint64_t *size) const override {
     TRACE_EVENT1("io", "PosixRandomAccessFile::Size", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     struct stat st;
@@ -298,9 +298,9 @@ class PosixRandomAccessFile: public RandomAccessFile {
     return Status::OK();
   }
 
-  virtual const string& filename() const OVERRIDE { return filename_; }
+  virtual const string& filename() const override { return filename_; }
 
-  virtual size_t memory_footprint() const OVERRIDE {
+  virtual size_t memory_footprint() const override {
     return yb_malloc_usable_size(this) + filename_.capacity();
   }
 };
@@ -326,13 +326,13 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  virtual Status Append(const Slice& data) OVERRIDE {
+  virtual Status Append(const Slice& data) override {
     vector<Slice> data_vector;
     data_vector.push_back(data);
     return AppendVector(data_vector);
   }
 
-  virtual Status AppendVector(const vector<Slice>& data_vector) OVERRIDE {
+  virtual Status AppendVector(const vector<Slice>& data_vector) override {
     ThreadRestrictions::AssertIOAllowed();
     static const size_t kIovMaxElements = IOV_MAX;
 
@@ -346,7 +346,7 @@ class PosixWritableFile : public WritableFile {
     return s;
   }
 
-  virtual Status PreAllocate(uint64_t size) OVERRIDE {
+  virtual Status PreAllocate(uint64_t size) override {
     TRACE_EVENT1("io", "PosixWritableFile::PreAllocate", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     uint64_t offset = std::max(filesize_, pre_allocated_size_);
@@ -363,7 +363,7 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual Status Close() OVERRIDE {
+  virtual Status Close() override {
     TRACE_EVENT1("io", "PosixWritableFile::Close", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     Status s;
@@ -397,7 +397,7 @@ class PosixWritableFile : public WritableFile {
     return s;
   }
 
-  virtual Status Flush(FlushMode mode) OVERRIDE {
+  virtual Status Flush(FlushMode mode) override {
     TRACE_EVENT1("io", "PosixWritableFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
 #if defined(__linux__)
@@ -416,7 +416,7 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual Status Sync() OVERRIDE {
+  virtual Status Sync() override {
     TRACE_EVENT1("io", "PosixWritableFile::Sync", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     LOG_SLOW_EXECUTION(WARNING, 1000, Substitute("sync call for $0", filename_)) {
@@ -428,11 +428,11 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual uint64_t Size() const OVERRIDE {
+  virtual uint64_t Size() const override {
     return filesize_;
   }
 
-  virtual const string& filename() const OVERRIDE { return filename_; }
+  virtual const string& filename() const override { return filename_; }
 
  protected:
     const std::string filename_;
@@ -528,7 +528,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
     }
   }
 
-  virtual Status Append(const Slice &const_data_slice) OVERRIDE {
+  virtual Status Append(const Slice &const_data_slice) override {
     ThreadRestrictions::AssertIOAllowed();
     Slice data_slice = const_data_slice;
 
@@ -551,7 +551,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
     return Status::OK();
   }
 
-  virtual Status AppendVector(const vector<Slice> &data_vector) OVERRIDE {
+  virtual Status AppendVector(const vector<Slice> &data_vector) override {
     ThreadRestrictions::AssertIOAllowed();
     for (auto const &slice : data_vector) {
       RETURN_NOT_OK(Append(slice));
@@ -559,7 +559,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
     return Status::OK();
   }
 
-  virtual Status Close() OVERRIDE {
+  virtual Status Close() override {
     TRACE_EVENT1("io", "PosixDirectIOWritableFile::Close", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     RETURN_NOT_OK(Sync());
@@ -585,17 +585,17 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
     return Status::OK();
   }
 
-  virtual Status Flush(FlushMode mode) OVERRIDE {
+  virtual Status Flush(FlushMode mode) override {
     ThreadRestrictions::AssertIOAllowed();
     return Sync();
   }
 
-  virtual Status Sync() OVERRIDE {
+  virtual Status Sync() override {
     ThreadRestrictions::AssertIOAllowed();
     return DoWrite();
   }
 
-  virtual uint64_t Size() const OVERRIDE {
+  virtual uint64_t Size() const override {
     return real_size_;
   }
 
@@ -747,7 +747,7 @@ class PosixRWFile : public RWFile {
   }
 
   virtual Status Read(uint64_t offset, size_t length,
-                      Slice* result, uint8_t* scratch) const OVERRIDE {
+                      Slice* result, uint8_t* scratch) const override {
     ThreadRestrictions::AssertIOAllowed();
     int rem = length;
     uint8_t* dst = scratch;
@@ -773,7 +773,7 @@ class PosixRWFile : public RWFile {
     return Status::OK();
   }
 
-  virtual Status Write(uint64_t offset, const Slice& data) OVERRIDE {
+  virtual Status Write(uint64_t offset, const Slice& data) override {
     ThreadRestrictions::AssertIOAllowed();
     ssize_t written = pwrite(fd_, data.data(), data.size(), offset);
 
@@ -792,7 +792,7 @@ class PosixRWFile : public RWFile {
     return Status::OK();
   }
 
-  virtual Status PreAllocate(uint64_t offset, size_t length) OVERRIDE {
+  virtual Status PreAllocate(uint64_t offset, size_t length) override {
     TRACE_EVENT1("io", "PosixRWFile::PreAllocate", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     if (fallocate(fd_, 0, offset, length) < 0) {
@@ -807,7 +807,7 @@ class PosixRWFile : public RWFile {
     return Status::OK();
   }
 
-  virtual Status PunchHole(uint64_t offset, size_t length) OVERRIDE {
+  virtual Status PunchHole(uint64_t offset, size_t length) override {
 #if defined(__linux__)
     TRACE_EVENT1("io", "PosixRWFile::PunchHole", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
@@ -820,7 +820,7 @@ class PosixRWFile : public RWFile {
 #endif
   }
 
-  virtual Status Flush(FlushMode mode, uint64_t offset, size_t length) OVERRIDE {
+  virtual Status Flush(FlushMode mode, uint64_t offset, size_t length) override {
     TRACE_EVENT1("io", "PosixRWFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
 #if defined(__linux__)
@@ -839,7 +839,7 @@ class PosixRWFile : public RWFile {
     return Status::OK();
   }
 
-  virtual Status Sync() OVERRIDE {
+  virtual Status Sync() override {
     TRACE_EVENT1("io", "PosixRWFile::Sync", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     LOG_SLOW_EXECUTION(WARNING, 1000, Substitute("sync call for $0", filename())) {
@@ -851,7 +851,7 @@ class PosixRWFile : public RWFile {
     return Status::OK();
   }
 
-  virtual Status Close() OVERRIDE {
+  virtual Status Close() override {
     TRACE_EVENT1("io", "PosixRWFile::Close", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     Status s;
@@ -873,7 +873,7 @@ class PosixRWFile : public RWFile {
     return s;
   }
 
-  virtual Status Size(uint64_t* size) const OVERRIDE {
+  virtual Status Size(uint64_t* size) const override {
     TRACE_EVENT1("io", "PosixRWFile::Size", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     struct stat st;
@@ -884,7 +884,7 @@ class PosixRWFile : public RWFile {
     return Status::OK();
   }
 
-  virtual const string& filename() const OVERRIDE {
+  virtual const string& filename() const override {
     return filename_;
   }
 
@@ -954,7 +954,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
-                                   gscoped_ptr<SequentialFile>* result) OVERRIDE {
+                                   gscoped_ptr<SequentialFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewSequentialFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     FILE* f = fopen(fname.c_str(), "r");
@@ -967,13 +967,13 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     gscoped_ptr<RandomAccessFile>* result) OVERRIDE {
+                                     gscoped_ptr<RandomAccessFile>* result) override {
     return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
   }
 
   virtual Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
                                      const std::string& fname,
-                                     gscoped_ptr<RandomAccessFile>* result) OVERRIDE {
+                                     gscoped_ptr<RandomAccessFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewRandomAccessFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     int fd = open(fname.c_str(), O_RDONLY);
@@ -986,13 +986,13 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                 gscoped_ptr<WritableFile>* result) OVERRIDE {
+                                 gscoped_ptr<WritableFile>* result) override {
     return NewWritableFile(WritableFileOptions(), fname, result);
   }
 
   virtual Status NewWritableFile(const WritableFileOptions& opts,
                                  const std::string& fname,
-                                 gscoped_ptr<WritableFile>* result) OVERRIDE {
+                                 gscoped_ptr<WritableFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewWritableFile", "path", fname);
     int fd = -1;
     int extra_flags = 0;
@@ -1008,7 +1008,7 @@ class PosixEnv : public Env {
   virtual Status NewTempWritableFile(const WritableFileOptions& opts,
                                      const std::string& name_template,
                                      std::string* created_filename,
-                                     gscoped_ptr<WritableFile>* result) OVERRIDE {
+                                     gscoped_ptr<WritableFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewTempWritableFile", "template", name_template);
     ThreadRestrictions::AssertIOAllowed();
     gscoped_ptr<char[]> fname(new char[name_template.size() + 1]);
@@ -1031,13 +1031,13 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewRWFile(const string& fname,
-                           gscoped_ptr<RWFile>* result) OVERRIDE {
+                           gscoped_ptr<RWFile>* result) override {
     return NewRWFile(RWFileOptions(), fname, result);
   }
 
   virtual Status NewRWFile(const RWFileOptions& opts,
                            const string& fname,
-                           gscoped_ptr<RWFile>* result) OVERRIDE {
+                           gscoped_ptr<RWFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewRWFile", "path", fname);
     int fd;
     RETURN_NOT_OK(DoOpen(fname, opts.mode, &fd));
@@ -1045,14 +1045,14 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual bool FileExists(const std::string& fname) OVERRIDE {
+  virtual bool FileExists(const std::string& fname) override {
     TRACE_EVENT1("io", "PosixEnv::FileExists", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     return access(fname.c_str(), F_OK) == 0;
   }
 
   virtual Status GetChildren(const std::string& dir,
-                             std::vector<std::string>* result) OVERRIDE {
+                             std::vector<std::string>* result) override {
     TRACE_EVENT1("io", "PosixEnv::GetChildren", "path", dir);
     ThreadRestrictions::AssertIOAllowed();
     result->clear();
@@ -1069,7 +1069,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status DeleteFile(const std::string& fname) OVERRIDE {
+  virtual Status DeleteFile(const std::string& fname) override {
     TRACE_EVENT1("io", "PosixEnv::DeleteFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     Status result;
@@ -1079,7 +1079,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status CreateDir(const std::string& name) OVERRIDE {
+  virtual Status CreateDir(const std::string& name) override {
     TRACE_EVENT1("io", "PosixEnv::CreateDir", "path", name);
     ThreadRestrictions::AssertIOAllowed();
     Status result;
@@ -1089,7 +1089,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status DeleteDir(const std::string& name) OVERRIDE {
+  virtual Status DeleteDir(const std::string& name) override {
     TRACE_EVENT1("io", "PosixEnv::DeleteDir", "path", name);
     ThreadRestrictions::AssertIOAllowed();
     Status result;
@@ -1099,7 +1099,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status SyncDir(const std::string& dirname) OVERRIDE {
+  virtual Status SyncDir(const std::string& dirname) override {
     TRACE_EVENT1("io", "SyncDir", "path", dirname);
     ThreadRestrictions::AssertIOAllowed();
     if (FLAGS_never_fsync) return Status::OK();
@@ -1114,12 +1114,12 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status DeleteRecursively(const std::string &name) OVERRIDE {
+  virtual Status DeleteRecursively(const std::string &name) override {
     return Walk(name, POST_ORDER, Bind(&PosixEnv::DeleteRecursivelyCb,
                                        Unretained(this)));
   }
 
-  virtual Status GetFileSize(const std::string& fname, uint64_t* size) OVERRIDE {
+  virtual Status GetFileSize(const std::string& fname, uint64_t* size) override {
     TRACE_EVENT1("io", "PosixEnv::GetFileSize", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     Status s;
@@ -1132,7 +1132,7 @@ class PosixEnv : public Env {
     return s;
   }
 
-  virtual Status GetFileSizeOnDisk(const std::string& fname, uint64_t* size) OVERRIDE {
+  virtual Status GetFileSizeOnDisk(const std::string& fname, uint64_t* size) override {
     TRACE_EVENT1("io", "PosixEnv::GetFileSizeOnDisk", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     Status s;
@@ -1150,7 +1150,7 @@ class PosixEnv : public Env {
     return s;
   }
 
-  virtual Status GetBlockSize(const string& fname, uint64_t* block_size) OVERRIDE {
+  virtual Status GetBlockSize(const string& fname, uint64_t* block_size) override {
     TRACE_EVENT1("io", "PosixEnv::GetBlockSize", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     Status s;
@@ -1163,7 +1163,7 @@ class PosixEnv : public Env {
     return s;
   }
 
-  virtual Status RenameFile(const std::string& src, const std::string& target) OVERRIDE {
+  virtual Status RenameFile(const std::string& src, const std::string& target) override {
     TRACE_EVENT2("io", "PosixEnv::RenameFile", "src", src, "dst", target);
     ThreadRestrictions::AssertIOAllowed();
     Status result;
@@ -1175,7 +1175,7 @@ class PosixEnv : public Env {
 
   virtual Status LockFile(const std::string& fname,
                           FileLock** lock,
-                          bool recursive_lock_ok) OVERRIDE {
+                          bool recursive_lock_ok) override {
     TRACE_EVENT1("io", "PosixEnv::LockFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     *lock = nullptr;
@@ -1195,7 +1195,7 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual Status UnlockFile(FileLock* lock) OVERRIDE {
+  virtual Status UnlockFile(FileLock* lock) override {
     TRACE_EVENT0("io", "PosixEnv::UnlockFile");
     ThreadRestrictions::AssertIOAllowed();
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
@@ -1211,7 +1211,7 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual Status GetTestDirectory(std::string* result) OVERRIDE {
+  virtual Status GetTestDirectory(std::string* result) override {
     string dir;
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
@@ -1227,7 +1227,7 @@ class PosixEnv : public Env {
     return Canonicalize(dir, result);
   }
 
-  virtual uint64_t gettid() OVERRIDE {
+  virtual uint64_t gettid() override {
     // Platform-independent thread ID.  We can't use pthread_self here,
     // because that function returns a totally opaque ID, which can't be
     // compared via normal means.
@@ -1237,18 +1237,18 @@ class PosixEnv : public Env {
     return thread_local_id;
   }
 
-  virtual uint64_t NowMicros() OVERRIDE {
+  virtual uint64_t NowMicros() override {
     struct timeval tv;
     gettimeofday(&tv, nullptr);
     return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
-  virtual void SleepForMicroseconds(int micros) OVERRIDE {
+  virtual void SleepForMicroseconds(int micros) override {
     ThreadRestrictions::AssertWaitAllowed();
     SleepFor(MonoDelta::FromMicroseconds(micros));
   }
 
-  virtual Status GetExecutablePath(string* path) OVERRIDE {
+  virtual Status GetExecutablePath(string* path) override {
     uint32_t size = 64;
     uint32_t len = 0;
     while (true) {
@@ -1279,7 +1279,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status IsDirectory(const string& path, bool* is_dir) OVERRIDE {
+  virtual Status IsDirectory(const string& path, bool* is_dir) override {
     TRACE_EVENT1("io", "PosixEnv::IsDirectory", "path", path);
     ThreadRestrictions::AssertIOAllowed();
     Status s;
@@ -1292,7 +1292,7 @@ class PosixEnv : public Env {
     return s;
   }
 
-  virtual Status Walk(const string& root, DirectoryOrder order, const WalkCallback& cb) OVERRIDE {
+  virtual Status Walk(const string& root, DirectoryOrder order, const WalkCallback& cb) override {
     TRACE_EVENT1("io", "PosixEnv::Walk", "path", root);
     ThreadRestrictions::AssertIOAllowed();
     // Some sanity checks
@@ -1361,7 +1361,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status Canonicalize(const string& path, string* result) OVERRIDE {
+  virtual Status Canonicalize(const string& path, string* result) override {
     TRACE_EVENT1("io", "PosixEnv::Canonicalize", "path", path);
     ThreadRestrictions::AssertIOAllowed();
     gscoped_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
@@ -1372,7 +1372,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status GetTotalRAMBytes(int64_t* ram) OVERRIDE {
+  virtual Status GetTotalRAMBytes(int64_t* ram) override {
 #if defined(__APPLE__)
     int mib[2];
     size_t length = sizeof(*ram);

@@ -81,14 +81,14 @@ class RemoteBootstrapTest : public YBTabletTest {
     CHECK_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTabletTest::SetUp();
     SetUpTabletPeer();
     ASSERT_NO_FATAL_FAILURE(PopulateTablet());
     InitSession();
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     session_.reset();
     tablet_peer_->Shutdown();
     YBTabletTest::TearDown();

@@ -119,7 +119,7 @@ class PTExpr : public TreeNode {
   }
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTExpr;
   }
 
@@ -153,7 +153,7 @@ class PTExpr : public TreeNode {
   // - Run semantic analysis on this node.
   // - The main job of semantics analysis is to run type resolution to find the correct values for
   //   yql_type_id_ and internal_type_ for expressions.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE = 0;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override = 0;
 
   // These functions are called by analyze to run type resolution on this expression.
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context);
@@ -216,7 +216,7 @@ class PTExpr0 : public PTExpr {
     return MCMakeShared<PTExpr0>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     // Analyze this node operator and setup its yql_type_id_ and internal_type_.
     RETURN_NOT_OK(AnalyzeOperator(sem_context));
 
@@ -254,11 +254,11 @@ class PTExpr1 : public PTExpr {
     return MCMakeShared<PTExpr1>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  const PTExpr::SharedPtr op1() const OVERRIDE {
+  const PTExpr::SharedPtr op1() const override {
     return op1_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     // Run semantic analysis on child nodes.
     RETURN_NOT_OK(op1_->Analyze(sem_context));
 
@@ -313,15 +313,15 @@ class PTExpr2 : public PTExpr {
     return MCMakeShared<PTExpr2>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  const PTExpr::SharedPtr op1() const OVERRIDE {
+  const PTExpr::SharedPtr op1() const override {
     return op1_;
   }
 
-  const PTExpr::SharedPtr op2() const OVERRIDE {
+  const PTExpr::SharedPtr op2() const override {
     return op2_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     // Run semantic analysis on child nodes.
     RETURN_NOT_OK(op1_->Analyze(sem_context));
     RETURN_NOT_OK(op2_->Analyze(sem_context));
@@ -383,19 +383,19 @@ class PTExpr3 : public PTExpr {
     return MCMakeShared<PTExpr3>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  const PTExpr::SharedPtr op1() const OVERRIDE {
+  const PTExpr::SharedPtr op1() const override {
     return op1_;
   }
 
-  const PTExpr::SharedPtr op2() const OVERRIDE {
+  const PTExpr::SharedPtr op2() const override {
     return op2_;
   }
 
-  const PTExpr::SharedPtr op3() const OVERRIDE {
+  const PTExpr::SharedPtr op3() const override {
     return op3_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     // Run semantic analysis on child nodes.
     RETURN_NOT_OK(op1_->Analyze(sem_context));
     RETURN_NOT_OK(op2_->Analyze(sem_context));
@@ -448,7 +448,7 @@ class PTExprConst : public PTExpr0<itype, ytype> {
     return MCMakeShared<PTExprConst>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override {
     // Nothing to do: constant expressions should be initialized with valid data type already
     return Status::OK();
   };
@@ -533,7 +533,7 @@ class PTMapExpr : public PTExpr {
     return values_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     // Run semantic analysis on collection elements.
     for (auto& key : keys_) {
       RETURN_NOT_OK(key->Analyze(sem_context));
@@ -584,7 +584,7 @@ class PTSetExpr : public PTExpr {
     return value_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     // Run semantic analysis on collection elements.
     for (auto& elem : value_) {
       RETURN_NOT_OK(elem->Analyze(sem_context));
@@ -628,7 +628,7 @@ class PTListExpr : public PTExpr {
     return value_;
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     // Run semantic analysis on collection elements.
     for (auto& elem : value_) {
       RETURN_NOT_OK(elem->Analyze(sem_context));
@@ -684,7 +684,7 @@ class PTRef : public PTOperator0 {
 
   // Node semantics analysis.
   void PrintSemanticAnalysisResult(SemContext *sem_context);
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context) override;
 
   // Access function for name.
   const PTQualifiedName::SharedPtr& name() const {
@@ -697,7 +697,7 @@ class PTRef : public PTOperator0 {
   }
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTRef;
   }
 
@@ -731,7 +731,7 @@ class PTExprAlias : public PTOperator1 {
     return MCMakeShared<PTExprAlias>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) OVERRIDE;
+  virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
 
  private:
   MCString::SharedPtr alias_;
@@ -781,7 +781,7 @@ class PTBindVar : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Access functions for position.
@@ -813,7 +813,7 @@ class PTBindVar : public PTExpr {
   }
 
   // Expression return type in DocDB format.
-  virtual InternalType internal_type() const OVERRIDE {
+  virtual InternalType internal_type() const override {
     DCHECK(desc_ != nullptr);
     return desc_->internal_type();
   }
@@ -824,23 +824,23 @@ class PTBindVar : public PTExpr {
     return desc_->yql_type();
   }
 
-  virtual DataType yql_type_id() const OVERRIDE {
+  virtual DataType yql_type_id() const override {
     DCHECK(desc_ != nullptr);
     return desc_->yql_type().main();
   }
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTBindVar;
   }
 
   // Access to op_.
-  virtual ExprOperator expr_op() const OVERRIDE {
+  virtual ExprOperator expr_op() const override {
     return ExprOperator::kBindVar;
   }
 
   // Reset to clear and release previous semantics analysis results.
-  virtual void Reset() OVERRIDE;
+  virtual void Reset() override;
 
  private:
   // 0-based position.
@@ -875,10 +875,10 @@ class PTBfunc : public PTExpr {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   // Experimental: Convert current treenode to YQLValue.
-  virtual std::shared_ptr<YQLValue> ToYqlValue(yb::bfyql::BFOpcode cast_opcode) OVERRIDE;
+  virtual std::shared_ptr<YQLValue> ToYqlValue(yb::bfyql::BFOpcode cast_opcode) override;
 
   // Return the result of evaluation.
   PTExpr::SharedPtr result() const {

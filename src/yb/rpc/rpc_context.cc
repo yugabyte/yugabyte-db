@@ -53,7 +53,7 @@ class PbTracer : public debug::ConvertableToTraceFormat {
     msg_->CopyFrom(msg);
   }
 
-  virtual void AppendAsTraceFormat(std::string* out) const OVERRIDE {
+  virtual void AppendAsTraceFormat(std::string* out) const override {
     pb_util::TruncateFields(msg_.get(), kMaxFieldLengthToTrace);
     std::stringstream ss;
     JsonWriter jw(&ss, JsonWriter::COMPACT);

@@ -34,7 +34,7 @@ class UndefTreeNode : public TreeNode {
   ~UndefTreeNode() {}
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kNoOp;
   }
 };

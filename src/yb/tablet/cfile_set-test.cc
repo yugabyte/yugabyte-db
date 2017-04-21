@@ -43,7 +43,7 @@ class TestCFileSet : public YBRowSetTest {
       1)) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBRowSetTest::SetUp();
 
     // Use a small cfile block size, so that when we skip materializing a given

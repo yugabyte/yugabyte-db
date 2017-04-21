@@ -28,7 +28,7 @@ namespace yb {
 
 class TsRecoveryITest : public YBTest {
  public:
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     if (cluster_) cluster_->Shutdown();
     YBTest::TearDown();
   }

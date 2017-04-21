@@ -77,21 +77,21 @@ class JsonWriterImpl : public JsonWriterIf {
  public:
   explicit JsonWriterImpl(stringstream* out);
 
-  virtual void Null() OVERRIDE;
-  virtual void Bool(bool b) OVERRIDE;
-  virtual void Int(int i) OVERRIDE;
-  virtual void Uint(unsigned u) OVERRIDE;
-  virtual void Int64(int64_t i64) OVERRIDE;
-  virtual void Uint64(uint64_t u64) OVERRIDE;
-  virtual void Double(double d) OVERRIDE;
-  virtual void String(const char* str, size_t length) OVERRIDE;
-  virtual void String(const char* str) OVERRIDE;
-  virtual void String(const std::string& str) OVERRIDE;
+  virtual void Null() override;
+  virtual void Bool(bool b) override;
+  virtual void Int(int i) override;
+  virtual void Uint(unsigned u) override;
+  virtual void Int64(int64_t i64) override;
+  virtual void Uint64(uint64_t u64) override;
+  virtual void Double(double d) override;
+  virtual void String(const char* str, size_t length) override;
+  virtual void String(const char* str) override;
+  virtual void String(const std::string& str) override;
 
-  virtual void StartObject() OVERRIDE;
-  virtual void EndObject() OVERRIDE;
-  virtual void StartArray() OVERRIDE;
-  virtual void EndArray() OVERRIDE;
+  virtual void StartObject() override;
+  virtual void EndObject() override;
+  virtual void StartArray() override;
+  virtual void EndArray() override;
 
  private:
   UTF8StringStreamBuffer stream_;

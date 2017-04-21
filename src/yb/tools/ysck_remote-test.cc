@@ -57,7 +57,7 @@ class RemoteYsckTest : public YBTest {
     CHECK_OK(b.Build(&schema_));
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
 
     // Speed up testing, saves about 700ms per TEST_F.
@@ -90,7 +90,7 @@ class RemoteYsckTest : public YBTest {
     ysck_.reset(new Ysck(cluster_));
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     if (mini_cluster_) {
       mini_cluster_->Shutdown();
       mini_cluster_.reset();

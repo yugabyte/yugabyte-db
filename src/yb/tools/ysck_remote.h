@@ -51,18 +51,18 @@ class RemoteYsckTabletServer : public YsckTabletServer {
         ts_proxy_(new tserver::TabletServerServiceProxy(messenger, address)) {
   }
 
-  virtual CHECKED_STATUS Connect() const OVERRIDE;
+  virtual CHECKED_STATUS Connect() const override;
 
-  virtual CHECKED_STATUS CurrentHybridTime(uint64_t* hybrid_time) const OVERRIDE;
+  virtual CHECKED_STATUS CurrentHybridTime(uint64_t* hybrid_time) const override;
 
   virtual void RunTabletChecksumScanAsync(
       const std::string& tablet_id,
       const Schema& schema,
       const ChecksumOptions& options,
-      const ReportResultCallback& callback) OVERRIDE;
+      const ReportResultCallback& callback) override;
 
 
-  virtual const std::string& address() const OVERRIDE {
+  virtual const std::string& address() const override {
     return address_;
   }
 
@@ -81,14 +81,14 @@ class RemoteYsckMaster : public YsckMaster {
 
   virtual ~RemoteYsckMaster() { }
 
-  virtual CHECKED_STATUS Connect() const OVERRIDE;
+  virtual CHECKED_STATUS Connect() const override;
 
-  virtual CHECKED_STATUS RetrieveTabletServers(TSMap* tablet_servers) OVERRIDE;
+  virtual CHECKED_STATUS RetrieveTabletServers(TSMap* tablet_servers) override;
 
   virtual CHECKED_STATUS RetrieveTablesList(
-      std::vector<std::shared_ptr<YsckTable> >* tables) OVERRIDE;
+      std::vector<std::shared_ptr<YsckTable> >* tables) override;
 
-  virtual CHECKED_STATUS RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) OVERRIDE;
+  virtual CHECKED_STATUS RetrieveTabletsList(const std::shared_ptr<YsckTable>& table) override;
 
  private:
   explicit RemoteYsckMaster(

@@ -94,10 +94,10 @@ class DelayedTask : public ReactorTask {
               const std::shared_ptr<Messenger> messenger);
 
   // Schedules the task for running later but doesn't actually run it yet.
-  virtual void Run(ReactorThread* reactor) OVERRIDE;
+  virtual void Run(ReactorThread* reactor) override;
 
   // Behaves like ReactorTask::Abort.
-  virtual void Abort(const Status& abort_status) OVERRIDE;
+  virtual void Abort(const Status& abort_status) override;
 
   // Could be called from non-reactor thread even before reactor thread shutdown.
   void AbortTask(const Status& abort_status);

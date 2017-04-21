@@ -45,7 +45,7 @@ class TabletPushdownTest : public YBTabletTest,
                               ColumnSchema("string_val", STRING) }, 1)) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTabletTest::SetUp();
 
     FillTestTablet();

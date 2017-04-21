@@ -69,7 +69,7 @@ class YBConnection : public Connection {
 
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 
-  virtual void HandleFinishedTransfer() OVERRIDE;
+  virtual void HandleFinishedTransfer() override;
 
   AbstractInboundTransfer* inbound() const override;
 

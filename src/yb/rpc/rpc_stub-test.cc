@@ -47,7 +47,7 @@ using std::vector;
 
 class RpcStubTest : public RpcTestBase {
  public:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     RpcTestBase::SetUp();
     StartTestServerWithGeneratedCode(&server_addr_);
     client_messenger_ = CreateMessenger("Client");

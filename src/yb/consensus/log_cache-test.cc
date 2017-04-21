@@ -51,7 +51,7 @@ class LogCacheTest : public YBTest {
       metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "LogCacheTest")) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
@@ -70,7 +70,7 @@ class LogCacheTest : public YBTest {
     ASSERT_OK(clock_->Init());
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     ASSERT_OK(log_->WaitUntilAllFlushed());
   }
 

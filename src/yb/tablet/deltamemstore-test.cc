@@ -53,7 +53,7 @@ class TestDeltaMemStore : public YBTest {
           server::LogicalClock::CreateStartingAt(HybridTime::kInitialHybridTime))) {
   }
 
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     YBTest::SetUp();
 
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));

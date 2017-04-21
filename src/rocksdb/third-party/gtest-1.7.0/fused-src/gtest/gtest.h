@@ -18480,7 +18480,7 @@ class GTEST_API_ Test {
   //
   // A sub-class must implement this to define the test logic.
   //
-  // DO NOT OVERRIDE THIS FUNCTION DIRECTLY IN A USER PROGRAM.
+  // DO NOT override THIS FUNCTION DIRECTLY IN A USER PROGRAM.
   // Instead, use the TEST or TEST_F macro.
   virtual void TestBody() = 0;
 
@@ -18506,7 +18506,7 @@ class GTEST_API_ Test {
   //   - This method is private, so it will be another compiler error
   //   if the method is called from the user's test fixture.
   //
-  // DO NOT OVERRIDE THIS FUNCTION.
+  // DO NOT override THIS FUNCTION.
   //
   // If you see an error about overriding the following function or
   // about it being private, you have mis-spelled SetUp() as Setup().

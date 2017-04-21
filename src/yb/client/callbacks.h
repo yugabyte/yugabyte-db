@@ -83,7 +83,7 @@ class YB_EXPORT YBLoggingMemberCallback : public YBLoggingCallback {
                    int line_number,
                    const struct ::tm* time,
                    const char* message,
-                   size_t message_len) OVERRIDE {
+                   size_t message_len) override {
     (object_->*member_)(severity, filename, line_number, time,
         message, message_len);
   }
@@ -115,7 +115,7 @@ class YB_EXPORT YBLoggingFunctionCallback : public YBLoggingCallback {
                    int line_number,
                    const struct ::tm* time,
                    const char* message,
-                   size_t message_len) OVERRIDE {
+                   size_t message_len) override {
     function_(arg_, severity, filename, line_number, time,
               message, message_len);
   }
@@ -151,7 +151,7 @@ class YB_EXPORT YBStatusMemberCallback : public YBStatusCallback {
       member_(member) {
   }
 
-  virtual void Run(const Status& s) OVERRIDE {
+  virtual void Run(const Status& s) override {
     (object_->*member_)(s);
   }
 
@@ -171,7 +171,7 @@ class YB_EXPORT YBStatusFunctionCallback : public YBStatusCallback {
       arg_(arg) {
   }
 
-  virtual void Run(const Status& s) OVERRIDE {
+  virtual void Run(const Status& s) override {
     function_(arg_, s);
   }
 

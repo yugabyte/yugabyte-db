@@ -258,62 +258,62 @@ class DuplicatingRowSet : public RowSet {
                            const RowChangeList &update,
                            const consensus::OpId& op_id,
                            ProbeStats* stats,
-                           OperationResultPB* result) OVERRIDE;
+                           OperationResultPB* result) override;
 
   CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
-                         ProbeStats* stats) const OVERRIDE;
+                         ProbeStats* stats) const override;
 
   virtual CHECKED_STATUS NewRowIterator(const Schema *projection,
                                 const MvccSnapshot &snap,
-                                gscoped_ptr<RowwiseIterator>* out) const OVERRIDE;
+                                gscoped_ptr<RowwiseIterator>* out) const override;
 
   virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot &snap,
-                                    gscoped_ptr<CompactionInput>* out) const OVERRIDE;
+                                    gscoped_ptr<CompactionInput>* out) const override;
 
-  CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE;
+  CHECKED_STATUS CountRows(rowid_t *count) const override;
 
   virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
-                           Slice *max_encoded_key) const OVERRIDE;
+                           Slice *max_encoded_key) const override;
 
-  uint64_t EstimateOnDiskSize() const OVERRIDE;
+  uint64_t EstimateOnDiskSize() const override;
 
-  string ToString() const OVERRIDE;
+  string ToString() const override;
 
-  virtual CHECKED_STATUS DebugDump(vector<string> *lines = NULL) OVERRIDE;
+  virtual CHECKED_STATUS DebugDump(vector<string> *lines = NULL) override;
 
-  std::shared_ptr<RowSetMetadata> metadata() OVERRIDE;
+  std::shared_ptr<RowSetMetadata> metadata() override;
 
   // A flush-in-progress rowset should never be selected for compaction.
-  std::mutex *compact_flush_lock() OVERRIDE {
+  std::mutex *compact_flush_lock() override {
     LOG(FATAL) << "Cannot be compacted";
     return NULL;
   }
 
-  virtual bool IsAvailableForCompaction() OVERRIDE {
+  virtual bool IsAvailableForCompaction() override {
     return false;
   }
 
   ~DuplicatingRowSet();
 
-  size_t DeltaMemStoreSize() const OVERRIDE { return 0; }
+  size_t DeltaMemStoreSize() const override { return 0; }
 
-  bool DeltaMemStoreEmpty() const OVERRIDE { return true; }
+  bool DeltaMemStoreEmpty() const override { return true; }
 
-  double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const OVERRIDE {
+  double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const override {
     return 0;
   }
 
-  int64_t MinUnflushedLogIndex() const OVERRIDE { return -1; }
+  int64_t MinUnflushedLogIndex() const override { return -1; }
 
-  CHECKED_STATUS FlushDeltas() OVERRIDE {
+  CHECKED_STATUS FlushDeltas() override {
     // It's important that DuplicatingRowSet does not FlushDeltas. This prevents
     // a bug where we might end up with out-of-order deltas. See the long
     // comment in Tablet::Flush(...)
     return Status::OK();
   }
 
-  CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE { return Status::OK(); }
+  CHECKED_STATUS MinorCompactDeltaStores() override { return Status::OK(); }
 
  private:
   friend class Tablet;

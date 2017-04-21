@@ -65,13 +65,13 @@ class SimpleSink : public google::LogSink {
  public:
   explicit SimpleSink(LoggingCallback cb) : cb_(std::move(cb)) {}
 
-  virtual ~SimpleSink() OVERRIDE {
+  virtual ~SimpleSink() override {
   }
 
   virtual void send(google::LogSeverity severity, const char* full_filename,
                     const char* base_filename, int line,
                     const struct ::tm* tm_time,
-                    const char* message, size_t message_len) OVERRIDE {
+                    const char* message, size_t message_len) override {
     LogSeverity yb_severity;
     switch (severity) {
       case google::INFO:

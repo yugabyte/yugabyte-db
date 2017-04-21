@@ -517,90 +517,90 @@ class EnvWrapper : public Env {
   Env* target() const { return target_; }
 
   // The following text is boilerplate that forwards all methods to target()
-  CHECKED_STATUS NewSequentialFile(const std::string& f, gscoped_ptr<SequentialFile>* r) OVERRIDE {
+  CHECKED_STATUS NewSequentialFile(const std::string& f, gscoped_ptr<SequentialFile>* r) override {
     return target_->NewSequentialFile(f, r);
   }
   CHECKED_STATUS NewRandomAccessFile(const std::string& f,
-                             gscoped_ptr<RandomAccessFile>* r) OVERRIDE {
+                             gscoped_ptr<RandomAccessFile>* r) override {
     return target_->NewRandomAccessFile(f, r);
   }
   CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
                              const std::string& f,
-                             gscoped_ptr<RandomAccessFile>* r) OVERRIDE {
+                             gscoped_ptr<RandomAccessFile>* r) override {
     return target_->NewRandomAccessFile(opts, f, r);
   }
-  CHECKED_STATUS NewWritableFile(const std::string& f, gscoped_ptr<WritableFile>* r) OVERRIDE {
+  CHECKED_STATUS NewWritableFile(const std::string& f, gscoped_ptr<WritableFile>* r) override {
     return target_->NewWritableFile(f, r);
   }
   CHECKED_STATUS NewWritableFile(const WritableFileOptions& o,
                          const std::string& f,
-                         gscoped_ptr<WritableFile>* r) OVERRIDE {
+                         gscoped_ptr<WritableFile>* r) override {
     return target_->NewWritableFile(o, f, r);
   }
   CHECKED_STATUS NewTempWritableFile(const WritableFileOptions& o, const std::string& t,
-                             std::string* f, gscoped_ptr<WritableFile>* r) OVERRIDE {
+                             std::string* f, gscoped_ptr<WritableFile>* r) override {
     return target_->NewTempWritableFile(o, t, f, r);
   }
-  CHECKED_STATUS NewRWFile(const std::string& f, gscoped_ptr<RWFile>* r) OVERRIDE {
+  CHECKED_STATUS NewRWFile(const std::string& f, gscoped_ptr<RWFile>* r) override {
     return target_->NewRWFile(f, r);
   }
   CHECKED_STATUS NewRWFile(const RWFileOptions& o,
                    const std::string& f,
-                   gscoped_ptr<RWFile>* r) OVERRIDE {
+                   gscoped_ptr<RWFile>* r) override {
     return target_->NewRWFile(o, f, r);
   }
-  bool FileExists(const std::string& f) OVERRIDE { return target_->FileExists(f); }
-  CHECKED_STATUS GetChildren(const std::string& dir, std::vector<std::string>* r) OVERRIDE {
+  bool FileExists(const std::string& f) override { return target_->FileExists(f); }
+  CHECKED_STATUS GetChildren(const std::string& dir, std::vector<std::string>* r) override {
     return target_->GetChildren(dir, r);
   }
-  CHECKED_STATUS DeleteFile(const std::string& f) OVERRIDE { return target_->DeleteFile(f); }
-  CHECKED_STATUS CreateDir(const std::string& d) OVERRIDE { return target_->CreateDir(d); }
-  CHECKED_STATUS SyncDir(const std::string& d) OVERRIDE { return target_->SyncDir(d); }
-  CHECKED_STATUS DeleteDir(const std::string& d) OVERRIDE { return target_->DeleteDir(d); }
-  CHECKED_STATUS DeleteRecursively(const std::string& d) OVERRIDE { return target_->DeleteRecursively(d); }
-  CHECKED_STATUS GetFileSize(const std::string& f, uint64_t* s) OVERRIDE {
+  CHECKED_STATUS DeleteFile(const std::string& f) override { return target_->DeleteFile(f); }
+  CHECKED_STATUS CreateDir(const std::string& d) override { return target_->CreateDir(d); }
+  CHECKED_STATUS SyncDir(const std::string& d) override { return target_->SyncDir(d); }
+  CHECKED_STATUS DeleteDir(const std::string& d) override { return target_->DeleteDir(d); }
+  CHECKED_STATUS DeleteRecursively(const std::string& d) override { return target_->DeleteRecursively(d); }
+  CHECKED_STATUS GetFileSize(const std::string& f, uint64_t* s) override {
     return target_->GetFileSize(f, s);
   }
-  CHECKED_STATUS GetFileSizeOnDisk(const std::string& f, uint64_t* s) OVERRIDE {
+  CHECKED_STATUS GetFileSizeOnDisk(const std::string& f, uint64_t* s) override {
     return target_->GetFileSizeOnDisk(f, s);
   }
-  CHECKED_STATUS GetBlockSize(const std::string& f, uint64_t* s) OVERRIDE {
+  CHECKED_STATUS GetBlockSize(const std::string& f, uint64_t* s) override {
     return target_->GetBlockSize(f, s);
   }
-  CHECKED_STATUS RenameFile(const std::string& s, const std::string& t) OVERRIDE {
+  CHECKED_STATUS RenameFile(const std::string& s, const std::string& t) override {
     return target_->RenameFile(s, t);
   }
-  CHECKED_STATUS LockFile(const std::string& f, FileLock** l, bool r) OVERRIDE {
+  CHECKED_STATUS LockFile(const std::string& f, FileLock** l, bool r) override {
     return target_->LockFile(f, l, r);
   }
-  CHECKED_STATUS UnlockFile(FileLock* l) OVERRIDE { return target_->UnlockFile(l); }
-  virtual CHECKED_STATUS GetTestDirectory(std::string* path) OVERRIDE {
+  CHECKED_STATUS UnlockFile(FileLock* l) override { return target_->UnlockFile(l); }
+  virtual CHECKED_STATUS GetTestDirectory(std::string* path) override {
     return target_->GetTestDirectory(path);
   }
-  uint64_t NowMicros() OVERRIDE {
+  uint64_t NowMicros() override {
     return target_->NowMicros();
   }
-  void SleepForMicroseconds(int micros) OVERRIDE {
+  void SleepForMicroseconds(int micros) override {
     target_->SleepForMicroseconds(micros);
   }
-  uint64_t gettid() OVERRIDE {
+  uint64_t gettid() override {
     return target_->gettid();
   }
-  CHECKED_STATUS GetExecutablePath(std::string* path) OVERRIDE {
+  CHECKED_STATUS GetExecutablePath(std::string* path) override {
     return target_->GetExecutablePath(path);
   }
-  CHECKED_STATUS IsDirectory(const std::string& path, bool* is_dir) OVERRIDE {
+  CHECKED_STATUS IsDirectory(const std::string& path, bool* is_dir) override {
     return target_->IsDirectory(path, is_dir);
   }
   CHECKED_STATUS Walk(const std::string& root,
               DirectoryOrder order,
-              const WalkCallback& cb) OVERRIDE {
+              const WalkCallback& cb) override {
     return target_->Walk(root, order, cb);
   }
-  CHECKED_STATUS Canonicalize(const std::string& path, std::string* result) OVERRIDE {
+  CHECKED_STATUS Canonicalize(const std::string& path, std::string* result) override {
     return target_->Canonicalize(path, result);
   }
-  CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) OVERRIDE {
+  CHECKED_STATUS GetTotalRAMBytes(int64_t* ram) override {
     return target_->GetTotalRAMBytes(ram);
   }
  private:

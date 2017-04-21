@@ -68,21 +68,21 @@ class BinaryDictBlockBuilder : public BlockBuilder {
  public:
   explicit BinaryDictBlockBuilder(const WriterOptions* options);
 
-  bool IsBlockFull(size_t limit) const OVERRIDE;
+  bool IsBlockFull(size_t limit) const override;
 
   // Append the dictionary block for the current cfile to the end of the cfile and set the footer
   // accordingly.
-  CHECKED_STATUS AppendExtraInfo(CFileWriter* c_writer, CFileFooterPB* footer) OVERRIDE;
+  CHECKED_STATUS AppendExtraInfo(CFileWriter* c_writer, CFileFooterPB* footer) override;
 
-  int Add(const uint8_t* vals, size_t count) OVERRIDE;
+  int Add(const uint8_t* vals, size_t count) override;
 
-  Slice Finish(rowid_t ordinal_pos) OVERRIDE;
+  Slice Finish(rowid_t ordinal_pos) override;
 
-  void Reset() OVERRIDE;
+  void Reset() override;
 
-  size_t Count() const OVERRIDE;
+  size_t Count() const override;
 
-  CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE;
+  CHECKED_STATUS GetFirstKey(void* key) const override;
 
   static const size_t kMaxHeaderSize = sizeof(uint32_t) * 1;
 
@@ -121,24 +121,24 @@ class BinaryDictBlockDecoder : public BlockDecoder {
  public:
   explicit BinaryDictBlockDecoder(Slice slice, CFileIterator* iter);
 
-  virtual CHECKED_STATUS ParseHeader() OVERRIDE;
-  virtual void SeekToPositionInBlock(uint pos) OVERRIDE;
-  virtual CHECKED_STATUS SeekAtOrAfterValue(const void* value, bool* exact_match) OVERRIDE;
-  CHECKED_STATUS CopyNextValues(size_t* n, ColumnDataView* dst) OVERRIDE;
+  virtual CHECKED_STATUS ParseHeader() override;
+  virtual void SeekToPositionInBlock(uint pos) override;
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void* value, bool* exact_match) override;
+  CHECKED_STATUS CopyNextValues(size_t* n, ColumnDataView* dst) override;
 
-  virtual bool HasNext() const OVERRIDE {
+  virtual bool HasNext() const override {
     return data_decoder_->HasNext();
   }
 
-  virtual size_t Count() const OVERRIDE {
+  virtual size_t Count() const override {
     return data_decoder_->Count();
   }
 
-  virtual size_t GetCurrentIndex() const OVERRIDE {
+  virtual size_t GetCurrentIndex() const override {
     return data_decoder_->GetCurrentIndex();
   }
 
-  virtual rowid_t GetFirstRowId() const OVERRIDE {
+  virtual rowid_t GetFirstRowId() const override {
     return data_decoder_->GetFirstRowId();
   }
 

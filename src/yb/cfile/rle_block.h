@@ -52,7 +52,7 @@ class RleBitMapBlockBuilder : public BlockBuilder {
     Reset();
   }
 
-  virtual int Add(const uint8_t* vals, size_t count) OVERRIDE {
+  virtual int Add(const uint8_t* vals, size_t count) override {
      for (const uint8_t* val = vals;
           val < vals + count;
           ++val) {
@@ -64,29 +64,29 @@ class RleBitMapBlockBuilder : public BlockBuilder {
     return count;
   }
 
-  virtual bool IsBlockFull(size_t limit) const OVERRIDE {
+  virtual bool IsBlockFull(size_t limit) const override {
     return encoder_.len() > limit;
   }
 
-  virtual Slice Finish(rowid_t ordinal_pos) OVERRIDE {
+  virtual Slice Finish(rowid_t ordinal_pos) override {
     InlineEncodeFixed32(&buf_[0], count_);
     InlineEncodeFixed32(&buf_[4], ordinal_pos);
     encoder_.Flush();
     return Slice(buf_);
   }
 
-  virtual void Reset() OVERRIDE {
+  virtual void Reset() override {
     count_ = 0;
     encoder_.Clear();
     encoder_.Reserve(kRleBitmapBlockHeaderSize, 0);
   }
 
-  virtual size_t Count() const OVERRIDE {
+  virtual size_t Count() const override {
     return count_;
   }
 
   // TODO Implement this method
-  virtual CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE {
+  virtual CHECKED_STATUS GetFirstKey(void* key) const override {
     return STATUS(NotSupported, "BOOL keys not supported");
   }
 
@@ -109,7 +109,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
         cur_idx_(0) {
   }
 
-  virtual CHECKED_STATUS ParseHeader() OVERRIDE {
+  virtual CHECKED_STATUS ParseHeader() override {
     CHECK(!parsed_);
 
     if (data_.size() < kRleBitmapBlockHeaderSize) {
@@ -130,7 +130,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  virtual void SeekToPositionInBlock(uint pos) OVERRIDE {
+  virtual void SeekToPositionInBlock(uint pos) override {
     CHECK(parsed_) << "Must call ParseHeader()";
 
     if (cur_idx_ == pos) {
@@ -149,7 +149,7 @@ class RleBitMapBlockDecoder : public BlockDecoder {
     cur_idx_ = pos;
   }
 
-  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView* dst) OVERRIDE {
+  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView* dst) override {
     DCHECK(parsed_);
 
     DCHECK_LE(*n, dst->nrows());
@@ -178,17 +178,17 @@ class RleBitMapBlockDecoder : public BlockDecoder {
   }
 
   virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value,
-                                    bool *exact_match) OVERRIDE {
+                                    bool *exact_match) override {
     return STATUS(NotSupported, "BOOL keys are not supported!");
   }
 
-  virtual bool HasNext() const OVERRIDE { return cur_idx_ < num_elems_; }
+  virtual bool HasNext() const override { return cur_idx_ < num_elems_; }
 
-  virtual size_t Count() const OVERRIDE { return num_elems_; }
+  virtual size_t Count() const override { return num_elems_; }
 
-  virtual size_t GetCurrentIndex() const OVERRIDE { return cur_idx_; }
+  virtual size_t GetCurrentIndex() const override { return cur_idx_; }
 
-  virtual rowid_t GetFirstRowId() const OVERRIDE { return ordinal_pos_base_; }
+  virtual rowid_t GetFirstRowId() const override { return ordinal_pos_base_; }
 
  private:
   Slice data_;
@@ -212,11 +212,11 @@ class RleIntBlockBuilder : public BlockBuilder {
     Reset();
   }
 
-  virtual bool IsBlockFull(size_t limit) const OVERRIDE {
+  virtual bool IsBlockFull(size_t limit) const override {
     return rle_encoder_.len() > limit;
   }
 
-  virtual int Add(const uint8_t* vals_void, size_t count) OVERRIDE {
+  virtual int Add(const uint8_t* vals_void, size_t count) override {
     if (PREDICT_FALSE(count_ == 0)) {
       first_key_ = *reinterpret_cast<const CppType*>(vals_void);
     }
@@ -228,24 +228,24 @@ class RleIntBlockBuilder : public BlockBuilder {
     return count;
   }
 
-  virtual Slice Finish(rowid_t ordinal_pos) OVERRIDE {
+  virtual Slice Finish(rowid_t ordinal_pos) override {
     InlineEncodeFixed32(&buf_[0], count_);
     InlineEncodeFixed32(&buf_[4], ordinal_pos);
     rle_encoder_.Flush();
     return Slice(buf_);
   }
 
-  virtual void Reset() OVERRIDE {
+  virtual void Reset() override {
     count_ = 0;
     rle_encoder_.Clear();
     rle_encoder_.Reserve(kRleBitmapBlockHeaderSize, 0);
   }
 
-  virtual size_t Count() const OVERRIDE {
+  virtual size_t Count() const override {
     return count_;
   }
 
-  virtual CHECKED_STATUS GetFirstKey(void* key) const OVERRIDE {
+  virtual CHECKED_STATUS GetFirstKey(void* key) const override {
     if (count_ > 0) {
       *reinterpret_cast<CppType*>(key) = first_key_;
       return Status::OK();
@@ -284,7 +284,7 @@ class RleIntBlockDecoder : public BlockDecoder {
         cur_idx_(0) {
   }
 
-  virtual CHECKED_STATUS ParseHeader() OVERRIDE {
+  virtual CHECKED_STATUS ParseHeader() override {
     CHECK(!parsed_);
 
     if (data_.size() < kRleBitmapBlockHeaderSize) {
@@ -306,7 +306,7 @@ class RleIntBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  virtual void SeekToPositionInBlock(uint pos) OVERRIDE {
+  virtual void SeekToPositionInBlock(uint pos) override {
     CHECK(parsed_) << "Must call ParseHeader()";
     CHECK_LT(pos, num_elems_)
         << "Tried to seek to " << pos << " which is >= number of elements ("
@@ -327,7 +327,7 @@ class RleIntBlockDecoder : public BlockDecoder {
     cur_idx_ = pos;
   }
 
-  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value_void, bool *exact_match) OVERRIDE {
+  virtual CHECKED_STATUS SeekAtOrAfterValue(const void *value_void, bool *exact_match) override {
     // Currently using linear search as we do not check whether a
     // mid-point of a buffer will fall on a literal or not.
     //
@@ -361,7 +361,7 @@ class RleIntBlockDecoder : public BlockDecoder {
     return STATUS(NotFound, "not in block");
   }
 
-  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) OVERRIDE {
+  virtual CHECKED_STATUS CopyNextValues(size_t *n, ColumnDataView *dst) override {
     DCHECK(parsed_);
 
     DCHECK_LE(*n, dst->nrows());
@@ -387,19 +387,19 @@ class RleIntBlockDecoder : public BlockDecoder {
     return Status::OK();
   }
 
-  virtual bool HasNext() const OVERRIDE {
+  virtual bool HasNext() const override {
     return cur_idx_ < num_elems_;
   }
 
-  virtual size_t Count() const OVERRIDE {
+  virtual size_t Count() const override {
     return num_elems_;
   }
 
-  virtual size_t GetCurrentIndex() const OVERRIDE {
+  virtual size_t GetCurrentIndex() const override {
     return cur_idx_;
   }
 
-  virtual rowid_t GetFirstRowId() const OVERRIDE {
+  virtual rowid_t GetFirstRowId() const override {
     return ordinal_pos_base_;
   };
  private:

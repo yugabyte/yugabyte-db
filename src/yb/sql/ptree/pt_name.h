@@ -94,7 +94,7 @@ class PTQualifiedName : public PTName {
   void Prepend(const PTName::SharedPtr& ptname);
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   const MCString& first_name() const {
     return ptnames_.front()->name();

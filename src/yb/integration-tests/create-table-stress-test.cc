@@ -75,7 +75,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     CHECK_OK(b.Build(&schema_));
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
 
@@ -110,7 +110,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), messenger_, &ts_map_));
   }
 
-  virtual void DoTearDown() OVERRIDE {
+  virtual void DoTearDown() override {
     cluster_->Shutdown();
     STLDeleteValues(&ts_map_);
   }

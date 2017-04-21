@@ -19,7 +19,7 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
  public:
   RemoteBootstrapRocksDBClientTest() : RemoteBootstrapClientTest(YQL_TABLE_TYPE) {}
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     RemoteBootstrapClientTest::SetUp();
   }
 };

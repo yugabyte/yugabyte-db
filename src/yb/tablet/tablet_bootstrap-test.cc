@@ -64,7 +64,7 @@ using tserver::WriteRequestPB;
 class BootstrapTest : public LogTestBase {
  protected:
 
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     LogTestBase::SetUp();
   }
 

@@ -66,9 +66,9 @@ class DeltaMemStore : public DeltaStore,
                 log::LogAnchorRegistry* log_anchor_registry,
                 const std::shared_ptr<MemTracker>& parent_tracker = std::shared_ptr<MemTracker>());
 
-  virtual CHECKED_STATUS Init() OVERRIDE;
+  virtual CHECKED_STATUS Init() override;
 
-  virtual bool Initted() OVERRIDE {
+  virtual bool Initted() override {
     return true;
   }
 
@@ -109,11 +109,11 @@ class DeltaMemStore : public DeltaStore,
   // cannot include 'snap'.
   virtual CHECKED_STATUS NewDeltaIterator(const Schema *projection,
                                   const MvccSnapshot &snap,
-                                  DeltaIterator** iterator) const OVERRIDE;
+                                  DeltaIterator** iterator) const override;
 
-  virtual CHECKED_STATUS CheckRowDeleted(rowid_t row_idx, bool *deleted) const OVERRIDE;
+  virtual CHECKED_STATUS CheckRowDeleted(rowid_t row_idx, bool *deleted) const override;
 
-  virtual uint64_t EstimateSize() const OVERRIDE {
+  virtual uint64_t EstimateSize() const override {
     return memory_footprint();
   }
 
@@ -126,7 +126,7 @@ class DeltaMemStore : public DeltaStore,
     return arena_->memory_footprint();
   }
 
-  virtual std::string ToString() const OVERRIDE {
+  virtual std::string ToString() const override {
     return "DMS";
   }
 
@@ -136,7 +136,7 @@ class DeltaMemStore : public DeltaStore,
   }
 
   // The returned stats will always be empty, and the number of columns unset.
-  virtual const DeltaStats& delta_stats() const OVERRIDE {
+  virtual const DeltaStats& delta_stats() const override {
     return delta_stats_;
   }
 
@@ -184,25 +184,25 @@ class DeltaMemStore : public DeltaStore,
 // functions.
 class DMSIterator : public DeltaIterator {
  public:
-  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  CHECKED_STATUS SeekToOrdinal(rowid_t row_idx) OVERRIDE;
+  CHECKED_STATUS SeekToOrdinal(rowid_t row_idx) override;
 
-  CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) OVERRIDE;
+  CHECKED_STATUS PrepareBatch(size_t nrows, PrepareFlag flag) override;
 
-  CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) OVERRIDE;
+  CHECKED_STATUS ApplyUpdates(size_t col_to_apply, ColumnBlock *dst) override;
 
-  CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) OVERRIDE;
+  CHECKED_STATUS ApplyDeletes(SelectionVector *sel_vec) override;
 
-  CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) OVERRIDE;
+  CHECKED_STATUS CollectMutations(vector<Mutation *> *dst, Arena *arena) override;
 
   CHECKED_STATUS FilterColumnIdsAndCollectDeltas(const vector<ColumnId>& col_ids,
                                          vector<DeltaKeyAndUpdate>* out,
-                                         Arena* arena) OVERRIDE;
+                                         Arena* arena) override;
 
-  string ToString() const OVERRIDE;
+  string ToString() const override;
 
-  virtual bool HasNext() OVERRIDE;
+  virtual bool HasNext() override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(DMSIterator);

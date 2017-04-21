@@ -45,8 +45,8 @@ namespace integration_tests {
 class YBTableTestBase : public YBTest {
  protected:
   YBTableTestBase();
-  virtual void SetUp() OVERRIDE;
-  virtual void TearDown() OVERRIDE;
+  virtual void SetUp() override;
+  virtual void TearDown() override;
 
   virtual bool use_external_mini_cluster();
   virtual int session_timeout_ms();

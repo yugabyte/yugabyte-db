@@ -45,21 +45,21 @@ class PTInsertStmt : public PTDmlStmt {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTInsertStmt;
   }
 
   // Table name.
-  client::YBTableName table_name() const OVERRIDE {
+  client::YBTableName table_name() const override {
     return relation_->ToTableName();
   }
 
   // Returns location of table name.
-  const YBLocation& table_loc() const OVERRIDE {
+  const YBLocation& table_loc() const override {
     return relation_->loc();
   }
 

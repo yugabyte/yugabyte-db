@@ -33,7 +33,7 @@ namespace tablet {
 class MockRowSet : public RowSet {
  public:
   virtual CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
-                                 ProbeStats* stats) const OVERRIDE {
+                                 ProbeStats* stats) const override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
@@ -42,31 +42,31 @@ class MockRowSet : public RowSet {
                            const RowChangeList &update,
                            const consensus::OpId& op_id_,
                            ProbeStats* stats,
-                           OperationResultPB *result) OVERRIDE {
+                           OperationResultPB *result) override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
   virtual CHECKED_STATUS NewRowIterator(const Schema *projection,
                                 const MvccSnapshot &snap,
-                                gscoped_ptr<RowwiseIterator>* out) const OVERRIDE {
+                                gscoped_ptr<RowwiseIterator>* out) const override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
   virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot &snap,
-                                    gscoped_ptr<CompactionInput>* out) const OVERRIDE {
+                                    gscoped_ptr<CompactionInput>* out) const override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE {
+  virtual CHECKED_STATUS CountRows(rowid_t *count) const override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual std::string ToString() const OVERRIDE {
+  virtual std::string ToString() const override {
     LOG(FATAL) << "Unimplemented";
     return "";
   }
-  virtual CHECKED_STATUS DebugDump(vector<std::string> *lines = NULL) OVERRIDE {
+  virtual CHECKED_STATUS DebugDump(vector<std::string> *lines = NULL) override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
@@ -74,52 +74,52 @@ class MockRowSet : public RowSet {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
-  virtual uint64_t EstimateOnDiskSize() const OVERRIDE {
+  virtual uint64_t EstimateOnDiskSize() const override {
     LOG(FATAL) << "Unimplemented";
     return 0;
   }
-  virtual std::mutex *compact_flush_lock() OVERRIDE {
+  virtual std::mutex *compact_flush_lock() override {
     LOG(FATAL) << "Unimplemented";
     return NULL;
   }
-  virtual std::shared_ptr<RowSetMetadata> metadata() OVERRIDE {
+  virtual std::shared_ptr<RowSetMetadata> metadata() override {
     LOG(FATAL) << "Unimplemented";
     return std::shared_ptr<RowSetMetadata>(
       reinterpret_cast<RowSetMetadata *>(NULL));
   }
 
-  virtual size_t DeltaMemStoreSize() const OVERRIDE {
+  virtual size_t DeltaMemStoreSize() const override {
     LOG(FATAL) << "Unimplemented";
     return 0;
   }
 
-  virtual bool DeltaMemStoreEmpty() const OVERRIDE {
+  virtual bool DeltaMemStoreEmpty() const override {
     LOG(FATAL) << "Unimplemented";
     return 0;
   }
 
-  virtual int64_t MinUnflushedLogIndex() const OVERRIDE {
+  virtual int64_t MinUnflushedLogIndex() const override {
     LOG(FATAL) << "Unimplemented";
     return -1;
   }
 
   virtual double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type)
-      const OVERRIDE {
+      const override {
     LOG(FATAL) << "Unimplemented";
     return 0;
   }
 
-  virtual CHECKED_STATUS FlushDeltas() OVERRIDE {
+  virtual CHECKED_STATUS FlushDeltas() override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE {
+  virtual CHECKED_STATUS MinorCompactDeltaStores() override {
     LOG(FATAL) << "Unimplemented";
     return Status::OK();
   }
 
-  virtual bool IsAvailableForCompaction() OVERRIDE {
+  virtual bool IsAvailableForCompaction() override {
     return true;
   }
 };
@@ -134,17 +134,17 @@ class MockDiskRowSet : public MockRowSet {
         size_(size) {}
 
   virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
-                           Slice *max_encoded_key) const OVERRIDE {
+                           Slice *max_encoded_key) const override {
     *min_encoded_key = Slice(first_key_);
     *max_encoded_key = Slice(last_key_);
     return Status::OK();
   }
 
-  virtual uint64_t EstimateOnDiskSize() const OVERRIDE {
+  virtual uint64_t EstimateOnDiskSize() const override {
     return size_;
   }
 
-  virtual std::string ToString() const OVERRIDE {
+  virtual std::string ToString() const override {
     return strings::Substitute("mock[$0, $1]",
                                Slice(first_key_).ToDebugString(),
                                Slice(last_key_).ToDebugString());
@@ -160,7 +160,7 @@ class MockDiskRowSet : public MockRowSet {
 class MockMemRowSet : public MockRowSet {
  public:
   virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
-                           Slice *max_encoded_key) const OVERRIDE {
+                           Slice *max_encoded_key) const override {
     return STATUS(NotSupported, "");
   }
 

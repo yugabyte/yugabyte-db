@@ -52,15 +52,15 @@ class FlushMRSOp : public MaintenanceOp {
     time_since_flush_.start();
   }
 
-  virtual void UpdateStats(MaintenanceOpStats* stats) OVERRIDE;
+  virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
-  virtual bool Prepare() OVERRIDE;
+  virtual bool Prepare() override;
 
-  virtual void Perform() OVERRIDE;
+  virtual void Perform() override;
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const OVERRIDE;
+  virtual scoped_refptr<Histogram> DurationHistogram() const override;
 
-  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const OVERRIDE;
+  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
   // Lock protecting time_since_flush_.
@@ -82,17 +82,17 @@ class FlushDeltaMemStoresOp : public MaintenanceOp {
     time_since_flush_.start();
   }
 
-  virtual void UpdateStats(MaintenanceOpStats* stats) OVERRIDE;
+  virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
-  virtual bool Prepare() OVERRIDE {
+  virtual bool Prepare() override {
     return true;
   }
 
-  virtual void Perform() OVERRIDE;
+  virtual void Perform() override;
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const OVERRIDE;
+  virtual scoped_refptr<Histogram> DurationHistogram() const override;
 
-  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const OVERRIDE;
+  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
   // Lock protecting time_since_flush_
@@ -110,15 +110,15 @@ class LogGCOp : public MaintenanceOp {
  public:
   explicit LogGCOp(TabletPeer* tablet_peer);
 
-  virtual void UpdateStats(MaintenanceOpStats* stats) OVERRIDE;
+  virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
-  virtual bool Prepare() OVERRIDE;
+  virtual bool Prepare() override;
 
-  virtual void Perform() OVERRIDE;
+  virtual void Perform() override;
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const OVERRIDE;
+  virtual scoped_refptr<Histogram> DurationHistogram() const override;
 
-  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const OVERRIDE;
+  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
   TabletPeer *const tablet_peer_;

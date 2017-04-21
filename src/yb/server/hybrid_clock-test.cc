@@ -36,7 +36,7 @@ class HybridClockTest : public YBTest {
       : clock_(new HybridClock) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     ASSERT_OK(clock_->Init());
   }

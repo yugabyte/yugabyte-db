@@ -43,7 +43,7 @@ class TreeListNode : public TreeNode {
   }
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return op;
   }
 
@@ -67,7 +67,7 @@ class TreeListNode : public TreeNode {
   }
 
   // Run semantics analysis on this node.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE {
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     for (auto tnode : node_list_) {
       RETURN_NOT_OK(tnode->Analyze(sem_context));
     }

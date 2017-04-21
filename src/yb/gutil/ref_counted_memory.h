@@ -56,8 +56,8 @@ class BASE_EXPORT RefCountedStaticMemory : public RefCountedMemory {
         length_(length) {}
 
   // Overridden from RefCountedMemory:
-  virtual const unsigned char* front() const OVERRIDE;
-  virtual size_t size() const OVERRIDE;
+  virtual const unsigned char* front() const override;
+  virtual size_t size() const override;
 
  private:
   virtual ~RefCountedStaticMemory();
@@ -85,8 +85,8 @@ class BASE_EXPORT RefCountedBytes : public RefCountedMemory {
   static RefCountedBytes* TakeVector(std::vector<unsigned char>* to_destroy);
 
   // Overridden from RefCountedMemory:
-  virtual const unsigned char* front() const OVERRIDE;
-  virtual size_t size() const OVERRIDE;
+  virtual const unsigned char* front() const override;
+  virtual size_t size() const override;
 
   const std::vector<unsigned char>& data() const { return data_; }
   std::vector<unsigned char>& data() { return data_; }
@@ -111,8 +111,8 @@ class BASE_EXPORT RefCountedString : public RefCountedMemory {
   static RefCountedString* TakeString(std::string* to_destroy);
 
   // Overridden from RefCountedMemory:
-  virtual const unsigned char* front() const OVERRIDE;
-  virtual size_t size() const OVERRIDE;
+  virtual const unsigned char* front() const override;
+  virtual size_t size() const override;
 
   const std::string& data() const { return data_; }
   std::string& data() { return data_; }
@@ -133,8 +133,8 @@ class BASE_EXPORT RefCountedMallocedMemory : public RefCountedMemory {
   RefCountedMallocedMemory(void* data, size_t length);
 
   // Overridden from RefCountedMemory:
-  virtual const unsigned char* front() const OVERRIDE;
-  virtual size_t size() const OVERRIDE;
+  virtual const unsigned char* front() const override;
+  virtual size_t size() const override;
 
  private:
   virtual ~RefCountedMallocedMemory();

@@ -50,11 +50,11 @@ class ErrorPredicateData : public YBPredicate::Data {
   virtual ~ErrorPredicateData() {
   }
 
-  virtual CHECKED_STATUS AddToScanSpec(ScanSpec* spec) OVERRIDE {
+  virtual CHECKED_STATUS AddToScanSpec(ScanSpec* spec) override {
     return status_;
   }
 
-  virtual ErrorPredicateData* Clone() const OVERRIDE {
+  virtual ErrorPredicateData* Clone() const override {
     return new ErrorPredicateData(status_);
   }
 
@@ -72,9 +72,9 @@ class ComparisonPredicateData : public YBPredicate::Data {
                           YBValue* value);
   virtual ~ComparisonPredicateData();
 
-  virtual CHECKED_STATUS AddToScanSpec(ScanSpec* spec) OVERRIDE;
+  virtual CHECKED_STATUS AddToScanSpec(ScanSpec* spec) override;
 
-  virtual ComparisonPredicateData* Clone() const OVERRIDE {
+  virtual ComparisonPredicateData* Clone() const override {
       return new ComparisonPredicateData(col_, op_, val_->Clone());
   }
 

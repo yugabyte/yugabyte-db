@@ -55,7 +55,7 @@ class YBTabletTest : public YBTest {
     }
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
 
     SetUpTestTablet();
@@ -128,7 +128,7 @@ class YBRowSetTest : public YBTabletTest {
     : YBTabletTest(schema) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTabletTest::SetUp();
     ASSERT_OK(tablet()->metadata()->CreateRowSet(&rowset_meta_,
                                                        SchemaBuilder(schema_).Build()));

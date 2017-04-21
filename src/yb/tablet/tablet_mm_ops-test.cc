@@ -32,7 +32,7 @@ class YBTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
     next_time_(MonoTime::Now(MonoTime::FINE)) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     Superclass::SetUp();
     TabletMetrics* metrics = tablet()->metrics();
     all_possible_metrics_.push_back(metrics->flush_mrs_duration);

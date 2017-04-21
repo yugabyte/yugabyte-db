@@ -68,7 +68,7 @@ class Webserver : public WebCallbackRegistry {
 
   virtual void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
-                                   bool is_styled = true, bool is_on_nav_bar = true) OVERRIDE;
+                                   bool is_styled = true, bool is_on_nav_bar = true) override;
 
   // Change the footer HTML to be displayed at the bottom of all styled web pages.
   void set_footer_html(const std::string& html);

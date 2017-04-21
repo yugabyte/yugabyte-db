@@ -64,7 +64,7 @@ static const uint64_t kOneMb = 1024 * 1024;
 
 class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
  public:
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTest::SetUp();
     CheckFallocateSupport();
   }
@@ -425,7 +425,7 @@ class ShortReadRandomAccessFile : public RandomAccessFile {
       : wrapped_(std::move(wrapped)) {}
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      uint8_t *scratch) const OVERRIDE {
+                      uint8_t *scratch) const override {
     CHECK_GT(n, 0);
     // Divide the requested amount of data by a small integer,
     // and issue the shorter read to the underlying file.
@@ -439,13 +439,13 @@ class ShortReadRandomAccessFile : public RandomAccessFile {
     return wrapped_->Read(offset, short_n, result, scratch);
   }
 
-  virtual Status Size(uint64_t *size) const OVERRIDE {
+  virtual Status Size(uint64_t *size) const override {
     return wrapped_->Size(size);
   }
 
-  virtual const string& filename() const OVERRIDE { return wrapped_->filename(); }
+  virtual const string& filename() const override { return wrapped_->filename(); }
 
-  virtual size_t memory_footprint() const OVERRIDE {
+  virtual size_t memory_footprint() const override {
     return wrapped_->memory_footprint();
   }
 

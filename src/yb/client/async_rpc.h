@@ -47,8 +47,8 @@ class AsyncRpc : public rpc::Rpc {
 
   virtual ~AsyncRpc();
 
-  virtual void SendRpc() OVERRIDE;
-  virtual string ToString() const OVERRIDE;
+  virtual void SendRpc() override;
+  virtual string ToString() const override;
 
   const YBTable* table() const;
   const RemoteTablet* tablet() const { return tablet_; }
@@ -63,7 +63,7 @@ class AsyncRpc : public rpc::Rpc {
   // new replica.
   void FailToNewReplica(const Status& reason);
 
-  virtual void SendRpcCb(const Status& status) OVERRIDE;
+  virtual void SendRpcCb(const Status& status) override;
 
   // Called when we finish initializing a TS proxy.
   // Sends the RPC, provided there was no error.
@@ -118,11 +118,11 @@ class WriteRpc : public AsyncRpc {
   const tserver::WriteResponsePB& resp() const { return resp_; }
 
  protected:
-  void SendRpcToTserver() OVERRIDE;
+  void SendRpcToTserver() override;
 
-  CHECKED_STATUS response_error_status() OVERRIDE;
+  CHECKED_STATUS response_error_status() override;
 
-  void ProcessResponseFromTserver(Status status) OVERRIDE;
+  void ProcessResponseFromTserver(Status status) override;
 
  private:
   // Request body.
@@ -144,11 +144,11 @@ class ReadRpc : public AsyncRpc {
   const tserver::ReadResponsePB& resp() const { return resp_; }
 
  protected:
-  void SendRpcToTserver() OVERRIDE;
+  void SendRpcToTserver() override;
 
-  void ProcessResponseFromTserver(Status status) OVERRIDE;
+  void ProcessResponseFromTserver(Status status) override;
 
-  CHECKED_STATUS response_error_status() OVERRIDE;
+  CHECKED_STATUS response_error_status() override;
 
  private:
   // Request body.

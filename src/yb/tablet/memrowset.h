@@ -207,7 +207,7 @@ class MemRowSet : public RowSet,
                            const RowChangeList &delta,
                            const consensus::OpId& op_id,
                            ProbeStats* stats,
-                           OperationResultPB *result) OVERRIDE;
+                           OperationResultPB *result) override;
 
   // Return the number of entries in the memrowset.
   // NOTE: this requires iterating all data, and is thus
@@ -217,24 +217,24 @@ class MemRowSet : public RowSet,
   }
 
   // Conform entry_count to RowSet
-  CHECKED_STATUS CountRows(rowid_t *count) const OVERRIDE {
+  CHECKED_STATUS CountRows(rowid_t *count) const override {
     *count = entry_count();
     return Status::OK();
   }
 
   virtual CHECKED_STATUS GetBounds(Slice *min_encoded_key,
-                           Slice *max_encoded_key) const OVERRIDE;
+                           Slice *max_encoded_key) const override;
 
-  uint64_t EstimateOnDiskSize() const OVERRIDE {
+  uint64_t EstimateOnDiskSize() const override {
     return 0;
   }
 
-  std::mutex *compact_flush_lock() OVERRIDE {
+  std::mutex *compact_flush_lock() override {
     return &compact_flush_lock_;
   }
 
   // MemRowSets are never available for compaction, currently.
-  virtual bool IsAvailableForCompaction() OVERRIDE {
+  virtual bool IsAvailableForCompaction() override {
     return false;
   }
 
@@ -245,7 +245,7 @@ class MemRowSet : public RowSet,
 
   // TODO: unit test me
   CHECKED_STATUS CheckRowPresent(const RowSetKeyProbe &probe, bool *present,
-                         ProbeStats* stats) const OVERRIDE;
+                         ProbeStats* stats) const override;
 
   // Return the memory footprint of this memrowset.
   // Note that this may be larger than the sum of the data
@@ -269,12 +269,12 @@ class MemRowSet : public RowSet,
   // Alias to conform to DiskRowSet interface
   virtual CHECKED_STATUS NewRowIterator(const Schema* projection,
                                 const MvccSnapshot& snap,
-                                gscoped_ptr<RowwiseIterator>* out) const OVERRIDE;
+                                gscoped_ptr<RowwiseIterator>* out) const override;
 
   // Create compaction input.
   virtual CHECKED_STATUS NewCompactionInput(const Schema* projection,
                                     const MvccSnapshot& snap,
-                                    gscoped_ptr<CompactionInput>* out) const OVERRIDE;
+                                    gscoped_ptr<CompactionInput>* out) const override;
 
   // Return the Schema for the rows in this memrowset.
    const Schema &schema() const {
@@ -290,7 +290,7 @@ class MemRowSet : public RowSet,
     return id_;
   }
 
-  std::shared_ptr<RowSetMetadata> metadata() OVERRIDE {
+  std::shared_ptr<RowSetMetadata> metadata() override {
     return std::shared_ptr<RowSetMetadata>(
         reinterpret_cast<RowSetMetadata *>(NULL));
   }
@@ -299,9 +299,9 @@ class MemRowSet : public RowSet,
   // If 'lines' is NULL, dumps to LOG(INFO).
   //
   // This dumps every row, so should only be used in tests, etc.
-  virtual CHECKED_STATUS DebugDump(vector<string> *lines = NULL) OVERRIDE;
+  virtual CHECKED_STATUS DebugDump(vector<string> *lines = NULL) override;
 
-  string ToString() const OVERRIDE {
+  string ToString() const override {
     return string("memrowset");
   }
 
@@ -317,21 +317,21 @@ class MemRowSet : public RowSet,
     return debug_update_count_;
   }
 
-  size_t DeltaMemStoreSize() const OVERRIDE { return 0; }
+  size_t DeltaMemStoreSize() const override { return 0; }
 
-  bool DeltaMemStoreEmpty() const OVERRIDE { return true; }
+  bool DeltaMemStoreEmpty() const override { return true; }
 
-  int64_t MinUnflushedLogIndex() const OVERRIDE {
+  int64_t MinUnflushedLogIndex() const override {
     return anchorer_.minimum_log_index();
   }
 
-  double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const OVERRIDE {
+  double DeltaStoresCompactionPerfImprovementScore(DeltaCompactionType type) const override {
     return 0;
   }
 
-  CHECKED_STATUS FlushDeltas() OVERRIDE { return Status::OK(); }
+  CHECKED_STATUS FlushDeltas() override { return Status::OK(); }
 
-  CHECKED_STATUS MinorCompactDeltaStores() OVERRIDE { return Status::OK(); }
+  CHECKED_STATUS MinorCompactDeltaStores() override { return Status::OK(); }
 
  private:
   friend class Iterator;
@@ -387,11 +387,11 @@ class MemRowSet::Iterator : public RowwiseIterator {
 
   virtual ~Iterator();
 
-  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) override;
 
   CHECKED_STATUS SeekAtOrAfter(const Slice &key, bool *exact);
 
-  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) override;
 
   bool has_upper_bound() const {
     return exclusive_upper_bound_.is_initialized();
@@ -408,7 +408,7 @@ class MemRowSet::Iterator : public RowwiseIterator {
     return iter_->remaining_in_leaf();
   }
 
-  virtual bool HasNext() const OVERRIDE {
+  virtual bool HasNext() const override {
     DCHECK_NE(state_, kUninitialized) << "not initted";
     return state_ != kFinished && iter_->IsValid();
   }
@@ -434,15 +434,15 @@ class MemRowSet::Iterator : public RowwiseIterator {
     return iter_->Next();
   }
 
-  string ToString() const OVERRIDE {
+  string ToString() const override {
     return "memrowset iterator";
   }
 
-  const Schema& schema() const OVERRIDE {
+  const Schema& schema() const override {
     return *projection_;
   }
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE {
+  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const override {
     // Currently we do not expose any non-disk related statistics in
     // IteratorStats.  However, callers of GetIteratorStats expected
     // an IteratorStats object for every column; vector::resize() is

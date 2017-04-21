@@ -92,7 +92,7 @@ class WriteTransactionState : public TransactionState {
 
   // Returns the original client request for this transaction, if there was
   // one.
-  const tserver::WriteRequestPB *request() const OVERRIDE {
+  const tserver::WriteRequestPB *request() const override {
     return request_.get();
   }
 
@@ -105,7 +105,7 @@ class WriteTransactionState : public TransactionState {
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.
-  tserver::WriteResponsePB *response() OVERRIDE {
+  tserver::WriteResponsePB *response() override {
     return response_;
   }
 
@@ -199,7 +199,7 @@ class WriteTransactionState : public TransactionState {
   // transaction.
   void Reset();
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
  private:
   // Reset the response, and row_ops_ (which refers to data
@@ -260,20 +260,20 @@ class WriteTransaction : public Transaction {
  public:
   WriteTransaction(WriteTransactionState* tx_state, consensus::DriverType type);
 
-  virtual WriteTransactionState* state() OVERRIDE { return state_.get(); }
-  virtual const WriteTransactionState* state() const OVERRIDE { return state_.get(); }
+  virtual WriteTransactionState* state() override { return state_.get(); }
+  virtual const WriteTransactionState* state() const override { return state_.get(); }
 
-  void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) OVERRIDE;
+  void NewReplicateMsg(gscoped_ptr<consensus::ReplicateMsg>* replicate_msg) override;
 
   // Executes a Prepare for a write transaction
   //
   // Decodes the operations in the request PB and acquires row locks for each of the
   // affected rows. This results in adding 'RowOp' objects for each of the operations
   // into the WriteTransactionState.
-  virtual CHECKED_STATUS Prepare() OVERRIDE;
+  virtual CHECKED_STATUS Prepare() override;
 
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
-  virtual void Start() OVERRIDE;
+  virtual void Start() override;
 
   // Executes an Apply for a write transaction.
   //
@@ -293,16 +293,16 @@ class WriteTransaction : public Transaction {
   // are placed in the queue (but not necessarily in the same order of the
   // original requests) which is already a requirement of the consensus
   // algorithm.
-  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) OVERRIDE;
+  virtual CHECKED_STATUS Apply(gscoped_ptr<consensus::CommitMsg>* commit_msg) override;
 
   // Releases the row locks (Early Lock Release).
-  virtual void PreCommit() OVERRIDE;
+  virtual void PreCommit() override;
 
   // If result == COMMITTED, commits the mvcc transaction and updates
   // the metrics, if result == ABORTED aborts the mvcc transaction.
-  virtual void Finish(TransactionResult result) OVERRIDE;
+  virtual void Finish(TransactionResult result) override;
 
-  virtual std::string ToString() const OVERRIDE;
+  virtual std::string ToString() const override;
 
  private:
   // this transaction's start time

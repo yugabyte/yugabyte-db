@@ -60,14 +60,14 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
     opts_.num_tablet_servers = kNumTabletServerReplicas;
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBMiniClusterTestBase::SetUp();
     cluster_.reset(new MiniCluster(env_.get(), opts_));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
   }
 
-  virtual void DoTearDown() OVERRIDE {
+  virtual void DoTearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();

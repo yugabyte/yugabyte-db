@@ -41,7 +41,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   RemoteBootstrapClientTest(TableType table_type = DEFAULT_TABLE_TYPE)
       : RemoteBootstrapTest(table_type) {}
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     RemoteBootstrapTest::SetUp();
 
     fs_manager_.reset(new FsManager(Env::Default(), GetTestPath("client_tablet")));

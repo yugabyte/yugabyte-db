@@ -43,29 +43,29 @@ namespace server {
 class LogicalClock : public Clock {
  public:
 
-  virtual CHECKED_STATUS Init() OVERRIDE { return Status::OK(); }
+  virtual CHECKED_STATUS Init() override { return Status::OK(); }
 
-  virtual HybridTime Now() OVERRIDE;
+  virtual HybridTime Now() override;
 
   // In the logical clock this call is equivalent to Now();
-  virtual HybridTime NowLatest() OVERRIDE;
+  virtual HybridTime NowLatest() override;
 
-  virtual CHECKED_STATUS Update(const HybridTime& to_update) OVERRIDE;
+  virtual CHECKED_STATUS Update(const HybridTime& to_update) override;
 
   // The Wait*() functions are not available for this clock.
   virtual CHECKED_STATUS WaitUntilAfter(const HybridTime& then,
-                                const MonoTime& deadline) OVERRIDE;
+                                const MonoTime& deadline) override;
   virtual CHECKED_STATUS WaitUntilAfterLocally(const HybridTime& then,
-                                       const MonoTime& deadline) OVERRIDE;
+                                       const MonoTime& deadline) override;
 
-  virtual bool IsAfter(HybridTime t) OVERRIDE;
+  virtual bool IsAfter(HybridTime t) override;
 
-  virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) OVERRIDE;
+  virtual void RegisterMetrics(const scoped_refptr<MetricEntity>& metric_entity) override;
 
-  virtual std::string Stringify(HybridTime hybrid_time) OVERRIDE;
+  virtual std::string Stringify(HybridTime hybrid_time) override;
 
   // Logical clock doesn't support COMMIT_WAIT.
-  virtual bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) OVERRIDE {
+  virtual bool SupportsExternalConsistencyMode(ExternalConsistencyMode mode) override {
     return mode != COMMIT_WAIT;
   }
 

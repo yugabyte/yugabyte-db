@@ -32,7 +32,7 @@ namespace yb {
 
 class FsManagerTestBase : public YBTest {
  public:
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     YBTest::SetUp();
 
     // Initialize File-System Layout

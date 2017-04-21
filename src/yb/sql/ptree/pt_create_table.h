@@ -61,7 +61,7 @@ class PTPrimaryKey : public PTConstraint {
                const PTListNode::SharedPtr& columns_ = nullptr);
   virtual ~PTPrimaryKey();
 
-  virtual PTConstraintType constraint_type() OVERRIDE {
+  virtual PTConstraintType constraint_type() override {
     return PTConstraintType::kPrimaryKey;
   }
 
@@ -71,7 +71,7 @@ class PTPrimaryKey : public PTConstraint {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
  private:
   PTListNode::SharedPtr columns_;
@@ -103,7 +103,7 @@ class PTColumnDefinition : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   // Access function for is_primary_key_.
   bool is_primary_key() const {
@@ -182,7 +182,7 @@ class PTCreateTable : public TreeNode {
   virtual ~PTCreateTable();
 
   // Node type.
-  virtual TreeNodeOpcode opcode() const OVERRIDE {
+  virtual TreeNodeOpcode opcode() const override {
     return TreeNodeOpcode::kPTCreateTable;
   }
 
@@ -193,7 +193,7 @@ class PTCreateTable : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // column lists.

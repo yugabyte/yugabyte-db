@@ -43,25 +43,25 @@ class DeltaIterator;
 // from the delta iterator to the results of the base iterator.
 class DeltaApplier : public ColumnwiseIterator {
  public:
-  virtual CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
-  CHECKED_STATUS PrepareBatch(size_t *nrows) OVERRIDE;
+  virtual CHECKED_STATUS Init(ScanSpec *spec) override;
+  CHECKED_STATUS PrepareBatch(size_t *nrows) override;
 
-  CHECKED_STATUS FinishBatch() OVERRIDE;
+  CHECKED_STATUS FinishBatch() override;
 
-  bool HasNext() const OVERRIDE;
+  bool HasNext() const override;
 
-  std::string ToString() const OVERRIDE;
+  std::string ToString() const override;
 
-  const Schema &schema() const OVERRIDE;
+  const Schema &schema() const override;
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
+  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
   // Initialize the selection vector for the current batch.
   // This processes DELETEs -- any deleted rows are set to 0 in 'sel_vec'.
   // All other rows are set to 1.
-  virtual CHECKED_STATUS InitializeSelectionVector(SelectionVector *sel_vec) OVERRIDE;
+  virtual CHECKED_STATUS InitializeSelectionVector(SelectionVector *sel_vec) override;
 
-  CHECKED_STATUS MaterializeColumn(size_t col_idx, ColumnBlock *dst) OVERRIDE;
+  CHECKED_STATUS MaterializeColumn(size_t col_idx, ColumnBlock *dst) override;
  private:
   friend class DeltaTracker;
 

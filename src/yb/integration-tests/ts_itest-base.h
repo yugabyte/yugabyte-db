@@ -69,7 +69,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   TabletServerIntegrationTestBase() : random_(SeedRandom()) {}
 
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     TabletServerTestBase::SetUp();
   }
 
@@ -396,7 +396,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     return Status::OK();
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
     }

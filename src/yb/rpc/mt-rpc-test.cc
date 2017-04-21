@@ -161,7 +161,7 @@ class BogusServicePool : public ServicePool {
                                      service_queue_length),
                   service.Pass(), metric_entity) {
   }
-  virtual Status Init() OVERRIDE {
+  virtual Status Init() override {
     // Do nothing
     return Status::OK();
   }

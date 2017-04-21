@@ -424,47 +424,47 @@ class ShardedLRUCache : public Cache {
   }
 
   virtual Handle* Insert(const Slice& key, void* value, size_t charge,
-                         CacheDeleter* deleter) OVERRIDE {
+                         CacheDeleter* deleter) override {
     const uint32_t hash = HashSlice(key);
     return shards_[Shard(hash)]->Insert(key, hash, value, charge, deleter);
   }
-  virtual Handle* Lookup(const Slice& key, CacheBehavior caching) OVERRIDE {
+  virtual Handle* Lookup(const Slice& key, CacheBehavior caching) override {
     const uint32_t hash = HashSlice(key);
     return shards_[Shard(hash)]->Lookup(key, hash, caching == EXPECT_IN_CACHE);
   }
-  virtual void Release(Handle* handle) OVERRIDE {
+  virtual void Release(Handle* handle) override {
     LRUHandle* h = reinterpret_cast<LRUHandle*>(handle);
     shards_[Shard(h->hash)]->Release(handle);
   }
-  virtual void Erase(const Slice& key) OVERRIDE {
+  virtual void Erase(const Slice& key) override {
     const uint32_t hash = HashSlice(key);
     shards_[Shard(hash)]->Erase(key, hash);
   }
-  virtual void* Value(Handle* handle) OVERRIDE {
+  virtual void* Value(Handle* handle) override {
     return reinterpret_cast<LRUHandle*>(handle)->value;
   }
-  virtual uint64_t NewId() OVERRIDE {
+  virtual uint64_t NewId() override {
     std::lock_guard<MutexType> l(id_mutex_);
     return ++(last_id_);
   }
 
-  virtual void SetMetrics(const scoped_refptr<MetricEntity>& entity) OVERRIDE {
+  virtual void SetMetrics(const scoped_refptr<MetricEntity>& entity) override {
     metrics_.reset(new CacheMetrics(entity));
     for (LRUCache* cache : shards_) {
       cache->SetMetrics(metrics_.get());
     }
   }
 
-  virtual uint8_t* Allocate(int bytes) OVERRIDE {
+  virtual uint8_t* Allocate(int bytes) override {
     DCHECK_GE(bytes, 0);
     return new uint8_t[bytes];
   }
 
-  virtual void Free(uint8_t* ptr) OVERRIDE {
+  virtual void Free(uint8_t* ptr) override {
     delete[] ptr;
   }
 
-  virtual uint8_t* MoveToHeap(uint8_t* ptr, int size) OVERRIDE {
+  virtual uint8_t* MoveToHeap(uint8_t* ptr, int size) override {
     // Our allocated pointers are always on the heap.
     return ptr;
   }

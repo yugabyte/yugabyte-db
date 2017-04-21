@@ -285,7 +285,7 @@ class TestCFile : public CFileTestBase {
 class TestCFileBothCacheTypes : public TestCFile,
                                 public ::testing::WithParamInterface<CacheType> {
  public:
-  void SetUp() OVERRIDE {
+  void SetUp() override {
 #if defined(__linux__)
     // The NVM cache can run using any directory as its path -- it doesn't have
     // a lot of practical use outside of an actual NVM device, but for testing
@@ -310,7 +310,7 @@ class TestCFileBothCacheTypes : public TestCFile,
     CFileTestBase::SetUp();
   }
 
-  void TearDown() OVERRIDE {
+  void TearDown() override {
     Singleton<BlockCache>::UnsafeReset();
   }
 };

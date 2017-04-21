@@ -41,7 +41,7 @@ class RollingLogTest : public YBTest {
     : log_dir_(GetTestPath("log_dir")) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     ASSERT_OK(env_->CreateDir(log_dir_));
   }
 

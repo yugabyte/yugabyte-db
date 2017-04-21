@@ -33,7 +33,7 @@ class TestTabletMetadata : public YBTabletTest {
       : YBTabletTest(GetSimpleTestSchema()) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(harness_->tablet().get(),
                                         &client_schema_));

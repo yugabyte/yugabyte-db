@@ -60,7 +60,7 @@ class BlockManagerTest : public YBTest {
                            { GetTestDataDirectory() })) {
   }
 
-  virtual void SetUp() OVERRIDE {
+  virtual void SetUp() override {
     CHECK_OK(bm_->Create());
     CHECK_OK(bm_->Open());
   }

@@ -44,7 +44,7 @@ class TestPredicate : public YBTest {
   // N      N * 10
   //
   // The third STRING column is left unset.
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     YBTest::SetUp();
 
     ColumnBlock col0 = row_block_.column_block(0, n_rows_);

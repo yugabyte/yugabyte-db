@@ -330,7 +330,7 @@ class JsonTableDumper : public TableVisitor, public JsonDumperBase {
  public:
   explicit JsonTableDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
-  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
     if (metadata.state() != SysTablesEntryPB::RUNNING) {
       return Status::OK();
     }
@@ -355,7 +355,7 @@ class JsonTabletDumper : public TabletVisitor, public JsonDumperBase {
   explicit JsonTabletDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
  protected:
-  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) OVERRIDE {
+  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
     const std::string& table_id = metadata.table_id();
     if (metadata.state() != SysTabletsEntryPB::RUNNING) {
       return Status::OK();

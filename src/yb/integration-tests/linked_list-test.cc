@@ -78,7 +78,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
  public:
   LinkedListTest() {}
 
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     TabletServerIntegrationTestBase::SetUp();
 
     LOG(INFO) << "Linked List Test Configuration:";

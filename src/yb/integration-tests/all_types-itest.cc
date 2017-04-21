@@ -414,7 +414,7 @@ class AllTypesItest : public YBTest {
     ASSERT_OK(VerifyRows());
   }
 
-  virtual void TearDown() OVERRIDE {
+  virtual void TearDown() override {
     cluster_->AssertNoCrashes();
     cluster_->Shutdown();
   }

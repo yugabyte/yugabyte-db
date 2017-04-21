@@ -44,17 +44,17 @@ class MergeIterator : public RowwiseIterator {
                 const std::vector<std::shared_ptr<RowwiseIterator> > &iters);
 
   // The passed-in iterators should be already initialized.
-  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  virtual bool HasNext() const OVERRIDE;
+  virtual bool HasNext() const override;
 
-  virtual string ToString() const OVERRIDE;
+  virtual string ToString() const override;
 
-  virtual const Schema& schema() const OVERRIDE;
+  virtual const Schema& schema() const override;
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
+  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
-  virtual CHECKED_STATUS NextBlock(RowBlock* dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock* dst) override;
 
  private:
   void PrepareBatch(RowBlock* dst);
@@ -93,21 +93,21 @@ class UnionIterator : public RowwiseIterator {
   // calling iter->Init(spec) should remove all predicates from the spec.
   explicit UnionIterator(const std::vector<std::shared_ptr<RowwiseIterator> > &iters);
 
-  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  bool HasNext() const OVERRIDE;
+  bool HasNext() const override;
 
-  string ToString() const OVERRIDE;
+  string ToString() const override;
 
-  const Schema &schema() const OVERRIDE {
+  const Schema &schema() const override {
     CHECK(initted_);
     CHECK(schema_.get() != NULL) << "Bad schema in " << ToString();
     return *CHECK_NOTNULL(schema_.get());
   }
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE;
+  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const override;
 
-  virtual CHECKED_STATUS NextBlock(RowBlock* dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock* dst) override;
 
  private:
   void PrepareBatch();
@@ -142,21 +142,21 @@ class MaterializingIterator : public RowwiseIterator {
   explicit MaterializingIterator(std::shared_ptr<ColumnwiseIterator> iter);
 
   // Initialize the iterator, performing predicate pushdown as described above.
-  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  bool HasNext() const OVERRIDE;
+  bool HasNext() const override;
 
-  string ToString() const OVERRIDE;
+  string ToString() const override;
 
-  const Schema &schema() const OVERRIDE {
+  const Schema &schema() const override {
     return iter_->schema();
   }
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE {
+  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const override {
     iter_->GetIteratorStats(stats);
   }
 
-  virtual CHECKED_STATUS NextBlock(RowBlock* dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock* dst) override;
 
  private:
   FRIEND_TEST(TestMaterializingIterator, TestPredicatePushdown);
@@ -193,19 +193,19 @@ class PredicateEvaluatingIterator : public RowwiseIterator {
 
   // Initialize the iterator.
   // POSTCONDITION: spec->predicates().empty()
-  CHECKED_STATUS Init(ScanSpec *spec) OVERRIDE;
+  CHECKED_STATUS Init(ScanSpec *spec) override;
 
-  virtual CHECKED_STATUS NextBlock(RowBlock *dst) OVERRIDE;
+  virtual CHECKED_STATUS NextBlock(RowBlock *dst) override;
 
-  bool HasNext() const OVERRIDE;
+  bool HasNext() const override;
 
-  string ToString() const OVERRIDE;
+  string ToString() const override;
 
-  const Schema &schema() const OVERRIDE {
+  const Schema &schema() const override {
     return base_iter_->schema();
   }
 
-  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const OVERRIDE {
+  virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const override {
     base_iter_->GetIteratorStats(stats);
   }
 

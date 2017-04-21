@@ -321,15 +321,15 @@ class LookupRpc : public Rpc {
             const MonoTime& deadline,
             const shared_ptr<Messenger>& messenger);
   virtual ~LookupRpc();
-  virtual void SendRpc() OVERRIDE;
-  virtual string ToString() const OVERRIDE;
+  virtual void SendRpc() override;
+  virtual string ToString() const override;
 
   const GetTableLocationsResponsePB& resp() const { return resp_; }
   const YBTableName& table_name() const { return table_->name(); }
   const string& table_id() const { return table_->id(); }
 
  private:
-  virtual void SendRpcCb(const Status& status) OVERRIDE;
+  virtual void SendRpcCb(const Status& status) override;
 
   std::shared_ptr<MasterServiceProxy> master_proxy() const {
     return table_->client()->data_->master_proxy();

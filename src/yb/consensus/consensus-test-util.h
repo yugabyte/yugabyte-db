@@ -193,7 +193,7 @@ class DelayablePeerProxy : public TestPeerProxy {
     TestPeerProxy::Respond(method);
   }
 
-  virtual void Respond(Method method) OVERRIDE {
+  virtual void Respond(Method method) override {
     latch_.Wait();   // Wait until strictly after peer would have responded.
     return TestPeerProxy::Respond(method);
   }
@@ -201,7 +201,7 @@ class DelayablePeerProxy : public TestPeerProxy {
   virtual void UpdateAsync(const ConsensusRequestPB* request,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) OVERRIDE {
+                           const rpc::ResponseCallback& callback) override {
     RegisterCallback(kUpdate, callback);
     return proxy_->UpdateAsync(
         request, response, controller,
@@ -211,7 +211,7 @@ class DelayablePeerProxy : public TestPeerProxy {
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
                                          VoteResponsePB* response,
                                          rpc::RpcController* controller,
-                                         const rpc::ResponseCallback& callback) OVERRIDE {
+                                         const rpc::ResponseCallback& callback) override {
     RegisterCallback(kRequestVote, callback);
     return proxy_->RequestConsensusVoteAsync(
         request, response, controller,
@@ -255,7 +255,7 @@ class MockedPeerProxy : public TestPeerProxy {
   virtual void UpdateAsync(const ConsensusRequestPB* request,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) OVERRIDE {
+                           const rpc::ResponseCallback& callback) override {
     {
       std::lock_guard<simple_spinlock> l(lock_);
       update_count_++;
@@ -267,7 +267,7 @@ class MockedPeerProxy : public TestPeerProxy {
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
                                          VoteResponsePB* response,
                                          rpc::RpcController* controller,
-                                         const rpc::ResponseCallback& callback) OVERRIDE {
+                                         const rpc::ResponseCallback& callback) override {
     *response = vote_response_;
     return RegisterCallbackAndRespond(kRequestVote, callback);
   }
@@ -298,7 +298,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
   virtual void UpdateAsync(const ConsensusRequestPB* request,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) OVERRIDE {
+                           const rpc::ResponseCallback& callback) override {
 
     response->Clear();
     {
@@ -326,7 +326,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
                                          VoteResponsePB* response,
                                          rpc::RpcController* controller,
-                                         const rpc::ResponseCallback& callback) OVERRIDE {
+                                         const rpc::ResponseCallback& callback) override {
     {
       std::lock_guard<simple_spinlock> lock(lock_);
       response->set_responder_uuid(peer_pb_.permanent_uuid());
@@ -354,7 +354,7 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
   }
 
   virtual CHECKED_STATUS NewProxy(const consensus::RaftPeerPB& peer_pb,
-                          gscoped_ptr<PeerProxy>* proxy) OVERRIDE {
+                          gscoped_ptr<PeerProxy>* proxy) override {
     proxy->reset(new NoOpTestPeerProxy(pool_.get(), peer_pb));
     return Status::OK();
   }
@@ -433,7 +433,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
   virtual void UpdateAsync(const ConsensusRequestPB* request,
                            ConsensusResponsePB* response,
                            rpc::RpcController* controller,
-                           const rpc::ResponseCallback& callback) OVERRIDE {
+                           const rpc::ResponseCallback& callback) override {
     RegisterCallback(kUpdate, callback);
     CHECK_OK(pool_->SubmitFunc(
         std::bind(&LocalTestPeerProxy::SendUpdateRequest, this, request, response)));
@@ -442,7 +442,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
   virtual void RequestConsensusVoteAsync(const VoteRequestPB* request,
                                          VoteResponsePB* response,
                                          rpc::RpcController* controller,
-                                         const rpc::ResponseCallback& callback) OVERRIDE {
+                                         const rpc::ResponseCallback& callback) override {
     RegisterCallback(kRequestVote, callback);
     CHECK_OK(pool_->SubmitFunc(
         std::bind(&LocalTestPeerProxy::SendVoteRequest, this, request, response)));
@@ -560,7 +560,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   }
 
   virtual CHECKED_STATUS NewProxy(const consensus::RaftPeerPB& peer_pb,
-                          gscoped_ptr<PeerProxy>* proxy) OVERRIDE {
+                          gscoped_ptr<PeerProxy>* proxy) override {
     LocalTestPeerProxy* new_proxy = new LocalTestPeerProxy(peer_pb.permanent_uuid(),
                                                            pool_.get(),
                                                            peers_);
@@ -639,7 +639,7 @@ class TestDriver {
 class MockTransactionFactory : public ReplicaTransactionFactory {
  public:
   virtual CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round)
-      OVERRIDE {
+      override {
     return StartReplicaTransactionMock(round.get());
   }
   MOCK_METHOD1(StartReplicaTransactionMock, Status(ConsensusRound* round));
@@ -658,7 +658,7 @@ class TestTransactionFactory : public ReplicaTransactionFactory {
     consensus_ = consensus;
   }
 
-  CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) OVERRIDE {
+  CHECKED_STATUS StartReplicaTransaction(const scoped_refptr<ConsensusRound>& round) override {
     auto txn = new TestDriver(pool_.get(), log_, round);
     txn->round_->SetConsensusReplicatedCallback(Bind(&TestDriver::ReplicationFinished,
                                                      Unretained(txn)));
@@ -708,70 +708,70 @@ class CounterHooks : public Consensus::ConsensusFaultHooks {
         pre_shutdown_calls_(0),
         post_shutdown_calls_(0) {}
 
-  virtual CHECKED_STATUS PreStart() OVERRIDE {
+  virtual CHECKED_STATUS PreStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_start_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostStart() OVERRIDE {
+  virtual CHECKED_STATUS PostStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_start_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreConfigChange() OVERRIDE {
+  virtual CHECKED_STATUS PreConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostConfigChange() OVERRIDE {
+  virtual CHECKED_STATUS PostConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreReplicate() OVERRIDE {
+  virtual CHECKED_STATUS PreReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostReplicate() OVERRIDE {
+  virtual CHECKED_STATUS PostReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreUpdate() OVERRIDE {
+  virtual CHECKED_STATUS PreUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_update_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostUpdate() OVERRIDE {
+  virtual CHECKED_STATUS PostUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_update_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreShutdown() OVERRIDE {
+  virtual CHECKED_STATUS PreShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_shutdown_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostShutdown() OVERRIDE {
+  virtual CHECKED_STATUS PostShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_shutdown_calls_++;
@@ -854,15 +854,15 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 
  protected:
   virtual void UpdateMajorityReplicated(const OpId& majority_replicated,
-                                        OpId* committed_index) OVERRIDE {
+                                        OpId* committed_index) override {
     std::lock_guard<simple_spinlock> lock(lock_);
     majority_replicated_index_ = majority_replicated.index();
     committed_index->CopyFrom(majority_replicated);
   }
-  virtual void NotifyTermChange(int64_t term) OVERRIDE {}
+  virtual void NotifyTermChange(int64_t term) override {}
   virtual void NotifyFailedFollower(const std::string& uuid,
                                     int64_t term,
-                                    const std::string& reason) OVERRIDE {}
+                                    const std::string& reason) override {}
 
  private:
   mutable simple_spinlock lock_;

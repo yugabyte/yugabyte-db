@@ -76,8 +76,8 @@ class TsTabletManagerITest : public YBTest {
   TsTabletManagerITest()
       : schema_(SimpleIntKeyYBSchema()) {
   }
-  virtual void SetUp() OVERRIDE;
-  virtual void TearDown() OVERRIDE;
+  virtual void SetUp() override;
+  virtual void TearDown() override;
 
  protected:
   const YBSchema schema_;

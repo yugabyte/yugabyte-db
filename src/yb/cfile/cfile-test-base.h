@@ -161,7 +161,7 @@ template<bool HAS_NULLS>
 class UInt8DataGenerator : public DataGenerator<UINT8, HAS_NULLS> {
  public:
   UInt8DataGenerator() {}
-  uint8_t BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  uint8_t BuildTestValue(size_t block_index, size_t value) override {
     return (value * 10) % 256;
   }
 };
@@ -170,7 +170,7 @@ template<bool HAS_NULLS>
 class Int8DataGenerator : public DataGenerator<INT8, HAS_NULLS> {
  public:
   Int8DataGenerator() {}
-  int8_t BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  int8_t BuildTestValue(size_t block_index, size_t value) override {
     return ((value * 10) % 128) * (value % 2 == 0 ? -1 : 1);
   }
 };
@@ -179,7 +179,7 @@ template<bool HAS_NULLS>
 class UInt16DataGenerator : public DataGenerator<UINT16, HAS_NULLS> {
  public:
   UInt16DataGenerator() {}
-  uint16_t BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  uint16_t BuildTestValue(size_t block_index, size_t value) override {
     return (value * 10) % 65536;
   }
 };
@@ -188,7 +188,7 @@ template<bool HAS_NULLS>
 class Int16DataGenerator : public DataGenerator<INT16, HAS_NULLS> {
  public:
   Int16DataGenerator() {}
-  int16_t BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  int16_t BuildTestValue(size_t block_index, size_t value) override {
     return ((value * 10) % 32768) * (value % 2 == 0 ? -1 : 1);
   }
 };
@@ -197,7 +197,7 @@ template<bool HAS_NULLS>
 class UInt32DataGenerator : public DataGenerator<UINT32, HAS_NULLS> {
  public:
   UInt32DataGenerator() {}
-  uint32_t BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  uint32_t BuildTestValue(size_t block_index, size_t value) override {
     return value * 10;
   }
 };
@@ -206,7 +206,7 @@ template<bool HAS_NULLS>
 class Int32DataGenerator : public DataGenerator<INT32, HAS_NULLS> {
  public:
   Int32DataGenerator() {}
-  int32_t BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  int32_t BuildTestValue(size_t block_index, size_t value) override {
     return (value * 10) *(value % 2 == 0 ? -1 : 1);
   }
 };
@@ -219,7 +219,7 @@ class FPDataGenerator : public DataGenerator<DATA_TYPE, HAS_NULLS> {
   typedef typename DataTypeTraits<DATA_TYPE>::cpp_type cpp_type;
 
   FPDataGenerator() {}
-  cpp_type BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  cpp_type BuildTestValue(size_t block_index, size_t value) override {
     return static_cast<cpp_type>(value) * 1.0001;
   }
 };
@@ -231,14 +231,14 @@ class StringDataGenerator : public DataGenerator<STRING, HAS_NULLS> {
   : format_(format) {
   }
 
-  Slice BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  Slice BuildTestValue(size_t block_index, size_t value) override {
     char *buf = data_buffer_[block_index].data;
     int len = snprintf(buf, kItemBufferSize - 1, format_, value);
     DCHECK_LT(len, kItemBufferSize);
     return Slice(buf, len);
   }
 
-  void Resize(size_t num_entries) OVERRIDE {
+  void Resize(size_t num_entries) override {
     if (num_entries > this->block_entries()) {
       data_buffer_.reset(new Buffer[num_entries]);
     }
@@ -267,7 +267,7 @@ class DuplicateStringDataGenerator : public DataGenerator<STRING, HAS_NULLS> {
     num_(num) {
   }
 
-  Slice BuildTestValue(size_t block_index, size_t value) OVERRIDE {
+  Slice BuildTestValue(size_t block_index, size_t value) override {
     // random number from 0 ~ num_-1
     value = random() % num_;
     char *buf = data_buffer_[block_index].data;
@@ -276,7 +276,7 @@ class DuplicateStringDataGenerator : public DataGenerator<STRING, HAS_NULLS> {
     return Slice(buf, len);
   }
 
-  void Resize(size_t num_entries) OVERRIDE {
+  void Resize(size_t num_entries) override {
     if (num_entries > this->block_entries()) {
       data_buffer_.reset(new Buffer[num_entries]);
     }
@@ -297,7 +297,7 @@ class DuplicateStringDataGenerator : public DataGenerator<STRING, HAS_NULLS> {
 
 class CFileTestBase : public YBTest {
  public:
-  void SetUp() OVERRIDE {
+  void SetUp() override {
     YBTest::SetUp();
 
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));

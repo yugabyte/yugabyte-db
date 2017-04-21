@@ -39,15 +39,15 @@ class CompactRowSetsOp : public MaintenanceOp {
  public:
   explicit CompactRowSetsOp(Tablet* tablet);
 
-  virtual void UpdateStats(MaintenanceOpStats* stats) OVERRIDE;
+  virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
-  virtual bool Prepare() OVERRIDE;
+  virtual bool Prepare() override;
 
-  virtual void Perform() OVERRIDE;
+  virtual void Perform() override;
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const OVERRIDE;
+  virtual scoped_refptr<Histogram> DurationHistogram() const override;
 
-  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const OVERRIDE;
+  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
   mutable simple_spinlock lock_;
@@ -66,15 +66,15 @@ class MinorDeltaCompactionOp : public MaintenanceOp {
  public:
   explicit MinorDeltaCompactionOp(Tablet* tablet);
 
-  virtual void UpdateStats(MaintenanceOpStats* stats) OVERRIDE;
+  virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
-  virtual bool Prepare() OVERRIDE;
+  virtual bool Prepare() override;
 
-  virtual void Perform() OVERRIDE;
+  virtual void Perform() override;
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const OVERRIDE;
+  virtual scoped_refptr<Histogram> DurationHistogram() const override;
 
-  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const OVERRIDE;
+  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
   mutable simple_spinlock lock_;
@@ -93,15 +93,15 @@ class MajorDeltaCompactionOp : public MaintenanceOp {
  public:
   explicit MajorDeltaCompactionOp(Tablet* tablet);
 
-  virtual void UpdateStats(MaintenanceOpStats* stats) OVERRIDE;
+  virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
-  virtual bool Prepare() OVERRIDE;
+  virtual bool Prepare() override;
 
-  virtual void Perform() OVERRIDE;
+  virtual void Perform() override;
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const OVERRIDE;
+  virtual scoped_refptr<Histogram> DurationHistogram() const override;
 
-  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const OVERRIDE;
+  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
   mutable simple_spinlock lock_;

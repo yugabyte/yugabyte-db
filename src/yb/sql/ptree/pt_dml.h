@@ -65,7 +65,7 @@ class PTDmlStmt : public PTCollection {
   CHECKED_STATUS LookupTable(SemContext *sem_context);
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) OVERRIDE;
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
   // Semantic-analyzing the where clause.
   CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context, const PTExpr::SharedPtr& where_clause);
@@ -131,7 +131,7 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Reset to clear and release previous semantics analysis results.
-  virtual void Reset() OVERRIDE;
+  virtual void Reset() override;
 
  protected:
   // Data types.

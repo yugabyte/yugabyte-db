@@ -317,7 +317,7 @@ class LatchTransactionCompletionCallback : public TransactionCompletionCallback 
       response_(DCHECK_NOTNULL(response)) {
   }
 
-  virtual void TransactionCompleted() OVERRIDE {
+  virtual void TransactionCompleted() override {
     if (!status_.ok()) {
       StatusToPB(status_, response_->mutable_error()->mutable_status());
     }
