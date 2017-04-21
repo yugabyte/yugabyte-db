@@ -930,7 +930,9 @@ Status CatalogManager::CreateViewsSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT32));
-  // TODO: extensions is missing since we don't support blob yet.
+  RETURN_NOT_OK(builder.AddColumn(
+      "extensions",
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
   RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT32));
   // TODO: id is missing since we don't support uuid yet.
   RETURN_NOT_OK(builder.AddColumn("include_all_columns", DataType::BOOL));
@@ -977,7 +979,9 @@ Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT64));
-  // TODO: extensions is currently not supported since we don't support the 'blob' type.
+  RETURN_NOT_OK(builder.AddColumn(
+      "extensions",
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
   RETURN_NOT_OK(builder.AddColumn(
       "flags",
       YQLType(DataType::SET, { YQLType(DataType::STRING) })));

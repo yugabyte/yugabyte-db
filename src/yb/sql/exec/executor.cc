@@ -510,6 +510,24 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
+    case InternalType::kBinaryValue: {
+      EvalBinaryValue binary_value;
+      RETURN_NOT_OK(EvalExpr(expr, &binary_value));
+      if (binary_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        YQLValue::set_binary_value(binary_value.value_->data(),
+                                   binary_value.value_->size(),
+                                   col_pb);
+        VLOG(3) << "Expr actual value = " << b2a_hex(col_pb->binary_value());
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetBinary(
+              col_index, Slice(binary_value.value_->data(), binary_value.value_->size())));
+        }
+      }
+      break;
+    }
+
     case InternalType::kMapValue: {
       if (row != nullptr) {
         return STATUS(NotSupported, "Cannot have collection types in key");

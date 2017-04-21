@@ -497,6 +497,10 @@ using PTConstBool = PTExprConst<InternalType::kBoolValue,
                                 DataType::BOOL,
                                 bool>;
 
+using PTConstBinary = PTExprConst<InternalType::kBinaryValue,
+                               DataType::BINARY,
+                               MCString::SharedPtr>;
+
 //--------------------------------------------------------------------------------------------------
 // Tree Nodes for Collections -- treated as expressions with flexible arity
 //--------------------------------------------------------------------------------------------------

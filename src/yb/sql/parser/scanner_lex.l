@@ -313,6 +313,7 @@ decimalfail               {digit}+\.\.
 real                      ({integer}|{decimal})[Ee][-+]?{digit}+
 realfail1                 ({integer}|{decimal})[Ee]
 realfail2                 ({integer}|{decimal})[Ee][-+]
+binary                    0[xX][0-9A-Fa-f]*
 
 param                     \${integer}
 
@@ -949,6 +950,12 @@ other                     .
   yyless(yyleng-2);
   SET_YYLLOC();
   return GramProcessor::make_ICONST(MakeString(yytext), cursor_);
+}
+
+{binary} {
+  SET_YYLLOC();
+  // skipping the first two chars (i.e. the '0x')
+  return GramProcessor::make_BCONST(MakeString(yytext + 2), cursor_);
 }
 
 {real} {

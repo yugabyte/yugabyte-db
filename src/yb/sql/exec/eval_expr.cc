@@ -79,6 +79,13 @@ Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
       break;
     }
 
+    case InternalType::kBinaryValue: {
+      EvalBinaryValue binary_value;
+      RETURN_NOT_OK(EvalBinaryExpr(expr, &binary_value));
+      RETURN_NOT_OK(ConvertFromBinary(result, binary_value));
+      break;
+    }
+
     case InternalType::kTimestampValue: {
       RETURN_NOT_OK(EvalTimestampExpr(expr, static_cast<EvalTimestampValue*>(result)));
       break;
@@ -312,6 +319,37 @@ Status Executor::EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *resu
   return eval_status;
 }
 
+Status Executor::EvalBinaryExpr(const PTExpr::SharedPtr& expr, EvalBinaryValue *result) {
+  Status eval_status = Status::OK();
+
+  const PTExpr *e = expr.get();
+  switch (expr->expr_op()) {
+    case ExprOperator::kConst:
+      result->value_ = static_cast<const PTConstBinary*>(e)->Eval();
+      break;
+
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      // TODO(mihnea) this conversion shouldn't be needed, but needs a refactor to handle properly
+      string literal_value = b2a_hex(value.binary_value());
+      result->value_ = MCString::MakeShared(exec_context_->PTempMem(),
+                                            literal_value.data(),
+                                            literal_value.size());
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Not supported operator";
+  }
+
+  return eval_status;
+}
+
 Status Executor::EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampValue *result) {
   Status eval_status = Status::OK();
 
@@ -535,6 +573,27 @@ Status Executor::ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_va
     case InternalType::kBoolValue:
       static_cast<EvalBoolValue *>(result)->value_ = bool_value.value_;
       break;
+
+    default:
+      LOG(FATAL) << "Illegal datatype conversion";
+  }
+  return Status::OK();
+}
+
+Status Executor::ConvertFromBinary(EvalValue *result, const EvalBinaryValue& binary_value) {
+  switch (result->datatype()) {
+    case InternalType::kBinaryValue: {
+      int input_size = static_cast<int>(binary_value.value_->size());
+      if (input_size % 2 != 0) {
+        return STATUS(RuntimeError, "Invalid binary input, expected even number of hex digits");
+      }
+      int no_bytes = input_size / 2; // one byte for every two digits
+      string hex_value;
+      a2b_hex(binary_value.value_->c_str(), &hex_value, no_bytes);
+      static_cast<EvalBinaryValue *>(result)->value_ =
+          MCString::MakeShared(binary_value.value_->mem_ctx(), hex_value.data(), no_bytes);
+      break;
+    }
 
     default:
       LOG(FATAL) << "Illegal datatype conversion";

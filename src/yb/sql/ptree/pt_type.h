@@ -227,6 +227,23 @@ class PTInet : public PTPrimitiveType<InternalType::kInetaddressValue,
   }
 };
 
+class PTBlob : public PTPrimitiveType<InternalType::kBinaryValue,
+    DataType::BINARY> {
+ public:
+  typedef MCSharedPtr<PTBlob> SharedPtr;
+  typedef MCSharedPtr<const PTBlob> SharedPtrConst;
+
+  explicit PTBlob(MemoryContext *memctx = nullptr,
+                  YBLocation::SharedPtr loc = nullptr);
+
+  virtual ~PTBlob();
+
+  template<typename... TypeArgs>
+  inline static PTBlob::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTBlob>(memctx, std::forward<TypeArgs>(args)...);
+  }
+};
+
 //--------------------------------------------------------------------------------------------------
 // UUID types.
 class PTUuid : public PTPrimitiveType<InternalType::kUuidValue,

@@ -633,7 +633,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueType::kStringDescending: FALLTHROUGH_INTENDED;
     case ValueType::kString: return str_val_ == other.str_val_;
 
-    case ValueType ::kInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: return int64_val_ == other.int64_val_;
 
@@ -771,10 +771,9 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
     case DECIMAL: return PrimitiveValue::Decimal(YQLValue::decimal_value(value), sort_order);
     case STRING:  return PrimitiveValue(YQLValue::string_value(value), sort_order);
     case BINARY:
-      if (sort_order != SortOrder::kAscending) {
-        LOG(ERROR) << "Ignoring invalid sort order for BINARY. Using SortOrder::kAscending.";
-      }
-      return PrimitiveValue(YQLValue::binary_value(value));
+      // TODO consider using dedicated encoding for binary (not string) to avoid overhead of
+      // zero-encoding for keys (since zero-bytes could be common for binary)
+      return PrimitiveValue(YQLValue::binary_value(value), sort_order);
     case BOOL:
       if (sort_order != SortOrder::kAscending) {
         LOG(ERROR) << "Ignoring invalid sort order for BOOL. Using SortOrder::kAscending.";

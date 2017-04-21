@@ -228,7 +228,7 @@ class YQLValue {
   static void set_timestamp_value(const int64_t val, YQLValuePB *v) { v->set_timestamp_value(val); }
   static void set_binary_value(const std::string& val, YQLValuePB *v) { v->set_binary_value(val); }
   static void set_binary_value(const void* val, const size_t size, YQLValuePB *v) {
-    v->set_string_value(static_cast<const char *>(val), size);
+    v->set_binary_value(static_cast<const char *>(val), size);
   }
 
   // For collections, the call to `mutable_foo` takes care of setting the correct type to `foo`

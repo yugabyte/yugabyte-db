@@ -50,6 +50,7 @@ public class TestCollectionTypes extends TestBase {
         validKeyTypes.add("varchar");
         validKeyTypes.add("timestamp");
         validKeyTypes.add("inet");
+        validKeyTypes.add("blob");
 
         // Types that cannot be keys but can be valid collection elements (map values or list elems)
         Set<String> nonKeyTypes = new HashSet<>();

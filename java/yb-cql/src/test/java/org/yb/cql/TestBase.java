@@ -24,6 +24,7 @@ import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
 import org.yb.master.Master;
 
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.Date;
 import java.util.Calendar;
@@ -246,4 +247,26 @@ public class TestBase {
     Iterator<Row> iter = rs.iterator();
     assertFalse(iter.hasNext());
   }
+
+  // blob type utils
+  String makeBlobString(ByteBuffer buf) {
+    StringBuilder sb = new StringBuilder();
+    char[] text_values = "0123456789abcdef".toCharArray();
+
+    sb.append("0x");
+    while (buf.hasRemaining()) {
+      byte b = buf.get();
+      sb.append(text_values[(b & 0xFF) >>> 4]);
+      sb.append(text_values[b & 0x0F]);
+    }
+    return sb.toString();
+  }
+
+  ByteBuffer makeByteBuffer(long input) {
+    ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+    buffer.putLong(input);
+    buffer.rewind();
+    return buffer;
+  }
+
 }

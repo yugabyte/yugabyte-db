@@ -38,7 +38,7 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
     YQLValuePB flags_elem;
     YQLValue::set_string_value("compound", &flags_elem);
     *YQLValue::add_set_elem(&flags_set) = flags_elem;
-    *row.mutable_column(11) = flags_set; // flags
+    *row.mutable_column(12) = flags_set; // flags
   }
 
   return Status::OK();

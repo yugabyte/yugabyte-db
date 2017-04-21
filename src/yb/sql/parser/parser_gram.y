@@ -482,7 +482,7 @@ DECLARE_bool(yql_experiment_support_expression);
                           ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC ASSERTION
                           ASSIGNMENT ASYMMETRIC AT ATTRIBUTE AUTHORIZATION
 
-                          BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT BOOLEAN_P BOTH BY
+                          BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT BLOB BOOLEAN_P BOTH BY
 
                           CACHE CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
                           CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER CLUSTERING
@@ -3787,7 +3787,7 @@ AexprConst:
     $$ = MAKE_NODE(@1, PTNull, nullptr);
   }
   | BCONST {                                                           // Binary string (BLOB type)
-    PARSER_NOCODE(@1);
+    $$ = MAKE_NODE(@1, PTConstBinary, $1);
   }
   | XCONST {                                                                        // Hexadecimal.
     PARSER_NOCODE(@1);
@@ -3941,6 +3941,9 @@ SimpleTypename:
   }
   | UUID {
     $$ = MAKE_NODE(@1, PTUuid);
+  }
+  | BLOB {
+    $$ = MAKE_NODE(@1, PTBlob);
   }
   | Bit {
     PARSER_UNSUPPORTED(@1);
@@ -4544,6 +4547,7 @@ col_name_keyword:
   BETWEEN { $$ = $1; }
   | BIGINT { $$ = $1; }
   | BIT { $$ = $1; }
+  | BLOB { $$ = $1; }
   | BOOLEAN_P { $$ = $1; }
   | CHAR_P { $$ = $1; }
   | CHARACTER { $$ = $1; }

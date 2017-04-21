@@ -67,6 +67,13 @@ PTInet::PTInet(MemoryContext *memctx, YBLocation::SharedPtr loc)
 PTInet::~PTInet() {
 }
 
+PTBlob::PTBlob(MemoryContext *memctx, YBLocation::SharedPtr loc)
+    : PTPrimitiveType<InternalType::kBinaryValue, DataType::BINARY>(memctx, loc) {
+}
+
+PTBlob::~PTBlob() {
+}
+
 PTMap::PTMap(MemoryContext *memctx, YBLocation::SharedPtr loc,
     YQLType keys_type, YQLType values_type)
     : PTPrimitiveType<InternalType::kMapValue, DataType::MAP>(memctx, loc) {

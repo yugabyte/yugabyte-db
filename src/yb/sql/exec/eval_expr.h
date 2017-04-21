@@ -105,6 +105,14 @@ struct EvalUuidValue: public EvalValue {
   Uuid value_;
 };
 
+struct EvalBinaryValue : public EvalValue {
+  InternalType datatype() {
+    return InternalType::kBinaryValue;
+  }
+
+  MCString::SharedPtr value_;
+};
+
 }  // namespace sql
 }  // namespace yb
 

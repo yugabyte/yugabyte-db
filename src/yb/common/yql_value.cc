@@ -17,7 +17,6 @@
 // The list of unsupported datypes to use in switch statements
 #define YQL_UNSUPPORTED_TYPES_IN_SWITCH \
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case BINARY: FALLTHROUGH_INTENDED;    \
   case VARINT: FALLTHROUGH_INTENDED;    \
   case TIMEUUID: FALLTHROUGH_INTENDED;  \
   case TUPLE: FALLTHROUGH_INTENDED;     \
@@ -133,6 +132,9 @@ void YQLValue::Serialize(
       return;
     case BOOL:
       CQLEncodeNum(Store8, static_cast<uint8>(bool_value() ? 1 : 0), buffer);
+      return;
+    case BINARY:
+      CQLEncodeBytes(binary_value(), buffer);
       return;
     case TIMESTAMP: {
       int64_t val = DateTime::AdjustPrecision(timestamp_value().ToInt64(),
@@ -255,6 +257,12 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
       set_bool_value(value != 0);
       return Status::OK();
     }
+    case BINARY: {
+      string value;
+      RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
+      set_binary_value(value);
+      return Status::OK();
+    }
     case TIMESTAMP: {
       int64_t value = 0;
       RETURN_NOT_OK(CQLDecodeNum(len, NetworkByteOrder::Load64, data, &value));
@@ -353,7 +361,7 @@ string YQLValue::ToString() const {
     case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
     case InternalType::kUuidValue: return "uuid:" + uuid_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
-    case InternalType::kBinaryValue: return "binary:" + b2a_hex(binary_value());
+    case InternalType::kBinaryValue: return "binary:0x" + b2a_hex(binary_value());
     case InternalType::kMapValue: {
       std::stringstream ss;
       YQLMapValuePB map = map_value();
