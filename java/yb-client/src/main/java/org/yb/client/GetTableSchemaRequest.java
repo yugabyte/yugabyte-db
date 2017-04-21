@@ -76,6 +76,7 @@ public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
         deadlineTracker.getElapsedMillis(),
         tsUUID,
         schema,
+        respBuilder.getIdentifier().getNamespace().getName(),
         respBuilder.getIdentifier().getTableName(),
         respBuilder.getIdentifier().getTableId().toStringUtf8(),
         ProtobufHelper.pbToPartitionSchema(respBuilder.getPartitionSchema(), schema),

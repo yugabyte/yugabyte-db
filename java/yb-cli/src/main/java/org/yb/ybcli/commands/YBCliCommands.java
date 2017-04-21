@@ -162,6 +162,9 @@ public class YBCliCommands implements CommandMarker {
   }
 
   private void printTableInfo(Master.ListTablesResponsePB.TableInfo table, StringBuilder sb) {
+    sb.append("Key Space: ");
+    sb.append(table.getNamespace().getName());
+    sb.append("\n");
     sb.append("Table name: ");
     sb.append(table.getName());
     sb.append("\n");

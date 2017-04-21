@@ -26,6 +26,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
   private final Schema schema;
   private final PartitionSchema partitionSchema;
   private final boolean createTableDone;
+  private final String namespace;
   private final String tableName;
   private final String tableId;
   private final TableType tableType;
@@ -38,6 +39,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
   GetTableSchemaResponse(long ellapsedMillis,
                          String tsUUID,
                          Schema schema,
+                         String namespace,
                          String tableName,
                          String tableId,
                          PartitionSchema partitionSchema,
@@ -47,6 +49,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
     this.schema = schema;
     this.partitionSchema = partitionSchema;
     this.createTableDone = createTableDone;
+    this.namespace = namespace;
     this.tableName = tableName;
     this.tableId = tableId;
     this.tableType = tableType;
@@ -74,6 +77,14 @@ public class GetTableSchemaResponse extends YRpcResponse {
    */
   public boolean isCreateTableDone() {
     return createTableDone;
+  }
+
+  /**
+   * Get the table's namespace.
+   * @return the table's namespace.
+   */
+  public String getNamespace() {
+    return namespace;
   }
 
   /**
