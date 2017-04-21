@@ -448,6 +448,14 @@ class ClusterLoadBalancer::ClusterLoadState {
     if (per_tablet_meta_[tablet_id].leader_uuid == from_ts) {
       MoveLeader(tablet_id, from_ts);
     }
+    // This artificially constrains the removes to only handle one over_replication/wrong_placement
+    // per run.
+    // Create a copy of tablet_id because tablet_id could be a const reference from
+    // tablets_wrong_placement_ (if the requests comes from HandleRemoveIfWrongPlacement) or a const
+    // reference from tablets_over_replicated_ (if the request comes from HandleRemoveReplicas).
+    TabletId tablet_id_key(tablet_id);
+    tablets_over_replicated_.erase(tablet_id_key);
+    tablets_wrong_placement_.erase(tablet_id_key);
     SortLoad();
   }
 
@@ -546,6 +554,10 @@ class ClusterLoadBalancer::ClusterLoadState {
   // List of table server ids sorted by their leader load.
   vector<TabletServerId> sorted_leader_load_;
 
+  unordered_map<TableId, TabletToTabletServerMap> pending_add_replica_tasks_;
+  unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
+  unordered_map<TableId, TabletToTabletServerMap> pending_stepdown_leader_tasks_;
+
  private:
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadState);
 };
@@ -614,6 +626,42 @@ void ClusterLoadBalancer::RunLoadBalancer() {
   int remaining_adds = options_.kMaxConcurrentAdds;
   int remaining_removals = options_.kMaxConcurrentRemovals;
   int remaining_leader_moves = options_.kMaxConcurrentLeaderMoves;
+
+  // Loop over all tables to get the count of pending tasks.
+  int pending_add_replica_tasks = 0;
+  int pending_remove_replica_tasks = 0;
+  int pending_stepdown_leader_tasks = 0;
+
+  for (const auto& table : GetTableMap()) {
+    CountPendingTasks(table.first,
+                      &pending_add_replica_tasks,
+                      &pending_remove_replica_tasks,
+                      &pending_stepdown_leader_tasks);
+  }
+
+  if (pending_add_replica_tasks + pending_remove_replica_tasks + pending_stepdown_leader_tasks> 0) {
+    LOG(INFO) << "Total pending adds=" << pending_add_replica_tasks << ", total pending removals="
+              << pending_remove_replica_tasks << ", total pending leader stepdowns="
+              << pending_stepdown_leader_tasks;
+  }
+
+  if (pending_add_replica_tasks > remaining_adds) {
+    LOG(WARNING) << "pending adds > max allowed adds: " << pending_add_replica_tasks << " > "
+                 << remaining_adds;
+  }
+  remaining_adds -= pending_add_replica_tasks;
+
+  if (pending_remove_replica_tasks > remaining_removals) {
+    LOG(WARNING) << "pending removals > max allowed removals: " << pending_remove_replica_tasks
+                 << " > " << remaining_removals;
+  }
+  remaining_removals -= pending_remove_replica_tasks;
+
+  if (pending_stepdown_leader_tasks > remaining_leader_moves) {
+    LOG(WARNING) << "pending leader stepdowns > max allowed leader stepdowns: "
+                 << pending_stepdown_leader_tasks << " > " << remaining_leader_moves;
+  }
+  remaining_leader_moves -= pending_stepdown_leader_tasks;
 
   // Loop over all tables.
   for (const auto& table : GetTableMap()) {
@@ -736,6 +784,32 @@ bool ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
       get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
       get_total_wrong_placement(), get_total_blacklisted_servers());
 
+  // Temp log to get info when there are blacklisted.
+  if (get_total_blacklisted_servers() != 0) {
+    LOG(INFO) << Substitute(
+        "Total running tablets: $0. Total overreplication: $1. Total starting tablets: $2. "
+        "Wrong placement: $3. BlackListed: $4.",
+        get_total_running_tablets(), get_total_over_replication(), get_total_starting_tablets(),
+        get_total_wrong_placement(), get_total_blacklisted_servers());
+  }
+
+  for (const auto& tablet : tablets) {
+    const auto& tablet_id = tablet->id();
+    if (state_->pending_remove_replica_tasks_[table_uuid].count(tablet_id) > 0) {
+      state_->RemoveReplica(tablet_id,
+                            state_->pending_remove_replica_tasks_[table_uuid][tablet_id]);
+    }
+    if (state_->pending_stepdown_leader_tasks_[table_uuid].count(tablet_id) > 0) {
+      const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+      const auto& from_ts = tablet_meta.leader_uuid;
+      const auto& to_ts = state_->pending_stepdown_leader_tasks_[table_uuid][tablet_id];
+      state_->MoveLeader(tablet->id(), from_ts, to_ts);
+    }
+    if (state_->pending_add_replica_tasks_[table_uuid].count(tablet_id) > 0) {
+      state_->AddReplica(tablet->id(), state_->pending_add_replica_tasks_[table_uuid][tablet_id]);
+    }
+  }
+
   return true;
 }
 
@@ -794,7 +868,6 @@ bool ClusterLoadBalancer::HandleAddIfWrongPlacement(
             tablet_id, GetPlacementByTablet(tablet_id), out_from_ts, out_to_ts)) {
       *out_tablet_id = tablet_id;
       MoveReplica(tablet_id, *out_from_ts, *out_to_ts);
-      state_->tablets_wrong_placement_.erase(tablet_id);
       return true;
     }
   }
@@ -1066,7 +1139,6 @@ bool ClusterLoadBalancer::HandleRemoveReplicas(
     *out_from_ts = remove_candidate;
     // Do not force remove leader for normal case.
     RemoveReplica(tablet_id, remove_candidate, false);
-    state_->tablets_over_replicated_.erase(tablet_id);
     return true;
   }
   return false;
@@ -1101,8 +1173,6 @@ bool ClusterLoadBalancer::HandleRemoveIfWrongPlacement(
       *out_from_ts = std::move(target_uuid);
       // Force leader stepdown if we have wrong placements or blacklisted servers.
       RemoveReplica(tablet_id, *out_from_ts, true);
-      state_->tablets_over_replicated_.erase(tablet_id);
-      state_->tablets_wrong_placement_.erase(tablet_id);
       return true;
     }
   }
@@ -1122,7 +1192,7 @@ void ClusterLoadBalancer::MoveReplica(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
   LOG(INFO) << Substitute("Moving tablet $0 from $1 to $2", tablet_id, from_ts, to_ts);
   SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
-      true /* should_remove_leader */);
+                     true /* should_remove_leader */);
   state_->AddReplica(tablet_id, to_ts);
   state_->RemoveReplica(tablet_id, from_ts);
 }
@@ -1131,7 +1201,7 @@ void ClusterLoadBalancer::AddReplica(const TabletId& tablet_id, const TabletServ
   LOG(INFO) << Substitute("Adding tablet $0 to $1", tablet_id, to_ts);
   // This is an add operation, so the "should_remove_leader" flag is irrelevant.
   SendReplicaChanges(GetTabletMap().at(tablet_id), to_ts, true /* is_add */,
-      true /* should_remove_leader */);
+                     true /* should_remove_leader */);
   state_->AddReplica(tablet_id, to_ts);
 }
 
@@ -1139,7 +1209,7 @@ void ClusterLoadBalancer::RemoveReplica(
     const TabletId& tablet_id, const TabletServerId& ts_uuid, const bool stepdown_if_leader) {
   LOG(INFO) << Substitute("Removing replica $0 from tablet $1", ts_uuid, tablet_id);
   SendReplicaChanges(GetTabletMap().at(tablet_id), ts_uuid, false /* is_add */,
-      true /* should_remove_leader */);
+                     true /* should_remove_leader */);
   state_->RemoveReplica(tablet_id, ts_uuid);
 }
 
@@ -1147,7 +1217,7 @@ void ClusterLoadBalancer::MoveLeader(
     const TabletId& tablet_id, const TabletServerId& from_ts, const TabletServerId& to_ts) {
   LOG(INFO) << Substitute("Moving leader of $0 from TS $1 to $2", tablet_id, from_ts, to_ts);
   SendReplicaChanges(GetTabletMap().at(tablet_id), from_ts, false /* is_add */,
-     false /* should_remove_leader */, to_ts);
+                     false /* should_remove_leader */, to_ts);
   state_->MoveLeader(tablet_id, from_ts, to_ts);
 }
 
@@ -1203,22 +1273,56 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   return catalog_manager_->IsSystemTable(table);
 }
 
+void ClusterLoadBalancer::CountPendingTasks(const TableId& table_uuid,
+                                            int* pending_add_replica_tasks,
+                                            int* pending_remove_replica_tasks,
+                                            int* pending_stepdown_leader_tasks) {
+  GetPendingTasks(table_uuid,
+                  &state_->pending_add_replica_tasks_[table_uuid],
+                  &state_->pending_remove_replica_tasks_[table_uuid],
+                  &state_->pending_stepdown_leader_tasks_[table_uuid]);
+
+  *pending_add_replica_tasks += state_->pending_add_replica_tasks_[table_uuid].size();
+  *pending_remove_replica_tasks += state_->pending_remove_replica_tasks_[table_uuid].size();
+  *pending_stepdown_leader_tasks += state_->pending_stepdown_leader_tasks_[table_uuid].size();
+}
+
+void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,
+                                          TabletToTabletServerMap* add_replica_tasks,
+                                          TabletToTabletServerMap* remove_replica_tasks,
+                                          TabletToTabletServerMap* stepdown_leader_tasks) {
+  catalog_manager_->GetPendingServerTasksUnlocked(
+      table_uuid, add_replica_tasks, remove_replica_tasks, stepdown_leader_tasks);
+}
+
 void ClusterLoadBalancer::SendReplicaChanges(
     scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
     const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) {
   TabletMetadataLock l(tablet.get(), TabletMetadataLock::READ);
   if (is_add) {
+    // These checks are temporary. They will be removed once we are confident that the algorithm is
+    // always doing the right thing.
+    CHECK_EQ(state_->pending_add_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
+             0);
     catalog_manager_->SendAddServerRequest(
         tablet, l.data().pb.committed_consensus_state(), ts_uuid);
   } else {
     // If the replica is also the leader, first step it down and then remove.
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
-      catalog_manager_->SendLeaderStepDownRequest(
-        tablet, l.data().pb.committed_consensus_state(), ts_uuid, should_remove_leader,
-        new_leader_ts_uuid);
+      CHECK_EQ(
+          state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
+          0);
+      catalog_manager_->SendLeaderStepDownRequest(tablet,
+                                                  l.data().pb.committed_consensus_state(),
+                                                  ts_uuid,
+                                                  should_remove_leader,
+                                                  new_leader_ts_uuid);
     } else {
+      CHECK_EQ(
+          state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
+          0);
       catalog_manager_->SendRemoveServerRequest(
-        tablet, l.data().pb.committed_consensus_state(), ts_uuid);
+          tablet, l.data().pb.committed_consensus_state(), ts_uuid);
     }
   }
 }

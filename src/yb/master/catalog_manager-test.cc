@@ -246,12 +246,48 @@ class TestLoadBalancer : public ClusterLoadBalancer {
 
     AnalyzeTablets();
 
+    // Add all tablets to the list of tablets with a pending add operation and verify that calling
+    // HandleAddReplicas fails because all the tablets have a pending add operation.
+    pending_add_replica_tasks_.clear();
+    for (const auto& tablet : tablets_) {
+      pending_add_replica_tasks_.push_back(tablet->id());
+    }
+    int count = 0;
+    int pending_add_count = 0;
+    ClusterLoadBalancer::CountPendingTasks(cur_table_uuid_, &pending_add_count, &count, &count);
+    ASSERT_EQ(pending_add_count, pending_add_replica_tasks_.size());
+    AnalyzeTablets();
+    string placeholder, tablet_id;
+    ASSERT_FALSE(HandleAddReplicas(&tablet_id, &placeholder, &placeholder));
+
+    // Clear pending_add_replica_tasks_ and reset the state of ClusterLoadBalancer.
+    pending_add_replica_tasks_.clear();
+    ResetState();
+    AnalyzeTablets();
+
     // Check that if adding replicas, we'll notice the wrong placement and adjust it.
     string expected_tablet_id, expected_from_ts, expected_to_ts;
     expected_tablet_id = tablets_[2]->tablet_id();
     expected_from_ts = ts_descs_[2]->permanent_uuid();
     expected_to_ts = ts_descs_[5]->permanent_uuid();
     TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+
+    // Add all tablets to the list of tablets with a pending remove operation and verify that
+    // calling HandleRemoveReplicas fails because all the tablets have a pending remove operation.
+    pending_remove_replica_tasks_.clear();
+    for (const auto& tablet : tablets_) {
+      pending_remove_replica_tasks_.push_back(tablet->id());
+    }
+    int pending_remove_count = 0;
+    ClusterLoadBalancer::CountPendingTasks(cur_table_uuid_, &count, &pending_remove_count, &count);
+    ASSERT_EQ(pending_remove_count, pending_remove_replica_tasks_.size());
+    AnalyzeTablets();
+    ASSERT_FALSE(HandleRemoveReplicas(&tablet_id, &placeholder));
+
+    // Clear pending_remove_replica_tasks_ and reset the state of ClusterLoadBalancer.
+    pending_remove_replica_tasks_.clear();
+    ResetState();
+    AnalyzeTablets();
 
     // Check that removing replicas, we take out the wrong placement one first.
     expected_tablet_id = tablets_[0]->tablet_id();
@@ -263,7 +299,6 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     expected_from_ts = ts_descs_[1]->permanent_uuid();
     TestRemoveLoad(expected_tablet_id, expected_from_ts);
     // Check that trying to remove another replica will fail, as we have no more over-replication.
-    string placeholder;
     ASSERT_FALSE(HandleRemoveReplicas(&placeholder, &placeholder));
   }
 
@@ -805,6 +840,21 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     // Do nothing.
   }
 
+  void GetPendingTasks(const TableId& table_uuid,
+                       TabletToTabletServerMap* pending_add_replica_tasks,
+                       TabletToTabletServerMap* pending_remove_replica_tasks,
+                       TabletToTabletServerMap* pending_stepdown_leader_tasks) {
+    for (const auto& tablet_id : pending_add_replica_tasks_) {
+      (*pending_add_replica_tasks)[tablet_id] = "";
+    }
+    for (const auto& tablet_id : pending_remove_replica_tasks_) {
+      (*pending_remove_replica_tasks)[tablet_id] = "";
+    }
+    for (const auto& tablet_id : pending_stepdown_leader_tasks_) {
+      (*pending_stepdown_leader_tasks)[tablet_id] = "";
+    }
+  }
+
  private:
   const int kNumReplicas = 3;
 
@@ -816,6 +866,9 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   TabletInfoMap tablet_map_;
   TableInfoMap table_map_;
   PlacementInfoPB cluster_placement_;
+  vector<string> pending_add_replica_tasks_;
+  vector<string> pending_remove_replica_tasks_;
+  vector<string> pending_stepdown_leader_tasks_;
 };
 
 // Test of the tablet assignment algorithm for splits done at table creation time.

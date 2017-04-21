@@ -84,6 +84,8 @@ using TServerId = std::string;
 typedef std::pair<NamespaceId, TableName> NamespaceIdTableNamePair;
 typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
 
+typedef unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
+
 // This class is a base wrapper around the protos that get serialized in the data column of the
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
@@ -1076,6 +1078,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void SendAddServerRequest(
       const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
       const string& change_config_ts_uuid);
+
+  void GetPendingServerTasksUnlocked(const TableId &table_uuid,
+                                     TabletToTabletServerMap *add_replica_tasks_map,
+                                     TabletToTabletServerMap *remove_replica_tasks_map,
+                                     TabletToTabletServerMap *stepdown_leader_tasks);
 
   std::string GenerateId() { return oid_generator_.Next(); }
 

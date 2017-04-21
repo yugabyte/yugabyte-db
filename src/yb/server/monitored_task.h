@@ -40,18 +40,18 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
   static string state(State state) {
     switch (state) {
-      case MonitoredTask::kStateWaiting:
-        return "Waiting";
-      case MonitoredTask::kStateRunning:
-        return "Running";
-      case MonitoredTask::kStateComplete:
-        return "Complete";
-      case MonitoredTask::kStateFailed:
-        return "Failed";
-      case MonitoredTask::kStateAborted:
-        return "Aborted";
-      case MonitoredTask::kStateScheduling:
-        return "Scheduling";
+    case MonitoredTask::kStateWaiting:
+      return "Waiting";
+    case MonitoredTask::kStateRunning:
+      return "Running";
+    case MonitoredTask::kStateComplete:
+      return "Complete";
+    case MonitoredTask::kStateFailed:
+      return "Failed";
+    case MonitoredTask::kStateAborted:
+      return "Aborted";
+    case MonitoredTask::kStateScheduling:
+      return "Scheduling";
     }
     return "UNKNOWN_STATE";
   }
@@ -62,6 +62,18 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
   // Task State
   virtual State state() const = 0;
+
+  enum Type {
+    ASYNC_CREATE_REPLICA,
+    ASYNC_DELETE_REPLICA,
+    ASYNC_ALTER_TABLE,
+    ASYNC_CHANGE_CONFIG,
+    ASYNC_ADD_SERVER,
+    ASYNC_REMOVE_SERVER,
+    ASYNC_TRY_STEP_DOWN,
+  };
+
+  virtual Type type() const = 0;
 
   // Task Type Identifier
   virtual std::string type_name() const = 0;

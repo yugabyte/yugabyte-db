@@ -136,6 +136,18 @@ class ClusterLoadBalancer {
   // Should skip load-balancing of this table?
   virtual bool SkipLoadBalancing(const TableInfo& table) const;
 
+  // Increment the provided variables by the number of pending tasks that were found.
+  virtual void CountPendingTasks(const TableId& table_uuid,
+                                 int* pending_add_replica_tasks,
+                                 int* pending_remove_replica_tasks,
+                                 int* pending_stepdown_leader_tasks);
+
+  // Wrapper around CatalogManager::GetPendingTasks so it can be mocked by TestLoadBalancer.
+  virtual void GetPendingTasks(const string& table_uuid,
+                               TabletToTabletServerMap* add_replica_tasks,
+                               TabletToTabletServerMap* remove_replica_tasks,
+                               TabletToTabletServerMap* stepdown_leader_tasks);
+
   // Issue the call to CatalogManager to change the config for this particular tablet, either
   // adding or removing the peer at ts_uuid, based on the is_add argument. Removing the peer
   // is optional. When neither adding nor removing peer, it means just moving a leader from one
@@ -262,6 +274,7 @@ class ClusterLoadBalancer {
 
   int get_total_wrong_placement() const;
   int get_total_blacklisted_servers() const;
+
  private:
   // Returns true if at least one member in the tablet's configuration is transitioning into a
   // VOTER, but it's not a VOTER yet.

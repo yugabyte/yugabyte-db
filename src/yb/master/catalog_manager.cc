@@ -3485,6 +3485,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
     req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
   }
 
+  virtual Type type() const override { return ASYNC_CREATE_REPLICA; }
+
   virtual string type_name() const override { return "Create Tablet"; }
 
   virtual string description() const override {
@@ -3540,6 +3542,8 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
         cas_config_opid_index_less_or_equal_(
             std::move(cas_config_opid_index_less_or_equal)),
         reason_(std::move(reason)) {}
+
+  virtual Type type() const override { return ASYNC_DELETE_REPLICA; }
 
   virtual string type_name() const override { return "Delete Tablet"; }
 
@@ -3641,6 +3645,8 @@ class AsyncAlterTable : public RetryingTSRpcTask {
       tablet_(tablet) {
   }
 
+  virtual Type type() const override { return ASYNC_ALTER_TABLE; }
+
   virtual string type_name() const override { return "Alter Table"; }
 
   virtual string description() const override {
@@ -3724,11 +3730,13 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
     deadline_ = MonoTime::Max();  // Never time out.
   }
 
+  virtual string tablet_id() const override { return tablet_->tablet_id(); }
+  virtual string change_config_ts_uuid() const { return change_config_ts_uuid_; }
+
  protected:
   // Used by SendRequest. Return's false if RPC should not be sent.
   virtual bool PrepareRequest(int attempt) = 0;
 
-  virtual string tablet_id() const override { return tablet_->tablet_id(); }
   string permanent_uuid() const {
     return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
   }
@@ -3752,6 +3760,8 @@ class AsyncChangeConfigTask : public CommonInfoForRaftTask {
       const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {
   }
+
+  virtual Type type() const override { return ASYNC_CHANGE_CONFIG; }
 
   virtual string type_name() const override { return "ChangeConfig"; }
 
@@ -3833,6 +3843,8 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
       const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
 
+  virtual Type type() const override { return ASYNC_ADD_SERVER; }
+
   virtual string type_name() const override { return "AddServer ChangeConfig"; }
 
  protected:
@@ -3890,6 +3902,8 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
       const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
 
+  virtual Type type() const override { return ASYNC_REMOVE_SERVER; }
+
   string type_name() const override { return "RemoveServer ChangeConfig"; }
 
  protected:
@@ -3931,11 +3945,15 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
     : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
       should_remove_(should_remove), new_leader_uuid_(new_leader_uuid) {}
 
+  virtual Type type() const override { return ASYNC_TRY_STEP_DOWN; }
+
   string type_name() const override { return "Stepdown Leader"; }
 
   string description() const override {
     return "Async Leader Stepdown";
   }
+
+  string new_leader_uuid() const { return new_leader_uuid_; }
 
  protected:
   virtual bool PrepareRequest(int attempt) override;
@@ -4134,6 +4152,29 @@ void CatalogManager::SendAddServerRequest(
   // needs.
   if (status.ok())
     LOG(INFO) << "Started AddServer task: " << task->description();
+}
+
+void CatalogManager::GetPendingServerTasksUnlocked(const TableId &table_uuid,
+    TabletToTabletServerMap *add_replica_tasks_map,
+    TabletToTabletServerMap *remove_replica_tasks_map,
+    TabletToTabletServerMap *stepdown_leader_tasks) {
+
+  auto table = GetTableInfoUnlocked(table_uuid);
+  for (const auto& task : table->GetTasks()) {
+    TabletToTabletServerMap* outputMap = nullptr;
+    TabletId tablet_id;
+    if (task->type() == MonitoredTask::ASYNC_ADD_SERVER) {
+      outputMap = add_replica_tasks_map;
+    } else if (task->type() == MonitoredTask::ASYNC_REMOVE_SERVER) {
+      outputMap = remove_replica_tasks_map;
+    } else if (task->type() == MonitoredTask::ASYNC_TRY_STEP_DOWN) {
+      outputMap = stepdown_leader_tasks;
+    }
+    if (outputMap) {
+      auto raft_task = static_cast<CommonInfoForRaftTask*>(task.get());
+      (*outputMap)[raft_task->tablet_id()] = raft_task->change_config_ts_uuid();
+    }
+  }
 }
 
 void CatalogManager::ExtractTabletsToProcess(
@@ -5342,7 +5383,6 @@ INITTED_AND_LEADER_OR_RESPOND(ChangeMasterClusterConfigResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(GetLoadMovePercentResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsMasterLeaderReadyResponsePB);
 INITTED_AND_LEADER_OR_RESPOND(IsLoadBalancedResponsePB);
-
 
 // TServer variants.
 INITTED_AND_LEADER_OR_RESPOND_TSERVER(tserver::ReadResponsePB);
