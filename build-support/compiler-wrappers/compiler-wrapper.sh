@@ -171,6 +171,13 @@ resolve_path() {
       local subpath=${resolve_path_rv#$YB_SRC_ROOT/*/rocksdb-build}
       resolve_path_rv=$YB_SRC/rocksdb/$subpath
       resolve_path_rv=$(realpath "$resolve_path_rv")
+      if [[ ! -e $resolve_path_rv ]]; then
+        # Prevent replacing path to generated/compiled files which are not present in sources dir,
+        # for example
+        # ~/yugabyte/build/debug-clang-dynamic/rocksdb-build/librocksdb_debug.4.6.0.dylib
+        # could be incorrectly resolved to ~/yugabyte/src/rocksdb/librocksdb_debug.4.6.0.dylib
+        resolve_path_rv=$path
+      fi
     fi
   fi
 }
