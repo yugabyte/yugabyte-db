@@ -7,7 +7,6 @@
 #include "yb/redisserver/redis_service.h"
 
 using yb::rpc::ServiceIf;
-using yb::rpc::ServicePoolOptions;
 
 DEFINE_int32(redis_svc_num_threads, 10,
              "Number of RPC worker threads for the redis service");
@@ -27,7 +26,7 @@ Status RedisServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
   gscoped_ptr<ServiceIf> redis_service(new RedisServiceImpl(this, opts_.master_addresses_flag));
-  RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(redis_svc, redissvc), redis_service.Pass()));
+  RETURN_NOT_OK(RegisterService(FLAGS_redis_svc_queue_length, redis_service.Pass()));
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 

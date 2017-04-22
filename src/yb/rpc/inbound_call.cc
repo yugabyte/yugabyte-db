@@ -24,6 +24,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_sidecar.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/service_pool.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"

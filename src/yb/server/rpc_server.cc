@@ -56,16 +56,23 @@ DEFINE_bool(rpc_server_allow_ephemeral_ports, false,
             "only allowed in tests.");
 TAG_FLAG(rpc_server_allow_ephemeral_ports, unsafe);
 
+DEFINE_int32(rpc_queue_limit, 100, "Queue limit for rpc server");
+DEFINE_int32(rpc_workers_limit, 128, "Workers limit for rpc server");
+
 namespace yb {
 
 RpcServerOptions::RpcServerOptions()
   : rpc_bind_addresses(FLAGS_rpc_bind_addresses),
     num_acceptors_per_address(FLAGS_rpc_num_acceptors_per_address),
-    default_port(0) {
+    default_port(0),
+    queue_limit(FLAGS_rpc_queue_limit),
+    workers_limit(FLAGS_rpc_workers_limit) {
 }
 
-RpcServer::RpcServer(RpcServerOptions opts)
-    : server_state_(UNINITIALIZED), options_(std::move(opts)) {}
+RpcServer::RpcServer(const std::string& name, RpcServerOptions opts)
+    : server_state_(UNINITIALIZED),
+      options_(std::move(opts)),
+      thread_pool_(new rpc::ThreadPool(name, options_.queue_limit, options_.workers_limit)) {}
 
 RpcServer::~RpcServer() {
   Shutdown();
@@ -102,15 +109,13 @@ Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
   return Status::OK();
 }
 
-Status RpcServer::RegisterService(const rpc::ServicePoolOptions& opts,
-                                  gscoped_ptr<rpc::ServiceIf> service) {
+Status RpcServer::RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> service) {
   CHECK(server_state_ == INITIALIZED ||
         server_state_ == BOUND) << "bad state: " << server_state_;
   const scoped_refptr<MetricEntity>& metric_entity = messenger_->metric_entity();
   string service_name = service->service_name();
   scoped_refptr<rpc::ServicePool> service_pool =
-    new rpc::ServicePool(opts, service.Pass(), metric_entity);
-  RETURN_NOT_OK(service_pool->Init());
+    new rpc::ServicePool(queue_limit, thread_pool_.get(), service.Pass(), metric_entity);
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }
@@ -158,6 +163,7 @@ Status RpcServer::Start() {
 }
 
 void RpcServer::Shutdown() {
+  thread_pool_->Shutdown();
   for (const shared_ptr<AcceptorPool>& pool : acceptor_pools_) {
     pool->Shutdown();
   }

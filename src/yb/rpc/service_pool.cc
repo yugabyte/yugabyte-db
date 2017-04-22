@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/lockfree/queue.hpp>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -58,98 +60,112 @@ METRIC_DEFINE_counter(server, rpcs_queue_overflow,
 namespace yb {
 namespace rpc {
 
-  ServicePool::ServicePool(ServicePoolOptions opts,
-                           gscoped_ptr<ServiceIf> service,
-                           const scoped_refptr<MetricEntity>& entity)
-  : options_(opts),
-    service_(service.Pass()),
-    service_queue_(opts.queue_length),
-    incoming_queue_time_(METRIC_rpc_incoming_queue_time.Instantiate(entity)),
-    rpcs_timed_out_in_queue_(METRIC_rpcs_timed_out_in_queue.Instantiate(entity)),
-    rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
-    closing_(false) {
-}
+namespace {
 
-ServicePool::~ServicePool() {
-  Shutdown();
-}
-
-Status ServicePool::Init() {
-  LOG(INFO) << "Create ServicePool " << options_.name << ": "
-            << options_.num_threads << " threads, queue size " << options_.queue_length;
-  for (int i = 0; i < options_.num_threads; i++) {
-    scoped_refptr<yb::Thread> new_thread;
-    CHECK_OK(yb::Thread::Create(options_.name, options_.short_name, &ServicePool::RunThread, this,
-                                &new_thread));
-    threads_.push_back(new_thread);
-  }
-  return Status::OK();
-}
-
-void ServicePool::Shutdown() {
-  service_queue_.Shutdown();
-
-  MutexLock lock(shutdown_lock_);
-  if (closing_) return;
-  closing_ = true;
-  // TODO: Use a proper thread pool implementation.
-  for (scoped_refptr<yb::Thread>& thread : threads_) {
-    CHECK_OK(ThreadJoiner(thread.get()).Join());
+class InboundCallTask final : public ThreadPoolTask {
+ public:
+  void Bind(ServicePoolImpl* pool, InboundCallPtr call) {
+    pool_ = pool;
+    call_ = std::move(call);
   }
 
-  // Now we must drain the service queue.
-  Status status = STATUS(ServiceUnavailable, "Service is shutting down");
-  InboundCallPtr incoming;
-  while (service_queue_.BlockingGet(&incoming)) {
-    incoming->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
+  ~InboundCallTask() {
+    CHECK(!call_);
+  }
+ private:
+  void Run();
+  void Done(const Status& status);
+
+  ServicePoolImpl* pool_;
+  InboundCallPtr call_;
+};
+
+} // namespace
+
+class ServicePoolImpl {
+ public:
+  ServicePoolImpl(size_t max_tasks,
+       ThreadPool* thread_pool,
+       gscoped_ptr<ServiceIf> service,
+       const scoped_refptr<MetricEntity>& entity)
+      : thread_pool_(thread_pool),
+        service_(service.Pass()),
+        incoming_queue_time_(METRIC_rpc_incoming_queue_time.Instantiate(entity)),
+        rpcs_timed_out_in_queue_(METRIC_rpcs_timed_out_in_queue.Instantiate(entity)),
+        rpcs_queue_overflow_(METRIC_rpcs_queue_overflow.Instantiate(entity)),
+        tasks_queue_(max_tasks),
+        tasks_pool_(max_tasks) {
+    for (size_t i = 0; i < max_tasks; ++i) {
+      CHECK(tasks_queue_.bounded_push(&tasks_pool_[i]));
+    }
   }
 
-  service_->Shutdown();
-}
-
-Status ServicePool::QueueInboundCall(InboundCallPtr call) {
-  TRACE_TO(call->trace(), "Inserting onto call queue");
-  // Queue message on service queue
-  QueueStatus queue_status = service_queue_.Put(call);
-  if (PREDICT_TRUE(queue_status == QUEUE_SUCCESS)) {
-    // NB: do not do anything with 'c' after it is successfully queued --
-    // a service thread may have already dequeued it, processed it, and
-    // responded by this point, in which case the pointer would be invalid.
-    return Status::OK();
+  ~ServicePoolImpl() {
+    Shutdown();
   }
 
-  Status status = Status::OK();
-  if (queue_status == QUEUE_FULL) {
-    string err_msg =
+  void Shutdown() {
+    bool closing_state = false;
+    if (closing_.compare_exchange_strong(closing_state, true)) {
+      service_->Shutdown();
+    }
+  }
+
+  void Enqueue(InboundCallPtr call) {
+    TRACE_TO(call->trace(), "Inserting onto call queue");
+
+    InboundCallTask* task = nullptr;
+    if (tasks_queue_.pop(task)) {
+      task->Bind(this, std::move(call));
+      thread_pool_->Enqueue(task);
+    } else {
+      Overflow(call, "service", tasks_pool_.size());
+    }
+  }
+
+  const Counter* RpcsTimedOutInQueueMetricForTests() const {
+    return rpcs_timed_out_in_queue_.get();
+  }
+
+  const Counter* RpcsQueueOverflowMetric() const {
+    return rpcs_queue_overflow_.get();
+  }
+
+  std::string service_name() const {
+    return service_->service_name();
+  }
+
+  void Overflow(const InboundCallPtr& call, const char* type, size_t limit) {
+    const auto err_msg =
         Substitute("$0 request on $1 from $2 dropped due to backpressure. "
-        "The service queue is full; it has $3 items.",
-        call->remote_method().method_name(),
-        service_->service_name(),
-        call->remote_address().ToString(),
-        service_queue_.max_size());
-    status = STATUS(ServiceUnavailable, err_msg);
+                "The $3 queue is full, it has $4 items.",
+            call->remote_method().method_name(),
+            service_->service_name(),
+            call->remote_address().ToString(),
+            type,
+            limit);
+    LOG(WARNING) << err_msg;
+    const auto response_status = STATUS(ServiceUnavailable, err_msg);
     rpcs_queue_overflow_->Increment();
-    call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, status);
-    DLOG(INFO) << err_msg << " Contents of service queue:\n"
-               << service_queue_.ToString();
-  } else if (queue_status == QUEUE_SHUTDOWN) {
-    status = STATUS(ServiceUnavailable, "Service is shutting down");
-    call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, status);
-  } else {
-    status = STATUS(RuntimeError, Substitute("Unknown error from BlockingQueue: $0", queue_status));
-    call->RespondFailure(ErrorStatusPB::FATAL_UNKNOWN, status);
+    call->RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, response_status);
   }
-  return status;
-}
 
-void ServicePool::RunThread() {
-  while (true) {
-    InboundCallPtr incoming;
-    if (!service_queue_.BlockingGet(&incoming)) {
-      VLOG(1) << "ServicePool: messenger shutting down.";
+  void Processed(const InboundCallPtr& call, const Status& status) {
+    if (status.ok()) {
       return;
     }
+    if (status.IsServiceUnavailable()) {
+      Overflow(call, "global", thread_pool_->options().queue_limit);
+      return;
+    }
+    LOG(WARNING) << call->remote_method().method_name() << " request on "
+                 << service_->service_name() << " from " << call->remote_address().ToString()
+                 << " dropped because of: " << status.ToString();
+    const auto response_status = STATUS(ServiceUnavailable, "Service is shutting down");
+    call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, response_status);
+  }
 
+  void Handle(const InboundCallPtr& incoming) {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
 
@@ -160,23 +176,72 @@ void ServicePool::RunThread() {
       // Respond as a failure, even though the client will probably ignore
       // the response anyway.
       incoming->RespondFailure(
-        ErrorStatusPB::ERROR_SERVER_TOO_BUSY,
-        STATUS(TimedOut, "Call waited in the queue past client deadline"));
+          ErrorStatusPB::ERROR_SERVER_TOO_BUSY,
+          STATUS(TimedOut, "Call waited in the queue past client deadline"));
 
-      // Must release since RespondFailure above ends up taking ownership
-      // of the object.
-      ignore_result(incoming);
-      continue;
+      return;
     }
 
     TRACE_TO(incoming->trace(), "Handling call");
 
     service_->Handle(incoming.get());
   }
+
+  void Released(InboundCallTask* task) {
+    CHECK(tasks_queue_.bounded_push(task));
+  }
+
+ private:
+  ThreadPool* thread_pool_;
+  gscoped_ptr<ServiceIf> service_;
+  scoped_refptr<Histogram> incoming_queue_time_;
+  scoped_refptr<Counter> rpcs_timed_out_in_queue_;
+  scoped_refptr<Counter> rpcs_queue_overflow_;
+
+  std::atomic<bool> closing_ = {false};
+  boost::lockfree::queue<InboundCallTask*> tasks_queue_;
+  std::vector<InboundCallTask> tasks_pool_;
+};
+
+void InboundCallTask::Run() {
+  pool_->Handle(call_);
 }
 
-const string ServicePool::service_name() const {
-  return service_->service_name();
+void InboundCallTask::Done(const Status& status) {
+  InboundCallPtr call = call_;
+  pool_->Processed(call, status);
+  call_.reset();
+  pool_->Released(this);
+}
+
+ServicePool::ServicePool(size_t max_tasks,
+                         ThreadPool* thread_pool,
+                         gscoped_ptr<ServiceIf> service,
+                         const scoped_refptr<MetricEntity>& metric_entity)
+    : impl_(new ServicePoolImpl(max_tasks, thread_pool, service.Pass(), metric_entity)) {
+}
+
+ServicePool::~ServicePool() {
+}
+
+void ServicePool::Shutdown() {
+  impl_->Shutdown();
+}
+
+void ServicePool::QueueInboundCall(InboundCallPtr call) {
+  impl_->Enqueue(std::move(call));
+}
+
+const Counter* ServicePool::RpcsTimedOutInQueueMetricForTests() const {
+  return impl_->RpcsTimedOutInQueueMetricForTests();
+}
+
+const Counter* ServicePool::RpcsQueueOverflowMetric() const {
+  return impl_->RpcsQueueOverflowMetric();
+}
+
+std::string ServicePool::service_name() const {
+  return impl_->service_name();
 }
 
 } // namespace rpc

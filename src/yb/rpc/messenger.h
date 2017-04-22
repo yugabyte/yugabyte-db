@@ -186,7 +186,7 @@ class Messenger {
                             MonoDelta when,
                             const std::shared_ptr<Messenger>& msgr = nullptr);
 
-  ThreadPool* negotiation_pool() const { return negotiation_pool_.get(); }
+  yb::ThreadPool* negotiation_pool() const { return negotiation_pool_.get(); }
 
   std::string name() const {
     return name_;
@@ -243,7 +243,7 @@ class Messenger {
 
   std::vector<Reactor*> reactors_;
 
-  gscoped_ptr<ThreadPool> negotiation_pool_;
+  gscoped_ptr<yb::ThreadPool> negotiation_pool_;
 
   const scoped_refptr<MetricEntity> metric_entity_;
   const scoped_refptr<Histogram> outgoing_queue_time_;

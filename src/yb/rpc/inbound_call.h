@@ -30,13 +30,13 @@
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/thread_pool.h"
 #include "yb/rpc/transfer.h"
 #include "yb/sql/sql_session.h"
 #include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
-#include "yb/util/threadpool.h"
 
 namespace google {
 namespace protobuf {
@@ -55,6 +55,7 @@ class Connection;
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 class RpcSidecar;
+class ServicePool;
 class UserCredentials;
 
 struct InboundCallTiming {
@@ -62,6 +63,10 @@ struct InboundCallTiming {
   MonoTime time_handled;    // Time the call handler was kicked off.
   MonoTime time_completed;  // Time the call handler completed.
 };
+
+class InboundCall;
+
+typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 // Inbound call on server
 class InboundCall : public RpcCall {
@@ -157,6 +162,7 @@ class InboundCall : public RpcCall {
   // account for transmission delays between the client and the server.
   // If the client did not specify a deadline, returns MonoTime::Max().
   virtual MonoTime GetClientDeadline() const = 0;
+
  protected:
   // Serialize and queue the response.
   void Respond(const google::protobuf::MessageLite& response,
@@ -208,8 +214,6 @@ class InboundCall : public RpcCall {
  private:
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };
-
-typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 }  // namespace rpc
 }  // namespace yb

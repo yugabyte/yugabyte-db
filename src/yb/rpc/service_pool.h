@@ -30,12 +30,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/status.h"
 
-#define SERVICE_POOL_OPTIONS(name, short_name) \
-  ServicePoolOptions(#name, \
-                     #short_name, \
-                     FLAGS_ ## name ## _num_threads, \
-                     FLAGS_ ## name ## _queue_length)
-
 namespace yb {
 
 class Counter;
@@ -47,63 +41,29 @@ namespace rpc {
 
 class Messenger;
 class ServiceIf;
-
-struct ServicePoolOptions {
-  ServicePoolOptions(const std::string& p_name,
-                     const std::string& p_short_name,
-                     uint32_t p_num_threads,
-                     size_t p_queue_length)
-  : name(p_name),
-    short_name(p_short_name),
-    num_threads(p_num_threads),
-    queue_length(p_queue_length) {}
-  const std::string name;       // Used for categorizing threads in this pool
-  const std::string short_name; // Used as prefix for thread names
-  const uint32_t num_threads;   // Number of threads that service this pool
-  const size_t queue_length;    // Max queue length allowed by this service
-};
+class ThreadPool;
+class ServicePoolImpl;
 
 // A pool of threads that handle new incoming RPC calls.
 // Also includes a queue that calls get pushed onto for handling by the pool.
 class ServicePool : public RpcService {
  public:
-  ServicePool(ServicePoolOptions opts,
+  ServicePool(size_t max_tasks,
+              ThreadPool* thread_pool,
               gscoped_ptr<ServiceIf> service,
               const scoped_refptr<MetricEntity>& metric_entity);
   virtual ~ServicePool();
 
-  // Start up the thread pool.
-  virtual CHECKED_STATUS Init();
-
   // Shut down the queue and the thread pool.
   virtual void Shutdown();
 
-  virtual CHECKED_STATUS QueueInboundCall(InboundCallPtr call) override;
-
-  const Counter* RpcsTimedOutInQueueMetricForTests() const {
-    return rpcs_timed_out_in_queue_.get();
-  }
-
-  const Counter* RpcsQueueOverflowMetric() const {
-    return rpcs_queue_overflow_.get();
-  }
-
-  const std::string service_name() const;
+  virtual void QueueInboundCall(InboundCallPtr call) override;
+  const Counter* RpcsTimedOutInQueueMetricForTests() const;
+  const Counter* RpcsQueueOverflowMetric() const;
+  std::string service_name() const;
 
  private:
-  void RunThread();
-  const ServicePoolOptions options_;
-  gscoped_ptr<ServiceIf> service_;
-  std::vector<scoped_refptr<yb::Thread> > threads_;
-  BlockingQueue<InboundCallPtr> service_queue_;
-  scoped_refptr<Histogram> incoming_queue_time_;
-  scoped_refptr<Counter> rpcs_timed_out_in_queue_;
-  scoped_refptr<Counter> rpcs_queue_overflow_;
-
-  mutable Mutex shutdown_lock_;
-  bool closing_;
-
-  DISALLOW_COPY_AND_ASSIGN(ServicePool);
+  std::unique_ptr<ServicePoolImpl> impl_;
 };
 
 } // namespace rpc

@@ -91,7 +91,7 @@ class RpcServerBase {
   virtual ~RpcServerBase();
 
   CHECKED_STATUS Init();
-  CHECKED_STATUS RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> rpc_impl);
+  CHECKED_STATUS RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> rpc_impl);
   CHECKED_STATUS Start();
   CHECKED_STATUS StartRpcServer();
   void Shutdown();

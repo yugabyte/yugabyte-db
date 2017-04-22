@@ -1911,10 +1911,10 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
 TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
   RpcServerOptions opts;
   {
-    RpcServer server1(opts);
+    RpcServer server1("server1", opts);
   }
   {
-    RpcServer server2(opts);
+    RpcServer server2("server2", opts);
     MessengerBuilder mb("foo");
     shared_ptr<Messenger> messenger;
     ASSERT_OK(mb.Build(&messenger));

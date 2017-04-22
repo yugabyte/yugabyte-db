@@ -46,7 +46,6 @@ using std::make_shared;
 using std::shared_ptr;
 using std::vector;
 using yb::rpc::ServiceIf;
-using yb::rpc::ServicePoolOptions;
 using yb::tablet::TabletPeer;
 
 DEFINE_int32(tablet_server_svc_num_threads, -1,
@@ -224,14 +223,14 @@ Status TabletServer::Start() {
 
   AutoInitServiceFlags();
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-     SERVICE_POOL_OPTIONS(tablet_server_svc, tssvc), ts_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-     SERVICE_POOL_OPTIONS(ts_admin_svc, admsvc), admin_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-     SERVICE_POOL_OPTIONS(ts_consensus_svc, conssvc), consensus_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-     SERVICE_POOL_OPTIONS(ts_remote_bootstrap_svc, rbssvc), remote_bootstrap_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
+                                                     ts_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
+                                                     admin_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
+                                                     consensus_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
+                                                     remote_bootstrap_service.Pass()));
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   RETURN_NOT_OK(heartbeater_->Start());

@@ -108,3 +108,6 @@ race:yb::tablet::MemRowSet::Reinsert
 # There are some race conditions in shutting down ExternalMiniCluster's log tailer threads, e.g.
 # https://goo.gl/jWwsRY.
 race:yb::ExternalDaemon::LogTailerThread::LogTailerThread
+
+# Known well implemented lock-free containers
+race:boost::lockfree

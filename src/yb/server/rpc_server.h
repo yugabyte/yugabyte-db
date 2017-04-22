@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_RPC_SERVER_H
-#define YB_RPC_SERVER_H
+#ifndef YB_SERVER_RPC_SERVER_H
+#define YB_SERVER_RPC_SERVER_H
 
 #include <memory>
 #include <string>
@@ -41,17 +41,19 @@ struct RpcServerOptions {
   std::string rpc_bind_addresses;
   uint32_t num_acceptors_per_address;
   uint16_t default_port;
+  size_t queue_limit;
+  size_t workers_limit;
 };
 
 class RpcServer {
  public:
-  explicit RpcServer(RpcServerOptions opts);
+  explicit RpcServer(const std::string& name, RpcServerOptions opts);
   ~RpcServer();
 
   CHECKED_STATUS Init(const std::shared_ptr<rpc::Messenger>& messenger);
   // Services need to be registered after Init'ing, but before Start'ing.
   // The service's ownership will be given to a ServicePool.
-  CHECKED_STATUS RegisterService(const rpc::ServicePoolOptions& opts, gscoped_ptr<rpc::ServiceIf> service);
+  CHECKED_STATUS RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> service);
   CHECKED_STATUS Bind();
   CHECKED_STATUS Start();
   void Shutdown();
@@ -78,6 +80,7 @@ class RpcServer {
   ServerState server_state_;
 
   const RpcServerOptions options_;
+  std::unique_ptr<rpc::ThreadPool> thread_pool_;
   std::shared_ptr<rpc::Messenger> messenger_;
 
   // Parsed addresses to bind RPC to. Set by Init()
@@ -90,4 +93,4 @@ class RpcServer {
 
 } // namespace yb
 
-#endif
+#endif // YB_SERVER_RPC_SERVER_H

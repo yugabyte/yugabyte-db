@@ -281,6 +281,9 @@ class RpcTestBase : public YBTest {
   }
 
   virtual void TearDown() override {
+    if (thread_pool_) {
+      thread_pool_->Shutdown();
+    }
     if (service_pool_) {
       const Status unregister_service_status = server_messenger_->UnregisterService(service_name_);
       if (!unregister_service_status.IsServiceUnavailable()) {
@@ -414,23 +417,24 @@ class RpcTestBase : public YBTest {
     ASSERT_OK(pool->Start(2));
     *server_addr = pool->bind_address();
 
+    constexpr size_t kQueueLength = 50;
+    thread_pool_.reset(new ThreadPool("rpc-test", kQueueLength, n_worker_threads_));
     gscoped_ptr<ServiceIf> service(new ServiceClass(metric_entity_));
     service_name_ = service->service_name();
     scoped_refptr<MetricEntity> metric_entity = server_messenger_->metric_entity();
-    service_pool_ = new ServicePool(ServicePoolOptions("test",
-                                                       "test",
-                                                       n_worker_threads_,
-                                                       50 /* queue_length */),
-                                    service.Pass(), metric_entity);
+    service_pool_ = new ServicePool(kQueueLength,
+                                    thread_pool_.get(),
+                                    service.Pass(),
+                                    metric_entity);
     ASSERT_OK(server_messenger_->RegisterService(service_name_, service_pool_));
-    ASSERT_OK(service_pool_->Init());
   }
 
  protected:
   string service_name_;
   std::shared_ptr<Messenger> server_messenger_;
+  std::unique_ptr<ThreadPool> thread_pool_;
   scoped_refptr<ServicePool> service_pool_;
-  int n_worker_threads_;
+  size_t n_worker_threads_;
   int n_server_reactor_threads_;
   int keepalive_time_ms_;
   unsigned int seed_;

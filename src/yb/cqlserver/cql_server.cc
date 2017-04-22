@@ -7,7 +7,6 @@
 #include "yb/cqlserver/cql_service.h"
 
 using yb::rpc::ServiceIf;
-using yb::rpc::ServicePoolOptions;
 
 DEFINE_int32(cql_service_num_threads, 10,
              "Number of RPC worker threads for the CQL service");
@@ -29,7 +28,7 @@ Status CQLServer::Start() {
 
   gscoped_ptr<ServiceIf> cql_service(
       new CQLServiceImpl(this, messenger_, opts_));
-  RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(cql_service, cqlsvc), cql_service.Pass()));
+  RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, cql_service.Pass()));
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 

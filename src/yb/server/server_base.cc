@@ -75,7 +75,6 @@ using std::string;
 using std::stringstream;
 using std::vector;
 using strings::Substitute;
-using yb::rpc::ServicePoolOptions;
 
 namespace yb {
 namespace server {
@@ -103,7 +102,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(),
                                                       metric_namespace)),
-      rpc_server_(new RpcServer(options.rpc_opts)),
+      rpc_server_(new RpcServer(name_, options.rpc_opts)),
       is_first_run_(false),
       connection_type_(options.connection_type),
       options_(options),
@@ -217,9 +216,8 @@ Status RpcServerBase::DumpServerInfo(const string& path,
   return Status::OK();
 }
 
-Status RpcServerBase::RegisterService(const ServicePoolOptions& opts,
-                                      gscoped_ptr<rpc::ServiceIf> rpc_impl) {
-  return rpc_server_->RegisterService(opts, rpc_impl.Pass());
+Status RpcServerBase::RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf> rpc_impl) {
+  return rpc_server_->RegisterService(queue_limit, rpc_impl.Pass());
 }
 
 Status RpcServerBase::StartMetricsLogging() {
@@ -276,7 +274,7 @@ void RpcServerBase::MetricsLoggingThread() {
 
 Status RpcServerBase::Start() {
   gscoped_ptr<rpc::ServiceIf> gsvc_impl(new GenericServiceImpl(this));
-  RETURN_NOT_OK(RegisterService(SERVICE_POOL_OPTIONS(generic_svc, gensvc), gsvc_impl.Pass()));
+  RETURN_NOT_OK(RegisterService(FLAGS_generic_svc_queue_length, gsvc_impl.Pass()));
 
   RETURN_NOT_OK(StartRpcServer());
 

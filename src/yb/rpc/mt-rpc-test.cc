@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/rpc/rpc-test-base.h"
-
 #include <string>
 
 #include <boost/bind.hpp>
@@ -24,6 +22,7 @@
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/rpc-test-base.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
@@ -148,28 +147,9 @@ TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
               << "Status is actually: " << msg;
 }
 
-// This bogus service pool leaves the service queue full.
-class BogusServicePool : public ServicePool {
- public:
-  BogusServicePool(gscoped_ptr<ServiceIf> service,
-                   const scoped_refptr<MetricEntity>& metric_entity,
-                   int num_threads,
-                   size_t service_queue_length)
-    : ServicePool(ServicePoolOptions("bogus",
-                                     "bogus",
-                                     num_threads,
-                                     service_queue_length),
-                  service.Pass(), metric_entity) {
-  }
-  virtual Status Init() override {
-    // Do nothing
-    return Status::OK();
-  }
-};
-
 void IncrementBackpressureOrShutdown(const Status* status, int* backpressure, int* shutdown) {
   string msg = status->ToString();
-  if (msg.find("service queue is full") != string::npos) {
+  if (msg.find("queue is full") != string::npos) {
     ++(*backpressure);
   } else if (msg.find("shutting down") != string::npos) {
     ++(*shutdown);
@@ -196,11 +176,11 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
 
   gscoped_ptr<ServiceIf> service(new GenericCalculatorService());
   service_name_ = service->service_name();
-  service_pool_ = new BogusServicePool(service.Pass(),
-                                       server_messenger_->metric_entity(),
-                                       n_worker_threads_,
-                                       kMaxConcurrency);
-  ASSERT_OK(service_pool_->Init());
+  ThreadPool thread_pool("bogus_pool", kMaxConcurrency, 0UL);
+  service_pool_ = new ServicePool(kMaxConcurrency,
+                                  &thread_pool,
+                                  service.Pass(),
+                                  server_messenger_->metric_entity());
   ASSERT_OK(server_messenger_->RegisterService(service_name_, service_pool_));
 
   scoped_refptr<yb::Thread> threads[3];

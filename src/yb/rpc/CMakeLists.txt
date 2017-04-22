@@ -67,6 +67,7 @@ set(YRPC_SRCS
     serialization.cc
     service_if.cc
     service_pool.cc
+    thread_pool.cc
     transfer.cc
     yb_rpc.cc
 )
@@ -122,3 +123,4 @@ ADD_YB_TEST(rpc-bench RUN_SERIAL true)
 ADD_YB_TEST(rpc-test)
 ADD_YB_TEST(rpc_stub-test RUN_SERIAL true)
 ADD_YB_TEST(sasl_rpc-test)
+ADD_YB_TEST(thread_pool-test)

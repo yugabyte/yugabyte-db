@@ -65,7 +65,6 @@ using std::vector;
 using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::ServiceIf;
-using yb::rpc::ServicePoolOptions;
 using yb::tserver::ConsensusServiceImpl;
 using yb::tserver::RemoteBootstrapServiceImpl;
 using strings::Substitute;
@@ -121,6 +120,7 @@ Master::Master(const MasterOptions& opts)
 
 Master::~Master() {
   CHECK_NE(kRunning, state_);
+  Shutdown();
   messenger_->Shutdown();
 }
 
@@ -166,14 +166,13 @@ Status Master::StartAsync() {
   gscoped_ptr<ServiceIf> remote_bootstrap_service(
     new RemoteBootstrapServiceImpl(fs_manager_.get(), catalog_manager_.get(), metric_entity()));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-     SERVICE_POOL_OPTIONS(master_svc, msvc), impl.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      SERVICE_POOL_OPTIONS(master_tserver_svc, mtssvc), master_tserver_impl.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-     SERVICE_POOL_OPTIONS(master_consensus_svc, conssvc), consensus_service.Pass()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-     SERVICE_POOL_OPTIONS(master_remote_bootstrap_svc, rbssvc), remote_bootstrap_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_svc_queue_length, impl.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_tserver_svc_queue_length,
+                                                     master_tserver_impl.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
+                                                     consensus_service.Pass()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
+                                                     remote_bootstrap_service.Pass()));
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
@@ -237,6 +236,9 @@ void Master::Shutdown() {
     RpcAndWebServerBase::Shutdown();
     catalog_manager_->Shutdown();
     LOG(INFO) << name << " shutdown complete.";
+  } else {
+    LOG(INFO) << ToString() << " did not start, shutting down all that started...";
+    RpcAndWebServerBase::Shutdown();
   }
   state_ = kStopped;
 }

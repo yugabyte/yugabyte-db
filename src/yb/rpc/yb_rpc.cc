@@ -85,9 +85,14 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
 
   ~YBResponseTransferCallbacks() {
     // Remove the call from the map.
-    InboundCallPtr call_from_map = EraseKeyReturnValuePtr(
-        &conn_->calls_being_handled_, yb_call()->call_id());
-    DCHECK_EQ(call_from_map.get(), call_.get());
+    auto id = yb_call()->call_id();
+    auto it = conn_->calls_being_handled_.find(id);
+    if (it != conn_->calls_being_handled_.end()) {
+      DCHECK_EQ(it->second.get(), call_.get());
+      conn_->calls_being_handled_.erase(it);
+    } else {
+      LOG(DFATAL) << "Transfer done for unknown call: " << id;
+    }
   }
 
  protected:
