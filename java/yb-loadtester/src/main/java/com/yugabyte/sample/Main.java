@@ -4,6 +4,7 @@ package com.yugabyte.sample;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -13,6 +14,7 @@ import com.yugabyte.sample.apps.AppConfig;
 import com.yugabyte.sample.common.CmdLineOpts;
 import com.yugabyte.sample.common.IOPSThread;
 import com.yugabyte.sample.common.IOPSThread.IOType;
+
 
 /**
  * Main entry point for the sample applications. This class spawns a bunch of IO threads which run
@@ -105,6 +107,9 @@ public class Main {
   }
 
   public static void main(String[] args) throws Exception {
+    // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
+    // all columns.
+    System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
     CmdLineOpts configuration = CmdLineOpts.createFromArgs(args);
     Main main = new Main(configuration);
     main.run();

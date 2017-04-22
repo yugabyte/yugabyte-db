@@ -23,6 +23,7 @@ public class LogUtil {
     if (verbose) {
       // If verbose, make everything DEBUG log level and output to console.
       Logger.getRootLogger().addAppender(console);
+      Logger.getRootLogger().setLevel(Level.DEBUG);
     } else {
       // If not verbose, only YB sample app INFO logs go to console.
       Logger.getLogger("com.yugabyte.sample").addAppender(console);

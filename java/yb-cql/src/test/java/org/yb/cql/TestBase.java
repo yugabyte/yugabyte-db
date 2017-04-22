@@ -64,10 +64,9 @@ public class TestBase {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
-    Properties props = System.getProperties();
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
-    // additional columns.
-    props.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
+    // all columns.
+    System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
     LOG.info("Setting up before class...");
 
     miniCluster = new MiniYBCluster.MiniYBClusterBuilder()
