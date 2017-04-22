@@ -53,7 +53,7 @@ Executor::~Executor() {
 //--------------------------------------------------------------------------------------------------
 
 void Executor::ExecuteAsync(
-    const string &sql_stmt, const ParseTree &parse_tree, const StatementParameters &params,
+    const string &sql_stmt, const ParseTree &parse_tree, const StatementParameters& params,
     SqlEnv *sql_env, StatementExecutedCallback cb) {
   // Prepare execution context.
   exec_context_ = ExecContext::UniPtr(new ExecContext(sql_stmt.c_str(),
@@ -1009,7 +1009,8 @@ namespace {
 
 //--------------------------------------------------------------------------------------------------
 
-void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallback cb) {
+void Executor::ExecPTNodeAsync(
+    const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result) {
   const shared_ptr<client::YBTable>& table = tnode->table();
 
   if (table == nullptr) {
@@ -1029,17 +1030,36 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
     return;
   }
 
+  // If there are rows buffered in current_result, use the paging state in it. Otherwise, use the
+  // paging state from the client.
+  const StatementParameters *paging_params = params_;
+  StatementParameters current_params;
+  if (current_result != nullptr) {
+    CB_RETURN_NOT_OK(cb, current_params.set_paging_state(current_result->paging_state()));
+    paging_params = &current_params;
+  }
+
   // If there is a table id in the statement parameter's paging state, this is a continuation of
   // a prior SELECT statement. Verify that the same table still exists.
-  const bool continue_select = !params_->table_id().empty();
-  if (continue_select && params_->table_id() != table->id()) {
+  const bool continue_select = !paging_params->table_id().empty();
+  if (continue_select && paging_params->table_id() != table->id()) {
     CB_RETURN(
         cb,
         exec_context_->Error(tnode->loc(), "Table no longer exists.", ErrorCode::TABLE_NOT_FOUND));
   }
 
-  if (params_->page_size() == 0) {
-    CB_RETURN(cb, Status::OK());
+  // See if there is any rows buffered in current_result locally.
+  size_t current_row_count = 0;
+  if (current_result != nullptr) {
+    CB_RETURN_NOT_OK(
+        cb, YQLRowBlock::GetRowCount(current_result->client(), current_result->rows_data(),
+                                     &current_row_count));
+  }
+
+  // If the current result hits the request page size already, return the result.
+  if (current_row_count >= params_->page_size()) {
+    cb.Run(Status::OK(), current_result);
+    return;
   }
 
   // Create the read request.
@@ -1061,9 +1081,9 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
     req->add_column_ids(col_desc->id());
   }
 
-  // Default row count limit is the page size. And we should return paging state when page size
-  // limit is hit.
-  req->set_limit(params_->page_size());
+  // Default row count limit is the page size less the rows buffered in current_result locally.
+  // And we should return paging state when page size limit is hit.
+  req->set_limit(params_->page_size() - current_row_count);
   req->set_return_paging_state(true);
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
@@ -1079,14 +1099,14 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
               tnode->loc(), "LIMIT clause cannot be a negative value.",
               ErrorCode::INVALID_ARGUMENTS));
     }
-    if (limit_value.value_ == 0 || params_->total_num_rows_read() >= limit_value.value_) {
+    if (limit_value.value_ == 0 || paging_params->total_num_rows_read() >= limit_value.value_) {
       CB_RETURN(cb, Status::OK());
     }
 
     // If the LIMIT clause, subtracting the number of rows we have returned so far, is lower than
     // the page size limit set from above, set the lower limit and do not return paging state when
     // this limit is hit.
-    uint64_t limit = limit_value.value_ - params_->total_num_rows_read();
+    uint64_t limit = limit_value.value_ - paging_params->total_num_rows_read();
     if (limit < req->limit()) {
       req->set_limit(limit);
       req->set_return_paging_state(false);
@@ -1097,13 +1117,61 @@ void Executor::ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallb
   // of rows read in the request's paging state.
   if (continue_select) {
     YQLPagingStatePB *paging_state = req->mutable_paging_state();
-    paging_state->set_next_partition_key(params_->next_partition_key());
-    paging_state->set_next_row_key(params_->next_row_key());
-    paging_state->set_total_num_rows_read(params_->total_num_rows_read());
+    paging_state->set_next_partition_key(paging_params->next_partition_key());
+    paging_state->set_next_row_key(paging_params->next_row_key());
+    paging_state->set_total_num_rows_read(paging_params->total_num_rows_read());
   }
 
-  // Apply the operator.
-  exec_context_->ApplyReadAsync(select_op, tnode, cb);
+  // Apply the operator. Call SelectAsyncDone when done to try to fetch more rows and buffer locally
+  // before returning the result to the client.
+  exec_context_->ApplyReadAsync(select_op, tnode,
+                                Bind(&Executor::SelectAsyncDone, Unretained(this), tnode, cb,
+                                     current_result));
+}
+
+void Executor::SelectAsyncDone(
+    const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
+    const Status &s, ExecutedResult::SharedPtr new_result) {
+
+  // If an error occurs, return current result if present and ignore the error. Otherwise, return
+  // the error.
+  if (PREDICT_FALSE(!s.ok())) {
+    cb.Run(current_result != nullptr ? Status::OK() : s, current_result);
+    return;
+  }
+
+  // Process the new result.
+  if (new_result != nullptr) {
+    // If there is a new non-rows result. Return the current result if present (shouldn't happend)
+    // and ignore the new one. Otherwise, return the new result.
+    if (new_result->type() != ExecutedResult::Type::ROWS) {
+      if (current_result != nullptr) {
+        LOG(WARNING) <<
+            Substitute("New execution result $0 ignored", static_cast<int>(new_result->type()));
+        cb.Run(Status::OK(), current_result);
+      } else {
+        cb.Run(Status::OK(), new_result);
+      }
+      return;
+    }
+    // If there is a new rows result, append the rows and merge the paging state into the current
+    // result if present.
+    const auto* rows_result = static_cast<RowsResult*>(new_result.get());
+    if (current_result == nullptr) {
+      current_result = std::static_pointer_cast<RowsResult>(new_result);
+    } else {
+      CB_RETURN_NOT_OK(cb, current_result->Append(*rows_result));
+    }
+  }
+
+  // If there is a paging state, try fetching more rows and buffer locally. ExecPTNodeAsync() will
+  // ensure we do not exceed the page size.
+  if (current_result != nullptr && !current_result->paging_state().empty()) {
+    ExecPTNodeAsync(tnode, cb, current_result);
+    return;
+  }
+
+  cb.Run(Status::OK(), current_result);
 }
 
 //--------------------------------------------------------------------------------------------------

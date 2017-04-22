@@ -95,6 +95,13 @@ class YQLRowBlock {
   void Serialize(YQLClient client, faststring* buffer) const;
   CHECKED_STATUS Deserialize(YQLClient client, Slice* data);
 
+  //-------------------------- utility functions for rows data ------------------------------
+  // Return row count.
+  static CHECKED_STATUS GetRowCount(YQLClient client, const std::string& data, size_t* count);
+
+  // Append rows data. Caller should ensure the column schemas are the same.
+  static CHECKED_STATUS AppendRowsData(YQLClient client, const std::string& src, std::string* dst);
+
  private:
   // Schema of the selected columns. (Note: this schema has no key column definitions)
   std::shared_ptr<Schema> schema_;

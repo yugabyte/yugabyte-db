@@ -117,6 +117,36 @@ Status YQLRowBlock::Deserialize(const YQLClient client, Slice* data) {
   return Status::OK();
 }
 
+Status YQLRowBlock::GetRowCount(const YQLClient client, const std::string& data, size_t* count) {
+  CHECK_EQ(client, YQL_CLIENT_CQL);
+  int32_t cnt = 0;
+  Slice slice(data);
+  RETURN_NOT_OK(CQLDecodeNum(sizeof(cnt), NetworkByteOrder::Load32, &slice, &cnt));
+  *count = cnt;
+  return Status::OK();
+}
+
+Status YQLRowBlock::AppendRowsData(
+    const YQLClient client, const std::string& src, std::string* dst) {
+  CHECK_EQ(client, YQL_CLIENT_CQL);
+  int32_t src_cnt = 0;
+  Slice src_slice(src);
+  RETURN_NOT_OK(CQLDecodeNum(sizeof(src_cnt), NetworkByteOrder::Load32, &src_slice, &src_cnt));
+  if (src_cnt > 0) {
+    int32_t dst_cnt = 0;
+    Slice dst_slice(*dst);
+    RETURN_NOT_OK(CQLDecodeNum(sizeof(dst_cnt), NetworkByteOrder::Load32, &dst_slice, &dst_cnt));
+    if (dst_cnt == 0) {
+      *dst = src;
+    } else {
+      dst->append(util::to_char_ptr(src_slice.data()), src_slice.size());
+      dst_cnt += src_cnt;
+      CQLEncodeLength(dst_cnt, &(*dst)[0]);
+    }
+  }
+  return Status::OK();
+}
+
 namespace {
 
 // Evaluate and return the value of an expression for the given row. Evaluate only column and

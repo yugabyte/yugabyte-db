@@ -40,7 +40,7 @@ class Executor {
 
   // Execute the given parse tree.
   void ExecuteAsync(
-      const std::string &sql_stmt, const ParseTree &ptree, const StatementParameters &params,
+      const std::string &sql_stmt, const ParseTree &ptree, const StatementParameters& params,
       SqlEnv *sql_env, StatementExecutedCallback cb);
 
   // Complete execution.
@@ -71,8 +71,11 @@ class Executor {
 
   void ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallback cb);
 
-  // Select statement.
-  void ExecPTNodeAsync(const PTSelectStmt *tnode, StatementExecutedCallback cb);
+  // Select statement: current_result contains accummulated rows if any that are buffered locally
+  // to be returned.
+  void ExecPTNodeAsync(
+      const PTSelectStmt *tnode, StatementExecutedCallback cb,
+      RowsResult::SharedPtr current_result = nullptr);
 
   // Insert statement.
   void ExecPTNodeAsync(const PTInsertStmt *tnode, StatementExecutedCallback cb);
@@ -160,6 +163,10 @@ class Executor {
 
   // Get a bind variable.
   CHECKED_STATUS GetBindVariable(const PTBindVar* var, YQLValue *value) const;
+
+  void SelectAsyncDone(
+      const PTSelectStmt *tnode, StatementExecutedCallback cb, RowsResult::SharedPtr current_result,
+      const Status &s, ExecutedResult::SharedPtr new_result);
 
   void PTNodeAsyncDone(
       const PTListNode *lnode, int index, StatementExecutedCallback cb, const Status &s,

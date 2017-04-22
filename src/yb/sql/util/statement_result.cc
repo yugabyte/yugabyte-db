@@ -120,8 +120,8 @@ PreparedResult::~PreparedResult() {
 RowsResult::RowsResult(YBqlOp *op)
     : table_name_(op->table()->name()),
       column_schemas_(GetColumnSchemasFromOp(*op)),
-      rows_data_(op->rows_data()),
-      client_(GetClientFromOp(*op)) {
+      client_(GetClientFromOp(*op)),
+      rows_data_(op->rows_data()) {
   // If there is a paging state in the response, fill in the table ID also and serialize the
   // paging state as bytes.
   if (op->response().has_paging_state()) {
@@ -136,11 +136,21 @@ RowsResult::RowsResult(YBqlOp *op)
 RowsResult::RowsResult(client::YBTable* table, const std::string& rows_data)
     : table_name_(table->name()),
       column_schemas_(table->schema().columns()),
-      rows_data_(rows_data),
-      client_(YQLClient::YQL_CLIENT_CQL) {
+      client_(YQLClient::YQL_CLIENT_CQL),
+      rows_data_(rows_data) {
 }
 
 RowsResult::~RowsResult() {
+}
+
+Status RowsResult::Append(const RowsResult& other) {
+  if (rows_data_.empty()) {
+    rows_data_ = other.rows_data_;
+  } else {
+    RETURN_NOT_OK(YQLRowBlock::AppendRowsData(other.client_, other.rows_data_, &rows_data_));
+  }
+  paging_state_ = other.paging_state_;
+  return Status::OK();
 }
 
 YQLRowBlock *RowsResult::GetRowBlock() const {

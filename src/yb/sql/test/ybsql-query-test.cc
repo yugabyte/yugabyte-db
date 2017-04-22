@@ -826,5 +826,33 @@ TEST_F(YbSqlQuery, TestSystemTablesWithRestart) {
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
 }
 
+TEST_F(YbSqlQuery, TestPagination) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Create test table.
+  CHECK_OK(processor->Run("CREATE TABLE page_test (c int PRIMARY KEY);"));
+
+  // Insert 10 different hash keys. They should go to different tablets.
+  for (int i = 1; i <= 10; i++) {
+    string stmt = Substitute("INSERT INTO page_test (c) VALUES ($0);", i);
+    CHECK_OK(processor->Run(stmt));
+  }
+
+  // Do full-table query. All rows should be returned in one block.
+  CHECK_VALID_STMT("SELECT * FROM page_test;");
+
+  auto row_block = processor->row_block();
+  EXPECT_EQ(10, row_block->row_count());
+  int sum = 0;
+  for (int i = 0; i < row_block->row_count(); i++) {
+    sum += row_block->row(i).column(0).int32_value();
+  }
+  EXPECT_EQ(55, sum);
+}
+
 } // namespace sql
 } // namespace yb

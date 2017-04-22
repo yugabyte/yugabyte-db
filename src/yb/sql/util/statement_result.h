@@ -116,6 +116,8 @@ class RowsResult : public ExecutedResult {
   const std::string& paging_state() const { return paging_state_; }
   YQLClient client() const { return client_; }
 
+  CHECKED_STATUS Append(const RowsResult& other);
+
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.
   YQLRowBlock *GetRowBlock() const;
@@ -123,8 +125,8 @@ class RowsResult : public ExecutedResult {
  private:
   const client::YBTableName table_name_;
   const std::vector<ColumnSchema> column_schemas_;
-  const std::string rows_data_;
   const YQLClient client_;
+  std::string rows_data_;
   std::string paging_state_;
 };
 
