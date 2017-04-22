@@ -809,5 +809,22 @@ TEST_F(YbSqlQuery, TestSystemLocal) {
   EXPECT_EQ("127.0.0.1", row.column(2).inetaddress_value().ToString()); // broadcast address.
 }
 
+TEST_F(YbSqlQuery, TestSystemTablesWithRestart) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Verify system table query works.
+  ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
+
+  // Restart the cluster.
+  ASSERT_OK(cluster_->RestartSync());
+
+  // Verify system table query still works.
+  ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
+}
+
 } // namespace sql
 } // namespace yb

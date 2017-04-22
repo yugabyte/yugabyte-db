@@ -1118,15 +1118,22 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
   }
 
-  if (FindPtrOrNull(table_names_map_, std::make_pair(namespace_id, table_name)) != nullptr) {
+  scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
+                                                 std::make_pair(namespace_id, table_name));
+  if (table != nullptr) {
     LOG(INFO) << strings::Substitute("Table $0.$1 already created, skipping initialization",
                                      namespace_name, table_name);
+    // Initialize the appropriate system tablet.
+    if (tablet != nullptr) {
+      vector<scoped_refptr<TabletInfo>> tablets;
+      table->GetAllTablets(&tablets);
+      DCHECK_EQ(1, tablets.size());
+      tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+    }
     return Status::OK();
   }
 
-  scoped_refptr<TableInfo> table;
   vector<TabletInfo*> tablets;
-
   // Fill in details for system.peers table.
   CreateTableRequestPB req;
   req.set_name(table_name);
