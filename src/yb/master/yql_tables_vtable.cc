@@ -39,6 +39,14 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
     YQLValue::set_string_value("compound", &flags_elem);
     *YQLValue::add_set_elem(&flags_set) = flags_elem;
     *row.mutable_column(12) = flags_set; // flags
+
+    // Create appropriate table uuid entry.
+    YQLValuePB uuid_pb;
+    Uuid uuid;
+    // Note: table id is in host byte order.
+    RETURN_NOT_OK(uuid.FromHexString(table->id()));
+    YQLValue::set_uuid_value(uuid, &uuid_pb);
+    *row.mutable_column(14) = uuid_pb; // id
   }
 
   return Status::OK();

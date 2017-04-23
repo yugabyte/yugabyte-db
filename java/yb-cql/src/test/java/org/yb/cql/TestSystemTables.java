@@ -4,14 +4,17 @@ import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import org.yb.master.Master;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
 public class TestSystemTables extends TestBase {
@@ -145,6 +148,38 @@ public class TestSystemTables extends TestBase {
     assertEquals("my_keyspace", results.get(0).getString("keyspace_name"));
     assertEquals("my_table", results.get(0).getString("table_name"));
     assertFalse(results.get(0).getColumnDefinitions().contains("flags")); // flags was not selected.
+
+    // Verify table id.
+    results = session.execute("SELECT id FROM system_schema.tables WHERE keyspace_name = " +
+      "'my_keyspace' and table_name = 'my_table'").all();
+    assertEquals(1, results.size());
+    byte[] table_uuid = null;
+    for (Master.ListTablesResponsePB.TableInfo tableInfo :
+      miniCluster.getClient().getTablesList("my_table").getTableInfoList()) {
+      if (tableInfo.getNamespace().getName().equals("my_keyspace") &&
+        tableInfo.getName().equals("my_table")) {
+        table_uuid = tableInfo.getId().toByteArray();
+      }
+    }
+
+    // Flip two adjacent chars (so that we reverse bytes correctly below).
+    for (int i = 0; i + 1 < table_uuid.length; i+=2) {
+      byte tmp = table_uuid[i];
+      table_uuid[i] = table_uuid[i + 1];
+      table_uuid[i + 1] = tmp;
+    }
+
+    assertNotNull(table_uuid);
+    assertEquals(32, table_uuid.length);
+    // Reverse bytes since we have UUID in host byte order in TableInfo, but network byte order
+    // in the system table.
+    String uuid = new StringBuilder(new String(table_uuid)).reverse().toString();
+
+    // Insert hyphens.
+    uuid = String.format("%s-%s-%s-%s-%s", uuid.substring(0, 8), uuid.substring
+      (8, 12), uuid.substring(12, 16), uuid.substring(16, 20), uuid.substring
+      (20, 32));
+    assertEquals(UUID.fromString(uuid), results.get(0).getUUID("id"));
   }
 
   private void verifyColumnSchema(Row row, String table_name, String column_name, String kind,

@@ -147,5 +147,20 @@ TEST_F(UuidTest, TestErrors) {
   ASSERT_FALSE(uuid.FromBytes(bytes).ok());
   bytes = "111111111111111111"; // 17 bytes.
   ASSERT_FALSE(uuid.FromBytes(bytes).ok());
+
+  // Test hex string
+  ASSERT_FALSE(uuid.FromHexString("123").ok());
+  ASSERT_FALSE(uuid.FromHexString("zz111111111111111111111111111111").ok());
 }
+
+TEST_F(UuidTest, TestHexString) {
+  Uuid uuid;
+  ASSERT_OK(uuid.FromHexString("ffffffffffffffffffffffffffffffff"));
+  ASSERT_OK(uuid.FromHexString("00000000000000000000000000000000"));
+  ASSERT_OK(uuid.FromHexString("11000000000000000000000000000000"));
+  EXPECT_EQ("00000000-0000-0000-0000-000000000011", uuid.ToString());
+  ASSERT_OK(uuid.FromHexString("00004455664256a4d3029be867453e12"));
+  EXPECT_EQ("123e4567-e89b-02d3-a456-426655440000", uuid.ToString());
+}
+
 } // namespace yb

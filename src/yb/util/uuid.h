@@ -46,6 +46,10 @@ class Uuid {
   // UUID object.
   CHECKED_STATUS FromBytes(const std::string& bytes);
 
+  // Given a string representation of uuid in hex where the bytes are in host byte order, build
+  // an appropriate UUID object.
+  CHECKED_STATUS FromHexString(const std::string& hex_string);
+
   // Decodes the Comparable UUID bytes into a lexical UUID.
   CHECKED_STATUS DecodeFromComparable(const std::string& bytes);
 

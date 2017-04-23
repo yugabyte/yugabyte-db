@@ -978,7 +978,7 @@ Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
       YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
   RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
   RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT64));
+  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT32));
   RETURN_NOT_OK(builder.AddColumn(
       "extensions",
       YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
@@ -986,7 +986,7 @@ Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
       "flags",
       YQLType(DataType::SET, { YQLType(DataType::STRING) })));
   RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT32));
-  // TODO: id is currently not supported since we don't support the 'uuid' type.
+  RETURN_NOT_OK(builder.AddColumn("id", DataType::UUID));
   RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT32));
   RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT32));
   RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT32));
