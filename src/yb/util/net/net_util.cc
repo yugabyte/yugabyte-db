@@ -412,8 +412,8 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   }
 
   // Now, find a unused port in the [kMinPort..kMaxPort] range.
-  constexpr uint16_t kMinPort = 40000;
-  constexpr uint16_t kMaxPort = 65535;
+  constexpr uint16_t kMinPort = 15000;
+  constexpr uint16_t kMaxPort = 30000;
   static yb::Random rand(GetCurrentTimeMicros());
   for (int i = 0; i < 1000; ++i) {
     const uint16_t random_port = kMinPort + rand.Next() % (kMaxPort - kMinPort + 1);
