@@ -19,6 +19,8 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
+#include <boost/scope_exit.hpp>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
@@ -2058,11 +2060,11 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
 void DoWriteTestRows(const TServerDetails* leader_tserver,
                      const string& tablet_id,
                      const MonoDelta& write_timeout,
-                     AtomicInt<int32_t>* rows_inserted,
-                     const AtomicBool* finish) {
+                     std::atomic<int32_t>* rows_inserted,
+                     const std::atomic<bool>* finish) {
 
-  while (!finish->Load()) {
-    int row_key = rows_inserted->Increment();
+  while (!finish->load()) {
+    int row_key = ++*rows_inserted;
     CHECK_OK(WriteSimpleTestRow(leader_tserver, tablet_id, RowOperationsPB::INSERT,
                                 row_key, row_key, Substitute("key=$0", row_key),
                                 write_timeout));
@@ -2093,58 +2095,66 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
 
   // Start a write workload.
   LOG(INFO) << "Starting write workload...";
-  vector<scoped_refptr<Thread> > threads;
-  AtomicInt<int32_t> rows_inserted(0);
-  AtomicBool finish(false);
-  int num_threads = FLAGS_num_client_threads;
-  for (int i = 0; i < num_threads; i++) {
-    scoped_refptr<Thread> thread;
-    ASSERT_OK(Thread::Create(CURRENT_TEST_NAME(), Substitute("row-writer-$0", i),
-                             &DoWriteTestRows,
-                             leader_tserver, tablet_id_, MonoDelta::FromSeconds(10),
-                             &rows_inserted, &finish,
-                             &thread));
-    threads.push_back(thread);
-  }
+  std::atomic<int32_t> rows_inserted(0);
+  {
+    std::atomic<bool> finish(false);
+    vector<scoped_refptr<Thread> > threads;
+    BOOST_SCOPE_EXIT(&threads, &finish) {
+      LOG(INFO) << "Joining writer threads...";
+      finish = true;
+      for (const scoped_refptr<Thread> &thread : threads) {
+        ASSERT_OK(ThreadJoiner(thread.get()).Join());
+      }
+    } BOOST_SCOPE_EXIT_END;
 
-  LOG(INFO) << "Removing servers...";
-  // Go from 3 tablet servers down to 1 in the configuration.
-  vector<int> remove_list = { 2, 1 };
-  for (int to_remove_idx : remove_list) {
-    int num_servers = active_tablet_servers.size();
-    LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
+    int num_threads = FLAGS_num_client_threads;
+    for (int i = 0; i < num_threads; i++) {
+      scoped_refptr<Thread> thread;
+      ASSERT_OK(Thread::Create(CURRENT_TEST_NAME(), Substitute("row-writer-$0", i),
+          &DoWriteTestRows,
+          leader_tserver,
+          tablet_id_,
+          MonoDelta::FromSeconds(10),
+          &rows_inserted,
+          &finish,
+          &thread));
+      threads.push_back(thread);
+    }
 
-    TServerDetails* tserver_to_remove = tservers[to_remove_idx];
-    LOG(INFO) << "Removing tserver with uuid " << tserver_to_remove->uuid();
-    ASSERT_OK(RemoveServer(leader_tserver, tablet_id_, tserver_to_remove, boost::none,
-                           MonoDelta::FromSeconds(10)));
-    ASSERT_EQ(1, active_tablet_servers.erase(tserver_to_remove->uuid()));
-    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
-                                                  leader_tserver, tablet_id_,
-                                                  MonoDelta::FromSeconds(10)));
-  }
+    LOG(INFO) << "Removing servers...";
+    // Go from 3 tablet servers down to 1 in the configuration.
+    vector<int> remove_list = {2, 1};
+    for (int to_remove_idx : remove_list) {
+      int num_servers = active_tablet_servers.size();
+      LOG(INFO) << "Remove: Going from " << num_servers << " to " << num_servers - 1 << " replicas";
 
-  LOG(INFO) << "Adding servers...";
-  // Add the tablet servers back, in reverse order, going from 1 to 3 servers in the configuration.
-  vector<int> add_list = { 1, 2 };
-  for (int to_add_idx : add_list) {
-    int num_servers = active_tablet_servers.size();
-    LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
+      TServerDetails *tserver_to_remove = tservers[to_remove_idx];
+      LOG(INFO) << "Removing tserver with uuid " << tserver_to_remove->uuid();
+      ASSERT_OK(RemoveServer(leader_tserver, tablet_id_, tserver_to_remove, boost::none,
+          MonoDelta::FromSeconds(10)));
+      ASSERT_EQ(1, active_tablet_servers.erase(tserver_to_remove->uuid()));
+      ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
+          leader_tserver, tablet_id_,
+          MonoDelta::FromSeconds(10)));
+    }
 
-    TServerDetails* tserver_to_add = tservers[to_add_idx];
-    LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
-    ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, RaftPeerPB::PRE_VOTER,
-                        boost::none, MonoDelta::FromSeconds(10)));
-    InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
-    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
-                                                  leader_tserver, tablet_id_,
-                                                  MonoDelta::FromSeconds(10)));
-  }
+    LOG(INFO) << "Adding servers...";
+    // Add the tablet servers back, in reverse order, going from 1 to 3 servers in the
+    // configuration.
+    vector<int> add_list = {1, 2};
+    for (int to_add_idx : add_list) {
+      int num_servers = active_tablet_servers.size();
+      LOG(INFO) << "Add: Going from " << num_servers << " to " << num_servers + 1 << " replicas";
 
-  LOG(INFO) << "Joining writer threads...";
-  finish.Store(true);
-  for (const scoped_refptr<Thread>& thread : threads) {
-    ASSERT_OK(ThreadJoiner(thread.get()).Join());
+      TServerDetails *tserver_to_add = tservers[to_add_idx];
+      LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
+      ASSERT_OK(AddServer(leader_tserver, tablet_id_, tserver_to_add, RaftPeerPB::PRE_VOTER,
+          boost::none, MonoDelta::FromSeconds(10)));
+      InsertOrDie(&active_tablet_servers, tserver_to_add->uuid(), tserver_to_add);
+      ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(active_tablet_servers.size(),
+          leader_tserver, tablet_id_,
+          MonoDelta::FromSeconds(10)));
+    }
   }
 
   LOG(INFO) << "Waiting for replicas to agree...";
@@ -2152,13 +2162,13 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   // Since we don't batch, there should be at least # rows inserted log entries,
   // plus the initial leader's no-op, plus 2 for the removed servers, plus 2 for
   // the added servers for a total of 5.
-  int min_log_index = rows_inserted.Load() + 5;
+  int min_log_index = rows_inserted + 5;
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10),
                                   active_tablet_servers, tablet_id_,
                                   min_log_index));
 
-  LOG(INFO) << "Number of rows inserted: " << rows_inserted.Load();
-  ASSERT_ALL_REPLICAS_AGREE(rows_inserted.Load());
+  LOG(INFO) << "Number of rows inserted: " << rows_inserted.load();
+  ASSERT_ALL_REPLICAS_AGREE(rows_inserted.load());
 }
 
 TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
