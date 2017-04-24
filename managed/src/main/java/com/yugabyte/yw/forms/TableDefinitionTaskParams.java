@@ -33,6 +33,7 @@ public class TableDefinitionTaskParams extends TableTaskParams {
     params.tableType = response.getTableType();
     params.tableDetails = TableDetails.createWithSchema(response.getSchema());
     params.tableDetails.tableName = response.getTableName();
+    params.tableDetails.keyspace = response.getNamespace();
 
     return params;
   }
