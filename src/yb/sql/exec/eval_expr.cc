@@ -429,6 +429,13 @@ Status Executor::EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *resu
 
   const PTExpr *e = expr.get();
   switch (expr->expr_op()) {
+    case ExprOperator::kConst: {
+      Uuid uuid;
+      MCString::SharedPtr str = static_cast<const PTConstUuid*>(e)->Eval();
+      RETURN_NOT_OK(uuid.FromString(str->c_str()));
+      result->value_ = uuid;
+      break;
+    }
     case ExprOperator::kBindVar: {
       if (params_ == nullptr) {
         return STATUS(RuntimeError, "no bind variable supplied");
@@ -572,7 +579,6 @@ Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& str
         static_cast<EvalUuidValue*>(result)->value_ = uuid;
         break;
       }
-
       default:
         LOG(FATAL) << "Illegal datatype conversion";
     }

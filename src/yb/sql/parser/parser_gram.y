@@ -575,6 +575,9 @@ DECLARE_bool(yql_experiment_support_expression);
 // Float constants.
 %token <PString>          FCONST SCONST BCONST XCONST Op
 
+// UUID constant.
+%token <PString>          UCONST
+
 // Integer constants.
 %token <PString>          ICONST
 
@@ -3774,6 +3777,9 @@ AexprConst:
   | FCONST {
     $$ = MAKE_NODE(@1, PTConstDecimal, $1);
   }
+  | UCONST {
+    $$ = MAKE_NODE(@1, PTConstUuid, $1);
+  }
   | Sconst {
     $$ = MAKE_NODE(@1, PTConstText, $1);
   }
@@ -6460,6 +6466,9 @@ TriggerFuncArg:
     // $$ = makeString(psprintf("%d", $1));
   }
   | FCONST {
+    // $$ = makeString($1);
+  }
+  | UCONST {
     // $$ = makeString($1);
   }
   | Sconst {

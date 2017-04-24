@@ -269,6 +269,7 @@ xcstop                    \*+\/
 xcinside                  [^*/]+
 
 digit                     [0-9]
+hexdigit                  [0-9A-fa-f]
 ident_start               [A-Za-z\200-\377_]
 ident_cont                [A-Za-z\200-\377_0-9\$]
 
@@ -313,7 +314,8 @@ decimalfail               {digit}+\.\.
 real                      ({integer}|{decimal})[Ee][-+]?{digit}+
 realfail1                 ({integer}|{decimal})[Ee]
 realfail2                 ({integer}|{decimal})[Ee][-+]
-binary                    0[xX][0-9A-Fa-f]*
+binary                    0[xX]{hexdigit}*
+uuid                      {hexdigit}{8}-{hexdigit}{4}-{hexdigit}{4}-{hexdigit}{4}-{hexdigit}{12}
 
 param                     \${integer}
 
@@ -979,6 +981,12 @@ other                     .
   yyless(yyleng-2);
   SET_YYLLOC();
   return GramProcessor::make_FCONST(MakeString(yytext), cursor_);
+}
+
+{uuid} {
+  SET_YYLLOC();
+  /* Trim the dashes from the UUID string. */
+  return GramProcessor::make_UCONST(MakeString(yytext), cursor_);
 }
 
 {identifier}  {

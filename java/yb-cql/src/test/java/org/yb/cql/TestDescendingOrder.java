@@ -208,18 +208,18 @@ public class TestDescendingOrder extends TestBase {
     // UUIDs in ascending order.
     List <String> values = new ArrayList<String>(
       Arrays.asList(
-        "'157c4b82-ff52-1053-bced-0eba570d969e'",
-        "'157c4b82-ff32-1073-bced-0eba570d969e'",
-        "'157c4b82-ff32-1075-bced-0eba570d969e'",
-        "'a57c4b82-ff52-1173-bced-0eba570d969e'",
-        "'167c4b82-ef22-1174-bced-0eba570d969e'",
-        "'157c4b82-ef22-1274-bced-0eba570d969e'",
-        "'a67c4b82-ef22-2173-bced-0eba570d969e'",
-        "'c57c4b82-ef52-2073-aced-0eba570d969e'",
-        "'167c4b82-ef22-3173-bced-0eba570d969e'",
-        "'f67c4b82-ef22-3173-bced-0eba570d969e'",
-        "'367c4b82-ef22-4173-bced-0eba570d969e'",
-        "'467c4b82-ef22-4173-bced-0eba570d969e'"));
+        "157c4b82-ff52-1053-bced-0eba570d969e",
+        "157c4b82-ff32-1073-bced-0eba570d969e",
+        "157c4b82-ff32-1075-bced-0eba570d969e",
+        "a57c4b82-ff52-1173-bced-0eba570d969e",
+        "167c4b82-ef22-1174-bced-0eba570d969e",
+        "157c4b82-ef22-1274-bced-0eba570d969e",
+        "a67c4b82-ef22-2173-bced-0eba570d969e",
+        "c57c4b82-ef52-2073-aced-0eba570d969e",
+        "167c4b82-ef22-3173-bced-0eba570d969e",
+        "f67c4b82-ef22-3173-bced-0eba570d969e",
+        "367c4b82-ef22-4173-bced-0eba570d969e",
+        "467c4b82-ef22-4173-bced-0eba570d969e"));
     List<String> randomValues = new ArrayList<String>(values);
     Collections.shuffle(randomValues);
     ResultSet rs = createInsertAndSelectDesc("uuid", randomValues);
@@ -229,7 +229,7 @@ public class TestDescendingOrder extends TestBase {
     for (int i = values.size() - 1; i >= 0; i--) {
       Row row = rs.one();
       assertEquals(1, row.getInt("h1"));
-      assertEquals(values.get(i).replace("\'", ""), row.getUUID("r1").toString());
+      assertEquals(values.get(i), row.getUUID("r1").toString());
       assertEquals("b", row.getString("r2"));
       assertEquals(1, row.getInt("v1"));
       assertEquals("c", row.getString("v2"));

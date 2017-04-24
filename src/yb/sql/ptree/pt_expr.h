@@ -493,13 +493,17 @@ using PTConstDecimal = PTExprConst<InternalType::kDecimalValue,
                                    DataType::DECIMAL,
                                    MCString::SharedPtr>;
 
+using PTConstUuid = PTExprConst<InternalType::kUuidValue,
+                                DataType::UUID,
+                                MCString::SharedPtr>;
+
 using PTConstBool = PTExprConst<InternalType::kBoolValue,
                                 DataType::BOOL,
                                 bool>;
 
 using PTConstBinary = PTExprConst<InternalType::kBinaryValue,
-                               DataType::BINARY,
-                               MCString::SharedPtr>;
+                                  DataType::BINARY,
+                                  MCString::SharedPtr>;
 
 //--------------------------------------------------------------------------------------------------
 // Tree Nodes for Collections -- treated as expressions with flexible arity
