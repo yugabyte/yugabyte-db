@@ -670,6 +670,7 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   ts_flags.push_back("--enable_remote_bootstrap=false");
+  ts_flags.push_back("--rpc_slow_query_threshold_ms=10000000");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(StartCluster(ts_flags, master_flags));
 
