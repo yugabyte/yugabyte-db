@@ -448,8 +448,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
       replacing_tablet = true;
     }
     RETURN_NOT_OK(StartTabletStateTransitionUnlocked(tablet_id,
-                                                     "remote bootstrapping tablet",
-                                                     &deleter));
+        Substitute("remote bootstrapping tablet from peer $0", bootstrap_peer_uuid), &deleter));
   }
 
   if (replacing_tablet) {
@@ -1241,6 +1240,8 @@ TransitionInProgressDeleter::TransitionInProgressDeleter(
 
 TransitionInProgressDeleter::~TransitionInProgressDeleter() {
   std::lock_guard<rw_spinlock> lock(*lock_);
+  LOG(INFO) << "Deleting transition in progress " << in_progress_->at(entry_)
+            << " for tablet " << entry_;
   CHECK(in_progress_->erase(entry_));
 }
 

@@ -397,10 +397,10 @@ Status RemoteBootstrapClient::EndRemoteSession() {
   req.set_is_success(succeeded_);
   EndRemoteBootstrapSessionResponsePB resp;
 
-  LOG(INFO) << "Ending remote bootstrap session " << session_id_;
   RETURN_NOT_OK_UNWIND_PREPEND(proxy_->EndRemoteBootstrapSession(req, &resp, &controller),
-                               controller,
-                               "Failure ending remote bootstrap session");
+      controller, Substitute("Failure ending remote bootstrap session $0", session_id_));
+
+  LOG(INFO) << "Ended remote bootstrap session " << session_id_;
 
   return Status::OK();
 }
