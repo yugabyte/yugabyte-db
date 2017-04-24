@@ -25,8 +25,6 @@
 #include <iostream>
 #include <limits>
 
-#include <boost/bind.hpp>
-
 #include "yb/client/batcher.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client-internal.h"
@@ -50,9 +48,9 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.h"  // TODO: remove this include - just needed for default port
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/redisserver/redis_constants.h"
 #include "yb/redisserver/redis_parser.h"
@@ -727,8 +725,10 @@ bool YBClient::IsMultiMaster() const {
   }
   // For single entry case, check if it is a list of host/ports.
   vector<Sockaddr> addrs;
-  Status s = ParseAddressList(data_->master_server_addrs_[0], master::Master::kDefaultPort, &addrs);
-  if (!s.ok()) {
+  const auto status = ParseAddressList(data_->master_server_addrs_[0],
+                                       yb::master::kMasterDefaultPort,
+                                       &addrs);
+  if (!status.ok()) {
     return false;
   }
   return addrs.size() > 1;

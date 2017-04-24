@@ -19,9 +19,10 @@
 // on the default RPC port. It verifies that all the reported Tablet Servers are running and that
 // the tablets are in a consistent state.
 
+#include <iostream>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <iostream>
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -77,7 +78,7 @@ static string GetYsckUsage(const char* progname) {
 static void RunYsck(vector<string>* error_messages) {
   vector<Sockaddr> master_addrs;
   PUSH_PREPEND_NOT_OK(ParseAddressList(FLAGS_master_address,
-                                       master::Master::kDefaultPort,
+                                       master::kMasterDefaultPort,
                                        &master_addrs),
                       error_messages, "Unable to parse master address");
 

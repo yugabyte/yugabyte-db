@@ -43,7 +43,7 @@ TabletServerOptions::TabletServerOptions() {
 
   vector<HostPort> master_addresses;
   Status s = HostPort::ParseStrings(FLAGS_tserver_master_addrs,
-                                    master::Master::kDefaultPort,
+                                    master::kMasterDefaultPort,
                                     &master_addresses);
   SetMasterAddresses(std::make_shared<std::vector<HostPort>>(std::move(master_addresses)));
   if (!s.ok()) {

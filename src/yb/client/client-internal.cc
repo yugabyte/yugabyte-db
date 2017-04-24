@@ -907,7 +907,7 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   for (const string& master_server_addr : master_server_addrs_) {
     vector<Sockaddr> addrs;
     // TODO: Do address resolution asynchronously as well.
-    s = ParseAddressList(master_server_addr, master::Master::kDefaultPort, &addrs);
+    s = ParseAddressList(master_server_addr, master::kMasterDefaultPort, &addrs);
     if (!s.ok()) {
       cb.Run(s);
       return;

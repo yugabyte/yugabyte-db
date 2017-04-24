@@ -25,9 +25,10 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
-#include "yb/master/master_options.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_options.h"
 #include "yb/master/master_tserver.h"
 #include "yb/server/server_base.h"
 #include "yb/util/metrics.h"
@@ -57,10 +58,6 @@ class MasterPathHandlers;
 
 class Master : public server::RpcAndWebServerBase {
  public:
-  // TODO: Move it to master_defaults.h
-  static const uint16_t kDefaultPort = 7051;
-  static const uint16_t kDefaultWebPort = 8051;
-
   explicit Master(const MasterOptions& opts);
   ~Master();
 

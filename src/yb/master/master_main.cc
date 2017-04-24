@@ -15,8 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <glog/logging.h>
 #include <iostream>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
@@ -37,9 +38,8 @@ static int MasterMain(int argc, char** argv) {
   InitYBOrDie();
 
   // Reset some default values before parsing gflags.
-  FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
-                                                 Master::kDefaultPort);
-  FLAGS_webserver_port = Master::kDefaultWebPort;
+  FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0", kMasterDefaultPort);
+  FLAGS_webserver_port = kMasterDefaultWebPort;
 
   // A multi-node Master leader should not evict failed Master followers
   // because there is no-one to assign replacement servers in order to maintain

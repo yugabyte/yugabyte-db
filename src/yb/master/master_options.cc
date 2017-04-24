@@ -52,7 +52,7 @@ MasterOptions::MasterOptions(
     bool is_creating)
     : is_creating_(is_creating),
       is_shell_mode_(false) {
-  rpc_opts.default_port = Master::kDefaultPort;
+  rpc_opts.default_port = kMasterDefaultPort;
 
   SetMasterAddresses(master_addresses);
 }
@@ -60,11 +60,12 @@ MasterOptions::MasterOptions(
 MasterOptions::MasterOptions()
     : is_creating_(FLAGS_create_cluster),
       is_shell_mode_(false) {
-  rpc_opts.default_port = Master::kDefaultPort;
+  rpc_opts.default_port = kMasterDefaultPort;
   master_addresses_flag = FLAGS_master_addresses;
   vector<HostPort> master_addresses = std::vector<HostPort>();
   if (!FLAGS_master_addresses.empty()) {
-    Status s = HostPort::ParseStrings(FLAGS_master_addresses, Master::kDefaultPort,
+    Status s = HostPort::ParseStrings(FLAGS_master_addresses,
+                                      kMasterDefaultPort,
                                       &master_addresses);
     if (!s.ok()) {
       LOG(FATAL) << "Couldn't parse the master_addresses flag ('"
