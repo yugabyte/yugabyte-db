@@ -14,13 +14,16 @@ import java.util.Map;
 
 public class TableDetails {
 
-  // The name of the table
+  // The name of the table.
   public String tableName;
 
-  // The default table-level time to live (in seconds)
+  // The keyspace that this table belongs to.
+  public String keyspace;
+
+  // The default table-level time to live (in seconds).
   public long ttlInSeconds = -1;
 
-  // Details of the columns that make up the table (to be used to create ColumnSchemas)
+  // Details of the columns that make up the table (to be used to create ColumnSchemas).
   public List<ColumnDetails> columns;
 
   /**
