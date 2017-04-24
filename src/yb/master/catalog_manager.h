@@ -709,6 +709,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   void GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >* namespaces);
 
+  NamespaceName GetNamespaceName(const NamespaceId& id) const;
+
   // Return true if the specified table name exists
   // NOTE: This should only be used by tests
   bool TableNameExists(const NamespaceId& namespace_id, const TableName& table_name) const;

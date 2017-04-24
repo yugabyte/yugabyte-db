@@ -59,14 +59,16 @@ void HtmlOutputSchemaTable(const Schema& schema,
   *output << "</table>\n";
 }
 
-void HtmlOutputImpalaSchema(const std::string& table_name,
+void HtmlOutputImpalaSchema(const std::string& keyspace_name,
+                            const std::string& table_name,
                             const Schema& schema,
                             const string& master_addresses,
                             std::stringstream* output) {
   *output << "<code><pre>\n";
 
   // Escape table and column names with ` to avoid conflicts with Impala reserved words.
-  *output << "CREATE EXTERNAL TABLE " << EscapeForHtmlToString("`" + table_name + "`")
+  *output << "CREATE EXTERNAL TABLE "
+          << EscapeForHtmlToString("`" + TableLongName(keyspace_name, table_name) + "`")
           << " (\n";
 
   vector<string> key_columns;
@@ -123,6 +125,7 @@ void HtmlOutputImpalaSchema(const std::string& table_name,
   *output << ")\n";
 
   *output << "TBLPROPERTIES(\n";
+  *output << "  'yb.keyspace_name' = '" << keyspace_name << "',\n";
   *output << "  'yb.table_name' = '" << table_name << "',\n";
   *output << "  'yb.master_addresses' = '" << master_addresses << "',\n";
   *output << "  'yb.key_columns' = '" << JoinElements(key_columns, ", ") << "'\n";

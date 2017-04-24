@@ -31,12 +31,19 @@ class MonitoredTask;
 
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output);
-void HtmlOutputImpalaSchema(const std::string& table_name,
+void HtmlOutputImpalaSchema(const std::string& keyspace_name,
+                            const std::string& table_name,
                             const Schema& schema,
                             const std::string& master_address,
                             std::stringstream* output);
 void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask> >& tasks,
                      std::stringstream* output);
+
+inline std::string TableLongName(const std::string& keyspace_name,
+                                 const std::string& table_name) {
+  return keyspace_name + (keyspace_name.empty() ? "" : ".") + table_name;
+}
+
 } // namespace yb
 
 #endif // YB_SERVER_WEBUI_UTIL_H

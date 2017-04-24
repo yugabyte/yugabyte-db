@@ -20,8 +20,6 @@
 #include <algorithm>
 #include <functional>
 #include <map>
-#include <string>
-#include <vector>
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
@@ -44,6 +42,7 @@ namespace yb {
 
 using consensus::RaftPeerPB;
 using std::vector;
+using std::map;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
@@ -133,23 +132,27 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               stringstream* output) {
   *output << "<h1>Tables</h1>\n";
 
-  std::vector<scoped_refptr<TableInfo> > tables;
+  vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables);
 
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Table Name</th><th>Table Id</th><th>State</th></tr>\n";
-  typedef std::map<string, string> StringMap;
+  typedef map<string, string> StringMap;
   StringMap ordered_tables;
   for (const scoped_refptr<TableInfo>& table : tables) {
     TableMetadataLock l(table.get(), TableMetadataLock::READ);
     if (!l.data().is_running()) {
       continue;
     }
+
+    const TableName long_table_name = TableLongName(
+        master_->catalog_manager()->GetNamespaceName(table->namespace_id()), l.data().name());
+
     string state = SysTablesEntryPB_State_Name(l.data().pb.state());
     Capitalize(&state);
-    ordered_tables[l.data().name()] = Substitute(
+    ordered_tables[long_table_name] = Substitute(
         "<tr><th>$0</th><td><a href=\"/table?id=$1\">$1</a></td><td>$2 $3</td></tr>\n",
-        EscapeForHtmlToString(l.data().name()),
+        EscapeForHtmlToString(long_table_name),
         EscapeForHtmlToString(table->id()),
         state,
         EscapeForHtmlToString(l.data().pb.state_msg()));
@@ -193,12 +196,14 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   Schema schema;
   PartitionSchema partition_schema;
-  string table_name;
+  NamespaceName keyspace_name;
+  TableName table_name;
   vector<scoped_refptr<TabletInfo> > tablets;
   {
     TableMetadataLock l(table.get(), TableMetadataLock::READ);
+    keyspace_name = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     table_name = l.data().name();
-    *output << "<h1>Table: " << EscapeForHtmlToString(table_name)
+    *output << "<h1>Table: " << EscapeForHtmlToString(TableLongName(keyspace_name, table_name))
             << " (" << EscapeForHtmlToString(table_id) << ")</h1>\n";
 
     *output << "<table class='table table-striped'>\n";
@@ -262,7 +267,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
     all_addresses.push_back(hp.ToString());
   }
   master_addresses = JoinElements(all_addresses, ",");
-  HtmlOutputImpalaSchema(table_name, schema, master_addresses, output);
+  HtmlOutputImpalaSchema(keyspace_name, table_name, schema, master_addresses, output);
 
   HtmlOutputTasks(table->GetTasks(), output);
 }
@@ -322,13 +327,39 @@ class JsonDumperBase {
  public:
   explicit JsonDumperBase(JsonWriter* jw) : jw_(jw) {}
 
+  virtual ~JsonDumperBase() {}
+
+  virtual std::string name() const = 0;
+
  protected:
   JsonWriter* jw_;
+};
+
+class JsonKeyspaceDumper : public NamespaceVisitor, public JsonDumperBase {
+ public:
+  explicit JsonKeyspaceDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
+
+  virtual std::string name() const override { return "keyspaces"; }
+
+  virtual Status Visit(const std::string& keyspace_id,
+                       const SysNamespaceEntryPB& metadata) override {
+    jw_->StartObject();
+    jw_->String("keyspace_id");
+    jw_->String(keyspace_id);
+
+    jw_->String("keyspace_name");
+    jw_->String(metadata.name());
+
+    jw_->EndObject();
+    return Status::OK();
+  }
 };
 
 class JsonTableDumper : public TableVisitor, public JsonDumperBase {
  public:
   explicit JsonTableDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
+
+  virtual std::string name() const override { return "tables"; }
 
   virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
     if (metadata.state() != SysTablesEntryPB::RUNNING) {
@@ -338,6 +369,9 @@ class JsonTableDumper : public TableVisitor, public JsonDumperBase {
     jw_->StartObject();
     jw_->String("table_id");
     jw_->String(table_id);
+
+    jw_->String("keyspace_id");
+    jw_->String(metadata.namespace_id());
 
     jw_->String("table_name");
     jw_->String(metadata.name());
@@ -354,7 +388,8 @@ class JsonTabletDumper : public TabletVisitor, public JsonDumperBase {
  public:
   explicit JsonTabletDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
- protected:
+  virtual std::string name() const override { return "tablets"; }
+
   virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
     const std::string& table_id = metadata.table_id();
     if (metadata.state() != SysTabletsEntryPB::RUNNING) {
@@ -403,43 +438,40 @@ class JsonTabletDumper : public TabletVisitor, public JsonDumperBase {
   }
 };
 
-void JsonError(const Status& s, stringstream* out) {
-  out->str("");
-  JsonWriter jw(out, JsonWriter::COMPACT);
-  jw.StartObject();
-  jw.String("error");
-  jw.String(s.ToString());
-  jw.EndObject();
+template <class Dumper>
+Status JsonDumpCollection(JsonWriter* jw, Master* master, stringstream* output) {
+  unique_ptr<Dumper> json_dumper(new Dumper(jw));
+  jw->String(json_dumper->name());
+  jw->StartArray();
+  const Status s = master->catalog_manager()->sys_catalog()->Visit(json_dumper.get());
+  if (s.ok()) {
+    // End the array only if there is no error.
+    jw->EndArray();
+  } else {
+    // Print just an error message.
+    output->str("");
+    JsonWriter jw_err(output, JsonWriter::COMPACT);
+    jw_err.StartObject();
+    jw_err.String("error");
+    jw_err.String(s.ToString());
+    jw_err.EndObject();
+  }
+  return s;
 }
+
 } // anonymous namespace
 
 void MasterPathHandlers::HandleDumpEntities(const Webserver::WebRequest& req,
                                             stringstream* output) {
   JsonWriter jw(output, JsonWriter::COMPACT);
-
   jw.StartObject();
 
-  jw.String("tables");
-  jw.StartArray();
-  unique_ptr<JsonTableDumper> json_table_dumper(new JsonTableDumper(&jw));
-  Status s = master_->catalog_manager()->sys_catalog()->Visit(json_table_dumper.get());
-  if (!s.ok()) {
-    JsonError(s, output);
-    return;
+  if (JsonDumpCollection<JsonKeyspaceDumper>(&jw, master_, output).ok() &&
+      JsonDumpCollection<JsonTableDumper>(&jw, master_, output).ok() &&
+      JsonDumpCollection<JsonTabletDumper>(&jw, master_, output).ok()) {
+    // End the object only if there is no error.
+    jw.EndObject();
   }
-  jw.EndArray();
-
-  jw.String("tablets");
-  jw.StartArray();
-  unique_ptr<JsonTabletDumper> json_tablet_dumper(new JsonTabletDumper(&jw));
-  s = master_->catalog_manager()->sys_catalog()->Visit(json_tablet_dumper.get());
-  if (!s.ok()) {
-    JsonError(s, output);
-    return;
-  }
-  jw.EndArray();
-
-  jw.EndObject();
 }
 
 void MasterPathHandlers::HandleGetClusterConfig(

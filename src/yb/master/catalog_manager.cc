@@ -2382,6 +2382,12 @@ void CatalogManager::GetAllNamespaces(std::vector<scoped_refptr<NamespaceInfo> >
   }
 }
 
+NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
+  boost::shared_lock<LockType> l(lock_);
+  const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, id);
+  return ns == nullptr ? NamespaceName() : ns->name();
+}
+
 bool CatalogManager::TableNameExists(const NamespaceId& namespace_id,
                                      const TableName& table_name) const {
   boost::shared_lock<LockType> l(lock_);
