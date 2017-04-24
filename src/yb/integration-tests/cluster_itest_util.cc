@@ -138,6 +138,9 @@ Status GetLastOpIdForEachReplica(const string& tablet_id,
       ts->consensus_proxy->GetLastOpId(opid_req, &opid_resp, &controller),
       Substitute("Failed to fetch last op id from $0",
                  ts->instance_id.ShortDebugString()));
+    if (!opid_resp.has_opid()) {
+      LOG(WARNING) << "Received uninitialized op id from " << ts->instance_id.ShortDebugString();
+    }
     op_ids->push_back(opid_resp.opid());
   }
 

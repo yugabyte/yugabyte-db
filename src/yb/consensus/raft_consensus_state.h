@@ -329,6 +329,11 @@ class ReplicaState {
   // is nothing to do, or present in the pending transactions map).
   Status CheckOperationExist(const OpId& committed_index, IndexToRoundMap::iterator* end_iter);
 
+  // Apply pending operations beginning at iter up to committed_index.
+  // Updates last_committed_index_ to committed_index.
+  CHECKED_STATUS ApplyPendingOperations(IndexToRoundMap::iterator iter,
+                                        const OpId& committed_index);
+
   const ConsensusOptions options_;
 
   // The UUID of the local peer.

@@ -558,11 +558,10 @@ Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
   }
 
   if (!pending_txns_.empty() && committed_index.index() >= pending_txns_.begin()->first) {
-    return STATUS_SUBSTITUTE(
-        IllegalState,
-        "There is already pending operation $0, with index before new one: $1",
-        util::ToString(*pending_txns_.begin()),
-        util::ToString(committed_index));
+    auto status = ApplyPendingOperations(pending_txns_.begin(), committed_index);
+    if (!status.ok()) {
+      return status;
+    }
   }
 
   last_committed_index_ = committed_index;
@@ -596,7 +595,6 @@ Status ReplicaState::CheckOperationExist(const OpId& committed_index,
   return Status::OK();
 }
 
-
 Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
                                                    bool *committed_index_changed) {
   if (committed_index_changed) {
@@ -608,20 +606,40 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   // of order.
   if (last_committed_index_.index() >= committed_index.index()) {
     VLOG_WITH_PREFIX_UNLOCKED(1)
-      << "Already marked ops through " << last_committed_index_ << " as committed. "
-      << "Now trying to mark " << committed_index << " which would be a no-op.";
+        << "Already marked ops through " << last_committed_index_ << " as committed. "
+        << "Now trying to mark " << committed_index << " which would be a no-op.";
     return Status::OK();
   }
 
   if (pending_txns_.empty()) {
     last_committed_index_.CopyFrom(committed_index);
     VLOG_WITH_PREFIX_UNLOCKED(1) << "No transactions to mark as committed up to: "
-        << committed_index.ShortDebugString();
+                                 << committed_index.ShortDebugString();
     return Status::OK();
   }
 
   // Start at the operation after the last committed one.
   auto iter = pending_txns_.upper_bound(last_committed_index_.index());
+  CHECK(iter != pending_txns_.end());
+
+  auto status = ApplyPendingOperations(iter, committed_index);
+  if (!status.ok()) {
+    return status;
+  }
+
+  if (committed_index_changed) {
+    *committed_index_changed = true;
+  }
+
+  return Status::OK();
+}
+
+Status ReplicaState::ApplyPendingOperations(IndexToRoundMap::iterator iter,
+                                            const OpId& committed_index) {
+  VLOG_WITH_PREFIX_UNLOCKED(1) << "Last triggered apply was: "
+      <<  last_committed_index_.ShortDebugString()
+      << " Starting to apply from log index: " << (*iter).first;
+
   // Stop at the operation after the last one we must commit. This iterator by definition points to
   // the first entry greater than the committed index, so the entry preceding that must have the
   // OpId equal to commited_index.
@@ -630,11 +648,6 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   if (!status.ok()) {
     return status;
   }
-  CHECK(iter != pending_txns_.end());
-
-  VLOG_WITH_PREFIX_UNLOCKED(1) << "Last triggered apply was: "
-      <<  last_committed_index_.ShortDebugString()
-      << " Starting to apply from log index: " << (*iter).first;
 
   OpId prev_id = last_committed_index_;
 
@@ -693,9 +706,7 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   }
 
   last_committed_index_.CopyFrom(committed_index);
-  if (committed_index_changed) {
-    *committed_index_changed = true;
-  }
+
   return Status::OK();
 }
 
