@@ -906,10 +906,8 @@ bool ClusterLoadBalancer::HandleAddReplicas(
 
   // Finally, handle normal load balancing.
   if (!GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts)) {
-    VLOG(1) << "Cannot find any more tablets to move, under current constraints!";
-    if (VLOG_IS_ON(1)) {
-      DumpSortedLoad();
-    }
+    LOG(INFO) << "Cannot find any more tablets to move, under current constraints.";
+    DumpSortedLoad();
     return false;
   }
 

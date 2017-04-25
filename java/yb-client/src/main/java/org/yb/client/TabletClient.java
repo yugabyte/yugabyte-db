@@ -493,7 +493,8 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     MasterErrorException ex = new MasterErrorException(uuid, error);
     if (error.getCode() == Master.MasterErrorPB.Code.NOT_THE_LEADER) {
       ybClient.handleNotLeader(rpc, ex, this);
-    } else if (error.getCode() == Master.MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED) {
+    } else if (error.getCode() == Master.MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED ||
+               error.getCode() == Master.MasterErrorPB.Code.CAN_RETRY_LOAD_BALANCE_CHECK) {
       ybClient.handleRetryableError(rpc, ex);
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE &&
         (!(rpc instanceof GetMasterRegistrationRequest))) {
