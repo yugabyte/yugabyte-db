@@ -10,18 +10,38 @@ import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
   INITIALIZE_PROVIDER, INITIALIZE_PROVIDER_SUCCESS, INITIALIZE_PROVIDER_FAILURE,
   DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE, RESET_PROVIDER_BOOTSTRAP,
   LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_SUCCESS, LIST_ACCESS_KEYS_FAILURE,
-  CREATE_ONPREM_PROVIDER_RESPONSE, GET_PROVIDER_LIST_RESPONSE
+  CREATE_ONPREM_PROVIDER_RESPONSE, GET_PROVIDER_LIST_RESPONSE, GET_EBS_TYPE_LIST,
+  GET_EBS_TYPE_LIST_RESPONSE
 } from '../actions/cloud';
 
 import { setSuccessState, setFailureState, setLoadingState }  from './common';
 import _ from 'lodash';
 
-const INITIAL_STATE = {regions: [], providers: [], instanceTypes: [], loading: {regions: false, providers: false, instanceTypes: false,
-  supportedRegions: false}, selectedProvider: null, error: null, accessKeys: {}, supportedRegionList: [], bootstrap: {}, status : 'init',
-  createOnPremSucceeded: false, createOnPremFailed: false};
+const INITIAL_STATE = {
+  regions: [],
+  providers: [],
+  instanceTypes: [],
+  ebsTypes: [],
+  loading: {
+    regions: false,
+    providers: false,
+    instanceTypes: false,
+    ebsTypes: true,
+    supportedRegions: false
+  },
+  selectedProvider: null,
+  error: null,
+  accessKeys: {},
+  supportedRegionList: [],
+  bootstrap: {},
+  status : 'init',
+  createOnPremSucceeded: false,
+  createOnPremFailed: false
+};
 
 export default function(state = INITIAL_STATE, action) {
   let error;
+  let success;
   switch(action.type) {
     case GET_PROVIDER_LIST:
       return {...state, providers: [], status: 'storage', error: null, loading: _.assign(state.loading, {providers: true})};
@@ -53,7 +73,7 @@ export default function(state = INITIAL_STATE, action) {
       error = action.payload.data || {message: action.payload.message};//2nd one is network or server down errors
       return { ...state, regions: null, status: 'region_fetch_failure', error: error, loading: _.assign(state.loading, {regions: false})};
     case GET_INSTANCE_TYPE_LIST:
-      return {...state, instanceTypes: [], status: 'storge', error: null, loading: _.assign(state.loading, {instanceTypes: true})};
+      return {...state, instanceTypes: [], status: 'storage', error: null, loading: _.assign(state.loading, {instanceTypes: true})};
     case GET_INSTANCE_TYPE_LIST_SUCCESS:
       return {...state, instanceTypes: _.sortBy(action.payload.data, "instanceTypeCode"),
         status: 'region_fetch_success', error: null, loading: _.assign(state.loading, {instanceTypes: false})};
@@ -76,7 +96,7 @@ export default function(state = INITIAL_STATE, action) {
     case CREATE_PROVIDER_FAILURE:
       return { ...state, bootstrap: {type: 'provider', error: action.payload.data.error, loading: false}};
     case CREATE_ONPREM_PROVIDER_RESPONSE:
-      let success = action.payload.status === 200;
+      success = action.payload.status === 200;
       return {...state, createOnPremSucceeded: success, createOnPremFailed: !success };
     case CREATE_REGION:
       return { ...state, bootstrap: {type: 'region', response: null, loading: true}};
@@ -110,6 +130,12 @@ export default function(state = INITIAL_STATE, action) {
       return setSuccessState(state, "accessKeys", action.payload.data);
     case LIST_ACCESS_KEYS_FAILURE:
       return setFailureState(state, "accessKeys", action.payload.data.error);
+    case GET_EBS_TYPE_LIST:
+      return {...state, ebsTypes: [], status: 'storage', error: null, loading: _.assign(state.loading, {ebsTypes: true})};
+    case GET_EBS_TYPE_LIST_RESPONSE:
+      if (action.payload.status === 200)
+        return { ...state, ebsTypes: action.payload.data, loading: _.assign(state.loading, {ebsTypes: false})};
+      return { ...state, ebsTypes: [], error: error, loading: _.assign(state.loading, {ebsTypes: false})};
     default:
       return state;
   }

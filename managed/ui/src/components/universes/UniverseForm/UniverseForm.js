@@ -4,7 +4,8 @@ import { Field, change } from 'redux-form';
 import _ from 'lodash';
 import { isDefinedNotNull, isValidArray, isValidObject, areIntentsEqual } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
-  YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel } from 'components/common/forms/fields';
+  YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
+} from 'components/common/forms/fields';
 
 import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
@@ -22,6 +23,7 @@ const initialState = {
   deviceInfo: {},
   placementInfo: {},
   ybSoftwareVersion: '',
+  ebsType: 'GP2',
   accessKeyCode: 'yugabyte-default'
 };
 
@@ -44,6 +46,7 @@ export default class UniverseForm extends Component {
     this.numNodesChangedViaAzList = this.numNodesChangedViaAzList.bind(this);
     this.numNodesClicked = this.numNodesClicked.bind(this);
     this.replicationFactorChanged = this.replicationFactorChanged.bind(this);
+    this.ebsTypeChanged = this.ebsTypeChanged.bind(this);
     this.volumeSizeChanged = this.volumeSizeChanged.bind(this);
     this.numVolumesChanged = this.numVolumesChanged.bind(this);
     this.diskIopsChanged = this.diskIopsChanged.bind(this);
@@ -122,9 +125,10 @@ export default class UniverseForm extends Component {
     }
     if (this.props.type === "Edit") {
       const {universe: {currentUniverse}, universe: {currentUniverse: {universeDetails: {userIntent}}}} = this.props;
-      var providerUUID = currentUniverse.provider && currentUniverse.provider.uuid;
-      var isMultiAZ = userIntent.isMultiAZ;
+      let providerUUID = currentUniverse.provider && currentUniverse.provider.uuid;
+      let isMultiAZ = userIntent.isMultiAZ;
       if (userIntent && providerUUID) {
+        let ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
         this.setState({
           providerSelected: providerUUID,
           azCheckState: isMultiAZ,
@@ -132,7 +136,10 @@ export default class UniverseForm extends Component {
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
-          accessKeyCode: userIntent.accessKeyCode
+          accessKeyCode: userIntent.accessKeyCode,
+          deviceInfo: userIntent.deviceInfo,
+          ebsType: ebsType,
+          volumeType: (ebsType === null) ? "SSD" : "EBS"
         });
       }
       this.props.getRegionListItems(providerUUID, isMultiAZ);
@@ -143,7 +150,7 @@ export default class UniverseForm extends Component {
   }
 
   providerChanged(value) {
-    var providerUUID = value;
+    let providerUUID = value;
     if (!this.props.universe.currentUniverse) {
       this.props.resetConfig();
       this.props.dispatch(change("UniverseForm", "regionList", []));
@@ -168,7 +175,8 @@ export default class UniverseForm extends Component {
       volumeSize: volumeDetail.volumeSizeGB,
       numVolumes: volumesList.length,
       mountPoints: null,
-      diskIops: 1000
+      ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
+      diskIops: null
     };
     this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
   }
@@ -219,25 +227,39 @@ export default class UniverseForm extends Component {
     }
   }
 
+  ebsTypeChanged(event) {
+    let currentDeviceInfo = this.state.deviceInfo;
+    currentDeviceInfo.ebsType = event.target.value;
+    if (currentDeviceInfo.ebsType === "IO1" && currentDeviceInfo.diskIops == null) {
+      currentDeviceInfo.diskIops = 1000;
+    } else {
+      currentDeviceInfo.diskIops = null;
+    }
+    this.setState({deviceInfo: currentDeviceInfo, ebsType: event.target.value});
+    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
+  }
+
   numVolumesChanged(val) {
-    var currentDeviceInfo = this.state.deviceInfo;
+    let currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.numVolumes = val;
     this.setState({deviceInfo: currentDeviceInfo});
     this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   volumeSizeChanged(val) {
-    var currentDeviceInfo = this.state.deviceInfo;
+    let currentDeviceInfo = this.state.deviceInfo;
     currentDeviceInfo.volumeSize = val;
     this.setState({deviceInfo: currentDeviceInfo});
     this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
   }
 
   diskIopsChanged(val) {
-    var currentDeviceInfo = this.state.deviceInfo;
-    currentDeviceInfo.diskIops = val;
-    this.setState({deviceInfo: currentDeviceInfo});
-    this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
+    if (this.state.deviceInfo.ebsType === "IO1") {
+      let currentDeviceInfo = this.state.deviceInfo;
+      currentDeviceInfo.diskIops = val;
+      this.setState({deviceInfo: currentDeviceInfo});
+      this.configureUniverseNodeList("deviceInfo", currentDeviceInfo);
+    }
   }
 
   componentWillReceiveProps(nextProps) {
@@ -256,11 +278,18 @@ export default class UniverseForm extends Component {
           volumeSize: volumeDetail.volumeSizeGB,
           numVolumes: volumesList.length,
           mountPoints: null,
-          diskIops: 1000,
+          ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
+          diskIops: null,
         };
         this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
       }
     }
+
+    // Set default ebsType once API call has completed
+    if (isValidArray(nextProps.cloud.ebsTypes) && !isValidArray(this.props.cloud.ebsTypes)) {
+      this.setState({"ebsType": "GP2"});
+    }
+
     // Set Default Software Package in case of Create
     if (nextProps.softwareVersions !== this.props.softwareVersions
         && !isValidObject(this.props.universe.currentUniverse)
@@ -309,6 +338,10 @@ export default class UniverseForm extends Component {
     }
     universeProviderList.unshift(<option key="" value=""></option>);
 
+    var ebsTypesList = cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
+      return <option key={ebsType} value={ebsType}>{ebsType}</option>
+    });
+
     var universeRegionList = cloud.regions && cloud.regions.map(function (regionItem, idx) {
       return {value: regionItem.uuid, label: regionItem.name};
     });
@@ -316,10 +349,10 @@ export default class UniverseForm extends Component {
     var universeInstanceTypeList = <option/>;
     if (currentProviderCode === "aws") {
       var optGroups = this.props.cloud.instanceTypes.reduce(function(groups, it) {
-          var prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
-          groups[prefix] ? groups[prefix].push(it.instanceTypeCode): groups[prefix] = [it.instanceTypeCode];
-          return groups;}
-        , {});
+        var prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
+        groups[prefix] ? groups[prefix].push(it.instanceTypeCode): groups[prefix] = [it.instanceTypeCode];
+        return groups;
+      }, {});
       if (isValidArray(Object.keys(optGroups))) {
         universeInstanceTypeList = Object.keys(optGroups).map(function(key, idx){
           return(
@@ -378,7 +411,7 @@ export default class UniverseForm extends Component {
       placementStatus = <AZPlacementInfo placementInfo={self.props.universe.currentPlacementStatus}/>
     }
 
-
+    var ebsTypeSelector = <span/>;
     var deviceDetail = null;
     function volumeTypeFormat(num) {
       return num + ' GB';
@@ -392,28 +425,42 @@ export default class UniverseForm extends Component {
 
     if (isValidArray(Object.keys(self.state.deviceInfo))) {
       if (self.state.volumeType === 'EBS') {
-        deviceDetail = <span className="volume-info">
-          <span className="volume-info-field" style={{width: 60}}>
-            <Field name="volumeCount" component={YBControlledNumericInput}
-                   label="Number of Volumes" val={self.state.deviceInfo.numVolumes} onInputChanged={self.numVolumesChanged}/>
-          </span>
-          &times;
-          <span className="volume-info-field" style={{width: 100}}>
-            <Field name="volumeSize" component={YBControlledNumericInput} label="Volume Size" val={self.state.deviceInfo.volumeSize}
-                   valueFormat={volumeTypeFormat} onInputChanged={self.volumeSizeChanged}/>
-          </span>
-          <label className="form-item-label">Provisioned IOPS</label>
-          <span className="volume-info-field" style={{width: 80}}>
-            <Field name="diskIops" component={YBControlledNumericInput} label="Provisioned IOPS"
-                   val={self.state.deviceInfo.diskIops} onInputChanged={self.diskIopsChanged}/>
-          </span>
-        </span>;
+        let iopsField = <span/>;
+        if (self.state.deviceInfo.ebsType === 'IO1') {
+          iopsField =
+            <span>
+              <label className="form-item-label">Provisioned IOPS</label>
+              <span className="volume-info-field volume-info-iops">
+                <Field name="diskIops" component={YBControlledNumericInput} label="Provisioned IOPS"
+                       val={self.state.deviceInfo.diskIops} onInputChanged={self.diskIopsChanged}/>
+              </span>
+            </span>;
+        }
+        deviceDetail =
+          <span className="volume-info">
+            <span className="volume-info-field volume-info-count">
+              <Field name="volumeCount" component={YBControlledNumericInput}
+                     label="Number of Volumes" val={self.state.deviceInfo.numVolumes} onInputChanged={self.numVolumesChanged}/>
+            </span>
+            &times;
+            <span className="volume-info-field volume-info-size">
+              <Field name="volumeSize" component={YBControlledNumericInput} label="Volume Size" val={self.state.deviceInfo.volumeSize}
+                     valueFormat={volumeTypeFormat} onInputChanged={self.volumeSizeChanged}/>
+            </span>
+            {iopsField}
+          </span>;
+        ebsTypeSelector =
+          <span>
+            <Field name="ebsType" component={YBControlledSelectWithLabel} options={ebsTypesList}
+                   label="EBS Type" selectVal={self.state.ebsType}
+                   onInputChanged={self.ebsTypeChanged}/>
+          </span>;
       } else if (self.state.volumeType === 'SSD') {
-        deviceDetail = <span className="volume-info">
-          {self.state.deviceInfo.numVolumes} &times;&nbsp;
-          {volumeTypeFormat(self.state.deviceInfo.volumeSize)} {self.state.volumeType}
-          &nbsp;({self.state.deviceInfo.diskIops} Provisioned IOPS)
-        </span>;
+        deviceDetail =
+          <span className="volume-info">
+            {self.state.deviceInfo.numVolumes} &times;&nbsp;
+            {volumeTypeFormat(self.state.deviceInfo.volumeSize)} {self.state.volumeType}
+          </span>;
       }
     }
 
@@ -464,6 +511,9 @@ export default class UniverseForm extends Component {
                   <label className="form-item-label">Volume Info</label>
                   {deviceDetail}
                 </div>
+              </div>
+              <div className="form-right-aligned-labels">
+                {ebsTypeSelector}
               </div>
             </Col>
           }

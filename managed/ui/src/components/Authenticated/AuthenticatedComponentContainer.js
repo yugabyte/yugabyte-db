@@ -4,19 +4,38 @@ import { connect } from 'react-redux';
 import AuthenticatedComponent from './AuthenticatedComponent';
 import { fetchHostInfo, fetchHostInfoSuccess,
   fetchHostInfoFailure } from '../../actions/customers';
-import { fetchUniverseList, fetchUniverseListSuccess,
-  fetchUniverseListFailure, resetUniverseList
-} from '../../actions/universe';
-import { getRegionList, getRegionListSuccess,
-  getRegionListFailure, getProviderList,
+import { fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, resetUniverseList }
+  from '../../actions/universe';
+import { getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
   getProviderListSuccess, getProviderListFailure, getSupportedRegionData,
   getSupportedRegionDataFailure, getSupportedRegionDataSuccess, listAccessKeys,
-  listAccessKeysSuccess, listAccessKeysFailure}
+  listAccessKeysSuccess, listAccessKeysFailure, getEBSTypeList, getEBSTypeListResponse }
   from '../../actions/cloud';
-import {fetchSoftwareVersions, fetchSoftwareVersionsSuccess, fetchSoftwareVersionsFailure} from 'actions/customers';
+import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess, fetchSoftwareVersionsFailure }
+  from 'actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
   return {
+    fetchHostInfo: () => {
+      dispatch(fetchHostInfo()).then((response)=>{
+        if (response.payload.status !== 200) {
+          dispatch(fetchHostInfoFailure(response.payload));
+        } else {
+          dispatch(fetchHostInfoSuccess(response.payload));
+        }
+      })
+    },
+
+    fetchSoftwareVersions: () => {
+      dispatch(fetchSoftwareVersions()).then((response)=>{
+        if (response.payload.status !== 200) {
+          dispatch(fetchSoftwareVersionsFailure(response.payload));
+        } else {
+          dispatch(fetchSoftwareVersionsSuccess(response.payload));
+        }
+      })
+    },
+
     fetchUniverseList: () => {
       dispatch(fetchUniverseList())
         .then((response) => {
@@ -26,6 +45,12 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(fetchUniverseListSuccess(response.payload));
           }
         });
+    },
+
+    getEBSListItems: () => {
+      dispatch(getEBSTypeList()).then((response) => {
+        dispatch(getEBSTypeListResponse(response.payload));
+      });
     },
 
     getProviderListItems: () => {
@@ -64,36 +89,19 @@ const mapDispatchToProps = (dispatch) => {
         }
       })
     },
+
     resetUniverseList: () => {
       dispatch(resetUniverseList());
-    },
-    fetchSoftwareVersions: () => {
-      dispatch(fetchSoftwareVersions()).then((response)=>{
-        if (response.payload.status !== 200) {
-          dispatch(fetchSoftwareVersionsFailure(response.payload));
-        } else {
-          dispatch(fetchSoftwareVersionsSuccess(response.payload));
-        }
-      })
-    },
-    fetchHostInfo: () => {
-      dispatch(fetchHostInfo()).then((response)=>{
-        if (response.payload.status !== 200) {
-          dispatch(fetchHostInfoFailure(response.payload));
-        } else {
-          dispatch(fetchHostInfoSuccess(response.payload));
-        }
-      })
     }
   }
-}
+};
 
 const mapStateToProps = (state) => {
   return {
+    cloud: state.cloud,
     customer: state.customer,
-    universe: state.universe,
-    cloud: state.cloud
+    universe: state.universe
   };
-}
+};
 
 export default connect(mapStateToProps, mapDispatchToProps)(AuthenticatedComponent);
