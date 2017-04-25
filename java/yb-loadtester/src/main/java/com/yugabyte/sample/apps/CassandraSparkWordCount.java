@@ -2,7 +2,13 @@
 
 package com.yugabyte.sample.apps;
 
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.List;
 
 import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.Session;
@@ -42,11 +48,23 @@ public class CassandraSparkWordCount extends AppBase {
     CommandLine commandLine = configuration.getCommandLine();
     if (commandLine.hasOption("wordcount_input_file")) {
       wordcount_input_file = commandLine.getOptionValue("wordcount_input_file");
-      LOG.info("wordcount_input_file: " + wordcount_input_file);
     } else {
-      LOG.error("wordcount_input_file not provided.");
-      System.exit(0);
+      // Create a sample file.
+      try {
+        List<String> lines = Arrays.asList("one two three four five",
+                                           "two three four five",
+                                           "three four five",
+                                           "four five",
+                                           "five");
+        wordcount_input_file = "/tmp/wordcount_input_file.txt";
+        Path file = Paths.get(wordcount_input_file);
+        Files.write(file, lines, Charset.forName("UTF-8"));
+      } catch (IOException e) {
+        LOG.fatal("Failed to create input file: " + wordcount_input_file, e);
+        System.exit(1);
+      }
     }
+    LOG.info("wordcount_input_file: " + wordcount_input_file);
   }
 
   @Override
@@ -114,7 +132,7 @@ public class CassandraSparkWordCount extends AppBase {
     sb.append("--num_threads_write " + appConfig.numWriterThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("--spark_input_file <path to input file>");
+    sb.append("--wordcount_input_file <path to input file>");
     sb.append(optsSuffix);
     return sb.toString();
   }
