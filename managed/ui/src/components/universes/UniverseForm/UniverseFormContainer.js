@@ -43,25 +43,23 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(closeDialog());
           dispatch(createUniverseSuccess(response.payload));
-          dispatch(fetchCustomerTasks())
-            .then((response) => {
-              if (!response.error) {
-                dispatch(fetchCustomerTasksSuccess(response.payload));
-              } else {
-                dispatch(fetchCustomerTasksFailure(response.payload));
-              }
-            });
-          dispatch(fetchUniverseList())
-            .then((response) => {
-              if (response.payload.status !== 200) {
-                dispatch(fetchUniverseListFailure(response.payload));
-                //Add Error message state to modal
-              } else {
-                dispatch(fetchUniverseListSuccess(response.payload));
-              }
-            });
-          }
-        });
+          dispatch(fetchCustomerTasks()).then((response) => {
+            if (!response.error) {
+              dispatch(fetchCustomerTasksSuccess(response.payload));
+            } else {
+              dispatch(fetchCustomerTasksFailure(response.payload));
+            }
+          });
+          dispatch(fetchUniverseList()).then((response) => {
+            if (response.payload.status !== 200) {
+              dispatch(fetchUniverseListFailure(response.payload));
+              //Add Error message state to modal
+            } else {
+              dispatch(fetchUniverseListSuccess(response.payload));
+            }
+          });
+        }
+      });
     },
 
     submitEditUniverse: (values, universeUUID) => {
@@ -71,55 +69,52 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(closeDialog());
           dispatch(editUniverseSuccess(response.payload));
-          dispatch(fetchCustomerTasks())
-            .then((response) => {
-              if (!response.error) {
-                dispatch(fetchCustomerTasksSuccess(response.payload));
-              } else {
-                dispatch(fetchCustomerTasksFailure(response.payload));
-              }
-            });
-          dispatch(fetchUniverseInfo(universeUUID))
-            .then((response) => {
-              if (!response.error) {
-                dispatch(fetchUniverseInfoSuccess(response.payload));
-                dispatch(fetchUniverseList())
-                  .then((response) => {
-                    if (response.payload.status !== 200) {
-                      dispatch(fetchUniverseListFailure(response.payload));
-                    } else {
-                      dispatch(fetchUniverseListSuccess(response.payload));
-                    }
-                  });
-              } else {
-                dispatch(fetchUniverseInfoFailure(response.payload));
-              }
-            });
+          dispatch(fetchCustomerTasks()).then((response) => {
+            if (!response.error) {
+              dispatch(fetchCustomerTasksSuccess(response.payload));
+            } else {
+              dispatch(fetchCustomerTasksFailure(response.payload));
+            }
+          });
+          dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+            if (!response.error) {
+              dispatch(fetchUniverseInfoSuccess(response.payload));
+              dispatch(fetchUniverseList())
+                .then((response) => {
+                  if (response.payload.status !== 200) {
+                    dispatch(fetchUniverseListFailure(response.payload));
+                  } else {
+                    dispatch(fetchUniverseListSuccess(response.payload));
+                  }
+                });
+            } else {
+              dispatch(fetchUniverseInfoFailure(response.payload));
+            }
+          });
         }
       })
     },
 
     getInstanceTypeListItems: (provider) => {
-      dispatch(getInstanceTypeList(provider))
-        .then((response) => {
-          if (response.payload.status !== 200) {
-            dispatch(getInstanceTypeListFailure(response.payload));
-          } else {
-            dispatch(getInstanceTypeListSuccess(response.payload));
-          }
-        });
+      dispatch(getInstanceTypeList(provider)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(getInstanceTypeListFailure(response.payload));
+        } else {
+          dispatch(getInstanceTypeListSuccess(response.payload));
+        }
+      });
     },
 
     getRegionListItems: (provider, isMultiAZ) => {
-      dispatch(getRegionList(provider, isMultiAZ))
-        .then((response) => {
-          if (response.payload.status !== 200) {
-            dispatch(getRegionListFailure(response.payload));
-          } else {
-            dispatch(getRegionListSuccess(response.payload));
-          }
-        });
+      dispatch(getRegionList(provider, isMultiAZ)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(getRegionListFailure(response.payload));
+        } else {
+          dispatch(getRegionListSuccess(response.payload));
+        }
+      });
     },
+
     setPlacementStatus: (currentStatus) => {
       dispatch(setPlacementStatus(currentStatus));
     },
@@ -127,6 +122,7 @@ const mapDispatchToProps = (dispatch) => {
     resetConfig: () => {
       dispatch(resetUniverseConfiguration());
     },
+
     getExistingUniverseConfiguration: (universeDetail) => {
       dispatch(configureUniverseTemplateSuccess({data: universeDetail}));
       dispatch(configureUniverseResources(universeDetail)).then((resourceData) => {
@@ -138,14 +134,14 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
   }
-}
+};
 
 const formFieldNames = ['formType', 'universeName', 'provider',  'providerType', 'regionList',
   'numNodes', 'isMultiAZ', 'instanceType', 'ybSoftwareVersion', 'azSelectorFields', 'accessKeyCode'];
 
 function mapStateToProps(state, ownProps) {
   const {universe: { currentUniverse }} = state;
-  var data = {
+  let data = {
     "universeName": "",
     "ybSoftwareVersion": "",
     "numNodes": 3,
@@ -155,7 +151,7 @@ function mapStateToProps(state, ownProps) {
     "accessKeyCode": "yugabyte-default"
   };
   if (isDefinedNotNull(currentUniverse)) {
-    var userIntent = currentUniverse.universeDetails && currentUniverse.universeDetails.userIntent;
+    let userIntent = currentUniverse.universeDetails && currentUniverse.universeDetails.userIntent;
     data.universeName = currentUniverse.name;
     data.formType = "edit";
     data.provider = currentUniverse.provider && currentUniverse.provider.uuid;
@@ -202,10 +198,10 @@ const asyncValidate = (values, dispatch ) => {
       }
     })
   })
-}
+};
 
 const validate = values => {
-  const errors = {}
+  const errors = {};
   if (!isDefinedNotNull(values.universeName)) {
     errors.universeName = 'Universe Name is Required'
   }
@@ -219,7 +215,7 @@ const validate = values => {
     errors.instanceType = 'Instance Type is Required'
   }
   return errors;
-}
+};
 
 var universeForm = reduxForm({
   form: 'UniverseForm',
@@ -227,6 +223,6 @@ var universeForm = reduxForm({
   asyncValidate,
   asyncBlurFields: ['universeName'],
   fields: formFieldNames
-})
+});
 
 export default connect(mapStateToProps, mapDispatchToProps)(universeForm(UniverseForm));

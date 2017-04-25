@@ -56,8 +56,11 @@ export const LIST_ACCESS_KEYS = 'LIST_ACCESS_KEYS';
 export const LIST_ACCESS_KEYS_SUCCESS = 'LIST_ACCESS_KEYS_SUCCESS';
 export const LIST_ACCESS_KEYS_FAILURE = 'LIST_ACCESS_KEYS_FAILURE';
 
+export const GET_EBS_TYPE_LIST = 'GET_EBS_TYPES';
+export const GET_EBS_TYPE_LIST_RESPONSE = 'GET_EBS_TYPES_RESPONSE';
+
 export function getProviderList() {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
   return {
     type: GET_PROVIDER_LIST,
@@ -329,5 +332,20 @@ export function listAccessKeysFailure(error) {
   return {
     type: LIST_ACCESS_KEYS_FAILURE,
     payload: error
+  }
+}
+
+export function getEBSTypeList() {
+  const request = axios.get(`${ROOT_URL}/metadata/ebs_types`);
+  return {
+    type: GET_EBS_TYPE_LIST,
+    payload: request
+  }
+}
+
+export function getEBSTypeListResponse(responsePayload) {
+  return {
+    type: GET_EBS_TYPE_LIST_RESPONSE,
+    payload: responsePayload
   }
 }

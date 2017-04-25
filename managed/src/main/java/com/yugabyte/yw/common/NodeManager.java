@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -123,10 +124,6 @@ public class NodeManager extends DevopsBase {
       args.add("--volume_size");
       args.add(Integer.toString(params.deviceInfo.volumeSize));
     }
-    if (params.deviceInfo.diskIops != null) {
-      args.add("--disk_iops");
-      args.add(Integer.toString(params.deviceInfo.diskIops));
-    }
     return args;
   }
 
@@ -224,6 +221,15 @@ public class NodeManager extends DevopsBase {
         commandArgs.addAll(getAccessKeySpecificCommand(taskParam));
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+          DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
+          if (deviceInfo.ebsType != null) {
+            commandArgs.add("--volume_type");
+            commandArgs.add(deviceInfo.ebsType.toString().toLowerCase());
+            if (deviceInfo.ebsType.equals(DeviceInfo.EBSType.IO1) && deviceInfo.diskIops != null) {
+              commandArgs.add("--disk_iops");
+              commandArgs.add(Integer.toString(deviceInfo.diskIops));
+            }
+          }
         }
         break;
       }

@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import java.util.List;
 import java.util.UUID;
 
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +13,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
 
 import play.data.Form;
@@ -136,5 +136,13 @@ public class InstanceTypeController extends AuthenticatedController {
       instanceType.instanceTypeDetails.setDefaultMountPaths();
     }
     return ApiResponse.success(instanceType);
+  }
+
+  /**
+   * Metadata endpoint for getting a list of all supported types of EBS volumes.
+   * @return a list of all supported types of EBS volumes.
+   */
+  public Result getEBSTypes() {
+    return ok(Json.toJson(DeviceInfo.EBSType.values()));
   }
 }
