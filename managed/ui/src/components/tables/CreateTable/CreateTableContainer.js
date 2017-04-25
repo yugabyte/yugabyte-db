@@ -7,7 +7,7 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
          fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure, toggleTableView }
         from '../../../actions/tables';
-import { fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure, resetUniverseTasks}
+import { fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure, openDialog, closeDialog }
         from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
@@ -77,6 +77,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     showListTables: () => {
       dispatch(toggleTableView("list"));
+    },
+    showCancelCreateModal: () => {
+      dispatch(openDialog("cancelCreate"));
+    },
+    hideModal: () => {
+      dispatch(closeDialog());
     }
   }
 };

@@ -4,10 +4,13 @@ import React, { Component, PropTypes } from 'react';
 import { YBModal, YBButton } from '../common/forms/fields';
 
 export default class YBConfirmModal extends Component {
+  constructor(props) {
+    super(props);
+    this.submitConfirmModal = this.submitConfirmModal.bind(this);
+  }
+
   static propTypes = {
     name: PropTypes.string.isRequired,
-    btnLabel: PropTypes.string.isRequired,
-    btnClass: PropTypes.string,
     title: PropTypes.string.isRequired,
     onConfirm: PropTypes.func.isRequired,
     confirmLabel: PropTypes.string,
@@ -19,35 +22,20 @@ export default class YBConfirmModal extends Component {
     cancelLabel: 'Cancel'
   };
 
-  constructor(props) {
-    super(props);
-    this.state = { showConfirmModal: false };
-    this.toggleConfirmModal = this.toggleConfirmModal.bind(this);
-    this.submitConfirmModal = this.submitConfirmModal.bind(this);
-
-  }
-
-  toggleConfirmModal() {
-    this.setState({showConfirmModal: !this.state.showConfirmModal});
-  }
-
   submitConfirmModal() {
-    const { onConfirm } = this.props;
+    const { onConfirm, hideConfirmModal } = this.props;
     if (onConfirm) {
       onConfirm();
     }
-    this.toggleConfirmModal();
+    hideConfirmModal();
   }
 
   render() {
-    const { name, title, disabled, btnLabel, btnClass, confirmLabel, cancelLabel } = this.props;
-
+    const { name, title, confirmLabel, cancelLabel } = this.props;
     return (
       <div className={name} key={name}>
-        <YBButton btnText={btnLabel} disabled={disabled}
-          btnClass={btnClass} onClick={this.toggleConfirmModal}/>
         <YBModal title={title}
-                 visible={this.state.showConfirmModal} onHide={this.toggleConfirmModal}
+                 visible={this.props.visibleModal === this.props.currentModal} onHide={this.props.hideConfirmModal}
                  showCancelButton={true} cancelLabel={cancelLabel}
                  submitLabel={confirmLabel} onFormSubmit={this.submitConfirmModal}>
           {this.props.children}
