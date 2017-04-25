@@ -26,6 +26,7 @@ import play.libs.Json;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.yugabyte.yw.commissioner.tasks.UpgradeUniverse.UpgradeTaskSubType.Download;
@@ -62,6 +63,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private class TestData {
     public Common.CloudType cloudType;
+    public DeviceInfo.EBSType ebsType;
     public Provider provider;
     public Region region;
     public AvailabilityZone zone;
@@ -70,9 +72,10 @@ public class NodeManagerTest extends FakeDBApplication {
 
     public static final String instanceTypeCode = "fake_instance_type";
 
-    public TestData(Customer customer, Common.CloudType cloud) {
+    public TestData(Provider p, Common.CloudType cloud, DeviceInfo.EBSType ebs) {
       cloudType = cloud;
-      provider = ModelFactory.newProvider(customer, cloud);
+      ebsType = ebs;
+      provider = p;
       region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
       zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
 
@@ -107,6 +110,18 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private List<TestData> testData;
 
+  public List<TestData> getTestData(Customer customer, Common.CloudType cloud) {
+    List<TestData> testDataList = new ArrayList<>();
+    Provider provider = ModelFactory.newProvider(customer, cloud);
+    if (cloud.equals(Common.CloudType.aws)) {
+      testDataList.add(new TestData(provider, cloud, DeviceInfo.EBSType.GP2));
+      testDataList.add(new TestData(provider, cloud, DeviceInfo.EBSType.IO1));
+    } else {
+      testDataList.add(new TestData(provider, cloud, null));
+    }
+    return testDataList;
+  }
+
   private Universe createUniverse() {
     UUID uuid = UUID.randomUUID();
     return Universe.create("Test universe " + uuid.toString(), uuid, 1L);
@@ -120,13 +135,16 @@ public class NodeManagerTest extends FakeDBApplication {
     params.universeUUID = universe.universeUUID;
   }
 
-  private void addValidDeviceInfo(NodeTaskParams params) {
+  private void addValidDeviceInfo(TestData testData, NodeTaskParams params) {
     params.deviceInfo = new DeviceInfo();
     params.deviceInfo.mountPoints = fakeMountPaths;
     params.deviceInfo.volumeSize = 200;
     params.deviceInfo.numVolumes = 2;
-    if (params.cloud.equals(Common.CloudType.aws)) {
-      params.deviceInfo.diskIops = 240;
+    if (testData.cloudType.equals(Common.CloudType.aws)) {
+      params.deviceInfo.ebsType = testData.ebsType;
+      if (testData.ebsType != null && testData.ebsType.equals(DeviceInfo.EBSType.IO1)) {
+        params.deviceInfo.diskIops = 240;
+      }
     }
   }
 
@@ -140,12 +158,20 @@ public class NodeManagerTest extends FakeDBApplication {
     return params;
   }
 
+  private AccessKey getOrCreate(UUID providerUUID, String keyCode, AccessKey.KeyInfo keyInfo) {
+    AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
+    if (accessKey == null) {
+      accessKey = AccessKey.create(providerUUID, keyCode, keyInfo);
+    }
+    return accessKey;
+  }
+
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
     testData = new ArrayList<TestData>();
-    testData.add(new TestData(customer, Common.CloudType.aws));
-    testData.add(new TestData(customer, Common.CloudType.onprem));
+    testData.addAll(getTestData(customer, Common.CloudType.aws));
+    testData.addAll(getTestData(customer, Common.CloudType.onprem));
     when(mockAppConfig.getString("yb.devops.home")).thenReturn("/my/devops");
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn("/yb/release.tar.gz");
   }
@@ -231,9 +257,13 @@ public class NodeManagerTest extends FakeDBApplication {
         expectedCommand.add("--volume_size");
         expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
       }
-      if (deviceInfo.diskIops != null) {
-        expectedCommand.add("--disk_iops");
-        expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+      if (type == NodeManager.NodeCommandType.Provision && deviceInfo.ebsType != null) {
+        expectedCommand.add("--volume_type");
+        expectedCommand.add(deviceInfo.ebsType.toString().toLowerCase());
+        if (deviceInfo.ebsType == DeviceInfo.EBSType.IO1 && deviceInfo.diskIops != null) {
+          expectedCommand.add("--disk_iops");
+          expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+        }
       }
     }
 
@@ -246,7 +276,7 @@ public class NodeManagerTest extends FakeDBApplication {
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(t, params, createUniverse());
-      addValidDeviceInfo(params);
+      addValidDeviceInfo(t, params);
       params.subnetId = t.zone.subnet;
 
       List<String> expectedCommand = t.baseCommand;
@@ -266,7 +296,7 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      AccessKey.create(t.provider.uuid, "demo-access", keyInfo);
+      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -276,10 +306,16 @@ public class NodeManagerTest extends FakeDBApplication {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater(userIntent)));
-      addValidDeviceInfo(params);
+      addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = (params.cloud.equals(Common.CloudType.aws)) ? 7 : 5;
+      int accessKeyIndexOffset = 5;
+      if (params.cloud.equals(Common.CloudType.aws)) {
+        accessKeyIndexOffset += 2;
+        if (params.deviceInfo.ebsType.equals(DeviceInfo.EBSType.IO1)) {
+          accessKeyIndexOffset += 2;
+        }
+      }
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
       List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
@@ -317,18 +353,21 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommand() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
-      addValidDeviceInfo(params);
+      addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
@@ -351,14 +390,16 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testConfigureNodeCommandWithAccessKey() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       // Create AccessKey
       AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
       keyInfo.privateKey = "/path/to/private.key";
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      AccessKey.create(t.provider.uuid, "demo-access", keyInfo);
+      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -368,27 +409,29 @@ public class NodeManagerTest extends FakeDBApplication {
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater(userIntent)));
-      addValidDeviceInfo(params);
+      addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
 
       // Set up expected command
-      int accessKeyIndexOffset = (params.cloud.equals(Common.CloudType.aws)) ? 7 : 5;
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
           "/path/to/private.key");
-      expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommand);
+      expectedCommand.addAll(expectedCommand.size() - 5, accessKeyCommand);
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
   @Test
   public void testConfigureNodeCommandInShellMode() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
@@ -398,7 +441,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
@@ -422,7 +466,9 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testSoftwareUpgradeWithDownloadNodeCommand() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
@@ -434,13 +480,16 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
   @Test
   public void testSoftwareUpgradeWithInstallNodeCommand() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
@@ -452,7 +501,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
@@ -517,7 +567,9 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testGFlagsUpgradeForMasterNodeCommand() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(t, params, Universe.saveDetails(createUniverse().universeUUID,
           ApiUtils.mockUniverseUpdater()));
@@ -532,7 +584,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
@@ -549,14 +602,17 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testDestroyNodeCommand() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Destroy, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
@@ -573,14 +629,17 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testListNodeCommand() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
@@ -597,7 +656,9 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testControlNodeCommand() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       buildValidParams(t, params, createUniverse());
       params.process = "master";
@@ -606,7 +667,8 @@ public class NodeManagerTest extends FakeDBApplication {
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Control, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 
@@ -629,16 +691,19 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testDockerNodeCommandWithDockerNetwork() {
+    Map<Common.CloudType, Integer> expectedInvocations = new HashMap<>();
     when(mockAppConfig.getString("yb.docker.network")).thenReturn(DOCKER_NETWORK);
 
     for (TestData t : testData) {
+      expectedInvocations.put(t.cloudType, expectedInvocations.getOrDefault(t.cloudType, 0) + 1);
       AnsibleUpdateNodeInfo.Params params = new AnsibleUpdateNodeInfo.Params();
       buildValidParams(t, params, createUniverse());
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.List, params));
       nodeManager.nodeCommand(NodeManager.NodeCommandType.List, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());
+      verify(shellProcessHandler, times(expectedInvocations.get(t.cloudType))).run(expectedCommand,
+          t.region.provider.getConfig());
     }
   }
 }

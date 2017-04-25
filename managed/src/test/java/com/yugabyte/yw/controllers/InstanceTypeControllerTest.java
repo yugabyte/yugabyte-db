@@ -165,8 +165,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
     volumeDetails.volumeType = InstanceType.VolumeType.EBS;
     volumeDetails.volumeSizeGB = 10;
-    volumeDetails.mountPath = "/tmp/path/";
     details.volumeDetailsList.add(volumeDetails);
+    details.setDefaultMountPaths();
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
@@ -184,7 +184,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertThat(machineDetailsNode, notNullValue());
     assertValue(machineDetailsNode, "volumeSizeGB", "10");
     assertValue(machineDetailsNode, "volumeType", "EBS");
-    assertValue(machineDetailsNode, "mountPath", "/tmp/path/");
+    assertValue(machineDetailsNode, "mountPath", "/mnt/d0");
   }
 
   @Test

@@ -17,50 +17,50 @@ import java.util.UUID;
 
 @Entity
 public class AccessKey extends Model {
-    public static class KeyInfo {
-        public String publicKey;
-        public String privateKey;
-        public String vaultPasswordFile;
-        public String vaultFile;
-    }
+  public static class KeyInfo {
+    public String publicKey;
+    public String privateKey;
+    public String vaultPasswordFile;
+    public String vaultFile;
+  }
 
-    @EmbeddedId
-    @Constraints.Required
-    public AccessKeyId idKey;
+  @EmbeddedId
+  @Constraints.Required
+  public AccessKeyId idKey;
 
-    @JsonBackReference
-    public String getKeyCode() { return this.idKey.keyCode; }
-    @JsonBackReference
-    public UUID getProviderUUID() { return this.idKey.providerUUID; }
+  @JsonBackReference
+  public String getKeyCode() { return this.idKey.keyCode; }
+  @JsonBackReference
+  public UUID getProviderUUID() { return this.idKey.providerUUID; }
 
-    @Constraints.Required
-    @Column(nullable = false)
-    @DbJson
-    public JsonNode keyInfo;
+  @Constraints.Required
+  @Column(nullable = false)
+  @DbJson
+  public JsonNode keyInfo;
 
-    public void setKeyInfo(KeyInfo info) { this.keyInfo = Json.toJson(info); }
-    public KeyInfo getKeyInfo() { return Json.fromJson(this.keyInfo, KeyInfo.class); }
+  public void setKeyInfo(KeyInfo info) { this.keyInfo = Json.toJson(info); }
+  public KeyInfo getKeyInfo() { return Json.fromJson(this.keyInfo, KeyInfo.class); }
 
-    public static AccessKey create(UUID providerUUID, String keyCode, KeyInfo keyInfo) {
-        AccessKey accessKey = new AccessKey();
-        accessKey.idKey = AccessKeyId.create(providerUUID, keyCode);
-        accessKey.setKeyInfo(keyInfo);
-        accessKey.save();
-        return accessKey;
-    }
+  public static AccessKey create(UUID providerUUID, String keyCode, KeyInfo keyInfo) {
+    AccessKey accessKey = new AccessKey();
+    accessKey.idKey = AccessKeyId.create(providerUUID, keyCode);
+    accessKey.setKeyInfo(keyInfo);
+    accessKey.save();
+    return accessKey;
+  }
 
-    private static final Find<AccessKeyId, AccessKey> find =
-            new Find<AccessKeyId, AccessKey>() {};
+  private static final Find<AccessKeyId, AccessKey> find =
+      new Find<AccessKeyId, AccessKey>() {};
 
-    public static AccessKey get(AccessKeyId accessKeyId) {
-        return find.byId(accessKeyId);
-    }
+  public static AccessKey get(AccessKeyId accessKeyId) {
+    return find.byId(accessKeyId);
+  }
 
-    public static AccessKey get(UUID providerUUID, String keyCode) {
-        return find.byId(AccessKeyId.create(providerUUID, keyCode));
-    }
+  public static AccessKey get(UUID providerUUID, String keyCode) {
+    return find.byId(AccessKeyId.create(providerUUID, keyCode));
+  }
 
-    public static List<AccessKey> getAll(UUID providerUUID) {
-        return find.where().eq("provider_uuid", providerUUID).findList();
-    }
+  public static List<AccessKey> getAll(UUID providerUUID) {
+    return find.where().eq("provider_uuid", providerUUID).findList();
+  }
 }

@@ -25,15 +25,15 @@ export default function(state = INITIAL_STATE, action) {
     case FETCH_TABLE_DETAIL_FAILURE:
       return {...state, currentTableDetail: {}, loading: false, error: action.payload.data.error};
     case RESET_TABLE_DETAIL:
-      return {...state, currentTableDetail: {}}
+      return {...state, currentTableDetail: {}};
     case FETCH_COLUMN_TYPES:
-      return {...state}
+      return {...state};
     case FETCH_COLUMN_TYPES_SUCCESS:
-      return {...state, columnDataTypes: action.payload.data}
+      return {...state, columnDataTypes: action.payload.data};
     case FETCH_COLUMN_TYPES_FAILURE:
-      return {...state}
+      return {...state};
     case TOGGLE_TABLE_VIEW:
-      return {...state, currentTableView: action.payload}
+      return {...state, currentTableView: action.payload};
     default:
       return state;
   }

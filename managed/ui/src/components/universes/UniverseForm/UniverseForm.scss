@@ -97,6 +97,18 @@
       &:first-child {
         margin-left: 0;
       }
+
+      &.volume-info-iops {
+        width: 80px;
+      }
+
+      &.volume-info-count {
+        width: 60px;
+      }
+
+      &.volume-info-size {
+        width: 100px;
+      }
     }
 
     .form-item-label {
