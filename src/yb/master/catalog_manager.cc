@@ -2240,11 +2240,13 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
 Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
+  LOG(INFO) << "Servicing GetTableSchema request for " << req->ShortDebugString();
+
   RETURN_NOT_OK(CheckOnline());
 
   scoped_refptr<TableInfo> table;
 
-  // 1. Lookup the table and verify if it exists
+  // Lookup the table and verify if it exists
   TRACE("Looking up table");
   RETURN_NOT_OK(FindTable(req->table(), &table));
   if (table == nullptr) {
@@ -2276,7 +2278,22 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   resp->set_table_type(table->metadata().state().pb.table_type());
   resp->mutable_identifier()->set_table_name(l.data().pb.name());
   resp->mutable_identifier()->set_table_id(table->id());
+  resp->mutable_identifier()->mutable_namespace_()->set_id(table->namespace_id());
 
+  // Get namespace name by id.
+  boost::shared_lock<LockType> l_map(lock_);
+  TRACE("Looking up namespace");
+  const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, table->namespace_id());
+
+  if (ns == nullptr) {
+    Status s = STATUS_SUBSTITUTE(NotFound,
+        "Could not find namespace by namespace id $0 for request $1.",
+        table->namespace_id(), req->DebugString());
+    SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+    return s;
+  }
+
+  resp->mutable_identifier()->mutable_namespace_()->set_name(ns->name());
   return Status::OK();
 }
 
