@@ -32,6 +32,7 @@ import com.yugabyte.sample.common.IOPSThread.IOType;
  *     |__ AppConfig.java            : Configuration for all the apps.
  *     |__ CassandraHelloWorld.java  : The simplest app that writes one employee record. Good
  *                                     starting point to understand how to write a Cassandra app.
+ *     |__ CassandraSparkWordCount.java: Simple Spark word count app.
  *     |__ CassandraKeyValue.java    : Simple key-value Cassandra app.
  *     |__ CassandraStockTicker.java : Sample stock-ticker app.
  *     |__ CassandraTimeseries.java  : Sample timeseries workload app/

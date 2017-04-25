@@ -37,6 +37,7 @@ public class CmdLineOpts {
     CassandraKeyValue,
     CassandraStockTicker,
     CassandraTimeseries,
+    CassandraSparkWordCount,
     RedisKeyValue,
   }
 
@@ -253,6 +254,10 @@ public class CmdLineOpts {
     // Options for the key-value workloads.
     options.addOption("num_unique_keys", true,
                       "[KV workloads only] Number of unique keys to write into the DB.");
+
+    // Options for CassandraSparkWordCount app.
+    options.addOption("wordcount_input_file", true,
+                      "[CassandraSparkWordCount] Input file with words to count.");
 
     CommandLineParser parser = new BasicParser();
     CommandLine commandLine = null;
