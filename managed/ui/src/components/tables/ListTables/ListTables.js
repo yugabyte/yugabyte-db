@@ -98,7 +98,7 @@ class ListTableGrid extends Component {
     const {universe: {universeTasks}} = this.props;
     // Do not send tables query if task type is create, status is pending and target is universe
     if (!universeTasks || !isValidArray(universeTasks[universeUUID]) || !(universeTasks[universeUUID][0].type === "Create"
-        && universeTasks[universeUUID][0].status === "Running" && universeTasks[universeUUID][0].target === "Universe")) {
+      && universeTasks[universeUUID][0].status === "Running" && universeTasks[universeUUID][0].target === "Universe")) {
       this.props.fetchUniverseTables(universeUUID);
     }
   }
@@ -125,10 +125,10 @@ class ListTableGrid extends Component {
         return <i className="yb-success-color fa fa-check"/>
       } else if (item === "pending") {
         return (
-        <div>
-          <span className="yb-orange">Pending {row.percentComplete} % complete</span>
-          <ProgressBar className={"pending-action-progress"} now={row.percentComplete}/>
-        </div>
+          <div>
+            <span className="yb-orange">Pending {row.percentComplete} % complete</span>
+            <ProgressBar className={"pending-action-progress"} now={row.percentComplete}/>
+          </div>
         )
       }
       else {

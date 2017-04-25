@@ -2,11 +2,13 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
+import {withRouter} from 'react-router';
 import { YBInputField, YBButton, YBRadioButton, YBSelect } from '../../common/forms/fields';
 import { Field, FieldArray } from 'redux-form';
-import { isValidArray, normalizeToPositiveInt } from '../../../utils/ObjectUtils';
+import { isValidArray, normalizeToPositiveInt, isValidObject } from '../../../utils/ObjectUtils';
 import cassandraLogo from '../images/cassandra.png';
 import './CreateTables.scss';
+import {YBConfirmModal} from '../../modals';
 
 class KeyColumnList extends Component {
   static propTypes = {
@@ -150,11 +152,15 @@ class CassandraColumnSpecification extends Component {
     )
   }
 }
-export default class CreateTable extends Component {
+class CreateTable extends Component {
   constructor(props) {
     super(props);
     this.createTable = this.createTable.bind(this);
     this.radioClicked = this.radioClicked.bind(this);
+    this.cancelCreateTableForm = this.cancelCreateTableForm.bind(this);
+    this.hideCancelCreateModal = this.hideCancelCreateModal.bind(this);
+    this.confirmCancelCreateModal = this.confirmCancelCreateModal.bind(this);
+    this.state = {nextTab: ''}
   }
 
   componentWillMount() {
@@ -168,6 +174,42 @@ export default class CreateTable extends Component {
   createTable(values) {
     const {universe: {currentUniverse}} = this.props;
     this.props.submitCreateTable(currentUniverse, values);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    if (this.props.location.query !== nextProps.location.query && nextProps.location.query.tab !== "tables") {
+      if (nextProps.anyTouched && nextProps.dirty) {
+        this.setState({nextTab: nextProps.location.query.tab});
+        this.props.showCancelCreateModal();
+        let currentLocation = this.props.location;
+        currentLocation.query = {tab: "tables"}
+        this.props.router.push(currentLocation)
+      } else {
+        this.props.showListTables();
+      }
+    }
+  }
+
+  hideCancelCreateModal() {
+    this.props.hideModal();
+  }
+
+  confirmCancelCreateModal() {
+    this.props.hideModal();
+    this.props.showListTables();
+    if (isValidObject(this.state.nextTab) && this.state.nextTab.length > 0) {
+      let currentLocation = this.props.location;
+      currentLocation.query = { tab: this.state.nextTab }
+      this.props.router.push(currentLocation);
+    }
+  }
+
+  cancelCreateTableForm() {
+    if (this.props.anyTouched && this.props.dirty) {
+      this.props.showCancelCreateModal();
+    } else {
+      this.props.showListTables();
+    }
   }
 
   render() {
@@ -213,10 +255,21 @@ export default class CreateTable extends Component {
             <YBButton btnText="Create" btnClass={`pull-right btn btn-default bg-orange`}
                       btnType="submit"/>
             <YBButton btnText="Cancel" btnClass={`pull-right btn btn-default`}
-                      onClick={this.props.showListTables}/>
+                      onClick={this.cancelCreateTableForm}/>
           </div>
         </form>
+        <YBConfirmModal visibleModal={this.props.universe.visibleModal} title="Create Table"
+                         name="cancelCreate" onConfirm={this.confirmCancelCreateModal}
+                         hideConfirmModal={this.hideCancelCreateModal} currentModal="cancelCreate"
+                         confirmLabel={"Yes"} cancelLabel={"No"}>
+          <div>You haven't finished creating a table yet. All your changes will be lost.</div>
+          <div>Are you sure you want to exit?</div>
+        </YBConfirmModal>
       </div>
     )
   }
 }
+
+export default withRouter(CreateTable);
+
+
