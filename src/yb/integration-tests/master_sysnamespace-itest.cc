@@ -121,7 +121,7 @@ TEST_F(MasterSysNamespaceTest, TestSysNamespace) {
   ASSERT_EQ(9, schema_pb.columns_size());
   ValidateColumn(schema_pb.columns(0), "peer", /* is_key */ true, DataType::INET);
   ValidateColumn(schema_pb.columns(1), "data_center", /* is_key */ false, DataType::STRING);
-  ValidateColumn(schema_pb.columns(2), "host_id", /* is_key */ false, DataType::STRING);
+  ValidateColumn(schema_pb.columns(2), "host_id", /* is_key */ false, DataType::UUID);
   ValidateColumn(schema_pb.columns(3), "preferred_ip", /* is_key */ false, DataType::INET);
   ValidateColumn(schema_pb.columns(4), "rack", /* is_key */ false, DataType::STRING);
   ValidateColumn(schema_pb.columns(5), "release_version", /* is_key */ false, DataType::STRING);

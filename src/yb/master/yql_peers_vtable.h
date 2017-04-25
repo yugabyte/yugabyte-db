@@ -12,14 +12,24 @@ namespace master {
 // VTable implementation of system.peers.
 class PeersVTable : public YQLVirtualTable {
  public:
-  PeersVTable(const Schema& schema, Master* master_);
+  explicit PeersVTable(const Master* const master_);
   CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const override;
+
+ protected:
+  Schema CreateSchema(const std::string& table_name) const override;
+
  private:
+  static constexpr const char* const kPeer = "peer";
+  static constexpr const char* const kDataCenter = "data_center";
+  static constexpr const char* const kHostId = "host_id";
+  static constexpr const char* const kPreferredIp = "preferred_ip";
+  static constexpr const char* const kRack = "rack";
+  static constexpr const char* const kReleaseVersion = "release_version";
+  static constexpr const char* const kRPCAddress = "rpc_address";
+  static constexpr const char* const kSchemaVersion = "schema_version";
+  static constexpr const char* const kTokens = "tokens";
+
   const Master *const master_;
-  // Index of columns in the peers table.
-  static constexpr size_t kPeerColumnIndex = 0; // peer column.
-  static constexpr size_t kRpcAddrColumnIndex = 6; // rpc_address column.
-  static constexpr size_t kSchemaVersionColumnIndex = 7; // schema_version column.
 };
 
 }  // namespace master

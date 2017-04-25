@@ -36,6 +36,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/yql_virtual_table.h"
 #include "yb/server/monitored_task.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_peer_lookup.h"
@@ -802,6 +803,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class NamespaceLoader;
   friend class ClusterConfigLoader;
 
+  // Retrieves a system tablet given the table name. Note that we return a pointer to the
+  // actual member variables (system_peers_tablet etc) so that we can modify them in a generic
+  // way if needed.
+  CHECKED_STATUS RetrieveSystemTabletByName(const TableName& table_name,
+                                            std::shared_ptr<tablet::AbstractTablet>** tablet);
+
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
   //
@@ -840,67 +847,22 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemTables();
 
-  CHECKED_STATUS PrepareSystemPeersTable();
-
   CHECKED_STATUS PrepareSystemLocalTable();
 
-  CHECKED_STATUS PrepareSystemSchemaAggregatesTable();
-
-  CHECKED_STATUS PrepareSystemSchemaColumnsTable();
-
-  CHECKED_STATUS PrepareSystemSchemaFunctionsTable();
-
-  CHECKED_STATUS PrepareSystemSchemaIndexesTable();
-
-  CHECKED_STATUS PrepareSystemSchemaTriggersTable();
-
-  CHECKED_STATUS PrepareSystemSchemaTypesTable();
-
-  CHECKED_STATUS PrepareSystemSchemaViewsTable();
-
-  CHECKED_STATUS PrepareSystemSchemaKeyspacesTable();
-
-  CHECKED_STATUS PrepareSystemSchemaTablesTable();
+  template <class T, class U>
+  CHECKED_STATUS PrepareSystemTableTemplate(const TableName& table_name,
+                                            const NamespaceName& namespace_name,
+                                            const NamespaceId& namespace_id,
+                                            const U vtable_param);
 
   CHECKED_STATUS PrepareSystemTable(const TableName& table_name,
                                     const NamespaceName& namespace_name,
                                     const NamespaceId& namespace_id,
                                     const Schema& schema,
-                                    std::unique_ptr<common::YQLStorageIf> yql_storage,
-                                    std::shared_ptr<tablet::AbstractTablet>* tablet);
-
-  // system.peers schema.
-  CHECKED_STATUS CreateSystemPeersSchema(Schema* schema);
+                                    YQLVirtualTable* vtable);
 
   // system.local schema.
   CHECKED_STATUS CreateSystemLocalSchema(Schema* schema);
-
-  // system_schema.aggregates.
-  CHECKED_STATUS CreateAggregatesSchema(Schema* schema);
-
-  // system_schema.columns.
-  CHECKED_STATUS CreateColumnsSchema(Schema* schema);
-
-  // system_schema.functions.
-  CHECKED_STATUS CreateFunctionsSchema(Schema* schema);
-
-  // system_schema.indexes.
-  CHECKED_STATUS CreateIndexesSchema(Schema* schema);
-
-  // system_schema.triggers.
-  CHECKED_STATUS CreateTriggersSchema(Schema* schema);
-
-  // system_schema.types.
-  CHECKED_STATUS CreateTypesSchema(Schema* schema);
-
-  // system_schema.views.
-  CHECKED_STATUS CreateViewsSchema(Schema* schema);
-
-  // system_schema.keyspaces.
-  CHECKED_STATUS CreateKeyspacesSchema(Schema* schema);
-
-  // system_schema.tables.
-  CHECKED_STATUS CreateSystemTablesSchema(Schema* schema);
 
   CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
 

@@ -7,8 +7,8 @@
 namespace yb {
 namespace master {
 
-YQLColumnsVTable::YQLColumnsVTable(const Schema& schema, Master* master)
-    : YQLVirtualTable(schema),
+YQLColumnsVTable::YQLColumnsVTable(const Master* const master)
+    : YQLVirtualTable(CreateSchema(master::kSystemSchemaColumnsTableName)),
       master_(master) {
 }
 
@@ -31,12 +31,13 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
                                                    const YQLValuePB& table_name,
                                                    const size_t col_idx,
                                                    YQLRow* const row) const {
-  *(row->mutable_column(0)) = keyspace_name; // keyspace_name
-  *(row->mutable_column(1)) = table_name; // table_name
-  *(row->mutable_column(2)) = GetStringValue(schema.column(col_idx).name()); // column_name
-  // clustering_order.
-  *(row->mutable_column(3)) = GetStringValue(schema.column(col_idx).sorting_type_string());
-  *(row->mutable_column(6)) = GetStringValue(schema.column(col_idx).type().ToString()); // type
+  RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
+  RETURN_NOT_OK(SetColumnValue(kTableName, table_name, row));
+  RETURN_NOT_OK(SetColumnValue(kColumnName, GetStringValue(schema.column(col_idx).name()), row));
+  RETURN_NOT_OK(SetColumnValue(kClusteringOrder,
+                               GetStringValue(schema.column(col_idx).sorting_type_string()), row));
+  RETURN_NOT_OK(SetColumnValue(kType,
+                               GetStringValue(schema.column(col_idx).type().ToString()), row));
   return Status::OK();
 }
 
@@ -66,8 +67,8 @@ Status YQLColumnsVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) cons
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always partition_key for hash columns)
-      *row.mutable_column(4) = GetStringValue("partition_key");
-      *row.mutable_column(5) = GetIntValue(i); // position
+      RETURN_NOT_OK(SetColumnValue(kKind, GetStringValue("partition_key"), &row));
+      RETURN_NOT_OK(SetColumnValue(kPosition, GetIntValue(i), &row));
     }
 
     // Now fill in the range columns
@@ -77,8 +78,8 @@ Status YQLColumnsVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) cons
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always clustering for range columns)
-      *row.mutable_column(4) = GetStringValue("clustering");
-      *row.mutable_column(5) = GetIntValue(i - num_hash_columns); // position
+      RETURN_NOT_OK(SetColumnValue(kKind, GetStringValue("clustering"), &row));
+      RETURN_NOT_OK(SetColumnValue(kPosition, GetIntValue(i - num_hash_columns), &row));
     }
 
     // Now fill in the rest of the columns.
@@ -87,12 +88,25 @@ Status YQLColumnsVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) cons
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i,
                                               &row));
       // kind (always regular for regular columns)
-      *row.mutable_column(4) = GetStringValue("regular");
-      *row.mutable_column(5) = GetIntValue(-1); // position (always -1 for regular columns)
+      RETURN_NOT_OK(SetColumnValue(kKind, GetStringValue("regular"), &row));
+      RETURN_NOT_OK(SetColumnValue(kPosition, GetIntValue(-1), &row));
     }
   }
 
   return Status::OK();
+}
+
+Schema YQLColumnsVTable::CreateSchema(const std::string& table_name) const {
+  SchemaBuilder builder;
+  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
+  CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));
+  CHECK_OK(builder.AddKeyColumn(kColumnName, DataType::STRING));
+  CHECK_OK(builder.AddColumn(kClusteringOrder, DataType::STRING));
+  // TODO: column_name_bytes is missing since we don't support blob type yet.
+  CHECK_OK(builder.AddColumn(kKind, DataType::STRING));
+  CHECK_OK(builder.AddColumn(kPosition, DataType::INT32));
+  CHECK_OK(builder.AddColumn(kType, DataType::STRING));
+  return builder.Build();
 }
 
 }  // namespace master

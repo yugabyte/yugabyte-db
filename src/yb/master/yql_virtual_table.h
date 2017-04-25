@@ -27,7 +27,13 @@ class YQLVirtualTable : public common::YQLStorageIf {
                                   const Schema& schema,
                                   std::unique_ptr<common::YQLScanSpec>* spec,
                                   HybridTime* req_hybrid_time) const override;
+  const Schema& schema() const { return schema_; }
  protected:
+  virtual Schema CreateSchema(const std::string& table_name) const = 0;
+  // Finds the given column name in the schema and updates the specified column in the given row
+  // with the provided value.
+  CHECKED_STATUS SetColumnValue(const std::string& col_name, const YQLValuePB& value_pb,
+                                YQLRow* row) const;
   Schema schema_;
 };
 

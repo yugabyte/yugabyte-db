@@ -7,8 +7,8 @@
 namespace yb {
 namespace master {
 
-PeersVTable::PeersVTable(const Schema& schema, Master* master)
-    : YQLVirtualTable(schema),
+PeersVTable::PeersVTable(const Master* const master)
+    : YQLVirtualTable(CreateSchema(master::kSystemPeersTableName)),
       master_(master) {
 }
 
@@ -42,15 +42,32 @@ Status PeersVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
   for (InetAddress addr : peers) {
     YQLValuePB value;
     YQLValue::set_inetaddress_value(addr, &value);
+
     YQLRow& row = (*vtable)->Extend();
-    *row.mutable_column(kPeerColumnIndex) = value;
-    *row.mutable_column(kRpcAddrColumnIndex) = value;
-    Uuid uuid;
-    CHECK_OK(uuid.FromString("00000000-0000-0000-0000-000000000000"));
-    YQLValue::set_uuid_value(uuid, &value);
-    *row.mutable_column(kSchemaVersionColumnIndex) = value;
+    RETURN_NOT_OK(SetColumnValue(kPeer, value, &row));
+    RETURN_NOT_OK(SetColumnValue(kRPCAddress, value, &row));
+
+    // uuid.
+    Uuid schema_version;
+    CHECK_OK(schema_version.FromString("00000000-0000-0000-0000-000000000000"));
+    YQLValue::set_uuid_value(schema_version, &value);
+    RETURN_NOT_OK(SetColumnValue(kSchemaVersion, value, &row));
   }
   return Status::OK();
+}
+
+Schema PeersVTable::CreateSchema(const std::string& table_name) const {
+  SchemaBuilder builder;
+  CHECK_OK(builder.AddKeyColumn(kPeer, DataType::INET));
+  CHECK_OK(builder.AddColumn(kDataCenter, DataType::STRING));
+  CHECK_OK(builder.AddColumn(kHostId, DataType::UUID));
+  CHECK_OK(builder.AddColumn(kPreferredIp, DataType::INET));
+  CHECK_OK(builder.AddColumn(kRack, DataType::STRING));
+  CHECK_OK(builder.AddColumn(kReleaseVersion, DataType::STRING));
+  CHECK_OK(builder.AddColumn(kRPCAddress, DataType::INET));
+  CHECK_OK(builder.AddColumn(kSchemaVersion, DataType::UUID));
+  CHECK_OK(builder.AddColumn(kTokens, YQLType(DataType::SET, { YQLType(DataType::STRING) })));
+  return builder.Build();
 }
 
 }  // namespace master

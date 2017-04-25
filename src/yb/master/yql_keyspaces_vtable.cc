@@ -8,8 +8,8 @@
 namespace yb {
 namespace master {
 
-YQLKeyspacesVTable::YQLKeyspacesVTable(const Schema& schema, Master* master)
-    : YQLVirtualTable(schema),
+YQLKeyspacesVTable::YQLKeyspacesVTable(const Master* const master)
+    : YQLVirtualTable(CreateSchema(master::kSystemSchemaKeyspacesTableName)),
       master_(master) {
 }
 
@@ -23,11 +23,22 @@ Status YQLKeyspacesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) co
     YQLValuePB durable_writes;
     YQLValue::set_string_value(ns->name(), &keyspace_name);
     YQLValue::set_bool_value(true, &durable_writes);
-    *row.mutable_column(0) = keyspace_name;
-    *row.mutable_column(1) = durable_writes;
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, &row));
+    RETURN_NOT_OK(SetColumnValue(kDurableWrites, durable_writes, &row));
   }
 
   return Status::OK();
+}
+
+Schema YQLKeyspacesVTable::CreateSchema(const std::string& table_name) const {
+  SchemaBuilder builder;
+  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
+  CHECK_OK(builder.AddColumn(kDurableWrites, DataType::BOOL));
+  // TODO: replication needs to be a frozen map.
+  CHECK_OK(builder.AddColumn(
+      kReplication,
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  return builder.Build();
 }
 
 }  // namespace master

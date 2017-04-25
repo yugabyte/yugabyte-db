@@ -770,23 +770,6 @@ Status CatalogManager::PrepareSystemNamespace() {
   return PrepareNamespace(kSystemSchemaNamespaceName, kSystemSchemaNamespaceId);
 }
 
-Status CatalogManager::CreateSystemPeersSchema(Schema* schema) {
-  // system.peers table
-  SchemaBuilder builder;
-  // Using STRING here for some datatypes that are not yet supported.
-  RETURN_NOT_OK(builder.AddKeyColumn("peer", DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn("data_center", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("host_id", DataType::STRING)); // This should be UUID.
-  RETURN_NOT_OK(builder.AddColumn("preferred_ip", DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn("rack", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::UUID));
-  RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
 Status CatalogManager::CreateSystemLocalSchema(Schema* schema) {
   // system.local table
   SchemaBuilder builder;
@@ -812,292 +795,50 @@ Status CatalogManager::CreateSystemLocalSchema(Schema* schema) {
   return Status::OK();
 }
 
-Status CatalogManager::CreateAggregatesSchema(Schema* schema) {
-  // system_schema.aggregates table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("aggregate_name", DataType::STRING));
-  // TODO: argument_types should be part of the primary key, but since we don't support the CQL
-  // 'frozen' type, we can't have collections in our primary key.
-  RETURN_NOT_OK(builder.AddColumn("argument_types",
-                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("final_func", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("initcond", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("state_func", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("state_type", DataType::STRING));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateColumnsSchema(Schema* schema) {
-  // system_schema.columns table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("column_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("clustering_order", DataType::STRING));
-  // TODO: column_name_bytes is missing since we don't support blob type yet.
-  RETURN_NOT_OK(builder.AddColumn("kind", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("position", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("type", DataType::STRING));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateFunctionsSchema(Schema* schema) {
-  // system_schema.functions table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("function_name", DataType::STRING));
-  // TODO: argument_types should be part of the primary key, but since we don't support the CQL
-  // 'frozen' type, we can't have collections in our primary key.
-  RETURN_NOT_OK(builder.AddColumn("argument_types",
-                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
-  // TODO: argument_names should be a frozen list.
-  RETURN_NOT_OK(builder.AddColumn("argument_names",
-                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("called_on_null_input", DataType::BOOL));
-  RETURN_NOT_OK(builder.AddColumn("language", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("return_type", DataType::STRING));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateIndexesSchema(Schema* schema) {
-  // system_schema.indexes table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("index_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("kind", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(
-      "options",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateTriggersSchema(Schema* schema) {
-  // system_schema.triggers table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("trigger_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(
-      "options",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateTypesSchema(Schema* schema) {
-  // system_schema.types table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("type_name", DataType::STRING));
-  // TODO: field_names should be a frozen list.
-  RETURN_NOT_OK(builder.AddColumn("field_names",
-                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
-  // TODO: field_types should be a frozen list.
-  RETURN_NOT_OK(builder.AddColumn("field_types",
-                                  YQLType(DataType::LIST, { YQLType(DataType::STRING) })));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateViewsSchema(Schema* schema) {
-  // system_schema.views table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("view_name", DataType::STRING));
-  // TODO: base_table_id is missing since we don't support uuid yet.
-  RETURN_NOT_OK(builder.AddColumn("base_table_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("bloom_filter_fp_chance", DataType::DOUBLE));
-  // TODO: caching needs to be a frozen map.
-  RETURN_NOT_OK(builder.AddColumn(
-      "caching",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("cdc", DataType::BOOL));
-  RETURN_NOT_OK(builder.AddColumn("comment", DataType::STRING));
-  // TODO: compaction needs to be a frozen map.
-  RETURN_NOT_OK(builder.AddColumn(
-      "compaction",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  // TODO: compression needs to be a frozen map.
-  RETURN_NOT_OK(builder.AddColumn(
-      "compression",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn(
-      "extensions",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
-  RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT32));
-  // TODO: id is missing since we don't support uuid yet.
-  RETURN_NOT_OK(builder.AddColumn("include_all_columns", DataType::BOOL));
-  RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("read_repair_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("speculative_retry", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("where_clause", DataType::STRING));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateKeyspacesSchema(Schema* schema) {
-  // system_schema.keyspaces table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("durable_writes", DataType::BOOL));
-  // TODO: replication needs to be a frozen map.
-  RETURN_NOT_OK(builder.AddColumn(
-      "replication",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
-Status CatalogManager::CreateSystemTablesSchema(Schema* schema) {
-  // system_schema.tables table.
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddKeyColumn("table_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("bloom_filter_fp_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn(
-      "caching",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("cdc", DataType::BOOL));
-  RETURN_NOT_OK(builder.AddColumn("comment", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(
-      "compaction",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn(
-      "compression",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("crc_check_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("dclocal_read_repair_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("default_time_to_live", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn(
-      "extensions",
-      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
-  RETURN_NOT_OK(builder.AddColumn(
-      "flags",
-      YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("id", DataType::UUID));
-  RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("min_index_interval", DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn("read_repair_chance", DataType::DOUBLE));
-  RETURN_NOT_OK(builder.AddColumn("speculative_retry", DataType::STRING));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
 Status CatalogManager::PrepareSystemTables() {
   // Create the required system tables here.
-  RETURN_NOT_OK(PrepareSystemPeersTable());
-  RETURN_NOT_OK(PrepareSystemLocalTable());
-  RETURN_NOT_OK(PrepareSystemSchemaAggregatesTable());
-  RETURN_NOT_OK(PrepareSystemSchemaFunctionsTable());
-  RETURN_NOT_OK(PrepareSystemSchemaIndexesTable());
-  RETURN_NOT_OK(PrepareSystemSchemaTriggersTable());
-  RETURN_NOT_OK(PrepareSystemSchemaTypesTable());
-  RETURN_NOT_OK(PrepareSystemSchemaViewsTable());
-  RETURN_NOT_OK(PrepareSystemSchemaKeyspacesTable());
-  RETURN_NOT_OK(PrepareSystemSchemaTablesTable());
-  return PrepareSystemSchemaColumnsTable();
+  RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable, Master*>(
+      kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId, master_)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable, Master*>(
+      kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      master_)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable, Master*>(
+      kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      master_)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable, Master*>(
+      kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      master_)));
+
+  // Empty tables.
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
+      kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      kSystemSchemaAggregatesTableName)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
+      kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      kSystemSchemaFunctionsTableName)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
+      kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      kSystemSchemaIndexesTableName)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
+      kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      kSystemSchemaTriggersTableName)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
+      kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      kSystemSchemaViewsTableName)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
+      kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
+      kSystemSchemaTypesTableName)));
+
+  return PrepareSystemLocalTable();
 }
 
-Status CatalogManager::PrepareSystemSchemaAggregatesTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateAggregatesSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
-  return PrepareSystemTable(kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_aggregates_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaColumnsTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateColumnsSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLColumnsVTable(schema, master_));
-  return PrepareSystemTable(kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_columns_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaFunctionsTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateFunctionsSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
-  return PrepareSystemTable(kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_functions_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaIndexesTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateIndexesSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
-  return PrepareSystemTable(kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_indexes_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaTriggersTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateTriggersSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
-  return PrepareSystemTable(kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_triggers_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaTypesTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateTypesSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
-  return PrepareSystemTable(kSystemSchemaTypesTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_types_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaViewsTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateViewsSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLEmptyVTable(schema));
-  return PrepareSystemTable(kSystemSchemaViewsTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_views_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaKeyspacesTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateKeyspacesSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLKeyspacesVTable(schema, master_));
-  return PrepareSystemTable(kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_keyspaces_tablet);
-}
-
-Status CatalogManager::PrepareSystemSchemaTablesTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateSystemTablesSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new YQLTablesVTable(schema, master_));
-  return PrepareSystemTable(kSystemSchemaTablesTableName, kSystemSchemaNamespaceName,
-                            kSystemSchemaNamespaceId, schema, std::move(yql_storage),
-                            &systemschema_tables_tablet);
-}
-
-Status CatalogManager::PrepareSystemPeersTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateSystemPeersSchema(&schema));
-  std::unique_ptr<common::YQLStorageIf> yql_storage(new PeersVTable(schema, master_));
-  return PrepareSystemTable(kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId,
-                            schema, std::move(yql_storage), &system_peers_tablet);
+template <class T, class U>
+Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
+                                                  const NamespaceName& namespace_name,
+                                                  const NamespaceId& namespace_id,
+                                                  const U vtable_param) {
+  YQLVirtualTable* vtable = new T(vtable_param);
+  return PrepareSystemTable(table_name, namespace_name, namespace_id, vtable->schema(), vtable);
 }
 
 Status CatalogManager::PrepareSystemLocalTable() {
@@ -1108,19 +849,21 @@ Status CatalogManager::PrepareSystemLocalTable() {
   // the node that the CQL client is connected to. As a result, currently we just short-circuit
   // this call in the CQL proxy.
   return PrepareSystemTable(kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId,
-                            schema, nullptr, nullptr);
+                            schema, nullptr);
 }
 
 Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const NamespaceName& namespace_name,
                                           const NamespaceId& namespace_id,
                                           const Schema& schema,
-                                          std::unique_ptr<common::YQLStorageIf> yql_storage,
-                                          std::shared_ptr<tablet::AbstractTablet>* tablet) {
+                                          YQLVirtualTable* vtable) {
   // Verify we have the catalog manager lock.
   if (!lock_.is_locked()) {
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
   }
+
+  std::shared_ptr<tablet::AbstractTablet>* system_tablet;
+  std::unique_ptr<common::YQLStorageIf> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
                                                  std::make_pair(namespace_id, table_name));
@@ -1128,11 +871,13 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     LOG(INFO) << strings::Substitute("Table $0.$1 already created, skipping initialization",
                                      namespace_name, table_name);
     // Initialize the appropriate system tablet.
-    if (tablet != nullptr) {
+    if (vtable != nullptr) {
       vector<scoped_refptr<TabletInfo>> tablets;
       table->GetAllTablets(&tablets);
       DCHECK_EQ(1, tablets.size());
-      tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+      RETURN_NOT_OK(RetrieveSystemTabletByName(table_name, &system_tablet));
+      system_tablet->reset(
+          new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
     }
     return Status::OK();
   }
@@ -1173,9 +918,10 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     tablet->mutable_metadata()->CommitMutation();
   }
 
-  if (tablet != nullptr) {
+  if (vtable != nullptr) {
     // Finally create the appropriate tablet object.
-    tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+    RETURN_NOT_OK(RetrieveSystemTabletByName(table_name, &system_tablet));
+    system_tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
   }
 
   return Status::OK();
@@ -4820,6 +4566,45 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   return Status::OK();
 }
 
+Status CatalogManager::RetrieveSystemTabletByName(const TableName& table_name,
+                                                  std::shared_ptr<tablet::AbstractTablet>**
+                                                  tablet) {
+  DCHECK_NOTNULL(tablet);
+  if (table_name == kSystemPeersTableName) {
+    *tablet = &system_peers_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaAggregatesTableName) {
+    *tablet = &systemschema_aggregates_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaColumnsTableName) {
+    *tablet = &systemschema_columns_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaFunctionsTableName) {
+    *tablet = &systemschema_functions_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaIndexesTableName) {
+    *tablet = &systemschema_indexes_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaTriggersTableName) {
+    *tablet = &systemschema_triggers_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaTypesTableName) {
+    *tablet = &systemschema_types_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaViewsTableName) {
+    *tablet = &systemschema_views_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaKeyspacesTableName) {
+    *tablet = &systemschema_keyspaces_tablet;
+    return Status::OK();
+  } else if (table_name == kSystemSchemaTablesTableName) {
+    *tablet = &systemschema_tables_tablet;
+    return Status::OK();
+  }
+
+  return STATUS_SUBSTITUTE(InvalidArgument, "$0 isn't a supported system table", table_name);
+}
+
 Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
                                             std::shared_ptr<tablet::AbstractTablet>* tablet) {
   RETURN_NOT_OK(CheckOnline());
@@ -4836,40 +4621,10 @@ Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
   }
 
   const TableName& table_name = tablet_info->table()->name();
-  if (table_name == kSystemPeersTableName) {
-    *tablet = system_peers_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaAggregatesTableName) {
-    *tablet = systemschema_aggregates_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaColumnsTableName) {
-    *tablet = systemschema_columns_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaFunctionsTableName) {
-    *tablet = systemschema_functions_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaIndexesTableName) {
-    *tablet = systemschema_indexes_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaTriggersTableName) {
-    *tablet = systemschema_triggers_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaTypesTableName) {
-    *tablet = systemschema_types_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaViewsTableName) {
-    *tablet = systemschema_views_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaKeyspacesTableName) {
-    *tablet = systemschema_keyspaces_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaTablesTableName) {
-    *tablet = systemschema_tables_tablet;
-    return Status::OK();
-  }
-
-  return STATUS_SUBSTITUTE(InvalidArgument, "$0 isn't a supported system table",
-                           tablet_info->table()->name());
+  std::shared_ptr<tablet::AbstractTablet>* sys_tablet;
+  RETURN_NOT_OK(RetrieveSystemTabletByName(table_name, &sys_tablet));
+  *tablet = *sys_tablet;
+  return Status::OK();
 }
 
 Status CatalogManager::GetTabletLocations(const TabletId& tablet_id,

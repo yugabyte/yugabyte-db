@@ -12,9 +12,14 @@ namespace master {
 // VTable implementation of system_schema.keyspaces.
 class YQLKeyspacesVTable : public YQLVirtualTable {
  public:
-  YQLKeyspacesVTable(const Schema& schema, Master* master);
+  explicit YQLKeyspacesVTable(const Master* const master);
   CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const override;
+ protected:
+  Schema CreateSchema(const std::string& table_name) const override;
  private:
+  static constexpr const char* const kKeyspaceName = "keyspace_name";
+  static constexpr const char* const kDurableWrites = "durable_writes";
+  static constexpr const char* const kReplication = "replication";
   const Master* const master_;
 };
 

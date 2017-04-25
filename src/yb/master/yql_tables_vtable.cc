@@ -7,8 +7,8 @@
 namespace yb {
 namespace master {
 
-YQLTablesVTable::YQLTablesVTable(const Schema& schema, Master* master)
-    : YQLVirtualTable(schema),
+YQLTablesVTable::YQLTablesVTable(const Master* const master)
+    : YQLVirtualTable(CreateSchema(master::kSystemSchemaTablesTableName)),
       master_(master) {
 }
 
@@ -29,8 +29,8 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
     YQLValuePB table_name;
     YQLValue::set_string_value(nsInfo->name(), &keyspace_name);
     YQLValue::set_string_value(table->name(), &table_name);
-    *row.mutable_column(0) = keyspace_name; // keyspace_name
-    *row.mutable_column(1) = table_name; // table_name
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, &row));
+    RETURN_NOT_OK(SetColumnValue(kTableName, table_name, &row));
 
     // Create appropriate flags entry.
     YQLValuePB flags_set;
@@ -38,7 +38,7 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
     YQLValuePB flags_elem;
     YQLValue::set_string_value("compound", &flags_elem);
     *YQLValue::add_set_elem(&flags_set) = flags_elem;
-    *row.mutable_column(12) = flags_set; // flags
+    RETURN_NOT_OK(SetColumnValue(kFlags, flags_set, &row));
 
     // Create appropriate table uuid entry.
     YQLValuePB uuid_pb;
@@ -46,10 +46,45 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
     // Note: table id is in host byte order.
     RETURN_NOT_OK(uuid.FromHexString(table->id()));
     YQLValue::set_uuid_value(uuid, &uuid_pb);
-    *row.mutable_column(14) = uuid_pb; // id
+    RETURN_NOT_OK(SetColumnValue(kId, uuid_pb, &row));
   }
 
   return Status::OK();
+}
+
+Schema YQLTablesVTable::CreateSchema(const std::string& table_name) const {
+  SchemaBuilder builder;
+  CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
+  CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));
+  CHECK_OK(builder.AddColumn(kBloomFilterChance, DataType::DOUBLE));
+  CHECK_OK(builder.AddColumn(
+      kCaching,
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  CHECK_OK(builder.AddColumn(kCdc, DataType::BOOL));
+  CHECK_OK(builder.AddColumn(kComment, DataType::STRING));
+  CHECK_OK(builder.AddColumn(
+      kCompaction,
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  CHECK_OK(builder.AddColumn(
+      kCompression,
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::STRING) })));
+  CHECK_OK(builder.AddColumn(kCrcCheck, DataType::DOUBLE));
+  CHECK_OK(builder.AddColumn(kLocalReadRepair, DataType::DOUBLE));
+  CHECK_OK(builder.AddColumn(kDefaultTimeToLive, DataType::INT32));
+  CHECK_OK(builder.AddColumn(
+      kExtensions,
+      YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
+  CHECK_OK(builder.AddColumn(
+      kFlags,
+      YQLType(DataType::SET, { YQLType(DataType::STRING) })));
+  CHECK_OK(builder.AddColumn(kGcGraceSeconds, DataType::INT32));
+  CHECK_OK(builder.AddColumn(kId, DataType::UUID));
+  CHECK_OK(builder.AddColumn(kMaxIndexInterval, DataType::INT32));
+  CHECK_OK(builder.AddColumn(kMemTableFlushPeriod, DataType::INT32));
+  CHECK_OK(builder.AddColumn(kMinIndexInterval, DataType::INT32));
+  CHECK_OK(builder.AddColumn(kReadRepairChance, DataType::DOUBLE));
+  CHECK_OK(builder.AddColumn(kSpeculativeRetry, DataType::STRING));
+  return builder.Build();
 }
 
 }  // namespace master
