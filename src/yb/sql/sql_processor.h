@@ -79,16 +79,16 @@ class SqlProcessor {
   // Claim this processor for a request.
   void used() {
     start_time_ = MonoTime::Now(MonoTime::FINE);
-    is_used_ = true;
+    is_used_.store(true);
   }
   // Unclaim this processor.
   void unused() {
     SetCurrentCall(nullptr);
-    is_used_ = false;
+    is_used_.store(false);
   }
   // Check if the processor is currently working on a statement.
   bool is_used() const {
-    return is_used_;
+    return is_used_.load();
   }
 
  protected:
@@ -110,7 +110,7 @@ class SqlProcessor {
   SqlMetrics* const sql_metrics_;
 
   // Processing state.
-  bool is_used_;
+  std::atomic<bool> is_used_;
   MonoTime start_time_;
 
  private:
