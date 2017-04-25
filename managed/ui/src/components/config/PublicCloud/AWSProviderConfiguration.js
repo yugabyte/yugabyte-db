@@ -158,9 +158,12 @@ class AWSProviderConfiguration extends Component {
           <Row className="config-section-header">
             <Col md={12}>
               <span className="pull-right" title={deleteButtonTitle}>
+                <YBButton btnText="Delete Configuration" disabled={deleteButtonDisabled}
+                          btnClass={deleteButtonClassName} onClick={this.props.showDeleteProviderModal}/>
                 <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
-                  btnLabel="Delete Configuration" btnClass={deleteButtonClassName} disabled={deleteButtonDisabled}
-                  onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}>
+                                onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}
+                                currentModal = "deleteAWSProvider" visibleModal={this.props.visibleModal}
+                                hideConfirmModal={this.props.hideDeleteProviderModal}>
                   Are you sure you want to delete this AWS configuration?
                 </YBConfirmModal>
               </span>

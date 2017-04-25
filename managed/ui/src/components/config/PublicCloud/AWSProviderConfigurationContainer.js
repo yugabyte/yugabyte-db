@@ -14,6 +14,7 @@ import { createProvider, createProviderSuccess, createProviderFailure,
   listAccessKeysSuccess, listAccessKeysFailure
  } from '../../../actions/cloud';
  import { fetchHostInfo, fetchHostInfoSuccess, fetchHostInfoFailure } from '../../../actions/customers';
+import {openDialog, closeDialog} from '../../../actions/universe';
 
 function validate(values) {
   var errors = {};
@@ -141,6 +142,13 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchHostInfoSuccess(response.payload));
         }
       })
+    },
+
+    showDeleteProviderModal: () => {
+      dispatch(openDialog("deleteAWSProvider"));
+    },
+    hideDeleteProviderModal: () => {
+      dispatch(closeDialog());
     }
   }
 }
@@ -155,8 +163,8 @@ const mapStateToProps = (state) => {
     initialValues: { accountName: "Amazon" },
     universeList: state.universe.universeList,
     universeLoading: state.universe.loading.universeList,
-    hostInfo: state.customer.hostInfo
-
+    hostInfo: state.customer.hostInfo,
+    visibleModal: state.universe.visibleModal
   };
 }
 
