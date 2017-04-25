@@ -48,9 +48,9 @@ enum DataType {
   LIST = 14;
   MAP = 15;
   SET = 16;
-  // UUID, TIMEUUID, and TUPLE are not yet implemented, but they are CQL types. It doesn't hurt
-  // if we remove them or use their slots for different datatypes.
   UUID = 17;
+  // TIMEUUID and TUPLE are not yet implemented, but they are CQL types. It doesn't hurt
+  // if we remove them or use their slots for different datatypes.
   TIMEUUID = 18;
   TUPLE = 19;
   TYPEARGS = 20;

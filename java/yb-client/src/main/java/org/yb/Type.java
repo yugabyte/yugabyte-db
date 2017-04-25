@@ -35,13 +35,19 @@ public enum Type {
   INT16 (DataType.INT16, "int16"),
   INT32 (DataType.INT32, "int32"),
   INT64 (DataType.INT64, "int64"),
-  BINARY (DataType.BINARY, "binary"),
   STRING (DataType.STRING, "string"),
   BOOL (DataType.BOOL, "bool"),
   FLOAT (DataType.FLOAT, "float"),
   DOUBLE (DataType.DOUBLE, "double"),
-  TIMESTAMP (DataType.TIMESTAMP, "timestamp");
-
+  BINARY (DataType.BINARY, "binary"),
+  TIMESTAMP (DataType.TIMESTAMP, "timestamp"),
+  DECIMAL (DataType.DECIMAL, "decimal"),
+  VARINT (DataType.VARINT, "varint"),
+  INET (DataType.INET, "inet"),
+  LIST (DataType.LIST, "list"),
+  MAP (DataType.MAP, "map"),
+  SET (DataType.SET, "set"),
+  UUID (DataType.UUID, "uuid");
 
   private final DataType dataType;
   private final String name;
@@ -94,6 +100,14 @@ public enum Type {
    */
   static int getTypeSize(DataType type) {
     switch (type) {
+      case DECIMAL:
+      case VARINT:
+      case INET:
+      case LIST:
+      case MAP:
+      case SET:
+      case UUID:
+      // TODO(mihnea) handle the cases above properly after cleaning up Kudu-inherited code
       case STRING:
       case BINARY: return 8 + 8; // offset then string length
       case BOOL:
@@ -116,16 +130,24 @@ public enum Type {
    */
   public static Type getTypeForDataType(DataType type) {
     switch (type) {
-      case STRING: return STRING;
-      case BINARY: return BINARY;
-      case BOOL: return BOOL;
       case INT8: return INT8;
       case INT16: return INT16;
       case INT32: return INT32;
       case INT64: return INT64;
-      case TIMESTAMP: return TIMESTAMP;
+      case STRING: return STRING;
+      case BOOL: return BOOL;
       case FLOAT: return FLOAT;
       case DOUBLE: return DOUBLE;
+      case BINARY: return BINARY;
+      case TIMESTAMP: return TIMESTAMP;
+      case DECIMAL: return DECIMAL;
+      case VARINT: return VARINT;
+      case INET: return INET;
+      case LIST: return LIST;
+      case MAP: return MAP;
+      case SET: return SET;
+      case UUID: return UUID;
+
       default:
         throw new IllegalArgumentException("The provided data type doesn't map" +
             " to know any known one: " + type.getDescriptorForType().getFullName());
