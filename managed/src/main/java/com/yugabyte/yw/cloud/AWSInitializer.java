@@ -128,13 +128,12 @@ public class AWSInitializer {
 
       int numSingleTermEntries = 0;
       while (singleTermIter.hasNext()) {
-        // We expect only one entry in this list. If there are multiple, error out as we have not
-        // implemented that logic yet.
+        // We expect only one entry. If there are multiple, take the first, skip the rest.
         numSingleTermEntries++;
         if (numSingleTermEntries > 1) {
-          String msg = "Not able to parse price detail object: " + priceDetailObj.toString();
+          String msg = "Multiple entries encountered for: " + priceDetailObj.toString();
           LOG.error(msg);
-          throw new UnsupportedOperationException(msg);
+          break;
         }
         JsonNode singleTerm = singleTermIter.next();
 
