@@ -44,8 +44,58 @@ Status CQLMessage::QueryParameters::GetBindVariable(
     }
     v = &values.at(pos);
   }
-  Slice data(v->value);
-  return value->Deserialize(type, YQL_CLIENT_CQL, &data);
+  switch (v->kind) {
+    case Value::Kind::NOT_NULL: {
+      if (v->value.empty()) {
+        switch (type.main()) {
+          case DataType::STRING:
+            value->set_string_value("");
+            return Status::OK();
+          case DataType::BINARY:
+            value->set_binary_value("");
+            return Status::OK();
+          case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+          case DataType::INT8: FALLTHROUGH_INTENDED;
+          case DataType::INT16: FALLTHROUGH_INTENDED;
+          case DataType::INT32: FALLTHROUGH_INTENDED;
+          case DataType::INT64: FALLTHROUGH_INTENDED;
+          case DataType::BOOL: FALLTHROUGH_INTENDED;
+          case DataType::FLOAT: FALLTHROUGH_INTENDED;
+          case DataType::DOUBLE: FALLTHROUGH_INTENDED;
+          case DataType::TIMESTAMP: FALLTHROUGH_INTENDED;
+          case DataType::DECIMAL: FALLTHROUGH_INTENDED;
+          case DataType::VARINT: FALLTHROUGH_INTENDED;
+          case DataType::INET: FALLTHROUGH_INTENDED;
+          case DataType::LIST: FALLTHROUGH_INTENDED;
+          case DataType::MAP: FALLTHROUGH_INTENDED;
+          case DataType::SET: FALLTHROUGH_INTENDED;
+          case DataType::UUID:
+            value->SetNull();
+            return Status::OK();
+          case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;
+          case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
+          case DataType::TUPLE: FALLTHROUGH_INTENDED;
+          case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+          case DataType::UINT8: FALLTHROUGH_INTENDED;
+          case DataType::UINT16: FALLTHROUGH_INTENDED;
+          case DataType::UINT32: FALLTHROUGH_INTENDED;
+          case DataType::UINT64:
+            break;
+        }
+        return STATUS_SUBSTITUTE(
+            RuntimeError, "Unsupported datatype $0", static_cast<int>(type.main()));
+      }
+      Slice data(v->value);
+      return value->Deserialize(type, YQL_CLIENT_CQL, &data);
+    }
+    case Value::Kind::IS_NULL:
+      value->SetNull();
+      return Status::OK();
+    case Value::Kind::NOT_SET:
+      break;
+  }
+  return STATUS_SUBSTITUTE(
+      RuntimeError, "Invalid bind variable kind $0", static_cast<int>(v->kind));
 }
 
 // ------------------------------------ CQL request -----------------------------------

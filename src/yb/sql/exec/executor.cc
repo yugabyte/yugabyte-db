@@ -471,11 +471,15 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalTimestampValue timestamp_value;
       RETURN_NOT_OK(EvalExpr(expr, &timestamp_value));
 
-      int64_t actual_value = timestamp_value.value_;
-      VLOG(3) << "Expr actual value = " << actual_value;
-      YQLValue::set_timestamp_value(actual_value, col_pb);
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetTimestamp(col_index, actual_value));
+      if (timestamp_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        int64_t actual_value = timestamp_value.value_;
+        VLOG(3) << "Expr actual value = " << actual_value;
+        YQLValue::set_timestamp_value(actual_value, col_pb);
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetTimestamp(col_index, actual_value));
+        }
       }
       break;
     }
@@ -484,13 +488,17 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalInetaddressValue inetaddress_value;
       RETURN_NOT_OK(EvalExpr(expr, &inetaddress_value));
 
-      InetAddress &actual_value = inetaddress_value.value_;
-      VLOG(3) << "Expr actual value = " << actual_value.ToString();
-      YQLValue::set_inetaddress_value(actual_value, col_pb);
-      std::string bytes;
-      RETURN_NOT_OK(actual_value.ToBytes(&bytes));
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetInet(col_index, Slice(bytes)));
+      if (inetaddress_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        InetAddress &actual_value = inetaddress_value.value_;
+        VLOG(3) << "Expr actual value = " << actual_value.ToString();
+        YQLValue::set_inetaddress_value(actual_value, col_pb);
+        std::string bytes;
+        RETURN_NOT_OK(actual_value.ToBytes(&bytes));
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetInet(col_index, Slice(bytes)));
+        }
       }
       break;
     }
@@ -499,13 +507,17 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       EvalUuidValue uuid_value;
       RETURN_NOT_OK(EvalExpr(expr, &uuid_value));
 
-      Uuid &actual_value = uuid_value.value_;
-      VLOG(3) << "Expr actual value = " << actual_value.ToString();
-      YQLValue::set_uuid_value(actual_value, col_pb);
-      std::string bytes;
-      RETURN_NOT_OK(actual_value.ToBytes(&bytes));
-      if (row != nullptr) {
-        RETURN_NOT_OK(row->SetUuid(col_index, Slice(bytes)));
+      if (uuid_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        Uuid &actual_value = uuid_value.value_;
+        VLOG(3) << "Expr actual value = " << actual_value.ToString();
+        YQLValue::set_uuid_value(actual_value, col_pb);
+        std::string bytes;
+        RETURN_NOT_OK(actual_value.ToBytes(&bytes));
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetUuid(col_index, Slice(bytes)));
+        }
       }
       break;
     }

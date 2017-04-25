@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import java.nio.ByteBuffer;
 import java.util.UUID;
 import java.net.InetAddress;
 import java.util.Date;
@@ -1054,4 +1055,97 @@ public class TestBindVariable extends TestBase {
 
     LOG.info("End test");
   }
+
+  @Test
+  public void testNull() throws Exception {
+    LOG.info("Begin test");
+
+    // Create table
+    String create_stmt = "CREATE TABLE test_bind " +
+                         "(k int primary key, " +
+                         "c1 tinyint, c2 smallint, c3 integer, c4 bigint, " +
+                         "c5 float, c6 double, " +
+                         "c7 varchar, " +
+                         "c8 boolean, " +
+                         "c9 timestamp, " +
+                         "c10 inet, " +
+                         "c11 uuid, " +
+                         "c12 blob);";
+    session.execute(create_stmt);
+
+    // Insert data of all supported datatypes with bind by position.
+    String insert_stmt = "INSERT INTO test_bind " +
+                         "(k, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    // For CQL <-> Java datatype mapping, see
+    // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
+    LOG.info("EXECUTING");
+    session.execute(insert_stmt,
+                    new Integer(1),
+                    null, null, null, null,
+                    null, null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+    LOG.info("EXECUTED");
+
+    {
+      // Select data from the test table.
+      String select_stmt = "SELECT * FROM test_bind WHERE k = 1;";
+      ResultSet rs = session.execute(select_stmt);
+      Row row = rs.one();
+      // Assert 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertTrue(row.isNull("c1"));
+      assertTrue(row.isNull("c2"));
+      assertTrue(row.isNull("c3"));
+      assertTrue(row.isNull("c4"));
+      assertTrue(row.isNull("c5"));
+      assertTrue(row.isNull("c6"));
+      assertTrue(row.isNull("c7"));
+      assertTrue(row.isNull("c8"));
+      assertTrue(row.isNull("c9"));
+      assertTrue(row.isNull("c10"));
+      assertTrue(row.isNull("c11"));
+      assertTrue(row.isNull("c12"));
+    }
+
+    LOG.info("End test");
+  }
+
+  @Test
+  public void testEmptyValues() throws Exception {
+    LOG.info("Begin test");
+
+    // Create table
+    String create_stmt = "CREATE TABLE test_bind (k int primary key, c1 varchar, c2 blob);";
+    session.execute(create_stmt);
+
+    // Insert data of all supported datatypes with bind by position.
+    String insert_stmt = "INSERT INTO test_bind (k, c1, c2) VALUES (?, ?, ?);";
+    // For CQL <-> Java datatype mapping, see
+    // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
+    LOG.info("EXECUTING");
+    session.execute(insert_stmt,
+                    new Integer(1),
+                    "", ByteBuffer.allocate(0));
+    LOG.info("EXECUTED");
+
+    {
+      // Select data from the test table.
+      String select_stmt = "SELECT * FROM test_bind WHERE k = 1;";
+      ResultSet rs = session.execute(select_stmt);
+      Row row = rs.one();
+      // Assert 1 row is returned with expected column values.
+      assertNotNull(row);
+      assertEquals("", row.getString("c1"));
+      assertEquals(0, row.getBytes("c2").array().length);
+    }
+
+    LOG.info("End test");
+  }
+
 }

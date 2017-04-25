@@ -135,21 +135,25 @@ Status Executor::EvalIntExpr(const PTExpr::SharedPtr& expr, EvalIntValue *result
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      switch (var->yql_type_id()) {
-        case DataType::INT8:
-          result->value_ = value.int8_value();
-          break;
-        case DataType::INT16:
-          result->value_ = value.int16_value();
-          break;
-        case DataType::INT32:
-          result->value_ = value.int32_value();
-          break;
-        case DataType::INT64:
-          result->value_ = value.int64_value();
-          break;
-        default:
-          LOG(FATAL) << "Unexpected integer type " << var->yql_type_id();
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        switch (var->yql_type_id()) {
+          case DataType::INT8:
+            result->value_ = value.int8_value();
+            break;
+          case DataType::INT16:
+            result->value_ = value.int16_value();
+            break;
+          case DataType::INT32:
+            result->value_ = value.int32_value();
+            break;
+          case DataType::INT64:
+            result->value_ = value.int64_value();
+            break;
+          default:
+            LOG(FATAL) << "Unexpected integer type " << var->yql_type_id();
+        }
       }
       break;
     }
@@ -211,15 +215,19 @@ Status Executor::EvalDoubleExpr(const PTExpr::SharedPtr& expr, EvalDoubleValue *
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      switch (var->yql_type_id()) {
-        case DataType::FLOAT:
-          result->value_ = value.float_value();
-          break;
-        case DataType::DOUBLE:
-          result->value_ = value.double_value();
-          break;
-        default:
-          LOG(FATAL) << "Unexpected floating point type " << var->yql_type_id();
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        switch (var->yql_type_id()) {
+          case DataType::FLOAT:
+            result->value_ = value.float_value();
+            break;
+          case DataType::DOUBLE:
+            result->value_ = value.double_value();
+            break;
+          default:
+            LOG(FATAL) << "Unexpected floating point type " << var->yql_type_id();
+        }
       }
       break;
     }
@@ -278,10 +286,14 @@ Status Executor::EvalStringExpr(const PTExpr::SharedPtr& expr, EvalStringValue *
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      const string& string_value = value.string_value();
-      result->value_ = MCString::MakeShared(exec_context_->PTempMem(),
-                                            string_value.data(),
-                                            string_value.length());
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        const string& string_value = value.string_value();
+        result->value_ = MCString::MakeShared(exec_context_->PTempMem(),
+                                              string_value.data(),
+                                              string_value.length());
+      }
       break;
     }
 
@@ -308,7 +320,11 @@ Status Executor::EvalBoolExpr(const PTExpr::SharedPtr& expr, EvalBoolValue *resu
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      result->value_ = value.bool_value();
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        result->value_ = value.bool_value();
+      }
       break;
     }
 
@@ -335,11 +351,15 @@ Status Executor::EvalBinaryExpr(const PTExpr::SharedPtr& expr, EvalBinaryValue *
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      // TODO(mihnea) this conversion shouldn't be needed, but needs a refactor to handle properly
-      string literal_value = b2a_hex(value.binary_value());
-      result->value_ = MCString::MakeShared(exec_context_->PTempMem(),
-                                            literal_value.data(),
-                                            literal_value.size());
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        // TODO(mihnea) this conversion shouldn't be needed, but needs a refactor to handle properly
+        string literal_value = b2a_hex(value.binary_value());
+        result->value_ = MCString::MakeShared(exec_context_->PTempMem(),
+                                              literal_value.data(),
+                                              literal_value.size());
+      }
       break;
     }
 
@@ -362,7 +382,11 @@ Status Executor::EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampV
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      result->value_ = value.timestamp_value().ToInt64();
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        result->value_ = value.timestamp_value().ToInt64();
+      }
       break;
     }
 
@@ -385,7 +409,11 @@ Status Executor::EvalInetaddressExpr(const PTExpr::SharedPtr& expr, EvalInetaddr
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      result->value_ = value.inetaddress_value();
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        result->value_ = value.inetaddress_value();
+      }
       break;
     }
 
@@ -408,7 +436,11 @@ Status Executor::EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *resu
       const PTBindVar *var = static_cast<const PTBindVar*>(e);
       YQLValueWithPB value;
       RETURN_NOT_OK(GetBindVariable(var, &value));
-      result->value_ = value.uuid_value();
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        result->value_ = value.uuid_value();
+      }
       break;
     }
 
@@ -419,184 +451,212 @@ Status Executor::EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *resu
 }
 
 Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value) {
-  switch (result->datatype()) {
-    case InternalType::kInt64Value:
-      static_cast<EvalIntValue *>(result)->value_ = int_value.value_;
-      break;
+  if (int_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kInt64Value:
+        static_cast<EvalIntValue *>(result)->value_ = int_value.value_;
+        break;
 
-    case InternalType::kDoubleValue:
-      static_cast<EvalDoubleValue *>(result)->value_ = int_value.value_;
-      break;
+      case InternalType::kDoubleValue:
+        static_cast<EvalDoubleValue *>(result)->value_ = int_value.value_;
+        break;
 
-    case InternalType::kTimestampValue: {
-      int64_t val = int_value.value_;
-      int64_t ts = DateTime::TimestampFromInt(val).ToInt64();
-      static_cast<EvalTimestampValue *>(result)->value_ = ts;
-      break;
+      case InternalType::kTimestampValue: {
+        int64_t val = int_value.value_;
+        int64_t ts = DateTime::TimestampFromInt(val).ToInt64();
+        static_cast<EvalTimestampValue *>(result)->value_ = ts;
+        break;
+      }
+
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
     }
-
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
   }
   return Status::OK();
 }
 
 Status Executor::ConvertFromVarInt(EvalValue *result, const EvalVarIntStringValue& varint_value) {
-  switch (result->datatype()) {
-    case InternalType::kVarintValue:
-      LOG(FATAL) << "VARINT type not supported";
+  if (varint_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kVarintValue:
+        LOG(FATAL) << "VARINT type not supported";
 
-    case InternalType::kVarintStringValue:
-      static_cast<EvalVarIntStringValue *>(result)->value_ = varint_value.value_;
-      break;
+      case InternalType::kVarintStringValue:
+        static_cast<EvalVarIntStringValue *>(result)->value_ = varint_value.value_;
+        break;
 
-    case InternalType::kInt64Value: {
-      auto *value = &(static_cast<EvalIntValue *>(result)->value_);
-      *value = std::stol(varint_value.value_->c_str());
-      break;
+      case InternalType::kInt64Value: {
+        auto *value = &(static_cast<EvalIntValue *>(result)->value_);
+        *value = std::stol(varint_value.value_->c_str());
+        break;
+      }
+
+      case InternalType::kDoubleValue: {
+        auto *value = &(static_cast<EvalDoubleValue *>(result)->value_);
+        *value = std::stold(varint_value.value_->c_str());
+        break;
+      }
+
+      case InternalType::kDecimalValue: {
+        util::Decimal decimal;
+        CHECK_OK(decimal.FromString(varint_value.value_->c_str()));
+        static_cast<EvalDecimalValue *>(result)->value_ =
+            MCString::MakeShared(varint_value.value_->mem_ctx(),
+                                 decimal.EncodeToComparable().c_str());
+        break;
+      }
+
+      case InternalType::kTimestampValue: {
+        int64_t val = std::stol(varint_value.value_->c_str());
+        int64_t ts = DateTime::TimestampFromInt(val).ToInt64();
+        static_cast<EvalTimestampValue *>(result)->value_ = ts;
+        break;
+      }
+
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
     }
-
-    case InternalType::kDoubleValue: {
-      auto *value = &(static_cast<EvalDoubleValue *>(result)->value_);
-      *value = std::stold(varint_value.value_->c_str());
-      break;
-    }
-
-    case InternalType::kDecimalValue: {
-      util::Decimal decimal;
-      CHECK_OK(decimal.FromString(varint_value.value_->c_str()));
-      static_cast<EvalDecimalValue *>(result)->value_ =
-          MCString::MakeShared(varint_value.value_->mem_ctx(),
-                               decimal.EncodeToComparable().c_str());
-      break;
-    }
-
-    case InternalType::kTimestampValue: {
-      int64_t val = std::stol(varint_value.value_->c_str());
-      int64_t ts = DateTime::TimestampFromInt(val).ToInt64();
-      static_cast<EvalTimestampValue *>(result)->value_ = ts;
-      break;
-    }
-
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
   }
   return Status::OK();
 }
 
 Status Executor::ConvertFromDouble(EvalValue *result, const EvalDoubleValue& double_value) {
-  switch (result->datatype()) {
-    case InternalType::kDoubleValue:
-      static_cast<EvalDoubleValue *>(result)->value_ = double_value.value_;
-      break;
+  if (double_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kDoubleValue:
+        static_cast<EvalDoubleValue *>(result)->value_ = double_value.value_;
+        break;
 
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
+    }
   }
   return Status::OK();
 }
 
 Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& string_value) {
-  switch (result->datatype()) {
-    case InternalType::kStringValue:
-      static_cast<EvalStringValue *>(result)->value_ = string_value.value_;
-      break;
+  if (string_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kStringValue:
+        static_cast<EvalStringValue *>(result)->value_ = string_value.value_;
+        break;
 
-    case InternalType::kTimestampValue: {
-      std::string s = string_value.value_.get()->c_str();
-      Timestamp ts;
-      RETURN_NOT_OK(DateTime::TimestampFromString(s, &ts));
-      static_cast<EvalTimestampValue *>(result)->value_ = ts.ToInt64();
-      break;
+      case InternalType::kTimestampValue: {
+        std::string s = string_value.value_.get()->c_str();
+        Timestamp ts;
+        RETURN_NOT_OK(DateTime::TimestampFromString(s, &ts));
+        static_cast<EvalTimestampValue *>(result)->value_ = ts.ToInt64();
+        break;
+      }
+
+      case InternalType::kInetaddressValue: {
+        std::string s = string_value.value_.get()->c_str();
+        InetAddress addr;
+        RETURN_NOT_OK(addr.FromString(s));
+        static_cast<EvalInetaddressValue*>(result)->value_ = addr;
+        break;
+      }
+
+      case InternalType::kUuidValue: {
+        std::string s = string_value.value_.get()->c_str();
+        Uuid uuid;
+        RETURN_NOT_OK(uuid.FromString(s));
+        static_cast<EvalUuidValue*>(result)->value_ = uuid;
+        break;
+      }
+
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
     }
-
-    case InternalType::kInetaddressValue: {
-      std::string s = string_value.value_.get()->c_str();
-      InetAddress addr;
-      RETURN_NOT_OK(addr.FromString(s));
-      static_cast<EvalInetaddressValue*>(result)->value_ = addr;
-      break;
-    }
-
-    case InternalType::kUuidValue: {
-      std::string s = string_value.value_.get()->c_str();
-      Uuid uuid;
-      RETURN_NOT_OK(uuid.FromString(s));
-      static_cast<EvalUuidValue*>(result)->value_ = uuid;
-      break;
-    }
-
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
   }
   return Status::OK();
 }
 
 Status Executor::ConvertFromDecimal(EvalValue *result, const EvalDecimalValue& decimal_value) {
-  switch (result->datatype()) {
-    case InternalType::kDecimalValue: {
-      util::Decimal decimal;
-      CHECK_OK(decimal.FromString(decimal_value.value_->c_str()));
-      static_cast<EvalDecimalValue *>(result)->value_ =
-          MCString::MakeShared(decimal_value.value_->mem_ctx(),
-                               decimal.EncodeToComparable().c_str());
+  if (decimal_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kDecimalValue: {
+        util::Decimal decimal;
+        CHECK_OK(decimal.FromString(decimal_value.value_->c_str()));
+        static_cast<EvalDecimalValue *>(result)->value_ =
+            MCString::MakeShared(decimal_value.value_->mem_ctx(),
+                                 decimal.EncodeToComparable().c_str());
 
-      auto s = decimal.EncodeToComparable();
-      string r;
-      for (int i = 0; i < s.size(); i++) {
-        r += StringPrintf("\\x%02x", (unsigned char)s[i]);
+        auto s = decimal.EncodeToComparable();
+        string r;
+        for (int i = 0; i < s.size(); i++) {
+          r += StringPrintf("\\x%02x", (unsigned char)s[i]);
+        }
+
+        decimal.Negate();
+        s = decimal.EncodeToComparable();
+        r = "";
+        for (int i = 0; i < s.size(); i++) {
+          r += StringPrintf("\\x%02x", (unsigned char)s[i]);
+        }
+
+        break;
       }
 
-      decimal.Negate();
-      s = decimal.EncodeToComparable();
-      r = "";
-      for (int i = 0; i < s.size(); i++) {
-        r += StringPrintf("\\x%02x", (unsigned char)s[i]);
+      case InternalType::kDoubleValue: {
+        static_cast<EvalDoubleValue *>(result)->value_ = std::stold(decimal_value.value_->c_str());
+        break;
       }
 
-      break;
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
     }
-
-    case InternalType::kDoubleValue: {
-      static_cast<EvalDoubleValue *>(result)->value_ = std::stold(decimal_value.value_->c_str());
-      break;
-    }
-
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
   }
   return Status::OK();
 }
 
 Status Executor::ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_value) {
-  switch (result->datatype()) {
-    case InternalType::kBoolValue:
-      static_cast<EvalBoolValue *>(result)->value_ = bool_value.value_;
-      break;
+  if (bool_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kBoolValue:
+        static_cast<EvalBoolValue *>(result)->value_ = bool_value.value_;
+        break;
 
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
+    }
   }
   return Status::OK();
 }
 
 Status Executor::ConvertFromBinary(EvalValue *result, const EvalBinaryValue& binary_value) {
-  switch (result->datatype()) {
-    case InternalType::kBinaryValue: {
-      int input_size = static_cast<int>(binary_value.value_->size());
-      if (input_size % 2 != 0) {
-        return STATUS(RuntimeError, "Invalid binary input, expected even number of hex digits");
+  if (binary_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kBinaryValue: {
+        int input_size = static_cast<int>(binary_value.value_->size());
+        if (input_size % 2 != 0) {
+          return STATUS(RuntimeError, "Invalid binary input, expected even number of hex digits");
+        }
+        int no_bytes = input_size / 2; // one byte for every two digits
+        string hex_value;
+        a2b_hex(binary_value.value_->c_str(), &hex_value, no_bytes);
+        static_cast<EvalBinaryValue *>(result)->value_ =
+            MCString::MakeShared(binary_value.value_->mem_ctx(), hex_value.data(), no_bytes);
+        break;
       }
-      int no_bytes = input_size / 2; // one byte for every two digits
-      string hex_value;
-      a2b_hex(binary_value.value_->c_str(), &hex_value, no_bytes);
-      static_cast<EvalBinaryValue *>(result)->value_ =
-          MCString::MakeShared(binary_value.value_->mem_ctx(), hex_value.data(), no_bytes);
-      break;
-    }
 
-    default:
-      LOG(FATAL) << "Illegal datatype conversion";
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
+    }
   }
   return Status::OK();
 }

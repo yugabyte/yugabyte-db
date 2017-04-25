@@ -16,7 +16,7 @@ namespace sql {
 struct EvalValue {
   virtual ~EvalValue();
   virtual InternalType datatype() = 0;
-  bool is_null() {
+  bool is_null() const {
     return is_null_;
   }
   void set_null() {
