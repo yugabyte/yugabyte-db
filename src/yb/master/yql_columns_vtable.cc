@@ -102,7 +102,7 @@ Schema YQLColumnsVTable::CreateSchema(const std::string& table_name) const {
   CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));
   CHECK_OK(builder.AddKeyColumn(kColumnName, DataType::STRING));
   CHECK_OK(builder.AddColumn(kClusteringOrder, DataType::STRING));
-  // TODO: column_name_bytes is missing since we don't support blob type yet.
+  CHECK_OK(builder.AddColumn(kColumnNameBytes, DataType::BINARY));
   CHECK_OK(builder.AddColumn(kKind, DataType::STRING));
   CHECK_OK(builder.AddColumn(kPosition, DataType::INT32));
   CHECK_OK(builder.AddColumn(kType, DataType::STRING));

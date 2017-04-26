@@ -501,7 +501,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
         InetAddress &actual_value = inetaddress_value.value_;
         VLOG(3) << "Expr actual value = " << actual_value.ToString();
         YQLValue::set_inetaddress_value(actual_value, col_pb);
-        std::string bytes;
+        string bytes;
         RETURN_NOT_OK(actual_value.ToBytes(&bytes));
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetInet(col_index, Slice(bytes)));
@@ -520,7 +520,7 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
         Uuid &actual_value = uuid_value.value_;
         VLOG(3) << "Expr actual value = " << actual_value.ToString();
         YQLValue::set_uuid_value(actual_value, col_pb);
-        std::string bytes;
+        string bytes;
         RETURN_NOT_OK(actual_value.ToBytes(&bytes));
         if (row != nullptr) {
           RETURN_NOT_OK(row->SetUuid(col_index, Slice(bytes)));
@@ -983,30 +983,66 @@ CHECKED_STATUS Executor::BoolExprToPB(YQLConditionPB *cond, const PTExpr* expr) 
 }
 
 namespace {
-  void SetStringValue(const std::string& value, const size_t col_idx, YQLRow* row) {
+  CHECKED_STATUS SetStringValue(const string& value,
+                                const Schema& schema,
+                                const string& col_name,
+                                YQLRow* row) {
+    const int col_idx = schema.find_column(col_name);
+    if (col_idx == Schema::kColumnNotFound) {
+      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
+    }
+
     YQLValuePB value_pb;
     YQLValue::set_string_value(value, &value_pb);
     *(row->mutable_column(col_idx)) = value_pb;
+    return Status::OK();
   }
 
-  void SetInetValue(const InetAddress& value, const size_t col_idx, YQLRow* row) {
+  CHECKED_STATUS SetInetValue(const InetAddress& value,
+                              const Schema& schema,
+                              const string& col_name,
+                              YQLRow* row) {
+    const int col_idx = schema.find_column(col_name);
+    if (col_idx == Schema::kColumnNotFound) {
+      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
+    }
+
     YQLValuePB value_pb;
     YQLValue::set_inetaddress_value(value, &value_pb);
     *(row->mutable_column(col_idx)) = value_pb;
+    return Status::OK();
   }
 
-  void SetIntValue(const int32_t value, const size_t col_idx, YQLRow* row) {
+  CHECKED_STATUS SetIntValue(const int32_t value,
+                             const Schema& schema,
+                             const string& col_name,
+                             YQLRow* row) {
+    const int col_idx = schema.find_column(col_name);
+    if (col_idx == Schema::kColumnNotFound) {
+      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
+    }
+
     YQLValuePB value_pb;
     YQLValue::set_int32_value(value, &value_pb);
     *(row->mutable_column(col_idx)) = value_pb;
+    return Status::OK();
   }
 
-  void SetUuidValue(const std::string& value, const size_t col_idx, YQLRow* row) {
+  CHECKED_STATUS SetUuidValue(const string& value,
+                              const Schema& schema,
+                              const string col_name,
+                              YQLRow* row) {
+    const int col_idx = schema.find_column(col_name);
+    if (col_idx == Schema::kColumnNotFound) {
+      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
+    }
+
     YQLValuePB value_pb;
     Uuid uuid;
     CHECK_OK(uuid.FromString(value));
     YQLValue::set_uuid_value(uuid, &value_pb);
     *(row->mutable_column(col_idx)) = value_pb;
+    return Status::OK();
   }
 
   CHECKED_STATUS HandleSystemLocal(const shared_ptr<client::YBTable>& table,
@@ -1027,23 +1063,32 @@ namespace {
     }
 
     // Now populate the row for system.local.
-    YQLRowBlock row_block(table->InternalSchema());
+    const Schema& schema = table->InternalSchema();
+    YQLRowBlock row_block(schema);
     YQLRow& row = row_block.Extend();
-    SetStringValue("local", 0, &row); // key
-    SetStringValue("COMPLETED", 1, &row); // bootstrapped
-    SetInetValue(broadcast_addr, 2, &row); // broadcast_address
-    SetStringValue("local cluster", 3, &row); // cluster_name
-    SetStringValue("3.4.2", 4, &row); // cql_version
-    SetStringValue("datacenter", 5, &row); // data_center
-    SetIntValue(0, 6, &row); // gossip_generation
-    SetInetValue(broadcast_addr, 7, &row); // listen_address
-    SetStringValue("4", 8, &row); // native_protocol_version
-    SetStringValue("org.apache.cassandra.dht.Murmur3Partitioner", 9, &row); // partitioner
-    SetStringValue("rack", 10, &row); // rack
-    SetStringValue("3.9-SNAPSHOT", 11, &row); // release_version
-    SetInetValue(rpc_addr, 12, &row); // rpc_address
-    SetUuidValue("00000000-0000-0000-0000-000000000000", 13, &row); // schema_version
-    SetStringValue("20.1.0", 14, &row); // thrift_version
+    RETURN_NOT_OK(SetStringValue("local", schema, master::kSystemLocalKeyColumn, &row));
+    RETURN_NOT_OK(SetStringValue("COMPLETED", schema, master::kSystemLocalBootstrappedColumn,
+                                 &row));
+    RETURN_NOT_OK(SetInetValue(broadcast_addr, schema, master::kSystemLocalBroadcastAddressColumn,
+                               &row));
+    RETURN_NOT_OK(SetStringValue("local cluster", schema, master::kSystemLocalClusterNameColumn,
+                                 &row));
+    RETURN_NOT_OK(SetStringValue("3.4.2", schema, master::kSystemLocalCQLVersionColumn, &row));
+    RETURN_NOT_OK(SetStringValue("datacenter", schema, master::kSystemLocalDataCenterColumn, &row));
+    RETURN_NOT_OK(SetIntValue(0, schema, master::kSystemLocalGossipGenerationColumn, &row));
+    RETURN_NOT_OK(SetInetValue(broadcast_addr, schema, master::kSystemLocalListenAddressColumn,
+                               &row));
+    RETURN_NOT_OK(SetStringValue("4", schema, master::kSystemLocalNativeProtocolVersionColumn,
+                                 &row));
+    RETURN_NOT_OK(SetStringValue("org.apache.cassandra.dht.Murmur3Partitioner", schema,
+                                 master::kSystemLocalPartitionerColumn, &row));
+    RETURN_NOT_OK(SetStringValue("rack", schema, master::kSystemLocalRackColumn, &row));
+    RETURN_NOT_OK(SetStringValue("3.9-SNAPSHOT", schema, master::kSystemLocalReleaseVersionColumn,
+                                 &row));
+    RETURN_NOT_OK(SetInetValue(rpc_addr, schema, master::kSystemLocalRpcAddressColumn, &row));
+    RETURN_NOT_OK(SetUuidValue("00000000-0000-0000-0000-000000000000", schema,
+                               master::kSystemLocalSchemaVersionColumn, &row));
+    RETURN_NOT_OK(SetStringValue("20.1.0", schema, master::kSystemLocalThriftVersionColumn, &row));
 
     // Serialize the row and return result.
     faststring buffer;

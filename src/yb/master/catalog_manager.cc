@@ -773,24 +773,27 @@ Status CatalogManager::PrepareSystemNamespace() {
 Status CatalogManager::CreateSystemLocalSchema(Schema* schema) {
   // system.local table
   SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn("key", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("bootstrapped", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("broadcast_address", DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn("cluster_name", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("cql_version", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("data_center", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("gossip_generation", DataType::INT32));
-  // TODO: host_id is missing since we need UUID for it.
-  RETURN_NOT_OK(builder.AddColumn("listen_address", DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn("native_protocol_version", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("partitioner", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("rack", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::UUID));
-  RETURN_NOT_OK(builder.AddColumn("thrift_version", DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  // TODO: truncated_at is missing since we don't support blob.
+  RETURN_NOT_OK(builder.AddKeyColumn(kSystemLocalKeyColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalBroadcastAddressColumn, DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalClusterNameColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalCQLVersionColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalDataCenterColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalGossipGenerationColumn, DataType::INT32));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalHostIdColumn, DataType::UUID));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalListenAddressColumn, DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalNativeProtocolVersionColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalPartitionerColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalRackColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalReleaseVersionColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, DataType::INET));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, DataType::UUID));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, DataType::STRING));
+  RETURN_NOT_OK(builder.AddColumn(kSystemLocalTokesnColumn,
+                                  YQLType(DataType::SET, { YQLType(DataType::STRING) })));
+  RETURN_NOT_OK(builder.AddColumn(
+      kSystemLocalTruncatedAtColumn,
+      YQLType(DataType::MAP, { YQLType(DataType::UUID), YQLType(DataType::BINARY) })));
   *schema = builder.Build();
   return Status::OK();
 }

@@ -119,7 +119,7 @@ Status YQLEmptyVTable::CreateViewsSchema(Schema* schema) const {
   SchemaBuilder builder;
   RETURN_NOT_OK(builder.AddKeyColumn("keyspace_name", DataType::STRING));
   RETURN_NOT_OK(builder.AddKeyColumn("view_name", DataType::STRING));
-  // TODO: base_table_id is missing since we don't support uuid yet.
+  RETURN_NOT_OK(builder.AddColumn("base_table_id", DataType::UUID));
   RETURN_NOT_OK(builder.AddColumn("base_table_name", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("bloom_filter_fp_chance", DataType::DOUBLE));
   // TODO: caching needs to be a frozen map.
@@ -143,7 +143,7 @@ Status YQLEmptyVTable::CreateViewsSchema(Schema* schema) const {
       "extensions",
       YQLType(DataType::MAP, { YQLType(DataType::STRING), YQLType(DataType::BINARY) })));
   RETURN_NOT_OK(builder.AddColumn("gc_grace_seconds", DataType::INT32));
-  // TODO: id is missing since we don't support uuid yet.
+  RETURN_NOT_OK(builder.AddColumn("id", DataType::UUID));
   RETURN_NOT_OK(builder.AddColumn("include_all_columns", DataType::BOOL));
   RETURN_NOT_OK(builder.AddColumn("max_index_interval", DataType::INT32));
   RETURN_NOT_OK(builder.AddColumn("memtable_flush_period_in_ms", DataType::INT32));
