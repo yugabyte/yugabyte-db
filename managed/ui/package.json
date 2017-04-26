@@ -21,6 +21,7 @@
     "custom-react-scripts": "https://github.com/appjudo/custom-react-scripts.git#0b8fc74",
     "file-loader": "^0.9.0",
     "moment": "^2.16.0",
+    "moment-precise-range-plugin": "^1.2.1",
     "plotly.js": "^1.20.4",
     "react-copy-to-clipboard": "^4.2.3",
     "react-fa": "^4.1.2",
