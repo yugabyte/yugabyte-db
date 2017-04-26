@@ -48,7 +48,12 @@ googleAnalytics = ""
 	weight = 0
 
 [[menu.main]]
-	name   = "Get started"
+	name   = "Get started (Development)"
+	url    = "get-started-dev/"
+	weight = 10
+
+[[menu.main]]
+	name   = "Get started (Production/Test)"
 	url    = "get-started/"
 	weight = 10
 

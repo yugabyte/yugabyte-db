@@ -1,8 +1,9 @@
 ---
 date: 2016-03-09T00:11:02+01:00
-title: Get started
+title: Get started (Production/Test)
 weight: 10
 ---
+Getting started with YugaByte in a **production** or **test** environment is easy. First install **YugaWare**, the YugaByte admin console, and then you can spin up YugaByte clusters on any public cloud or your own private datacenter in no time.
 
 ## Prerequisites
 
@@ -43,7 +44,7 @@ You will need to agree to the AWS Marketplace Terms [here](https://aws.amazon.co
 Dedicated hosts or VMs running Centos 7+ with local or remote attached storage. All these hosts should be accessible over SSH from the YugaWare host
 
 
-## Installation
+## Install
 
 ### Installing Replicated
 
@@ -108,7 +109,7 @@ Replicated is going to perform a set of pre-flight checks to ensure that the hos
 
 Clicking Continue above will bring us to YugaWare configuration.
 
-## Configuration
+## Configure
 
 Configuring YugaWare is really simple. A randomly generated password for the YugaWare config database is already pre-filled. You can make a note of it for future use or change it to a new password of your choice. Additionally, `/opt/yugabyte` is pre-filled as the location of the directory on the YugaWare host where all the YugaWare data will be stored.  Clicking Save on this page will take us to the Replicated Dashboard.
 
