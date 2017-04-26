@@ -10,7 +10,7 @@
 namespace yb {
 namespace master {
 
-static const char* const kDefaultNamespaceName = "$$$_DEFAULT";
+static const char* const kDefaultNamespaceName = "default_keyspace";
 static const char* const kDefaultNamespaceId = "00000000000000000000000000000000";
 
 static const char* const kSystemNamespaceName = "system";
