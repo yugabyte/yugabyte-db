@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { FormattedRelative } from 'react-intl';
+import moment from 'moment';
+import 'moment-precise-range-plugin';
 import { Row, Col } from 'react-bootstrap';
 import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
 import './TableSchema.scss';
@@ -71,7 +72,7 @@ export default class TableSchema extends Component {
                 <h5 className="no-bottom-margin">TTL:</h5>
               </Col>
               <Col lg={10}>
-                <FormattedRelative value={Date.now() + 1000 * ttlInSeconds} updateInterval={0} />
+                { moment.preciseDiff(moment(), moment().add(ttlInSeconds, 'seconds')) }
               </Col>
             </Row>
           </Col>
