@@ -1,6 +1,9 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2016  Orafce Global Development Group
 
+Version 3.5.0
+* fix of important issue - missing IMMUTABLE flag for functions ltrim, btrim, rtrim, lpad, rpad
+
 Version 3.4.0 - 2017-03-14
 * new aggregate function wm_concat
 * PostgreSQL 9.6, 10 are supported well
