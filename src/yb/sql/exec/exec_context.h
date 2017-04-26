@@ -49,10 +49,8 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Use keyspace with the given name.
-  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name, ExecutedResult::SharedPtr* result) {
-    RETURN_NOT_OK(sql_env_->UseKeyspace(keyspace_name));
-    result->reset(new SetKeyspaceResult(keyspace_name));
-    return Status::OK();
+  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
+    return sql_env_->UseKeyspace(keyspace_name);
   }
 
   std::string CurrentKeyspace() const {

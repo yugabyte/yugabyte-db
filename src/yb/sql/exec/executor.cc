@@ -264,7 +264,10 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
     CB_RETURN(
         cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
   }
-  CB_RETURN(cb, Status::OK());
+  cb.Run(
+      Status::OK(),
+      std::make_shared<SchemaChangeResult>(
+          "CREATED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name()));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -273,6 +276,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
   DCHECK_NOTNULL(exec_context_.get());
   Status exec_status;
   ErrorCode error_not_found = ErrorCode::EXEC_ERROR;
+  SchemaChangeResult::SharedPtr result;
 
   switch (tnode->drop_type()) {
     case OBJECT_TABLE: {
@@ -284,6 +288,8 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       // Drop the table.
       exec_status = exec_context_->DeleteTable(table_name);
       error_not_found = ErrorCode::TABLE_NOT_FOUND;
+      result = std::make_shared<SchemaChangeResult>(
+          "DROPPED", "TABLE", table_name.resolved_namespace_name(), table_name.table_name());
       break;
     }
 
@@ -291,6 +297,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       // Drop the keyspace.
       exec_status = exec_context_->DeleteKeyspace(tnode->name());
       error_not_found = ErrorCode::KEYSPACE_NOT_FOUND;
+      result = std::make_shared<SchemaChangeResult>("DROPPED", "KEYSPACE", tnode->name());
       break;
 
     default:
@@ -313,7 +320,7 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
         cb, exec_context_->Error(tnode->name_loc(), exec_status.ToString().c_str(), error_code));
   }
 
-  CB_RETURN(cb, Status::OK());
+  cb.Run(Status::OK(), result);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -994,6 +1001,14 @@ namespace {
     *(row->mutable_column(col_idx)) = value_pb;
   }
 
+  void SetUuidValue(const std::string& value, const size_t col_idx, YQLRow* row) {
+    YQLValuePB value_pb;
+    Uuid uuid;
+    CHECK_OK(uuid.FromString(value));
+    YQLValue::set_uuid_value(uuid, &value_pb);
+    *(row->mutable_column(col_idx)) = value_pb;
+  }
+
   CHECKED_STATUS HandleSystemLocal(const shared_ptr<client::YBTable>& table,
                                    const ExecContext* exec_context,
                                    ExecutedResult::SharedPtr* result) {
@@ -1027,7 +1042,8 @@ namespace {
     SetStringValue("rack", 10, &row); // rack
     SetStringValue("3.9-SNAPSHOT", 11, &row); // release_version
     SetInetValue(rpc_addr, 12, &row); // rpc_address
-    SetStringValue("20.1.0", 13, &row); // thrift_version
+    SetUuidValue("00000000-0000-0000-0000-000000000000", 13, &row); // schema_version
+    SetStringValue("20.1.0", 14, &row); // thrift_version
 
     // Serialize the row and return result.
     faststring buffer;
@@ -1333,15 +1349,14 @@ void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedC
     CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
   }
 
-  CB_RETURN(cb, Status::OK());
+  cb.Run(Status::OK(), std::make_shared<SchemaChangeResult>("CREATED", "KEYSPACE", tnode->name()));
 }
 
 //--------------------------------------------------------------------------------------------------
 
 void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
-  ExecutedResult::SharedPtr result;
-  Status exec_status = exec_context_->UseKeyspace(tnode->name(), &result);
+  Status exec_status = exec_context_->UseKeyspace(tnode->name());
 
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::EXEC_ERROR;
@@ -1352,7 +1367,7 @@ void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCall
 
     CB_RETURN(cb, exec_context_->Error(tnode->loc(), exec_status.ToString().c_str(), error_code));
   }
-  cb.Run(Status::OK(), result);
+  cb.Run(Status::OK(), std::make_shared<SetKeyspaceResult>(tnode->name()));
 }
 
 }  // namespace sql

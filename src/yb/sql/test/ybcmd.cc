@@ -118,7 +118,7 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
               cout << "Keyspace set to "
                 << static_cast<SetKeyspaceResult*>(result.get())->keyspace();
               break;
-            case ExecutedResult::Type::ROWS:
+            case ExecutedResult::Type::ROWS: {
               RowsResult* rows_result = static_cast<RowsResult*>(result.get());
               std::unique_ptr<YQLRowBlock> row_block(rows_result->GetRowBlock());
               cout << row_block->ToString();
@@ -126,6 +126,9 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
               // statement parameters to retrieve the next set of rows until the end is reached
               // when there is no more table id in the paging state (below).
               CHECK_OK(params.set_paging_state(rows_result->paging_state()));
+              break;
+            }
+            case ExecutedResult::Type::SCHEMA_CHANGE:
               break;
           }
         }

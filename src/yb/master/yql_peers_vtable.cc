@@ -45,6 +45,10 @@ Status PeersVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
     YQLRow& row = (*vtable)->Extend();
     *row.mutable_column(kPeerColumnIndex) = value;
     *row.mutable_column(kRpcAddrColumnIndex) = value;
+    Uuid uuid;
+    CHECK_OK(uuid.FromString("00000000-0000-0000-0000-000000000000"));
+    YQLValue::set_uuid_value(uuid, &value);
+    *row.mutable_column(kSchemaVersionColumnIndex) = value;
   }
   return Status::OK();
 }

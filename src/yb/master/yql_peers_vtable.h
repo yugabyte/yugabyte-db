@@ -19,6 +19,7 @@ class PeersVTable : public YQLVirtualTable {
   // Index of columns in the peers table.
   static constexpr size_t kPeerColumnIndex = 0; // peer column.
   static constexpr size_t kRpcAddrColumnIndex = 6; // rpc_address column.
+  static constexpr size_t kSchemaVersionColumnIndex = 7; // schema_version column.
 };
 
 }  // namespace master

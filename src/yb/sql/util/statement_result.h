@@ -59,8 +59,9 @@ class ExecutedResult {
 
   // Execution result types.
   enum class Type {
-    SET_KEYSPACE = 1,
-    ROWS         = 2
+    SET_KEYSPACE  = 1,
+    ROWS          = 2,
+    SCHEMA_CHANGE = 3
   };
 
   virtual const Type type() const = 0;
@@ -128,6 +129,36 @@ class RowsResult : public ExecutedResult {
   const YQLClient client_;
   std::string rows_data_;
   std::string paging_state_;
+};
+
+//------------------------------------------------------------------------------------------------
+// Result of a schema object being changed as a result of executing a DDL statement.
+class SchemaChangeResult : public ExecutedResult {
+ public:
+  // Public types.
+  typedef std::shared_ptr<SchemaChangeResult> SharedPtr;
+  typedef std::shared_ptr<const SchemaChangeResult> SharedPtrConst;
+
+  // Constructors.
+  SchemaChangeResult(
+      const std::string& change_type, const std::string& object_type,
+      const std::string& keyspace_name, const std::string& object_name = "");
+  virtual ~SchemaChangeResult() override;
+
+  // Result type.
+  virtual const Type type() const override { return Type::SCHEMA_CHANGE; }
+
+  // Accessor functions.
+  const std::string& change_type() const { return change_type_; }
+  const std::string& object_type() const { return object_type_; }
+  const std::string& keyspace_name() const { return keyspace_name_; }
+  const std::string& object_name() const { return object_name_; }
+
+ private:
+  const std::string change_type_;
+  const std::string object_type_;
+  const std::string keyspace_name_;
+  const std::string object_name_;
 };
 
 } // namespace sql

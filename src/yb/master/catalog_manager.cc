@@ -781,7 +781,7 @@ Status CatalogManager::CreateSystemPeersSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn("rack", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::STRING)); // This should be UUID.
+  RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::UUID));
   RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, { YQLType(DataType::STRING) })));
   *schema = builder.Build();
   return Status::OK();
@@ -804,7 +804,7 @@ Status CatalogManager::CreateSystemLocalSchema(Schema* schema) {
   RETURN_NOT_OK(builder.AddColumn("rack", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("release_version", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("rpc_address", DataType::INET));
-  // TODO: schema_version is missing since we need UUID for it.
+  RETURN_NOT_OK(builder.AddColumn("schema_version", DataType::UUID));
   RETURN_NOT_OK(builder.AddColumn("thrift_version", DataType::STRING));
   RETURN_NOT_OK(builder.AddColumn("tokens", YQLType(DataType::SET, { YQLType(DataType::STRING) })));
   // TODO: truncated_at is missing since we don't support blob.

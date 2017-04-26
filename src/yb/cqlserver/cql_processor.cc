@@ -59,6 +59,7 @@ using sql::ExecutedResult;
 using sql::PreparedResult;
 using sql::RowsResult;
 using sql::SetKeyspaceResult;
+using sql::SchemaChangeResult;
 using sql::SqlProcessor;
 using sql::Statement;
 using sql::ErrorCode;
@@ -291,18 +292,18 @@ CQLResponse* CQLProcessor::ReturnResponse(
   }
   switch (result->type()) {
     case ExecutedResult::Type::SET_KEYSPACE: {
-      const SetKeyspaceResult *set_keyspace_result =
-          static_cast<const SetKeyspaceResult*>(result.get());
+      SetKeyspaceResult *set_keyspace_result =
+          down_cast<SetKeyspaceResult*>(result.get());
       return new SetKeyspaceResultResponse(req, *set_keyspace_result);
     }
-    case ExecutedResult::Type::ROWS:
+    case ExecutedResult::Type::ROWS: {
       RowsResult::SharedPtr rows_result = std::static_pointer_cast<RowsResult>(result);
       cql_metrics_->sql_response_size_bytes_->Increment(rows_result->rows_data().size());
       switch (req.opcode()) {
         case CQLMessage::Opcode::EXECUTE:
-          return new RowsResultResponse(static_cast<const ExecuteRequest&>(req), rows_result);
+          return new RowsResultResponse(down_cast<const ExecuteRequest&>(req), rows_result);
         case CQLMessage::Opcode::QUERY:
-          return new RowsResultResponse(static_cast<const QueryRequest&>(req), rows_result);
+          return new RowsResultResponse(down_cast<const QueryRequest&>(req), rows_result);
         case CQLMessage::Opcode::ERROR:   FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::STARTUP: FALLTHROUGH_INTENDED;
         case CQLMessage::Opcode::READY:   FALLTHROUGH_INTENDED;
@@ -323,6 +324,12 @@ CQLResponse* CQLProcessor::ReturnResponse(
       LOG(FATAL) << "Internal error: not a request that returns result "
                  << static_cast<int>(req.opcode());
       break;
+    }
+    case ExecutedResult::Type::SCHEMA_CHANGE: {
+      SchemaChangeResult *schema_change_result =
+          down_cast<SchemaChangeResult*>(result.get());
+      return new SchemaChangeResultResponse(req, *schema_change_result);
+    }
 
     // default: fall through
   }

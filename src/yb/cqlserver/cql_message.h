@@ -69,6 +69,7 @@ class CQLMessage {
   static constexpr Flags kWarningFlag       = 0x08; // Since V4
 
   using StreamId = uint16_t;
+  static constexpr StreamId kEventStreamId = 0xffff; // Special stream id for events.
 
   enum class Opcode : uint8_t {
     ERROR          = 0x00,
@@ -408,7 +409,7 @@ class RegisterRequest : public CQLRequest {
 // ------------------------------------ CQL response -----------------------------------
 class CQLResponse : public CQLMessage {
  public:
-  void Serialize(faststring* mesg);
+  virtual void Serialize(faststring* mesg);
   virtual ~CQLResponse();
  protected:
   CQLResponse(const CQLRequest& request, Opcode opcode);
@@ -770,19 +771,15 @@ class PreparedResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class SchemaChangeResultResponse : public ResultResponse {
  public:
+  SchemaChangeResultResponse(const CQLRequest& request, const sql::SchemaChangeResult& result);
   virtual ~SchemaChangeResultResponse() override;
+
+  virtual void Serialize(faststring* mesg) override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) override;
 
  private:
-  static const std::vector<std::string> kEmptyArgumentTypes;
-
-  SchemaChangeResultResponse(
-      const CQLRequest& request, const std::string& change_type, const std::string& target,
-      const std::string& keyspace, const std::string& object = "",
-      const std::vector<std::string>& argument_types = kEmptyArgumentTypes);
-
   const std::string change_type_;
   const std::string target_;
   const std::string keyspace_;
@@ -793,7 +790,7 @@ class SchemaChangeResultResponse : public ResultResponse {
 //------------------------------------------------------------
 class EventResponse : public CQLResponse {
  protected:
-  EventResponse(const CQLRequest& request, const std::string& event_type);
+  explicit EventResponse(const std::string& event_type);
   virtual ~EventResponse() override;
   virtual void SerializeBody(faststring* mesg) override;
   virtual void SerializeEventBody(faststring* mesg) = 0;
@@ -810,8 +807,7 @@ class TopologyChangeEventResponse : public EventResponse {
   virtual void SerializeEventBody(faststring* mesg) override;
 
  private:
-  TopologyChangeEventResponse(
-      const CQLRequest& request, const std::string& topology_change_type, const Sockaddr& node);
+  TopologyChangeEventResponse(const std::string& topology_change_type, const Sockaddr& node);
 
   const std::string topology_change_type_;
   const Sockaddr node_;
@@ -826,8 +822,7 @@ class StatusChangeEventResponse : public EventResponse {
   virtual void SerializeEventBody(faststring* mesg) override;
 
  private:
-  StatusChangeEventResponse(
-      const CQLRequest& request, const std::string& status_change_type, const Sockaddr& node);
+  StatusChangeEventResponse(const std::string& status_change_type, const Sockaddr& node);
 
   const std::string status_change_type_;
   const Sockaddr node_;
@@ -836,6 +831,10 @@ class StatusChangeEventResponse : public EventResponse {
 //------------------------------------------------------------
 class SchemaChangeEventResponse : public EventResponse {
  public:
+  SchemaChangeEventResponse(
+      const std::string& change_type, const std::string& target,
+      const std::string& keyspace, const std::string& object = "",
+      const std::vector<std::string>& argument_types = kEmptyArgumentTypes);
   virtual ~SchemaChangeEventResponse() override;
 
  protected:
@@ -844,12 +843,7 @@ class SchemaChangeEventResponse : public EventResponse {
  private:
   static const std::vector<std::string> kEmptyArgumentTypes;
 
-  SchemaChangeEventResponse(
-      const CQLRequest& request, const std::string& schema_change_type, const std::string& target,
-      const std::string& keyspace, const std::string& object = "",
-      const std::vector<std::string>& argument_types = kEmptyArgumentTypes);
-
-  const std::string schema_change_type_;
+  const std::string change_type_;
   const std::string target_;
   const std::string keyspace_;
   const std::string object_;

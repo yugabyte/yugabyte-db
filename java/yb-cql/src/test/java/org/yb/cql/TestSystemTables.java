@@ -14,6 +14,7 @@ import org.yb.master.Master;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
@@ -212,4 +213,33 @@ public class TestSystemTables extends TestBase {
     verifyColumnSchema(results.get(7), "many_columns", "c8", "regular", -1, "list<text>", "none");
     verifyColumnSchema(results.get(8), "many_columns", "c9", "regular", -1, "set<int>", "none");
   }
+
+  @Test
+  public void testSchemaUpdate() throws Exception {
+    // Create keyspace and table.
+    session.execute("CREATE KEYSPACE test_keyspace;");
+    session.execute("USE test_keyspace;");
+    session.execute("CREATE TABLE test_table (k int primary key, c int);");
+
+    // Look up and verify the keyspace and table metadata by the CQL statement generated.
+    String cql = cluster.getMetadata()
+                        .getKeyspace("test_keyspace")
+                        .getTable("test_table")
+                        .exportAsString();
+    assertTrue("CQL of test_table mismatch: " + cql,
+               cql.startsWith("CREATE TABLE test_keyspace.test_table (\n"+
+                              "    k int,\n" +
+                              "    c int,\n" +
+                              "    PRIMARY KEY (k)\n"+
+                              ")"));
+
+    // Drop the table. Verify its metadata has been removed.
+    session.execute("DROP TABLE test_table;");
+    assertNull(cluster.getMetadata().getKeyspace("test_keyspace").getTable("test_table"));
+
+    // Drop the keyspace. Verify its metadata has been removed.
+    session.execute("DROP KEYSPACE test_keyspace;");
+    assertNull(cluster.getMetadata().getKeyspace("test_keyspace"));
+  }
+
 }

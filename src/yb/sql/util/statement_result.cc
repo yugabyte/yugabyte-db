@@ -164,5 +164,17 @@ YQLRowBlock *RowsResult::GetRowBlock() const {
   return rowblock.release();
 }
 
+//------------------------------------------------------------------------------------------------
+SchemaChangeResult::SchemaChangeResult(
+    const string& change_type, const string& object_type,
+    const string& keyspace_name, const string& object_name)
+    : change_type_(change_type), object_type_(object_type),
+      keyspace_name_(keyspace_name), object_name_(object_name) {
+}
+
+SchemaChangeResult::~SchemaChangeResult() {
+}
+
+
 } // namespace sql
 } // namespace yb

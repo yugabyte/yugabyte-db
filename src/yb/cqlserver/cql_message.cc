@@ -663,9 +663,11 @@ CQLResponse::~CQLResponse() {
   NetworkByteOrder::Store64(&(buf)[pos], static_cast<int64_t>(value))
 
 void CQLResponse::Serialize(faststring* mesg) {
+  const size_t start_pos = mesg->size(); // save the start position
   SerializeHeader(mesg);
   SerializeBody(mesg);
-  SERIALIZE_INT(mesg->data(), kHeaderPosLength, mesg->size() - kMessageHeaderLength);
+  SERIALIZE_INT(
+      mesg->data(), start_pos + kHeaderPosLength, mesg->size() - start_pos - kMessageHeaderLength);
 }
 
 void CQLResponse::SerializeHeader(faststring* mesg) {
@@ -1358,16 +1360,22 @@ void SetKeyspaceResultResponse::SerializeResultBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-const vector<string> SchemaChangeResultResponse::kEmptyArgumentTypes = {};
-
 SchemaChangeResultResponse::SchemaChangeResultResponse(
-    const CQLRequest& request, const string& change_type, const string& target,
-    const string& keyspace, const string& object, const vector<string>& argument_types)
-    : ResultResponse(request, Kind::SCHEMA_CHANGE), change_type_(change_type),
-      keyspace_(keyspace), object_(object), argument_types_(argument_types) {
+    const CQLRequest& request, const sql::SchemaChangeResult& result)
+    : ResultResponse(request, Kind::SCHEMA_CHANGE),
+      change_type_(result.change_type()), target_(result.object_type()),
+      keyspace_(result.keyspace_name()), object_(result.object_name()) {
 }
 
 SchemaChangeResultResponse::~SchemaChangeResultResponse() {
+}
+
+void SchemaChangeResultResponse::Serialize(faststring* mesg) {
+  ResultResponse::Serialize(mesg);
+  // TODO: Replace this hack that piggybacks a SCHEMA_CHANGE event along a SCHEMA_CHANGE result
+  // response with a formal event notification mechanism.
+  SchemaChangeEventResponse event(change_type_, target_, keyspace_, object_, argument_types_);
+  event.Serialize(mesg);
 }
 
 void SchemaChangeResultResponse::SerializeResultBody(faststring* mesg) {
@@ -1386,8 +1394,8 @@ void SchemaChangeResultResponse::SerializeResultBody(faststring* mesg) {
 }
 
 //----------------------------------------------------------------------------------------
-EventResponse::EventResponse(const CQLRequest& request, const string& event_type)
-    : CQLResponse(request, Opcode::EVENT), event_type_(event_type) {
+EventResponse::EventResponse(const string& event_type)
+    : CQLResponse(kEventStreamId, Opcode::EVENT), event_type_(event_type) {
 }
 
 EventResponse::~EventResponse() {
@@ -1400,8 +1408,8 @@ void EventResponse::SerializeBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 TopologyChangeEventResponse::TopologyChangeEventResponse(
-    const CQLRequest& request, const string& topology_change_type, const Sockaddr& node)
-    : EventResponse(request, "TOPOLOGY_CHANGE"), topology_change_type_(topology_change_type),
+    const string& topology_change_type, const Sockaddr& node)
+    : EventResponse("TOPOLOGY_CHANGE"), topology_change_type_(topology_change_type),
       node_(node) {
 }
 
@@ -1415,8 +1423,8 @@ void TopologyChangeEventResponse::SerializeEventBody(faststring* mesg) {
 
 //----------------------------------------------------------------------------------------
 StatusChangeEventResponse::StatusChangeEventResponse(
-    const CQLRequest& request, const string& status_change_type, const Sockaddr& node)
-    : EventResponse(request, "STATUS_CHANGE"), status_change_type_(status_change_type),
+    const string& status_change_type, const Sockaddr& node)
+    : EventResponse("STATUS_CHANGE"), status_change_type_(status_change_type),
       node_(node) {
 }
 
@@ -1432,17 +1440,17 @@ void StatusChangeEventResponse::SerializeEventBody(faststring* mesg) {
 const vector<string> SchemaChangeEventResponse::kEmptyArgumentTypes = {};
 
 SchemaChangeEventResponse::SchemaChangeEventResponse(
-    const CQLRequest& request, const string& schema_change_type, const string& target,
+    const string& change_type, const string& target,
     const string& keyspace, const string& object, const vector<string>& argument_types)
-    : EventResponse(request, "SCHEMA_CHANGE"), schema_change_type_(schema_change_type),
-      target_(target),  keyspace_(keyspace), object_(object), argument_types_(argument_types) {
+    : EventResponse("SCHEMA_CHANGE"), change_type_(change_type), target_(target),
+      keyspace_(keyspace), object_(object), argument_types_(argument_types) {
 }
 
 SchemaChangeEventResponse::~SchemaChangeEventResponse() {
 }
 
 void SchemaChangeEventResponse::SerializeEventBody(faststring* mesg) {
-  SerializeString(schema_change_type_, mesg);
+  SerializeString(change_type_, mesg);
   SerializeString(target_, mesg);
   if (target_ == "KEYSPACE") {
     SerializeString(keyspace_, mesg);
