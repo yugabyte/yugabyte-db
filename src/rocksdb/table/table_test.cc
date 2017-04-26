@@ -2053,11 +2053,16 @@ TEST_F(GeneralTableTest, ApproximateOffsetOfCompressed) {
 }
 
 TEST_F(HarnessTest, Randomized) {
+#if defined(ROCKSDB_TSAN_RUN) || defined(THREAD_SANITIZER)
+  static constexpr int kMaxNumEntries = 200;
+#else
+  static constexpr int kMaxNumEntries = 2000;
+#endif
   std::vector<TestArgs> args = GenerateArgList();
   for (unsigned int i = 0; i < args.size(); i++) {
     Init(args[i]);
     Random rnd(test::RandomSeed() + 5);
-    for (int num_entries = 0; num_entries < 2000;
+    for (int num_entries = 0; num_entries < kMaxNumEntries;
          num_entries += (num_entries < 50 ? 1 : 200)) {
       if ((num_entries % 10) == 0) {
         fprintf(stderr, "case %d of %d: num_entries = %d\n", (i + 1),
