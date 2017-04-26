@@ -9,8 +9,11 @@
 
 #include <glog/logging.h>
 
+#include "yb/util/errno.h"
 #include "yb/util/monotime.h"
 #include "yb/util/thread_restrictions.h"
+
+using std::string;
 
 namespace yb {
 
@@ -38,7 +41,7 @@ ConditionVariable::ConditionVariable(Mutex* user_lock)
 #else
   rv = pthread_cond_init(&condition_, nullptr);
 #endif
-  DCHECK_EQ(0, rv);
+  DCHECK_EQ(0, rv) << ErrnoToString(rv);
 }
 
 ConditionVariable::~ConditionVariable() {
@@ -55,7 +58,7 @@ ConditionVariable::~ConditionVariable() {
   }
 #endif
   int rv = pthread_cond_destroy(&condition_);
-  DCHECK_EQ(0, rv);
+  DCHECK_EQ(0, rv) << ErrnoToString(rv);
 }
 
 void ConditionVariable::Wait() const {
@@ -64,7 +67,7 @@ void ConditionVariable::Wait() const {
   user_lock_->CheckHeldAndUnmark();
 #endif
   int rv = pthread_cond_wait(&condition_, user_mutex_);
-  DCHECK_EQ(0, rv);
+  DCHECK_EQ(0, rv) << ErrnoToString(rv);
 #if !defined(NDEBUG)
   user_lock_->CheckUnheldAndMark();
 #endif
@@ -129,12 +132,12 @@ bool ConditionVariable::TimedWait(const MonoDelta& max_time) const {
 
 void ConditionVariable::Broadcast() {
   int rv = pthread_cond_broadcast(&condition_);
-  DCHECK_EQ(0, rv);
+  DCHECK_EQ(0, rv) << ErrnoToString(rv);
 }
 
 void ConditionVariable::Signal() {
   int rv = pthread_cond_signal(&condition_);
-  DCHECK_EQ(0, rv);
+  DCHECK_EQ(0, rv) << ErrnoToString(rv);
 }
 
 }  // namespace yb

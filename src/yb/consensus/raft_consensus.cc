@@ -380,7 +380,7 @@ Status RaftConsensus::EmulateElection() {
 Status RaftConsensus::StartElection(
     ElectionMode mode,
     const bool pending_commit,
-    const OpId& opid,
+    const OpId& must_be_committed_opid,
     const std::string& originator_uuid) {
   TRACE_EVENT2("consensus", "RaftConsensus::StartElection",
                "peer", peer_uuid(),
@@ -416,11 +416,16 @@ Status RaftConsensus::StartElection(
     // has jumped before we can start.
     bool start_now = true;
     if (pending_commit) {
-      auto required_id = opid.IsInitialized() ? opid : state_->GetPendingElectionOpIdUnlocked();
-      if (!state_->AdvanceCommittedIndexUnlocked(required_id).ok()) {
+      const auto required_id =
+          must_be_committed_opid.IsInitialized() ? must_be_committed_opid
+                                                 : state_->GetPendingElectionOpIdUnlocked();
+      const Status advance_committed_index_status =
+          state_->AdvanceCommittedIndexUnlocked(required_id);
+      if (!advance_committed_index_status.ok()) {
         LOG(WARNING) << "Starting an election but the latest committed OpId is not "
                         "present in this peer's log: "
-                     << required_id.ShortDebugString();
+                     << required_id.ShortDebugString() << ". "
+                     << "Status: " << advance_committed_index_status.ToString();
       }
       start_now = state_->HasOpIdCommittedUnlocked(required_id);
     }
@@ -481,11 +486,11 @@ Status RaftConsensus::StartElection(
       // Clear the pending election op id so that we won't start the same pending election again.
       state_->ClearPendingElectionOpIdUnlocked();
 
-    } else if (pending_commit && opid.IsInitialized()) {
+    } else if (pending_commit && must_be_committed_opid.IsInitialized()) {
       // Queue up the pending op id if specified.
-      state_->SetPendingElectionOpIdUnlocked(opid);
+      state_->SetPendingElectionOpIdUnlocked(must_be_committed_opid);
       LOG(INFO) << "Leader election is pending upon log commitment of OpId "
-                << opid.ShortDebugString();
+                << must_be_committed_opid.ShortDebugString();
     }
   }
 
@@ -916,7 +921,7 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
               state_->LogPrefixThreadSafe() + "Unable to remove follower " + uuid);
 }
 
-Status RaftConsensus::Update(const ConsensusRequestPB* request,
+Status RaftConsensus::Update(ConsensusRequestPB* request,
                              ConsensusResponsePB* response) {
 
   if (PREDICT_FALSE(FLAGS_follower_reject_update_consensus_requests)) {
@@ -1031,7 +1036,7 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
       dedup_up_to_index = leader_msg->id().index();
     }
 
-    if (deduplicated_req->first_message_idx == - 1) {
+    if (deduplicated_req->first_message_idx == -1) {
       deduplicated_req->first_message_idx = i;
     }
     deduplicated_req->messages.push_back(make_scoped_refptr_replicate(leader_msg));
@@ -1111,12 +1116,41 @@ Status RaftConsensus::EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequ
   return Status::OK();
 }
 
-Status RaftConsensus::CheckLeaderRequestUnlocked(const ConsensusRequestPB* request,
+Status RaftConsensus::CheckLeaderRequestOpIdSequence(
+    const LeaderRequest& deduped_req,
+    ConsensusRequestPB* request) {
+  Status sequence_check_status;
+  const OpId* prev = deduped_req.preceding_opid;
+  for (const ReplicateRefPtr& message : deduped_req.messages) {
+    sequence_check_status = ReplicaState::CheckOpInSequence(*prev, message->get()->id());
+    if (PREDICT_FALSE(!sequence_check_status.ok())) {
+      LOG(ERROR) << "Leader request contained out-of-sequence messages. Status: "
+          << sequence_check_status.ToString() << ". Leader Request: "
+          << request->ShortDebugString();
+      break;
+    }
+    prev = &message->get()->id();
+  }
+
+  // We only release the messages from the request after the above check so that that we can print
+  // the original request, if it fails.
+  if (!deduped_req.messages.empty()) {
+    // We take ownership of the deduped ops.
+    DCHECK_GE(deduped_req.first_message_idx, 0);
+    request->mutable_ops()->ExtractSubrange(
+        deduped_req.first_message_idx,
+        deduped_req.messages.size(),
+        nullptr);
+  }
+
+  return sequence_check_status;
+}
+
+Status RaftConsensus::CheckLeaderRequestUnlocked(ConsensusRequestPB* request,
                                                  ConsensusResponsePB* response,
                                                  LeaderRequest* deduped_req) {
 
-  ConsensusRequestPB* mutable_req = const_cast<ConsensusRequestPB*>(request);
-  DeduplicateLeaderRequestUnlocked(mutable_req, deduped_req);
+  DeduplicateLeaderRequestUnlocked(request, deduped_req);
 
   // This is an additional check for KUDU-639 that makes sure the message's index
   // and term are in the right sequence in the request, after we've deduplicated
@@ -1125,30 +1159,7 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(const ConsensusRequestPB* reque
   // TODO move this to raft_consensus-state or whatever we transform that into.
   // We should be able to do this check for each append, but right now the way
   // we initialize raft_consensus-state is preventing us from doing so.
-  Status s;
-  const OpId* prev = deduped_req->preceding_opid;
-  for (const ReplicateRefPtr& message : deduped_req->messages) {
-    s = ReplicaState::CheckOpInSequence(*prev, message->get()->id());
-    if (PREDICT_FALSE(!s.ok())) {
-      LOG(ERROR) << "Leader request contained out-of-sequence messages. Status: "
-          << s.ToString() << ". Leader Request: " << request->ShortDebugString();
-      break;
-    }
-    prev = &message->get()->id();
-  }
-
-  // We only release the messages from the request after the above check so that
-  // that we can print the original request, if it fails.
-  if (!deduped_req->messages.empty()) {
-    // We take ownership of the deduped ops.
-    DCHECK_GE(deduped_req->first_message_idx, 0);
-    mutable_req->mutable_ops()->ExtractSubrange(
-        deduped_req->first_message_idx,
-        deduped_req->messages.size(),
-        nullptr);
-  }
-
-  RETURN_NOT_OK(s);
+  RETURN_NOT_OK(CheckLeaderRequestOpIdSequence(*deduped_req, request));
 
   RETURN_NOT_OK(HandleLeaderRequestTermUnlocked(request, response));
 
@@ -1193,7 +1204,7 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(const ConsensusRequestPB* reque
   return Status::OK();
 }
 
-Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
+Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
                                     ConsensusResponsePB* response) {
   TRACE_EVENT2("consensus", "RaftConsensus::UpdateReplica",
                "peer", peer_uuid(),
@@ -1367,6 +1378,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
     while (iter != deduped_req.messages.end()) {
       prepare_status = StartReplicaTransactionUnlocked(*iter);
       if (PREDICT_FALSE(!prepare_status.ok())) {
+        LOG(WARNING) << "StartReplicaTransactionUnlocked failed: " << prepare_status.ToString();
         break;
       }
       ++iter;
@@ -1379,7 +1391,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
     if (iter != deduped_req.messages.end()) {
       bool need_to_warn = true;
       while (iter != deduped_req.messages.end()) {
-        ReplicateRefPtr msg = (*iter);
+        const ReplicateRefPtr msg = (*iter);
         iter = deduped_req.messages.erase(iter);
         if (need_to_warn) {
           need_to_warn = false;
@@ -1409,7 +1421,7 @@ Status RaftConsensus::UpdateReplica(const ConsensusRequestPB* request,
     // 3 - Enqueue the writes.
     // Now that we've triggered the prepares enqueue the operations to be written
     // to the WAL.
-    if (PREDICT_TRUE(deduped_req.messages.size() > 0)) {
+    if (PREDICT_TRUE(!deduped_req.messages.empty())) {
       last_from_leader = deduped_req.messages.back()->get()->id();
       // Trigger the log append asap, if fsync() is on this might take a while
       // and we can't reply until this is done.

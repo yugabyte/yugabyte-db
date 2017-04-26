@@ -28,6 +28,7 @@
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/functional/hash.hpp>
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/partition.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/macros.h"
@@ -73,14 +74,9 @@ struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
 
-using TableId = std::string;
 using TableName = std::string;
-using TabletId = std::string;
-using TabletServerId = std::string;
 using PlacementId = std::string;
-using NamespaceId = std::string;
 using NamespaceName = std::string;
-using TServerId = std::string;
 typedef std::pair<NamespaceId, TableName> NamespaceIdTableNamePair;
 typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
 

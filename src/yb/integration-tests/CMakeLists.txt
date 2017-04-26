@@ -79,6 +79,7 @@ ADD_YB_TEST(tablet_replacement-itest)
 ADD_YB_TEST(create-table-itest)
 ADD_YB_TEST(kv_table-test RUN_SERIAL true)
 ADD_YB_TEST(kv_table_ts_failover-test RUN_SERIAL true)
+ADD_YB_TEST(stepdown_under_load-test RUN_SERIAL true)
 
 # Some tests have additional dependencies
 set(YB_TEST_LINK_LIBS yb_client yb_tools_util ${YB_TEST_LINK_LIBS})

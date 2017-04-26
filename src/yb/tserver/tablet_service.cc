@@ -974,7 +974,11 @@ void ConsensusServiceImpl::UpdateConsensus(const ConsensusRequestPB* req,
   // Submit the update directly to the TabletPeer's Consensus instance.
   scoped_refptr<Consensus> consensus;
   if (!GetConsensusOrRespond(tablet_peer, resp, context, &consensus)) return;
-  Status s = consensus->Update(req, resp);
+
+  // Unfortunately, we have to use const_cast here, because the protobuf-generated interface only
+  // gives us a const request, but we need to be able to move messages out of the request for
+  // efficiency.
+  Status s = consensus->Update(const_cast<ConsensusRequestPB*>(req), resp);
   if (PREDICT_FALSE(!s.ok())) {
     // Clear the response first, since a partially-filled response could
     // result in confusing a caller, or in having missing required fields

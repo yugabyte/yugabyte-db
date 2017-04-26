@@ -111,9 +111,7 @@ static bool kBindToUniqueLoopbackAddress = true;
 #endif
 
 ExternalMiniClusterOptions::ExternalMiniClusterOptions()
-    : num_masters(1),
-      num_tablet_servers(1),
-      bind_to_unique_loopback_addresses(kBindToUniqueLoopbackAddress),
+    : bind_to_unique_loopback_addresses(kBindToUniqueLoopbackAddress),
       timeout_(MonoDelta::FromMilliseconds(1000 * 10)) {
   if (bind_to_unique_loopback_addresses && sizeof(pid_t) > 2) {
     LOG(WARNING) << "pid size is " << sizeof(pid_t)

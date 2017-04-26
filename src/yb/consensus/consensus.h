@@ -143,15 +143,18 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     // between a leader and one of its replicas.
     ELECT_EVEN_IF_LEADER_IS_ALIVE
   };
-  // pending_commit - we should start election only after we have specified entry committed..
-  // opid - if specified we would wait until this entry is committed,
-  // if not specified it is taken from previous call to StartElection with pending_commit = true.
-  // originator_uuid - if election is initiated by old leader as part of step down procedure, it
-  // would contain uuid of old leader.
+
+  // pending_commit - we should start election only after we have specified entry committed.
+  // must_be_committed_opid - only matters if pending_commit is true.
+  //    If this is specified, we would wait until this entry is committed. If not specified
+  //    (i.e. if this has the default OpId value) it is taken from the last call to StartElection
+  //    with pending_commit = true.
+  // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
+  //    this would contain the uuid of the old leader.
   virtual CHECKED_STATUS StartElection(
       ElectionMode mode,
       const bool pending_commit = false,
-      const OpId& opid = OpId::default_instance(),
+      const OpId& must_be_committed_opid = OpId::default_instance(),
       const std::string& originator_uuid = std::string()) = 0;
 
   // We tried to step down, so you protege become leader.
@@ -244,8 +247,9 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
   // error response could not be formed, which will result in the service
   // returning an UNKNOWN_ERROR RPC error code to the caller and including the
   // stringified Status message.
-  virtual CHECKED_STATUS Update(const ConsensusRequestPB* request,
-                        ConsensusResponsePB* response) = 0;
+  virtual CHECKED_STATUS Update(
+      ConsensusRequestPB* request,
+      ConsensusResponsePB* response) = 0;
 
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.

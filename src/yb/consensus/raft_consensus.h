@@ -107,7 +107,7 @@ class RaftConsensus : public Consensus,
   virtual CHECKED_STATUS StartElection(
       ElectionMode mode,
       const bool pending_commit = false,
-      const OpId& opid = OpId::default_instance(),
+      const OpId& must_be_committed_opid = OpId::default_instance(),
       const std::string& originator_uuid = std::string()) override;
 
   virtual CHECKED_STATUS ElectionLostByProtege(const std::string& election_lost_by_uuid) override;
@@ -126,8 +126,9 @@ class RaftConsensus : public Consensus,
   virtual CHECKED_STATUS CheckLeadershipAndBindTerm(const scoped_refptr<ConsensusRound>& round)
       override;
 
-  virtual CHECKED_STATUS Update(const ConsensusRequestPB* request,
-                        ConsensusResponsePB* response) override;
+  virtual CHECKED_STATUS Update(
+      ConsensusRequestPB* request,
+      ConsensusResponsePB* response) override;
 
   virtual CHECKED_STATUS RequestVote(const VoteRequestPB* request,
                              VoteResponsePB* response) override;
@@ -256,8 +257,9 @@ class RaftConsensus : public Consensus,
   // and triggering the required transactions. This method won't return until all
   // operations have been stored in the log and all Prepares() have been completed,
   // and a replica cannot accept any more Update() requests until this is done.
-  CHECKED_STATUS UpdateReplica(const ConsensusRequestPB* request,
-                       ConsensusResponsePB* response);
+  CHECKED_STATUS UpdateReplica(
+      ConsensusRequestPB* request,
+      ConsensusResponsePB* response);
 
   // Deduplicates an RPC request making sure that we get only messages that we
   // haven't appended to our log yet.
@@ -279,6 +281,11 @@ class RaftConsensus : public Consensus,
   CHECKED_STATUS EnforceLogMatchingPropertyMatchesUnlocked(const LeaderRequest& req,
                                                    ConsensusResponsePB* response);
 
+  // Checks that deduplicated messages in an UpdateConsensus request are in the right order.
+  CHECKED_STATUS CheckLeaderRequestOpIdSequence(
+      const LeaderRequest& deduped_req,
+      ConsensusRequestPB* request);
+
   // Check a request received from a leader, making sure:
   // - The request is in the right term
   // - The log matching property holds
@@ -287,9 +294,10 @@ class RaftConsensus : public Consensus,
   //   transactions currently on the pendings set, but different terms.
   // If this returns ok and the response has no errors, 'deduped_req' is set with only
   // the messages to add to our state machine.
-  CHECKED_STATUS CheckLeaderRequestUnlocked(const ConsensusRequestPB* request,
-                                    ConsensusResponsePB* response,
-                                    LeaderRequest* deduped_req);
+  CHECKED_STATUS CheckLeaderRequestUnlocked(
+      ConsensusRequestPB* request,
+      ConsensusResponsePB* response,
+      LeaderRequest* deduped_req);
 
   // Returns the most recent OpId written to the Log.
   OpId GetLatestOpIdFromLog();

@@ -52,11 +52,13 @@ class YBTableTestBase : public YBTest {
   virtual int session_timeout_ms();
   virtual int num_masters();
   virtual int num_tablet_servers();
+  virtual int num_tablets();
+  virtual int num_replicas();
   virtual int client_rpc_timeout_ms();
   virtual client::YBTableName table_name();
+  virtual bool need_redis_table();
 
   void CreateRedisTable(shared_ptr<yb::client::YBClient> client, client::YBTableName table_name);
-  void CreateDefaultTables();
   virtual void CreateTable();
   void OpenTable();
   void DeleteTable();
@@ -94,6 +96,9 @@ class YBTableTestBase : public YBTest {
     }
     return host_ports;
   }
+
+  // This sets up common options for creating all tables the test needs to create.
+  virtual std::unique_ptr<client::YBTableCreator> NewTableCreator();
 
   static constexpr int kDefaultNumMasters = 1;
   static constexpr int kDefaultNumTabletServers = 3;

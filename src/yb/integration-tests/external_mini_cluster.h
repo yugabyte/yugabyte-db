@@ -71,12 +71,10 @@ struct ExternalMiniClusterOptions {
   ~ExternalMiniClusterOptions();
 
   // Number of masters to start.
-  // Default: 1
-  int num_masters;
+  int num_masters = 1;
 
   // Number of TS to start.
-  // Default: 1
-  int num_tablet_servers;
+  int num_tablet_servers = 1;
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -102,9 +100,7 @@ struct ExternalMiniClusterOptions {
   // This option is disabled by default on OS X.
   //
   // NOTE: this does not currently affect the HTTP server.
-  //
-  // Default: true
-  bool bind_to_unique_loopback_addresses;
+  bool bind_to_unique_loopback_addresses = true;
 
   // The path where the yb daemons should be run from.
   // Default: "", which uses the same path as the currently running executable.
@@ -127,7 +123,7 @@ struct ExternalMiniClusterOptions {
 
   // Default timeout for operations involving RPC's, when none provided in the API.
   // Default : 10sec
-  MonoDelta timeout_;
+  MonoDelta timeout_ = MonoDelta::FromSeconds(10);
 
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);

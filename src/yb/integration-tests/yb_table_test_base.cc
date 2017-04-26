@@ -35,12 +35,24 @@ int YBTableTestBase::num_tablet_servers() {
   return kDefaultNumTabletServers;
 }
 
+int YBTableTestBase::num_tablets() {
+  return 0;  // Will use the default.
+}
+
+int YBTableTestBase::num_replicas() {
+  return std::min(num_tablet_servers(), 3);
+}
+
 int YBTableTestBase::session_timeout_ms() {
   return kDefaultSessionTimeoutMs;
 }
 
 YBTableName YBTableTestBase::table_name() {
   return kDefaultTableName;
+}
+
+bool YBTableTestBase::need_redis_table() {
+  return true;
 }
 
 int YBTableTestBase::client_rpc_timeout_ms() {
@@ -74,7 +86,6 @@ void YBTableTestBase::SetUp() {
   }
 
   CreateClient();
-  CreateDefaultTables();
   CreateTable();
   OpenTable();
 }
@@ -124,39 +135,19 @@ void YBTableTestBase::OpenTable() {
 
 void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client,
                                        YBTableName table_name) {
-  unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
-  ASSERT_OK(table_creator->table_name(table_name)
+  ASSERT_OK(NewTableCreator()->table_name(table_name)
                 .table_type(YBTableType::REDIS_TABLE_TYPE)
-                .num_replicas(3)
                 .Create());
-}
-
-void YBTableTestBase::CreateDefaultTables() {
-  // Redis Proxy requires ".redis" to be present
-  YBTableName name(kRedisTableName);
-  CreateRedisTable(client_, name);
-  default_tables_created_.push_back(name.ToString());
-  // If the desired table for the test -- table_name() has already been created, ensure that
-  // CreateTable() does not try to create it again.
-  if (std::find(default_tables_created_.begin(), default_tables_created_.end(),
-                table_name().ToString()) != default_tables_created_.end()) {
-    table_exists_ = true;
-  }
 }
 
 void YBTableTestBase::CreateTable() {
   if (!table_exists_) {
-    unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     YBSchemaBuilder b;
     b.AddColumn("k")->Type(BINARY)->NotNull()->PrimaryKey();
     b.AddColumn("v")->Type(BINARY)->NotNull();
     ASSERT_OK(b.Build(&schema_));
 
-    ASSERT_OK(table_creator->table_name(table_name())
-                  .table_type(YBTableType::YQL_TABLE_TYPE)
-                  .num_replicas(3)
-                  .schema(&schema_)
-                  .Create());
+    ASSERT_OK(NewTableCreator()->table_name(table_name()).schema(&schema_).Create());
     table_exists_ = true;
   }
 }
@@ -217,14 +208,31 @@ void YBTableTestBase::FetchTSMetricsPage() {
   faststring buf;
 
   string addr;
+  // TODO: unify external and in-process mini cluster interfaces.
   if (use_external_mini_cluster()) {
-    addr = external_mini_cluster_->tablet_server(0)->bound_http_hostport().ToString();
+    if (external_mini_cluster_->num_tablet_servers() > 0) {
+      addr = external_mini_cluster_->tablet_server(0)->bound_http_hostport().ToString();
+    }
   } else {
-    addr = mini_cluster_->mini_tablet_server(0)->bound_http_addr().ToString();
+    if (mini_cluster_->num_tablet_servers() > 0) {
+      addr = mini_cluster_->mini_tablet_server(0)->bound_http_addr().ToString();
+    }
   }
 
-  LOG(INFO) << "Fetching metrics from " << addr;
-  ASSERT_OK(c.FetchURL(Substitute("http://$0/metrics", addr), &buf));
+  if (!addr.empty()) {
+    LOG(INFO) << "Fetching metrics from " << addr;
+    ASSERT_OK(c.FetchURL(Substitute("http://$0/metrics", addr), &buf));
+  }
+}
+
+std::unique_ptr<client::YBTableCreator> YBTableTestBase::NewTableCreator() {
+  unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  table_creator->num_replicas(num_replicas());
+  if (num_tablets() > 0) {
+    table_creator->num_tablets(num_tablets());
+  }
+  table_creator->table_type(YBTableType::YQL_TABLE_TYPE);
+  return table_creator;
 }
 
 }  // namespace integration_tests
