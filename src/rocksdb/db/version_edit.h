@@ -112,6 +112,10 @@ struct FileMetaData {
       smallest.DecodeFrom(key);
     }
     largest.DecodeFrom(key);
+    UpdateSeqNoBoundaries(seqno);
+  }
+
+  void UpdateSeqNoBoundaries(SequenceNumber seqno) {
     smallest_seqno = std::min(smallest_seqno, seqno);
     largest_seqno = std::max(largest_seqno, seqno);
   }

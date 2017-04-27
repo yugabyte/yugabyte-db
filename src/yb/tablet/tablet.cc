@@ -188,8 +188,8 @@ class LargestFlushedSeqNumCollector : public rocksdb::EventListener {
 
   virtual void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& info) override {
     SetLargestSeqNum(info.largest_seqno);
-    VLOG(1) << "RocksDB flushed up to seqno = " << info.largest_seqno
-            << " for tablet " << tablet_id_;
+    LOG(INFO) << "RocksDB flushed up to seqno = " << info.largest_seqno << " for tablet "
+              << tablet_id_;
   }
 
   void SetLargestSeqNum(SequenceNumber largest_seqno) {
@@ -249,7 +249,7 @@ Tablet::Tablet(
 
   if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
     largest_flushed_seqno_collector_ =
-        std::make_shared<LargestFlushedSeqNumCollector>(metadata_->table_id());
+        std::make_shared<LargestFlushedSeqNumCollector>(metadata_->tablet_id());
   }
 
   if (metric_registry) {

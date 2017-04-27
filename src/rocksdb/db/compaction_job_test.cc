@@ -337,6 +337,72 @@ TEST_F(CompactionJobTest, SimpleDeletion) {
   RunCompaction({files}, expected_results);
 }
 
+TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
+  NewDB();
+
+  auto file1 = mock::MakeMockFile({{KeyStr("c", 4U, kTypeDeletion), ""},
+                                      {KeyStr("c", 3U, kTypeValue), "val"}});
+  AddMockFile(file1);
+
+  auto file2 = mock::MakeMockFile({{KeyStr("b", 2U, kTypeValue), "val"},
+                                      {KeyStr("b", 1U, kTypeValue), "val"}});
+  AddMockFile(file2);
+
+  auto expected_results =
+      mock::MakeMockFile({{KeyStr("b", 0U, kTypeValue), "val"}});
+
+  SetLastSequence(4U);
+  auto level0_files = cfd_->current()->storage_info()->LevelFiles(0);
+  auto level1_files = cfd_->current()->storage_info()->LevelFiles(1);
+  ASSERT_EQ(2, level0_files.size());
+  ASSERT_EQ(0, level1_files.size());
+  ASSERT_EQ(4, level0_files[0]->largest_seqno);
+  ASSERT_EQ(3, level0_files[0]->smallest_seqno);
+  ASSERT_EQ(2, level0_files[1]->largest_seqno);
+  ASSERT_EQ(1, level0_files[1]->smallest_seqno);
+
+  RunCompaction({level0_files}, expected_results);
+
+  level0_files = cfd_->current()->storage_info()->LevelFiles(0);
+  level1_files = cfd_->current()->storage_info()->LevelFiles(1);
+  ASSERT_EQ(0, level0_files.size());
+  ASSERT_EQ(1, level1_files.size());
+  ASSERT_EQ(4, level1_files[0]->largest_seqno);
+  ASSERT_EQ(0, level1_files[0]->smallest_seqno);  // kv's seq number gets zeroed out.
+}
+
+
+TEST_F(CompactionJobTest, SeqNoTrackingWithDeleteAll) {
+  NewDB();
+
+  auto file1 = mock::MakeMockFile({{KeyStr("b", 4U, kTypeDeletion), ""},
+                                      {KeyStr("c", 3U, kTypeDeletion), "val"}});
+  AddMockFile(file1);
+
+  auto file2 = mock::MakeMockFile({{KeyStr("b", 2U, kTypeValue), "val"},
+                                      {KeyStr("c", 1U, kTypeValue), "val"}});
+  AddMockFile(file2);
+
+  stl_wrappers::KVMap empty_map;
+  auto expected_results = empty_map;
+
+  SetLastSequence(4U);
+  auto level0_files = cfd_->current()->storage_info()->LevelFiles(0);
+  auto level1_files = cfd_->current()->storage_info()->LevelFiles(1);
+  ASSERT_EQ(2, level0_files.size());
+  ASSERT_EQ(0, level1_files.size());
+  ASSERT_EQ(4, level0_files[0]->largest_seqno);
+  ASSERT_EQ(3, level0_files[0]->smallest_seqno);
+  ASSERT_EQ(2, level0_files[1]->largest_seqno);
+  ASSERT_EQ(1, level0_files[1]->smallest_seqno);
+  RunCompaction({level0_files}, expected_results);
+
+  level0_files = cfd_->current()->storage_info()->LevelFiles(0);
+  level1_files = cfd_->current()->storage_info()->LevelFiles(1);
+  ASSERT_EQ(0, level0_files.size());
+  ASSERT_EQ(0, level1_files.size());
+}
+
 TEST_F(CompactionJobTest, SimpleOverwrite) {
   NewDB();
 

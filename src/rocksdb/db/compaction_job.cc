@@ -994,6 +994,13 @@ Status CompactionJob::OpenCompactionOutputFile(
   SubcompactionState::Output out;
   out.meta.fd =
       FileDescriptor(file_number, sub_compact->compaction->output_path_id(), 0, 0);
+  // Update sequence number boundaries for out.
+  for (size_t level_idx = 0; level_idx < compact_->compaction->num_input_levels(); level_idx++) {
+    for (FileMetaData *fmd : *compact_->compaction->inputs(level_idx) ) {
+      out.meta.UpdateSeqNoBoundaries(fmd->smallest_seqno);
+      out.meta.UpdateSeqNoBoundaries(fmd->largest_seqno);
+    }
+  }
   out.finished = false;
 
   sub_compact->outputs.push_back(out);
