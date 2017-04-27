@@ -6,7 +6,7 @@ import './stylesheets/SideNavBar.scss';
 
 class NavLink extends Component {
   render () {
-    const { router, index, to, children, icon, text, ...props } = this.props;
+    const { router, index, to, icon, text, ...props } = this.props;
 
     // Added by withRouter in React Router 3.0.
     delete props.params;
