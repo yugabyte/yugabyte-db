@@ -5,40 +5,47 @@ import { CreateTable } from '../../tables';
 import { reduxForm } from 'redux-form';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { createUniverseTable, createUniverseTableFailure, createUniverseTableSuccess,
-         fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure, toggleTableView }
-        from '../../../actions/tables';
-import { fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure, openDialog, closeDialog }
-        from '../../../actions/universe';
+  toggleTableView } from '../../../actions/tables';
+import { fetchUniverseTasks, fetchUniverseTasksSuccess, fetchUniverseTasksFailure, openDialog,
+  closeDialog } from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     submitCreateTable: (currentUniverse, values) => {
-      var rowCounter = 1;
-      var partitionKeyList = values.partitionKeyColumns.map(function(row, idx){
-        return {"columnOrder": rowCounter ++,
-                "name": row.name,
-                "type": row.selected,
-                "isPartitionKey": true,
-                "isClusteringKey": false};
+      let rowCounter = 1;
+      let partitionKeyList = values.partitionKeyColumns.map(function(row, idx){
+        return {
+          "columnOrder": rowCounter++,
+          "name": row.name,
+          "type": row.selected,
+          "isPartitionKey": true,
+          "isClusteringKey": false
+        };
       });
-      var clusteringColumnList = values.clusteringColumns.map(function(row, idx){
-        return {"columnOrder": rowCounter ++,
-                "name": row.name,
-                "type": row.selected,
-                "sortOrder": row.sortOrder,
-                "isPartitionKey": false,
-                "isClusteringKey": true};
+      let clusteringColumnList = values.clusteringColumns.map(function(row, idx){
+        return {
+          "columnOrder": rowCounter++,
+          "name": row.name,
+          "type": row.selected,
+          "sortOrder": row.sortOrder,
+          "isPartitionKey": false,
+          "isClusteringKey": true
+        };
       });
-      var otherColumnList = values.otherColumns.map(function(row, idx){
-        return {"columnOrder": rowCounter ++,
-                "name": row.name,
-                "type": row.selected,
-                "isPartitionKey": false,
-                "isClusteringKey": false};
+      let otherColumnList = values.otherColumns.map(function(row, idx){
+        return {
+          "columnOrder": rowCounter++,
+          "name": row.name,
+          "type": row.selected,
+          "keyType": (row.keyType) ? row.keyType : null,
+          "valueType": (row.valueType) ? row.valueType : null,
+          "isPartitionKey": false,
+          "isClusteringKey": false
+        };
       });
-      var tableDetails = partitionKeyList.concat(clusteringColumnList, otherColumnList);
+      const tableDetails = partitionKeyList.concat(clusteringColumnList, otherColumnList);
 
-      var payload = {};
+      let payload = {};
       payload.cloud = currentUniverse.universeDetails.cloud;
       payload.universeUUID = currentUniverse.universeUUID;
       payload.tableName = values.tableName;
@@ -48,7 +55,7 @@ const mapDispatchToProps = (dispatch) => {
         "columns": tableDetails,
         "ttlInSeconds": values.ttlInSeconds
       };
-      var universeUUID = currentUniverse.universeUUID;
+      const universeUUID = currentUniverse.universeUUID;
       dispatch(createUniverseTable(universeUUID, payload)).then((response) => {
         if (response.payload.status !== 200) {
           dispatch(createUniverseTableFailure(response.payload));
@@ -66,28 +73,23 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    fetchTableColumnTypes: () => {
-      dispatch(fetchColumnTypes()).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(fetchColumnTypesFailure(response.payload));
-        } else {
-          dispatch(fetchColumnTypesSuccess(response.payload));
-        }
-      });
-    },
+
     showListTables: () => {
       dispatch(toggleTableView("list"));
     },
+
     showCancelCreateModal: () => {
       dispatch(openDialog("cancelCreate"));
     },
+
     hideModal: () => {
       dispatch(closeDialog());
     }
   }
 };
 
-const validate = values => {
+const validate = (values, props) => {
+  const {tables: {columnDataTypes: {collections}}} = props;
   const errors = {};
   errors.partitionKeyColumns = [];
   errors.clusteringColumns = [];
@@ -113,6 +115,13 @@ const validate = values => {
     values.otherColumns.forEach((otherCol, colIndex) => {
       if (!otherCol || !isDefinedNotNull(otherCol.name)) {
         errors.otherColumns[colIndex] = {name: 'Required'};
+      } else if (collections.indexOf(otherCol.selected) > -1) {
+        if (!isDefinedNotNull(otherCol.keyType) || otherCol.keyType === 'Key Type') {
+          errors.otherColumns[colIndex] = {keyType: 'Required'};
+        }
+        if (otherCol.selected.toUpperCase() === 'MAP' && (!isDefinedNotNull(otherCol.valueType) || otherCol.valueType === 'Value Type')) {
+          errors.otherColumns[colIndex] = {valueType: 'Required'};
+        }
       }
     });
   }
