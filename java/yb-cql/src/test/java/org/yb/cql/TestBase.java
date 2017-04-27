@@ -57,7 +57,7 @@ public class TestBase {
   // to store the ttl, which uses nanoseconds.
   protected static final long MAX_TTL_SEC = Long.MAX_VALUE / 1000000000;
 
-  protected static final String DEFAULT_KEYSPACE = "$$$_DEFAULT";
+  protected static final String DEFAULT_KEYSPACE = "default_keyspace";
 
   protected Cluster cluster;
   protected Session session;

@@ -31,7 +31,7 @@ public class TestUseKeyspace extends TestBase {
   public void testUseKeyspace() throws Exception {
     LOG.info("Begin test");
 
-    // Use existing $$$_DEFAULT keyspace.
+    // Use existing default keyspace.
     testUseKeyspace(DEFAULT_KEYSPACE, false);
 
     // Use existing system keyspace.
