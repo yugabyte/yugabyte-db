@@ -20,104 +20,126 @@ public class TableDetailsTest {
 
   @Test
   public void testCQLCreateString_OnePKey_NoCKey_NoTTL() {
-    String create = "CREATE TABLE dummy_table (k0 int, v varchar, primary key (k0));";
+    String cql = "CREATE TABLE dummy_table (k0 int, v varchar, primary key (k0));";
     TableDetails tableDetails = ApiUtils.getDummyTableDetailsNoClusteringKey(oneKey, noTtl);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_OnePKey_NoCKey_WithTTL() {
-    String create = "CREATE TABLE dummy_table (k0 int, v varchar, primary key (k0)) WITH " +
+    String cql = "CREATE TABLE dummy_table (k0 int, v varchar, primary key (k0)) WITH " +
         "default_time_to_live = 1000;";
     TableDetails tableDetails = ApiUtils.getDummyTableDetailsNoClusteringKey(oneKey, withTtl);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_MultiPKeys_NoCKey_NoTTL() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key ((k0, k1)));";
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key ((k0, k1)));";
     TableDetails tableDetails = ApiUtils.getDummyTableDetailsNoClusteringKey(multiKey, noTtl);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_MultiPKeys_NoCKey_WithTTL() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key ((k0, k1)))" +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key ((k0, k1)))" +
         " WITH default_time_to_live = 1000;";
     TableDetails tableDetails = ApiUtils.getDummyTableDetailsNoClusteringKey(multiKey, withTtl);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_NoCKey_ignoresSortOrder() {
     // NOTE: UI should never allow this combination, but a badly formatted REST payload from outside
     // the UI could possible cause this
-    String create = "CREATE TABLE dummy_table (k0 int, v varchar, primary key (k0));";
+    String cql = "CREATE TABLE dummy_table (k0 int, v varchar, primary key (k0));";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, 0, noTtl, asc);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_OnePKey_WithCKey_NoTTL_NoSortOrder() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1));";
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1));";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, noTtl, none);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_OnePKey_WithCKey_WithTTL_NoSortOrder() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
         " WITH default_time_to_live = 1000;";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, withTtl, none);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_OnePKey_WithCKey_noTTL_ASC() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
         " WITH CLUSTERING ORDER BY (k1 ASC);";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, noTtl, asc);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_OnePKey_WithCKey_noTTL_DESC() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
         " WITH CLUSTERING ORDER BY (k1 DESC);";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, noTtl, desc);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_OnePKey_WithCKey_withTTL_ASC() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
         " WITH default_time_to_live = 1000 AND CLUSTERING ORDER BY (k1 ASC);";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, withTtl, asc);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_OnePKey_WithCKey_withTTL_DESC() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1))" +
         " WITH default_time_to_live = 1000 AND CLUSTERING ORDER BY (k1 DESC);";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, withTtl, desc);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_MultiPKeys_WithCKey_NoTTL_NoSortOrder() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, k2 int, v varchar, " +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, k2 int, v varchar, " +
         "primary key ((k0, k1), k2));";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(multiKey, oneKey, noTtl, none);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
   }
 
   @Test
   public void testCQLCreateString_MultiPKeys_WithCKey_WithTTL_NoSortOrder() {
-    String create = "CREATE TABLE dummy_table (k0 int, k1 int, k2 int, v varchar, " +
+    String cql = "CREATE TABLE dummy_table (k0 int, k1 int, k2 int, v varchar, " +
         "primary key ((k0, k1), k2)) WITH default_time_to_live = 1000;";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(multiKey, oneKey, withTtl, none);
-    assertEquals(create, tableDetails.toCQLCreateString());
+    assertEquals(cql, tableDetails.toCQLCreateString());
+  }
+
+  @Test
+  public void testCQLCreateString_WithMap() {
+    String cql = "CREATE TABLE dummy_table (k0 int, v varchar, v2 map<uuid, varchar>, primary" +
+        " key (k0));";
+    TableDetails details = ApiUtils.getDummyCollectionsTableDetails(ColumnDetails.YQLDataType.MAP);
+    assertEquals(cql, details.toCQLCreateString());
+  }
+
+  @Test
+  public void testCQLCreateString_WithSet() {
+    String cql = "CREATE TABLE dummy_table (k0 int, v varchar, v2 set<uuid>, primary key (k0));";
+    TableDetails details = ApiUtils.getDummyCollectionsTableDetails(ColumnDetails.YQLDataType.SET);
+    assertEquals(cql, details.toCQLCreateString());
+  }
+
+  @Test
+  public void testCQLCreateString_WithList() {
+    String cql = "CREATE TABLE dummy_table (k0 int, v varchar, v2 list<uuid>, primary key (k0));";
+    TableDetails details = ApiUtils.getDummyCollectionsTableDetails(ColumnDetails.YQLDataType.LIST);
+    assertEquals(cql, details.toCQLCreateString());
   }
 
   @Test(expected = IllegalArgumentException.class)

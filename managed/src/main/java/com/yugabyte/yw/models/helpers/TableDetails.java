@@ -72,9 +72,15 @@ public class TableDetails {
     ColumnDetails lastColumn = null;
     builder.append(" (");
     for (ColumnDetails column : columns) {
-      builder.append(column.name);
-      builder.append(" ");
+      builder.append(column.name).append(" ");
       builder.append(column.type);
+      if (column.type.isCollection()) {
+        builder.append("<").append(column.keyType);
+        if (column.type.equals(ColumnDetails.YQLDataType.MAP)) {
+          builder.append(", ").append(column.valueType);
+        }
+        builder.append(">");
+      }
       builder.append(", ");
       if (column.isPartitionKey) {
         if (lastColumn == null || lastColumn.isPartitionKey) {
@@ -117,8 +123,7 @@ public class TableDetails {
 
     // Add non-hash primary keys (if any)
     for (String primaryKey : clusteringKeys) {
-      builder.append(", ");
-      builder.append(primaryKey);
+      builder.append(", ").append(primaryKey);
     }
     builder.append("))");
 
@@ -140,8 +145,7 @@ public class TableDetails {
         while (columnNamesIterator.hasNext()) {
           String columnName = columnNamesIterator.next();
           String sortOrder = sortOrderColumns.get(columnName);
-          builder.append(columnName);
-          builder.append(" ");
+          builder.append(columnName).append(" ");
           builder.append(sortOrder);
           if (columnNamesIterator.hasNext()) {
             builder.append(", ");

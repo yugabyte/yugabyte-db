@@ -19,7 +19,7 @@ export const FETCH_COLUMN_TYPES_FAILURE = 'FETCH_COLUMN_TYPES_FAILURE';
 export const TOGGLE_TABLE_VIEW = 'TOGGLE_TABLE_VIEW';
 
 export function fetchUniverseTables(universeUUID) {
-  var customerId = localStorage.getItem("customer_id");
+  const customerId = localStorage.getItem("customer_id");
   const request =
     axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
   return {
@@ -39,28 +39,28 @@ export function fetchUniverseTablesFailure(error) {
   return {
     type: FETCH_TABLES_LIST_FAILURE,
     payload: error
-  }
+  };
 }
 
 
 export function fetchTableDetail(universeUUID, tableUUID) {
-  var customerId = localStorage.getItem("customer_id");
+  const customerId = localStorage.getItem("customer_id");
   const request =
     axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}`);
   return {
     type: FETCH_TABLE_DETAIL,
     payload: request
-  }
+  };
 }
 
 export function resetTableDetail() {
   return {
     type: RESET_TABLE_DETAIL
-  }
+  };
 }
 
 export function createUniverseTable(universeUUID, formValues) {
-  var customerId = localStorage.getItem("customer_id");
+  const customerId = localStorage.getItem("customer_id");
   const request =
     axios.post(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`, formValues);
   return {
@@ -81,7 +81,7 @@ export function fetchTableDetailFailure(error) {
   return {
     type: FETCH_TABLE_DETAIL_FAILURE,
     payload: error
-  }
+  };
 }
 
 
@@ -89,41 +89,41 @@ export function createUniverseTableSuccess(result) {
     return {
     type: CREATE_UNIVERSE_TABLE_SUCCESS,
     payload: result
-  }
+  };
 }
 
 export function createUniverseTableFailure(error) {
   return {
     type: CREATE_UNIVERSE_TABLE_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function fetchColumnTypes() {
-  var request = axios.get(`${ROOT_URL}/metadata/column_types`);
+  const request = axios.get(`${ROOT_URL}/metadata/column_types`);
   return {
     type: FETCH_COLUMN_TYPES,
     payload: request
-  }
+  };
 }
 
 export function fetchColumnTypesSuccess(result) {
   return {
     type: FETCH_COLUMN_TYPES_SUCCESS,
     payload: result
-  }
+  };
 }
 
 export function fetchColumnTypesFailure(error) {
   return {
     type: FETCH_COLUMN_TYPES_FAILURE,
     payload: error
-  }
+  };
 }
 
 export function toggleTableView(currentView) {
   return {
     type: TOGGLE_TABLE_VIEW,
     payload: currentView
-  }
+  };
 }

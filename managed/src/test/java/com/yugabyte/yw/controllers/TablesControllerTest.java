@@ -7,6 +7,7 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -19,6 +20,7 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -27,14 +29,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.ByteString;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.ColumnDetails;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Matchers;
@@ -241,8 +246,23 @@ public class TablesControllerTest extends WithApplication {
                 "\"isClusteringKey\":false" +
               "},{" +
                 "\"columnOrder\":2," +
-                "\"name\":\"v\"," +
+                "\"name\":\"v1\"," +
                 "\"type\":\"VARCHAR\"," +
+                "\"isPartitionKey\":false," +
+                "\"isClusteringKey\":false" +
+              "},{" +
+                "\"columnOrder\":3," +
+                "\"name\":\"v2\"," +
+                "\"type\":\"SET\"," +
+                "\"keyType\":\"INT\"," +
+                "\"isPartitionKey\":false," +
+                "\"isClusteringKey\":false" +
+              "},{" +
+                "\"columnOrder\":4," +
+                "\"name\":\"v3\"," +
+                "\"type\":\"MAP\"," +
+                "\"keyType\":\"UUID\"," +
+                "\"valueType\":\"VARCHAR\"," +
                 "\"isPartitionKey\":false," +
                 "\"isClusteringKey\":false" +
               "}" +
@@ -325,8 +345,31 @@ public class TablesControllerTest extends WithApplication {
   @Test
   public void testGetColumnTypes() {
     Result result = FakeApiHelper.doRequest("GET", "/api/metadata/column_types");
-    String resultString  = "[\"BIGINT\",\"INT\",\"SMALLINT\",\"DOUBLE_PRECISION\",\"FLOAT\",\"VARCHAR\",\"BOOLEAN\",\"TIMESTAMP\"]";
+    Set<ColumnDetails.YQLDataType> types = ImmutableSet.copyOf(ColumnDetails.YQLDataType.values());
     assertEquals(OK, result.status());
-    assertEquals(contentAsString(result), resultString);
+    JsonNode resultContent = Json.parse(contentAsString(result));
+    assertThat(resultContent, notNullValue());
+    JsonNode primitives = resultContent.get("primitives");
+    JsonNode collections = resultContent.get("collections");
+    Set<ColumnDetails.YQLDataType> resultTypes = new HashSet<>();
+
+    // Check primitives
+    for (int i = 0; i < primitives.size(); ++i) {
+      String primitive = primitives.get(i).asText();
+      ColumnDetails.YQLDataType type = ColumnDetails.YQLDataType.valueOf(primitive);
+      assertFalse(type.isCollection());
+      resultTypes.add(type);
+    }
+
+    // Check collections
+    for (int i = 0; i < collections.size(); ++i) {
+      String collection = collections.get(i).asText();
+      ColumnDetails.YQLDataType type = ColumnDetails.YQLDataType.valueOf(collection);
+      assertTrue(type.isCollection());
+      resultTypes.add(type);
+    }
+
+    // Check all
+    assertTrue(resultTypes.containsAll(types));
   }
 }

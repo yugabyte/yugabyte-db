@@ -1,157 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PropTypes } from 'react';
+import React, { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import {withRouter} from 'react-router';
-import { YBInputField, YBButton, YBRadioButton, YBSelect } from '../../common/forms/fields';
+import { withRouter } from 'react-router';
+import { normalizeToPositiveInt, isValidObject } from '../../../utils/ObjectUtils';
 import { Field, FieldArray } from 'redux-form';
-import { isNonEmptyArray, normalizeToPositiveInt, isValidObject } from 'utils/ObjectUtils';
+import { YBInputField, YBButton, YBRadioButton, YBSelect } from '../../common/forms/fields';
 import cassandraLogo from '../images/cassandra.png';
 import './CreateTables.scss';
-import {YBConfirmModal} from '../../modals';
+import { YBConfirmModal } from '../../modals';
+import CassandraColumnSpecification from './CassandraColumnSpecification';
 
-class KeyColumnList extends Component {
-  static propTypes = {
-    columnType: PropTypes.oneOf(['partitionKey', 'clustering', 'other'])
-  };
-
-  constructor(props) {
-    super(props);
-    this.removeRowItem = this.removeRowItem.bind(this);
-    this.removeKeyItem = this.removeKeyItem.bind(this);
-    this.columnListSort = this.columnListSort.bind(this);
-    this.addKeyItem = this.addKeyItem.bind(this);
-  }
-
-  addKeyItem() {
-    const {fields} = this.props;
-    fields.push({});
-  }
-
-  columnListSort(item) {
-    const {columnType} = this.props;
-    var sortOrderOptions = [<option key={"ascending"} value={"ASC"}>
-                              ASC
-                            </option>,
-                            <option key={"descending"} value={"DESC"}>
-                              DESC
-                            </option>];
-    if (columnType === "clustering") {
-      return <Col md={2}><Field name={`${item}.sortOrder`} component={YBSelect} options={sortOrderOptions}/></Col>
-    }
-  }
-
-  removeRowItem(index) {
-    const {columnType} = this.props;
-    if (columnType !== "partitionKey" || index > 0) {
-      return <YBButton btnClass="btn btn-xs remove-item-btn"
-                       btnIcon="fa fa-minus"
-                       onClick={()=>this.removeKeyItem(index)} />;
-    } else  {
-      return <span/>;
-    }
-  }
-
-  removeKeyItem(index) {
-    const {fields} = this.props;
-    fields.remove(index);
-  }
-
-  componentDidMount() {
-    const {fields} = this.props;
-    fields.push({});
-  }
-
-  render() {
-    const {fields, columnType, tables: {columnDataTypes}} = this.props;
-    var getFieldLabel = function() {
-      if (columnType === "partitionKey") {
-        return "Partition Key";
-      } else if (columnType === "clustering") {
-        return "Clustering";
-      } else if (columnType === "other") {
-         return "Other";
-      } else {
-        return "";
-      }
-    }
-    var typeOptions = [<option value="type" key={"type"}>
-                         Type
-                       </option>];
-
-    if (isNonEmptyArray(columnDataTypes)) {
-      typeOptions = typeOptions.concat(columnDataTypes.map(function(item, idx){
-                     return <option key={idx} value={item}>{item}</option>
-                    }));
-    }
-    return (
-      <div className="form-field-grid">
-        {fields.map((item, index) =>
-          <Row key={item+index}>
-            <Col md={5}>
-              <Field
-                name={`${item}.name`} component={YBInputField} placeHolder={"Column Name"}
-                checkState={true} />
-            </Col>
-            <Col md={4}>
-              <Field
-                name={`${item}.selected`} options={typeOptions}
-                component={YBSelect} placeHolder={"Type"}
-              />
-            </Col>
-            {this.columnListSort(item)}
-            <Col md={1} className="text-center">
-              {this.removeRowItem(index)}
-            </Col>
-          </Row>
-        )}
-        <Row>
-          <Col md={12} className="add-key-column key-row-heading" onClick={this.addKeyItem}>
-            <i className="fa fa-plus"></i>&nbsp;Add {getFieldLabel()} Column
-          </Col>
-        </Row>
-      </div>
-    )
-  }
-}
-
-class CassandraColumnSpecification extends Component {
-  render () {
-    return (
-      <div>
-        <hr />
-        <Row>
-          <Col md={3}>
-            <h5 className="no-bottom-margin">Partition Key Columns</h5>
-            (In Order)
-          </Col>
-          <Col md={9}>
-            <FieldArray name="partitionKeyColumns" component={KeyColumnList} columnType={"partitionKey"} tables={this.props.tables}/>
-          </Col>
-        </Row>
-        <hr />
-        <Row>
-          <Col md={3}>
-            <h5 className="no-bottom-margin">Clustering Columns</h5>
-            (In Order)
-          </Col>
-          <Col md={9}>
-            <FieldArray name="clusteringColumns" component={KeyColumnList} columnType={"clustering"} tables={this.props.tables}/>
-          </Col>
-        </Row>
-        <hr />
-        <Row>
-          <Col md={3}>
-            <h5 className="no-bottom-margin">Other Columns</h5>
-          </Col>
-          <Col md={9}>
-            <FieldArray name="otherColumns" component={KeyColumnList} columnType={"other"} tables={this.props.tables} />
-          </Col>
-        </Row>
-      </div>
-    )
-  }
-}
 class CreateTable extends Component {
   constructor(props) {
     super(props);
@@ -161,10 +20,6 @@ class CreateTable extends Component {
     this.hideCancelCreateModal = this.hideCancelCreateModal.bind(this);
     this.confirmCancelCreateModal = this.confirmCancelCreateModal.bind(this);
     this.state = {nextTab: ''}
-  }
-
-  componentWillMount() {
-    this.props.fetchTableColumnTypes();
   }
 
   radioClicked(event) {
@@ -182,7 +37,7 @@ class CreateTable extends Component {
         this.setState({nextTab: nextProps.location.query.tab});
         this.props.showCancelCreateModal();
         let currentLocation = this.props.location;
-        currentLocation.query = {tab: "tables"}
+        currentLocation.query = {tab: "tables"};
         this.props.router.push(currentLocation)
       } else {
         this.props.showListTables();
@@ -199,7 +54,7 @@ class CreateTable extends Component {
     this.props.showListTables();
     if (isValidObject(this.state.nextTab) && this.state.nextTab.length > 0) {
       let currentLocation = this.props.location;
-      currentLocation.query = { tab: this.state.nextTab }
+      currentLocation.query = { tab: this.state.nextTab };
       this.props.router.push(currentLocation);
     }
   }

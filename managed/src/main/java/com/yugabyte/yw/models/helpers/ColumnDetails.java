@@ -2,8 +2,11 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import com.google.common.collect.ImmutableSet;
 import org.yb.ColumnSchema;
 import org.yb.Type;
+
+import java.util.Set;
 
 public class ColumnDetails {
 
@@ -13,8 +16,14 @@ public class ColumnDetails {
   // The name of this column
   public String name;
 
-  // The column of this column
+  // The type of this column
   public YQLDataType type;
+
+  // For collections, this is the item type (key type for maps)
+  public YQLDataType keyType;
+
+  // For maps, this is the value type
+  public YQLDataType valueType;
 
   // True if this column is a partition key
   public boolean isPartitionKey;
@@ -43,19 +52,34 @@ public class ColumnDetails {
   }
 
   public enum YQLDataType {
-    BIGINT("bigint"),
-    INT("int"),
+    TINYINT("tinyint"),
     SMALLINT("smallint"),
-    DOUBLE_PRECISION("double precision"),
-    FLOAT("float"),
+    INT("int"),
+    BIGINT("bigint"),
     VARCHAR("varchar"),
     BOOLEAN("boolean"),
-    TIMESTAMP("timestamp");
+    FLOAT("float"),
+    DOUBLE_PRECISION("double precision"),
+    BLOB("blob"),
+    TIMESTAMP("timestamp"),
+    DECIMAL("decimal"),
+    VARINT("varint"),
+    INET("inet"),
+    LIST("list"),
+    MAP("map"),
+    SET("set"),
+    UUID("uuid");
+
+    static final Set<YQLDataType> COLLECTION_TYPES = ImmutableSet.of(LIST, MAP, SET);
 
     String type;
 
     YQLDataType(String type) {
       this.type = type;
+    }
+
+    public boolean isCollection() {
+      return COLLECTION_TYPES.contains(this);
     }
 
     public String toString() {
@@ -70,22 +94,40 @@ public class ColumnDetails {
      */
     public static YQLDataType createFromGenericType(Type type) {
       switch(type) {
-        case INT64:
-          return BIGINT;
-        case INT32:
-          return INT;
+        case INT8:
+          return TINYINT;
         case INT16:
           return SMALLINT;
-        case DOUBLE:
-          return DOUBLE_PRECISION;
-        case FLOAT:
-          return FLOAT;
+        case INT32:
+          return INT;
+        case INT64:
+          return BIGINT;
         case STRING:
           return VARCHAR;
         case BOOL:
           return BOOLEAN;
+        case FLOAT:
+          return FLOAT;
+        case DOUBLE:
+          return DOUBLE_PRECISION;
+        case BINARY:
+          return BLOB;
         case TIMESTAMP:
           return TIMESTAMP;
+        case DECIMAL:
+          return DECIMAL;
+        case VARINT:
+          return VARINT;
+        case INET:
+          return INET;
+        case LIST:
+          return LIST;
+        case MAP:
+          return MAP;
+        case SET:
+          return SET;
+        case UUID:
+          return UUID;
       }
       throw new IllegalArgumentException("Type " + type + " has no YQL equivalent.");
     }

@@ -7,6 +7,7 @@ export default class AuthenticatedComponent extends Component {
   componentWillMount() {
     this.props.fetchHostInfo();
     this.props.fetchSoftwareVersions();
+    this.props.fetchTableColumnTypes();
     this.props.fetchUniverseList();
     this.props.getEBSListItems();
     this.props.getProviderListItems();

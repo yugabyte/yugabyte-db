@@ -106,6 +106,20 @@ public class ApiUtils {
     return node;
   }
 
+  public static TableDetails getDummyCollectionsTableDetails(ColumnDetails.YQLDataType dataType) {
+    TableDetails table = getDummyTableDetails(1, 0, -1L, SortOrder.NONE);
+    ColumnDetails collectionsColumn = new ColumnDetails();
+    collectionsColumn.name = "v2";
+    collectionsColumn.columnOrder = 2;
+    collectionsColumn.type = dataType;
+    collectionsColumn.keyType = ColumnDetails.YQLDataType.UUID;
+    if (dataType.equals(ColumnDetails.YQLDataType.MAP)) {
+      collectionsColumn.valueType = ColumnDetails.YQLDataType.VARCHAR;
+    }
+    table.columns.add(collectionsColumn);
+    return table;
+  }
+
   public static TableDetails getDummyTableDetailsNoClusteringKey(int partitionKeyCount, long ttl) {
     return getDummyTableDetails(partitionKeyCount, 0, ttl, SortOrder.NONE);
   }
