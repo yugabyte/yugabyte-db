@@ -14,8 +14,6 @@ Options:
     Which region this instance is started in.
   --placement_zone <zone_name>
     Which zone this instance is started in.
-  --create_system_tables
-    Create system tables when creating the cluster.
 Commands:
   create
     Creates a brand new cluster. Starts the master and tablet server processes after creating
@@ -371,16 +369,6 @@ start_cluster() {
       start_tserver $i
     fi
   done
-
-  if "$create" && "$create_system_tables"; then
-    # Give some time for the tservers to register with the master before creating system tables.
-    sleep 3
-    "$ybcmd_binary" \
-      --ybcmd_run=1 \
-      --ybcmd_master_addresses "$master_addresses" \
-      --yb_system_namespace_readonly=false \
-      < "$yql_root/system_tables.yql"
-  fi
 }
 
 start_cluster_as_before() {
@@ -454,7 +442,6 @@ create=false
 placement_cloud=""
 placement_region=""
 placement_zone=""
-create_system_tables=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -473,9 +460,6 @@ while [ $# -gt 0 ]; do
     --num-tservers|--num-tablet-servers|--num_tservers)
       num_tservers="$2"
       shift
-    ;;
-    --create_system_tables)
-      create_system_tables=true
     ;;
     -h|--help)
       print_help
