@@ -156,76 +156,9 @@ cc_or_cxx=${0##*/}
 
 stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
 
-# Returns absolute real path to specified path (also resolves symlinks).
-# If specified parameter is a subdirectory inside $YB_SRC_ROOT/.../rocksdb-build - resolves it to
-# a corresponding $YB_SRC_DIR_SRC/rocksdb subdirectory
-resolve_path() {
-  expect_num_args 1 "$@"
-  local path=$1
-  if [[ -f "$path.gch" ]]; then
-    # Don't replace path to precompiled headers, so ccache/compiler can find corresponding .gch.
-    resolve_path_rv=$path
-  else
-    resolve_path_rv=$(realpath "$path")
-    if [[ $resolve_path_rv == "$YB_SRC_ROOT/"*"/rocksdb-build"@(/*|) ]]; then
-      local subpath=${resolve_path_rv#$YB_SRC_ROOT/*/rocksdb-build}
-      resolve_path_rv=$YB_SRC/rocksdb/$subpath
-      resolve_path_rv=$(realpath "$resolve_path_rv")
-      if [[ ! -e $resolve_path_rv ]]; then
-        # Prevent replacing path to generated/compiled files which are not present in sources dir,
-        # for example
-        # ~/yugabyte/build/debug-clang-dynamic/rocksdb-build/librocksdb_debug.4.6.0.dylib
-        # could be incorrectly resolved to ~/yugabyte/src/rocksdb/librocksdb_debug.4.6.0.dylib
-        resolve_path_rv=$path
-      fi
-    fi
-  fi
-}
-
-# Solution for https://yugabyte.atlassian.net/browse/ENG-850: Improve RocksDB code debugging.
-# For each compiler argument which is a link to file, we are replacing it with absolute real source
-# file path.
-# For include directory argument (-I), which is located inside $YB_SRC_ROOT/.../rocksdb-build,
-# we are replacing it with corresponding $YB_SRC/rocksdb subdirectory. Such subdirectories
-# require special handling, because they are not symlinks, but just copies the same directory
-# hierarchy from $YB_SRC/rocksdb and symlinks are created under that copied hierarchy.
-#
-# We can remove that after we start building RocksDB from src folder instead of sym-linked sources
-# in rocksdb-build directory.
-resolve_symlinks_in_args() {
-  local prev_arg=""
-  local arg=""
-  local -i i
-  for i in "${!compiler_args[@]}"; do
-    prev_arg=$arg
-    arg=${compiler_args[$i]}
-    # We only resolve symlinks for files and include directories. One specific case when this
-    # matters is that we should not resolve symlinks to directories specifying an rpath.
-    if [[ $arg == "-I"* ]]; then
-      # This is an include directory specified as -I<dir_name>.
-      local include_dir=${arg#-I}
-      if [[ -d $include_dir ]] ;then
-        resolve_path "$include_dir"
-        compiler_args[$i]=-I$resolve_path_rv
-      fi
-    elif [[ $prev_arg == "-I" && -d $arg ]]; then
-      # An include directory specified as -I <dir_name>.
-      resolve_path "$arg"
-      compiler_args[$i]=$resolve_path_rv
-    elif [[ -L $arg && -f $arg ]]; then
-      resolve_path "$arg"
-      compiler_args[$i]=$resolve_path_rv
-    fi
-  done
-}
-
 compiler_args=( "$@" )
 
 YB_SRC="$YB_SRC_ROOT/src"
-
-if [[ -z ${YB_IS_THIRDPARTY_BUILD:-} ]]; then
-  resolve_symlinks_in_args
-fi
 
 set +u
 # The same as one string. We allow undefined variables for this line because an empty array is

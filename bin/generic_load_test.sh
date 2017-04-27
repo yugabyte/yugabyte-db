@@ -13,12 +13,6 @@ shift
 yugabyte_root=$( cd "$( dirname "$0" )"/.. && pwd )
 cd "$yugabyte_root"
 
-if [ "$( uname )" == "Darwin" ]; then
-  set -x
-  export DYLD_FALLBACK_LIBRARY_PATH="$yugabyte_root"/build/latest/rocksdb-build
-  set +x
-fi
-
 set -x
 build/latest/bin/yb_load_test_tool \
   --use_kv_table \

@@ -79,7 +79,6 @@
 #include "table/table_builder.h"
 #include "table/two_level_iterator.h"
 #include "util/autovector.h"
-#include "util/build_version.h"
 #include "util/coding.h"
 #include "util/compression.h"
 #include "util/crc32c.h"
@@ -106,7 +105,7 @@ namespace rocksdb {
 
 const char kDefaultColumnFamilyName[] = "default";
 
-void DumpRocksDBBuildVersion(Logger * log);
+void DumpRocksDBBuildVersion(Logger* log);
 
 struct DBImpl::WriteContext {
   autovector<SuperVersion*> superversions_to_free_;
@@ -5959,14 +5958,12 @@ void DBImpl::EraseThreadStatusDbInfo() const {
 
 //
 // A global method that can dump out the build version
-void DumpRocksDBBuildVersion(Logger * log) {
+void DumpRocksDBBuildVersion(Logger* log) {
 #if !defined(IOS_CROSS_COMPILE)
   // if we compile with Xcode, we don't run build_detect_vesion, so we don't
   // generate util/build_version.cc
   RHEADER(log, "RocksDB version: %d.%d.%d\n", ROCKSDB_MAJOR, ROCKSDB_MINOR,
       ROCKSDB_PATCH);
-  RHEADER(log, "Git sha %s", rocksdb_build_git_sha);
-  RHEADER(log, "Compile date %s", rocksdb_build_compile_date);
 #endif
 }
 

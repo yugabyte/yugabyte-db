@@ -629,9 +629,9 @@ class FaultInjectionTest : public testing::Test,
     int num = i;
     if (!sequential_order_) {
       // random transfer
-      const int m = 0x5bd1e995;
-      num *= m;
-      num ^= num << 24;
+      int64_t m = 0x5bd1e995LL * num;
+      m ^= (m & 0xff) << 24;
+      num = static_cast<int>(m);
     }
     char buf[100];
     snprintf(buf, sizeof(buf), "%016d", num);

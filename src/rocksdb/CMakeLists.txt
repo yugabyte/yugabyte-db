@@ -2,277 +2,339 @@
 
 # RocksDB build.
 
-# We are using the Makefile-based build that RocksDB provided (as of 03/15/2016, RocksDB only
-# provides a CMakeLists.txt file for Windows).
-#
-# However, we do an out-of-source build, and we use a custom script that mirrors the entire RocksDB
-# source directory inside of the build/debug (or build/release) directory.
+include(PrecompiledHeader)
 
-# Parse the RocksDB version out of "version.h"
-function(get_rocksdb_version_component COMPONENT)
-  string(REGEX MATCH
-    " *#define +ROCKSDB_${COMPONENT} +[0-9]+"
-    ROCKSDB_VERSION_COMPONENT
-    "${ROCKSDB_VERSION_H_CONTENTS}")
-  if ("${ROCKSDB_VERSION_COMPONENT}" STREQUAL "")
-    message(FATAL_ERROR "Failed to parse the ${COMPONENT} component of the RocksDB version")
-  endif()
-
-  string(REGEX REPLACE " *#define +ROCKSDB_${COMPONENT} +" ""
-    ROCKSDB_VERSION_COMPONENT "${ROCKSDB_VERSION_COMPONENT}")
-  if ("${ROCKSDB_VERSION_COMPONENT}" STREQUAL "")
-    message(FATAL_ERROR "Failed to parse the ${COMPONENT} component of the RocksDB version")
-  endif()
-  set(ROCKSDB_${COMPONENT} ${ROCKSDB_VERSION_COMPONENT} PARENT_SCOPE)
-endfunction()
-
-set(ROCKSDB_BUILD_DIR "${YB_BUILD_DIR}/rocksdb-build" CACHE STRING "RocksDB build dir")
-
-file(READ "include/rocksdb/version.h" ROCKSDB_VERSION_H_CONTENTS)
-get_rocksdb_version_component("MAJOR")
-get_rocksdb_version_component("MINOR")
-get_rocksdb_version_component("PATCH")
-SET(ROCKSDB_VERSION "${ROCKSDB_MAJOR}.${ROCKSDB_MINOR}.${ROCKSDB_PATCH}"
-  CACHE STRING "RocksDB version")
-message("Detected RocksDB version: ${ROCKSDB_VERSION}")
-
-# We need this in rpath fix-up for Mac OS X.
-SET(ROCKSDB_SHORT_VERSION "${ROCKSDB_MAJOR}.${ROCKSDB_MINOR}")
-
-# Find all RocksDB sources to make CLion recognize them as such. This is not being passed to a
-# compiler.
-file(GLOB_RECURSE ROCKSDB_SOURCES "*.h" "*.cc")
-
-SET(ROCKSDB_BUILD_VERBOSE_ARG "")
-if ("${YB_VERBOSE}" STREQUAL "1")
-  SET(ROCKSDB_BUILD_VERBOSE_ARG "--verbose")
-endif()
-
-# A way to pass arbitrary options to make when building RocksDB.
-set(ROCKSDB_MAKE_OPTS " ")
-
-if ("${YB_USE_ASAN}")
-  set(ROCKSDB_MAKE_OPTS "${ROCKSDB_MAKE_OPTS} COMPILE_WITH_ASAN=1")
-endif()
-if ("${YB_USE_TSAN}")
-  set(ROCKSDB_MAKE_OPTS "${ROCKSDB_MAKE_OPTS} COMPILE_WITH_TSAN=1")
-endif()
-
-SET(ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG)
-if (NOT YB_TCMALLOC_AVAILABLE)
-  SET(ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG "--disable-tcmalloc")
-endif()
-
-set(GFLAGS_BUILD_DIR
-    "${YB_SRC_DIR}/thirdparty/build/${THIRDPARTY_INSTRUMENTATION_TYPE}/gflags-2.1.2")
-
-set(SNAPPY_BUILD_DIR
-    "${YB_SRC_DIR}/thirdparty/build/${THIRDPARTY_INSTRUMENTATION_TYPE}/snappy-1.1.0")
-
-# Make it possible to work with packaged third-party dependencies built before the layout
-#  changed as Linuxbrew compatibility was added in https://phabricator.dev.yugabyte.com/D982.
-if (NOT EXISTS "${GFLAGS_BUILD_DIR}")
-  message("gflags build directory not found at ${GFLAGS_BUILD_DIR}, using old location")
-  set(GFLAGS_BUILD_DIR "${YB_SRC_DIR}/thirdparty/gflags-2.1.2")
-endif()
-
-if (NOT EXISTS "${SNAPPY_BUILD_DIR}")
-  message("snappy build directory not found at ${SNAPPY_BUILD_DIR}, using old location")
-  set(SNAPPY_BUILD_DIR "${YB_SRC_DIR}/thirdparty/snappy-1.1.0")
-endif()
-
-message("COMMON_LINKER_FLAGS to be specified as --ld-flags to build-rocksdb.sh:"
-        " ${COMMON_LINKER_FLAGS}")
-
-# TODO: auto-detect the gflags version installed in the thirdparty directory.
-set(BUILD_ROCKSDB_ARGS
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/build-rocksdb.sh
-  --make-parallelism "${PROCESSOR_COUNT}"
-  --build-dir "${YB_BUILD_DIR}"
-  --debug-level "${ROCKSDB_DEBUG_LEVEL}"
-  --link-mode "${YB_LINK}"
-  --cxx-compiler "${CMAKE_CXX_COMPILER}"
-  --c-compiler "${CMAKE_C_COMPILER}"
-  --extra-include-dir "${GFLAGS_BUILD_DIR}/include"
-  --extra-include-dir "${SNAPPY_BUILD_DIR}/include"
-  --extra-include-dir "${YB_SRC_DIR}/src"
-  --extra-lib-dir "${GFLAGS_BUILD_DIR}/lib"
-  --extra-lib-dir "${SNAPPY_BUILD_DIR}/lib"
-  ${ROCKSDB_BUILD_USE_LD_GOLD_ARG}
-  ${ROCKSDB_BUILD_VERBOSE_ARG}
-  --make-opts "${ROCKSDB_MAKE_OPTS}"
-  ${ROCKSDB_BUILD_DISABLE_TCMALLOC_ARG}
-  --ld-flags "${COMMON_LINKER_FLAGS}"
+### RocksDB sources
+set(ROCKSDB_SRCS
+    db/auto_roll_logger.cc
+    db/builder.cc
+    db/c.cc
+    db/column_family.cc
+    db/compacted_db_impl.cc
+    db/compaction.cc
+    db/compaction_iterator.cc
+    db/compaction_job.cc
+    db/compaction_picker.cc
+    db/convenience.cc
+    db/db_filesnapshot.cc
+    db/dbformat.cc
+    db/db_impl.cc
+    db/db_impl_debug.cc
+    db/db_impl_readonly.cc
+    db/db_impl_experimental.cc
+    db/db_info_dumper.cc
+    db/db_iter.cc
+    db/experimental.cc
+    db/event_helpers.cc
+    db/file_indexer.cc
+    db/filename.cc
+    db/flush_job.cc
+    db/flush_scheduler.cc
+    db/forward_iterator.cc
+    db/internal_stats.cc
+    db/log_reader.cc
+    db/log_writer.cc
+    db/managed_iterator.cc
+    db/memtable_allocator.cc
+    db/memtable.cc
+    db/memtable_list.cc
+    db/merge_helper.cc
+    db/merge_operator.cc
+    db/repair.cc
+    db/slice.cc
+    db/snapshot_impl.cc
+    db/table_cache.cc
+    db/table_properties_collector.cc
+    db/transaction_log_impl.cc
+    db/version_builder.cc
+    db/version_edit.cc
+    db/version_set.cc
+    db/wal_manager.cc
+    db/write_batch.cc
+    db/write_batch_base.cc
+    db/write_controller.cc
+    db/write_thread.cc
+    db/xfunc_test_points.cc
+    memtable/hash_cuckoo_rep.cc
+    memtable/hash_linklist_rep.cc
+    memtable/hash_skiplist_rep.cc
+    memtable/skiplistrep.cc
+    memtable/vectorrep.cc
+    port/stack_trace.cc
+    port/port_posix.cc
+    table/adaptive_table_factory.cc
+    table/block_based_filter_block.cc
+    table/block_based_table_builder.cc
+    table/block_based_table_factory.cc
+    table/block_based_table_reader.cc
+    table/block_builder.cc
+    table/block.cc
+    table/block_hash_index.cc
+    table/block_prefix_index.cc
+    table/bloom_block.cc
+    table/cuckoo_table_builder.cc
+    table/cuckoo_table_factory.cc
+    table/cuckoo_table_reader.cc
+    table/flush_block_policy.cc
+    table/format.cc
+    table/full_filter_block.cc
+    table/get_context.cc
+    table/iterator.cc
+    table/merger.cc
+    table/meta_blocks.cc
+    table/sst_file_writer.cc
+    table/plain_table_builder.cc
+    table/plain_table_factory.cc
+    table/plain_table_index.cc
+    table/plain_table_key_coding.cc
+    table/plain_table_reader.cc
+    table/table_properties.cc
+    table/two_level_iterator.cc
+    tools/dump/db_dump_tool.cc
+    util/arena.cc
+    util/bloom.cc
+    util/cache.cc
+    util/coding.cc
+    util/comparator.cc
+    util/compaction_job_stats_impl.cc
+    util/concurrent_arena.cc
+    util/crc32c.cc
+    util/delete_scheduler.cc
+    util/dynamic_bloom.cc
+    util/env.cc
+    util/env_hdfs.cc
+    util/env_posix.cc
+    util/io_posix.cc
+    util/thread_posix.cc
+    util/sst_file_manager_impl.cc
+    util/file_util.cc
+    util/file_reader_writer.cc
+    util/filter_policy.cc
+    util/hash.cc
+    util/histogram.cc
+    util/instrumented_mutex.cc
+    util/iostats_context.cc
+    utilities/backupable/backupable_db.cc
+    utilities/convenience/info_log_finder.cc
+    utilities/checkpoint/checkpoint.cc
+    utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc
+    utilities/document/document_db.cc
+    utilities/document/json_document_builder.cc
+    utilities/document/json_document.cc
+    utilities/env_mirror.cc
+    utilities/flashcache/flashcache.cc
+    utilities/geodb/geodb_impl.cc
+    utilities/leveldb_options/leveldb_options.cc
+    utilities/memory/memory_util.cc
+    utilities/merge_operators/put.cc
+    utilities/merge_operators/string_append/stringappend2.cc
+    utilities/merge_operators/string_append/stringappend.cc
+    utilities/merge_operators/uint64add.cc
+    utilities/options/options_util.cc
+    utilities/redis/redis_lists.cc
+    utilities/spatialdb/spatial_db.cc
+    utilities/table_properties_collectors/compact_on_deletion_collector.cc
+    utilities/transactions/optimistic_transaction_impl.cc
+    utilities/transactions/optimistic_transaction_db_impl.cc
+    utilities/transactions/transaction_base.cc
+    utilities/transactions/transaction_db_impl.cc
+    utilities/transactions/transaction_db_mutex_impl.cc
+    utilities/transactions/transaction_lock_mgr.cc
+    utilities/transactions/transaction_impl.cc
+    utilities/transactions/transaction_util.cc
+    utilities/ttl/db_ttl_impl.cc
+    utilities/write_batch_with_index/write_batch_with_index.cc
+    utilities/write_batch_with_index/write_batch_with_index_internal.cc
+    util/event_logger.cc
+    util/log_buffer.cc
+    util/logging.cc
+    util/memenv.cc
+    util/murmurhash.cc
+    util/mutable_cf_options.cc
+    util/options.cc
+    util/options_builder.cc
+    util/options_helper.cc
+    util/options_parser.cc
+    util/options_sanity_check.cc
+    util/perf_context.cc
+    util/perf_level.cc
+    util/random.cc
+    util/rate_limiter.cc
+    util/slice.cc
+    util/statistics.cc
+    util/status.cc
+    util/status_message.cc
+    util/string_util.cc
+    util/sync_point.cc
+    util/thread_local.cc
+    util/thread_status_impl.cc
+    util/thread_status_updater.cc
+    util/thread_status_updater_debug.cc
+    util/thread_status_util.cc
+    util/thread_status_util_debug.cc
+    util/xfunc.cc
+    util/xxhash.cc
 )
 
+set(CMAKE_CXX_FLAGS
+  "${CMAKE_CXX_FLAGS} -DROCKSDB_LIB_IO_POSIX -DBZIP2 -DSNAPPY -DZLIB \
+   -W -Werror -Wextra -Winvalid-pch -Wno-missing-field-initializers \
+   -Wno-unused-parameter -Wno-unused-variable -Woverloaded-virtual \
+   -Wshadow -Wsign-compare")
 
-set(ROCKSDB_CXX_FLAGS "${CXX_GLOBAL_COMMON_FLAGS}")
-# Use the same flags for the C compiler as for the C++ compiler, with some optional customizations
-# later.
-set(ROCKSDB_C_FLAGS "${ROCKSDB_CXX_FLAGS}")
-
-if ("${COMPILER_FAMILY}" STREQUAL "clang")
-  # -Wno-parentheses-equality is there because otherwise there is this error on Mac OS X:
-  # util/instrumented_mutex.cc:19:114: error: equality comparison with extraneous parentheses [-Werror,-Wparentheses-equality]
-  #   PerfStepTimer perf_step_timer_db_mutex_lock_nanos(&(perf_context.db_mutex_lock_nanos), true); if ((stats_code_ == DB_MUTEX_WAIT_MICROS)) { perf_step_timer_db_mutex_lock_nanos.Start(); };
-  #                                                                                                    ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~
-  # -Wno-unevaluated-expression is there to prevent the following error on Mac OS X:
-  # util/autovector_test.cc:55:120: error: expression with side effects has no effect in an unevaluated context [-Werror,-Wunevaluated-expression]
-  #     switch (0) case 0: default: if (const ::testing::AssertionResult gtest_ar = (::testing::internal:: EqHelper<(sizeof(::testing::internal::IsNullLiteralHelper(--size)) == 1)>::Compare("--size", "vec.size()", --size, vec.size()))) ; else return ::testing::internal::AssertHelper(::testing::TestPartResult::kFatalFailure, "util/autovector_test.cc", 55, gtest_ar.failure_message()) = ::testing::Message();
-
-  set(ROCKSDB_CXX_FLAGS "${ROCKSDB_CXX_FLAGS} -Wno-parentheses-equality")
-  set(ROCKSDB_CXX_FLAGS "${ROCKSDB_CXX_FLAGS} -Wno-unevaluated-expression")
-
-  if(EXISTS "/etc/centos-release")
-    # Silence an error thrown by the clang C compiler on CentOS.
-    # CC       db/c_test.o
-    # clang-3.7: error: argument unused during compilation: '-I .'
-    # clang-3.7: error: argument unused during compilation: '-I ./include'
-    # clang-3.7: error: argument unused during compilation: '-isystem ./third-party/gtest-1.7.0/fused-src'
-    # Compiler command failed with exit code 1: ccache compiler -g -W -Wextra -Wall -Wsign-compare -Wshadow -Wno-unused-parameter -Wno-unused-variable -Werror -I. -I./include -DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX -DOS_LINUX -fno-builtin-memcmp -DROCKSDB_FALLOCATE_PRESENT -DZLIB -DROCKSDB_MALLOC_USABLE_SIZE -march=native -isystem ./third-party/gtest-1.7.0/fused-src -c db/c_test.c -o db/c_test.o ; compiler executable: /var/lib/jenkins/workspace/yugabyte-centos-phabricator-clang-debug/thirdparty/installed/bin/clang ; current directory: /var/lib/jenkins/workspace/yugabyte-centos-phabricator-clang-debug/build/debug-clang-dynamic/rocksdb-build
-    set(ROCKSDB_C_FLAGS "${ROCKSDB_C_FLAGS} -Qunused-arguments")
-  endif()
+if (IS_CLANG)
+  set(CMAKE_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} -Wshorten-64-to-32 -Wno-unevaluated-expression -Wno-parentheses-equality")
 endif()
 
-if(NOT "${ROCKSDB_CXX_FLAGS}" STREQUAL "")
-  list(APPEND BUILD_ROCKSDB_ARGS --cxx-flags "${ROCKSDB_CXX_FLAGS}")
+if (NOT APPLE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DOS_LINUX -DROCKSDB_FALLOCATE_PRESENT")
 endif()
 
-if(NOT "${ROCKSDB_C_FLAGS}" STREQUAL "")
-  list(APPEND BUILD_ROCKSDB_ARGS --c-flags "${ROCKSDB_C_FLAGS}")
+if (${YB_USE_TSAN})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_TSAN_RUN")
 endif()
 
-add_custom_target(build_rocksdb_library ALL
-  COMMAND ${BUILD_ROCKSDB_ARGS}
-  VERBATIM
-  COMMENT "Building RocksDB library")
+if (${YB_USE_ASAN})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_MALLOC_USABLE_SIZE")
+endif()
 
-add_custom_target(build_rocksdb_all_targets ALL
-  COMMAND ${BUILD_ROCKSDB_ARGS} --targets all
-  COMMENT "Building all RocksDB targets, including tests, benchmarks, and tools"
-  VERBATIM)
+add_library(rocksdb ${ROCKSDB_SRCS} precompiled_header.h)
+add_precompiled_header(rocksdb precompiled_header.h FORCEINCLUDE)
+target_link_libraries(rocksdb gflags gutil snappy bz2 z)
 
-add_dependencies(build_rocksdb_all_targets build_rocksdb_library)
+add_library(rocksdb_tools
+  tools/ldb_cmd.cc
+  tools/ldb_tool.cc
+  tools/sst_dump_tool.cc)
+target_link_libraries(rocksdb_tools rocksdb)
 
-set(ROCKSDB_DEBUG_ONLY_TESTS
-  auto_roll_logger_test
-  backupable_db_test
-  checkpoint_test
-  column_family_test
-  compact_files_test
-  compaction_job_stats_test
-  corruption_test
-  cuckoo_table_builder_test
-  cuckoo_table_db_test
-  cuckoo_table_reader_test
-  db_block_cache_test
-  db_compaction_filter_test
-  db_compaction_test
-  db_dynamic_level_test
-  db_inplace_update_test
-  db_iter_test
-  db_log_iter_test
-  db_properties_test
-  db_table_properties_test
-  db_tailing_iter_test
-  db_test
-  db_test2
-  db_universal_compaction_test
-  db_wal_test
-  delete_scheduler_test
-  deletefile_test
-  fault_injection_test
-  listener_test
-  memory_test
-  plain_table_db_test
-  reduce_levels_test
-  thread_local_test
-  transaction_test
-  version_edit_test
-  write_callback_test
+macro(ADD_YB_ROCKSDB_TOOL tool)
+  add_executable(${tool} tools/${tool}.cc)
+  target_link_libraries(${tool} rocksdb_tools)
+endmacro()
+
+set(ROCKSDB_TEST_UTIL_SRCS
+  table/mock_table.cc
+  util/mock_env.cc
+  util/testharness.cc
+  util/testutil.cc
 )
 
-# Add separate targets for tests so we can run in them in CLion. A potential problem with this setup
-# is that make may be invoked multiple times.
-file(GLOB_RECURSE ROCKSDB_TEST_SOURCES "*_test.cc")
-foreach(ROCKSDB_TEST_SRC IN LISTS ROCKSDB_TEST_SOURCES)
-  get_filename_component(ROCKSDB_TEST_NAME "${ROCKSDB_TEST_SRC}" NAME_WE)
-  get_filename_component(ROCKSDB_TEST_SRC_DIR "${ROCKSDB_TEST_SRC}" DIRECTORY)
-  get_filename_component(ROCKSDB_TEST_SRC_DIR_BASENAME "${ROCKSDB_TEST_SRC_DIR}" NAME)
-  # The rocksjni directory has some tests with the same name as other tests (write_batch_test.cc),
-  # so we skip that directory. We also skip db_sanity_test, which is a command-line tool.
-  if(NOT "${ROCKSDB_TEST_SRC_DIR_BASENAME}" STREQUAL "rocksjni" AND
-     NOT "${ROCKSDB_TEST_NAME}" STREQUAL "db_sanity_test")
-    set(ROCKSDB_TEST_TARGET_NAME "rocksdb_${ROCKSDB_TEST_NAME}")
-    add_custom_target("${ROCKSDB_TEST_TARGET_NAME}"
-      COMMAND ${BUILD_ROCKSDB_ARGS} --targets "${ROCKSDB_TEST_NAME}" --skip-link-dir-creation
-      DEPENDS build_rocksdb_library ${ROCKSDB_TEST_SRC}
-      COMMENT "RocksDB test ${ROCKSDB_TEST_NAME}"
-      VERBATIM)
-    if ("${ROCKSDB_TEST_NAME}" STREQUAL "redis_lists_test")
-      set(ROCKSDB_TEST_BINARY_NAME "redis_test")
-    else()
-      set(ROCKSDB_TEST_BINARY_NAME "${ROCKSDB_TEST_NAME}")
-    endif()
+if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+  set(ROCKSDB_TEST_UTIL_SRCS ${ROCKSDB_TEST_UTIL_SRCS} db/db_test_util.cc)
+endif()
 
-    set(ROCKSDB_SHOULD_INCLUDE_TEST true)
-    if ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-      list(FIND ROCKSDB_DEBUG_ONLY_TESTS "${ROCKSDB_TEST_NAME}"
-        ROCKSDB_TEST_POSITION_IN_LIST_OF_DEBUG_ONLY_TESTS)
-      if (NOT ROCKSDB_TEST_POSITION_IN_LIST_OF_DEBUG_ONLY_TESTS EQUAL -1)
-        # This is a debug-only RocksDB test.
-        set(ROCKSDB_SHOULD_INCLUDE_TEST false)
-      endif()
+add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
+target_link_libraries(rocksdb_test_util gmock rocksdb rocksdb_tools)
 
-    endif()
+ADD_YB_ROCKSDB_TOOL(sst_dump)
+ADD_YB_ROCKSDB_TOOL(db_sanity_test)
+ADD_YB_ROCKSDB_TOOL(db_stress)
+ADD_YB_ROCKSDB_TOOL(write_stress)
+ADD_YB_ROCKSDB_TOOL(ldb)
+ADD_YB_ROCKSDB_TOOL(db_repl_stress)
+target_link_libraries(db_repl_stress rocksdb_test_util)
+add_executable(rocksdb_dump tools/dump/rocksdb_dump.cc)
+target_link_libraries(rocksdb_dump rocksdb_tools)
+add_executable(rocksdb_undump tools/dump/rocksdb_undump.cc)
+target_link_libraries(rocksdb_undump rocksdb_tools)
 
-    if (ROCKSDB_SHOULD_INCLUDE_TEST)
-      add_test(NAME "${ROCKSDB_TEST_TARGET_NAME}"
-               COMMAND "${BUILD_SUPPORT_DIR}/run-test.sh"
-               "${ROCKSDB_BUILD_DIR}/${ROCKSDB_TEST_BINARY_NAME}")
-      ADD_COMMON_YB_TEST_DEPENDENCIES(${ROCKSDB_TEST_TARGET_NAME})
-    else()
-      message("Skipping test ${ROCKSDB_TEST_TARGET_NAME} in release mode")
-    endif()
-  endif()
-endforeach(ROCKSDB_TEST_SRC)
+set(YB_TEST_LINK_LIBS rocksdb_test_util rocksdb ${YB_MIN_TEST_LIBS})
 
-# This library is only here to make CLion navigation work for RocksDB code. It is not being built
-# at all due to EXCLUDE_FROM_ALL. The RocksDB build still happens via its Makefile.
-add_library(
-  rocksdb_dummy_library_for_clion
-  EXCLUDE_FROM_ALL
-  ${ROCKSDB_SOURCES})
+ADD_YB_TEST(db/compaction_job_test)
+ADD_YB_TEST(db/compaction_picker_test)
+ADD_YB_TEST(db/comparator_db_test)
+ADD_YB_TEST(db/dbformat_test)
+ADD_YB_TEST(db/file_indexer_test)
+ADD_YB_TEST(db/filename_test)
+ADD_YB_TEST(db/flush_job_test)
+ADD_YB_TEST(db/inlineskiplist_test)
+ADD_YB_TEST(db/log_test)
+ADD_YB_TEST(db/manual_compaction_test)
+ADD_YB_TEST(db/merge_test)
+ADD_YB_TEST(db/options_file_test)
+ADD_YB_TEST(db/perf_context_test)
+ADD_YB_TEST(db/prefix_test)
+ADD_YB_TEST(db/skiplist_test)
+ADD_YB_TEST(db/table_properties_collector_test)
+ADD_YB_TEST(db/version_builder_test)
+ADD_YB_TEST(db/version_set_test)
+ADD_YB_TEST(db/wal_manager_test)
+ADD_YB_TEST(db/write_batch_test)
+ADD_YB_TEST(db/write_controller_test)
+ADD_YB_TEST(table/block_based_filter_block_test)
+ADD_YB_TEST(table/block_hash_index_test)
+ADD_YB_TEST(table/block_test)
+ADD_YB_TEST(table/full_filter_block_test)
+ADD_YB_TEST(table/merger_test)
+ADD_YB_TEST(table/table_test)
+ADD_YB_TEST(tools/ldb_cmd_test)
+ADD_YB_TEST(tools/sst_dump_test)
+ADD_YB_TEST(util/arena_test)
+ADD_YB_TEST(util/autovector_test)
+ADD_YB_TEST(util/bloom_test)
+ADD_YB_TEST(util/cache_test)
+ADD_YB_TEST(util/coding_test)
+ADD_YB_TEST(util/crc32c_test)
+ADD_YB_TEST(util/dynamic_bloom_test)
+ADD_YB_TEST(util/env_test)
+ADD_YB_TEST(util/event_logger_test)
+ADD_YB_TEST(util/filelock_test)
+ADD_YB_TEST(util/histogram_test)
+ADD_YB_TEST(util/iostats_context_test)
+ADD_YB_TEST(util/memenv_test)
+ADD_YB_TEST(util/mock_env_test)
+ADD_YB_TEST(util/options_test)
+ADD_YB_TEST(util/rate_limiter_test)
+ADD_YB_TEST(util/slice_transform_test)
+ADD_YB_TEST(util/thread_list_test)
+ADD_YB_TEST(utilities/document/document_db_test)
+ADD_YB_TEST(utilities/document/json_document_test)
+ADD_YB_TEST(utilities/geodb/geodb_test)
+ADD_YB_TEST(utilities/merge_operators/string_append/stringappend_test)
+ADD_YB_TEST(utilities/options/options_util_test)
+ADD_YB_TEST(utilities/redis/redis_lists_test)
+ADD_YB_TEST(utilities/spatialdb/spatial_db_test)
+ADD_YB_TEST(utilities/table_properties_collectors/compact_on_deletion_collector_test)
+ADD_YB_TEST(utilities/transactions/optimistic_transaction_test)
+ADD_YB_TEST(utilities/ttl/ttl_test)
+ADD_YB_TEST(utilities/write_batch_with_index/write_batch_with_index_test)
 
-# Allow navigating to RocksDB's internal include files in CLion.
-target_include_directories(rocksdb_dummy_library_for_clion PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-
-set(
-  ROCKSDB_LIB_PATH_PREFIX "${ROCKSDB_BUILD_DIR}/librocksdb${ROCKSDB_LIB_SUFFIX}"
-  CACHE STRING "RocksDB library path prefix")
-set(ROCKSDB_VERSION_SUFFIX ".${ROCKSDB_VERSION}"
-  CACHE STRING "RocksDB dynamic library version suffix")
-
-if(APPLE)
-  # On Mac OS X the dynamic library extension (".dylib") in the resulting RocksDB library is the
-  # last component of the file name, following the version.
-  set(ROCKSDB_SHARED_LIB
-    "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_SHARED_LIBRARY_SUFFIX}"
-    CACHE STRING "RocksDB shared library path")
-
-  set(ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION
-    "librocksdb${ROCKSDB_LIB_SUFFIX}.${ROCKSDB_SHORT_VERSION}${YB_SHARED_LIBRARY_SUFFIX}"
-    CACHE STRING "RocksDB dynamic library name for Mac OS X with no patch version")
-
-  set(ROCKSDB_STATIC_LIB
-    "${ROCKSDB_LIB_PATH_PREFIX}${ROCKSDB_VERSION_SUFFIX}${YB_STATIC_LIBRARY_SUFFIX}"
-    CACHE STRING "RocksDB static library path")
-else()
-  # On Linux, the version is the last component of the library path.
-  set(ROCKSDB_SHARED_LIB
-    "${ROCKSDB_LIB_PATH_PREFIX}${YB_SHARED_LIBRARY_SUFFIX}${ROCKSDB_VERSION_SUFFIX}"
-    CACHE STRING "RocksDB shared library path")
-  set(ROCKSDB_STATIC_LIB
-    "${ROCKSDB_LIB_PATH_PREFIX}${YB_STATIC_LIBRARY_SUFFIX}${ROCKSDB_VERSION_SUFFIX}"
-    CACHE STRING "RocksDB static library path")
+if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
+ADD_YB_TEST(db/auto_roll_logger_test)
+ADD_YB_TEST(db/column_family_test)
+ADD_YB_TEST(db/compact_files_test)
+ADD_YB_TEST(db/compaction_job_stats_test)
+ADD_YB_TEST(db/corruption_test)
+ADD_YB_TEST(db/cuckoo_table_db_test)
+ADD_YB_TEST(db/db_block_cache_test)
+ADD_YB_TEST(db/db_compaction_filter_test)
+ADD_YB_TEST(db/db_compaction_test)
+ADD_YB_TEST(db/db_dynamic_level_test)
+ADD_YB_TEST(db/db_inplace_update_test)
+ADD_YB_TEST(db/db_iter_test)
+ADD_YB_TEST(db/db_log_iter_test)
+ADD_YB_TEST(db/db_properties_test)
+ADD_YB_TEST(db/db_table_properties_test)
+ADD_YB_TEST(db/db_tailing_iter_test)
+ADD_YB_TEST(db/db_test)
+ADD_YB_TEST(db/db_test2)
+ADD_YB_TEST(db/db_universal_compaction_test)
+ADD_YB_TEST(db/db_wal_test)
+ADD_YB_TEST(db/deletefile_test)
+ADD_YB_TEST(db/fault_injection_test)
+ADD_YB_TEST(db/listener_test)
+ADD_YB_TEST(db/plain_table_db_test)
+ADD_YB_TEST(db/version_edit_test)
+ADD_YB_TEST(db/write_callback_test)
+ADD_YB_TEST(table/cuckoo_table_builder_test)
+ADD_YB_TEST(table/cuckoo_table_reader_test)
+ADD_YB_TEST(tools/reduce_levels_test)
+ADD_YB_TEST(util/delete_scheduler_test)
+ADD_YB_TEST(util/thread_local_test)
+ADD_YB_TEST(utilities/backupable/backupable_db_test)
+ADD_YB_TEST(utilities/checkpoint/checkpoint_test)
+ADD_YB_TEST(utilities/memory/memory_test)
+ADD_YB_TEST(utilities/transactions/transaction_test)
 endif()

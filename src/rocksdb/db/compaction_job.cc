@@ -433,7 +433,8 @@ void CompactionJob::GenSubcompactionBoundaries() {
                 static_cast<uint64_t>(db_options_.max_subcompactions),
                 max_output_files});
 
-  double mean = sum * 1.0 / subcompactions;
+  double mean = subcompactions != 0 ? sum * 1.0 / subcompactions
+                                    : std::numeric_limits<double>::max();
 
   if (subcompactions > 1) {
     // Greedily add ranges to the subcompaction until the sum of the ranges'
@@ -540,6 +541,9 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   VersionStorageInfo::LevelSummaryStorage tmp;
   auto vstorage = cfd->current()->storage_info();
   const auto& stats = compaction_stats_;
+  const auto micros = static_cast<double>(std::max<uint64_t>(stats.micros, 1));
+  const auto bytes_read_non_output_levels = static_cast<double>(
+      std::max<uint64_t>(stats.bytes_read_non_output_levels, 1));
   LOG_TO_BUFFER(
       log_buffer_,
       "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
@@ -557,11 +561,9 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
       stats.bytes_read_non_output_levels / 1048576.0,
       stats.bytes_read_output_level / 1048576.0,
       stats.bytes_written / 1048576.0,
-      (stats.bytes_written + stats.bytes_read_output_level +
-       stats.bytes_read_non_output_levels) /
-          static_cast<double>(stats.bytes_read_non_output_levels),
-      stats.bytes_written /
-          static_cast<double>(stats.bytes_read_non_output_levels),
+      (stats.bytes_written + stats.bytes_read_output_level + stats.bytes_read_non_output_levels) /
+          bytes_read_non_output_levels,
+      stats.bytes_written / bytes_read_non_output_levels,
       status.ToString().c_str(), stats.num_input_records,
       stats.num_dropped_records);
 

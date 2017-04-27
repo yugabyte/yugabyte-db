@@ -457,10 +457,6 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   return 0;  // never reached
 }
 
-bool HostPort::equals(const HostPortPB& hostPortPB) const {
-  return hostPortPB.host() == host() && hostPortPB.port() == port();
-}
-
 bool HostPort::equals(const Sockaddr& sockaddr) const {
   return sockaddr.host() == host() && sockaddr.port() == port();
 }

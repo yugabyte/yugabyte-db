@@ -209,11 +209,11 @@ int ParseInt(const std::string& value) {
   if (endchar < value.length()) {
     char c = value[endchar];
     if (c == 'k' || c == 'K')
-      num <<= 10;
+      num *= (1 << 10);
     else if (c == 'm' || c == 'M')
-      num <<= 20;
+      num *= (1 << 20);
     else if (c == 'g' || c == 'G')
-      num <<= 30;
+      num *= (1 << 30);
   }
 
   return num;
@@ -1225,7 +1225,7 @@ Status GetMemTableRepFactoryFromString(const std::string& opts_str,
     // cuckoo:<write_buffer_size>
     if (2 == len) {
       size_t write_buffer_size = ParseSizeT(opts_list[1]);
-      mem_factory= NewHashCuckooRepFactory(write_buffer_size);
+      mem_factory = NewHashCuckooRepFactory(write_buffer_size);
     } else if (1 == len) {
       return Status::InvalidArgument("Can't parse memtable_factory option ",
                                      opts_str);
@@ -1235,7 +1235,7 @@ Status GetMemTableRepFactoryFromString(const std::string& opts_str,
                                    opts_str);
   }
 
-  if (mem_factory != nullptr){
+  if (mem_factory != nullptr) {
     new_mem_factory->reset(mem_factory);
   }
 

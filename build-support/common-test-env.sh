@@ -13,9 +13,6 @@ fi
 NON_GTEST_TESTS_RE=$( regex_from_list "
   merge-test
   non_gtest_failures-test
-")
-
-NON_GTEST_ROCKSDB_TESTS_RE=$( regex_from_list "
   c_test
   compact_on_deletion_collector_test
   db_sanity_test
@@ -26,13 +23,12 @@ NON_GTEST_ROCKSDB_TESTS_RE=$( regex_from_list "
 # There gtest suites have internal dependencies between tests, so those tests can't be run
 # separately.
 TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( regex_from_list "
-  rocksdb-build/backupable_db_test
-  rocksdb-build/thread_local_test
+  bin/backupable_db_test
+  bin/thread_local_test
 ")
 
 VALID_TEST_BINARY_DIRS=(
   bin
-  rocksdb-build
 )
 VALID_TEST_BINARY_DIRS_RE=$( regex_from_list "${VALID_TEST_BINARY_DIRS[@]}" )
 
@@ -108,12 +104,10 @@ validate_abs_test_binary_path() {
 # We've chosen triple colon as a separator that would rarely occur otherwise.
 # Examples:
 #   - bin/tablet-test:::TestTablet/5.TestDeleteWithFlushAndCompact
-#   - rocksdb-build/db_test:::DBTest.DBOpen_Change_NumLevels
-#   - rocksdb-build/backupable_db_test
 # The test name within the binary is what can be passed to Google Test as the --gtest_filter=...
 # argument. Some test binaries have to be run at once, e.g. non-gtest test binary or
 # test binaries with internal dependencies between tests. For those there is on ":::" separator
-# or the <test_name_within_binary> part (e.g. rocksdb-build/backupable_db_test above).
+# or the <test_name_within_binary> part (e.g. bin/backupable_db_test above).
 validate_test_descriptor() {
   expect_num_args 1 "$@"
   local test_descriptor=$1
@@ -132,17 +126,9 @@ validate_test_descriptor() {
 # Also, RocksDB's thread_list_test is like that on Mac OS X.
 is_known_non_gtest_test() {
   local test_name=$1
-  local is_rocksdb=$2
 
-  if [[ ! $is_rocksdb =~ ^[01]$ ]]; then
-    fatal "The second argument to is_known_non_gtest_test (is_rocksdb) must be 0 or 1," \
-          "was '$is_rocksdb'"
-  fi
-
-  if ( [ "$is_rocksdb" == "1" ] &&
-       ( [[ "$test_name" =~ $NON_GTEST_ROCKSDB_TESTS_RE ]] ||
-         ( [[ "$OSTYPE" =~ ^darwin ]] && [ "$test_name" == thread_list_test ] ) ) || \
-       ( [ "$is_rocksdb" == "0" ] && [[ "$test_name" =~ $NON_GTEST_TESTS_RE ]] ) ); then
+  if [[ "$OSTYPE" =~ ^darwin && "$test_name" == thread_list_test || \
+        "$test_name" =~ $NON_GTEST_TESTS_RE ]]; then
     return 0  # "true return value" in bash
   else
     return 1  # "false return value" in bash
@@ -150,7 +136,7 @@ is_known_non_gtest_test() {
 }
 
 # This is used by yb_test.sh.
-# Takes relative test name such as "bin/client-test" or "rocksdb-build/db_test".
+# Takes relative test name such as "bin/client-test" or "bin/db_test".
 is_known_non_gtest_test_by_rel_path() {
   if [[ $# -ne 1 ]]; then
     fatal "is_known_non_gtest_test_by_rel_path takes exactly one argument" \
@@ -162,12 +148,8 @@ is_known_non_gtest_test_by_rel_path() {
   local test_binary_basename=$( basename "$rel_test_path" )
   # Remove .sh extensions for bash-based tests.
   local test_binary_basename_no_ext=${test_binary_basename%[.]sh}
-  local is_rocksdb=0
-  if [[ "$rel_test_path" =~ ^rocksdb-build/ ]]; then
-    is_rocksdb=1
-  fi
 
-  is_known_non_gtest_test "$test_binary_basename_no_ext" "$is_rocksdb"
+  is_known_non_gtest_test "$test_binary_basename_no_ext"
 }
 
 # Collects Google Test tests from the given test binary.
@@ -196,7 +178,7 @@ collect_gtest_tests() {
 
   validate_relative_test_binary_path "$rel_test_binary"
 
-  if [ "$rel_test_binary" == "rocksdb-build/db_sanity_test" ]; then
+  if [[ $rel_test_binary == "bin/db_sanity_test" ]]; then
     # db_sanity_check is not a test, but a command-line tool.
     return
   fi
@@ -716,7 +698,7 @@ determine_test_timeout() {
   if [[ -n ${YB_TEST_TIMEOUT:-} ]]; then
     timeout_sec=$YB_TEST_TIMEOUT
   else
-    if [[ $rel_test_binary == "rocksdb-build/compact_on_deletion_collector_test" ]]; then
+    if [[ $rel_test_binary == "bin/compact_on_deletion_collector_test" ]]; then
       # This test is particularly slow on TSAN, and it has to be run all at once (we cannot use
       # --gtest_filter) because of dependencies between tests.
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
@@ -1071,11 +1053,8 @@ find_test_binary() {
     local binary_dir=$BUILD_ROOT/$rel_dir
     local candidate=$binary_dir/
 
-    if [[ $rel_dir == "rocksdb-build" ]]; then
-      candidate+=${test_target_name#rocksdb_}
-    else
-      candidate+=$binary_name
-    fi
+    candidate+=$binary_name
+
     if [[ -f "$candidate" ]]; then
       echo "$candidate"
       return

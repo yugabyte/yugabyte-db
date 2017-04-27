@@ -31,3 +31,6 @@ fun:*_Ios_Fmtflags*
 # Seen error:
 # thirdparty/gmock-1.7.0/include/gmock/gmock-spec-builders.h:1529:12: runtime error: member call on null pointer of type 'testing::internal::ActionResultHolder<void>'
 fun:*testing*internal*InvokeWith*
+
+# False positive, because of shift in hash.
+src:*/rocksdb/util/hash.cc

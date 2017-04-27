@@ -54,7 +54,7 @@ if [[ ! -d $PWD ]]; then
 fi
 
 # Absolute path to the root build directory. The test path is expected to be in a subdirectory
-# of it. This works for tests that are in the "bin" directory as well as tests in "rocksdb-build".
+# of it. This works for tests that are in the "bin" directory.
 BUILD_ROOT=$(cd "$(dirname "$TEST_PATH")"/.. && pwd)
 BUILD_ROOT_BASENAME=${BUILD_ROOT##*/}
 
@@ -77,14 +77,7 @@ TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
 
 
 TEST_DIR_BASENAME="$( basename "$TEST_DIR" )"
-if [ "$TEST_DIR_BASENAME" == "rocksdb-build" ]; then
-  LOG_PATH_BASENAME_PREFIX=rocksdb_$TEST_NAME
-  TMP_DIR_NAME_PREFIX="rocksdb_$TMP_DIR_NAME_PREFIX"
-  IS_ROCKSDB=1
-else
-  LOG_PATH_BASENAME_PREFIX=$TEST_NAME
-  IS_ROCKSDB=0
-fi
+LOG_PATH_BASENAME_PREFIX=$TEST_NAME
 
 set_asan_tsan_options
 

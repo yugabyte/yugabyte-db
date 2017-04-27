@@ -510,7 +510,6 @@ endif()
 # Set compile flags based on the build type.
 message("Configured for ${CMAKE_BUILD_TYPE} build "
         "(set with cmake -DCMAKE_BUILD_TYPE={release,debug,...})")
-set(ROCKSDB_BUILD_USE_LD_GOLD_ARG "")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_DEBUG})
   if(NOT APPLE AND EXISTS "/usr/bin/ld.gold")
@@ -523,32 +522,19 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
         # TODO: should we also add this to CMAKE_SHARED_LINKER_FLAGS?
         message("Adding flags in front of CMAKE_EXE_LINKER_FLAGS to use ld.gold: ${LD_GOLD_FLAGS}")
         set(CMAKE_EXE_LINKER_FLAGS "${LD_GOLD_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}")
-        set(ROCKSDB_BUILD_USE_LD_GOLD_ARG "--use-ld-gold")
       endif()
     endif()
   endif()
-  set(ROCKSDB_DEBUG_LEVEL 2)
-  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_FASTDEBUG})
   # We specify RocksDB debug level that corresponds to the -O1 optimization level, the same as
   # the rest of YB code in the "fastdebug" mode (used for ASAN/TSAN).
-  set(ROCKSDB_DEBUG_LEVEL 15)
-  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_RELEASE})
-  set(ROCKSDB_DEBUG_LEVEL 0)
-  set(ROCKSDB_LIB_SUFFIX "")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_GEN})
-  # TODO: using RocksDB's default build type here -- may need revision.
-  set(ROCKSDB_DEBUG_LEVEL 1)
-  set(ROCKSDB_LIB_SUFFIX "_debug")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
   set(CMAKE_CXX_FLAGS ${CXX_FLAGS_PROFILE_BUILD})
-  # TODO: using RocksDB's default build type here -- may need revision.
-  set(ROCKSDB_DEBUG_LEVEL 1)
-  set(ROCKSDB_LIB_SUFFIX "_debug")
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -1003,7 +989,7 @@ function(ADD_EXPORTABLE_LIBRARY LIB_NAME)
   # - default for classes annotated with YB_EXPORT.
   # - hidden for classes annotated with YB_NO_EXPORT.
   # - hidden for everything else.
-  add_compiler_export_flags(EXPORTED_FLAGS)
+  set(CXX_VISIBILITY_PRESET hidden)
 
   # Exported variants are either static archives that will be linked to a shared
   # object, or shared objects. Either way, -fPIC is needed.
@@ -1061,41 +1047,6 @@ endfunction()
 # Testing
 ############################################################
 
-# For whatever reason, CMake does not use the "@rpath" prefix for the librocksdb dynamic
-# library dependency on Mac OS X, so even having the directory containing the librocksdb
-# library on the rpath does not help. Here, we ensure that the dynamic library dependency
-# entry has the format of "@rpath/librocksdb_debug.4.6.dylib" (also note that the patch
-# version is omitted, so it is 4.6, not 4.6.0).
-function(FIX_ROCKSDB_RPATH TEST_OR_LIB_NAME)
-  if(APPLE AND "${YB_LINK}" STREQUAL "d" AND
-     NOT "${TEST_OR_LIB_NAME}" STREQUAL "rocksdb" AND
-     NOT "${TEST_OR_LIB_NAME}" STREQUAL "cpp_redis" AND
-     NOT "${TEST_OR_LIB_NAME}" MATCHES "_exported$")
-    add_custom_command(TARGET "${TEST_OR_LIB_NAME}"
-      POST_BUILD COMMAND
-      "${YB_SRC_DIR}/build-support/fix_rocksdb_rpath_on_mac.sh"
-      "${TEST_OR_LIB_NAME}"
-      "lib${TEST_OR_LIB_NAME}.dylib"
-      "${YB_BUILD_DIR}/bin/${TEST_OR_LIB_NAME}"
-      "${YB_BUILD_DIR}/lib/lib${TEST_OR_LIB_NAME}.dylib"
-      --
-      ${CMAKE_INSTALL_NAME_TOOL}
-      -change "${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}"
-      "@rpath/${ROCKSDB_SHARED_LIB_NAME_WITH_SHORT_VERSION}")
-  endif()
-endfunction()
-
-# This is called for all library or executable targest. This is only used on Mac OS X as of 12/2016.
-function(POSTPROCESS_LIBRARY_OR_EXECUTABLE TARGET)
-  FIX_ROCKSDB_RPATH(${TARGET})
-endfunction()
-
-# This is like ADD_EXECUTABLE, but does some of our custom postprocessing.
-macro(ADD_YB_EXECUTABLE _target)
-  add_executable(${_target} ${ARGN})
-  POSTPROCESS_LIBRARY_OR_EXECUTABLE(${_target})
-endmacro()
-
 # Add a new test case, with or without an executable that should be built.
 #
 # REL_TEST_NAME is the name of the test. It may be a single component
@@ -1115,7 +1066,6 @@ function(ADD_YB_TEST REL_TEST_NAME)
     set(TEST_PATH "${EXECUTABLE_OUTPUT_PATH}/${TEST_NAME}")
     add_executable(${TEST_NAME} "${REL_TEST_NAME}.cc")
     target_link_libraries(${TEST_NAME} ${YB_TEST_LINK_LIBS})
-    POSTPROCESS_LIBRARY_OR_EXECUTABLE(${TEST_NAME})
     ADD_COMMON_YB_TEST_DEPENDENCIES(${TEST_NAME})
   else()
     # No executable, just invoke the test (probably a script) directly.
@@ -1551,11 +1501,6 @@ if (USING_LINUXBREW)
   ADD_GLOBAL_RPATH_ENTRY("/usr/lib64")
 endif()
 
-# We have to set this here and not in src/rocksdb/CMakeLists.txt because we need to set global
-# rpath before we add the rocksdb subdirectory.
-set(ROCKSDB_BUILD_DIR "${YB_BUILD_DIR}/rocksdb-build")
-ADD_GLOBAL_RPATH_ENTRY("${ROCKSDB_BUILD_DIR}")
-
 ADD_COMMON_LINKER_FLAGS("${COMMON_COMPILER_LINKER_FLAGS}")
 set(CAN_ADD_COMMON_COMPILER_LINKER_FLAGS FALSE)
 set(CAN_ADD_COMMON_LINKER_FLAGS FALSE)
@@ -1565,16 +1510,6 @@ set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${COMMON_LINKER_FLAG
 message("Linker flags common to YB and RocksDB code: ${COMMON_LINKER_FLAGS}")
 
 add_subdirectory(src/rocksdb)
-
-ADD_THIRDPARTY_LIB(rocksdb SHARED_LIB "${ROCKSDB_SHARED_LIB}" STATIC_LIB "${ROCKSDB_STATIC_LIB}")
-add_dependencies(rocksdb build_rocksdb_library)
-
-if(APPLE)
-  macro(add_library _target)
-    _add_library(${_target} ${ARGN})
-    POSTPROCESS_LIBRARY_OR_EXECUTABLE(${_target})
-  endmacro()
-endif()
 
 # Disabling the redis codebase build for now (12/2016) because we are not using it directly.
 # add_subdirectory(src/redis)
