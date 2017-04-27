@@ -203,6 +203,11 @@ public class NodeManagerTest extends FakeDBApplication {
               expectedCommand.add("install-software");
               break;
           }
+        } else {
+          if (configureParams.gflags.isEmpty()) {
+            expectedCommand.add("--durable_wal_write");
+            expectedCommand.add("true");
+          }
         }
 
         if (!configureParams.gflags.isEmpty()) {
