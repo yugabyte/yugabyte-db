@@ -154,15 +154,15 @@ find_daemon_pid() {
   validate_daemon_index "$daemon_index"
   local rpc_port_base
   case "$daemon_type" in
-    master) rpc_port_base=$master_rpc_port_base ;;
-    tserver) rpc_port_base=$tserver_rpc_port_base ;;
+    master) rpc_port_base=$master_rpc_port ;;
+    tserver) rpc_port_base=$tserver_rpc_port ;;
     *)
       echo "Internal error: cannot determine base RPC port for daemon type '$daemon_type'" >&2
       exit 1
   esac
   set +e
   local daemon_pid=$(
-    pgrep -f "yb-$daemon_type .* --rpc_bind_addresses 0.0.0.0:$(( $rpc_port_base + $daemon_index ))"
+    pgrep -f "yb-$daemon_type .* --rpc_bind_addresses 127.0.0.$daemon_index:$(( $rpc_port_base ))"
   )
   set -e
   echo "$daemon_pid"
@@ -249,7 +249,7 @@ set_master_addresses() {
     if [ -n "$master_addresses" ]; then
       master_addresses+=","
     fi
-    master_addresses+="$bind_ip:$(( $master_rpc_port_base + $i ))"
+    master_addresses+="127.0.0.$i:$(( $master_rpc_port ))"
   done
 }
 
@@ -275,7 +275,7 @@ start_master() {
       --v "$verbose_level" \
       $master_flags \
       --webserver_port $(( $master_http_port_base + $master_index )) \
-      --rpc_bind_addresses 0.0.0.0:$(( $master_rpc_port_base + $master_index )) \
+      --rpc_bind_addresses 127.0.0.$master_index:$(( $master_rpc_port )) \
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
@@ -304,11 +304,11 @@ start_tserver() {
        --block_cache_capacity_mb 128 \
        --memory_limit_hard_bytes $(( 256 * 1024 * 1024)) \
        --webserver_port $(( $tserver_http_port_base + $tserver_index )) \
-       --rpc_bind_addresses 0.0.0.0:$(( $tserver_rpc_port_base + $tserver_index )) \
+       --rpc_bind_addresses 127.0.0.$tserver_index:$(( $tserver_rpc_port )) \
        --redis_proxy_webserver_port $(( $redis_http_port_base + $tserver_index )) \
-       --redis_proxy_bind_address 0.0.0.0:$(( $redis_rpc_port_base + $tserver_index )) \
+       --redis_proxy_bind_address 127.0.0.$tserver_index:$(( $redis_rpc_port )) \
        --cql_proxy_webserver_port $(( $cql_http_port_base + $tserver_index )) \
-       --cql_proxy_bind_address 0.0.0.0:$(( $cql_rpc_port_base + $tserver_index )) \
+       --cql_proxy_bind_address 127.0.0.$tserver_index:$(( $cql_rpc_port )) \
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
@@ -510,20 +510,16 @@ if [ -f "$build_root" ]; then
   exit 1
 fi
 
-# TODO: use separate bind ips of the form 127.x.y.z for different daemons similarly to YB's mini
-# test cluster to allow simulating network partitions.
-bind_ip=127.0.0.1
-
 master_addresses=""
 master_http_port_base=7000
 tserver_http_port_base=9000
 redis_http_port_base=11000
 cql_http_port_base=12000
-master_rpc_port_base=7100
-tserver_rpc_port_base=8100
-redis_rpc_port_base=10100
+master_rpc_port=7100
+tserver_rpc_port=8100
+redis_rpc_port=10100
 # By default cqlsh contact the server via this port base although it's configurable in cqlsh.
-cql_rpc_port_base=9041
+cql_rpc_port=9042
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"
