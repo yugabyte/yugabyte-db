@@ -308,9 +308,24 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 		}
 		else if (pipes == NULL)
 		{
-			pipes = sh_mem->pipes;
 
 #if PG_VERSION_NUM >= 90600
+
+
+#if PG_VERSION_NUM >= 100000
+
+			LWLockRegisterTranche(sh_mem->tranche_id, "orafce");
+
+#else
+
+			static LWLockTranche tranche;
+
+			tranche.name = "orafce";
+			tranche.array_base = &sh_mem->shmem_lock;
+			tranche.array_stride = sizeof(LWLock);
+			LWLockRegisterTranche(sh_mem->tranche_id, &tranche);
+
+#endif
 
 			shmem_lockid = &sh_mem->shmem_lock;
 
@@ -320,6 +335,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 
 #endif
 
+			pipes = sh_mem->pipes;
 			LWLockAcquire(shmem_lockid, LW_EXCLUSIVE);
 
 			ora_sinit(sh_mem->data, sh_mem->size, reset);
