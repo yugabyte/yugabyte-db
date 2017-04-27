@@ -56,12 +56,10 @@ CHECKED_STATUS SemContext::MapSymbol(const MCString& name, ColumnDesc *entry) {
   return Status::OK();
 }
 
-shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_name,
-                                             bool is_system) {
+shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_name) {
   bool cache_used = false;
   shared_ptr<YBTable> table = sql_env_->GetTableDesc(table_name,
                                                      refresh_cache_,
-                                                     is_system,
                                                      &cache_used);
   if (cache_used) {
     // Remember cache was used.

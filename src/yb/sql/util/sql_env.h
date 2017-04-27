@@ -50,7 +50,6 @@ class SqlEnv {
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
                                                         bool refresh_cache,
-                                                        bool is_system,
                                                         bool *cache_used);
 
   // Keyspace related methods.

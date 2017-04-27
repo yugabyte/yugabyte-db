@@ -641,7 +641,6 @@ Status YBTableCache::GetTable(
     const YBTableName& table_name,
     shared_ptr<YBTable>* table,
     bool force_refresh,
-    bool is_system,
     bool* cache_used) {
   {
     std::lock_guard<std::mutex> lock(cached_tables_mutex_);
@@ -657,26 +656,10 @@ Status YBTableCache::GetTable(
         cached_tables_.erase(itr);
       }
     }
-
-    if (is_system) {
-      auto it = missing_system_tables_.find(table_name);
-      if (it != missing_system_tables_.end()) {
-        if (!force_refresh) {
-          return it->second;
-        } else {
-          missing_system_tables_.erase(it);
-        }
-      }
-    }
   }
 
   auto status = client_->OpenTable(table_name, table);
   if (!status.ok()) {
-    if (is_system && status.IsNotFound()) {
-      std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-      missing_system_tables_.emplace(table_name, status);
-    }
-
     return status;
   }
   *cache_used = false;

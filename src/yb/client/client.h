@@ -404,7 +404,6 @@ class YBTableCache {
   CHECKED_STATUS GetTable(const YBTableName& table_name,
                           std::shared_ptr<YBTable>* table,
                           bool force_refresh,
-                          bool is_system,
                           bool* cache_used);
 
  private:
@@ -415,8 +414,6 @@ class YBTableCache {
                              std::shared_ptr<YBTable>,
                              boost::hash<YBTableName>> YBTableMap;
   YBTableMap cached_tables_;
-  // Temporary fix until we support system tables natively
-  std::unordered_map<YBTableName, Status, boost::hash<YBTableName>> missing_system_tables_;
   std::mutex cached_tables_mutex_;
 };
 
