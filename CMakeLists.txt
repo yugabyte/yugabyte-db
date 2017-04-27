@@ -418,8 +418,17 @@ ADD_CXX_GLOBAL_COMMON_FLAGS("-DGFLAGS=gflags")
 # Don't allow virtual classes with non-virtual destructors.
 ADD_CXX_GLOBAL_COMMON_FLAGS("-Wnon-virtual-dtor")
 
+# Flags common to gcc and clang.
+ADD_CXX_YB_COMMON_FLAGS("-Werror=enum-compare")
+ADD_CXX_YB_COMMON_FLAGS("-Werror=reorder")
+ADD_CXX_YB_COMMON_FLAGS("-Werror=switch")
+ADD_CXX_YB_COMMON_FLAGS("-Werror=return-type")
+ADD_CXX_YB_COMMON_FLAGS("-Werror=non-virtual-dtor")
+
 if(IS_CLANG)
   ADD_CXX_YB_COMMON_FLAGS("-Werror=string-plus-int")
+  ADD_CXX_YB_COMMON_FLAGS("-Werror=return-stack-address")
+  ADD_CXX_YB_COMMON_FLAGS("-Werror=implicit-fallthrough")
 endif()
 
 if(IS_CLANG AND NOT APPLE)
