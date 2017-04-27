@@ -92,7 +92,7 @@ export function areUniverseConfigsEqual(config1, config2) {
 }
 
 export function normalizeToPositiveInt(value) {
-  return parseInt(Math.abs(value)) || 0;
+  return parseInt(Math.abs(value), 10) || 0;
 }
 
 export function sortVersionStrings(arr) {

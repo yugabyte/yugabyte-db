@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import './UniverseStatus.scss';
-import {Row, Col, ProgressBar} from 'react-bootstrap';
+import {ProgressBar} from 'react-bootstrap';
 import {isValidArray, isValidObject} from '../../../utils/ObjectUtils';
 
 export default class UniverseStatus extends Component {

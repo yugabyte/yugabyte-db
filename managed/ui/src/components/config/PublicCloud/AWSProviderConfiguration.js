@@ -162,7 +162,7 @@ class AWSProviderConfiguration extends Component {
                           btnClass={deleteButtonClassName} onClick={this.props.showDeleteProviderModal}/>
                 <YBConfirmModal name="delete-aws-provider" title={"Confirm Delete"}
                                 onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, awsProvider))}
-                                currentModal = "deleteAWSProvider" visibleModal={this.props.visibleModal}
+                                currentModal="deleteAWSProvider" visibleModal={this.props.visibleModal}
                                 hideConfirmModal={this.props.hideDeleteProviderModal}>
                   Are you sure you want to delete this AWS configuration?
                 </YBConfirmModal>
