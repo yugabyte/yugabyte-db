@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.controllers;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -108,7 +110,20 @@ public class TablesController extends AuthenticatedController {
   }
 
   public Result getColumnTypes() {
-    return ok(Json.toJson(ColumnDetails.YQLDataType.values()));
+    ColumnDetails.YQLDataType[] dataTypes = ColumnDetails.YQLDataType.values();
+    ObjectNode result = Json.newObject();
+    ArrayNode primitives = Json.newArray();
+    ArrayNode collections = Json.newArray();
+    for (ColumnDetails.YQLDataType dataType : dataTypes) {
+      if (dataType.isCollection()) {
+        collections.add(dataType.name());
+      } else {
+        primitives.add(dataType.name());
+      }
+    }
+    result.put("primitives", primitives);
+    result.put("collections", collections);
+    return ok(result);
   }
 
   public Result universeList(UUID customerUUID, UUID universeUUID) {
