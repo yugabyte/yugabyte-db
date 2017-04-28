@@ -1387,38 +1387,37 @@ TEST_F(MasterTest, TestGetTableSchema) {
     ASSERT_TRUE(resp.has_create_table_done());
     // SchemaPB schema.
     ASSERT_TRUE(resp.has_schema());
-    ASSERT_EQ(resp.schema().columns_size(), 1);
-    ASSERT_EQ(resp.schema().columns_size(), 1);
-    ASSERT_EQ(resp.schema().columns(0).id(), 10);
-    ASSERT_EQ(resp.schema().columns(0).name(), "key");
-    ASSERT_EQ(resp.schema().columns(0).type().main(), INT32);
+    ASSERT_EQ(1, resp.schema().columns_size());
+    ASSERT_EQ(Schema::first_column_id(), resp.schema().columns(0).id());
+    ASSERT_EQ("key", resp.schema().columns(0).name());
+    ASSERT_EQ(INT32, resp.schema().columns(0).type().main());
     ASSERT_TRUE(resp.schema().columns(0).is_key());
     ASSERT_FALSE(resp.schema().columns(0).is_nullable());
-    ASSERT_EQ(resp.schema().columns(0).encoding(), AUTO_ENCODING);
-    ASSERT_EQ(resp.schema().columns(0).compression(), DEFAULT_COMPRESSION);
-    ASSERT_EQ(resp.schema().columns(0).cfile_block_size(), 0);
-    ASSERT_EQ(resp.schema().columns(0).sorting_type(), 1);
+    ASSERT_EQ(AUTO_ENCODING, resp.schema().columns(0).encoding());
+    ASSERT_EQ(DEFAULT_COMPRESSION, resp.schema().columns(0).compression());
+    ASSERT_EQ(0, resp.schema().columns(0).cfile_block_size());
+    ASSERT_EQ(1, resp.schema().columns(0).sorting_type());
     // PartitionSchemaPB partition_schema.
     ASSERT_TRUE(resp.has_partition_schema());
     ASSERT_TRUE(resp.partition_schema().has_range_schema());
-    ASSERT_EQ(resp.partition_schema().range_schema().columns_size(), 1);
-    ASSERT_EQ(resp.partition_schema().range_schema().columns(0).id(), 10);
+    ASSERT_EQ(1, resp.partition_schema().range_schema().columns_size());
+    ASSERT_EQ(Schema::first_column_id(), resp.partition_schema().range_schema().columns(0).id());
     ASSERT_FALSE(resp.partition_schema().use_multi_column_hash_schema());
     // ReplicationInfoPB replication_info.
     ASSERT_TRUE(resp.has_replication_info());
     ASSERT_TRUE(resp.replication_info().has_live_replicas());
-    ASSERT_EQ(resp.replication_info().live_replicas().num_replicas(), 3);
+    ASSERT_EQ(3, resp.replication_info().live_replicas().num_replicas());
     // TableIdentifierPB identifier.
     ASSERT_TRUE(resp.has_identifier());
     ASSERT_TRUE(resp.identifier().has_table_name());
-    ASSERT_EQ(resp.identifier().table_name(), kTableName);
+    ASSERT_EQ(kTableName, resp.identifier().table_name());
     ASSERT_TRUE(resp.identifier().has_table_id());
-    ASSERT_EQ(resp.identifier().table_id(), table_id);
+    ASSERT_EQ(table_id, resp.identifier().table_id());
     ASSERT_TRUE(resp.identifier().has_namespace_());
     ASSERT_TRUE(resp.identifier().namespace_().has_name());
-    ASSERT_EQ(resp.identifier().namespace_().name(), other_ns_name);
+    ASSERT_EQ(other_ns_name, resp.identifier().namespace_().name());
     ASSERT_TRUE(resp.identifier().namespace_().has_id());
-    ASSERT_EQ(resp.identifier().namespace_().id(), other_ns_id);
+    ASSERT_EQ(other_ns_id, resp.identifier().namespace_().id());
   }
 
   // Delete the table in the namespace 'testns'.

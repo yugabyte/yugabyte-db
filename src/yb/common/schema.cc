@@ -42,7 +42,7 @@ using std::unordered_set;
 #ifdef NDEBUG
 static const ColumnId kFirstColumnId(0);
 #else
-static const ColumnId  kFirstColumnId(10);
+static const ColumnId kFirstColumnId(10);
 #endif
 
 string ColumnStorageAttributes::ToString() const {
@@ -392,6 +392,10 @@ size_t Schema::memory_footprint_excluding_this() const {
 
 size_t Schema::memory_footprint_including_this() const {
   return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
+}
+
+ColumnId Schema::first_column_id() {
+  return kFirstColumnId;
 }
 
 // ============================================================================

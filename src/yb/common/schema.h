@@ -70,18 +70,18 @@ struct ColumnId {
   operator const ColumnIdRep() const { return t; }
   operator const strings::internal::SubstituteArg() const { return t; }
   operator const AlphaNum() const { return t; }
-  bool operator==(const ColumnId & rhs) const { return t == rhs.t; }
-  bool operator!=(const ColumnId & rhs) const { return t != rhs.t; }
-  bool operator<(const ColumnId & rhs) const { return t < rhs.t; }
-  bool operator>(const ColumnId & rhs) const { return t > rhs.t; }
+
+  bool operator==(const ColumnId& rhs) const { return t == rhs.t; }
+  bool operator!=(const ColumnId& rhs) const { return t != rhs.t; }
+  bool operator<(const ColumnId& rhs) const { return t < rhs.t; }
+  bool operator>(const ColumnId& rhs) const { return t > rhs.t; }
+
   friend std::ostream& operator<<(std::ostream& os, ColumnId column_id) {
     return os << column_id.t;
   }
 
-  std::string ToString() {
-    std::ostringstream s;
-    s << t;
-    return s.str();
+  std::string ToString() const {
+    return std::to_string(t);
   }
 
   uint64_t ToUint64() const {
@@ -934,6 +934,8 @@ class Schema {
   // Returns the memory usage of this object including the object itself.
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
+
+  static ColumnId first_column_id();
 
  private:
 
