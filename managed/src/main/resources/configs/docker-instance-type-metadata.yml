@@ -7,5 +7,3 @@ container.small:
     volumeDetailsList:
       - volumeSizeGB: 16
         volumeType: SSD
-      - volumeSizeGB: 16
-        volumeType: SSD

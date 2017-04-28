@@ -11,6 +11,7 @@ import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -205,6 +206,16 @@ public class InstanceType extends Model {
         volumeDetailsList.get(idx).mountPath = String.format("/mnt/d%d", idx);
       }
     }
+  }
+
+  public static InstanceType createWithMetadata(Provider provider, String code, JsonNode metadata) {
+    return upsert(
+        provider.code,
+        code,
+        Integer.parseInt(metadata.get("numCores").toString()),
+        Double.parseDouble(metadata.get("memSizeGB").toString()),
+        Json.fromJson(metadata.get("instanceTypeDetails"), InstanceTypeDetails.class)
+    );
   }
 
   /**
