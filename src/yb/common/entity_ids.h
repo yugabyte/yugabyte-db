@@ -4,6 +4,8 @@
 #define YB_COMMON_ENTITY_IDS_H
 
 #include <string>
+#include <set>
+#include <utility>
 
 namespace yb {
 
@@ -17,6 +19,11 @@ using TabletServerId = std::string;
 using TServerId = std::string;
 
 using NamespaceId = std::string;
+using TableName = std::string;
+using NamespaceName = std::string;
+typedef std::pair<NamespaceId, TableName> NamespaceIdTableNamePair;
+typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
+
 
 }  // namespace yb
 

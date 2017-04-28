@@ -6,10 +6,10 @@
 namespace yb {
 namespace master {
 
-SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<common::YQLStorageIf> yql_storage,
+SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,
                            const TabletId& tablet_id)
     : schema_(schema),
-      yql_storage_(std::move(yql_storage)),
+      yql_virtual_table_(std::move(yql_virtual_table)),
       tablet_id_(tablet_id) {
 }
 
@@ -18,7 +18,7 @@ const Schema& SystemTablet::SchemaRef() const {
 }
 
 const common::YQLStorageIf& SystemTablet::YQLStorage() const {
-  return *yql_storage_;
+  return *yql_virtual_table_;
 }
 
 TableType SystemTablet::table_type() const {
@@ -55,6 +55,10 @@ CHECKED_STATUS SystemTablet::CreatePagingStateForRead(const YQLReadRequestPB& yq
   // here since we don't want to raise this as an error to the client, but just want to avoid
   // populating any paging state here for the client.
   return Status::OK();
+}
+
+const TableName& SystemTablet::GetTableName() const {
+  return yql_virtual_table_->table_name();
 }
 
 }  // namespace master

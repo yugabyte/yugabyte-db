@@ -82,6 +82,12 @@
 #include "yb/master/yql_keyspaces_vtable.h"
 #include "yb/master/yql_peers_vtable.h"
 #include "yb/master/yql_tables_vtable.h"
+#include "yb/master/yql_aggregates_vtable.h"
+#include "yb/master/yql_functions_vtable.h"
+#include "yb/master/yql_indexes_vtable.h"
+#include "yb/master/yql_triggers_vtable.h"
+#include "yb/master/yql_types_vtable.h"
+#include "yb/master/yql_views_vtable.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -547,31 +553,7 @@ CatalogManager::CatalogManager(Master* master)
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(new ClusterLoadBalancer(this)),
-      master_supported_system_tables_(
-          {
-              std::make_pair(std::string(kSystemNamespaceId),
-                             std::string(kSystemPeersTableName)),
-              std::make_pair(std::string(kSystemNamespaceId),
-                             std::string(kSystemLocalTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaAggregatesTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaColumnsTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaFunctionsTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaIndexesTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaTriggersTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaTypesTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaViewsTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaKeyspacesTableName)),
-              std::make_pair(std::string(kSystemSchemaNamespaceId),
-                             std::string(kSystemSchemaTablesTableName)),
-          }) {
+      sys_tables_handler_() {
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
            .Build(&worker_pool_));
@@ -800,47 +782,37 @@ Status CatalogManager::CreateSystemLocalSchema(Schema* schema) {
 
 Status CatalogManager::PrepareSystemTables() {
   // Create the required system tables here.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable, Master*>(
-      kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId, master_)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable, Master*>(
-      kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      master_)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable, Master*>(
-      kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      master_)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable, Master*>(
-      kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      master_)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable>(
+      kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
+      kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(
+      kSystemSchemaTablesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLColumnsVTable>(
+      kSystemSchemaColumnsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
 
   // Empty tables.
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
-      kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      kSystemSchemaAggregatesTableName)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
-      kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      kSystemSchemaFunctionsTableName)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
-      kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      kSystemSchemaIndexesTableName)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
-      kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      kSystemSchemaTriggersTableName)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
-      kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      kSystemSchemaViewsTableName)));
-  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLEmptyVTable, TableName>(
-      kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId,
-      kSystemSchemaTypesTableName)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLAggregatesVTable>(
+      kSystemSchemaAggregatesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLFunctionsVTable>(
+      kSystemSchemaFunctionsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLIndexesVTable>(
+      kSystemSchemaIndexesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTriggersVTable>(
+      kSystemSchemaTriggersTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLViewsVTable>(
+      kSystemSchemaViewsTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTypesVTable>(
+      kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
 
   return PrepareSystemLocalTable();
 }
 
-template <class T, class U>
+template <class T>
 Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
                                                   const NamespaceName& namespace_name,
-                                                  const NamespaceId& namespace_id,
-                                                  const U vtable_param) {
-  YQLVirtualTable* vtable = new T(vtable_param);
+                                                  const NamespaceId& namespace_id) {
+  YQLVirtualTable* vtable = new T(master_);
   return PrepareSystemTable(table_name, namespace_name, namespace_id, vtable->schema(), vtable);
 }
 
@@ -865,8 +837,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
     return STATUS(IllegalState, "We don't have the catalog manager lock!");
   }
 
-  std::shared_ptr<tablet::AbstractTablet>* system_tablet;
-  std::unique_ptr<common::YQLStorageIf> yql_storage(vtable);
+  std::shared_ptr<SystemTablet> system_tablet;
+  std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
                                                  std::make_pair(namespace_id, table_name));
@@ -878,9 +850,9 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
       vector<scoped_refptr<TabletInfo>> tablets;
       table->GetAllTablets(&tablets);
       DCHECK_EQ(1, tablets.size());
-      RETURN_NOT_OK(RetrieveSystemTabletByName(table_name, &system_tablet));
-      system_tablet->reset(
+      system_tablet.reset(
           new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+      RETURN_NOT_OK(sys_tables_handler_.AddTablet(system_tablet));
     }
     return Status::OK();
   }
@@ -923,8 +895,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
 
   if (vtable != nullptr) {
     // Finally create the appropriate tablet object.
-    RETURN_NOT_OK(RetrieveSystemTabletByName(table_name, &system_tablet));
-    system_tablet->reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+    system_tablet.reset(new SystemTablet(schema, std::move(yql_storage), tablets[0]->tablet_id()));
+    RETURN_NOT_OK(sys_tables_handler_.AddTablet(system_tablet));
   }
 
   return Status::OK();
@@ -2144,7 +2116,7 @@ bool CatalogManager::TableNameExists(const NamespaceId& namespace_id,
 }
 
 bool CatalogManager::IsSystemTable(const TableInfo& table) const {
-  return table.IsSupportedSystemTable(master_supported_system_tables_);
+  return table.IsSupportedSystemTable(sys_tables_handler_.supported_system_tables());
 }
 
 void CatalogManager::NotifyTabletDeleteFinished(const TServerId& tserver_uuid,
@@ -4511,7 +4483,7 @@ Status CatalogManager::ConsensusStateToTabletLocations(const consensus::Consensu
 Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& tablet,
                                                TabletLocationsPB* locs_pb) {
   // For system tables, the set of replicas is always the set of masters.
-  if (tablet->IsSupportedSystemTable(master_supported_system_tables_)) {
+  if (tablet->IsSupportedSystemTable(sys_tables_handler_.supported_system_tables())) {
     consensus::ConsensusStatePB master_consensus;
     RETURN_NOT_OK(GetCurrentConfig(&master_consensus));
     locs_pb->set_tablet_id(tablet->tablet_id());
@@ -4569,45 +4541,6 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
   return Status::OK();
 }
 
-Status CatalogManager::RetrieveSystemTabletByName(const TableName& table_name,
-                                                  std::shared_ptr<tablet::AbstractTablet>**
-                                                  tablet) {
-  DCHECK_ONLY_NOTNULL(tablet);
-  if (table_name == kSystemPeersTableName) {
-    *tablet = &system_peers_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaAggregatesTableName) {
-    *tablet = &systemschema_aggregates_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaColumnsTableName) {
-    *tablet = &systemschema_columns_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaFunctionsTableName) {
-    *tablet = &systemschema_functions_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaIndexesTableName) {
-    *tablet = &systemschema_indexes_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaTriggersTableName) {
-    *tablet = &systemschema_triggers_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaTypesTableName) {
-    *tablet = &systemschema_types_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaViewsTableName) {
-    *tablet = &systemschema_views_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaKeyspacesTableName) {
-    *tablet = &systemschema_keyspaces_tablet;
-    return Status::OK();
-  } else if (table_name == kSystemSchemaTablesTableName) {
-    *tablet = &systemschema_tables_tablet;
-    return Status::OK();
-  }
-
-  return STATUS_SUBSTITUTE(InvalidArgument, "$0 isn't a supported system table", table_name);
-}
-
 Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
                                             std::shared_ptr<tablet::AbstractTablet>* tablet) {
   RETURN_NOT_OK(CheckOnline());
@@ -4619,14 +4552,12 @@ Status CatalogManager::RetrieveSystemTablet(const TabletId& tablet_id,
     }
   }
 
-  if (!tablet_info->IsSupportedSystemTable(master_supported_system_tables_)) {
+  if (!tablet_info->IsSupportedSystemTable(sys_tables_handler_.supported_system_tables())) {
     return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", tablet_id);
   }
 
   const TableName& table_name = tablet_info->table()->name();
-  std::shared_ptr<tablet::AbstractTablet>* sys_tablet;
-  RETURN_NOT_OK(RetrieveSystemTabletByName(table_name, &sys_tablet));
-  *tablet = *sys_tablet;
+  RETURN_NOT_OK(sys_tables_handler_.RetrieveTabletByTableName(table_name, tablet));
   return Status::OK();
 }
 

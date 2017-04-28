@@ -8,8 +8,7 @@ namespace yb {
 namespace master {
 
 PeersVTable::PeersVTable(const Master* const master)
-    : YQLVirtualTable(CreateSchema(master::kSystemPeersTableName)),
-      master_(master) {
+    : YQLVirtualTable(master::kSystemPeersTableName, master, CreateSchema()) {
 }
 
 Status PeersVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
@@ -56,7 +55,7 @@ Status PeersVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
   return Status::OK();
 }
 
-Schema PeersVTable::CreateSchema(const std::string& table_name) const {
+Schema PeersVTable::CreateSchema() const {
   SchemaBuilder builder;
   CHECK_OK(builder.AddKeyColumn(kPeer, DataType::INET));
   CHECK_OK(builder.AddColumn(kDataCenter, DataType::STRING));

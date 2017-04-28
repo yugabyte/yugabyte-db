@@ -13,11 +13,10 @@ namespace master {
 class YQLTablesVTable : public YQLVirtualTable {
  public:
   explicit YQLTablesVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const override;
+  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const;
  protected:
-  Schema CreateSchema(const std::string& table_name) const override;
+  Schema CreateSchema() const;
  private:
-  const Master* const master_;
   static constexpr const char* const kKeyspaceName = "keyspace_name";
   static constexpr const char* const kTableName = "table_name";
   static constexpr const char* const kBloomFilterChance = "bloom_filter_fp_chance";

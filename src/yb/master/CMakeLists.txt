@@ -35,13 +35,20 @@ ADD_EXPORTABLE_LIBRARY(master_proto
 
 set(MASTER_SRCS
   system_tablet.cc
+  system_tables_handler.cc
   yql_virtual_table.cc
-  yql_peers_vtable.cc
-  yql_keyspaces_vtable.cc
-  yql_tables_vtable.cc
+  yql_vtable_iterator.cc
+  yql_aggregates_vtable.cc
   yql_columns_vtable.cc
   yql_empty_vtable.cc
-  yql_vtable_iterator.cc
+  yql_functions_vtable.cc
+  yql_indexes_vtable.cc
+  yql_keyspaces_vtable.cc
+  yql_peers_vtable.cc
+  yql_tables_vtable.cc
+  yql_triggers_vtable.cc
+  yql_types_vtable.cc
+  yql_views_vtable.cc
   catalog_manager.cc
   cluster_balance.cc
   master.cc

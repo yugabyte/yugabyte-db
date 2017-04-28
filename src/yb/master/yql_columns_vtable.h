@@ -13,16 +13,15 @@ namespace master {
 class YQLColumnsVTable : public YQLVirtualTable {
  public:
   explicit YQLColumnsVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const override;
+  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const;
  protected:
-  Schema CreateSchema(const std::string& table_name) const override;
+  Schema CreateSchema() const;
  private:
   CHECKED_STATUS PopulateColumnInformation(const Schema& schema,
                                            const YQLValuePB& keyspace_name,
                                            const YQLValuePB& table_name,
                                            const size_t col_idx,
                                            YQLRow* const row) const;
-  const Master* const master_;
   static constexpr const char* const kKeyspaceName = "keyspace_name";
   static constexpr const char* const kTableName = "table_name";
   static constexpr const char* const kColumnName = "column_name";

@@ -35,6 +35,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/system_tables_handler.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_virtual_table.h"
 #include "yb/server/monitored_task.h"
@@ -75,11 +76,7 @@ struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
 
-using TableName = std::string;
 using PlacementId = std::string;
-using NamespaceName = std::string;
-typedef std::pair<NamespaceId, TableName> NamespaceIdTableNamePair;
-typedef std::set<NamespaceIdTableNamePair> SystemTableSet;
 
 typedef unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
@@ -791,7 +788,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
 
   size_t NumSystemTables() const {
-    return master_supported_system_tables_.size();
+    return sys_tables_handler_.supported_system_tables().size();
   }
 
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
@@ -802,12 +799,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class TabletLoader;
   friend class NamespaceLoader;
   friend class ClusterConfigLoader;
-
-  // Retrieves a system tablet given the table name. Note that we return a pointer to the
-  // actual member variables (system_peers_tablet etc) so that we can modify them in a generic
-  // way if needed.
-  CHECKED_STATUS RetrieveSystemTabletByName(const TableName& table_name,
-                                            std::shared_ptr<tablet::AbstractTablet>** tablet);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -849,11 +840,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemLocalTable();
 
-  template <class T, class U>
+  template <class T>
   CHECKED_STATUS PrepareSystemTableTemplate(const TableName& table_name,
                                             const NamespaceName& namespace_name,
-                                            const NamespaceId& namespace_id,
-                                            const U vtable_param);
+                                            const NamespaceId& namespace_id);
 
   CHECKED_STATUS PrepareSystemTable(const TableName& table_name,
                                     const NamespaceName& namespace_name,
@@ -1202,41 +1192,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // and also the on-disk state of the consensus meta object.
   CHECKED_STATUS UpdateMastersListInMemoryAndDisk();
 
-  // System tablets for virtual tables.
-
-  // system.peers
-  std::shared_ptr<tablet::AbstractTablet> system_peers_tablet;
-
-  // system_schema.aggregates
-  std::shared_ptr<tablet::AbstractTablet> systemschema_aggregates_tablet;
-
-  // system_schema.columns
-  std::shared_ptr<tablet::AbstractTablet> systemschema_columns_tablet;
-
-  // system_schema.functions
-  std::shared_ptr<tablet::AbstractTablet> systemschema_functions_tablet;
-
-  // system_schema.indexes
-  std::shared_ptr<tablet::AbstractTablet> systemschema_indexes_tablet;
-
-  // system_schema.triggers
-  std::shared_ptr<tablet::AbstractTablet> systemschema_triggers_tablet;
-
-  // system_schema.types
-  std::shared_ptr<tablet::AbstractTablet> systemschema_types_tablet;
-
-  // system_schema.views
-  std::shared_ptr<tablet::AbstractTablet> systemschema_views_tablet;
-
-  // system_schema.keyspaces
-  std::shared_ptr<tablet::AbstractTablet> systemschema_keyspaces_tablet;
-
-  // system_schema.tables
-  std::shared_ptr<tablet::AbstractTablet> systemschema_tables_tablet;
-
-  // The set of system tables supported by the master. No locks are needed for this set since its
-  // created once during initialization and after that all operations are read operations.
-  const SystemTableSet master_supported_system_tables_;
+  SystemTablesHandler sys_tables_handler_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

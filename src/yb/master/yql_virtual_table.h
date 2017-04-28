@@ -3,8 +3,10 @@
 #ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
 #define YB_MASTER_YQL_VIRTUAL_TABLE_H
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/yql_rowblock.h"
 #include "yb/common/yql_storage_interface.h"
+#include "yb/master/master.h"
 
 namespace yb {
 namespace master {
@@ -12,7 +14,9 @@ namespace master {
 // A YQL virtual table which is based on in memory data.
 class YQLVirtualTable : public common::YQLStorageIf {
  public:
-  explicit YQLVirtualTable(const Schema& schema);
+  explicit YQLVirtualTable(const TableName& table_name,
+                           const Master* const master,
+                           const Schema& schema);
 
   // Retrieves all the data for the yql virtual table in form of a YQLRowBlock. This data is then
   // used by the iterator.
@@ -28,12 +32,16 @@ class YQLVirtualTable : public common::YQLStorageIf {
                                   std::unique_ptr<common::YQLScanSpec>* spec,
                                   HybridTime* req_hybrid_time) const override;
   const Schema& schema() const { return schema_; }
+
+  const TableName& table_name() const { return table_name_; }
+
  protected:
-  virtual Schema CreateSchema(const std::string& table_name) const = 0;
   // Finds the given column name in the schema and updates the specified column in the given row
   // with the provided value.
   CHECKED_STATUS SetColumnValue(const std::string& col_name, const YQLValuePB& value_pb,
                                 YQLRow* row) const;
+  const Master* const master_;
+  TableName table_name_;
   Schema schema_;
 };
 

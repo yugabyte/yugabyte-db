@@ -9,8 +9,7 @@ namespace yb {
 namespace master {
 
 YQLKeyspacesVTable::YQLKeyspacesVTable(const Master* const master)
-    : YQLVirtualTable(CreateSchema(master::kSystemSchemaKeyspacesTableName)),
-      master_(master) {
+    : YQLVirtualTable(master::kSystemSchemaKeyspacesTableName, master, CreateSchema()) {
 }
 
 Status YQLKeyspacesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
@@ -30,7 +29,7 @@ Status YQLKeyspacesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) co
   return Status::OK();
 }
 
-Schema YQLKeyspacesVTable::CreateSchema(const std::string& table_name) const {
+Schema YQLKeyspacesVTable::CreateSchema() const {
   SchemaBuilder builder;
   CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
   CHECK_OK(builder.AddColumn(kDurableWrites, DataType::BOOL));

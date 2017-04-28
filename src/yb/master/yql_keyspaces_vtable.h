@@ -13,14 +13,13 @@ namespace master {
 class YQLKeyspacesVTable : public YQLVirtualTable {
  public:
   explicit YQLKeyspacesVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const override;
+  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const;
  protected:
-  Schema CreateSchema(const std::string& table_name) const override;
+  Schema CreateSchema() const;
  private:
   static constexpr const char* const kKeyspaceName = "keyspace_name";
   static constexpr const char* const kDurableWrites = "durable_writes";
   static constexpr const char* const kReplication = "replication";
-  const Master* const master_;
 };
 
 }  // namespace master

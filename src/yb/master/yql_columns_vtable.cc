@@ -8,8 +8,7 @@ namespace yb {
 namespace master {
 
 YQLColumnsVTable::YQLColumnsVTable(const Master* const master)
-    : YQLVirtualTable(CreateSchema(master::kSystemSchemaColumnsTableName)),
-      master_(master) {
+    : YQLVirtualTable(master::kSystemSchemaColumnsTableName, master, CreateSchema()) {
 }
 
 namespace {
@@ -96,7 +95,7 @@ Status YQLColumnsVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) cons
   return Status::OK();
 }
 
-Schema YQLColumnsVTable::CreateSchema(const std::string& table_name) const {
+Schema YQLColumnsVTable::CreateSchema() const {
   SchemaBuilder builder;
   CHECK_OK(builder.AddKeyColumn(kKeyspaceName, DataType::STRING));
   CHECK_OK(builder.AddKeyColumn(kTableName, DataType::STRING));

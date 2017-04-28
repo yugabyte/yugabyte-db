@@ -6,8 +6,12 @@
 namespace yb {
 namespace master {
 
-YQLVirtualTable::YQLVirtualTable(const Schema& schema)
-    : schema_(schema) {
+YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
+                                 const Master* const master,
+                                 const Schema& schema)
+    : master_(master),
+      table_name_(table_name),
+      schema_(schema) {
 }
 
 CHECKED_STATUS YQLVirtualTable::GetIterator(const Schema& projection,
