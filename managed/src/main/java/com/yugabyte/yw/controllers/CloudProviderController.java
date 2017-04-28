@@ -7,9 +7,8 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudCleanup;
-import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.NetworkManager;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.CloudBootstrapFormData;
 import com.yugabyte.yw.models.AccessKey;
@@ -38,10 +37,14 @@ import play.libs.Json;
 import play.mvc.Result;
 
 import javax.persistence.PersistenceException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerRegionMetadata;
 
 public class CloudProviderController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderController.class);
@@ -50,17 +53,13 @@ public class CloudProviderController extends AuthenticatedController {
   FormFactory formFactory;
 
   @Inject
-  AccessManager accessManager;
-
-  @Inject
-  NetworkManager networkManager;
-
-  @Inject
   AWSInitializer awsInitializer;
 
   @Inject
   Commissioner commissioner;
 
+  @Inject
+  ConfigHelper configHelper;
 
   /**
    * GET endpoint for listing providers
@@ -130,6 +129,38 @@ public class CloudProviderController extends AuthenticatedController {
     } catch (PersistenceException e) {
       LOG.error(e.getMessage());
       return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create provider: " + providerCode);
+    }
+  }
+
+  // TODO: This is temporary endpoint, so we can setup docker, will move this
+  // to standard provider bootstrap route soon.
+  public Result setupDocker(UUID customerUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      ApiResponse.error(BAD_REQUEST, "Invalid Customer Context.");
+    }
+    Provider provider = Provider.get(customerUUID, Common.CloudType.docker);
+    if (provider != null) {
+      return ApiResponse.success(provider);
+    }
+
+    try {
+      Provider newProvider = Provider.create(customerUUID, Common.CloudType.docker, "Docker");
+      Map<String, Object> regionMetadata = configHelper.getConfig(DockerRegionMetadata);
+      regionMetadata.forEach((regionCode, metadata) -> {
+        Region region = Region.createWithMetadata(newProvider, regionCode, Json.toJson(metadata));
+        Arrays.asList("a", "b", "c").forEach((zoneSuffix) -> {
+          String zoneName = regionCode + zoneSuffix;
+          AvailabilityZone.create(region, zoneName, zoneName, "yugabyte-bridge");
+        });
+      });
+      Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);
+      instanceTypeMetadata.forEach((itCode, metadata) ->
+          InstanceType.createWithMetadata(newProvider, itCode, Json.toJson(metadata)));
+      return ApiResponse.success(newProvider);
+    } catch (Exception e) {
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create docker provider");
     }
   }
 
