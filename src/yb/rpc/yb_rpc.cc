@@ -84,6 +84,11 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
       : call_(std::move(call)), conn_(conn) {}
 
   ~YBResponseTransferCallbacks() {
+    // If we were aborted with service unavailable status, it means that reactor is shutting down.
+    // Thus we should not touch calls_being_handled_, since connection is going to shutdown also.
+    if (service_unavailable_) {
+      return;
+    }
     // Remove the call from the map.
     auto id = yb_call()->call_id();
     auto it = conn_->calls_being_handled_.find(id);
@@ -93,6 +98,13 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
     } else {
       LOG(DFATAL) << "Transfer done for unknown call: " << id;
     }
+  }
+
+  void NotifyTransferAborted(const Status& status) override {
+    if (status.IsServiceUnavailable()) {
+      service_unavailable_ = true;
+    }
+    ResponseTransferCallbacks::NotifyTransferAborted(status);
   }
 
  protected:
@@ -107,6 +119,9 @@ class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
  private:
   InboundCallPtr call_;
   YBConnection* conn_;
+  // We don't have to synchronize on this field because destructor is always invoked from
+  // Notify* methods.
+  bool service_unavailable_ = false;
 };
 
 YBConnection::YBConnection(ReactorThread* reactor_thread,

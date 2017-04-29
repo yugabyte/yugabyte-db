@@ -834,7 +834,6 @@ yb::Status GetSubDocument(rocksdb::Iterator *iterator,
 
   SubDocKey found_subdoc_key;
   Value doc_value;
-  bool is_found = false;
 
   KeyBytes key_bytes = subdocument_key.doc_key().Encode();
 

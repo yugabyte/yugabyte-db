@@ -55,6 +55,14 @@ def check_remote_files(args, files):
         remote_communicate(args, command)
 
 
+def remote_output_line(args, command):
+    return check_output_line(['ssh', args.host, 'cd {0} && {1}'.format(args.remote_path, command)])
+
+
+def fetch_remote_commit(args):
+    return remote_output_line(args, 'git rev-parse HEAD')
+
+
 def main():
     parser = argparse.ArgumentParser(prog=sys.argv[0])
     parser.add_argument('--host', type=str, default=None, help='host for build')
@@ -95,6 +103,22 @@ def main():
 
     commit = check_output_line(['git', 'merge-base', args.branch, 'HEAD'])
     print("Base commit: {0}".format(commit))
+
+    remote_commit = fetch_remote_commit(args)
+    if remote_commit != commit:
+        print("Remote commit mismatch, syncing")
+        remote_command = 'cd {0} && '.format(args.remote_path)
+        remote_command += 'git checkout -- . && '
+        remote_command += 'git clean -f . && '
+        remote_command += 'git checkout master && '
+        remote_command += 'git pull && '
+        remote_command += 'git checkout {0}'.format(commit)
+        remote_communicate(args, remote_command)
+        remote_commit = fetch_remote_commit(args)
+        if remote_commit != commit:
+            sys.stderr.write("Failed to sync remote commit to: {0}, it still: {1}".format(
+                commit, remote_commit))
+            sys.exit(1)
 
     files = parse_name_status(check_output_lines(['git', 'diff', commit, '--name-status']))
     print("Total files: {0}".format(len(files)))

@@ -141,28 +141,36 @@ void Messenger::Shutdown() {
   // Since we're shutting down, it's OK to block.
   ThreadRestrictions::ScopedAllowWait allow_wait;
 
-  std::lock_guard<percpu_rwlock> guard(lock_);
-  if (closing_) {
-    return;
+  decltype(reactors_) reactors;
+  {
+    std::lock_guard<percpu_rwlock> guard(lock_);
+    if (closing_) {
+      return;
+    }
+    VLOG(1) << "shutting down messenger " << name_;
+    closing_ = true;
+
+    DCHECK(rpc_services_.empty()) << "Unregister RPC services before shutting down Messenger";
+    rpc_services_.clear();
+
+    for (const shared_ptr<AcceptorPool> &acceptor_pool : acceptor_pools_) {
+      acceptor_pool->Shutdown();
+    }
+    acceptor_pools_.clear();
+
+    // Need to shut down negotiation pool before the reactors, since the
+    // reactors close the Connection sockets, and may race against the negotiation
+    // threads' blocking reads & writes.
+    negotiation_pool_->Shutdown();
+
+    reactors = reactors_;
   }
-  VLOG(1) << "shutting down messenger " << name_;
-  closing_ = true;
 
-  DCHECK(rpc_services_.empty()) << "Unregister RPC services before shutting down Messenger";
-  rpc_services_.clear();
-
-  for (const shared_ptr<AcceptorPool>& acceptor_pool : acceptor_pools_) {
-    acceptor_pool->Shutdown();
-  }
-  acceptor_pools_.clear();
-
-  // Need to shut down negotiation pool before the reactors, since the
-  // reactors close the Connection sockets, and may race against the negotiation
-  // threads' blocking reads & writes.
-  negotiation_pool_->Shutdown();
-
-  for (Reactor* reactor : reactors_) {
+  for (auto* reactor : reactors) {
     reactor->Shutdown();
+  }
+  for (auto* reactor : reactors) {
+    reactor->Join();
   }
 }
 

@@ -205,6 +205,8 @@ class ReactorThread {
   // Must be called from the reactor thread.
   CHECKED_STATUS GetMetrics(ReactorMetrics *metrics);
 
+  void Join() { thread_->Join(); }
+
  private:
   friend class AssignOutboundCallTask;
   friend class RegisterConnectionTask;
@@ -347,6 +349,10 @@ class Reactor {
   // Is this reactor's thread the current thread?
   bool IsCurrentThread() const {
     return thread_.IsCurrentThread();
+  }
+
+  void Join() {
+    thread_.Join();
   }
 
  private:

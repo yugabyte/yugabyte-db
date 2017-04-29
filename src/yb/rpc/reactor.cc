@@ -32,6 +32,7 @@
 #include <glog/logging.h>
 
 #include <boost/intrusive/list.hpp>
+#include <boost/scope_exit.hpp>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
@@ -185,10 +186,15 @@ void ReactorThread::ShutdownInternal() {
     task->Abort(aborted);
   }
   scheduled_tasks_.clear();
+
+  for (const auto &task : async_handler_tasks_) {
+    task->Abort(aborted);
+  }
 }
 
 ReactorTask::ReactorTask() {
 }
+
 ReactorTask::~ReactorTask() {
 }
 
@@ -223,18 +229,18 @@ void ReactorThread::WakeThread() {
 void ReactorThread::AsyncHandler(ev::async &watcher, int revents) {
   DCHECK(IsCurrentThread());
 
-  if (PREDICT_FALSE(reactor_->closing())) {
+  BOOST_SCOPE_EXIT(&async_handler_tasks_) {
+    async_handler_tasks_.clear();
+  } BOOST_SCOPE_EXIT_END;
+  if (PREDICT_FALSE(!reactor_->DrainTaskQueue(&async_handler_tasks_))) {
     ShutdownInternal();
     loop_.break_loop(); // break the epoll loop and terminate the thread
     return;
   }
 
-  reactor_->DrainTaskQueue(&async_handler_tasks_);
-
-  for (const auto& task : async_handler_tasks_) {
+  for (const auto &task : async_handler_tasks_) {
     task->Run(this);
   }
-  async_handler_tasks_.clear();
 }
 
 void ReactorThread::RegisterConnection(const scoped_refptr<Connection>& conn) {
@@ -616,14 +622,6 @@ void Reactor::Shutdown() {
   }
 
   thread_.Shutdown();
-
-  // Abort all pending tasks. No new tasks can get scheduled after this
-  // because ScheduleReactorTask() tests the closing_ flag set above.
-  Status aborted = ShutdownError(true);
-  for (const auto& task : pending_tasks_) {
-    task->Abort(aborted);
-  }
-  pending_tasks_.clear();
 }
 
 Reactor::~Reactor() {
@@ -755,11 +753,8 @@ void Reactor::ScheduleReactorTask(std::shared_ptr<ReactorTask> task) {
 bool Reactor::DrainTaskQueue(std::vector<std::shared_ptr<ReactorTask>>* tasks) {
   assert(tasks->empty());
   std::lock_guard<LockType> l(lock_);
-  if (closing_) {
-    return false;
-  }
   tasks->swap(pending_tasks_);
-  return true;
+  return !closing_;
 }
 
 }  // namespace rpc
