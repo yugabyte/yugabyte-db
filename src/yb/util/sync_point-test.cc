@@ -28,10 +28,12 @@ using std::vector;
 
 namespace yb {
 
+#ifndef NDEBUG
 static void RunThread(bool *var) {
   *var = true;
   TEST_SYNC_POINT("first");
 }
+#endif
 
 TEST(SyncPointTest, TestSyncPoint) {
 #ifndef NDEBUG

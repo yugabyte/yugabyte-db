@@ -1410,7 +1410,6 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
   // Get error
   ASSERT_EQ(session->CountPendingErrors(), 1) << "Should report bad key to error container";
   gscoped_ptr<YBError> error = GetSingleErrorFromSession(session.get());
-  const YBOperation& failed_op = error->failed_op();
 
   // Retry
   ASSERT_OK(insert->mutable_row()->SetInt32("key", 12345));

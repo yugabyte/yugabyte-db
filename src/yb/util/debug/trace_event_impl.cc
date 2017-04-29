@@ -6,9 +6,10 @@
 #include "yb/util/debug/trace_event_impl.h"
 
 #include <algorithm>
-#include <gflags/gflags.h>
 #include <list>
 #include <vector>
+
+#include <gflags/gflags.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/util/atomic.h"
@@ -98,7 +99,7 @@ static void NOTIMPLEMENTED() {
 
 class TraceBufferRingBuffer : public TraceBuffer {
  public:
-  TraceBufferRingBuffer(size_t max_chunks)
+  explicit TraceBufferRingBuffer(size_t max_chunks)
       : max_chunks_(max_chunks),
         recyclable_chunks_queue_(new size_t[queue_capacity()]),
         queue_head_(0),
@@ -434,25 +435,25 @@ gscoped_ptr<TraceBufferChunk> TraceBufferChunk::Clone() const {
 // and unlocks at the end of scope if locked.
 class TraceLog::OptionalAutoLock {
  public:
-  explicit OptionalAutoLock(base::SpinLock& lock)
+  explicit OptionalAutoLock(base::SpinLock* lock)
       : lock_(lock),
         locked_(false) {
   }
 
   ~OptionalAutoLock() {
     if (locked_)
-      lock_.Unlock();
+      lock_->Unlock();
   }
 
   void EnsureAcquired() {
     if (!locked_) {
-      lock_.Lock();
+      lock_->Lock();
       locked_ = true;
     }
   }
 
  private:
-  base::SpinLock& lock_;
+  base::SpinLock* lock_;
   bool locked_;
   DISALLOW_COPY_AND_ASSIGN(OptionalAutoLock);
 };
@@ -630,7 +631,7 @@ void TraceEvent::Reset() {
 
 void TraceEvent::UpdateDuration(const MicrosecondsInt64& now,
                                 const MicrosecondsInt64& thread_now) {
-  DCHECK(duration_ == -1);
+  DCHECK_EQ(duration_, -1);
   duration_ = now - timestamp_;
   thread_duration_ = thread_now - thread_timestamp_;
 }
@@ -710,7 +711,7 @@ void TraceEvent::AppendValueAsJSON(unsigned char type,
           // "-.1" bad "-0.1" good
           real.insert(1, "0");
         }
-      } else if (MathLimits<double>::IsNaN(val)){
+      } else if (MathLimits<double>::IsNaN(val)) {
         // The JSON spec doesn't allow NaN and Infinity (since these are
         // objects in EcmaScript).  Use strings instead.
         real = "\"NaN\"";
@@ -1014,7 +1015,7 @@ TraceBucketData::~TraceBucketData() {
 
 class TraceLog::ThreadLocalEventBuffer {
  public:
-  ThreadLocalEventBuffer(TraceLog* trace_log);
+  explicit ThreadLocalEventBuffer(TraceLog* trace_log);
   virtual ~ThreadLocalEventBuffer();
 
   TraceEvent* AddTraceEvent(TraceEventHandle* handle);
@@ -1504,7 +1505,7 @@ void TraceLog::SetEventCallbackEnabled(const CategoryFilter& category_filter,
                           reinterpret_cast<AtomicWord>(cb));
   event_callback_category_filter_ = category_filter;
   UpdateCategoryGroupEnabledFlags();
-};
+}
 
 void TraceLog::SetEventCallbackDisabled() {
   SpinLockHolder lock(&lock_);
@@ -1913,7 +1914,7 @@ std::string TraceLog::EventToConsoleMessage(unsigned char phase,
   // TRACE_EVENT_PHASE_BEGIN or TRACE_EVENT_END.
   DCHECK(phase != TRACE_EVENT_PHASE_COMPLETE);
 
-  MicrosecondsInt64 duration;
+  MicrosecondsInt64 duration = 0;
   int thread_id = trace_event ?
       trace_event->thread_id() : Thread::UniqueThreadId();
   if (phase == TRACE_EVENT_PHASE_END) {
@@ -1995,7 +1996,7 @@ void TraceLog::UpdateTraceEventDuration(
 
   std::string console_message;
   if (*category_group_enabled & ENABLED_FOR_RECORDING) {
-    OptionalAutoLock lock(lock_);
+    OptionalAutoLock lock(&lock_);
 
     TraceEvent* trace_event = GetEventByHandleInternal(handle, &lock);
     if (trace_event) {
@@ -2392,7 +2393,7 @@ namespace trace_event_internal {
 ScopedTraceBinaryEfficient::ScopedTraceBinaryEfficient(
     const char* category_group, const char* name) {
   // The single atom works because for now the category_group can only be "gpu".
-  DCHECK(strcmp(category_group, "gpu") == 0);
+  DCHECK_EQ(strcmp(category_group, "gpu"), 0);
   static TRACE_EVENT_API_ATOMIC_WORD atomic = 0;
   INTERNAL_TRACE_EVENT_GET_CATEGORY_INFO_CUSTOM_VARIABLES(
       category_group, atomic, category_group_enabled_);

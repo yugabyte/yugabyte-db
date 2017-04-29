@@ -167,7 +167,7 @@ std::string Status::ToString(bool include_file_and_line) const {
   int64_t error = GetErrorCode();
   if (error != -1) {
     char buf[64];
-    snprintf(buf, sizeof(buf), " (error %lld)", error);
+    snprintf(buf, sizeof(buf), " (error %" PRId64 ")", error);
     result.append(buf);
   }
   return result;

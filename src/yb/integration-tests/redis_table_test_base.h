@@ -18,7 +18,7 @@ class RedisTableTestBase : public YBTableTestBase {
 
   void CreateTable() override;
   void PutKeyValue(std::string key, std::string value) override;
-  void PutKeyValue(std::string key, std::string value, int64_t ttl);
+  void PutKeyValueWithTtl(std::string key, std::string value, int64_t ttl);
   void GetKeyValue(const std::string& key, const std::string& value, bool expect_not_found = false);
 
   void RedisSimpleSetCommands();

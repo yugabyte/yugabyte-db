@@ -473,12 +473,6 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
   YB_ASSERT_TRUE(FindOrDie(metric_map, &METRIC_rpc_incoming_queue_time));
 }
 
-static void DestroyMessengerCallback(shared_ptr<Messenger>* messenger,
-                                     CountDownLatch* latch) {
-  messenger->reset();
-  latch->CountDown();
-}
-
 TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
   shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
   Sockaddr bad_addr;

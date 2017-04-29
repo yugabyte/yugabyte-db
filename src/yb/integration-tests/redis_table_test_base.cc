@@ -56,7 +56,7 @@ void RedisTableTestBase::PutKeyValue(string key, string value) {
   ASSERT_OK(session_->Flush());
 }
 
-void RedisTableTestBase::PutKeyValue(string key, string value, int64_t ttl_msec) {
+void RedisTableTestBase::PutKeyValueWithTtl(string key, string value, int64_t ttl_msec) {
   shared_ptr<YBRedisWriteOp> set_op(table_->NewRedisWrite());
   ASSERT_OK(ParseSet(set_op.get(),
       SlicesFromString({"set", key, value, "PX", std::to_string(ttl_msec)})));
@@ -94,8 +94,8 @@ void RedisTableTestBase::RedisSimpleGetCommands() {
 
 void RedisTableTestBase::RedisTtlSetCommands() {
   session_ = NewSession(/* read_only = */ false);
-  PutKeyValue("key456", "value456", 500);
-  PutKeyValue("key567", "value567", 1500);
+  PutKeyValueWithTtl("key456", "value456", 500);
+  PutKeyValueWithTtl("key567", "value567", 1500);
   PutKeyValue("key678", "value678");
 }
 

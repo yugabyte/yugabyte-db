@@ -284,7 +284,7 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   ASSERT_OK(log_->Close());
 
   // Corrupt the log as specified.
-  int offset;
+  int offset = 0;
   switch (place) {
     case IN_HEADER:
       offset = entry.offset_in_segment + 1;

@@ -170,7 +170,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
     expected_from_ts = ts_descs_[0]->permanent_uuid();
     expected_to_ts = ts_descs_[5]->permanent_uuid();
     for (const auto& tablet : tablets_) {
-      TestAddLoad(placeholder, expected_from_ts, expected_to_ts);
+      TestAddLoad(tablet->tablet_id(), expected_from_ts, expected_to_ts);
     }
 
     // There is some opportunity to equalize load across the remaining servers also. However,
@@ -843,7 +843,7 @@ class TestLoadBalancer : public ClusterLoadBalancer {
   void GetPendingTasks(const TableId& table_uuid,
                        TabletToTabletServerMap* pending_add_replica_tasks,
                        TabletToTabletServerMap* pending_remove_replica_tasks,
-                       TabletToTabletServerMap* pending_stepdown_leader_tasks) {
+                       TabletToTabletServerMap* pending_stepdown_leader_tasks) override {
     for (const auto& tablet_id : pending_add_replica_tasks_) {
       (*pending_add_replica_tasks)[tablet_id] = "";
     }

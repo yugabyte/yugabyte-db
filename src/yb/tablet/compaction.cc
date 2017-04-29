@@ -18,11 +18,12 @@
 #include "yb/tablet/compaction.h"
 
 #include <deque>
-#include <glog/logging.h>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/opid_util.h"
@@ -115,7 +116,6 @@ class MemRowSetCompactionInput : public CompactionInput {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(MemRowSetCompactionInput);
   gscoped_ptr<RowBlock> row_block_;
 
   gscoped_ptr<MemRowSet::Iterator> iter_;
@@ -126,6 +126,8 @@ class MemRowSetCompactionInput : public CompactionInput {
   faststring buffer_;
 
   bool has_more_blocks_;
+
+  DISALLOW_COPY_AND_ASSIGN(MemRowSetCompactionInput);
 };
 
 ////////////////////////////////////////////////////////////
@@ -196,7 +198,6 @@ class DiskRowSetCompactionInput : public CompactionInput {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(DiskRowSetCompactionInput);
   gscoped_ptr<RowwiseIterator> base_iter_;
   shared_ptr<DeltaIterator> redo_delta_iter_;
   shared_ptr<DeltaIterator> undo_delta_iter_;
@@ -213,6 +214,8 @@ class DiskRowSetCompactionInput : public CompactionInput {
   enum {
     kRowsPerBlock = 100
   };
+
+  DISALLOW_COPY_AND_ASSIGN(DiskRowSetCompactionInput);
 };
 
 class MergeCompactionInput : public CompactionInput {
@@ -381,8 +384,6 @@ class MergeCompactionInput : public CompactionInput {
   }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(MergeCompactionInput);
-
   // Look through our current set of inputs. For any that are empty,
   // pull the next block into its pending list. If there is no next
   // block, remove it from our input set.
@@ -511,6 +512,8 @@ class MergeCompactionInput : public CompactionInput {
   const Schema* schema_;
   vector<MergeState *> states_;
   Arena* prepared_block_arena_;
+
+  DISALLOW_COPY_AND_ASSIGN(MergeCompactionInput);
 };
 
 } // anonymous namespace
@@ -804,7 +807,10 @@ Status FlushCompactionInput(CompactionInput* input,
         " RowId: " << input_row.row.row_index() <<
         " Undo Mutations: " << Mutation::StringifyMutationList(*schema, input_row.undo_head) <<
         " Redo Mutations: " << Mutation::StringifyMutationList(*schema, input_row.redo_head);
-      out->AppendUndoDeltas(dst_row.row_index(), new_undos_head, &index_in_current_drs_);
+      auto s = out->AppendUndoDeltas(dst_row.row_index(), new_undos_head, &index_in_current_drs_);
+      if (!s.ok()) {
+        LOG(WARNING) << "AppendUndoDeltas failed: " << s.ToString();
+      }
 
       if (new_redos_head != nullptr) {
         RETURN_NOT_OK(

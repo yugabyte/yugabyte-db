@@ -19,11 +19,12 @@
 
 #include <algorithm>
 #include <deque>
-#include <gperftools/malloc_extension.h>
 #include <limits>
 #include <list>
 #include <memory>
 #include <mutex>
+
+#include <gperftools/malloc_extension.h> // NOLINT
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
@@ -99,7 +100,7 @@ static bool dummy[] = {
   google::RegisterFlagValidator(&FLAGS_memory_limit_soft_percentage, &ValidatePercentage),
   google::RegisterFlagValidator(&FLAGS_memory_limit_warn_threshold_percentage, &ValidatePercentage)
 #ifdef TCMALLOC_ENABLED
-  ,google::RegisterFlagValidator(&FLAGS_tcmalloc_max_free_bytes_percentage, &ValidatePercentage)
+  , google::RegisterFlagValidator(&FLAGS_tcmalloc_max_free_bytes_percentage, &ValidatePercentage)
 #endif
 };
 
@@ -118,6 +119,7 @@ static int64_t GetTCMallocCurrentAllocatedBytes() {
 #endif
 
 void MemTracker::CreateRootTracker() {
+  DCHECK(dummy);
   int64_t limit = FLAGS_memory_limit_hard_bytes;
   if (limit == 0) {
     // If no limit is provided, we'll use 90% of system RAM.

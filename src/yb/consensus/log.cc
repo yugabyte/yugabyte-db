@@ -146,6 +146,7 @@ class Log::AppendThread {
 
 Log::AppendThread::AppendThread(Log *log)
   : log_(log) {
+  DCHECK(dummy);
 }
 
 Status Log::AppendThread::Init() {

@@ -1112,7 +1112,6 @@ class ExternalDaemon::LogTailerThread {
           // The "stopped" flag itself is never deallocated.
           bool is_eof = false;
           bool is_fgets_null = false;
-          bool is_stopped = false;
           while (!(is_eof = feof(fp)) &&
                  !(is_fgets_null = (fgets(buf, sizeof(buf), fp) == nullptr)) &&
                  !stopped->load()) {

@@ -41,7 +41,7 @@ class YBPredicate::Data {
 // construct, we return an instance of this class instead of the requested
 // predicate implementation. Then, when the caller adds it to a scanner,
 // the error is returned.
-class ErrorPredicateData : public YBPredicate::Data {
+class YB_NO_EXPORT ErrorPredicateData : public YBPredicate::Data {
  public:
   explicit ErrorPredicateData(const Status& s)
   : status_(s) {
@@ -65,7 +65,7 @@ class ErrorPredicateData : public YBPredicate::Data {
 
 // A simple binary comparison predicate between a column and
 // a constant.
-class ComparisonPredicateData : public YBPredicate::Data {
+class YB_NO_EXPORT ComparisonPredicateData : public YBPredicate::Data {
  public:
   ComparisonPredicateData(ColumnSchema col,
                           YBPredicate::ComparisonOp op,

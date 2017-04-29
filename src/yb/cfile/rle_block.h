@@ -341,7 +341,7 @@ class RleIntBlockDecoder : public BlockDecoder {
     CppType target = *reinterpret_cast<const CppType *>(value_void);
 
     while (cur_idx_ < num_elems_) {
-      CppType cur_elem;
+      CppType cur_elem = CppType();
       if (!rle_decoder_.Get(&cur_elem)) {
         break;
       }
@@ -420,4 +420,4 @@ class RleIntBlockDecoder : public BlockDecoder {
 } // namespace cfile
 } // namespace yb
 
-#endif
+#endif // YB_CFILE_RLE_BLOCK_H

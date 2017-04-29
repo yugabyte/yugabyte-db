@@ -326,7 +326,6 @@ Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
   const RedisResponsePB& redis_response = static_cast<const RedisResponsePB&>(response);
 
   if (redis_response.code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
-    const ErrorStatusPB& error_status = ErrorStatusPB();
     response_msg_buf_.append(EncodeAsError("Request was unable to be processed from server."));
     return Status::OK();
   }

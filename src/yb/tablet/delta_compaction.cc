@@ -166,7 +166,8 @@ Status MajorDeltaCompaction::FlushRowSetAndDeltas() {
       for (const Mutation *mut = new_undos_head; mut != nullptr; mut = mut->next()) {
         DeltaKey undo_key(nrows + dst_row.row_index(), mut->hybrid_time());
         RETURN_NOT_OK(new_undo_delta_writer_->AppendDelta<UNDO>(undo_key, mut->changelist()));
-        undo_stats.UpdateStats(mut->hybrid_time(), mut->changelist());
+        WARN_NOT_OK(undo_stats.UpdateStats(mut->hybrid_time(), mut->changelist()),
+                    "Failed to update stats");
         undo_delta_mutations_written_++;
       }
     }

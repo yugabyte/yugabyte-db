@@ -4572,7 +4572,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
 Status CatalogManager::RetrieveSystemTabletByName(const TableName& table_name,
                                                   std::shared_ptr<tablet::AbstractTablet>**
                                                   tablet) {
-  DCHECK_NOTNULL(tablet);
+  DCHECK_ONLY_NOTNULL(tablet);
   if (table_name == kSystemPeersTableName) {
     *tablet = &system_peers_tablet;
     return Status::OK();

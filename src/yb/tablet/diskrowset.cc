@@ -376,7 +376,8 @@ Status RollingDiskRowSetWriter::AppendDeltas(rowid_t row_idx_in_block,
   for (const Mutation *mut = delta_head; mut != nullptr; mut = mut->next()) {
     DeltaKey undo_key(*row_idx, mut->hybrid_time());
     RETURN_NOT_OK(writer->AppendDelta<Type>(undo_key, mut->changelist()));
-    delta_stats->UpdateStats(mut->hybrid_time(), mut->changelist());
+    WARN_NOT_OK(delta_stats->UpdateStats(mut->hybrid_time(), mut->changelist()),
+                "Failed to update stats");
   }
   return Status::OK();
 }
@@ -399,8 +400,10 @@ Status RollingDiskRowSetWriter::FinishCurrentWriter() {
     RETURN_NOT_OK(writer_status);
     CHECK_GT(cur_writer_->written_count(), 0);
 
-    cur_undo_writer_->WriteDeltaStats(*cur_undo_delta_stats);
-    cur_redo_writer_->WriteDeltaStats(*cur_redo_delta_stats);
+    WARN_NOT_OK(cur_undo_writer_->WriteDeltaStats(*cur_undo_delta_stats),
+                "Failed to write undo delta stats");
+    WARN_NOT_OK(cur_redo_writer_->WriteDeltaStats(*cur_redo_delta_stats),
+                "Failed to write redo delta stats");
 
     RETURN_NOT_OK(cur_undo_writer_->FinishAndReleaseBlock(&block_closer_));
     RETURN_NOT_OK(cur_redo_writer_->FinishAndReleaseBlock(&block_closer_));

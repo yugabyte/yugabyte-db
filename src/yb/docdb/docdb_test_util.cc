@@ -410,7 +410,6 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
       iteration_(1),
       deletion_chance_(deletion_chance),
       max_nesting_level_(max_nesting_level),
-      num_divergent_old_snapshots_(0),
       verification_frequency_(verification_frequency) {
   CHECK_GE(max_nesting_level_, 1);
   // Use a fixed seed so that tests are deterministic.

@@ -15,10 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
-#include <memory>
 #include <stdlib.h>
+
+#include <memory>
 #include <unordered_set>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
 #include "yb/consensus/consensus.pb.h"
@@ -167,7 +169,7 @@ TEST_F(TestDeltaMemStore, TestUpdateCount) {
   DeltaFileWriter dfw(block.Pass());
   ASSERT_OK(dfw.Start());
   gscoped_ptr<DeltaStats> stats;
-  dms_->FlushToFile(&dfw, &stats);
+  ASSERT_OK(dms_->FlushToFile(&dfw, &stats));
 
   ASSERT_EQ(n_rows / 2, stats->update_count_for_col_id(schema_.column_id(kIntColumn)));
   ASSERT_EQ(n_rows / 4, stats->update_count_for_col_id(schema_.column_id(kStringColumn)));

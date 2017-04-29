@@ -30,13 +30,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <string>
+#include <vector>
+
+#include <boost/utility.hpp>
+
 // Must come before gtest.h.
 #include "yb/gutil/mathlimits.h"
 
-#include <boost/utility.hpp>
 #include <gtest/gtest.h>
-#include <string>
-#include <vector>
 
 #include "yb/util/rle-encoding.h"
 #include "yb/util/bit-stream-utils.h"
@@ -457,7 +459,7 @@ TEST_F(TestRle, TestRoundTripRandomSequencesWithRuns) {
     string roundtrip_str;
     int rem_to_read = num_bits;
     size_t run_len;
-    bool val;
+    bool val = false;
     while (rem_to_read > 0 &&
            (run_len = decoder.GetNextRun(&val, std::min(kMaxToReadAtOnce, rem_to_read))) != 0) {
       ASSERT_LE(run_len, kMaxToReadAtOnce);

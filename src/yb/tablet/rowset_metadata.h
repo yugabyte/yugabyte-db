@@ -103,9 +103,9 @@ class RowSetMetadata {
 
   void SetColumnDataBlocks(const ColumnIdToBlockIdMap& blocks_by_col_id);
 
-  CHECKED_STATUS CommitRedoDeltaDataBlock(int64_t dms_id, const BlockId& block_id);
+  void CommitRedoDeltaDataBlock(int64_t dms_id, const BlockId& block_id);
 
-  CHECKED_STATUS CommitUndoDeltaDataBlock(const BlockId& block_id);
+  void CommitUndoDeltaDataBlock(const BlockId& block_id);
 
   BlockId bloom_block() const {
     std::lock_guard<LockType> l(lock_);

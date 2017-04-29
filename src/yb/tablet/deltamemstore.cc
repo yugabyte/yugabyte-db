@@ -115,7 +115,7 @@ Status DeltaMemStore::FlushToFile(DeltaFileWriter *dfw,
     RETURN_NOT_OK(key.DecodeFrom(&key_slice));
     RowChangeList rcl(val);
     RETURN_NOT_OK_PREPEND(dfw->AppendDelta<REDO>(key, rcl), "Failed to append delta");
-    stats->UpdateStats(key.hybrid_time(), rcl);
+    WARN_NOT_OK(stats->UpdateStats(key.hybrid_time(), rcl), "Failed to update stats");
     iter->Next();
   }
   RETURN_NOT_OK(dfw->WriteDeltaStats(*stats));

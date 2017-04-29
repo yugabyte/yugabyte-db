@@ -131,7 +131,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr cql_call) {
 
   // Execute the request (perhaps asynchronously). Passing ownership of the request to the callback.
   SetCurrentCall(cql_call);
-  request->Execute(this, Bind(
+  request->ExecuteAsync(this, Bind(
       &CQLProcessor::ProcessCallDone, Unretained(this), cql_call, Owned(request.release()),
       parsed));
 }

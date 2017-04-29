@@ -258,8 +258,6 @@ class DocDBLoadGenerator {
 
   std::vector<InMemDocDbState> docdb_snapshots_;
 
-  int num_divergent_old_snapshots_;
-
   // HybridTimes and cleanup hybrid_times of examples when
   std::vector<std::pair<int, int>> divergent_snapshot_ht_and_cleanup_ht_;
 

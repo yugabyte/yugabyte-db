@@ -527,7 +527,6 @@ Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {
   *needs_recovery = false;
 
   FsManager* fs_manager = tablet_->metadata()->fs_manager();
-  const string& tablet_id = tablet_->metadata()->tablet_id();
   const string& log_dir = tablet_->metadata()->wal_dir();
 
   // If the recovery directory exists, then we crashed mid-recovery.

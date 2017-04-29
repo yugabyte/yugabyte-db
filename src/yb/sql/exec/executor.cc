@@ -113,7 +113,7 @@ void Executor::ExecPTreeAsync(const ParseTree &ptree, StatementExecutedCallback 
 }
 
 void Executor::ExecTreeNodeAsync(const TreeNode *tnode, StatementExecutedCallback cb) {
-  DCHECK_NOTNULL(tnode);
+  DCHECK_ONLY_NOTNULL(tnode);
 
   switch (tnode->opcode()) {
     case TreeNodeOpcode::kPTListNode:

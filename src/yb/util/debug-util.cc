@@ -196,6 +196,8 @@ bool InitSignalHandlerUnlocked(int signum) {
 const char kStackTraceEntryFormat[] = "    @ %*p  %s";
 const char kUnknownSymbol[] = "(unknown)";
 
+#ifdef __linux__
+
 // Remove path prefixes up to what looks like the root of the YB source tree.
 const char* NormalizeSourceFilePath(const char* file_path) {
   if (file_path == nullptr) {
@@ -215,8 +217,6 @@ const char* NormalizeSourceFilePath(const char* file_path) {
   }
   return file_path;
 }
-
-#ifdef __linux__
 
 void BacktraceErrorCallback(void* data, const char* msg, int errnum) {
   string* const buf = reinterpret_cast<string*>(data);

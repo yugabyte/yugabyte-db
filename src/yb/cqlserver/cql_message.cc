@@ -441,7 +441,7 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   return Status::OK();
 }
 
-void CQLRequest::Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
+void CQLRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
   cb.Run(Execute(processor));
 }
 
@@ -522,7 +522,7 @@ CQLResponse* QueryRequest::Execute(CQLProcessor *processor) {
   return nullptr;
 }
 
-void QueryRequest::Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
+void QueryRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
   processor->ProcessQuery(*this, cb);
 }
 
@@ -560,7 +560,7 @@ CQLResponse* ExecuteRequest::Execute(CQLProcessor *processor) {
   return nullptr;
 }
 
-void ExecuteRequest::Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
+void ExecuteRequest::ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) {
   processor->ProcessExecute(*this, cb);
 }
 

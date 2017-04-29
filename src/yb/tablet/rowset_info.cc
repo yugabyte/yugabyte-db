@@ -17,6 +17,8 @@
 
 #include "yb/tablet/rowset_info.h"
 
+#include <inttypes.h>
+
 #include <algorithm>
 #include <memory>
 #include <unordered_map>
@@ -24,7 +26,6 @@
 #include <utility>
 
 #include <glog/logging.h>
-#include <inttypes.h>
 
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/casts.h"
@@ -51,16 +52,16 @@ namespace {
 // Less-than comparison by minimum key (both by actual key slice and cdf)
 bool LessCDFAndRSMin(const RowSetInfo& a, const RowSetInfo& b) {
   Slice amin, bmin, max;
-  a.rowset()->GetBounds(&amin, &max);
-  b.rowset()->GetBounds(&bmin, &max);
+  WARN_NOT_OK(a.rowset()->GetBounds(&amin, &max), "Failed to get bound for a");
+  WARN_NOT_OK(b.rowset()->GetBounds(&bmin, &max), "Failed to get bound for b");
   return a.cdf_min_key() < b.cdf_min_key() && amin.compare(bmin) < 0;
 }
 
 // Less-than comparison by maximum key (both by actual key slice and cdf)
 bool LessCDFAndRSMax(const RowSetInfo& a, const RowSetInfo& b) {
   Slice amax, bmax, min;
-  a.rowset()->GetBounds(&min, &amax);
-  b.rowset()->GetBounds(&min, &bmax);
+  WARN_NOT_OK(a.rowset()->GetBounds(&min, &amax), "Failed to get bound for a");
+  WARN_NOT_OK(b.rowset()->GetBounds(&min, &bmax), "Failed to get bound for b");
   return a.cdf_max_key() < b.cdf_max_key() && amax.compare(bmax) < 0;
 }
 
@@ -216,7 +217,7 @@ void RowSetInfo::CollectOrdered(const RowSetTree& tree,
   }
 
   RowSetTree available_rs_tree;
-  available_rs_tree.Reset(available_rowsets);
+  WARN_NOT_OK(available_rs_tree.Reset(available_rowsets), "Failed to reset available row sets");
   for (const RowSetTree::RSEndpoint& rse :
                 available_rs_tree.key_endpoints()) {
     RowSet* rs = rse.rowset_;

@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
 #include "yb/tablet/rowset_metadata.h"
@@ -42,7 +43,7 @@ class MetadataTest : public YBTest {
     tablet_meta_ = new TabletMetadata(nullptr, "fake-tablet");
     CHECK_OK(RowSetMetadata::CreateNew(tablet_meta_.get(), 0, &meta_));
     for (int i = 0; i < all_blocks_.size(); i++) {
-      CHECK_OK(meta_->CommitRedoDeltaDataBlock(i, all_blocks_[i]));
+      meta_->CommitRedoDeltaDataBlock(i, all_blocks_[i]);
     }
     CHECK_EQ(4, meta_->redo_delta_blocks().size());
   }

@@ -90,15 +90,14 @@ void BooleanRLE() {
 
   RleDecoder<bool> decoder(buffer.data(), encoder.len(), 1);
   bool val = false;
-  size_t run_length;
   for (int i = 0; i < num_iters; i++) {
-    run_length = decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
-    run_length = decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
-    run_length = decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
-    run_length = decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
-    run_length = decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
-    run_length = decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
-    run_length = decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
+    decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
+    decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
+    decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
+    decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
+    decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
+    decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
+    decoder.GetNextRun(&val, MathLimits<size_t>::kMax);
   }
 }
 

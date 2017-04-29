@@ -24,9 +24,9 @@
 #include <vector>
 
 #include <rapidjson/document.h>
-#include <rapidjson/prettywriter.h>
-#include <rapidjson/rapidjson.h>
-#include <rapidjson/stringbuffer.h>
+#include <rapidjson/prettywriter.h> // NOLINT
+#include <rapidjson/rapidjson.h> // NOLINT
+#include <rapidjson/stringbuffer.h> // NOLINT
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/jsonwriter.h"
@@ -110,7 +110,7 @@ Status GetTracingOptions(const std::string& json_base64,
 Status BeginRecording(const Webserver::WebRequest& req,
                       TraceLog::Mode mode) {
   string filter_str;
-  int options;
+  int options = 0;
   RETURN_NOT_OK(GetTracingOptions(req.query_string, &filter_str, &options));
 
   yb::debug::TraceLog::GetInstance()->SetEnabled(

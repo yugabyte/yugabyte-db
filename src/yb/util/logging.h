@@ -230,6 +230,12 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 #define VLOG_WITH_PREFIX(verboselevel) LOG_IF(INFO, VLOG_IS_ON(verboselevel)) \
   << LogPrefix()
 
+#ifndef NDEBUG
+#define DCHECK_ONLY_NOTNULL(expr) do { DCHECK_NOTNULL(expr); } while(false)
+#else
+#define DCHECK_ONLY_NOTNULL(expr) do {} while(false)
+#endif
+
 } // namespace yb
 
 #endif // YB_UTIL_LOGGING_H

@@ -458,13 +458,13 @@ TEST_F(TestCompaction, TestFlushMRSWithRolling) {
 
   vector<string> rows;
   rows.reserve(30000 / 2);
-  rowsets[0]->DebugDump(&rows);
+  ASSERT_OK(rowsets[0]->DebugDump(&rows));
   EXPECT_EQ("(string key=hello 00000000, int32 val=0, int32 nullable_val=0) "
             "Undos: [@1(DELETE)] Redos: []",
             rows[0]);
 
   rows.clear();
-  rowsets[1]->DebugDump(&rows);
+  ASSERT_OK(rowsets[1]->DebugDump(&rows));
   EXPECT_EQ("(string key=hello 00154700, int32 val=15470, int32 nullable_val=15470) "
             "Undos: [@15471(DELETE)] Redos: []",
             rows[0]);

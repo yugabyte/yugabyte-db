@@ -39,10 +39,11 @@
 #define YB_TABLET_CONCURRENT_BTREE_H
 
 #include <algorithm>
-#include <boost/smart_ptr/detail/yield_k.hpp>
-#include <boost/utility/binary.hpp>
 #include <memory>
 #include <string>
+
+#include <boost/smart_ptr/detail/yield_k.hpp>
+#include <boost/utility/binary.hpp>
 
 #include "yb/util/inline_slice.h"
 #include "yb/util/memory/arena.h"
@@ -52,7 +53,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/port.h"
 
-//#define TRAVERSE_PREFETCH
+// #define TRAVERSE_PREFETCH
 #define SCAN_PREFETCH
 
 
@@ -239,7 +240,7 @@ struct VersionField {
 #undef BB
   };
 
-  //Undeclared constructor - this is just static utilities.
+  // Undeclared constructor - this is just static utilities.
   VersionField();
 
   static AtomicVersion SetLockBit(AtomicVersion v, int lock) {
@@ -295,7 +296,7 @@ class ValueSlice {
 
  private:
   const uint8_t* ptr_;
-} PACKED;
+};
 
 // Return the index of the first entry in the array which is
 // >= the given value
@@ -416,7 +417,7 @@ class NodeBase {
 
  private:
   DISALLOW_COPY_AND_ASSIGN(NodeBase);
-} PACKED;
+};
 
 
 
@@ -485,7 +486,7 @@ struct NodePtr {
   enum {
     kDiscriminatorBit = (1L << (sizeof(uintptr_t) * 8 - 1))
   };
-} PACKED;
+};
 
 enum InsertStatus {
   INSERT_SUCCESS,
@@ -498,8 +499,8 @@ enum InsertStatus {
 ////////////////////////////////////////////////////////////
 
 template<class Traits>
-class PACKED InternalNode : public NodeBase<Traits> {
-  public:
+class InternalNode : public NodeBase<Traits> {
+ public:
 
   // Construct a new internal node, containing the given children.
   // This also reassigns the parent pointer of the children.
@@ -631,7 +632,7 @@ class PACKED InternalNode : public NodeBase<Traits> {
     return ret;
   }
 
-  private:
+ private:
   friend class CBTree<Traits>;
 
   void ReassignParent(NodePtr<Traits> child) {
@@ -658,7 +659,7 @@ class PACKED InternalNode : public NodeBase<Traits> {
   KeyInlineSlice keys_[kFanout];
   NodePtr<Traits> child_pointers_[kFanout];
   uint32_t num_children_;
-} PACKED;
+};
 
 ////////////////////////////////////////////////////////////
 // Leaf node
@@ -811,7 +812,7 @@ class LeafNode : public NodeBase<Traits> {
   KeyInlineSlice keys_[kMaxEntries];
   ValueSlice vals_[kMaxEntries];
   uint8_t num_entries_;
-} PACKED;
+};
 
 
 ////////////////////////////////////////////////////////////
@@ -910,8 +911,6 @@ class PreparedMutation {
   friend class LeafNode<Traits>;
   friend class TestCBTree;
 
-  DISALLOW_COPY_AND_ASSIGN(PreparedMutation);
-
   void mark_done() {
     // set leaf_ back to NULL without unlocking it,
     // since the caller will unlock it.
@@ -938,6 +937,8 @@ class PreparedMutation {
   size_t idx_;
   bool exists_;
   bool needs_unlock_;
+
+  DISALLOW_COPY_AND_ASSIGN(PreparedMutation);
 };
 
 
@@ -1126,8 +1127,6 @@ class CBTree {
  private:
   friend class PreparedMutation<Traits>;
   friend class CBTreeIterator<Traits>;
-
-  DISALLOW_COPY_AND_ASSIGN(CBTree);
 
   NodePtr<Traits> StableRoot(AtomicVersion *stable_version) const {
     while (true) {
@@ -1331,7 +1330,7 @@ class CBTree {
   InternalNode<Traits> *SplitInternalNode(InternalNode<Traits> *node,
                                           faststring *separator_key) {
     DCHECK(node->IsLocked());
-    //VLOG(2) << "splitting internal node " << node->GetKey(0).ToString();
+    // VLOG(2) << "splitting internal node " << node->GetKey(0).ToString();
 
     // TODO: simplified implementation doesn't deal with splitting
     // when there are very small internal nodes.
@@ -1461,7 +1460,7 @@ class CBTree {
     // Leaf node should already be locked at this point
     DCHECK(node->IsLocked());
 
-    //DebugPrint();
+    // DebugPrint();
 
     LeafNode<Traits> *new_leaf;
     SplitLeafNode(node, &new_leaf);
@@ -1595,6 +1594,8 @@ class CBTree {
   // frozen, it may not be un-frozen. If an iterator is created on
   // a frozen tree, it will be more efficient.
   bool frozen_;
+
+  DISALLOW_COPY_AND_ASSIGN(CBTree);
 };
 
 template<class Traits>
@@ -1797,4 +1798,4 @@ class CBTreeIterator {
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_CONCURRENT_BTREE_H

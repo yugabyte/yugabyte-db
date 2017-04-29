@@ -74,6 +74,8 @@ void Mutex::Acquire() {
       << ". Owner tid: " << owning_tid_ << "; Self tid: " << Env::Default()->gettid()
       << "; Owner stack: " << std::endl << stack_trace_->Symbolize();;
   CheckUnheldAndMark();
+#else
+  DCHECK(!rv);
 #endif
 }
 

@@ -14,16 +14,19 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_TABLET_LAYER_TEST_BASE_H
-#define YB_TABLET_LAYER_TEST_BASE_H
+#ifndef YB_TABLET_DISKROWSET_TEST_BASE_H
+#define YB_TABLET_DISKROWSET_TEST_BASE_H
 
-#include <glog/logging.h>
-#include <gtest/gtest.h>
+#include <unistd.h>
+
 #include <memory>
 #include <string>
-#include <unistd.h>
 #include <unordered_set>
 #include <vector>
+
+#include <glog/logging.h>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/iterator.h"
 #include "yb/common/rowblock.h"
@@ -260,10 +263,10 @@ class TestRowSet : public YBRowSetTest {
 
     MvccSnapshot snap = MvccSnapshot::CreateSnapshotIncludingAllTransactions();
     gscoped_ptr<RowwiseIterator> row_iter;
-    CHECK_OK(rs.NewRowIterator(&schema_, snap, &row_iter));
-    CHECK_OK(row_iter->Init(&spec));
+    ASSERT_OK(rs.NewRowIterator(&schema_, snap, &row_iter));
+    ASSERT_OK(row_iter->Init(&spec));
     vector<string> rows;
-    IterateToStringList(row_iter.get(), &rows);
+    ASSERT_OK(IterateToStringList(row_iter.get(), &rows));
     string result = JoinStrings(rows, "\n");
     ASSERT_EQ(expected_val, result);
   }
@@ -335,4 +338,4 @@ class TestRowSet : public YBRowSetTest {
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_DISKROWSET_TEST_BASE_H

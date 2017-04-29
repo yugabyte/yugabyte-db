@@ -601,7 +601,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
 
   rows_inserted = nullptr;
   rows_updated = nullptr;
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_, { KeyValue(2, 3), KeyValue(3, 4), KeyValue(4, 4), KeyValue(6, 6) });
 
   // get the clock's hybrid_time after replay
@@ -741,7 +741,7 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushing) {
   // Shutdown the tserver and try and rebuild the tablet from the log
   // produced on recovery (recovery flushed no state, but produced a new
   // log).
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_, { KeyValue(1, 10),
                         KeyValue(2, 20),
                         KeyValue(3, 30),
@@ -754,7 +754,7 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushing) {
 
   // Shutdown and rebuild again to test that the log generated during
   // the previous recovery allows to perform recovery again.
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_, { KeyValue(1, 10),
                         KeyValue(2, 20),
                         KeyValue(3, 30),
@@ -1105,7 +1105,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
   // to the client.
   SchemaBuilder sb(schema_);
   for (int i = 0; i < schema_.num_key_columns(); i++) {
-    sb.RemoveColumn(schema_.column(i).name());
+    ASSERT_OK(sb.RemoveColumn(schema_.column(i).name()));
   }
   const Schema& projection = sb.BuildWithoutIds();
 
@@ -1600,7 +1600,7 @@ TEST_F(TabletServerTest, TestOrderedScan_ProjectionWithKeyColumnsInOrder) {
   // Build a projection with all the columns, but don't mark the key columns as such.
   SchemaBuilder sb;
   for (int i = 0; i < schema_.num_columns(); i++) {
-    sb.AddColumn(schema_.column(i), false);
+    ASSERT_OK(sb.AddColumn(schema_.column(i), false));
   }
   const Schema& projection = sb.BuildWithoutIds();
   DoOrderedScanTest(projection, "(int32 key=$0, int32 int_val=$1, string string_val=hello $0)");
@@ -1611,7 +1611,7 @@ TEST_F(TabletServerTest, TestOrderedScan_ProjectionWithoutKeyColumns) {
   // Build a projection without the key columns.
   SchemaBuilder sb;
   for (int i = schema_.num_key_columns(); i < schema_.num_columns(); i++) {
-    sb.AddColumn(schema_.column(i), false);
+    ASSERT_OK(sb.AddColumn(schema_.column(i), false));
   }
   const Schema& projection = sb.BuildWithoutIds();
   DoOrderedScanTest(projection, "(int32 int_val=$1, string string_val=hello $0)");
@@ -1622,7 +1622,7 @@ TEST_F(TabletServerTest, TestOrderedScan_ProjectionWithKeyColumnsOutOfOrder) {
   // Build a projection with the order of the columns reversed.
   SchemaBuilder sb;
   for (int i = schema_.num_columns() - 1; i >= 0; i--) {
-    sb.AddColumn(schema_.column(i), false);
+    ASSERT_OK(sb.AddColumn(schema_.column(i), false));
   }
   const Schema& projection = sb.BuildWithoutIds();
   DoOrderedScanTest(projection, "(string string_val=hello $0, int32 int_val=$1, int32 key=$0)");
@@ -1666,14 +1666,14 @@ TEST_F(TabletServerTest, TestAlterSchema) {
   const Schema projection({ ColumnSchema("key", INT32), (ColumnSchema("c2", INT32)) }, 1);
 
   // Try recovering from the original log
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7),
                            KeyValue(1, 7),
                            KeyValue(2, 5),
                            KeyValue(3, 5) });
 
   // Try recovering from the log generated on recovery
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7),
                            KeyValue(1, 7),
                            KeyValue(2, 5),
@@ -1718,11 +1718,11 @@ TEST_F(TabletServerTest, TestAlterSchema_AddColWithoutWriteDefault) {
   VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
 
   // Try recovering from the original log
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
 
   // Try recovering from the log generated on recovery
-  ASSERT_NO_FATAL_FAILURE(ShutdownAndRebuildTablet());
+  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
 }
 

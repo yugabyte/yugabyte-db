@@ -16,11 +16,14 @@ const DataType INT16 = DataType::INT16;
 const DataType INT32 = DataType::INT32;
 const DataType INT64 = DataType::INT64;
 const DataType STRING = DataType::STRING;
-const DataType BOOL = DataType::BOOL;
+// Unused currently.
+// const DataType BOOL = DataType::BOOL;
 const DataType FLOAT = DataType::FLOAT;
 const DataType DOUBLE = DataType::DOUBLE;
-const DataType BINARY = DataType::BINARY;
-const DataType TIMESTAMP = DataType::TIMESTAMP;
+// Unused currently.
+// const DataType BINARY = DataType::BINARY;
+// Unused currently.
+// const DataType TIMESTAMP = DataType::TIMESTAMP;
 const DataType TYPEARGS = DataType::TYPEARGS;
 
 // IMPORTANT NOTES:

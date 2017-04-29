@@ -243,7 +243,9 @@ function(ADD_CXX_YB_COMMON_FLAGS FLAGS)
   set(CXX_YB_COMMON_FLAGS "${CXX_YB_COMMON_FLAGS} ${FLAGS}" PARENT_SCOPE)
 endfunction()
 
+ADD_CXX_YB_COMMON_FLAGS("-Werror")
 ADD_CXX_YB_COMMON_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
+ADD_CXX_YB_COMMON_FLAGS("-Winvalid-pch")
 ADD_CXX_YB_COMMON_FLAGS("-pthread -Wno-parentheses -DBOOST_BIND_NO_PLACEHOLDERS")
 ADD_CXX_YB_COMMON_FLAGS("-DROCKSDB_PLATFORM_POSIX")
 
@@ -1486,6 +1488,8 @@ endif (UNIX)
 
 # For any C code, use the same flags as for C++.
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
+string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
+string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
 # TODO: switch to C++14 and ideally to C++17.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")

@@ -93,7 +93,7 @@ namespace load_generator {
 
 string FormatHexForLoadTestKey(uint64_t x) {
   char buf[64];
-  snprintf(buf, sizeof(buf) - 1, "%016zx", x);
+  snprintf(buf, sizeof(buf) - 1, "%016" PRIx64, x);
   return buf;
 }
 

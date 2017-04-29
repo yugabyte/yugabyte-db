@@ -139,18 +139,16 @@ void RowSetMetadata::SetColumnDataBlocks(const ColumnIdToBlockIdMap& blocks) {
   blocks_by_col_id_ = blocks;
 }
 
-Status RowSetMetadata::CommitRedoDeltaDataBlock(int64_t dms_id,
+void RowSetMetadata::CommitRedoDeltaDataBlock(int64_t dms_id,
                                                 const BlockId& block_id) {
   std::lock_guard<LockType> l(lock_);
   last_durable_redo_dms_id_ = dms_id;
   redo_delta_blocks_.push_back(block_id);
-  return Status::OK();
 }
 
-Status RowSetMetadata::CommitUndoDeltaDataBlock(const BlockId& block_id) {
+void RowSetMetadata::CommitUndoDeltaDataBlock(const BlockId& block_id) {
   std::lock_guard<LockType> l(lock_);
   undo_delta_blocks_.push_back(block_id);
-  return Status::OK();
 }
 
 Status RowSetMetadata::CommitUpdate(const RowSetMetadataUpdate& update) {

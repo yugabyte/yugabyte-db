@@ -209,7 +209,7 @@ class CQLRequest : public CQLMessage {
   virtual ~CQLRequest();
 
   virtual CQLResponse* Execute(CQLProcessor *processor) = 0;
-  virtual void Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb);
+  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb);
 
  protected:
   CQLRequest(const Header& header, const Slice& body);
@@ -309,7 +309,7 @@ class QueryRequest : public CQLRequest {
   QueryRequest(const Header& header, const Slice& body);
   virtual ~QueryRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
-  virtual void Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
+  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
 
   const std::string& query() const { return query_; }
   const QueryParameters& params() const { return params_; }
@@ -346,7 +346,7 @@ class ExecuteRequest : public CQLRequest {
   ExecuteRequest(const Header& header, const Slice& body);
   virtual ~ExecuteRequest() override;
   virtual CQLResponse* Execute(CQLProcessor *processor) override;
-  virtual void Execute(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
+  virtual void ExecuteAsync(CQLProcessor* processor, Callback<void(CQLResponse*)> cb) override;
 
   const QueryId& query_id() const { return query_id_; }
   const QueryParameters& params() const { return params_; }

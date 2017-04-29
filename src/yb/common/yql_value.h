@@ -89,8 +89,18 @@ class YQLValue {
   virtual YQLValuePB* add_list_elem() = 0;
 
   //----------------------------------- assignment methods ----------------------------------
-  virtual YQLValue& operator=(const YQLValuePB& other) = 0;
-  virtual YQLValue& operator=(YQLValuePB&& other) = 0;
+  YQLValue& operator=(const YQLValuePB& other) {
+    Assign(other);
+    return *this;
+  }
+
+  YQLValue& operator=(YQLValuePB&& other) {
+    AssignMove(std::move(other));
+    return *this;
+  }
+
+  virtual void Assign(const YQLValuePB& other) = 0;
+  virtual void AssignMove(YQLValuePB&& other) = 0;
 
   //-----------------------------------------------------------------------------------------
   // Methods provided by this abstract class.
@@ -416,13 +426,11 @@ class YQLValueWithPB : public YQLValue {
   }
 
   //----------------------------------- assignment methods ----------------------------------
-  virtual YQLValue& operator=(const YQLValuePB& other) override {
+  virtual void Assign(const YQLValuePB& other) override {
     value_ = other;
-    return *this;
   }
-  virtual YQLValue& operator=(YQLValuePB&& other) override {
+  virtual void AssignMove(YQLValuePB&& other) override {
     value_ = std::move(other);
-    return *this;
   }
 
  private:

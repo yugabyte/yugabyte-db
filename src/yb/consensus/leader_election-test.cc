@@ -183,6 +183,9 @@ void LeaderElectionTest::InitNoOpPeerProxies(int num_voters,
     } else if (num_observers > 0) {
       member_type = RaftPeerPB::OBSERVER;
       num_observers--;
+    } else {
+      member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+      LOG(FATAL) << "Invalid member type";
     }
     peer_pb->set_member_type(member_type);
     peer_pb->set_permanent_uuid(uuid);
@@ -220,6 +223,9 @@ void LeaderElectionTest::InitDelayableMockedProxies(int num_voters,
     } else if (num_observers > 0) {
       member_type = RaftPeerPB::OBSERVER;
       num_observers--;
+    } else {
+      member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+      LOG(FATAL) << "Invalid member type";
     }
     peer_pb->set_member_type(member_type);
     peer_pb->set_permanent_uuid(uuid);

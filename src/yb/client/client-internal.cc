@@ -441,7 +441,7 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
                                                const YBTableName& table_name,
                                                const MonoTime& deadline,
                                                bool* create_in_progress) {
-  DCHECK_NOTNULL(create_in_progress);
+  DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateTableDoneRequestPB req;
   IsCreateTableDoneResponsePB resp;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
@@ -515,7 +515,7 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
                                                const std::string& deleted_table_id,
                                                const MonoTime& deadline,
                                                bool* delete_in_progress) {
-  DCHECK_NOTNULL(delete_in_progress);
+  DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteTableDoneRequestPB req;
   IsDeleteTableDoneResponsePB resp;
   req.set_table_id(deleted_table_id);

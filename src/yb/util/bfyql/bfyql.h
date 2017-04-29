@@ -72,7 +72,7 @@
 namespace yb {
 namespace bfyql {
 
-static const char *kCastFuncName = "cast";
+const char *const kCastFuncName = "cast";
 
 //--------------------------------------------------------------------------------------------------
 // class BFCompileApi<PType, RType> has one main entry function - FindYqlOpcode().

@@ -328,7 +328,7 @@ class AllTypesItest : public YBTest {
     ASSERT_OK(row.GetTimestamp("timestamp_val", &timestamp_val));
     ASSERT_EQ(timestamp_val, expected_int_val);
 
-    string content = StringPrintf("hello %010x", expected_int_val);
+    string content = StringPrintf("hello %010" PRIx64, expected_int_val);
     Slice expected_slice_val(content);
     Slice string_val;
     ASSERT_OK(row.GetString("string_val", &string_val));

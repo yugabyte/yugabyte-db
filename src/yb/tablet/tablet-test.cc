@@ -511,7 +511,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 
     bool set_to_null = TestSetupExpectsNulls<TypeParam>(i);
     if (set_to_null) {
-      this->UpdateTestRowToNull(&writer, i);
+      ASSERT_OK_FAST(this->UpdateTestRowToNull(&writer, i));
     } else {
       ASSERT_OK_FAST(this->UpdateTestRow(&writer, i, i));
     }
@@ -937,7 +937,7 @@ TYPED_TEST(TestTablet, TestMetricsInit) {
   JsonWriter writer(&out, JsonWriter::PRETTY);
   ASSERT_OK(registry->WriteAsJson(&writer, { "*" }, MetricJsonOptions()));
   // Open tablet, should still work
-  this->harness()->Open();
+  ASSERT_OK(this->harness()->Open());
   ASSERT_OK(registry->WriteAsJson(&writer, { "*" }, MetricJsonOptions()));
 }
 
