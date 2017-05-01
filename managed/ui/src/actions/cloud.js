@@ -289,7 +289,7 @@ export function initializeProviderFailure(error) {
 }
 
 export function deleteProvider(providerUUID) {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request =
     axios.delete(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}`);
   return {

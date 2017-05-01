@@ -340,13 +340,17 @@ public class AWSInitializer {
                  volumeCount, volumeSizeGB, volumeType, regionCode);
       }
 
-      // Create the instance type model.
+      // Create the instance type model. If one already exists, overwrite it.
       InstanceType instanceType = InstanceType.get(providerCode, instanceTypeCode);
       if (instanceType == null) {
         instanceType = new InstanceType();
       }
       if (instanceType.instanceTypeDetails == null) {
         instanceType.instanceTypeDetails = new InstanceTypeDetails();
+      }
+      List<InstanceType.VolumeDetails> volumeDetailsList =
+          instanceType.instanceTypeDetails.volumeDetailsList;
+      if (volumeDetailsList == null || volumeDetailsList.size() == 0) {
         for (int i = 0; i < volumeCount; ++i) {
           InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
           volumeDetails.volumeSizeGB = volumeSizeGB;
