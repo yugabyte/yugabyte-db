@@ -17,9 +17,9 @@
 #include "yb/util/trace.h"
 
 DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
-DEFINE_int32(rocksdb_base_background_compactions, 2,
+DEFINE_int32(rocksdb_base_background_compactions, 1,
              "Number threads to do background compactions.");
-DEFINE_int32(rocksdb_max_background_compactions, 4,
+DEFINE_int32(rocksdb_max_background_compactions, 2,
              "Increased number of threads to do background compactions (used when compactions need "
              "to catch up.)");
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
@@ -32,7 +32,7 @@ DEFINE_int32(rocksdb_level0_stop_writes_trigger, 48,
              "The number of files above which compactions are stopped.");
 DEFINE_int32(rocksdb_universal_compaction_size_ratio, 20,
              "The percentage upto which files that are larger are include in a compaction.");
-DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 3,
+DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
 DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 100 * 1024 * 1024,
              "Use to control write rate of flush and compaction.");
