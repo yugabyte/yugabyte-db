@@ -7,13 +7,8 @@ import { createProvider, createProviderSuccess, createProviderFailure,
   createRegion, createRegionSuccess, createRegionFailure,
   createAccessKey, createAccessKeySuccess, createAccessKeyFailure,
   initializeProvider, initializeProviderSuccess, initializeProviderFailure,
-  getSupportedRegionData, getSupportedRegionDataSuccess, getSupportedRegionDataFailure,
-  getRegionList, getRegionListSuccess, getRegionListFailure, getProviderList,
-  getProviderListSuccess, getProviderListFailure, deleteProvider, deleteProviderSuccess,
-  deleteProviderFailure, resetProviderBootstrap, listAccessKeys,
-  listAccessKeysSuccess, listAccessKeysFailure
- } from '../../../actions/cloud';
- import { fetchHostInfo, fetchHostInfoSuccess, fetchHostInfoFailure } from '../../../actions/customers';
+  deleteProvider, deleteProviderSuccess, deleteProviderFailure,
+  resetProviderBootstrap, fetchCloudMetadata } from '../../../actions/cloud';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
 function validate(values) {
@@ -82,16 +77,6 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
-    getSupportedRegionList: () => {
-      dispatch(getSupportedRegionData()).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(getSupportedRegionDataFailure(response.payload));
-        } else {
-          dispatch(getSupportedRegionDataSuccess(response.payload));
-        }
-      })
-    },
-
     deleteProviderConfig: (providerUUID) => {
       dispatch(deleteProvider(providerUUID)).then((response) => {
         if (response.payload.status !== 200) {
@@ -103,52 +88,20 @@ const mapDispatchToProps = (dispatch) => {
       })
     },
 
-    getProviderListItems: () => {
-      dispatch(getProviderList()).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(getProviderListFailure(response.payload));
-        } else {
-          dispatch(getProviderListSuccess(response.payload));
-          response.payload.data.forEach(function (item, idx) {
-            dispatch(listAccessKeys(item.uuid))
-              .then((response) => {
-                if (response.payload.status !== 200) {
-                  dispatch(listAccessKeysFailure(response.payload));
-                } else {
-                  dispatch(listAccessKeysSuccess(response.payload));
-                }
-              });
-            dispatch(getRegionList(item.uuid, true))
-              .then((response) => {
-                if (response.payload.status !== 200) {
-                  dispatch(getRegionListFailure(response.payload));
-                } else {
-                  dispatch(getRegionListSuccess(response.payload));
-                }
-              });
-          })}
-      });
-    },
-
     resetProviderBootstrap: () => {
       dispatch(resetProviderBootstrap());
-    },
-
-    fetchHostInfo: () => {
-      dispatch(fetchHostInfo()).then((response)=>{
-        if (response.payload.status !== 200) {
-          dispatch(fetchHostInfoFailure(response.payload));
-        } else {
-          dispatch(fetchHostInfoSuccess(response.payload));
-        }
-      })
     },
 
     showDeleteProviderModal: () => {
       dispatch(openDialog("deleteAWSProvider"));
     },
+
     hideDeleteProviderModal: () => {
       dispatch(closeDialog());
+    },
+
+    reloadCloudMetadata: () => {
+      dispatch(fetchCloudMetadata());
     }
   }
 }

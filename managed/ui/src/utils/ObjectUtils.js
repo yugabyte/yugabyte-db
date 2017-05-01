@@ -13,6 +13,10 @@ export function isValidArray(arr) {
   return (isDefinedNotNull(arr) && arr.length && arr.length > 0 && Array.isArray(arr));
 }
 
+export function isEmptyObject(obj) {
+  return !isProperObject(obj) || Object.keys(obj).length === 0
+}
+
 export function isValidFunction(func) {
   return (typeof func === "function");
 }

@@ -89,7 +89,6 @@ const mapDispatchToProps = (dispatch) => {
         }
       })
     },
-
     resetUniverseList: () => {
       dispatch(resetUniverseList());
     }
@@ -100,7 +99,8 @@ const mapStateToProps = (state) => {
   return {
     cloud: state.cloud,
     customer: state.customer,
-    universe: state.universe
+    universe: state.universe,
+    fetchMetadata: state.cloud.fetchMetadata
   };
 };
 

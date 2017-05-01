@@ -32,6 +32,7 @@ export default class YBConfirmModal extends Component {
 
   render() {
     const { name, title, confirmLabel, cancelLabel } = this.props;
+
     return (
       <div className={name} key={name}>
         <YBModal title={title}

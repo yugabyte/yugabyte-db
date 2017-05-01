@@ -36,19 +36,19 @@ class DataCenterConfiguration extends Component {
       <div>
         <h2>Configuration</h2>
         <YBTabsPanel activeTab={"gcp"} id={"config-tab-panel"} className="config-tabs">
-          <Tab eventKey={"aws"} title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab">
+          <Tab eventKey={"aws"} title={<img src={awsLogo} alt="AWS" className="aws-logo" />} key="aws-tab" unmountOnExit={true}>
             <AWSProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"gcp"} title={<img src={gcpLogo} alt="GCP" className="gcp-logo" />} key="gcp-tab">
+          <Tab eventKey={"gcp"} title={<img src={gcpLogo} alt="GCP" className="gcp-logo" />} key="gcp-tab" unmountOnExit={true}>
             <GCPProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"azure"} title={<img src={azureLogo} alt="Azure" className="azure-logo" />} key="azure-tab">
+          <Tab eventKey={"azure"} title={<img src={azureLogo} alt="Azure" className="azure-logo" />} key="azure-tab" unmountOnExit={true}>
             <AzureProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"docker"} title={<img src={dockerLogo} alt="Docker" className="docker-logo" />} key="docker-tab">
+          <Tab eventKey={"docker"} title={<img src={dockerLogo} alt="Docker" className="docker-logo" />} key="docker-tab" unmountOnExit={true}>
             <DockerProviderConfigurationContainer />
           </Tab>
-          <Tab eventKey={"onprem"} title={onPremiseTabContent} key="onprem-tab">
+          <Tab eventKey={"onprem"} title={onPremiseTabContent} key="onprem-tab" unmountOnExit={true}>
             <OnPremConfigurationContainer />
           </Tab>
         </YBTabsPanel>

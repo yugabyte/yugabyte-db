@@ -11,10 +11,11 @@ import { GET_REGION_LIST, GET_REGION_LIST_SUCCESS, GET_REGION_LIST_FAILURE,
   DELETE_PROVIDER, DELETE_PROVIDER_SUCCESS, DELETE_PROVIDER_FAILURE, RESET_PROVIDER_BOOTSTRAP,
   LIST_ACCESS_KEYS, LIST_ACCESS_KEYS_SUCCESS, LIST_ACCESS_KEYS_FAILURE,
   CREATE_ONPREM_PROVIDER_RESPONSE, GET_PROVIDER_LIST_RESPONSE, GET_EBS_TYPE_LIST,
-  GET_EBS_TYPE_LIST_RESPONSE
+  GET_EBS_TYPE_LIST_RESPONSE, CREATE_DOCKER_PROVIDER, CREATE_DOCKER_PROVIDER_RESPONSE,
+  FETCH_CLOUD_METADATA
 } from '../actions/cloud';
 
-import { setSuccessState, setFailureState, setLoadingState }  from './common';
+import { setSuccessState, setFailureState, setLoadingState, setResponseState }  from './common';
 import _ from 'lodash';
 
 const INITIAL_STATE = {
@@ -34,9 +35,11 @@ const INITIAL_STATE = {
   accessKeys: {},
   supportedRegionList: [],
   bootstrap: {},
+  dockerBootstrap: {},
   status : 'init',
   createOnPremSucceeded: false,
-  createOnPremFailed: false
+  createOnPremFailed: false,
+  fetchMetadata: false
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -44,25 +47,24 @@ export default function(state = INITIAL_STATE, action) {
   let success;
   switch(action.type) {
     case GET_PROVIDER_LIST:
-      return {...state, providers: [], status: 'storage', error: null, loading: _.assign(state.loading, {providers: true})};
+      return {...state, providers: [], status: 'storage', error: null, fetchMetadata: false, loading: _.assign(state.loading, {providers: true})};
     case GET_PROVIDER_LIST_SUCCESS:
-      return {...state, providers: _.sortBy(action.payload, "name"), status: 'provider_fetch_success',
+      return {...state, fetchMetadata: false, providers: _.sortBy(action.payload, "name"), status: 'provider_fetch_success',
         error: null, loading: _.assign(state.loading, {providers: false})};
     case GET_PROVIDER_LIST_FAILURE:
       error = action.payload.data || {message: action.payload.message};//2nd one is network or server down errors
       return { ...state, providers: null, status: 'provider_fetch_failure', error: error, loading: _.assign(state.loading,
-        {providers: false})};
+        {providers: false}), fetchMetadata: false};
     case GET_PROVIDER_LIST_RESPONSE:
-      console.log(action.payload);
       if (action.payload.status !== 200 ) {
         // getProviderList failed
         error = action.payload.data || {message: action.payload.message}; // 2nd is network or server down errors
         return { ...state, providers: null, status: 'provider_fetch_failure', error: error,
-          loading: _.assign(state.loading, {providers: false})};
+          loading: _.assign(state.loading, {providers: false}), fetchMetadata: false};
       } else {
         // getProviderList succeeded
         return {...state, providers: _.sortBy(action.payload.data, "name"), status: 'provider_fetch_success',
-          error: null, loading: _.assign(state.loading, {providers: false})};
+          error: null, loading: _.assign(state.loading, {providers: false}), fetchMetadata: false};
       }
     case GET_REGION_LIST:
       return { ...state, regions: [], status: 'storage', error: null, loading: _.assign(state.loading, {regions: true})};
@@ -136,6 +138,12 @@ export default function(state = INITIAL_STATE, action) {
       if (action.payload.status === 200)
         return { ...state, ebsTypes: action.payload.data, loading: _.assign(state.loading, {ebsTypes: false})};
       return { ...state, ebsTypes: [], error: error, loading: _.assign(state.loading, {ebsTypes: false})};
+    case CREATE_DOCKER_PROVIDER:
+      return setLoadingState(state, "dockerBootstrap", {});
+    case CREATE_DOCKER_PROVIDER_RESPONSE:
+      return setResponseState(state, "dockerBootstrap", action);
+    case FETCH_CLOUD_METADATA:
+      return {...state, fetchMetadata: true};
     default:
       return state;
   }

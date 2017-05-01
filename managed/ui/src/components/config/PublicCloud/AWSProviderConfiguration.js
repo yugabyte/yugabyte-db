@@ -8,7 +8,6 @@ import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { Field } from 'redux-form';
 import { withRouter } from 'react-router';
-import { sortBy } from 'lodash';
 import  { isValidArray, isValidObject, trimString, convertSpaceToDash } from '../../../utils/ObjectUtils';
 import { RegionMap } from '../../maps';
 
@@ -26,12 +25,7 @@ class AWSProviderConfiguration extends Component {
       ]
     }
   }
-  componentWillMount() {
-    this.props.getProviderListItems();
-    this.props.getSupportedRegionList();
-    // TODO: may be call this only once if not already fetched?
-    this.props.fetchHostInfo();
-  }
+
   componentWillUnmount() {
     this.props.resetProviderBootstrap();
   }
@@ -88,14 +82,12 @@ class AWSProviderConfiguration extends Component {
           break;
         case "initialize":
           if (this.props.cloudBootstrap !== nextProps.cloudBootstrap) {
-            // This would refresh the data once the initialize is done.
-            this.props.getProviderListItems();
-            this.props.getSupportedRegionList();
+            this.props.reloadCloudMetadata();
           }
           break;
         case "cleanup":
           if (this.props.cloudBootstrap !== nextProps.cloudBootstrap) {
-            this.props.getProviderListItems();
+            this.props.reloadCloudMetadata();
           }
           break;
         default:
@@ -120,22 +112,7 @@ class AWSProviderConfiguration extends Component {
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
 
-      var regionColumns = <Col md={12}>No AWS Regions Configured</Col>;
       var accessKeyList = "Not Configured";
-
-      if (isValidArray(awsRegions) && awsRegions.length) {
-        regionColumns = sortBy(awsRegions, 'longitude').map((region) => {
-          const zoneList = region.zones.map((zone) => {
-            return <div key={`zone-${zone.uuid}`} className="config-zone-name">{zone.name}</div>;
-          });
-          return (
-            <Col key={`region-${region.uuid}`} md={3} lg={2} className="config-region">
-              <div className="config-region-name">{region.name}</div>
-              {zoneList}
-            </Col>
-          );
-        });
-      }
       if (isValidObject(accessKeys) && isValidArray(accessKeys.data)) {
         accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(", ")
       }
@@ -170,12 +147,7 @@ class AWSProviderConfiguration extends Component {
               <DescriptionList listItems={providerInfo} />
             </Col>
           </Row>
-          <Row className="config-section-region-map">
-            <Col md={12}>
-              <RegionMap title="All Supported Regions" regions={awsRegions} type="Root"/>
-            </Col>
-          </Row>
-          <Row className="config-section-regions">{regionColumns}</Row>
+          <RegionMap title="All Supported Regions" regions={awsRegions} type="Root" showLabels={true}/>
         </div>
     } else {
       var bootstrapSteps = <span />;
