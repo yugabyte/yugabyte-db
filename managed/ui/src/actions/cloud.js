@@ -59,6 +59,11 @@ export const LIST_ACCESS_KEYS_FAILURE = 'LIST_ACCESS_KEYS_FAILURE';
 export const GET_EBS_TYPE_LIST = 'GET_EBS_TYPES';
 export const GET_EBS_TYPE_LIST_RESPONSE = 'GET_EBS_TYPES_RESPONSE';
 
+export const CREATE_DOCKER_PROVIDER = 'CREATE_DOCKER_PROVIDER';
+export const CREATE_DOCKER_PROVIDER_RESPONSE = 'CREATE_DOCKER_PROVIDER_RESPONSE';
+
+export const FETCH_CLOUD_METADATA = 'FETCH_CLOUD_METADATA';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -261,7 +266,8 @@ export function createAccessKeyFailure(error) {
 }
 
 export function initializeProvider(providerUUID) {
-  const request = axios.get(`${ROOT_URL}/providers/${providerUUID}/initialize`);
+  var url = getProviderEndpoint(providerUUID) + '/initialize';
+  const request = axios.get(url);
   return {
     type: INITIALIZE_PROVIDER,
     payload: request
@@ -347,5 +353,27 @@ export function getEBSTypeListResponse(responsePayload) {
   return {
     type: GET_EBS_TYPE_LIST_RESPONSE,
     payload: responsePayload
+  }
+}
+
+export function createDockerProvider() {
+  var cUUID = localStorage.getItem("customer_id");
+  const request = axios.post(`${ROOT_URL}/customers/${cUUID}/providers/setup_docker`);
+  return {
+    type: CREATE_DOCKER_PROVIDER,
+    payload: request
+  }
+}
+
+export function createDockerProviderResponse(response) {
+  return {
+    type: CREATE_DOCKER_PROVIDER_RESPONSE,
+    payload: response
+  }
+}
+
+export function fetchCloudMetadata() {
+  return {
+    type: FETCH_CLOUD_METADATA
   }
 }

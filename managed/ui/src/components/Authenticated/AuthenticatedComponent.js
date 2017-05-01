@@ -17,6 +17,14 @@ export default class AuthenticatedComponent extends Component {
     this.props.resetUniverseList();
   }
 
+  componentWillReceiveProps(nextProps) {
+    if (this.props.fetchMetadata !== nextProps.fetchMetadata && nextProps.fetchMetadata) {
+      this.props.getProviderListItems();
+      this.props.fetchUniverseList();
+      this.props.getSupportedRegionList();
+    }
+  }
+
   render() {
     return (
       <div>
