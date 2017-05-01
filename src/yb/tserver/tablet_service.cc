@@ -868,7 +868,7 @@ Status TabletServiceImpl::CheckLeaderAndGetTablet(const ReadRequestPB* req,
   scoped_refptr<TabletPeer> tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
                                  &tablet_peer)) {
-    return STATUS(NotFound, "Tablet not found: $0", req->tablet_id());
+    return STATUS_SUBSTITUTE(NotFound, "Tablet not found: $0", req->tablet_id());
   }
 
   TabletServerErrorPB::Code error_code;
