@@ -8,8 +8,10 @@ import java.util.Map;
 import com.avaje.ebean.Ebean;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 
@@ -29,9 +31,9 @@ public class AppInit {
 
   @Inject
   public AppInit(Environment environment, Application application,
-                 ConfigHelper configHelper, ReleaseManager releaseManager) {
+                 ConfigHelper configHelper, ReleaseManager releaseManager,
+                 AWSInitializer awsInitializer) {
     Logger.info("Yugaware Application has started");
-
     Configuration appConfig = application.configuration();
     String devopsHome = appConfig.getString("yb.devops.home");
     String storagePath = appConfig.getString("yb.storage.path");
@@ -45,7 +47,7 @@ public class AppInit {
         throw new RuntimeException(("yb.storage.path is not set in application.conf"));
       }
 
-      // Check if we have provider data, if not, we need to see the database
+      // Check if we have provider data, if not, we need to seed the database
       if (Provider.find.where().findRowCount() == 0 &&
           appConfig.getBoolean("yb.seedData", false)) {
         Logger.debug("Seed the Yugaware DB");
@@ -55,6 +57,15 @@ public class AppInit {
             application.classloader()
         );
         Ebean.saveAll(all);
+      }
+
+      // Initialize AWS
+      List<Provider> providerList = Provider.find.where().findList();
+      for (Provider provider : providerList) {
+        if (provider.code.equals("aws")) {
+          awsInitializer.initialize(provider.customerUUID, provider.uuid);
+          break;
+        }
       }
 
       // Load metrics configurations.
