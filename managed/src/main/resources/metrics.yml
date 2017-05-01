@@ -506,6 +506,37 @@ lsm_rocksdb_compaction:
         "rocksdb.compact.read.bytes": "Bytes Read"
         "rocksdb.compact.write.bytes": "Bytes Written"
 
+lsm_rocksdb_compaction_numfiles:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "avg"
+  operator: "> 0"
+  filters:
+    type: "rocksdb.numfiles.in.singlecompaction.avg"
+  group_by: "exported_instance"
+  layout:
+    title: "Compaction num files"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+          "rocksdb.numfiles.in.singlecompaction.avg": "Avg"
+
+lsm_rocksdb_compaction_time:
+  metric: "collectd_yb_tserver_counter_total"
+  function: "rate|avg"
+  range: "1m"
+  operator: "/ 1000000"
+  filters:
+    type: "rocksdb.compaction.times.micros.avg"
+  group_by: "exported_instance"
+  layout:
+    title: "Compaction time (sec)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+          "rocksdb.compaction.times.micros.avg": "Avg"
+
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "collectd_yb_cql_counter_total"
