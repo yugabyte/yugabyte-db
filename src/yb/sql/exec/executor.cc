@@ -533,6 +533,26 @@ CHECKED_STATUS Executor::ExprToPB(const PTExpr::SharedPtr& expr,
       break;
     }
 
+    case InternalType::kTimeuuidValue: {
+      EvalTimeUuidValue timeuuid_value;
+      RETURN_NOT_OK(EvalExpr(expr, &timeuuid_value));
+
+      if (timeuuid_value.is_null()) {
+        VLOG(3) << "Expr actual value = null";
+      } else {
+        Uuid &actual_value = timeuuid_value.value_;
+        RETURN_NOT_OK(actual_value.IsTimeUuid());
+        VLOG(3) << "Expr actual value = " << actual_value.ToString();
+        YQLValue::set_timeuuid_value(actual_value, col_pb);
+        string bytes;
+        RETURN_NOT_OK(actual_value.ToBytes(&bytes));
+        if (row != nullptr) {
+          RETURN_NOT_OK(row->SetTimeUuid(col_index, Slice(bytes)));
+        }
+      }
+      break;
+    }
+
     case InternalType::kBinaryValue: {
       EvalBinaryValue binary_value;
       RETURN_NOT_OK(EvalExpr(expr, &binary_value));

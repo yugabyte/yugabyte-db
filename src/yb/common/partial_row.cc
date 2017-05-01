@@ -198,6 +198,10 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
       RETURN_NOT_OK(SetUuid(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
+    case TIMEUUID: {
+      RETURN_NOT_OK(SetTimeUuid(column_idx, *reinterpret_cast<const Slice*>(val)));
+      break;
+    }
     case DECIMAL: FALLTHROUGH_INTENDED;
     default: {
       return STATUS(InvalidArgument, "Unknown column type in schema",
@@ -270,6 +274,9 @@ Status YBPartialRow::SetInet(const Slice& col_name, const Slice& val) {
 Status YBPartialRow::SetUuid(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<UUID> >(col_name, val);
 }
+Status YBPartialRow::SetTimeUuid(const Slice& col_name, const Slice& val) {
+  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_name, val);
+}
 Status YBPartialRow::SetDecimal(const Slice& col_name, const Slice& val) {
   return Set<TypeTraits<DECIMAL> >(col_name, val, false);
 }
@@ -302,6 +309,9 @@ Status YBPartialRow::SetInet(int col_idx, const Slice& val) {
 }
 Status YBPartialRow::SetUuid(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<UUID> >(col_idx, val);
+}
+Status YBPartialRow::SetTimeUuid(int col_idx, const Slice& val) {
+  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_idx, val);
 }
 Status YBPartialRow::SetDecimal(int col_idx, const Slice& val) {
   return Set<TypeTraits<DECIMAL> >(col_idx, val, false);
@@ -404,6 +414,9 @@ template
 Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(int col_idx, const Slice& val);
 
 template
+Status YBPartialRow::SetSliceCopy<TypeTraits<TIMEUUID> >(int col_idx, const Slice& val);
+
+template
 Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(const Slice& col_name, const Slice& val);
 
 template
@@ -414,6 +427,9 @@ Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(const Slice& col_name, cons
 
 template
 Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(const Slice& col_name, const Slice& val);
+
+template
+Status YBPartialRow::SetSliceCopy<TypeTraits<TIMEUUID> >(const Slice& col_name, const Slice& val);
 
 template
 Status YBPartialRow::Set<TypeTraits<INT8> >(int col_idx,
@@ -586,7 +602,9 @@ Status YBPartialRow::GetInet(const Slice& col_name, Slice* val) const {
 Status YBPartialRow::GetUuid(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<UUID> >(col_name, val);
 }
-
+Status YBPartialRow::GetTimeUuid(const Slice& col_name, Slice* val) const {
+  return Get<TypeTraits<TIMEUUID> >(col_name, val);
+}
 Status YBPartialRow::GetBool(int col_idx, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_idx, val);
 }
@@ -622,6 +640,9 @@ Status YBPartialRow::GetInet(int col_idx, Slice* val) const {
 }
 Status YBPartialRow::GetUuid(int col_idx, Slice* val) const {
   return Get<TypeTraits<UUID> >(col_idx, val);
+}
+Status YBPartialRow::GetTimeUuid(int col_idx, Slice* val) const {
+  return Get<TypeTraits<TIMEUUID> >(col_idx, val);
 }
 
 template<typename T>

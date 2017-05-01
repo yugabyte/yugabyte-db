@@ -109,5 +109,12 @@ PTUuid::PTUuid(MemoryContext *memctx, YBLocation::SharedPtr loc)
 PTUuid::~PTUuid() {
 }
 
+PTTimeUuid::PTTimeUuid(MemoryContext *memctx, YBLocation::SharedPtr loc)
+    : PTPrimitiveType<InternalType::kTimeuuidValue, DataType::TIMEUUID>(memctx, loc) {
+}
+
+PTTimeUuid::~PTTimeUuid() {
+}
+
 }  // namespace sql
 }  // namespace yb

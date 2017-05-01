@@ -95,22 +95,22 @@ public class TestAscendingOrder extends TestBase {
   }
 
   @Test
-  public void testInt8Desc() throws Exception {
+  public void testInt8Asc() throws Exception {
     intAsc("tinyint", -128, 127);
   }
 
   @Test
-  public void testInt16Desc() throws Exception {
+  public void testInt16Asc() throws Exception {
     intAsc("smallint", -32768, 32767);
   }
 
   @Test
-  public void testInt32Desc() throws Exception {
+  public void testInt32Asc() throws Exception {
     intAsc("int", Integer.MIN_VALUE, Integer.MAX_VALUE);
   }
 
   @Test
-  public void testInt64Desc() throws Exception {
+  public void testInt64Asc() throws Exception {
     intAsc("bigint", Long.MIN_VALUE, Long.MAX_VALUE);
   }
 
@@ -184,7 +184,7 @@ public class TestAscendingOrder extends TestBase {
   }
 
   @Test
-  public void testInetDesc() throws Exception {
+  public void testInetAsc() throws Exception {
     List<String> values = new ArrayList<String>(
       Arrays.asList("'1.2.3.4'", "'180::2978:9018:b288:3f6c'", "'2.2.3.4'"));
     List<String> randomValues = new ArrayList<String>(values);
@@ -206,7 +206,7 @@ public class TestAscendingOrder extends TestBase {
   }
 
   @Test
-  public void testUUIDDesc() throws Exception {
+  public void testUUIDAsc() throws Exception {
     // UUIDs in ascending order.
     List <String> values = new ArrayList<String>(
       Arrays.asList(
@@ -225,6 +225,33 @@ public class TestAscendingOrder extends TestBase {
     List<String> randomValues = new ArrayList<String>(values);
     Collections.shuffle(randomValues);
     ResultSet rs = createInsertAndSelectAsc("uuid", randomValues);
+    assertEquals(rs.getAvailableWithoutFetching(), values.size());
+
+    // Rows should come sorted by column r1 in ascending order.
+    for (int i = 0; i < values.size(); i++) {
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals(values.get(i), row.getUUID("r1").toString());
+      assertEquals("b", row.getString("r2"));
+      assertEquals(1, row.getInt("v1"));
+      assertEquals("c", row.getString("v2"));
+    }
+
+    dropTable();
+  }
+
+  @Test
+  public void testTimeUUIDAsc() throws Exception {
+    // UUIDs in ascending order.
+    List <String> values = new ArrayList<String>(
+      Arrays.asList(
+        "040c318e-3422-11e7-a919-92ebcb67fe33",
+        "36fa2f10-3422-11e7-b687-92ebcb67fe33",
+        "5c077b28-3422-11e7-a919-92ebcb67fe33",
+        "692c076a-3422-11e7-b687-92ebcb67fe33"));
+    List<String> randomValues = new ArrayList<String>(values);
+    Collections.shuffle(randomValues);
+    ResultSet rs = createInsertAndSelectAsc("timeuuid", randomValues);
     assertEquals(rs.getAvailableWithoutFetching(), values.size());
 
     // Rows should come sorted by column r1 in ascending order.

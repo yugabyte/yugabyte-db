@@ -155,6 +155,10 @@ Status YBScanBatch::RowPtr::GetUuid(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<UUID> >(col_name, val);
 }
 
+Status YBScanBatch::RowPtr::GetTimeUuid(const Slice& col_name, Slice* val) const {
+  return Get<TypeTraits<TIMEUUID> >(col_name, val);
+}
+
 Status YBScanBatch::RowPtr::GetBool(int col_idx, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_idx, val);
 }
@@ -201,6 +205,10 @@ Status YBScanBatch::RowPtr::GetInet(int col_idx, Slice* val) const {
 
 Status YBScanBatch::RowPtr::GetUuid(int col_idx, Slice* val) const {
   return Get<TypeTraits<UUID> >(col_idx, val);
+}
+
+Status YBScanBatch::RowPtr::GetTimeUuid(int col_idx, Slice* val) const {
+  return Get<TypeTraits<TIMEUUID> >(col_idx, val);
 }
 
 template<typename T>

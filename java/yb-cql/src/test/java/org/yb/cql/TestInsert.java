@@ -291,6 +291,78 @@ public class TestInsert extends TestBase {
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
   }
 
+
+  @Test
+  public void testInsertWithTimeUuid() throws Exception {
+    String tableName = "table_with_timeuuid";
+    session.execute(String.format("CREATE TABLE %s (c1 timeuuid, c2 timeuuid, c3 int, " +
+      "c4 timeuuid, c5 timeuuid, PRIMARY KEY(c3));", tableName));
+    session.execute(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "467c4b82-ef22-1173-bced-0eba570d969e, " +
+      "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-1073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+    // TODO: Test for UUID in where clause after literals.
+    ResultSet rs = session.execute(
+      "SELECT c1, c2, c3, c4, c5 FROM table_with_timeuuid WHERE c3 = ?",
+      1);
+    Row row = rs.one();
+
+    assertEquals(UUID.fromString("467c4b82-ef22-1173-bced-0eba570d969e"), row.getUUID("c1"));
+    assertEquals(UUID.fromString("c57c4b82-ef52-1073-aced-0eba570d969e"), row.getUUID("c2"));
+    assertEquals(1, row.getInt("c3"));
+    assertEquals(UUID.fromString("157c4b82-ff32-1073-bced-0eba570d969e"), row.getUUID("c4"));
+    assertEquals(UUID.fromString("b57c4b82-ef52-1173-bced-0eba570d969e"), row.getUUID("c5"));
+    assertNull(rs.one());
+
+    // Now try a bunch of invalid inserts.
+    // Short TimeUUIDs for c1.
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "67c4b82-ef22-1173-bced-0eba570d969e, " +
+      "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-1073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "467c4b82-e22-1173-bced-0eba570d969e, " +
+      "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-1073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "467c4b82-ef22-113-bced-0eba570d969e, " +
+      "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-1073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "467c4b82-ef22-1173-bced-0eba570d96, " +
+      "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-1073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+
+    // Invalid type for c1.
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "2, " +
+      "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-1073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+
+    // Invalid UUID for c2.
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "467c4b82-ef22-1173-bced-0eba570d969e, " +
+      "X57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-1073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+
+    // Valid UUID for c1, invalid TIMEUUID for c4.
+    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+      "467c4b82-ef22-1173-bced-0eba570d969e, " +
+      "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
+      "157c4b82-ff32-4073-bced-0eba570d969e, " +
+      "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
+  }
+
   @Test
   public void testInsertIntoSystemNamespace() throws Exception {
     RunInvalidStmt("INSERT INTO system.peers (h1, h2, r1, r2) VALUES (1, '1', 1, '1');");

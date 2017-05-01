@@ -64,6 +64,7 @@ public class TestCreateTable extends TestBase {
                          "c9 timestamp, " +
                          "c10 inet, " +
                          "c11 uuid, " +
+                         "c12 timeuuid, " +
                          "primary key (c1));";
     session.execute(create_stmt);
 

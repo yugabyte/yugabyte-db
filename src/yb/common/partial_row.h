@@ -87,6 +87,7 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS SetTimestamp(int col_idx, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetInet(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetUuid(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetTimeUuid(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   CHECKED_STATUS SetFloat(int col_idx, float val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDouble(int col_idx, double val) WARN_UNUSED_RESULT;
@@ -101,6 +102,7 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS SetDecimal(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetDecimal(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
   CHECKED_STATUS SetUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  CHECKED_STATUS SetTimeUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
 
   // Copies 'val' immediately.
   CHECKED_STATUS SetStringCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
@@ -173,6 +175,8 @@ class YB_EXPORT YBPartialRow {
   CHECKED_STATUS GetDecimal(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetUuid(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimeUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimeUuid(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   //------------------------------------------------------------
   // Key-encoding related functions

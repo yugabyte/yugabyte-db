@@ -780,13 +780,13 @@ PrimitiveValue PrimitiveValue::FromYQLValuePB(const YQLType& yql_type, const YQL
     case TIMESTAMP: return PrimitiveValue(YQLValue::timestamp_value(value), sort_order);
     case INET: return PrimitiveValue(YQLValue::inetaddress_value(value), sort_order);
     case UUID: return PrimitiveValue(YQLValue::uuid_value(value), sort_order);
+    case TIMEUUID: return PrimitiveValue(YQLValue::timeuuid_value(value), sort_order);
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case VARINT: FALLTHROUGH_INTENDED;
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;
-    case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;
     case UINT8:  FALLTHROUGH_INTENDED;
@@ -846,6 +846,9 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
     case UUID:
       YQLValue::set_uuid_value(primitive_value.GetUuid(), yql_value);
       return;
+    case TIMEUUID:
+      YQLValue::set_timeuuid_value(primitive_value.GetUuid(), yql_value);
+      return;
     case STRING:
       YQLValue::set_string_value(primitive_value.GetString(), yql_value);
       return;
@@ -858,7 +861,6 @@ void PrimitiveValue::ToYQLValuePB(const PrimitiveValue& primitive_value, const Y
     case MAP: FALLTHROUGH_INTENDED;
     case SET: FALLTHROUGH_INTENDED;
     case LIST: FALLTHROUGH_INTENDED;
-    case TIMEUUID: FALLTHROUGH_INTENDED;
     case TUPLE: FALLTHROUGH_INTENDED;
     case TYPEARGS: FALLTHROUGH_INTENDED;
 

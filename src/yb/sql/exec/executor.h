@@ -104,6 +104,7 @@ class Executor {
   CHECKED_STATUS EvalTimestampExpr(const PTExpr::SharedPtr& expr, EvalTimestampValue *result);
   CHECKED_STATUS EvalInetaddressExpr(const PTExpr::SharedPtr& expr, EvalInetaddressValue *result);
   CHECKED_STATUS EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *result);
+  CHECKED_STATUS EvalTimeUuidExpr(const PTExpr::SharedPtr& expr, EvalTimeUuidValue *result);
   CHECKED_STATUS EvalDecimalExpr(const PTExpr::SharedPtr& expr, EvalDecimalValue *result);
 
   CHECKED_STATUS ConvertFromInt(EvalValue *result, const EvalIntValue& int_value);
@@ -113,6 +114,8 @@ class Executor {
   CHECKED_STATUS ConvertFromDecimal(EvalValue *result, const EvalDecimalValue& decimal_value);
   CHECKED_STATUS ConvertFromBool(EvalValue *result, const EvalBoolValue& bool_value);
   CHECKED_STATUS ConvertFromBinary(EvalValue *result, const EvalBinaryValue& binary_value);
+  CHECKED_STATUS ConvertFromUuid(EvalValue *result, const EvalUuidValue& uuid_value);
+  CHECKED_STATUS ConvertFromTimeUuid(EvalValue *result, const EvalTimeUuidValue& uuid_value);
  private:
   //------------------------------------------------------------------------------------------------
   // Convert expression to protobuf.

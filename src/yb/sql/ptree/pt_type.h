@@ -262,6 +262,22 @@ class PTUuid : public PTPrimitiveType<InternalType::kUuidValue,
   }
 };
 
+class PTTimeUuid : public PTPrimitiveType<InternalType::kTimeuuidValue,
+    DataType::TIMEUUID> {
+ public:
+  typedef MCSharedPtr<PTTimeUuid> SharedPtr;
+  typedef MCSharedPtr<const PTTimeUuid> SharedPtrConst;
+
+  explicit PTTimeUuid(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr);
+
+  virtual ~PTTimeUuid();
+
+  template<typename... TypeArgs>
+  inline static PTTimeUuid::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTTimeUuid>(memctx, std::forward<TypeArgs>(args)...);
+  }
+};
+
 //--------------------------------------------------------------------------------------------------
 // Datetime types.
 

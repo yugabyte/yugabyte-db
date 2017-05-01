@@ -123,6 +123,8 @@ class YB_EXPORT YBColumnSchema {
         return InternalType::kInetaddressValue;
       case UUID:
         return InternalType::kUuidValue;
+      case TIMEUUID:
+        return InternalType::kTimeuuidValue;
       case BOOL:
         return InternalType::kBoolValue;
       case BINARY:
@@ -137,7 +139,6 @@ class YB_EXPORT YBColumnSchema {
         return InternalType::VALUE_NOT_SET;
       case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
       case VARINT: FALLTHROUGH_INTENDED;
-      case TIMEUUID: FALLTHROUGH_INTENDED;
       case TUPLE: FALLTHROUGH_INTENDED;
       case TYPEARGS: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;

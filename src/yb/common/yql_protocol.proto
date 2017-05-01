@@ -34,8 +34,10 @@ message YQLValuePB {
     string decimal_value = 15;
     string varint_value = 16;
     string varint_string_value = 17;
-    // raw bytes for uuid address.
+    // raw bytes for uuid value.
     bytes uuid_value = 18;
+    // raw bytes for timeuuid value.
+    bytes timeuuid_value = 19;
   }
 }
 

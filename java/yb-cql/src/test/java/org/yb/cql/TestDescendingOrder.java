@@ -271,6 +271,33 @@ public class TestDescendingOrder extends TestBase {
     dropTable();
   }
 
+  @Test
+  public void testTimeUUIDDesc() throws Exception {
+    // UUIDs in ascending order.
+    List <String> values = new ArrayList<String>(
+      Arrays.asList(
+        "040c318e-3422-11e7-a919-92ebcb67fe33",
+        "36fa2f10-3422-11e7-b687-92ebcb67fe33",
+        "5c077b28-3422-11e7-a919-92ebcb67fe33",
+        "692c076a-3422-11e7-b687-92ebcb67fe33"));
+    List<String> randomValues = new ArrayList<String>(values);
+    Collections.shuffle(randomValues);
+    ResultSet rs = createInsertAndSelectDesc("timeuuid", randomValues);
+    assertEquals(rs.getAvailableWithoutFetching(), values.size());
+
+    // Rows should come sorted by column r1 in descending order.
+    for (int i = values.size() - 1; i >= 0; i--) {
+      Row row = rs.one();
+      assertEquals(1, row.getInt("h1"));
+      assertEquals(values.get(i), row.getUUID("r1").toString());
+      assertEquals("b", row.getString("r2"));
+      assertEquals(1, row.getInt("v1"));
+      assertEquals("c", row.getString("v2"));
+    }
+
+    dropTable();
+  }
+
   private void insertValues(int[] numbers, String[] strings) throws Exception {
     for (int number : numbers) {
       for (String s : strings) {

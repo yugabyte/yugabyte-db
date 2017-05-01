@@ -145,6 +145,8 @@ class YB_EXPORT YBScanBatch::RowPtr {
   CHECKED_STATUS GetInet(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
   CHECKED_STATUS GetUuid(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimeUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  CHECKED_STATUS GetTimeUuid(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   // Raw cell access. Should be avoided unless absolutely necessary.
   const void* cell(int col_idx) const;

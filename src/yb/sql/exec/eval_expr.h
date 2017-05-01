@@ -105,6 +105,14 @@ struct EvalUuidValue: public EvalValue {
   Uuid value_;
 };
 
+struct EvalTimeUuidValue: public EvalValue {
+  InternalType datatype() {
+    return InternalType::kTimeuuidValue;
+  }
+
+  Uuid value_;
+};
+
 struct EvalBinaryValue : public EvalValue {
   InternalType datatype() {
     return InternalType::kBinaryValue;

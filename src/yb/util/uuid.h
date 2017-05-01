@@ -59,6 +59,13 @@ class Uuid {
 
   CHECKED_STATUS DecodeFromComparableSlice(const Slice& slice, size_t size_hint = 0);
 
+  CHECKED_STATUS IsTimeUuid() const {
+    if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
+      return Status::OK();
+    }
+    return STATUS_SUBSTITUTE(InvalidArgument,
+                             "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
+  }
 
   bool operator==(const Uuid& other) const {
     return (boost_uuid_ == other.boost_uuid_);

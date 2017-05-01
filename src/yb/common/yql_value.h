@@ -56,6 +56,7 @@ class YQLValue {
   virtual const YQLSeqValuePB set_value() const = 0;
   virtual const YQLSeqValuePB list_value() const = 0;
   virtual Uuid uuid_value() const = 0;
+  virtual Uuid timeuuid_value() const = 0;
 
   //----------------------------------- set value methods -----------------------------------
   // Set different datatype values.
@@ -76,6 +77,7 @@ class YQLValue {
   virtual void set_binary_value(const void* val, size_t size) = 0;
   virtual void set_inetaddress_value(const InetAddress& val) = 0;
   virtual void set_uuid_value(const Uuid& val) = 0;
+  virtual void set_timeuuid_value(const Uuid& val) = 0;
 
   // for collections the setters just allocate the message and set the correct value type
   virtual void set_map_value() = 0;
@@ -197,6 +199,14 @@ class YQLValue {
     return uuid;
   }
 
+  static Uuid timeuuid_value(const YQLValuePB& v) {
+    CHECK(v.has_timeuuid_value());
+    Uuid timeuuid;
+    CHECK_OK(timeuuid.FromBytes(v.timeuuid_value()));
+    CHECK_OK(timeuuid.IsTimeUuid());
+    return timeuuid;
+  }
+
 #undef YQL_GET_VALUE
 
   //----------------------------------- set value methods -----------------------------------
@@ -233,6 +243,13 @@ class YQLValue {
     std::string bytes;
     CHECK_OK(val.ToBytes(&bytes));
     v->set_uuid_value(bytes);
+  }
+
+  static void set_timeuuid_value(const Uuid& val, YQLValuePB *v) {
+    CHECK_OK(val.IsTimeUuid());
+    std::string bytes;
+    CHECK_OK(val.ToBytes(&bytes));
+    v->set_timeuuid_value(bytes);
   }
 
   static void set_timestamp_value(const int64_t val, YQLValuePB *v) { v->set_timestamp_value(val); }
@@ -364,6 +381,9 @@ class YQLValueWithPB : public YQLValue {
   virtual Uuid uuid_value() const override {
     return YQLValue::uuid_value(value_);
   }
+  virtual Uuid timeuuid_value() const override {
+    return YQLValue::timeuuid_value(value_);
+  }
 
   //----------------------------------- set value methods -----------------------------------
   virtual void set_int8_value(int8_t val) override { YQLValue::set_int8_value(val, &value_); }
@@ -396,6 +416,9 @@ class YQLValueWithPB : public YQLValue {
   }
   virtual void set_uuid_value(const Uuid& val) override {
     YQLValue::set_uuid_value(val, &value_);
+  }
+  virtual void set_timeuuid_value(const Uuid& val) override {
+    YQLValue::set_timeuuid_value(val, &value_);
   }
   virtual void set_binary_value(const std::string& val) override {
     YQLValue::set_binary_value(val, &value_);

@@ -69,11 +69,11 @@ Status CQLMessage::QueryParameters::GetBindVariable(
           case DataType::LIST: FALLTHROUGH_INTENDED;
           case DataType::MAP: FALLTHROUGH_INTENDED;
           case DataType::SET: FALLTHROUGH_INTENDED;
-          case DataType::UUID:
+          case DataType::UUID: FALLTHROUGH_INTENDED;
+          case DataType::TIMEUUID:
             value->SetNull();
             return Status::OK();
           case DataType::UNKNOWN_DATA: FALLTHROUGH_INTENDED;
-          case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
           case DataType::TUPLE: FALLTHROUGH_INTENDED;
           case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
           case DataType::UINT8: FALLTHROUGH_INTENDED;
@@ -281,6 +281,14 @@ Status CQLRequest::ParseUUID(string* value) {
   *value = string(ToChar(body_.data()), kUUIDSize);
   body_.remove_prefix(kUUIDSize);
   DVLOG(4) << "CQL uuid " << *value;
+  return Status::OK();
+}
+
+Status CQLRequest::ParseTimeUUID(string* value) {
+  RETURN_NOT_ENOUGH(kUUIDSize);
+  *value = string(ToChar(body_.data()), kUUIDSize);
+  body_.remove_prefix(kUUIDSize);
+  DVLOG(4) << "CQL timeuuid " << *value;
   return Status::OK();
 }
 
@@ -751,6 +759,16 @@ void SerializeUUID(const string& value, faststring* mesg) {
     mesg->append(empty_uuid, sizeof(empty_uuid));
   }
 }
+
+void SerializeTimeUUID(const string& value, faststring* mesg) {
+  if (value.size() == CQLMessage::kUUIDSize) {
+    mesg->append(value);
+  } else {
+    LOG(ERROR) << "Internal error: inconsistent TimeUUID size: " << value.size();
+    uint8_t empty_uuid[CQLMessage::kUUIDSize] = {0};
+    mesg->append(empty_uuid, sizeof(empty_uuid));
+  }
+}
 #endif
 
 void SerializeStringList(const vector<string>& list, faststring* mesg) {
@@ -1095,6 +1113,9 @@ ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
     case DataType::UUID:
       id = Id::UUID;
       return;
+    case DataType::TIMEUUID:
+      id = Id::TIMEUUID;
+      return;
     case DataType::BINARY:
       id = Id::BLOB;
       return;
@@ -1121,7 +1142,6 @@ ResultResponse::RowsMetadata::Type::Type(const YQLType type) {
 
     case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
     case DataType::VARINT: FALLTHROUGH_INTENDED;
-    case DataType::TIMEUUID: FALLTHROUGH_INTENDED;
     case DataType::TUPLE: FALLTHROUGH_INTENDED;
     case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
 

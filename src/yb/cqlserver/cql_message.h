@@ -111,6 +111,7 @@ class CQLMessage {
   //   String     -> std::string
   //   LongString -> std::string
   //   UUID       -> std::string
+  //   TimeUUID   -> std::string
   //   StringList -> std::vector<String>
   //   Bytes      -> std::string
   //   ShortBytes -> std::string
@@ -249,6 +250,7 @@ class CQLRequest : public CQLMessage {
   CHECKED_STATUS ParseString(std::string* value);
   CHECKED_STATUS ParseLongString(std::string* value);
   CHECKED_STATUS ParseUUID(std::string* value);
+  CHECKED_STATUS ParseTimeUUID(std::string* value);
   CHECKED_STATUS ParseStringList(std::vector<std::string>* list);
   CHECKED_STATUS ParseBytes(std::string* value);
   CHECKED_STATUS ParseShortBytes(std::string* value);

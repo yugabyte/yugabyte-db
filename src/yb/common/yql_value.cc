@@ -18,7 +18,6 @@
 #define YQL_UNSUPPORTED_TYPES_IN_SWITCH \
   case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
   case VARINT: FALLTHROUGH_INTENDED;    \
-  case TIMEUUID: FALLTHROUGH_INTENDED;  \
   case TUPLE: FALLTHROUGH_INTENDED;     \
   case TYPEARGS: FALLTHROUGH_INTENDED;  \
   case UNKNOWN_DATA
@@ -71,6 +70,8 @@ int YQLValue::CompareTo(const YQLValue& other) const {
       return GenericCompare(inetaddress_value(), other.inetaddress_value());
     case InternalType::kUuidValue:
       return GenericCompare(uuid_value(), other.uuid_value());
+    case InternalType::kTimeuuidValue:
+      return GenericCompare(timeuuid_value(), other.timeuuid_value());
     case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kListValue:
@@ -152,6 +153,14 @@ void YQLValue::Serialize(
     case UUID: {
       std::string bytes;
       CHECK_OK(uuid_value().ToBytes(&bytes));
+      CQLEncodeBytes(bytes, buffer);
+      return;
+    }
+    case TIMEUUID: {
+      std::string bytes;
+      Uuid uuid = timeuuid_value();
+      CHECK_OK(uuid.IsTimeUuid());
+      CHECK_OK(uuid.ToBytes(&bytes));
       CQLEncodeBytes(bytes, buffer);
       return;
     }
@@ -287,6 +296,15 @@ Status YQLValue::Deserialize(const YQLType yql_type, const YQLClient client, Sli
       set_uuid_value(uuid);
       return Status::OK();
     }
+    case TIMEUUID: {
+      string bytes;
+      RETURN_NOT_OK(CQLDecodeBytes(len, data, &bytes));
+      Uuid uuid;
+      RETURN_NOT_OK(uuid.FromBytes(bytes));
+      RETURN_NOT_OK(uuid.IsTimeUuid());
+      set_timeuuid_value(uuid);
+      return Status::OK();
+    }
     case MAP: {
       YQLType keys_type = yql_type.params()->at(0);
       YQLType values_type = yql_type.params()->at(1);
@@ -360,6 +378,7 @@ string YQLValue::ToString() const {
     case InternalType::kTimestampValue: return "timestamp:" + timestamp_value().ToFormattedString();
     case InternalType::kInetaddressValue: return "inetaddress:" + inetaddress_value().ToString();
     case InternalType::kUuidValue: return "uuid:" + uuid_value().ToString();
+    case InternalType::kTimeuuidValue: return "timeuuid:" + timeuuid_value().ToString();
     case InternalType::kBoolValue: return (bool_value() ? "bool:true" : "bool:false");
     case InternalType::kBinaryValue: return "binary:0x" + b2a_hex(binary_value());
     case InternalType::kMapValue: {
@@ -433,6 +452,7 @@ void YQLValue::SetNull(YQLValuePB* v) {
     case YQLValuePB::kBinaryValue: v->clear_binary_value(); return;
     case YQLValuePB::kInetaddressValue: v->clear_inetaddress_value(); return;
     case YQLValuePB::kUuidValue:   v->clear_uuid_value(); return;
+    case YQLValuePB::kTimeuuidValue:    v->clear_timeuuid_value(); return;
     case YQLValuePB::kMapValue:    v->clear_map_value(); return;
     case YQLValuePB::kSetValue:    v->clear_set_value(); return;
     case YQLValuePB::kListValue:   v->clear_list_value(); return;
@@ -467,6 +487,8 @@ int YQLValue::CompareTo(const YQLValuePB& lhs, const YQLValuePB& rhs) {
       return GenericCompare(lhs.inetaddress_value(), rhs.inetaddress_value());
     case YQLValuePB::kUuidValue:
       return GenericCompare(lhs.uuid_value(), rhs.uuid_value());
+    case YQLValuePB::kTimeuuidValue:
+      return GenericCompare(lhs.timeuuid_value(), rhs.timeuuid_value());
     case YQLValuePB::kMapValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kSetValue: FALLTHROUGH_INTENDED;
     case YQLValuePB::kListValue:

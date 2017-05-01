@@ -625,14 +625,15 @@ public class TestBindVariable extends TestBase {
                          "c9 timestamp, " +
                          "c10 inet, " +
                          "c11 uuid, " +
-                         "c12 blob," +
+                         "c12 timeuuid, " +
+                         "c13 blob," +
                          "primary key (c1));";
     session.execute(create_stmt);
 
     // Insert data of all supported datatypes with bind by position.
     String insert_stmt = "INSERT INTO test_bind " +
-                         "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                         "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     LOG.info("EXECUTING");
@@ -644,6 +645,7 @@ public class TestBindVariable extends TestBase {
                     new Date(2017, 1, 1),
                     InetAddress.getByName("1.2.3.4"),
                     UUID.fromString("11111111-2222-3333-4444-555555555555"),
+                    UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"),
                     makeByteBuffer(133143986176L)); // `0000001f00000000` to check zero-bytes
     LOG.info("EXECUTED");
 
@@ -665,8 +667,9 @@ public class TestBindVariable extends TestBase {
       assertEquals(new Date(2017, 1, 1), row.getTimestamp("c9"));
       assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet("c10"));
       assertEquals(UUID.fromString("11111111-2222-3333-4444-555555555555"), row.getUUID("c11"));
+      assertEquals(UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"), row.getUUID("c12"));
       assertEquals(makeBlobString(makeByteBuffer(133143986176L)),
-                   makeBlobString(row.getBytes("c12")));
+                   makeBlobString(row.getBytes("c13")));
     }
 
     // Update data of all supported datatypes with bind by position.
@@ -681,7 +684,8 @@ public class TestBindVariable extends TestBase {
                          "c9 = ?, " +
                          "c10 = ?, " +
                          "c11 = ?, " +
-                         "c12 = ? " +
+                         "c12 = ?, " +
+                         "c13 = ? " +
                          "WHERE c1 = ?;";
     session.execute(update_stmt,
                     new HashMap<String, Object>() {{
@@ -696,7 +700,8 @@ public class TestBindVariable extends TestBase {
                       put("c9", new Date(2017, 11, 11));
                       put("c10", InetAddress.getByName("1.2.3.4"));
                       put("c11", UUID.fromString("22222222-2222-3333-4444-555555555555"));
-                      put("c12", makeByteBuffer(9223372036854775807L)); // max long
+                      put("c12", UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"));
+                      put("c13", makeByteBuffer(9223372036854775807L)); // max long
                     }});
 
     {
@@ -717,8 +722,9 @@ public class TestBindVariable extends TestBase {
       assertEquals(new Date(2017, 11, 11), row.getTimestamp("c9"));
       assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet("c10"));
       assertEquals(UUID.fromString("22222222-2222-3333-4444-555555555555"), row.getUUID("c11"));
+      assertEquals(UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"), row.getUUID("c12"));
       assertEquals(makeBlobString(makeByteBuffer(9223372036854775807L)),
-                   makeBlobString(row.getBytes("c12")));
+                   makeBlobString(row.getBytes("c13")));
     }
 
     LOG.info("End test");

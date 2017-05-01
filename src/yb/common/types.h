@@ -375,6 +375,19 @@ struct DataTypeTraits<UUID> : public DerivedTypeTraits<BINARY>{
 };
 
 template<>
+struct DataTypeTraits<TIMEUUID> : public DerivedTypeTraits<BINARY>{
+  static const char* name() {
+    return "timeuuid";
+  }
+  static void AppendDebugStringForValue(const void *val, string *str) {
+    const Slice *s = reinterpret_cast<const Slice *>(val);
+    Uuid uuid;
+    DCHECK(uuid.FromSlice(*s).ok());
+    str->append(uuid.ToString());
+  }
+};
+
+template<>
 struct DataTypeTraits<MAP> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "map";
@@ -527,6 +540,7 @@ class Variant {
       case STRING: FALLTHROUGH_INTENDED;
       case INET: FALLTHROUGH_INTENDED;
       case UUID: FALLTHROUGH_INTENDED;
+      case TIMEUUID: FALLTHROUGH_INTENDED;
       case BINARY:
         {
           const Slice *str = static_cast<const Slice *>(value);
@@ -596,6 +610,7 @@ class Variant {
       case STRING:       FALLTHROUGH_INTENDED;
       case INET:         FALLTHROUGH_INTENDED;
       case UUID:         FALLTHROUGH_INTENDED;
+      case TIMEUUID:     FALLTHROUGH_INTENDED;
       case BINARY:       return &vstr_;
       case MAP: FALLTHROUGH_INTENDED;
       case SET: FALLTHROUGH_INTENDED;

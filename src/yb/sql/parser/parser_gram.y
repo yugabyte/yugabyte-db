@@ -559,8 +559,8 @@ DECLARE_bool(yql_experiment_support_expression);
                           STRICT_P STRIP_P SUBSTRING SYMMETRIC SYSID SYSTEM_P
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
-                          THEN TIME TIMESTAMP TINYINT TO TOKEN TRAILING TRANSACTION TRANSFORM TREAT
-                          TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
+                          THEN TIME TIMESTAMP TIMEUUID TINYINT TO TOKEN TRAILING TRANSACTION
+                          TRANSFORM TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
                           UNLOGGED UNTIL UPDATE USE USER USING UUID
@@ -4112,6 +4112,9 @@ SimpleTypename:
   | UUID {
     $$ = MAKE_NODE(@1, PTUuid);
   }
+  | TIMEUUID {
+    $$ = MAKE_NODE(@1, PTTimeUuid);
+  }
   | BLOB {
     $$ = MAKE_NODE(@1, PTBlob);
   }
@@ -4753,6 +4756,7 @@ col_name_keyword:
   | TEXT_P { $$ = $1; }
   | TIME { $$ = $1; }
   | TIMESTAMP { $$ = $1; }
+  | TIMEUUID { $$ = $1; }
   | TINYINT { $$ = $1; }
   | TREAT { $$ = $1; }
   | TRIM { $$ = $1; }

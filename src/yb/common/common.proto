@@ -49,9 +49,9 @@ enum DataType {
   MAP = 15;
   SET = 16;
   UUID = 17;
-  // TIMEUUID and TUPLE are not yet implemented, but they are CQL types. It doesn't hurt
-  // if we remove them or use their slots for different datatypes.
   TIMEUUID = 18;
+  // TUPLE is not yet implemented, but it is a CQL type. It doesn't hurt
+  // if we remove them or use its slot for different datatype.
   TUPLE = 19;
   TYPEARGS = 20;
   // All unsigned datatypes will be removed from YQL because databases do not have these types.

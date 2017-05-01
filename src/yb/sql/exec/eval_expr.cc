@@ -97,7 +97,16 @@ Status Executor::EvalExpr(const PTExpr::SharedPtr& expr, EvalValue *result) {
     }
 
     case InternalType::kUuidValue: {
-      RETURN_NOT_OK(EvalUuidExpr(expr, static_cast<EvalUuidValue*>(result)));
+      EvalUuidValue uuid_value;
+      RETURN_NOT_OK(EvalUuidExpr(expr, &uuid_value));
+      RETURN_NOT_OK(ConvertFromUuid(result, uuid_value));
+      break;
+    }
+
+    case InternalType::kTimeuuidValue: {
+      EvalTimeUuidValue timeuuid_value;
+      RETURN_NOT_OK(EvalTimeUuidExpr(expr, &timeuuid_value));
+      RETURN_NOT_OK(ConvertFromTimeUuid(result, timeuuid_value));
       break;
     }
 
@@ -457,6 +466,32 @@ Status Executor::EvalUuidExpr(const PTExpr::SharedPtr& expr, EvalUuidValue *resu
   return eval_status;
 }
 
+Status Executor::EvalTimeUuidExpr(const PTExpr::SharedPtr& expr, EvalTimeUuidValue *result) {
+  Status eval_status = Status::OK();
+
+  const PTExpr *e = expr.get();
+  switch (expr->expr_op()) {
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        result->value_ = value.timeuuid_value();
+      }
+      break;
+    }
+
+    default:
+      LOG(FATAL) << "Not supported operator";
+  }
+  return eval_status;
+}
+
 Status Executor::ConvertFromInt(EvalValue *result, const EvalIntValue& int_value) {
   if (int_value.is_null()) {
     result->set_null();
@@ -572,13 +607,6 @@ Status Executor::ConvertFromString(EvalValue *result, const EvalStringValue& str
         break;
       }
 
-      case InternalType::kUuidValue: {
-        std::string s = string_value.value_.get()->c_str();
-        Uuid uuid;
-        RETURN_NOT_OK(uuid.FromString(s));
-        static_cast<EvalUuidValue*>(result)->value_ = uuid;
-        break;
-      }
       default:
         LOG(FATAL) << "Illegal datatype conversion";
     }
@@ -657,6 +685,52 @@ Status Executor::ConvertFromBinary(EvalValue *result, const EvalBinaryValue& bin
         a2b_hex(binary_value.value_->c_str(), &hex_value, no_bytes);
         static_cast<EvalBinaryValue *>(result)->value_ =
             MCString::MakeShared(binary_value.value_->mem_ctx(), hex_value.data(), no_bytes);
+        break;
+      }
+
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
+    }
+  }
+  return Status::OK();
+}
+
+Status Executor::ConvertFromUuid(EvalValue *result, const EvalUuidValue& uuid_value) {
+  if (uuid_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kUuidValue: {
+        static_cast<EvalUuidValue*>(result)->value_ = uuid_value.value_;
+        break;
+      }
+
+      case InternalType::kTimeuuidValue: {
+        RETURN_NOT_OK(uuid_value.value_.IsTimeUuid());
+        static_cast<EvalTimeUuidValue*>(result)->value_ = uuid_value.value_;
+        break;
+      }
+
+      default:
+        LOG(FATAL) << "Illegal datatype conversion";
+    }
+  }
+  return Status::OK();
+}
+
+Status Executor::ConvertFromTimeUuid(EvalValue *result, const EvalTimeUuidValue& uuid_value) {
+  if (uuid_value.is_null()) {
+    result->set_null();
+  } else {
+    switch (result->datatype()) {
+      case InternalType::kUuidValue: {
+        static_cast<EvalUuidValue*>(result)->value_ = uuid_value.value_;
+        break;
+      }
+
+      case InternalType::kTimeuuidValue: {
+        RETURN_NOT_OK(uuid_value.value_.IsTimeUuid());
+        static_cast<EvalTimeUuidValue*>(result)->value_ = uuid_value.value_;
         break;
       }
 
