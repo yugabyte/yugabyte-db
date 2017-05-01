@@ -92,7 +92,7 @@ OutboundCall::OutboundCall(
       trace_(new Trace),
       start_(MonoTime::Now(MonoTime::FINE)),
       outbound_call_metrics_(outbound_call_metrics) {
-  TRACE_TO(trace_, "Outbound Call initiated to %s", conn_id.ToString());
+  TRACE_TO(trace_, "Outbound Call initiated to $0", conn_id.ToString());
   if (Trace::CurrentTrace()) {
     Trace::CurrentTrace()->AddChildTrace(trace_.get());
   }
