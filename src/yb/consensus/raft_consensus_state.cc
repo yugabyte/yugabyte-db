@@ -548,6 +548,13 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
   return Status::OK();
 }
 
+void ReplicaState::SetLastCommittedIndexUnlocked(const OpId& committed_index) {
+  DCHECK(update_lock_.is_locked());
+  CHECK_GE(last_received_op_id_.index(), committed_index.index());
+
+  last_committed_index_ = committed_index;
+}
+
 Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
   if(!OpIdEquals(last_committed_index_, MinimumOpId())) {
     return STATUS_SUBSTITUTE(
@@ -564,7 +571,7 @@ Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
     }
   }
 
-  last_committed_index_ = committed_index;
+  SetLastCommittedIndexUnlocked(committed_index);
 
   return Status::OK();
 }
@@ -612,10 +619,15 @@ Status ReplicaState::AdvanceCommittedIndexUnlocked(const OpId& committed_index,
   }
 
   if (pending_txns_.empty()) {
-    last_committed_index_.CopyFrom(committed_index);
     VLOG_WITH_PREFIX_UNLOCKED(1) << "No transactions to mark as committed up to: "
                                  << committed_index.ShortDebugString();
-    return Status::OK();
+    return STATUS_SUBSTITUTE(
+        NotFound,
+        "No pending entries, requested to advance last committed OpId from $0 to $1, "
+            "last received: $2",
+        last_committed_index_.ShortDebugString(),
+        committed_index.ShortDebugString(),
+        last_received_op_id_.ShortDebugString());
   }
 
   // Start at the operation after the last committed one.
@@ -705,7 +717,7 @@ Status ReplicaState::ApplyPendingOperations(IndexToRoundMap::iterator iter,
     round->NotifyReplicationFinished(Status::OK());
   }
 
-  last_committed_index_.CopyFrom(committed_index);
+  SetLastCommittedIndexUnlocked(committed_index);
 
   return Status::OK();
 }

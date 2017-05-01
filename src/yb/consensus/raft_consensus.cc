@@ -1450,10 +1450,6 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
       apply_up_to = request->committed_index();
     }
 
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking committed up to " << apply_up_to.ShortDebugString();
-    TRACE(Substitute("Marking committed up to $0", apply_up_to.ShortDebugString()));
-    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(apply_up_to));
-
     // We can now update the last received watermark.
     //
     // We do it here (and before we actually hear back from the wal whether things
@@ -1471,9 +1467,14 @@ Status RaftConsensus::UpdateReplica(ConsensusRequestPB* request,
       TRACE(Substitute("Updating last received op as $0", last_appended.ShortDebugString()));
       state_->UpdateLastReceivedOpIdUnlocked(last_appended);
     } else {
-      DCHECK_GE(state_->GetLastReceivedOpIdUnlocked().index(),
-                deduped_req.preceding_opid->index());
+      CHECK_GE(state_->GetLastReceivedOpIdUnlocked().index(),
+               deduped_req.preceding_opid->index())
+          << "Committed index: " << state_->GetCommittedOpIdUnlocked();
     }
+
+    VLOG_WITH_PREFIX_UNLOCKED(1) << "Marking committed up to " << apply_up_to.ShortDebugString();
+    TRACE(Substitute("Marking committed up to $0", apply_up_to.ShortDebugString()));
+    CHECK_OK(state_->AdvanceCommittedIndexUnlocked(apply_up_to));
 
     // Fill the response with the current state. We will not mutate anymore state until
     // we actually reply to the leader, we'll just wait for the messages to be durable.

@@ -334,6 +334,8 @@ class ReplicaState {
   CHECKED_STATUS ApplyPendingOperations(IndexToRoundMap::iterator iter,
                                         const OpId& committed_index);
 
+  void SetLastCommittedIndexUnlocked(const OpId& committed_index);
+
   const ConsensusOptions options_;
 
   // The UUID of the local peer.
