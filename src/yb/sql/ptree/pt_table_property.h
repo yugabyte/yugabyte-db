@@ -18,11 +18,29 @@ namespace sql {
 enum class PropertyType : int {
   kTableProperty = 0,
   kClusteringOrder,
+  kTablePropertyMap,
 };
 
 class PTTableProperty : public TreeNode {
  public:
-  static const char kDefaultTimeToLive[];
+  enum class KVProperty : int {
+    kBloomFilterFpChance,
+    kCaching,
+    kComment,
+    kCompaction,
+    kCompression,
+    kCrcCheckChance,
+    kDclocalReadRepairChance,
+    kDefaultTimeToLive,
+    kGcGraceSeconds,
+    kIndexInterval,
+    kMemtableFlushPeriodInMs,
+    kMinIndexInterval,
+    kMaxIndexInterval,
+    kReadRepairChance,
+    kSpeculativeRetry
+  };
+
   //------------------------------------------------------------------------------------------------
   // Public types.
   typedef MCSharedPtr<PTTableProperty> SharedPtr;
@@ -41,6 +59,9 @@ class PTTableProperty : public TreeNode {
                   YBLocation::SharedPtr loc,
                   const MCString::SharedPtr& name,
                   const PTOrderBy::Direction direction);
+
+  PTTableProperty(MemoryContext *memctx,
+                  YBLocation::SharedPtr loc);
 
   virtual ~PTTableProperty();
 
@@ -62,40 +83,46 @@ class PTTableProperty : public TreeNode {
     return rhs_;
   }
 
-  CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const {
-    if (property_type_ == PropertyType::kTableProperty) {
-      if (strcmp(lhs_->c_str(), kDefaultTimeToLive) == 0) {
-        // TTL value is entered by user in seconds, but we store internally in milliseconds.
-        table_property->SetDefaultTimeToLive(std::dynamic_pointer_cast<PTConstInt>(rhs_)->Eval() *
-                                             MonoTime::kMillisecondsPerSecond);
-      } else {
-        return STATUS(InvalidArgument, strings::Substitute("$0 is not a valid table property",
-                                                           lhs_->c_str()));
-      }
-    }
-    return Status::OK();
-  }
+  CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const;
 
   PropertyType property_type() const {
     return property_type_;
   }
 
   const MCString& name() const {
+    DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
     return *name_;
   }
 
   PTOrderBy::Direction direction() const {
+    DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
     return direction_;
   }
 
- private:
-  static const std::map<std::string, DataType> kPropertyDataTypes;
+  const TreeListNode<PTTableProperty>::SharedPtr map_elements() const {
+    DCHECK_EQ(property_type_, PropertyType::kTablePropertyMap);
+    return map_elements_;
+  }
+
+ protected:
+  bool IsValidProperty(const string& property_name) {
+    return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
+  }
+
   MCString::SharedPtr lhs_;
   PTExpr::SharedPtr rhs_;
   MCString::SharedPtr name_;
   PTOrderBy::Direction direction_;
   PropertyType property_type_;
+
+ private:
+  CHECKED_STATUS AnalyzeSpeculativeRetry(const string &val);
+
+  static const std::map<std::string, PTTableProperty::KVProperty> kPropertyDataTypes;
+  TreeListNode<PTTableProperty>::SharedPtr map_elements_;
 };
+
+std::ostream& operator<<(ostream& os, const PropertyType& property_type);
 
 class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
  public:
@@ -130,6 +157,97 @@ class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
   }
 
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+};
+
+class PTTablePropertyMap : public PTTableProperty {
+ public:
+  enum class PropertyMapType : int {
+    kCaching,
+    kCompaction,
+    kCompression
+  };
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTTablePropertyMap> SharedPtr;
+  typedef MCSharedPtr<const PTTablePropertyMap> SharedPtrConst;
+
+  PTTablePropertyMap(MemoryContext *memctx,
+                     YBLocation::SharedPtr loc);
+
+  virtual ~PTTablePropertyMap();
+
+  template<typename... TypeArgs>
+  inline static PTTablePropertyMap::SharedPtr MakeShared(MemoryContext *memctx,
+                                                         TypeArgs&&... args) {
+    return MCMakeShared<PTTablePropertyMap>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  void PrintSemanticAnalysisResult(SemContext *sem_context);
+
+  void SetPropertyName(MCString::SharedPtr property_name) {
+    lhs_ = property_name;
+  }
+
+  void AppendMapElement(PTTableProperty::SharedPtr table_property) {
+    DCHECK_EQ(property_type_, PropertyType::kTablePropertyMap);
+    map_elements_->Append(table_property);
+  }
+
+ private:
+  Status AnalyzeCaching();
+  Status AnalyzeCompaction();
+  Status AnalyzeCompression();
+
+  static const std::map<std::string, PTTablePropertyMap::PropertyMapType> kPropertyDataTypes;
+  TreeListNode<PTTableProperty>::SharedPtr map_elements_;
+};
+
+struct Compression {
+  enum class Subproperty : int {
+    kChunkLengthKb,
+    kClass,
+    kCrcCheckChance,
+    kEnabled,
+    kSstableCompression
+  };
+
+  static const std::map<std::string, Subproperty> kSubpropertyDataTypes;
+};
+
+struct Compaction {
+  enum class Subproperty : int {
+    kBaseTimeSeconds,
+    kBucketHigh,
+    kBucketLow,
+    kClass,
+    kCompactionWindowSize,
+    kCompactionWindowUnit,
+    kEnabled,
+    kLogAll,
+    kMaxSstableAgeDays,
+    kMaxThreshold,
+    kMaxWindowSizeSeconds,
+    kMinSstableSize,
+    kMinThreshold,
+    kOnlyPurgeRepairedTombstones,
+    kSstableSizeInMb,
+    kTimestampResolution,
+    kTombstoneCompactionInterval,
+    kTombstoneThreshold,
+    kUncheckedTombstoneCompaction
+  };
+
+  static const std::map<std::string, Subproperty> kSubpropertyDataTypes;
+
+  static constexpr auto kClassPrefix = "org.apache.cassandra.db.compaction.";
+  static const auto kClassPrefixLen = std::strlen(kClassPrefix);
+
+  static const std::map<std::string, std::set<Subproperty>> kClassSubproperties;
+
+  static std::set<std::string> kWindowUnits;
+  static std::set<std::string> kTimestampResolutionUnits;
 };
 
 } // namespace sql

@@ -28,7 +28,40 @@ public class TestDescendingOrder extends TestBase {
   private void createTable(String type1, String type2, String orderStmt) throws Exception {
     String createStmt = String.format("CREATE TABLE test_create " +
                                       "(h1 int, r1 %s, r2 %s, v1 int, v2 varchar, " +
-                                      "primary key((h1), r1, r2)) %s;", type1, type2, orderStmt);
+                                      "primary key((h1), r1, r2)) %s " +
+                                      "AND bloom_filter_fp_chance = 0.01 " +
+                                      "AND comment = '' " +
+                                      "AND crc_check_chance = 1.0 " +
+                                      "AND dclocal_read_repair_chance = 0.1 " +
+                                      "AND default_time_to_live = 0 " +
+                                      "AND gc_grace_seconds = 864000 " +
+                                      "AND max_index_interval = 2048 " +
+                                      "AND memtable_flush_period_in_ms = 0 " +
+                                      "AND min_index_interval = 128 " +
+                                      "AND read_repair_chance = 0.0 " +
+                                      "AND speculative_retry = '99.0PERCENTILE' " +
+                                      "AND caching = { " +
+                                      "    'keys' : 'ALL', " +
+                                      "    'rows_per_partition' : 'NONE' " +
+                                      "} " +
+                                      "AND compression = { " +
+                                      "    'chunk_length_in_kb' : 64, " +
+                                      "    'class' : 'LZ4Compressor', " +
+                                      "    'enabled' : true " +
+                                      "} " +
+                                      "AND compaction = { " +
+                                      "    'base_time_seconds' : 60, " +
+                                      "    'class' : 'DateTieredCompactionStrategy', " +
+                                      "    'enabled' : true, " +
+                                      "    'max_sstable_age_days' : 365, " +
+                                      "    'max_threshold' : 32, " +
+                                      "    'min_threshold' : 4, " +
+                                      "    'timestamp_resolution' : 'MICROSECONDS', " +
+                                      "    'tombstone_compaction_interval' : 86400, " +
+                                      "    'tombstone_threshold' : 0.2, " +
+                                      "    'unchecked_tombstone_compaction' : false " +
+                                      "}; ",
+                                      type1, type2, orderStmt);
     LOG.info("createStmt: " + createStmt);
     session.execute(createStmt);
   }

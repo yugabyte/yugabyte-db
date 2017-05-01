@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "yb/common/ttl_constants.h"
+#include "yb/common/table_properties_constants.h"
 #include "yb/docdb/value.h"
 #include "yb/gutil/strings/substitute.h"
 

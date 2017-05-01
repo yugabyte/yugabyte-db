@@ -784,7 +784,7 @@ other                     .
   /* Throw back all but the initial u/U. */
   yyless(1);
 
-  /* Treat it as {identifier}. Convert to lower-case and create IDENT totken. */
+  /* Treat it as {identifier}. Convert to lower-case and create IDENT token. */
   const MCString::SharedPtr ident = MakeIdentifier(yytext, yyleng, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }

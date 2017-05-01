@@ -14,7 +14,7 @@
 #include "yb/sql/ptree/tree_node.h"
 #include "yb/sql/ptree/pt_expr.h"
 #include "yb/sql/ptree/column_arg.h"
-#include "yb/common/ttl_constants.h"
+#include "yb/common/table_properties_constants.h"
 
 namespace yb {
 namespace sql {

@@ -8,7 +8,7 @@
 #include "yb/sql/ptree/pt_dml.h"
 
 #include "yb/client/schema-internal.h"
-#include "yb/common/ttl_constants.h"
+#include "yb/common/table_properties_constants.h"
 
 namespace yb {
 namespace sql {
@@ -282,7 +282,7 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
     return Status::OK();
   }
 
-  if (!yb::common::isValidTTLSeconds(ttl_seconds_->Eval())) {
+  if (!yb::common::IsValidTTLSeconds(ttl_seconds_->Eval())) {
     return sem_context->Error(ttl_seconds_->loc(),
                               strings::Substitute("Valid ttl range : [$0, $1]",
                                                   yb::common::kMinTtlSeconds,

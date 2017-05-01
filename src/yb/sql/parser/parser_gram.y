@@ -107,6 +107,8 @@ typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
 typedef PTAssign::SharedPtr            PAssign;
 typedef PTTableProperty::SharedPtr     PTableProperty;
 typedef PTTablePropertyListNode::SharedPtr     PTablePropertyListNode;
+typedef PTTablePropertyMap::SharedPtr  PTablePropertyMap;
+
 typedef PTAssignListNode::SharedPtr    PAssignListNode;
 
 typedef PTName::SharedPtr              PName;
@@ -262,7 +264,8 @@ DECLARE_bool(yql_experiment_support_expression);
 %type <PAssignListNode>   set_clause_list
 
 %type <objtype>           drop_type cql_drop_type sql_drop_type
-%type <PTableProperty>    column_ordering
+%type <PTableProperty>    column_ordering property_map_list_element
+%type <PTablePropertyMap> property_map_list property_map
 %type <PTablePropertyListNode>   opt_table_options table_property table_properties orderingList
 
 // Name nodes.
@@ -1204,14 +1207,78 @@ table_properties:
 ;
 
 table_property:
-  property_name '=' Iconst {
-    PTConstInt::SharedPtr pt_constint = MAKE_NODE(@3, PTConstInt, $3);
-    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1, pt_constint);
+  property_name '=' ICONST {
+    PTConstVarInt::SharedPtr pt_constvarint = MAKE_NODE(@3, PTConstVarInt, $3);
+    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1,
+                                                             pt_constvarint);
     $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
+  }
+  | property_name '=' FCONST {
+    PTConstDouble::SharedPtr pt_constdouble = MAKE_NODE(@3, PTConstDouble, stold($3->c_str()));
+    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1,
+                                                             pt_constdouble);
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
+  }
+  | property_name '=' TRUE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
+    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1, pt_constbool);
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
+  }
+  | property_name '=' FALSE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, false);
+    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1, pt_constbool);
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
+  }
+  | property_name '=' Sconst {
+    PTConstText::SharedPtr pt_consttext = MAKE_NODE(@3, PTConstText, $3);
+    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@1, PTTableProperty, $1, pt_consttext);
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
+  }
+  | property_name '=' property_map {
+    $3->SetPropertyName($1);
+    $$ = MAKE_NODE(@1, PTTablePropertyListNode, $3);
   }
   | CLUSTERING ORDER BY '(' orderingList ')' {
     $$ = $5;
   }
+;
+
+property_map:
+  '{' property_map_list '}' {
+    $$ = $2;
+  }
+;
+
+property_map_list:
+  property_map_list_element {
+    $$ = MAKE_NODE(@1, PTTablePropertyMap);
+    $$->AppendMapElement($1);
+  }
+  | property_map_list ',' property_map_list_element {
+    $1->AppendMapElement($3);
+    $$ = $1;
+  }
+;
+
+property_map_list_element:
+  Sconst ':' Iconst {
+    PTConstInt::SharedPtr pt_constint = MAKE_NODE(@3, PTConstInt, $3);
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constint);
+  }
+  | Sconst ':' FCONST {
+    PTConstDouble::SharedPtr pt_constdouble = MAKE_NODE(@3, PTConstDouble, stold($3->c_str()));
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constdouble);
+  }
+  | Sconst ':' TRUE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constbool);
+  }
+  | Sconst ':' FALSE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, false);
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_constbool);  }
+  | Sconst ':' Sconst {
+    PTConstText::SharedPtr pt_consttext = MAKE_NODE(@3, PTConstText, $3);
+    $$ = MAKE_NODE(@1, PTTableProperty, $1, pt_consttext);  }
 ;
 
 orderingList:

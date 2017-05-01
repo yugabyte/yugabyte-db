@@ -120,16 +120,6 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
       "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
       "default_time_to_live = (1000 + 1000);");
 
-  // Invalid statement: CREATE with table property value as string.
-  PARSE_INVALID_STMT("CREATE TABLE human_resource"
-      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
-      "default_time_to_live = 'abc';");
-
-  // Invalid statement: CREATE with table property value as double.
-  PARSE_INVALID_STMT("CREATE TABLE human_resource"
-      "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary)) WITH "
-      "default_time_to_live = 1000.1;");
-
   // Valid statement: CREATE table with inet type.
   PARSE_VALID_STMT("CREATE TABLE human_resource (c1 inet, c2 int, c3 int, PRIMARY KEY(c1));");
 

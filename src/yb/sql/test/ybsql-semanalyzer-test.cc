@@ -2,6 +2,7 @@
 
 #include <memory>
 #include "yb/sql/test/ybsql-test-base.h"
+#include "yb/util/varint.h"
 
 namespace yb {
 namespace sql {
@@ -38,9 +39,9 @@ TEST_F(YbSqlTestAnalyzer, TestCreateTablePropertyAnalyzer) {
   PTTablePropertyListNode::SharedPtr table_properties = pt_create_table->table_properties();
   EXPECT_EQ(1, table_properties->size());
   PTTableProperty::SharedPtr table_property = table_properties->element(0);
-  EXPECT_EQ(std::string(PTTableProperty::kDefaultTimeToLive), table_property->lhs()->c_str());
-  PTConstInt::SharedPtr rhs = std::static_pointer_cast<PTConstInt>(table_property->rhs());
-  EXPECT_EQ(1000, rhs->Eval());
+  EXPECT_EQ(std::string("default_time_to_live"), table_property->lhs()->c_str());
+  PTConstVarInt::SharedPtr rhs = std::static_pointer_cast<PTConstVarInt>(table_property->rhs());
+  EXPECT_EQ(util::VarInt(1000), util::VarInt(rhs->Eval()->c_str()));
 }
 
 TEST_F(YbSqlTestAnalyzer, TestCreateTableAnalyze) {
