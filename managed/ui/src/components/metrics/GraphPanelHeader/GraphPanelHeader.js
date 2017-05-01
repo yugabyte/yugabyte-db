@@ -53,6 +53,7 @@ class GraphPanelHeader extends Component {
     this.universeItemChanged = this.universeItemChanged.bind(this);
     this.nodeItemChanged = this.nodeItemChanged.bind(this);
     this.submitGraphFilters = this.submitGraphFilters.bind(this);
+    this.refreshGraphQuery = this.refreshGraphQuery.bind(this);
     var currentUniverse = "all";
     var currentUniversePrefix  = "all";
     if (this.props.origin === "universe") {
@@ -132,6 +133,15 @@ class GraphPanelHeader extends Component {
     queryObject[type] = val;
     this.props.changeGraphQueryFilters(queryObject);
     this.updateUrlQueryParams(queryObject);
+  }
+
+  refreshGraphQuery() {
+    var newParams = this.state;
+    if (newParams.filterLabel !== "Custom") {
+      newParams.startMoment = moment().subtract(newParams.filterValue, newParams.filterType);
+      newParams.endMoment = moment();
+      this.props.changeGraphQueryFilters(newParams);
+    }
   }
 
   handleFilterChange(eventKey, event) {
@@ -290,6 +300,7 @@ class GraphPanelHeader extends Component {
             <NodePicker {...this.props} nodeItemChanged={this.nodeItemChanged}
                         selectedUniverse={this.state.currentSelectedUniverse}
                         selectedNode={this.state.currentSelectedNode}/>
+            <YBButton btnIcon="fa fa-refresh" btnClass="btn btn-default refresh-btn" onClick={this.refreshGraphQuery}/>
           </Col>
         </Row>
         <Row>
