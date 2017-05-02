@@ -86,9 +86,8 @@ class DummyDB : public StackableDB {
 
   class DummyLogFile : public LogFile {
    public:
-    /* implicit */
-     DummyLogFile(const std::string& path, bool alive = true)
-         : path_(path), alive_(alive) {}
+    explicit DummyLogFile(const std::string& path, bool alive)
+        : path_(path), alive_(alive) {}
 
     virtual std::string PathName() const override {
       return path_;
@@ -196,7 +195,8 @@ class TestEnv : public EnvWrapper {
     return EnvWrapper::DeleteFile(fname);
   }
 
-  void AssertWrittenFiles(std::vector<std::string>& should_have_written) {
+  void AssertWrittenFiles(const std::vector<std::string>& should_have_written_arg) {
+    auto should_have_written = should_have_written_arg;  // Make a local copy for sorting.
     MutexLock l(&mutex_);
     sort(should_have_written.begin(), should_have_written.end());
     sort(written_files_.begin(), written_files_.end());
@@ -252,6 +252,7 @@ class TestEnv : public EnvWrapper {
   void SetCreateDirIfMissingFailure(bool fail) {
     create_dir_if_missing_failure_ = fail;
   }
+
   Status CreateDirIfMissing(const std::string& d) override {
     if (create_dir_if_missing_failure_) {
       return Status::IOError("SimulatedFailure");
@@ -460,6 +461,12 @@ class BackupableDBTest : public testing::Test {
 
     // delete old files in db
     DestroyDB(dbname_, Options());
+
+    const Status s = EnsureBackupSharedDirExists();
+    if (!s.ok()) {
+      std::cerr << "Failed to ensure that the 'shared' directory exists: " << s.ToString();
+      assert(false);
+    }
   }
 
   DB* OpenDB() {
@@ -494,7 +501,7 @@ class BackupableDBTest : public testing::Test {
     backupable_options_->share_table_files = share_table_files;
     BackupEngine* backup_engine;
     ASSERT_OK(BackupEngine::Open(test_db_env_.get(), *backupable_options_,
-                                 &backup_engine));
+                           &backup_engine));
     backup_engine_.reset(backup_engine);
   }
 
@@ -559,6 +566,12 @@ class BackupableDBTest : public testing::Test {
     }
   }
 
+  Status EnsureBackupSharedDirExists() {
+    const Status s = env_->CreateDirIfMissing(backupdir_);
+    if (!s.ok()) return s;
+    return env_->CreateDirIfMissing(backupdir_ + "/shared");
+  }
+
   // files
   std::string dbname_;
   std::string backupdir_;
@@ -586,8 +599,8 @@ class BackupableDBTest : public testing::Test {
   unique_ptr<BackupableDBOptions> backupable_options_;
 }; // BackupableDBTest
 
-void AppendPath(const std::string& path, std::vector<std::string>& v) {
-  for (auto& f : v) {
+void PrependString(const std::string& path, std::vector<std::string>* v) {
+  for (auto& f : *v) {
     f = path + f;
   }
 }
@@ -763,7 +776,7 @@ TEST_F(BackupableDBTest, NoDoubleCopy) {
       "/private/1.tmp/CURRENT",   "/private/1.tmp/MANIFEST-01",
       "/private/1.tmp/00011.log", "/meta/1.tmp",
       "/LATEST_BACKUP.tmp"};
-  AppendPath(dbname_ + "_backup", should_have_written);
+  PrependString(dbname_ + "_backup", &should_have_written);
   test_backup_env_->AssertWrittenFiles(should_have_written);
 
   // should write 4 new DB files + LATEST_BACKUP + one meta file
@@ -784,7 +797,7 @@ TEST_F(BackupableDBTest, NoDoubleCopy) {
     "/meta/2.tmp",
     "/LATEST_BACKUP.tmp"
   };
-  AppendPath(dbname_ + "_backup", should_have_written);
+  PrependString(dbname_ + "_backup", &should_have_written);
   test_backup_env_->AssertWrittenFiles(should_have_written);
 
   ASSERT_OK(backup_engine_->DeleteBackup(1));
@@ -1242,7 +1255,6 @@ TEST_F(BackupableDBTest, GarbageCollectionBeforeBackup) {
   DestroyDB(dbname_, Options());
   OpenDBAndBackupEngine(true);
 
-  env_->CreateDirIfMissing(backupdir_ + "/shared");
   std::string file_five = backupdir_ + "/shared/000007.sst";
   std::string file_five_contents = "I'm not really a sst file";
   // this depends on the fact that 00007.sst is the first file created by the DB
@@ -1341,7 +1353,7 @@ TEST_F(BackupableDBTest, ChangeManifestDuringBackupCreation) {
 TEST_F(BackupableDBTest, Issue921Test) {
   BackupEngine* backup_engine;
   backupable_options_->share_table_files = false;
-  env_->CreateDirIfMissing(backupdir_);  // necessary if running this test on its own
+  ASSERT_OK(env_->CreateDirIfMissing(backupdir_));
   backupable_options_->backup_dir += "/new_dir";
 
   ASSERT_OK(BackupEngine::Open(env_, *backupable_options_, &backup_engine));

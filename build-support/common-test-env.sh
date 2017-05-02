@@ -23,7 +23,6 @@ NON_GTEST_TESTS_RE=$( regex_from_list "
 # There gtest suites have internal dependencies between tests, so those tests can't be run
 # separately.
 TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( regex_from_list "
-  bin/backupable_db_test
   bin/thread_local_test
 ")
 
