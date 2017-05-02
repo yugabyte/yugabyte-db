@@ -8,7 +8,6 @@ include(PrecompiledHeader)
 set(ROCKSDB_SRCS
     db/auto_roll_logger.cc
     db/builder.cc
-    db/c.cc
     db/column_family.cc
     db/compacted_db_impl.cc
     db/compaction.cc
