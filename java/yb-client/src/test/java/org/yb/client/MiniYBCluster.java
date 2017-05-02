@@ -104,6 +104,9 @@ public class MiniYBCluster implements AutoCloseable {
   // How often to push node list refresh events to CQL clients (in seconds)
   public static final int CQL_NODE_LIST_REFRESH = 5;
 
+  // We support 127.0.0.1 - 127.0.0.16 on MAC as loopback IPs.
+  private static final int NUM_MAX_LOCALHOSTS = 16;
+
   // List of threads that print
   private final List<Thread> PROCESS_INPUT_PRINTERS = new ArrayList<>();
 
@@ -175,6 +178,19 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Retrieves the string representation of the localhost IP to use for the provided server_index.
+   * @param server_index the server index for which we need the localhost
+   * @return string representation of localhost IP.
+   */
+  private static String getLocalHost(int server_index) throws IllegalArgumentException {
+    if (server_index >= NUM_MAX_LOCALHOSTS) {
+      throw new IllegalArgumentException(String.format(
+        "Server index: %d is too high, max supported: %d", server_index, NUM_MAX_LOCALHOSTS - 1));
+    }
+    return "127.0.0." + (server_index + 1);
+  }
+
+  /**
    * Take into account any started processes and return the next possibly free port number.
    * The multiply by 2 is to account for one port each for rpc and web services per server.
    * The multiply by 3 is to account for tserver, yql and redis ports in tserver process.
@@ -200,13 +216,13 @@ public class MiniYBCluster implements AutoCloseable {
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
     // The following props are set via yb-client's pom.
     String baseDirPath = TestUtils.getBaseDir();
-    String localhost = getUniqueLocalhost();
 
     long now = System.currentTimeMillis();
     LOG.info("Starting {} masters...", numMasters);
     int free_port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath, masterArgs);
     LOG.info("Starting {} tablet servers...", numTservers);
     for (int i = 0; i < numTservers; i++) {
+      String localhost = getLocalHost(i);
       int rpc_port = TestUtils.findFreePort(free_port);
       int web_port = TestUtils.findFreePort(rpc_port + 1);
       int redis_port = TestUtils.findFreePort(web_port + 1);
@@ -264,7 +280,7 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public HostAndPort startShellMaster() throws Exception {
     String baseDirPath = TestUtils.getBaseDir();
-    String localhost = getUniqueLocalhost();
+    String localhost = getLocalHost(masterProcesses.size());
     int startPort = getNextPotentiallyFreePort();
     int rpcPort = TestUtils.findFreePort(startPort + 1);
     int webPort = TestUtils.findFreePort(startPort + 2);
@@ -321,13 +337,13 @@ public class MiniYBCluster implements AutoCloseable {
     // Get the list of web and RPC ports to use for the master consensus configuration:
     // request NUM_MASTERS * 2 free ports as we want to also reserve the web
     // ports for the consensus configuration.
-    String localhost = getUniqueLocalhost();
     List<Integer> ports = TestUtils.findFreePorts(masterStartPort, numMasters * 2);
     int lastFreePort = ports.get(ports.size() - 1);
     List<Integer> masterRpcPorts = Lists.newArrayListWithCapacity(numMasters);
     List<Integer> masterWebPorts = Lists.newArrayListWithCapacity(numMasters);
     for (int i = 0; i < numMasters * 2; i++) {
       if (i % 2 == 0) {
+        String localhost = getLocalHost(i / 2);
         masterRpcPorts.add(ports.get(i));
         masterHostPorts.add(HostAndPort.fromParts(localhost, ports.get(i)));
       } else {
@@ -336,6 +352,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
     masterAddresses = NetUtil.hostsAndPortsToString(masterHostPorts);
     for (int i = 0; i < numMasters; i++) {
+      String localhost = getLocalHost(i);
       long now = System.currentTimeMillis();
       String dataDirPath = baseDirPath + "/master-" + i + "-" + now;
       String flagsPath = TestUtils.getFlagsPath();

@@ -51,7 +51,7 @@ public class TestNodeListRefresh extends TestBase {
     // Verify that the system still keeps running after multiple node list refresh requests.
     int iterations = 5;
     for (int i = 0; i < iterations; i++) {
-      assertEquals(1, session.execute("SELECT * FROM system.peers;").all().size());
+      assertEquals(NUM_TABLET_SERVERS, session.execute("SELECT * FROM system.peers;").all().size());
       Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH * 1000);
     }
 

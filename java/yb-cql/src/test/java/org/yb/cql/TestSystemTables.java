@@ -1,6 +1,7 @@
 package org.yb.cql;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -20,11 +21,18 @@ import static org.junit.Assert.fail;
 
 public class TestSystemTables extends TestBase {
 
-  private void verifyPeersTable(ResultSet rs, InetAddress expected) throws Exception {
-    assertEquals(1, rs.all().size());
+  private void verifyPeersTable(ResultSet rs) throws Exception {
+    List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
+    assertEquals(contactPoints.size(), rs.all().size());
     for (Row row : rs.all()) {
-      assertEquals(expected, row.getInet(0)); // peer
-      assertEquals(expected, row.getInet(6)); // rpc address
+      boolean found = false;
+      for (InetSocketAddress addr : contactPoints) {
+        if (addr.getAddress().equals(row.getInet("peer")) &&
+            addr.getAddress().equals(row.getInet("rpc_address"))) {
+          found = true;
+        }
+      }
+      assertTrue(found);
     }
   }
 
@@ -43,17 +51,21 @@ public class TestSystemTables extends TestBase {
   @Test
   public void testSystemPeersTable() throws Exception {
     // Pick only 1 contact point since all will have same IP.
-    InetAddress contactPoint = miniCluster.getCQLContactPoints().get(0).getAddress();
+    List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
+    InetAddress contactPoint = contactPoints.get(0).getAddress();
 
     ResultSet rs = session.execute("SELECT * FROM system.peers;");
-    verifyPeersTable(rs, contactPoint);
+    verifyPeersTable(rs);
 
     // Try with where clause.
     rs = session.execute(String.format("SELECT * FROM system.peers WHERE peer = '%s'",
       contactPoint.getHostAddress()));
-    verifyPeersTable(rs, contactPoint);
+    List <Row> rows = rs.all();
+    assertEquals(1, rows.size());
+    assertEquals(contactPoint, rows.get(0).getInet("peer"));
+    assertEquals(contactPoint, rows.get(0).getInet("rpc_address"));
 
-    rs = session.execute("SELECT * FROM system.peers WHERE peer = '127.0.0.2'");
+    rs = session.execute("SELECT * FROM system.peers WHERE peer = '181.123.12.1'");
     assertEquals(0, rs.all().size());
   }
 
@@ -68,26 +80,36 @@ public class TestSystemTables extends TestBase {
     assertEquals(0, session.execute("SELECT * FROM system_schema.views;").all().size());
   }
 
+  private void checkContactPoints(String column, Row row) {
+    List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
+    boolean found = false;
+    for (InetSocketAddress addr : contactPoints) {
+      if (addr.getAddress().equals(row.getInet(column))) {
+        found = true;
+      }
+    }
+    assertTrue(found);
+  }
+
   @Test
   public void testSystemLocalTables() throws Exception {
-    InetAddress contactPoint = miniCluster.getCQLContactPoints().get(0).getAddress();
     List <Row> results = session.execute(
       "SELECT * FROM system.local;").all();
     assertEquals(1, results.size());
     Row row = results.get(0);
     assertEquals("local", row.getString("key"));
     assertEquals("COMPLETED", row.getString("bootstrapped"));
-    assertEquals(contactPoint, row.getInet("broadcast_address"));
+    checkContactPoints("broadcast_address", row);
     assertEquals("local cluster", row.getString("cluster_name"));
     assertEquals("3.4.2", row.getString("cql_version"));
     assertEquals("datacenter", row.getString("data_center"));
     assertEquals(0, row.getInt("gossip_generation"));
-    assertEquals(contactPoint, row.getInet("listen_address"));
+    checkContactPoints("listen_address", row);
     assertEquals("4", row.getString("native_protocol_version"));
     assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
     assertEquals("rack", row.getString("rack"));
     assertEquals("3.9-SNAPSHOT", row.getString("release_version"));
-    assertEquals(contactPoint, row.getInet("rpc_address"));
+    checkContactPoints("rpc_address", row);
     assertEquals("20.1.0", row.getString("thrift_version"));
     assertTrue(row.isNull("tokens"));
   }
