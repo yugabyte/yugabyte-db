@@ -319,6 +319,9 @@ export default class UniverseForm extends Component {
         });
       }
     }
+    if (isValidArray(nextProps.accessKeys.data) && !isValidArray(this.props.accessKeys.data)) {
+      this.setState({accessKeyCode: nextProps.accessKeys.data[0].idKey.keyCode})
+    }
   }
 
   render() {
