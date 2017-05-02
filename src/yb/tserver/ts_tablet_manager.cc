@@ -105,6 +105,12 @@ DEFINE_int32(db_block_cache_size_percentage, 50,
              "Default percentage of total available memory to use as block cache size, if not "
              "asking for a raw number, through FLAGS_db_block_cache_size_bytes.");
 
+DEFINE_int32(sleep_after_tombstoning_tablet_secs, 0,
+             "Whether we sleep in LogAndTombstone after calling DeleteTabletData "
+             "(For testing only!)");
+TAG_FLAG(sleep_after_tombstoning_tablet_secs, unsafe);
+TAG_FLAG(sleep_after_tombstoning_tablet_secs, hidden);
+
 namespace yb {
 namespace tserver {
 
@@ -497,17 +503,36 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   // Write out the last files to make the new replica visible and update the
   // TabletDataState in the superblock to TABLET_DATA_READY.
+  // Finish() will call EndRemoteSession() and wait for the leader to successfully submit a
+  // ChangeConfig request (to change this server's role from PRE_VOTER or PRE_OBSERVER to VOTER or
+  // OBSERVER respectively). If the RPC times out, we will ignore the error (since the leader could
+  // have successfully submitted the ChangeConfig request and failed to respond in time)
+  // and check the committed config until we find that this server's role has changed, or until we
+  // time out which will cause us to tombstone the tablet.
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    fs_manager_->uuid(),
                    "Remote bootstrap: Failure calling Finish()",
                    this);
 
-  // We run this asynchronously. We don't tombstone the tablet if this fails,
-  // because if we were to fail to open the tablet, on next startup, it's in a
-  // valid fully-copied state.
-  RETURN_NOT_OK(
-      open_tablet_pool_->SubmitFunc(std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
+  LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
+  OpenTablet(meta, nullptr);
+
+  // If OpenTablet fails, tablet_peer->error() will be set.
+  TOMBSTONE_NOT_OK(tablet_peer->error(),
+                   meta,
+                   fs_manager_->uuid(),
+                   "Remote bootstrap: Failure calling OpenTablet()",
+                   this);
+
+  TOMBSTONE_NOT_OK(rb_client->VerifyRemoteBootstrapSucceeded(tablet_peer->shared_consensus()),
+                   meta,
+                   fs_manager_->uuid(),
+                   "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded",
+                   this);
+
+  LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
+
   return Status::OK();
 }
 
@@ -1227,6 +1252,14 @@ void LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
                                           uuid,
                                           boost::optional<OpId>(),
                                           ts_manager);
+
+  if (PREDICT_FALSE(FLAGS_sleep_after_tombstoning_tablet_secs > 0)) {
+    // We sleep here so that the test can verify that the state of the tablet is
+    // TABLET_DATA_TOMBSTONED.
+    LOG(INFO) << "Sleeping after remote bootstrap failed";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_sleep_after_tombstoning_tablet_secs));
+  }
+
   if (PREDICT_FALSE(!delete_status.ok())) {
     // This failure should only either indicate a bug or an IO error.
     LOG(FATAL) << kLogPrefix << "Failed to tombstone tablet after remote bootstrap: "

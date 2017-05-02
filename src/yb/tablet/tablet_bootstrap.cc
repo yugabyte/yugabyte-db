@@ -513,7 +513,7 @@ Status TabletBootstrap::OpenTablet(bool* has_blocks) {
       *has_blocks = tablet->num_rowsets() != 0;
       break;
     case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
-    case TableType ::REDIS_TABLE_TYPE:
+    case TableType::REDIS_TABLE_TYPE:
       *has_blocks = tablet->HasSSTables();
       break;
     default:

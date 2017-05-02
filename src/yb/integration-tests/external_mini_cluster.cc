@@ -860,6 +860,24 @@ Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
   return STATUS(TimedOut, resp.DebugString());
 }
 
+Status ExternalMiniCluster::WaitForTSToCrash(int index, const MonoDelta& timeout) {
+  ExternalTabletServer* ts = tablet_server(index);
+  return WaitForTSToCrash(ts, timeout);
+}
+
+Status ExternalMiniCluster::WaitForTSToCrash(const ExternalTabletServer* ts,
+                                             const MonoDelta& timeout) {
+  MonoTime deadline = MonoTime::Now(MonoTime::FINE);
+  deadline.AddDelta(timeout);
+  while (MonoTime::Now(MonoTime::FINE).ComesBefore(deadline)) {
+    if (!ts->IsProcessAlive()) {
+      return Status::OK();
+    }
+    SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+  return STATUS(TimedOut, Substitute("TS $0 did not crash!", ts->instance_id().permanent_uuid()));
+}
+
 namespace {
 void LeaderMasterCallback(HostPort* dst_hostport,
                           Synchronizer* sync,

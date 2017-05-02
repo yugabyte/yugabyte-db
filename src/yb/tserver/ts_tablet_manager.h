@@ -83,6 +83,18 @@ class TransitionInProgressDeleter;
     } \
   } while (0)
 
+#define SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(expr, tablet_peer, meta, uuid, msg) \
+  do { \
+    Status _s = (expr); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      if (tablet_peer) { \
+        tablet_peer->Shutdown(); \
+      } \
+      LogAndTombstone((meta), (msg), (uuid), _s, nullptr); \
+      return _s; \
+    } \
+  } while (0)
+
 // Keeps track of the tablets hosted on the tablet server side.
 //
 // TODO: will also be responsible for keeping the local metadata about
@@ -162,7 +174,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // See the StartRemoteBootstrap() RPC declaration in consensus.proto for details.
   // Currently this runs the entire procedure synchronously.
   // TODO: KUDU-921: Run this procedure on a background thread.
-  virtual CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
+  virtual CHECKED_STATUS
+      StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
   // Generate an incremental tablet report.
   //
@@ -229,7 +242,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
                             const TableType table_type,
                             const std::string& data_root_dir,
                             const std::string& wal_root_dir);
-
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);

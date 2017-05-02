@@ -42,7 +42,6 @@ typedef scoped_refptr<InboundCall> InboundCallPtr;
 class RpcSidecar;
 class UserCredentials;
 
-
 #define PANIC_RPC(rpc_context, message) \
   do { \
     if (rpc_context) {                              \
@@ -139,7 +138,6 @@ class RpcContext {
   // and response protobufs are also destroyed.
   void RespondApplicationError(int error_ext_id, const std::string& message,
                                const google::protobuf::Message& app_error_pb);
-
 
   // Adds an RpcSidecar to the response. This is the preferred method for
   // transferring large amounts of binary data, because this avoids additional

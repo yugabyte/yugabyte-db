@@ -293,6 +293,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
 
+  CHECKED_STATUS WaitForTSToCrash(const ExternalTabletServer* ts,
+                          const MonoDelta& timeout = MonoDelta::FromSeconds(60));
+
+  CHECKED_STATUS WaitForTSToCrash(int index, const MonoDelta& timeout = MonoDelta::FromSeconds(60));
+
   // Sets the given flag on the given daemon, which must be running.
   //
   // This uses the 'force' flag on the RPC so that, even if the flag

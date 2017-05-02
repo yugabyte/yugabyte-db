@@ -104,7 +104,6 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
                                 const string& tablet_id,
                                 IsSuperBlockExpected is_superblock_expected);
 
-  void WaitForTSToCrash(int index);
   void WaitForAllTSToCrash();
   void WaitUntilTabletRunning(int index, const std::string& tablet_id);
 
@@ -191,18 +190,9 @@ void DeleteTableTest::WaitForTabletDeletedOnTS(int index,
   ASSERT_OK(s);
 }
 
-void DeleteTableTest::WaitForTSToCrash(int index) {
-  ExternalTabletServer* ts = cluster_->tablet_server(index);
-  for (int i = 0; i < 6000; i++) {  // wait 60sec
-    if (!ts->IsProcessAlive()) return;
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-  FAIL() << "TS " << ts->instance_id().permanent_uuid() << " did not crash!";
-}
-
 void DeleteTableTest::WaitForAllTSToCrash() {
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    NO_FATALS(WaitForTSToCrash(i));
+    ASSERT_OK(cluster_->WaitForTSToCrash(i));
   }
 }
 
@@ -477,7 +467,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   TServerDetails* leader = DCHECK_NOTNULL(ts_map_[leader_uuid]);
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()];
   ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
-  NO_FATALS(WaitForTSToCrash(kTsIndex));
+  ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // The superblock should be in TABLET_DATA_COPYING state on disk.
   ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_COPYING));
@@ -503,7 +493,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
   // Start the cluster with load balancer turned off.
   NO_FATALS(StartCluster(flags, {"--enable_load_balancing=false"}));
-  const MonoDelta timeout = MonoDelta::FromSeconds(20);
+  const MonoDelta timeout = MonoDelta::FromSeconds(40);
   const int kTsIndex = 0;  // We'll test with the first TS.
 
   // We'll do a config change to remote bootstrap a replica here later. For
@@ -552,7 +542,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   TServerDetails* leader = ts_map_[leader_uuid];
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
   ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
-  NO_FATALS(WaitForTSToCrash(leader_index));
+  ASSERT_OK(cluster_->WaitForTSToCrash(leader_index));
 
   // The tablet server will detect that the leader failed, and automatically
   // tombstone its replica. Shut down the other non-leader replica to avoid
@@ -586,10 +576,18 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
                             workload.rows_inserted()));
 
+  // For now there is no way to know if the server has finished its remote bootstrap (by verifying
+  // that its role has changed in its consensus object). As a workaround, sleep for 10 seconds
+  // before pausing the other two servers which are needed to propagate the consensus to the new
+  // server.
+  SleepFor(MonoDelta::FromSeconds(10));
   // Now pause the other replicas and tombstone our replica again.
   ASSERT_OK(cluster_->tablet_server(1)->Pause());
   ASSERT_OK(cluster_->tablet_server(2)->Pause());
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+
+  // If we send the request before the lock in StartRemoteBootstrap is released (not really a lock,
+  // but effectively it serves as one), we need to retry.
+  NO_FATALS(DeleteTabletWithRetries(ts, tablet_id, TABLET_DATA_TOMBSTONED, timeout));
   NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_NOT_EXPECTED));
 
   // Bring them back again, let them yet again bootstrap our tombstoned replica.
@@ -1059,7 +1057,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   tablet_id = tablets[1].tablet_status().tablet_id();
   LOG(INFO) << "Tombstoning second tablet " << tablet_id << "...";
   ignore_result(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
-  NO_FATALS(WaitForTSToCrash(kTsIndex));
+  ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
   // Restart the tablet server and wait for the WALs to be deleted and for the
   // superblock to show that it is tombstoned.

@@ -2821,6 +2821,12 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   // Write out the last files to make the new replica visible and update the
   // TabletDataState in the superblock to TABLET_DATA_READY.
+  // Finish() will call EndRemoteSession() and wait for the leader to successfully submit a
+  // ChangeConfig request (to change this master's role from PRE_VOTER or PRE_OBSERVER to VOTER or
+  // OBSERVER respectively). If the RPC times out, we will ignore the error (since the leader could
+  // have successfully submitted the ChangeConfig request and failed to respond before in time)
+  // and check the committed config until we find that this master's role has changed, or until we
+  // time out which will cause us to tombstone the tablet.
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    master_->fs_manager()->uuid(),
@@ -2828,12 +2834,34 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
                    nullptr);
 
   // Synchronous tablet open for "local bootstrap".
-  RETURN_NOT_OK(sys_catalog_->OpenTablet(meta));
+  SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(sys_catalog_->OpenTablet(meta),
+                                            sys_catalog_->tablet_peer(),
+                                            meta,
+                                            master_->fs_manager()->uuid(),
+                                            "Remote bootstrap: Failure opening sys catalog");
 
   // Set up the in-memory master list and also flush the cmeta.
   RETURN_NOT_OK(UpdateMastersListInMemoryAndDisk());
 
   master_->SetShellMode(false);
+
+  // Call VerifyRemoteBootstrapSucceeded only after we have set shell mode to false. Otherwise,
+  // CatalogManager::GetTabletPeer will always return an error, and the consensus will never get
+  // updated.
+  auto status = rb_client->VerifyRemoteBootstrapSucceeded(
+      sys_catalog_->tablet_peer()->shared_consensus());
+
+  if (!status.ok()) {
+    // Set shell mode to true so another request can remote bootstrap this master.
+    master_->SetShellMode(true);
+    SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(
+        status,
+        sys_catalog_->tablet_peer(),
+        meta,
+        master_->fs_manager()->uuid(),
+        "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded");
+  }
+
 
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
 

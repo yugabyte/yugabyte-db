@@ -2116,10 +2116,11 @@ Status RaftConsensus::RefreshConsensusQueueAndPeersUnlocked() {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
 
   // Change the peers so that we're able to replicate messages remotely and
-  // locally. The peer manager must be closed before updating the active config
-  // in the queue -- when the queue is in LEADER mode, it checks that all
-  // registered peers are a part of the active config.
-  peer_manager_->Close();
+  // locally. Peer manager connections are updated using the active config. Connections to peers
+  // that are not part of active_config are closed. New connections are created for those peers
+  // that are present in active_config but have no connections. When the queue is in LEADER
+  // mode, it checks that all registered peers are a part of the active config.
+  peer_manager_->ClosePeersNotInConfig(active_config);
   queue_->SetLeaderMode(state_->GetCommittedOpIdUnlocked(),
                         state_->GetCurrentTermUnlocked(),
                         active_config);
@@ -2464,11 +2465,6 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
   }
 
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
-    string err_msg = ServersInTransitionMessage();
-    if (!err_msg.empty()) {
-      return STATUS(IllegalState, err_msg);
-    }
-
     LOG_WITH_PREFIX_UNLOCKED(INFO) << "Stepping down as leader of term "
                                    << state_->GetCurrentTermUnlocked()
                                    << " since new term is " << new_term;

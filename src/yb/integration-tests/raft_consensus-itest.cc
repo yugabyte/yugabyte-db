@@ -44,7 +44,6 @@
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/server/server_base.pb.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/test_util.h"
 
 DEFINE_int32(num_client_threads, 8,
              "Number of client threads to launch");

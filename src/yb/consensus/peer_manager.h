@@ -17,14 +17,14 @@
 #ifndef YB_CONSENSUS_PEER_MANAGER_H
 #define YB_CONSENSUS_PEER_MANAGER_H
 
+#include <string>
+#include <unordered_map>
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
-
-#include <string>
-#include <unordered_map>
 
 namespace yb {
 
@@ -68,6 +68,9 @@ class PeerManager {
 
   // Closes all peers.
   virtual void Close();
+
+  // Closes connections to those peers that are not in config.
+  virtual void ClosePeersNotInConfig(const RaftConfigPB& config);
 
  private:
   std::string GetLogPrefix() const;

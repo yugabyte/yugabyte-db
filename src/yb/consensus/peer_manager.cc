@@ -51,14 +51,11 @@ PeerManager::~PeerManager() {
 }
 
 Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
-  unordered_set<string> new_peers;
-
   VLOG(1) << "Updating peers from new config: " << config.ShortDebugString();
 
   std::lock_guard<simple_spinlock> lock(lock_);
   // Create new peers
   for (const RaftPeerPB& peer_pb : config.peers()) {
-    new_peers.insert(peer_pb.permanent_uuid());
     Peer* peer = FindPtrOrNull(peers_, peer_pb.permanent_uuid());
     if (peer != nullptr) {
       continue;
@@ -89,13 +86,15 @@ Status PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
 void PeerManager::SignalRequest(bool force_if_queue_empty) {
   std::lock_guard<simple_spinlock> lock(lock_);
   auto iter = peers_.begin();
-  for (; iter != peers_.end(); iter++) {
+  for (; iter != peers_.end();) {
     Status s = (*iter).second->SignalRequest(force_if_queue_empty);
     if (PREDICT_FALSE(!s.ok())) {
       LOG(WARNING) << GetLogPrefix()
                    << "Peer was closed, removing from peers. Peer: "
                    << (*iter).second->peer_pb().ShortDebugString();
-      peers_.erase(iter);
+      iter = peers_.erase(iter);
+    } else {
+      iter++;
     }
   }
 }
@@ -107,6 +106,31 @@ void PeerManager::Close() {
       entry.second->Close();
     }
     STLDeleteValues(&peers_);
+  }
+}
+
+void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
+  unordered_map<string, RaftPeerPB> peers_in_config;
+  for (const RaftPeerPB &peer_pb : config.peers()) {
+    InsertOrDie(&peers_in_config, peer_pb.permanent_uuid(), peer_pb);
+  }
+
+  std::lock_guard<simple_spinlock> lock(lock_);
+  for (auto iter = peers_.begin(); iter != peers_.end();) {
+    auto peer = iter->second;
+
+    if (peer->peer_pb().permanent_uuid() == local_uuid_) {
+      continue;
+    }
+
+    auto it = peers_in_config.find(peer->peer_pb().permanent_uuid());
+    if (it == peers_in_config.end() ||
+        it->second.SerializeAsString() != peer->peer_pb().SerializeAsString()) {
+      peer->Close();
+      iter = peers_.erase(iter);
+    } else {
+      iter++;
+    }
   }
 }
 

@@ -17,12 +17,13 @@
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include <algorithm>
+#include <string>
+#include <vector>
+
 #include <boost/date_time/time_duration.hpp>
 #include <boost/thread/locks.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <string>
-#include <vector>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/log.h"
@@ -77,6 +78,21 @@ DEFINE_bool(skip_change_role, false,
             "When set, we don't call ChangeRole after successfully finishing a remote bootstrap. "
             "(For testing only!)");
 TAG_FLAG(skip_change_role, unsafe);
+
+DEFINE_double(fault_crash_leader_before_changing_role, 0.0,
+              "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER to "
+              "VOTER or OBSERVER respectively) of the tablet server it is remote bootstrapping. "
+              "For testing only!)");
+TAG_FLAG(fault_crash_leader_before_changing_role, unsafe);
+TAG_FLAG(fault_crash_leader_before_changing_role, hidden);
+
+DEFINE_double(fault_crash_leader_after_changing_role, 0.0,
+              "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE from "
+              "PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet server "
+              "it is remote bootstrapping, but before it sends a success response."
+              "For testing only!)");
+TAG_FLAG(fault_crash_leader_after_changing_role, unsafe);
+TAG_FLAG(fault_crash_leader_after_changing_role, hidden);
 
 namespace yb {
 namespace tserver {
@@ -365,6 +381,9 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
                 << " because flag FLAGS_skip_change_role is set";
       return Status::OK();
     }
+
+    MAYBE_FAULT(FLAGS_fault_crash_leader_before_changing_role);
+
     Status s = session->ChangeRole();
     if (!s.ok()) {
       LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
@@ -375,6 +394,7 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSessionUnlocked(
       return Status::OK();
     } else {
       LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
+      MAYBE_FAULT(FLAGS_fault_crash_leader_after_changing_role);
     }
   } else {
     LOG(ERROR) << "Remote bootstrap session " << session_id << " on tablet " << session->tablet_id()

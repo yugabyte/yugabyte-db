@@ -130,9 +130,6 @@ Status RemoteBootstrapSession::ChangeRole() {
                   << "in bootstrap session " << session_id_;
 
         // If another ChangeConfig is being processed, our request will be rejected.
-        // TODO(hector): Even if this ChangeConfig is accepted, something could go wrong before it
-        // is committed and the new peer will never become a VOTER. We need to add code to detect
-        // this situation and promote the PRE_VOTER peer.
         return consensus->ChangeConfig(req, Bind(&DoNothingStatusCB), &error_code);
       }
       case RaftPeerPB::UNKNOWN_MEMBER_TYPE:

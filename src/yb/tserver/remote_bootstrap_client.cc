@@ -47,9 +47,14 @@
 #include "yb/util/net/net_util.h"
 
 DEFINE_int32(remote_bootstrap_begin_session_timeout_ms, 3000,
-             "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls. "
-             "Also used for EndRemoteBootstrapSession calls.");
+             "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");
 TAG_FLAG(remote_bootstrap_begin_session_timeout_ms, hidden);
+
+DEFINE_int32(remote_bootstrap_end_session_timeout_sec, 15,
+             "Tablet server RPC client timeout for EndRemoteBootstrapSession calls. "
+             "The timeout is usually a large value because we have to wait for the remote server "
+             "to get a CHANGE_ROLE config change accepted.");
+TAG_FLAG(remote_bootstrap_end_session_timeout_sec, hidden);
 
 DEFINE_bool(remote_bootstrap_save_downloaded_metadata, false,
             "Save copies of the downloaded remote bootstrap files for debugging purposes. "
@@ -57,6 +62,11 @@ DEFINE_bool(remote_bootstrap_save_downloaded_metadata, false,
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, advanced);
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, hidden);
 TAG_FLAG(remote_bootstrap_save_downloaded_metadata, runtime);
+
+DEFINE_int32(committed_config_change_role_timeout_sec, 30,
+             "Number of seconds to wait for the CHANGE_ROLE to be in the committed config before "
+             "timing out. ");
+TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
 
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \
@@ -106,7 +116,13 @@ RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
 
 RemoteBootstrapClient::~RemoteBootstrapClient() {
   // Note: Ending the remote bootstrap session releases anchors on the remote.
-  WARN_NOT_OK(EndRemoteSession(), "Unable to close remote bootstrap session");
+  // This assumes that succeeded_ only gets set to true in Finish() just before calling
+  // EndRemoteSession. If this didn't happen, then close the session here.
+  if (!succeeded_) {
+    LOG(INFO) << "Closing remote bootstrap session " << session_id_ << " in RemoteBootstrapClient "
+              << "destructor.";
+    WARN_NOT_OK(EndRemoteSession(), "Unable to close remote bootstrap session " + session_id_);
+  }
 }
 
 Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<TabletMetadata>& meta,
@@ -351,7 +367,46 @@ Status RemoteBootstrapClient::Finish() {
   }
 
   succeeded_ = true;
+
+  RETURN_NOT_OK_PREPEND(EndRemoteSession(), "Error closing remote bootstrap session " +
+                        session_id_);
   return Status::OK();
+}
+
+Status RemoteBootstrapClient::VerifyRemoteBootstrapSucceeded(
+    const scoped_refptr<consensus::Consensus>& shared_consensus) {
+
+  if (!shared_consensus) {
+    return STATUS(InvalidArgument, "Invalid consensus object");
+  }
+
+  auto start = MonoTime::Now(MonoTime::FINE);
+  auto timeout = MonoDelta::FromSeconds(FLAGS_committed_config_change_role_timeout_sec);
+  int backoff_ms = 1;
+  const int kMaxBackoffMs = 256;
+  RaftConfigPB committed_config;
+
+  do {
+    committed_config = shared_consensus->CommittedConfig();
+    for (const auto &peer : committed_config.peers()) {
+      if (peer.permanent_uuid() != fs_manager_->uuid()) {
+        continue;
+      }
+
+      if (peer.member_type() == RaftPeerPB::VOTER || peer.member_type() == RaftPeerPB::OBSERVER) {
+        return Status::OK();
+      } else {
+        SleepFor(MonoDelta::FromMilliseconds(backoff_ms));
+        backoff_ms = min(backoff_ms << 1, kMaxBackoffMs);
+        break;
+      }
+    }
+  } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start).LessThan(timeout));
+
+  return STATUS(TimedOut,
+                Substitute("Timed out waiting member type of peer $0 to change in the committed "
+                           "config $1", fs_manager_->uuid(),
+                           committed_config.ShortDebugString()));
 }
 
 // Decode the remote error into a human-readable Status object.
@@ -397,12 +452,25 @@ Status RemoteBootstrapClient::EndRemoteSession() {
   req.set_is_success(succeeded_);
   EndRemoteBootstrapSessionResponsePB resp;
 
-  RETURN_NOT_OK_UNWIND_PREPEND(proxy_->EndRemoteBootstrapSession(req, &resp, &controller),
-      controller, Substitute("Failure ending remote bootstrap session $0", session_id_));
+  LOG(INFO) << "Ending remote bootstrap session " << session_id_;
+  controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
+  auto status = proxy_->EndRemoteBootstrapSession(req, &resp, &controller);
+  if (status.ok()) {
+    LOG(INFO) << "Remote bootstrap session " << session_id_ << " ended successfully";
+    return Status::OK();
+  }
 
-  LOG(INFO) << "Ended remote bootstrap session " << session_id_;
+  if (status.IsTimedOut()) {
+    // Ignore timeout errors since the server could have sent the ChangeConfig request and died
+    // before replying. We need to check the config to verify that this server's role changed as
+    // expected, in which case, the remote bootstrap was completed successfully.
+    LOG(INFO) << "Remote bootstrap session " << session_id_ << " timed out";
+    return Status::OK();
+  }
 
-  return Status::OK();
+  status = UnwindRemoteError(status, controller);
+  return status.CloneAndPrepend(Substitute("Failure ending remote bootstrap session $0",
+                                           session_id_));
 }
 
 Status RemoteBootstrapClient::DownloadWALs() {

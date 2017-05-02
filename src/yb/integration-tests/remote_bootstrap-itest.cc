@@ -17,6 +17,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <memory>
 #include <boost/optional.hpp>
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
@@ -60,7 +61,9 @@ using yb::client::YBTableType;
 using yb::client::YBTableName;
 using std::shared_ptr;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
+using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::RemoteBootstrapClient;
@@ -111,10 +114,26 @@ class RemoteBootstrapITest : public YBTest {
   void DeleteLeaderDuringRemoteBootstrapStressTest(YBTableType table_type);
   void DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType table_type);
 
+  void CrashTestSetUp(YBTableType table_type);
+  void CrashTestVerify();
+  // The following tests verify that a newly added tserver gets bootstrapped even if the leader
+  // crashes while bootstrapping it.
+  void LeaderCrashesWhileFetchingData(YBTableType table_type);
+  void LeaderCrashesBeforeChangeRole(YBTableType table_type);
+  void LeaderCrashesAfterChangeRole(YBTableType table_type);
+
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   shared_ptr<YBClient> client_;
   unordered_map<string, TServerDetails*> ts_map_;
+
+  MonoDelta crash_test_timeout_;
+  vector<string> crash_test_tserver_flags_;
+  std::unique_ptr<TestWorkload> crash_test_workload_;
+  TServerDetails* crash_test_leader_ts_;
+  int crash_test_tserver_index_;
+  int crash_test_leader_index_;
+  string crash_test_tablet_id_;
 };
 
 void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flags,
@@ -133,6 +152,114 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
                                           &ts_map_));
   YBClientBuilder builder;
   ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+}
+
+void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
+  crash_test_tserver_flags_.push_back("--log_segment_size_mb=1");  // Faster log rolls.
+  // Start the cluster with load balancer turned off.
+  NO_FATALS(StartCluster(crash_test_tserver_flags_, {"--enable_load_balancing=false"}, 5));
+  crash_test_tserver_index_ = 0;  // We'll test with the first TS.
+
+  LOG(INFO) << "Started cluster";
+  // We'll do a config change to remote bootstrap a replica here later. For
+  // now, shut it down.
+  LOG(INFO) << "Shutting down TS " << cluster_->tablet_server(crash_test_tserver_index_)->uuid();
+  cluster_->tablet_server(crash_test_tserver_index_)->Shutdown();
+
+  // Bounce the Master so it gets new tablet reports and doesn't try to assign
+  // a replica to the dead TS.
+  cluster_->master()->Shutdown();
+  ASSERT_OK(cluster_->master()->Restart());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, crash_test_timeout_));
+
+  // Start a workload on the cluster, and run it for a little while.
+  crash_test_workload_.reset(new TestWorkload(cluster_.get()));
+  crash_test_workload_->set_num_replicas(4);
+  crash_test_workload_->Setup();
+  ASSERT_OK(inspect_->WaitForReplicaCount(4));
+
+  vector<string> tablets = inspect_->ListTabletsOnTS(1);
+  ASSERT_EQ(1, tablets.size());
+  crash_test_tablet_id_ = tablets[0];
+
+  crash_test_workload_->Start();
+  while (crash_test_workload_->rows_inserted() < 100) {
+    SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+
+  // Remote bootstrap doesn't see the active WAL segment, and we need to
+  // download a file to trigger the fault in this test. Due to the log index
+  // chunks, that means 3 files minimum: One in-flight WAL segment, one index
+  // chunk file (these files grow much more slowly than the WAL segments), and
+  // one completed WAL segment.
+  crash_test_leader_ts_ = nullptr;
+  ASSERT_OK(FindTabletLeader(ts_map_, crash_test_tablet_id_, crash_test_timeout_,
+                             &crash_test_leader_ts_));
+  crash_test_leader_index_ = cluster_->tablet_server_index_by_uuid(crash_test_leader_ts_->uuid());
+  ASSERT_NE(-1, crash_test_leader_index_);
+  ASSERT_OK(inspect_->WaitForMinFilesInTabletWalDirOnTS(crash_test_leader_index_,
+                                                        crash_test_tablet_id_, 3));
+  crash_test_workload_->StopAndJoin();
+}
+
+void RemoteBootstrapITest::CrashTestVerify() {
+  // Wait until the tablet has been tombstoned in TS 0. This will happen after a call to
+  // rb_client->Finish() tries to ends the remote bootstrap session with the crashed leader. The
+  // returned error will cause the tablet to be tombstoned by the TOMBSTONE_NOT_OK macro.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(crash_test_tserver_index_, crash_test_tablet_id_,
+                                                 TABLET_DATA_TOMBSTONED));
+
+  // After crash_test_leader_ts_ crashes, a new leader will be elected. This new leader will detect
+  // that TS 0 needs to be remote bootstrapped. Verify that this process completes successfully.
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(crash_test_tserver_index_, crash_test_tablet_id_,
+                                                 TABLET_DATA_READY));
+  auto dead_leader = crash_test_leader_ts_;
+  LOG(INFO) << "Dead leader: " << dead_leader->ToString();
+  MonoTime start_time = MonoTime::Now(MonoTime::FINE);
+  Status status;
+  do {
+    ASSERT_OK(FindTabletLeader(ts_map_, crash_test_tablet_id_, crash_test_timeout_,
+                               &crash_test_leader_ts_));
+    status = WaitUntilCommittedConfigNumVotersIs(5, crash_test_leader_ts_, crash_test_tablet_id_,
+                                                 MonoDelta::FromSeconds(1));
+
+    if (status.ok()) {
+      break;
+    }
+  } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time).ToSeconds() < 20);
+
+  CHECK_OK(status);
+
+  start_time = MonoTime::Now(MonoTime::FINE);
+  do {
+    ASSERT_OK(FindTabletLeader(ts_map_, crash_test_tablet_id_, crash_test_timeout_,
+                               &crash_test_leader_ts_));
+
+    Status s = RemoveServer(crash_test_leader_ts_, crash_test_tablet_id_, dead_leader, boost::none,
+                            MonoDelta::FromSeconds(1));
+    if (s.ok()) {
+      break;
+    }
+
+    // Ignore the return status if the leader is not ready or if the leader changed.
+    if (s.ToString().find("Leader is not ready") == string::npos &&
+        s.ToString().find("is not leader of this config") == string::npos) {
+      CHECK_OK(s);
+    }
+
+    SleepFor(MonoDelta::FromMilliseconds(500));
+  } while (MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_time).ToSeconds() < 20);
+
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(4, crash_test_leader_ts_, crash_test_tablet_id_,
+                                                crash_test_timeout_));
+
+  ClusterVerifier cluster_verifier(cluster_.get());
+  // Skip cluster_verifier.CheckCluster() because it calls ListTabletServers which gets its list
+  // from TSManager::GetAllDescriptors. This list includes the tserver that is in a crash loop, and
+  // the check will always fail.
+  NO_FATALS(cluster_verifier.CheckRowCount(crash_test_workload_->table_name(),
+                                           ClusterVerifier::AT_LEAST,
+                                           crash_test_workload_->rows_inserted()));
 }
 
 // If a rogue (a.k.a. zombie) leader tries to remote bootstrap a tombstoned
@@ -318,10 +445,9 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   // Now finish bootstrapping!
   tablet::TabletStatusListener listener(meta);
   ASSERT_OK(rb_client->FetchAll(&listener));
+  // Call Finish, which closes the remote session.
   ASSERT_OK(rb_client->Finish());
 
-  // Run destructor, which closes the remote session.
-  rb_client.reset();
   SleepFor(MonoDelta::FromMilliseconds(500));  // Give a little time for a crash (KUDU-1009).
   ASSERT_TRUE(cluster_->tablet_server(kTsIndex)->IsProcessAlive());
 
@@ -394,7 +520,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
                                 timeout));
 
-  // Wait until the tablet has been tombstoned on the folower.
+  // Wait until the tablet has been tombstoned on the follower.
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id,
                                                  tablet::TABLET_DATA_TOMBSTONED, timeout));
 
@@ -407,7 +533,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   // remotely bootstrapped and proceed to bring it back up to date.
   ASSERT_OK(cluster_->tablet_server(kLeaderIndex)->Resume());
 
-  // Wait for remote botstrap to complete successfully.
+  // Wait for remote bootstrap to complete successfully.
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id,
                                                  tablet::TABLET_DATA_READY, timeout));
 
@@ -725,6 +851,70 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
   EXPECT_LT(num_logs_per_second, 20);
 }
 
+void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type) {
+  crash_test_timeout_ = MonoDelta::FromSeconds(20);
+  CrashTestSetUp(table_type);
+
+  // Cause the leader to crash when a follower tries to fetch data from it.
+  const string& fault_flag = "fault_crash_on_handle_rb_fetch_data";
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_), fault_flag,
+                              "1.0"));
+
+  // Add our TS 0 to the config and wait for the leader to crash.
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
+  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
+                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+  ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_));
+
+  CrashTestVerify();
+}
+
+void RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType table_type) {
+  // Make the tablet server sleep in LogAndTombstone after it has called DeleteTabletData so we can
+  // verify that the tablet has been tombstoned (by calling WaitForTabletDataStateOnTs).
+  crash_test_tserver_flags_.push_back("--sleep_after_tombstoning_tablet_secs=5");
+  crash_test_timeout_ = MonoDelta::FromSeconds(20);
+  CrashTestSetUp(table_type);
+
+  // Cause the leader to crash when the follower ends the remote bootstrap session and just before
+  // the leader is about to change the role of the follower.
+  const string& fault_flag = "fault_crash_leader_before_changing_role";
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_), fault_flag,
+                              "1.0"));
+
+  // Add our TS 0 to the config and wait for the leader to crash.
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
+  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
+                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+  ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, MonoDelta::FromSeconds(60)));
+  CrashTestVerify();
+}
+
+void RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType table_type) {
+  // Make the tablet server sleep in LogAndTombstone after it has called DeleteTabletData so we can
+  // verify that the tablet has been tombstoned (by calling WaitForTabletDataStateOnTs).
+  crash_test_tserver_flags_.push_back("--sleep_after_tombstoning_tablet_secs=5");
+  crash_test_timeout_ = MonoDelta::FromSeconds(20);
+  CrashTestSetUp(table_type);
+
+  // Cause the leader to crash after it has successfully sent a ChangeConfig CHANGE_ROLE request and
+  // before it responds to the EndRemoteBootstrapSession request.
+  const string& fault_flag = "fault_crash_leader_after_changing_role";
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_), fault_flag,
+                              "1.0"));
+
+  // Add our TS 0 to the config and wait for the leader to crash.
+  ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
+  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
+                             RaftPeerPB::PRE_VOTER, boost::none, crash_test_timeout_));
+  ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, MonoDelta::FromSeconds(60)));
+
+  CrashTestVerify();
+}
+
 TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKuduTableType) {
   RejectRogueLeader(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
 }
@@ -771,6 +961,30 @@ TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDel
 
 TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDeletedKeyValueType) {
   DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(YBTableType::YQL_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestLeaderCrashesWhileFetchingDataKuduTableType) {
+  RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestLeaderCrashesWhileFetchingDataKeyValueTableType) {
+  RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType::YQL_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestLeaderCrashesBeforeChangeRoleKuduTableType) {
+  RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestLeaderCrashesBeforeChangeRoleKeyValueTableType) {
+  RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType::YQL_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestLeaderCrashesAfterChangeRoleKuduTableType) {
+  RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType::KUDU_COLUMNAR_TABLE_TYPE);
+}
+
+TEST_F(RemoteBootstrapITest, TestLeaderCrashesAfterChangeRoleKeyValueTableType) {
+  RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType::YQL_TABLE_TYPE);
 }
 
 }  // namespace yb

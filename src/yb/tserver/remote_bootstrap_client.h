@@ -23,6 +23,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "yb/consensus/consensus.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -113,6 +114,11 @@ class RemoteBootstrapClient {
   // replacement superblock.
   CHECKED_STATUS Finish();
 
+  // Verify that the remote bootstrap was completed successfully by verifying that the ChangeConfig
+  // request was propagated.
+  CHECKED_STATUS VerifyRemoteBootstrapSucceeded(
+      const scoped_refptr<consensus::Consensus>& shared_consensus);
+
  private:
   FRIEND_TEST(RemoteBootstrapKuduClientTest, TestBeginEndSession);
   FRIEND_TEST(RemoteBootstrapKuduClientTest, TestDownloadBlock);
@@ -127,7 +133,8 @@ class RemoteBootstrapClient {
   // The given ErrorStatusPB must extend RemoteBootstrapErrorPB.
   static CHECKED_STATUS ExtractRemoteError(const rpc::ErrorStatusPB& remote_error);
 
-  static CHECKED_STATUS UnwindRemoteError(const Status& status, const rpc::RpcController& controller);
+  static CHECKED_STATUS UnwindRemoteError(const Status& status,
+                                          const rpc::RpcController& controller);
 
   // Update the bootstrap StatusListener with a message.
   // The string "RemoteBootstrap: " will be prepended to each message.
