@@ -350,7 +350,7 @@ public class AWSInitializer {
       }
       List<InstanceType.VolumeDetails> volumeDetailsList =
           instanceType.instanceTypeDetails.volumeDetailsList;
-      if (volumeDetailsList == null || volumeDetailsList.size() == 0) {
+      if (volumeDetailsList == null || volumeDetailsList.isEmpty()) {
         for (int i = 0; i < volumeCount; ++i) {
           InstanceType.VolumeDetails volumeDetails = new InstanceType.VolumeDetails();
           volumeDetails.volumeSizeGB = volumeSizeGB;
