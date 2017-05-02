@@ -226,8 +226,16 @@ void AsyncRpc::SendRpcCb(const Status& status) {
   //
   // TODO: IllegalState is obviously way too broad an error category for
   // this case.
-  if (new_status.IsIllegalState() || new_status.IsAborted()) {
-    followers_.insert(current_ts_);
+  if (new_status.IsIllegalState() || new_status.IsServiceUnavailable() || new_status.IsAborted()) {
+    const bool leader_is_not_ready = (response_error_code() ==
+        tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
+
+    // If the leader just is not ready - let's retry the same tserver.
+    // Else the leader became a follower and must be reset on retry.
+    if (!leader_is_not_ready) {
+      followers_.insert(current_ts_);
+    }
+
     mutable_retrier()->DelayedRetry(this, new_status);
     return;
   }
@@ -269,6 +277,18 @@ void AsyncRpc::InitTSProxyCb(const Status& status) {
   if (async_rpc_metrics_)
     async_rpc_metrics_->time_to_send->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   SendRpcToTserver();
+}
+
+Status AsyncRpc::response_error_status() const {
+  const tserver::TabletServerErrorPB* const error_pb = get_response_error();
+  return error_pb == nullptr ? Status::OK()
+                             : StatusFromPB(error_pb->status());
+}
+
+tserver::TabletServerErrorPB_Code AsyncRpc::response_error_code() const {
+  const tserver::TabletServerErrorPB* const error_pb = get_response_error();
+  return error_pb == nullptr ? tserver::TabletServerErrorPB::UNKNOWN_ERROR
+                             : error_pb->code();
 }
 
 void AsyncRpc::MarkOpsAsFailed(const string& error_message) {
@@ -419,11 +439,6 @@ void WriteRpc::SendRpcToTserver() {
   TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
-Status WriteRpc::response_error_status() {
-  if (!resp_.has_error()) return Status::OK();
-  return StatusFromPB(resp_.error().status());
-}
-
 void WriteRpc::ProcessResponseFromTserver(Status status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
@@ -558,11 +573,6 @@ void ReadRpc::SendRpcToTserver() {
       req_, &resp_, mutable_retrier()->mutable_controller(),
       std::bind(&ReadRpc::SendRpcCb, this, Status::OK()));
   TRACE_TO(trace, "RpcDispatched Asynchronously");
-}
-
-Status ReadRpc::response_error_status() {
-  if (!resp_.has_error()) return Status::OK();
-  return StatusFromPB(resp_.error().status());
 }
 
 void ReadRpc::ProcessResponseFromTserver(Status status) {

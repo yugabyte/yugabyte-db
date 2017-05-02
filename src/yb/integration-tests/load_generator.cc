@@ -494,7 +494,7 @@ MultiThreadedReader::MultiThreadedReader(int64_t num_keys, int num_reader_thread
                                          const KeyIndexSet* inserted_keys,
                                          const KeyIndexSet* failed_keys, atomic_bool* stop_flag,
                                          int value_size, int max_num_read_errors,
-                                         int retries_on_empty_read)
+                                         bool stop_on_empty_read)
     : MultiThreadedAction(
           "readers", num_keys, 0, num_reader_threads, 1, session_factory->ClientId(),
           stop_flag, value_size),
@@ -505,7 +505,7 @@ MultiThreadedReader::MultiThreadedReader(int64_t num_keys, int num_reader_thread
       num_reads_(0),
       num_read_errors_(0),
       max_num_read_errors_(max_num_read_errors),
-      retries_on_empty_read_(retries_on_empty_read) {}
+      stop_on_empty_read_(stop_on_empty_read) {}
 
 void MultiThreadedReader::RunActionThread(int reader_index) {
   unique_ptr<SingleThreadedReader> reader_loop(session_factory_->GetReader(this, reader_index));
@@ -530,9 +530,16 @@ void MultiThreadedReader::RunStatsThread() {
   }
 }
 
-void MultiThreadedReader::IncrementReadErrorCount() {
+void MultiThreadedReader::IncrementReadErrorCount(ReadStatus read_status) {
+  DCHECK(read_status != ReadStatus::OK);
+
   if (++num_read_errors_ > max_num_read_errors_) {
     LOG(ERROR) << "Exceeded the maximum number of read errors (" << max_num_read_errors_ << ")!";
+    Stop();
+  }
+
+  if (stop_on_empty_read_ && read_status == ReadStatus::NO_ROWS) {
+    LOG(ERROR) << "No empty reads allowed!";
     Stop();
   }
 }
@@ -597,7 +604,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
   if (rows.size() != 1) {
     LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": " << rows.size()
                << " (expected to find 1 row), read hybrid_time: " << read_ts;
-    multi_threaded_reader_->IncrementReadErrorCount();
+    multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
     return ReadStatus::OTHER_ERROR;
   }
 
@@ -606,7 +613,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
   if (returned_key != key_str) {
     LOG(ERROR) << "Invalid key returned by the read operation: '" << returned_key << "', "
                << "expected: '" << key_str << "', read hybrid_time: " << read_ts;
-    multi_threaded_reader_->IncrementReadErrorCount();
+    multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
     return ReadStatus::OTHER_ERROR;
   }
 
@@ -616,7 +623,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
                << "': " << FormatWithSize(returned_value.ToString())
                << ", expected: " << FormatWithSize(expected_value_str)
                << ", read hybrid_time: " << read_ts;
-    multi_threaded_reader_->IncrementReadErrorCount();
+    multi_threaded_reader_->IncrementReadErrorCount(ReadStatus::OTHER_ERROR);
     return ReadStatus::OTHER_ERROR;
   }
 
@@ -660,25 +667,18 @@ void SingleThreadedReader::Run() {
   }
 
   while (!multi_threaded_reader_->IsStopRequested()) {
-    int64_t key_index = NextKeyIndexToRead(&random_number_generator);
+    const int64_t key_index = NextKeyIndexToRead(&random_number_generator);
 
     ++multi_threaded_reader_->num_reads_;
-    string key_str(multi_threaded_reader_->GetKeyByIndex(key_index));
-    string expected_value_str(multi_threaded_reader_->GetValueByIndex(key_index));
-    ReadStatus read_status = PerformRead(key_index, key_str, expected_value_str);
+    const string key_str(multi_threaded_reader_->GetKeyByIndex(key_index));
+    const string expected_value_str(multi_threaded_reader_->GetValueByIndex(key_index));
+    const ReadStatus read_status = PerformRead(key_index, key_str, expected_value_str);
 
-    // We support a mode in which we don't treat a read operation returning zero rows as an error
-    // for up to a configured number of attempts. This is because a new leader might not yet be able
-    // to serve up-to-date data for raw RocksDB-backed tables with no additional MVCC.
-    // See https://yugabyte.atlassian.net/browse/ENG-115 for details.
-    for (int i = 1;
-         i <= multi_threaded_reader_->retries_on_empty_read_ && read_status == ReadStatus::NO_ROWS;
-         ++i) {
-      SleepFor(MonoDelta::FromMilliseconds(i * FLAGS_load_gen_wait_time_increment_step_ms));
-      read_status = PerformRead(key_index, key_str, expected_value_str);
+    // Read operation returning zero rows is treated as a read error.
+    // See: https://yugabyte.atlassian.net/browse/ENG-1272
+    if (read_status == ReadStatus::NO_ROWS) {
+      multi_threaded_reader_->IncrementReadErrorCount(read_status);
     }
-
-    if (read_status != ReadStatus::OK) multi_threaded_reader_->IncrementReadErrorCount();
   }
 
   CloseSession();

@@ -118,6 +118,7 @@ using google::protobuf::RepeatedPtrField;
 using rpc::RpcContext;
 using std::shared_ptr;
 using std::vector;
+using std::string;
 using strings::Substitute;
 using tablet::AlterSchemaTransactionState;
 using tablet::Tablet;
@@ -839,27 +840,38 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
 }
 
-Status TabletServiceImpl::CheckLeaderRole(const TabletPeer& tablet_peer,
-                                          TabletServerErrorPB::Code* error_code) {
+Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_peer,
+                                                    TabletServerErrorPB::Code* error_code) {
 
   scoped_refptr<consensus::Consensus> consensus = tablet_peer.shared_consensus();
   if (!consensus) {
     *error_code = TabletServerErrorPB::TABLET_NOT_RUNNING;
-    return STATUS(IllegalState,
-                  Substitute("Consensus not available for tablet $0.", tablet_peer.tablet_id()));
-  }
-  VLOG(1) << Substitute("CheckLeaderRole T $0 P $1 Role: $2",
-                        tablet_peer.tablet_id(),
-                        tablet_peer.permanent_uuid(),
-                        consensus->role());
-  if (consensus->role() != RaftPeerPB::LEADER) {
-    *error_code = TabletServerErrorPB::NOT_THE_LEADER;
-    return STATUS(IllegalState,
-                  Substitute("Not a leader for tablet $0. Current role is $1.",
-                             tablet_peer.tablet_id(), consensus->role()));
+    return STATUS_SUBSTITUTE(IllegalState,
+        "Consensus not available for tablet $0.", tablet_peer.tablet_id());
   }
 
-  return Status::OK();
+  const Consensus::LeaderStatus leader_status = consensus->leader_status();
+  const string details = Substitute("tablet $0 peer $1. Peer role is $2. Leader status is $3.",
+      tablet_peer.tablet_id(), tablet_peer.permanent_uuid(), consensus->role(),
+      static_cast<int>(leader_status));
+  VLOG(1) << "Check for " << details;
+
+  switch (leader_status) {
+    case Consensus::LeaderStatus::NOT_LEADER:
+      *error_code = TabletServerErrorPB::NOT_THE_LEADER;
+      return STATUS_SUBSTITUTE(IllegalState, "Not the leader for $0", details);
+
+    case Consensus::LeaderStatus::LEADER_BUT_NOT_READY:
+      *error_code = TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE;
+      return STATUS_SUBSTITUTE(ServiceUnavailable, "Leader is not ready for $0", details);
+
+    case Consensus::LeaderStatus::LEADER_AND_READY:
+      return Status::OK();
+  }
+
+  LOG(FATAL) << "Unknown leader status = " << static_cast<int>(leader_status);
+  return STATUS_SUBSTITUTE(InternalError,
+      "Unknown leader status $0.", static_cast<int>(leader_status));
 }
 
 bool TabletServiceImpl::GetLeaderTabletOrRespond(const ReadRequestPB* req,
@@ -873,7 +885,7 @@ bool TabletServiceImpl::GetLeaderTabletOrRespond(const ReadRequestPB* req,
   }
 
   TabletServerErrorPB::Code error_code;
-  Status s = CheckLeaderRole(*tablet_peer.get(), &error_code);
+  Status s = CheckPeerIsLeaderAndReady(*tablet_peer.get(), &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
     return false;
@@ -1601,7 +1613,7 @@ Status TabletServiceImpl::HandleNewScanRequest(TabletPeer* tablet_peer,
   VLOG(1) << "New scan request for " << tablet_peer->tablet_id()
           << " leader_only: "  << req->leader_only();
   if (req->leader_only()) {
-    RETURN_NOT_OK(CheckLeaderRole(*tablet_peer, error_code));
+    RETURN_NOT_OK(CheckPeerIsLeaderAndReady(*tablet_peer, error_code));
   }
 
   const NewScanRequestPB& scan_pb = req->new_scan_request();

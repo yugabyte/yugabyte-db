@@ -138,7 +138,11 @@ class RaftConsensus : public Consensus,
                               boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
                               override;
 
+  RaftPeerPB::Role GetRoleUnlocked() const;
+
   virtual RaftPeerPB::Role role() const override;
+
+  LeaderStatus leader_status() const override;
 
   virtual std::string peer_uuid() const override;
 
@@ -500,6 +504,10 @@ class RaftConsensus : public Consensus,
   // again too soon. Once it waits for the extended delay before starting an election, it will
   // go back to the same delay as before.
   bool just_stepped_down_ = false;
+
+  // This leader is ready to serve only if NoOp was successfully committed
+  // after the new leader successful election.
+  bool leader_no_op_committed_ = false;
 
   // UUID of new desired leader
   std::string protege_leader_uuid_;

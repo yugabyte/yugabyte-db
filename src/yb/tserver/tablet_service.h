@@ -116,9 +116,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
                           const HybridTime& hybrid_time,
                           tablet::MvccSnapshot* snap);
 
-  // Check if the tablet is a leader.
-  CHECKED_STATUS CheckLeaderRole(const tablet::TabletPeer& tablet_peer,
-                                 TabletServerErrorPB::Code* error_code);
+  // Check if the tablet peer is the leader and is in ready state for servicing IOs.
+  CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer,
+                                           TabletServerErrorPB::Code* error_code);
 
   virtual bool GetLeaderTabletOrRespond(const ReadRequestPB* req,
                                         ReadResponsePB* resp,

@@ -144,6 +144,15 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
     ELECT_EVEN_IF_LEADER_IS_ALIVE
   };
 
+  // The elected Leader (this peer) can be in not-ready state because it's not yet synced.
+  // The state reflects the real leader status: not-leader, leader-not-ready, leader-ready.
+  // Not-ready status means that the leader is not ready to serve up-to-date read requests.
+  enum class LeaderStatus {
+    NOT_LEADER,
+    LEADER_BUT_NOT_READY,
+    LEADER_AND_READY
+  };
+
   // pending_commit - we should start election only after we have specified entry committed.
   // must_be_committed_opid - only matters if pending_commit is true.
   //    If this is specified, we would wait until this entry is committed. If not specified
@@ -265,6 +274,9 @@ class Consensus : public RefCountedThreadSafe<Consensus> {
 
   // Returns the current Raft role of this instance.
   virtual RaftPeerPB::Role role() const = 0;
+
+  // Returns the leader status (see LeaderStatus type description for details).
+  virtual LeaderStatus leader_status() const = 0;
 
   // Returns the uuid of this peer.
   virtual std::string peer_uuid() const = 0;

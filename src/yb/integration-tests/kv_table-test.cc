@@ -133,7 +133,7 @@ TEST_F(KVTableTest, LoadTest) {
   int value_size_bytes = 16;
   int max_write_errors = 0;
   int max_read_errors = 0;
-  int retries_on_empty_read = 0;
+  bool stop_on_empty_read = true;
 
   // Create two separate clients for read and writes.
   shared_ptr<YBClient> write_client = CreateYBClient();
@@ -148,7 +148,7 @@ TEST_F(KVTableTest, LoadTest) {
                                                  writer.InsertionPoint(), writer.InsertedKeys(),
                                                  writer.FailedKeys(), &stop_requested_flag,
                                                  value_size_bytes, max_read_errors,
-                                                 retries_on_empty_read);
+                                                 stop_on_empty_read);
 
   writer.Start();
   // Having separate write requires adding in write client id to the reader.

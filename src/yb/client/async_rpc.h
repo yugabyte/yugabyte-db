@@ -69,7 +69,11 @@ class AsyncRpc : public rpc::Rpc {
   // Sends the RPC, provided there was no error.
   void InitTSProxyCb(const Status& status);
 
-  virtual CHECKED_STATUS response_error_status() = 0;
+  virtual const tserver::TabletServerErrorPB* get_response_error() const = 0;
+
+  CHECKED_STATUS response_error_status() const;
+
+  tserver::TabletServerErrorPB_Code response_error_code() const;
 
   virtual void SendRpcToTserver() = 0;
 
@@ -120,7 +124,9 @@ class WriteRpc : public AsyncRpc {
  protected:
   void SendRpcToTserver() override;
 
-  CHECKED_STATUS response_error_status() override;
+  const tserver::TabletServerErrorPB* get_response_error() const override {
+    return resp_.has_error() ? &resp_.error() : nullptr;
+  }
 
   void ProcessResponseFromTserver(Status status) override;
 
@@ -148,7 +154,9 @@ class ReadRpc : public AsyncRpc {
 
   void ProcessResponseFromTserver(Status status) override;
 
-  CHECKED_STATUS response_error_status() override;
+  const tserver::TabletServerErrorPB* get_response_error() const override {
+    return resp_.has_error() ? &resp_.error() : nullptr;
+  }
 
  private:
   // Request body.

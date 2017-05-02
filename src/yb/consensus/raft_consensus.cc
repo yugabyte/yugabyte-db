@@ -678,6 +678,7 @@ void RaftConsensus::ReportFailureDetected(const std::string& name, const Status&
 }
 
 Status RaftConsensus::BecomeLeaderUnlocked() {
+  DCHECK(state_->IsLocked());
   TRACE_EVENT2("consensus", "RaftConsensus::BecomeLeaderUnlocked",
                "peer", peer_uuid(),
                "tablet", tablet_id());
@@ -689,6 +690,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   // Don't vote for anyone if we're a leader.
   withhold_votes_until_ = MonoTime::Max();
 
+  leader_no_op_committed_ = false;
   queue_->RegisterObserver(this);
   RETURN_NOT_OK(RefreshConsensusQueueAndPeersUnlocked());
 
@@ -2064,11 +2066,28 @@ Status RaftConsensus::RequestVoteRespondVoteGranted(const VoteRequestPB* request
   return Status::OK();
 }
 
+RaftPeerPB::Role RaftConsensus::GetRoleUnlocked() const {
+  DCHECK(state_->IsLocked());
+  return GetConsensusRole(state_->GetPeerUuid(),
+                          state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE));
+}
+
 RaftPeerPB::Role RaftConsensus::role() const {
   ReplicaState::UniqueLock lock;
   CHECK_OK(state_->LockForRead(&lock));
-  return GetConsensusRole(state_->GetPeerUuid(),
-                          state_->ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE));
+  return GetRoleUnlocked();
+}
+
+Consensus::LeaderStatus RaftConsensus::leader_status() const {
+  ReplicaState::UniqueLock lock;
+  CHECK_OK(state_->LockForRead(&lock));
+
+  if (GetRoleUnlocked() != RaftPeerPB::LEADER) {
+    return LeaderStatus::NOT_LEADER;
+  }
+
+  return leader_no_op_committed_ ? LeaderStatus::LEADER_AND_READY
+                                 : LeaderStatus::LEADER_BUT_NOT_READY;
 }
 
 std::string RaftConsensus::LogPrefixUnlocked() {
@@ -2332,6 +2351,7 @@ void RaftConsensus::MarkDirtyOnSuccess(std::shared_ptr<StateChangeContext> conte
 void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
                                                   const StatusCallback& client_cb,
                                                   const Status& status) {
+  DCHECK(state_->IsLocked());
   OperationType op_type = round->replicate_msg()->op_type();
   string op_type_str = OperationType_Name(op_type);
   CHECK(IsConsensusOnlyOperation(op_type)) << "Unexpected op type: " << op_type_str;
@@ -2347,26 +2367,26 @@ void RaftConsensus::NonTxRoundReplicationFinished(ConsensusRound* round,
         LOG(WARNING) << "Could not clear pending state : " << s.ToString();
       }
     }
+  } else if (table_type_ == KUDU_COLUMNAR_TABLE_TYPE) {
+    // Use these commit messages ONLY for RocksDB-backed tables.
+    VLOG(1) << state_->LogPrefixThreadSafe() << "Committing " << op_type_str << " with op id "
+            << round->id();
+    gscoped_ptr<CommitMsg> commit_msg(new CommitMsg);
+    commit_msg->set_op_type(round->replicate_msg()->op_type());
+    *commit_msg->mutable_commited_op_id() = round->id();
 
-    client_cb.Run(status);
-    return;
+    WARN_NOT_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(&DoNothingStatusCB)),
+                "Unable to append commit message");
   }
 
-  // Do not use these commit messages for RocksDB-backed tables.
-  if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
-    client_cb.Run(status);
-    return;
-  }
-
-  VLOG(1) << state_->LogPrefixThreadSafe() << "Committing " << op_type_str << " with op id "
-          << round->id();
-  gscoped_ptr<CommitMsg> commit_msg(new CommitMsg);
-  commit_msg->set_op_type(round->replicate_msg()->op_type());
-  *commit_msg->mutable_commited_op_id() = round->id();
-
-  WARN_NOT_OK(log_->AsyncAppendCommit(commit_msg.Pass(), Bind(&DoNothingStatusCB)),
-              "Unable to append commit message");
   client_cb.Run(status);
+
+  // Set 'Leader is ready to serve' flag only for commited NoOp operation
+  // and only if the term is up-to-date.
+  if (op_type == NO_OP && round->id().has_term() &&
+      round->id().term() == state_->GetCurrentTermUnlocked()) {
+    leader_no_op_committed_ = true;
+  }
 }
 
 Status RaftConsensus::EnsureFailureDetectorEnabledUnlocked() {

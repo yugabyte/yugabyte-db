@@ -467,7 +467,9 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
                error.getCode() ==
                  Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_CHANGE_CONFIG ||
                error.getCode() ==
-                 Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_STEP_DOWN) {
+                 Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_STEP_DOWN ||
+               error.getCode() ==
+                 Tserver.TabletServerErrorPB.Code.THE_LEADER_IS_NOT_READY) {
       ybClient.handleRetryableError(rpc, ex);
       // The following error codes are an indication that the tablet isn't a leader.
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||

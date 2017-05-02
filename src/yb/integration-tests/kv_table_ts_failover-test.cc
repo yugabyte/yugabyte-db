@@ -44,7 +44,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     int value_size_bytes = 16;
     int max_write_errors = 0;
     int max_read_errors = 0;
-    int retries_on_empty_read = 10;
+    bool stop_on_empty_read = true;
 
     // Create two separate clients for read and writes.
     shared_ptr<YBClient> write_client = CreateYBClient();
@@ -59,7 +59,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
                                                    writer.InsertionPoint(), writer.InsertedKeys(),
                                                    writer.FailedKeys(), &stop_requested_flag,
                                                    value_size_bytes, max_read_errors,
-                                                   retries_on_empty_read);
+                                                   stop_on_empty_read);
 
     writer.Start();
     // Having separate write requires adding in write client id to the reader.
@@ -86,13 +86,15 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
       LOG(INFO) << "Completed iteration " << i << " of the test";
     }
 
-    ASSERT_EQ(0, writer.num_write_errors());
-    ASSERT_EQ(0, reader.num_read_errors());
+    NO_FATALS(writer.AssertSucceeded());
+    NO_FATALS(reader.AssertSucceeded());
+
     // Assuming every thread has time to do at least 50 writes. Had to lower this from 100 after
     // enabling TSAN.
     ASSERT_GE(writer.num_writes(), writer_threads * 50);
-    // Assuming reads are at least as fast as writes.
-    ASSERT_GE(reader.num_reads(), writer.num_writes());
+    // Assuming at least 100 reads and 100 writes.
+    ASSERT_GE(reader.num_reads(), 100);
+    ASSERT_GE(writer.num_writes(), 100);
 
     ClusterVerifier cluster_verifier(external_mini_cluster());
     NO_FATALS(cluster_verifier.CheckCluster());

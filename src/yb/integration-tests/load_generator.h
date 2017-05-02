@@ -18,6 +18,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/test_util.h"
 
 using cpp_redis::RedisClient;
 using cpp_redis::RedisReply;
@@ -161,6 +162,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
 
   int64_t num_writes() { return next_key_.load() - start_key_; }
   int num_write_errors() { return failed_keys_.NumElements(); }
+  void AssertSucceeded() { ASSERT_EQ(num_write_errors(), 0); }
 
  private:
   friend class SingleThreadedWriter;
@@ -288,12 +290,13 @@ class MultiThreadedReader : public MultiThreadedAction {
                         const KeyIndexSet* inserted_keys,
                         const KeyIndexSet* failed_keys,
                         std::atomic_bool* stop_flag, int value_size,
-                        int max_num_read_errors, int retries_on_empty_read);
+                        int max_num_read_errors, bool stop_on_empty_read);
 
-  void IncrementReadErrorCount();
+  void IncrementReadErrorCount(ReadStatus read_status);
 
   int64_t num_reads() { return num_reads_; }
   int64_t num_read_errors() { return num_read_errors_.load(); }
+  void AssertSucceeded() { ASSERT_EQ(num_read_errors(), 0); }
 
  protected:
   virtual void RunActionThread(int reader_index) override;
@@ -311,7 +314,7 @@ class MultiThreadedReader : public MultiThreadedAction {
   std::atomic<int64_t> num_reads_;
   std::atomic<int64_t> num_read_errors_;
   const int max_num_read_errors_;
-  const int retries_on_empty_read_;
+  const bool stop_on_empty_read_;
 };
 
 class SingleThreadedReader {

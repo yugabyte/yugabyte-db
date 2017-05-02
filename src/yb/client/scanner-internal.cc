@@ -17,20 +17,19 @@
 
 #include "yb/client/scanner-internal.h"
 
-#include <algorithm>
-#include <boost/bind.hpp>
 #include <cmath>
 #include <string>
 #include <vector>
+#include <algorithm>
 
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/hexdump.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/row_result.h"
 #include "yb/client/table-internal.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/util/hexdump.h"
 
 using std::set;
 using std::string;
@@ -113,7 +112,7 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
     // Exponential backoff with jitter anchored between 10ms and 20ms, and an
     // upper bound between 2.5s and 5s.
     MonoDelta sleep = MonoDelta::FromMilliseconds(
-        (10 + rand() % 10) * static_cast<int>(std::pow(2.0, std::min(8, scan_attempts_ - 1))));
+        (10 + random() % 10) * static_cast<int>(std::pow(2.0, std::min(8, scan_attempts_ - 1))));
     MonoTime now = MonoTime::Now(MonoTime::FINE);
     now.AddDelta(sleep);
     if (deadline.ComesBefore(now)) {
@@ -170,6 +169,10 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
   //                          is no longer the leader.
   //                          The metadata for this tablet should be refreshed.
   //
+  //   - THE_LEADER_IS_NOT_READY: The scan must be retried at the same tablet server, because
+  //                          this tablet server is the leader, but it's not ready to serve
+  //                          up-to-date reads yet.
+  //
   //   - Any other error    : Fatal. This indicates an unexpected error while processing the scan
   //                          request.
   if (rpc_status.ok() && !server_status.ok()) {
@@ -178,8 +181,20 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
     const tserver::TabletServerErrorPB& error = last_response_.error();
     switch (error.code()) {
       case tserver::TabletServerErrorPB::SCANNER_EXPIRED:
-        VLOG(1) << "Got SCANNER_EXPIRED error code, non-fatal error.";
+        VLOG(1) << "Got error code " << tserver::TabletServerErrorPB::Code_Name(error.code())
+            << ": non-fatal error.";
         break;
+      case tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE: {
+        VLOG(1) << "Got error code " << tserver::TabletServerErrorPB::Code_Name(error.code())
+            << ": non-fatal error.";
+        // The Leader was successfully elected, but it's not ready to serve requests.
+        // Let's give him 200ms to become ready (to commit sync NoOp request) and retry.
+        // Such simplified error-handling mechanism is only OK because
+        // this is not a production codepath.
+        const MonoDelta sleep_delta = MonoDelta::FromMilliseconds(200);
+        SleepFor(sleep_delta);
+        break;
+      }
       case tserver::TabletServerErrorPB::TABLET_NOT_RUNNING:
         VLOG(1) << "Got error code " << tserver::TabletServerErrorPB::Code_Name(error.code())
             << ": temporarily blacklisting node " << ts_->permanent_uuid();
@@ -187,7 +202,7 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
         // We've blacklisted all the live candidate tservers.
         // Do a short random sleep, clear the temp blacklist, then do another round of retries.
         if (!candidates.empty() && candidates.size() == blacklist->size()) {
-          MonoDelta sleep_delta = MonoDelta::FromMilliseconds((random() % 5000) + 1000);
+          const MonoDelta sleep_delta = MonoDelta::FromMilliseconds((random() % 5000) + 1000);
           LOG(INFO) << "All live candidate nodes are unavailable because of transient errors."
               << " Sleeping for " << sleep_delta.ToMilliseconds() << " ms before trying again.";
           SleepFor(sleep_delta);
@@ -202,7 +217,7 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
         remote_->MarkStale();
         // TODO: Only backoff on the second time we hit TABLET_NOT_FOUND on the
         // same tablet (see KUDU-1314).
-        MonoDelta backoff_time = MonoDelta::FromMilliseconds((random() % 1000) + 500);
+        const MonoDelta backoff_time = MonoDelta::FromMilliseconds((random() % 1000) + 500);
         SleepFor(backoff_time);
         VLOG(1) << "Tried to make a request to a non-leader or tablet. Refreshing metadata. "
                 << "Error Code: " << tserver::TabletServerErrorPB::Code_Name(error.code());

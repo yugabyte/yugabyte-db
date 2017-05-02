@@ -52,9 +52,7 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   // Tolerate some errors in the load test due to temporary unavailability.
   static constexpr int kMaxWriteErrors = 1000;
   static constexpr int kMaxReadErrors = 1000;
-
-  // TODO: make this zero when ENG-1272 is fixed.
-  static constexpr int kRetriesOnEmptyRead = 10;
+  static constexpr bool kStopOnEmptyRead = true;
 
   // Create two separate clients for read and writes.
   shared_ptr<YBClient> write_client = CreateYBClient();
@@ -70,7 +68,7 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
                                                  writer.InsertionPoint(), writer.InsertedKeys(),
                                                  writer.FailedKeys(), &stop_requested_flag,
                                                  kValueSizeBytes, kMaxReadErrors,
-                                                 kRetriesOnEmptyRead);
+                                                 kStopOnEmptyRead);
 
   auto* const emc = external_mini_cluster();
   TabletServerMap ts_map;

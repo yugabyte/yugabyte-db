@@ -85,10 +85,9 @@ DEFINE_bool(use_kv_table, true, "Use key-value table type backed by RocksDB");
 
 DEFINE_int64(value_size_bytes, 16, "Size of each value in a row being inserted");
 
-DEFINE_int32(
-    retries_on_empty_read, 0,
-    "We can retry up to this many times if we get an empty set of rows on a read "
-    "operation");
+DEFINE_bool(
+    stop_on_empty_read, true,
+    "Stop reading if we get an empty set of rows on a read operation");
 
 using strings::Substitute;
 using std::atomic_long;
@@ -352,7 +351,7 @@ void LaunchYBLoadTest(SessionFactory *session_factory) {
     MultiThreadedReader reader(FLAGS_num_rows, FLAGS_num_reader_threads, session_factory,
                                writer.InsertionPoint(), writer.InsertedKeys(), writer.FailedKeys(),
                                &stop_flag, FLAGS_value_size_bytes, FLAGS_max_num_read_errors,
-                               FLAGS_retries_on_empty_read);
+                               FLAGS_stop_on_empty_read);
 
     reader.Start();
 
