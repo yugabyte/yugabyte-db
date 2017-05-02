@@ -88,7 +88,7 @@ export default class UniverseAppsModal extends Component {
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
           <label className="app-description">{appType.description}</label>
           <YBCodeBlock label="Usage:">
-            java -jar yb-sample-app.jar --workload {appType.code} --nodes {hostPorts}
+            java -jar yb-sample-apps.jar --workload {appType.code} --nodes {hostPorts}
           </YBCodeBlock>
           <YBCodeBlock label="Other options (with default values):">
             {appOptions}
