@@ -14,6 +14,8 @@ Options:
     Which region this instance is started in.
   --placement_zone <zone_name>
     Which zone this instance is started in.
+  --yb_num_shards_per_tserver <num_shards>
+    If specified, passed to tserver process. Otherwise tserver will use its own default.
 Commands:
   create
     Creates a brand new cluster. Starts the master and tablet server processes after creating
@@ -312,6 +314,7 @@ start_tserver() {
       --placement_cloud "$placement_cloud" \
       --placement_region "$placement_region" \
       --placement_zone "$placement_zone" \
+      $tserver_optional_params \
        >"$tserver_base_dir/tserver.out" \
        2>"$tserver_base_dir/tserver.err" &
   )
@@ -442,10 +445,11 @@ create=false
 placement_cloud=""
 placement_region=""
 placement_zone=""
+yb_num_shards_per_tserver=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --placement_cloud|--placement_region|--placement_zone)
+    --placement_cloud|--placement_region|--placement_zone|--yb_num_shards_per_tserver)
       eval "${1#--}=$2"
       shift
     ;;
@@ -520,6 +524,11 @@ tserver_rpc_port=8100
 redis_rpc_port=10100
 # By default cqlsh contact the server via this port base although it's configurable in cqlsh.
 cql_rpc_port=9042
+
+tserver_optional_params=""
+if [[ -n "$yb_num_shards_per_tserver" ]]; then
+  tserver_optional_params+=" --yb_num_shards_per_tserver $yb_num_shards_per_tserver"
+fi
 
 master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"
