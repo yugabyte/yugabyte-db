@@ -77,12 +77,11 @@ try:
 
             # Get the YB Load tester tar alone
             yugabyte_tarfile = tarfile.open(yugabyte_package)
-            log_message(logging.INFO, "Get yb-loadtester jar from yugabyte tarfile")
+            log_message(logging.INFO, "Get yb-sample-apps jar from yugabyte tarfile")
             for archive_file in yugabyte_tarfile.getmembers():
-                if "yb-loadtester" in archive_file.name:
+                if "yb-sample-apps" in archive_file.name:
                     yugabyte_tarfile.extract(archive_file, packages_folder)
-                    shutil.move(os.path.join(packages_folder, archive_file.name),
-                                os.path.join(packages_folder, "yb-sample-app.jar"))
+                    log_message(logging.INFO, archive_file.name)
 
             if not yugaware_commit_hash:
                 raise YBOpsRuntimeError("Unable to fetch yugaware commit hash.")
