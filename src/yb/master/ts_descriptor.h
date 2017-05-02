@@ -51,6 +51,7 @@ class TabletServerServiceProxy;
 namespace master {
 
 class TSRegistrationPB;
+class TSInformationPB;
 
 // Master-side view of a single tablet server.
 //
@@ -87,6 +88,9 @@ class TSDescriptor {
   // A safe copy is returned because the internal Registration object
   // may be mutated at any point if the tablet server re-registers.
   void GetRegistration(TSRegistrationPB* reg) const;
+
+  // Populates the TSInformationPB for this TSDescriptor.
+  void GetTSInformationPB(TSInformationPB* ts_info) const;
 
   // Helper function to tell if this TS matches the cloud information provided. For now, we have
   // no wildcard functionality, so it will have to explicitly match each individual component.

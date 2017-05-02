@@ -765,6 +765,7 @@ class EventResponse : public CQLResponse {
 class TopologyChangeEventResponse : public EventResponse {
  public:
   static constexpr const char* const kMovedNode = "MOVED_NODE";
+  static constexpr const char* const kNewNode = "NEW_NODE";
   virtual ~TopologyChangeEventResponse() override;
   TopologyChangeEventResponse(const std::string& topology_change_type, const Sockaddr& node);
 

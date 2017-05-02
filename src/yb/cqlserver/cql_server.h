@@ -13,6 +13,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/cqlserver/cql_server_options.h"
 #include "yb/server/server_base.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -29,17 +30,22 @@ class CQLServer : public server::RpcAndWebServerBase {
   static const uint16_t kDefaultPort = 9042;
   static const uint16_t kDefaultWebPort = 12000;
 
-  // Note that the caller owns the 'io_service' object.
-  explicit CQLServer(const CQLServerOptions& opts, boost::asio::io_service* io);
+  CQLServer(const CQLServerOptions& opts,
+            boost::asio::io_service* io,
+            const tserver::TabletServer* tserver);
 
   CHECKED_STATUS Start();
 
-  CHECKED_STATUS Shutdown();
+  void Shutdown();
 
  private:
   CQLServerOptions opts_;
   void CQLNodeListRefresh(const boost::system::error_code &e);
+  void RescheduleTimer();
   boost::asio::deadline_timer timer_;
+  const tserver::TabletServer* const tserver_;
+
+  CHECKED_STATUS QueueEventForAllClients(std::unique_ptr<EventResponse> event_response);
 
   DISALLOW_COPY_AND_ASSIGN(CQLServer);
 };

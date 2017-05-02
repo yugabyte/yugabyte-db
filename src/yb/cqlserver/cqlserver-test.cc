@@ -61,7 +61,7 @@ void TestCQLService::SetUp() {
   opts.master_addresses_flag = JoinStrings(master_rpc_addrs, ",");
 
   io_.reset(new boost::asio::io_service());
-  server_.reset(new CQLServer(opts, io_.get()));
+  server_.reset(new CQLServer(opts, io_.get(), nullptr));
   LOG(INFO) << "Starting CQL server...";
   CHECK_OK(server_->Start());
   LOG(INFO) << "CQL server successfully started.";

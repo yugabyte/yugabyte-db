@@ -398,6 +398,9 @@ Status Heartbeater::Thread::DoHeartbeat() {
   // TODO: Handle TSHeartbeatResponsePB (e.g. deleted tablets and schema changes)
   server_->tablet_manager()->MarkTabletReportAcknowledged(req.tablet_report());
 
+  // Update the live tserver list.
+  RETURN_NOT_OK(server_->PopulateLiveTServers(resp));
+
   return Status::OK();
 }
 

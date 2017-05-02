@@ -400,6 +400,14 @@ message TSHeartbeatResponsePB {
 
   // Piggyback the current config as known to the master leader.
   optional consensus.RaftConfigPB master_config = 7;
+
+  // List of all live nodes that the master knows about.
+  repeated TSInformationPB tservers = 8;
+}
+
+message TSInformationPB {
+    required TSRegistrationPB registration = 1;
+    required NodeInstancePB tserver_instance = 2;
 }
 
 //////////////////////////////

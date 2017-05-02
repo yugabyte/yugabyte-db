@@ -25,6 +25,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+#include "yb/master/master.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/tablet_server_interface.h"
@@ -99,6 +100,14 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
+  CHECKED_STATUS PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
+
+  CHECKED_STATUS GetLiveTServers(std::vector<master::TSInformationPB> *live_tservers) const {
+    std::lock_guard<simple_spinlock> l(lock_);
+    *live_tservers = live_tservers_;
+    return Status::OK();
+  }
+
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
@@ -135,6 +144,12 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Index at which master sent us the last config
   int master_config_index_;
+
+  // List of tservers that are alive from the master's perspective.
+  std::vector<master::TSInformationPB> live_tservers_;
+
+  // Lock to protect live_tservers_.
+  mutable simple_spinlock lock_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

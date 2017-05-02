@@ -33,10 +33,13 @@ boost::posix_time::time_duration refresh_interval() {
 
 }
 
-CQLServer::CQLServer(const CQLServerOptions& opts, boost::asio::io_service* io)
+CQLServer::CQLServer(const CQLServerOptions& opts,
+                     boost::asio::io_service* io,
+                     const tserver::TabletServer* const tserver)
     : RpcAndWebServerBase("CQLServer", opts, "yb.cqlserver"),
       opts_(opts),
-      timer_(*io, refresh_interval()) {
+      timer_(*io, refresh_interval()),
+      tserver_(tserver) {
 }
 
 Status CQLServer::Start() {
@@ -54,36 +57,76 @@ Status CQLServer::Start() {
   return Status::OK();
 }
 
-Status CQLServer::Shutdown() {
+void CQLServer::Shutdown() {
   boost::system::error_code ec;
   timer_.cancel(ec);
   if (ec) {
     LOG(WARNING) << "Failed to cancel timer: " << ec;
   }
   server::RpcAndWebServerBase::Shutdown();
+}
+
+Status CQLServer::QueueEventForAllClients(std::unique_ptr<EventResponse> event_response) {
+  scoped_refptr<CQLServerEvent> server_event(new CQLServerEvent(std::move(event_response)));
+  RETURN_NOT_OK(messenger_->QueueEventOnAllReactors(server_event));
   return Status::OK();
+}
+
+void CQLServer::RescheduleTimer() {
+  // Reschedule the timer.
+  boost::system::error_code ec;
+  auto new_expires = timer_.expires_at() + refresh_interval();
+  timer_.expires_at(new_expires, ec);
+  if (ec) {
+    LOG(WARNING) << "Failed to reschedule timer: " << ec;
+  }
+  timer_.async_wait(boost::bind(&CQLServer::CQLNodeListRefresh, this,
+                                boost::asio::placeholders::error));
 }
 
 void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
   if (!e) {
-    std::unique_ptr<EventResponse> event_response(
-        new TopologyChangeEventResponse(TopologyChangeEventResponse::kMovedNode,
-                                        first_rpc_address()));
-    scoped_refptr<CQLServerEvent> server_event(new CQLServerEvent(std::move(event_response)));
-    Status s = messenger_->QueueEventOnAllReactors(server_event);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to send CQL node list refresh event: " << s.ToString();
+    Status s;
+    if (tserver_ != nullptr) {
+      // Get all live tservers.
+      std::vector<master::TSInformationPB> live_tservers;
+      s = tserver_->GetLiveTServers(&live_tservers);
+      if (!s.ok()) {
+        LOG (WARNING) << s.ToString();
+        RescheduleTimer();
+        return;
+      }
+
+      // Queue NEW_NODE event for all the live tservers.
+      for (const master::TSInformationPB& ts_info : live_tservers) {
+        if (ts_info.registration().common().rpc_addresses_size() == 0) {
+          LOG (WARNING) << "Skipping TS since it doesn't have any rpc address: "
+                        << ts_info.DebugString();
+          continue;
+        }
+
+        // Use only the first rpc address.
+        const yb::HostPortPB& hostport_pb = ts_info.registration().common().rpc_addresses(0);
+        Sockaddr addr;
+        s = addr.ParseString(hostport_pb.host(), hostport_pb.port());
+        if (!s.ok()) {
+          LOG (WARNING) << s.ToString();
+          continue;
+        }
+
+        // Queue event for all clients.
+        std::unique_ptr<EventResponse> event_response(
+            new TopologyChangeEventResponse(TopologyChangeEventResponse::kNewNode,
+                                            addr));
+        s = QueueEventForAllClients(std::move(event_response));
+        if (!s.ok()) {
+          LOG (WARNING) << strings::Substitute("Failed to push event: $0, due to: $1",
+                                               event_response->ToString(), s.ToString());
+        }
+      }
     }
 
-    // Reschedule the timer.
-    boost::system::error_code ec;
-    auto new_expires = timer_.expires_at() + refresh_interval();
-    timer_.expires_at(new_expires, ec);
-    if (ec) {
-      LOG(WARNING) << "Failed to reschedule timer: " << ec;
-    }
-    timer_.async_wait(boost::bind(&CQLServer::CQLNodeListRefresh, this,
-        boost::asio::placeholders::error));
+    RescheduleTimer();
   }
 }
 

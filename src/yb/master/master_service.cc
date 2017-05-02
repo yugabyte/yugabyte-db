@@ -172,6 +172,13 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     resp->set_needs_full_tablet_report(true);
   }
 
+  // Retrieve all the nodes known by the master.
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  server_->ts_manager()->GetAllLiveDescriptors(&descs);
+  for (const auto& desc : descs) {
+    desc->GetTSInformationPB(resp->add_tservers());
+  }
+
   rpc->RespondSuccess();
 }
 

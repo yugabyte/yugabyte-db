@@ -254,5 +254,16 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
+Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  // We reset the list each time, since we want to keep the tservers that are live from the
+  // master's perspective.
+  // TODO: In the future, we should enhance the logic here to keep track information retrieved
+  // from the master and compare it with information stored here. Based on this information, we
+  // can only send diff updates CQL clients about whether a node came up or went down.
+  live_tservers_.assign(heartbeat_resp.tservers().begin(), heartbeat_resp.tservers().end());
+  return Status::OK();
+}
+
 }  // namespace tserver
 }  // namespace yb

@@ -101,6 +101,10 @@ public class MiniYBCluster implements AutoCloseable {
   // TS and Master ports will be assigned starting with this one.
   private static final int PORT_START = 64030;
 
+  // CQL port needs to be same for all nodes, since CQL clients use a configured port to generate
+  // a host:port pair for each node given just the host.
+  private static final int CQL_PORT = 9042;
+
   // How often to push node list refresh events to CQL clients (in seconds)
   public static final int CQL_NODE_LIST_REFRESH = 5;
 
@@ -222,53 +226,69 @@ public class MiniYBCluster implements AutoCloseable {
     int free_port = startMasters(getNextPotentiallyFreePort(), numMasters, baseDirPath, masterArgs);
     LOG.info("Starting {} tablet servers...", numTservers);
     for (int i = 0; i < numTservers; i++) {
-      String localhost = getLocalHost(i);
-      int rpc_port = TestUtils.findFreePort(free_port);
-      int web_port = TestUtils.findFreePort(rpc_port + 1);
-      int redis_port = TestUtils.findFreePort(web_port + 1);
-      int redis_web_port = TestUtils.findFreePort(redis_port + 1);
-      int cql_port = TestUtils.findFreePort(redis_web_port + 1);
-      int cql_web_port = TestUtils.findFreePort(cql_port + 1);
-      String dataDirPath = baseDirPath + "/ts-" + i + "-" + now;
-      String flagsPath = TestUtils.getFlagsPath();
-      List<String> tsCmdLine = Lists.newArrayList(
-          TestUtils.findBinary("yb-tserver"),
-          "--flagfile=" + flagsPath,
-          "--fs_wal_dirs=" + dataDirPath,
-          "--fs_data_dirs=" + dataDirPath,
-          "--tserver_master_addrs=" + masterAddresses,
-          "--webserver_interface=" + localhost,
-          "--local_ip_for_outbound_sockets=" + localhost,
-          "--rpc_bind_addresses=" + localhost + ":" + rpc_port,
-          "--webserver_port=" + web_port,
-          "--redis_proxy_bind_address=" + localhost + ":" + redis_port,
-          "--redis_proxy_webserver_port=" + redis_web_port,
-          "--cql_proxy_bind_address=" + localhost + ":" + cql_port,
-          "--yb_num_shards_per_tserver=3",
-          "--logtostderr",
-          "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH,
-          "--cql_proxy_webserver_port=" + cql_web_port);
-      if (tserverArgs != null) {
-        for (String arg : tserverArgs) {
-          tsCmdLine.add(arg);
-        }
-      }
-
-      final YBDaemon daemon =
-          configureAndStartProcess(YBDaemonType.TSERVER,
-                                   tsCmdLine.toArray(new String[tsCmdLine.size()]),
-                                   "yb-tserver:" + localhost + ":" + rpc_port);
-      tserverProcesses.put(rpc_port, daemon);
-      daemon.setRpcPort(rpc_port);
-      cqlContactPoints.add(new InetSocketAddress(localhost, cql_port));
-      free_port = cql_web_port + 1;
-
-      if (flagsPath.startsWith(baseDirPath)) {
-        // We made a temporary copy of the flags; delete them later.
-        pathsToDelete.add(flagsPath);
-      }
-      pathsToDelete.add(dataDirPath);
+      free_port = startTServer(i, tserverArgs, free_port);
     }
+  }
+
+  /**
+   * Starts a new tserver for the cluster.
+   * @param tserverArgs optional args to the tserver (can be null).
+   */
+  public void startTServer(List<String> tserverArgs) throws Exception {
+    startTServer(tserverProcesses.size(), tserverArgs, getNextPotentiallyFreePort());
+  }
+
+  private int startTServer(int tserver_index, List<String> tserverArgs,
+                          int free_port) throws Exception {
+    String baseDirPath = TestUtils.getBaseDir();
+    long now = System.currentTimeMillis();
+    String localhost = getLocalHost(tserver_index);
+
+    int rpc_port = TestUtils.findFreePort(free_port);
+    int web_port = TestUtils.findFreePort(rpc_port + 1);
+    int redis_port = TestUtils.findFreePort(web_port + 1);
+    int redis_web_port = TestUtils.findFreePort(redis_port + 1);
+    int cql_web_port = TestUtils.findFreePort(redis_web_port + 1);
+    String dataDirPath = baseDirPath + "/ts-" + tserver_index + "-" + now;
+    String flagsPath = TestUtils.getFlagsPath();
+    List<String> tsCmdLine = Lists.newArrayList(
+      TestUtils.findBinary("yb-tserver"),
+      "--flagfile=" + flagsPath,
+      "--fs_wal_dirs=" + dataDirPath,
+      "--fs_data_dirs=" + dataDirPath,
+      "--tserver_master_addrs=" + masterAddresses,
+      "--webserver_interface=" + localhost,
+      "--local_ip_for_outbound_sockets=" + localhost,
+      "--rpc_bind_addresses=" + localhost + ":" + rpc_port,
+      "--webserver_port=" + web_port,
+      "--redis_proxy_bind_address=" + localhost + ":" + redis_port,
+      "--redis_proxy_webserver_port=" + redis_web_port,
+      "--cql_proxy_bind_address=" + localhost + ":" + CQL_PORT,
+      "--yb_num_shards_per_tserver=3",
+      "--logtostderr",
+      "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH,
+      "--cql_proxy_webserver_port=" + cql_web_port);
+    if (tserverArgs != null) {
+      for (String arg : tserverArgs) {
+        tsCmdLine.add(arg);
+      }
+    }
+
+    final YBDaemon daemon =
+      configureAndStartProcess(YBDaemonType.TSERVER,
+        tsCmdLine.toArray(new String[tsCmdLine.size()]),
+        "yb-tserver:" + localhost + ":" + rpc_port);
+    tserverProcesses.put(rpc_port, daemon);
+    daemon.setRpcPort(rpc_port);
+    cqlContactPoints.add(new InetSocketAddress(localhost, CQL_PORT));
+    free_port = cql_web_port + 1;
+
+    if (flagsPath.startsWith(baseDirPath)) {
+      // We made a temporary copy of the flags; delete them later.
+      pathsToDelete.add(flagsPath);
+    }
+    pathsToDelete.add(dataDirPath);
+    return free_port;
   }
 
   /**

@@ -160,6 +160,11 @@ void TSDescriptor::GetRegistration(TSRegistrationPB* reg) const {
   CHECK_NOTNULL(reg)->CopyFrom(*registration_);
 }
 
+void TSDescriptor::GetTSInformationPB(TSInformationPB* ts_info) const {
+  GetRegistration(ts_info->mutable_registration());
+  GetNodeInstancePB(ts_info->mutable_tserver_instance());
+}
+
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
   std::lock_guard<simple_spinlock> l(lock_);
   const auto& ci = registration_->common().cloud_info();
