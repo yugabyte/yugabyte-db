@@ -12,6 +12,7 @@ import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 
@@ -59,11 +60,18 @@ public class AppInit {
         Ebean.saveAll(all);
       }
 
-      // Initialize AWS
+      // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.where().findList();
       for (Provider provider : providerList) {
         if (provider.code.equals("aws")) {
-          awsInitializer.initialize(provider.customerUUID, provider.uuid);
+          for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
+            if (instanceType.instanceTypeDetails != null &&
+                (instanceType.instanceTypeDetails.volumeDetailsList == null ||
+                instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+              awsInitializer.initialize(provider.customerUUID, provider.uuid);
+              break;
+            }
+          }
           break;
         }
       }
