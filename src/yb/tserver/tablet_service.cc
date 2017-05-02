@@ -861,31 +861,31 @@ Status TabletServiceImpl::CheckLeaderRole(const TabletPeer& tablet_peer,
   return Status::OK();
 }
 
-Status TabletServiceImpl::CheckLeaderAndGetTablet(const ReadRequestPB* req,
-                                                  ReadResponsePB* resp,
-                                                  rpc::RpcContext* context,
-                                                  shared_ptr<tablet::AbstractTablet>* tablet) {
+bool TabletServiceImpl::GetLeaderTabletOrRespond(const ReadRequestPB* req,
+                                                 ReadResponsePB* resp,
+                                                 rpc::RpcContext* context,
+                                                 shared_ptr<tablet::AbstractTablet>* tablet) {
   scoped_refptr<TabletPeer> tablet_peer;
   if (!LookupTabletPeerOrRespond(server_->tablet_manager(), req->tablet_id(), resp, context,
                                  &tablet_peer)) {
-    return STATUS_SUBSTITUTE(NotFound, "Tablet not found: $0", req->tablet_id());
+    return false;
   }
 
   TabletServerErrorPB::Code error_code;
   Status s = CheckLeaderRole(*tablet_peer.get(), &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
-    return s;
+    return false;
   }
 
   shared_ptr<tablet::Tablet> ptr;
   s = GetTabletRef(tablet_peer, &ptr, &error_code);
   if (PREDICT_FALSE(!s.ok())) {
     SetupErrorAndRespond(resp->mutable_error(), s, error_code, context);
-    return s;
+    return false;
   }
   *tablet = ptr;
-  return Status::OK();
+  return true;
 }
 
 void TabletServiceImpl::Read(const ReadRequestPB* req,
@@ -897,7 +897,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   DVLOG(3) << "Received Read RPC: " << req->DebugString();
 
   shared_ptr<tablet::AbstractTablet> tablet;
-  if (!CheckLeaderAndGetTablet(req, resp, context, &tablet).ok()) {
+  if (!GetLeaderTabletOrRespond(req, resp, context, &tablet)) {
     return;
   }
 

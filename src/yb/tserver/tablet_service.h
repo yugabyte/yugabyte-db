@@ -120,10 +120,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
   CHECKED_STATUS CheckLeaderRole(const tablet::TabletPeer& tablet_peer,
                                  TabletServerErrorPB::Code* error_code);
 
-  virtual CHECKED_STATUS CheckLeaderAndGetTablet(const ReadRequestPB* req,
-                                                 ReadResponsePB* resp,
-                                                 rpc::RpcContext* context,
-                                                 std::shared_ptr<tablet::AbstractTablet>* tablet);
+  virtual bool GetLeaderTabletOrRespond(const ReadRequestPB* req,
+                                        ReadResponsePB* resp,
+                                        rpc::RpcContext* context,
+                                        std::shared_ptr<tablet::AbstractTablet>* tablet);
 
   TabletServerIf *const server_;
 };

@@ -30,13 +30,21 @@ void MasterTabletServiceImpl::Read(const tserver::ReadRequestPB* req, tserver::R
   tserver::TabletServiceImpl::Read(req, resp, context);
 }
 
-CHECKED_STATUS MasterTabletServiceImpl::CheckLeaderAndGetTablet(
+bool MasterTabletServiceImpl::GetLeaderTabletOrRespond(
     const tserver::ReadRequestPB* req,
     tserver::ReadResponsePB* resp,
     rpc::RpcContext* context,
     std::shared_ptr<tablet::AbstractTablet>* tablet) {
   // Don't need to check for leader since we perform that check earlier in Read().
-  return master_->catalog_manager()->RetrieveSystemTablet(req->tablet_id(), tablet);
+  Status s = master_->catalog_manager()->RetrieveSystemTablet(req->tablet_id(), tablet);
+  if (PREDICT_FALSE(!s.ok())) {
+    tserver::TabletServerErrorPB* error = resp->mutable_error();
+    StatusToPB(s, error->mutable_status());
+    error->set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+    context->RespondSuccess();
+    return false;
+  }
+  return true;
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
