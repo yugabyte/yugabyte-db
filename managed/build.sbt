@@ -58,5 +58,6 @@ dockerCommands ++= Seq(
   Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_python_requirements.sh"),
   Cmd("RUN", "export USER=root && /opt/yugabyte/devops/bin/install_ansible_requirements.sh"),
   Cmd("ADD", "packages/yugabyte /opt/yugabyte/releases/"),
-  Cmd("ADD", "packages/yb-sample-app.jar /opt/yugabyte/utils/")
+  Cmd("ADD", "packages/java/yb-sample-apps.jar /opt/yugabyte/utils/"),
+  Cmd("ADD", "packages/java/yb-sample-apps-sources.jar /opt/yugabyte/utils/")
 )
