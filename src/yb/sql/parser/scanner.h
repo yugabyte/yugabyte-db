@@ -26,7 +26,7 @@
 #include "yb/sql/parser/parse_context.h"
 
 // Include auto-generated file from YACC.
-#include "yb/sql/parser/parser_gram.y.hh"
+#include "yb/sql/parser/parser_gram.y.final.hh"
 
 namespace yb {
 namespace sql {

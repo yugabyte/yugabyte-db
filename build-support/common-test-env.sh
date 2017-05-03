@@ -919,6 +919,10 @@ set_asan_tsan_options() {
     # addresses of leaked objects.
     LSAN_OPTIONS+=" report_objects=1"
     export LSAN_OPTIONS
+
+    # Enable stack traces for UBSAN failures
+    UBSAN_OPTIONS="${UBSAN_OPTIONS:-} print_stacktrace=1"
+    export UBSAN_OPTIONS
   fi
 
   # Don't add a hyphen after the regex so we can handle both tsan and tsan_slow.
