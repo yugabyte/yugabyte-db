@@ -10,7 +10,7 @@ export function setSuccessState(state, object, data) {
 
 export function setLoadingState(state, object, data = null) {
   return Object.assign({}, state, {
-   [object]: { data: data, error: null, loading: true }
+    [object]: { data: data, error: null, loading: true }
   });
 }
 
