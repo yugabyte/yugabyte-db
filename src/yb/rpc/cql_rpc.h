@@ -5,9 +5,13 @@
 #define YB_RPC_CQL_RPC_H
 
 #include "yb/cqlserver/cql_message.h"
+
+#include "yb/rpc/connection.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/server_event.h"
+
+#include "yb/sql/sql_session.h"
 
 namespace yb {
 namespace rpc {
@@ -53,8 +57,6 @@ class CQLConnection : public Connection {
  protected:
   virtual void CreateInboundTransfer() override;
 
-  TransferCallbacks* GetResponseTransferCallback(OutboundDataPtr outbound_data) override;
-
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 
   virtual void HandleFinishedTransfer() override;
@@ -62,7 +64,7 @@ class CQLConnection : public Connection {
   AbstractInboundTransfer* inbound() const override;
 
  private:
-  friend class CQLResponseTransferCallbacks;
+  friend class CQLInboundCall;
 
   gscoped_ptr<CQLInboundTransfer> inbound_;
 
@@ -85,11 +87,7 @@ class CQLInboundCall : public InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
-
-  // Serialize a response message for either success or failure. If it is a success,
-  // 'response' should be the user-defined response type for the call. If it is a
-  // failure, 'response' should be an ErrorStatusPB instance.
+  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
   CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                          bool is_success) override;
 
@@ -102,7 +100,7 @@ class CQLInboundCall : public InboundCall {
   virtual MonoTime GetClientDeadline() const override;
 
   // Return the response message buffer.
-  faststring& response_msg_buf() {
+  util::RefCntBuffer& response_msg_buf() {
     return response_msg_buf_;
   }
 
@@ -116,13 +114,15 @@ class CQLInboundCall : public InboundCall {
   bool TryResume();
 
  protected:
-  scoped_refptr<Connection> get_connection() override;
-  const scoped_refptr<Connection> get_connection() const override;
+  scoped_refptr<Connection> get_connection() const override;
 
  private:
+  void NotifyTransferFinished() override;
+  void NotifyTransferAborted(const Status& status) override;
+
   // The connection on which this inbound call arrived.
   scoped_refptr<CQLConnection> conn_;
-  faststring response_msg_buf_;
+  util::RefCntBuffer response_msg_buf_;
 
   Callback<void(void)>* resume_from_ = nullptr;
 };

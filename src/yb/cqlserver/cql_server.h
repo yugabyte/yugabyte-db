@@ -30,7 +30,7 @@ class CQLServer : public server::RpcAndWebServerBase {
   static const uint16_t kDefaultWebPort = 12000;
 
   // Note that the caller owns the 'io_service' object.
-  explicit CQLServer(const CQLServerOptions& opts, const boost::asio::io_service& io);
+  explicit CQLServer(const CQLServerOptions& opts, boost::asio::io_service* io);
 
   CHECKED_STATUS Start();
 

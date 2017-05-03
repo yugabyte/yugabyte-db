@@ -26,16 +26,19 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/connection_types.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/remote_method.h"
-#include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/thread_pool.h"
 #include "yb/rpc/transfer.h"
+
 #include "yb/sql/sql_session.h"
+
 #include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
@@ -55,7 +58,6 @@ namespace rpc {
 class Connection;
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
-class RpcSidecar;
 class ServicePool;
 class UserCredentials;
 
@@ -112,10 +114,6 @@ class InboundCall : public OutboundData {
   void RespondApplicationError(int error_ext_id, const std::string& message,
                                const google::protobuf::MessageLite& app_error_pb);
 
-  // Serialize the response packet for the finished call.
-  // The resulting slices refer to memory in this object.
-  virtual void SerializeResponseTo(std::vector<Slice>* slices) const = 0;
-
   // Convert an application error extension to an ErrorStatusPB.
   // These ErrorStatusPB objects are what are returned in application error responses.
   static void ApplicationErrorToPB(int error_ext_id, const std::string& message,
@@ -123,7 +121,7 @@ class InboundCall : public OutboundData {
                                    ErrorStatusPB* err);
 
   // See RpcContext::AddRpcSidecar()
-  CHECKED_STATUS AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
+  CHECKED_STATUS AddRpcSidecar(util::RefCntBuffer car, int* idx);
 
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
 
@@ -168,8 +166,7 @@ class InboundCall : public OutboundData {
                bool is_success);
 
   // Returns a ptr to the Connection for use.
-  virtual scoped_refptr<Connection> get_connection() = 0;
-  virtual const scoped_refptr<Connection> get_connection() const = 0;
+  virtual scoped_refptr<Connection> get_connection() const = 0;
 
   // Queues the response to the Connection implementation.
   virtual void QueueResponseToConnection() = 0;
@@ -197,8 +194,7 @@ class InboundCall : public OutboundData {
 
   // Vector of additional sidecars that are tacked on to the call's response
   // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
-  std::vector<RpcSidecar*> sidecars_;
-  ElementDeleter sidecars_deleter_;
+  std::vector<util::RefCntBuffer> sidecars_;
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
@@ -209,8 +205,6 @@ class InboundCall : public OutboundData {
   // Proto service this calls belongs to. Used for routing.
   // This field is filled in when the inbound request header is parsed.
   RemoteMethod remote_method_;
-
-  void Serialize(std::vector<Slice>* slices) const override;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(InboundCall);

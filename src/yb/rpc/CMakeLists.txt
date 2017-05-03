@@ -58,6 +58,7 @@ set(YRPC_SRCS
     redis_rpc.cc
     remote_method.cc
     rpc.cc
+    outbound_data.cc
     rpc_context.cc
     rpc_controller.cc
     sasl_common.cc
@@ -69,8 +70,7 @@ set(YRPC_SRCS
     service_pool.cc
     thread_pool.cc
     transfer.cc
-    yb_rpc.cc
-)
+    yb_rpc.cc)
 
 set(YRPC_LIBS
   redis_protocol_proto

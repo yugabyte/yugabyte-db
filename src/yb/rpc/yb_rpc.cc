@@ -8,7 +8,6 @@
 #include "yb/rpc/auth_store.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
-#include "yb/rpc/rpc_sidecar.h"
 
 #include "yb/util/debug/trace_event.h"
 
@@ -78,52 +77,6 @@ Status YBInboundTransfer::ReceiveBuffer(Socket& socket) {
   return Status::OK();
 }
 
-class YBResponseTransferCallbacks : public ResponseTransferCallbacks {
- public:
-  YBResponseTransferCallbacks(OutboundDataPtr outbound_data, YBConnection* conn)
-      : outbound_data_(std::move(outbound_data)), conn_(conn) {}
-
-  ~YBResponseTransferCallbacks() {
-    // If we were aborted with service unavailable status, it means that reactor is shutting down.
-    // Thus we should not touch calls_being_handled_, since connection is going to shutdown also.
-    if (service_unavailable_) {
-      return;
-    }
-    // Remove the call from the map.
-    auto id = yb_call()->call_id();
-    auto it = conn_->calls_being_handled_.find(id);
-    if (it != conn_->calls_being_handled_.end()) {
-      DCHECK_EQ(it->second.get(), outbound_data_.get());
-      conn_->calls_being_handled_.erase(it);
-    } else {
-      LOG(DFATAL) << "Transfer done for unknown call: " << id;
-    }
-  }
-
-  void NotifyTransferAborted(const Status& status) override {
-    if (status.IsServiceUnavailable()) {
-      service_unavailable_ = true;
-    }
-    ResponseTransferCallbacks::NotifyTransferAborted(status);
-  }
-
- protected:
-  OutboundData* outbound_data() override {
-    return outbound_data_.get();
-  }
-
-  YBInboundCall* yb_call() {
-    return down_cast<YBInboundCall*>(outbound_data_.get());
-  }
-
- private:
-  OutboundDataPtr outbound_data_;
-  YBConnection* conn_;
-  // We don't have to synchronize on this field because destructor is always invoked from
-  // Notify* methods.
-  bool service_unavailable_ = false;
-};
-
 YBConnection::YBConnection(ReactorThread* reactor_thread,
                            Sockaddr remote,
                            int socket,
@@ -142,10 +95,6 @@ void YBConnection::CreateInboundTransfer() {
 
 AbstractInboundTransfer *YBConnection::inbound() const {
   return inbound_.get();
-}
-
-TransferCallbacks* YBConnection::GetResponseTransferCallback(OutboundDataPtr outbound_data) {
-  return new YBResponseTransferCallbacks(std::move(outbound_data), this);
 }
 
 Status YBConnection::InitSaslClient() {
@@ -235,26 +184,48 @@ Status YBInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
   return Status::OK();
 }
 
-Status YBInboundCall::SerializeResponseBuffer(const MessageLite& response,
+Status YBInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                               bool is_success) {
+  using serialization::SerializeMessage;
+  using serialization::SerializeHeader;
+
   uint32_t protobuf_msg_size = response.ByteSize();
 
   ResponseHeader resp_hdr;
   resp_hdr.set_call_id(header_.call_id());
   resp_hdr.set_is_error(!is_success);
   uint32_t absolute_sidecar_offset = protobuf_msg_size;
-  for (RpcSidecar* car : sidecars_) {
+  for (auto& car : sidecars_) {
     resp_hdr.add_sidecar_offsets(absolute_sidecar_offset);
-    absolute_sidecar_offset += car->AsSlice().size();
+    absolute_sidecar_offset += car.size();
   }
 
   int additional_size = absolute_sidecar_offset - protobuf_msg_size;
-  RETURN_NOT_OK(serialization::SerializeMessage(response, &response_msg_buf_,
-      additional_size, true));
-  int main_msg_size = additional_size + response_msg_buf_.size();
-  RETURN_NOT_OK(serialization::SerializeHeader(resp_hdr, main_msg_size,
-      &response_hdr_buf_));
-  return Status::OK();
+
+  size_t message_size = 0;
+  auto status = SerializeMessage(response,
+                                 /* param_buf */ nullptr,
+                                 additional_size,
+                                 /* use_cached_size */ true,
+                                 /* offset */ 0,
+                                 &message_size);
+  if (!status.ok()) {
+    return status;
+  }
+  size_t header_size = 0;
+  status = SerializeHeader(resp_hdr,
+                           message_size + additional_size,
+                           &response_buf_,
+                           message_size,
+                           &header_size);
+  if (!status.ok()) {
+    return status;
+  }
+  return SerializeMessage(response,
+                          &response_buf_,
+                          additional_size,
+                          /* use_cached_size */ true,
+                          header_size);
 }
 
 string YBInboundCall::ToString() const {
@@ -305,24 +276,28 @@ void YBInboundCall::QueueResponseToConnection() {
   conn_->QueueOutboundData(InboundCallPtr(this));
 }
 
-scoped_refptr<Connection> YBInboundCall::get_connection() {
+scoped_refptr<Connection> YBInboundCall::get_connection() const {
   return conn_;
 }
 
-const scoped_refptr<Connection> YBInboundCall::get_connection() const {
-  return conn_;
-}
-
-void YBInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
-  TRACE_EVENT0("rpc", "YBInboundCall::SerializeResponseTo");
-  CHECK_GT(response_hdr_buf_.size(), 0);
-  CHECK_GT(response_msg_buf_.size(), 0);
-  slices->reserve(slices->size() + 2 + sidecars_.size());
-  slices->push_back(Slice(response_hdr_buf_));
-  slices->push_back(Slice(response_msg_buf_));
-  for (RpcSidecar* car : sidecars_) {
-    slices->push_back(car->AsSlice());
+void YBInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
+  TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
+  CHECK_GT(response_buf_.size(), 0);
+  output->push_back(response_buf_);
+  for (auto& car : sidecars_) {
+    output->push_back(car);
   }
+}
+
+void YBInboundCall::NotifyTransferFinished() {
+  // Remove the call from the map.
+  InboundCallPtr call_from_map = EraseKeyReturnValuePtr(
+      &conn_->calls_being_handled_, call_id());
+  DCHECK_EQ(call_from_map.get(), this);
+}
+
+void YBInboundCall::NotifyTransferAborted(const Status& status) {
+  NotifyTransferFinished();
 }
 
 } // namespace rpc

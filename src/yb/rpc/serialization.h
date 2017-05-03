@@ -33,6 +33,12 @@ class Status;
 class faststring;
 class Slice;
 
+namespace util {
+
+class RefCntBuffer;
+
+}
+
 namespace rpc {
 namespace serialization {
 
@@ -52,18 +58,23 @@ namespace serialization {
 //        is reserved for 'additional_size', which only affects the
 //        size indicator prefix in 'param_buf').
 Status SerializeMessage(const google::protobuf::MessageLite& message,
-                        faststring* param_buf, int additional_size = 0,
-                        bool use_cached_size = false);
+                        util::RefCntBuffer* param_buf,
+                        int additional_size = 0,
+                        bool use_cached_size = false,
+                        size_t offset = 0,
+                        size_t* size = nullptr);
 
 // Serialize the request or response header into a buffer which is allocated
 // by this function.
 // Includes leading 32-bit length of the buffer.
 // In: Protobuf Header to serialize,
 //     Length of the message param following this header in the frame.
-// Out: faststring to be populated with the serialized bytes.
+// Out: RefCntBuffer to be populated with the serialized bytes.
 Status SerializeHeader(const google::protobuf::MessageLite& header,
                        size_t param_len,
-                       faststring* header_buf);
+                       util::RefCntBuffer* header_buf,
+                       size_t reserve_for_param = 0,
+                       size_t* header_size = nullptr);
 
 // Deserialize the request.
 // In: data buffer Slice.

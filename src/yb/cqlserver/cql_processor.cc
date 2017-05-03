@@ -159,8 +159,10 @@ void CQLProcessor::SendResponse(rpc::InboundCallPtr call, CQLResponse* response)
   CHECK(response != nullptr);
   // Serialize the response to return to the CQL client. In case of error, an error response
   // should still be present.
+  faststring temp;
+  response->Serialize(&temp);
   rpc::CQLInboundCall* cql_call = down_cast<rpc::CQLInboundCall*>(call.get());
-  response->Serialize(&cql_call->response_msg_buf());
+  cql_call->response_msg_buf() = util::RefCntBuffer(temp);
   delete response;
   RpcContext* context = new RpcContext(call.get(), cql_metrics_->rpc_method_metrics_);
   context->RespondSuccess();

@@ -27,13 +27,14 @@
 #include "yb/rpc/constants.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
-#include "yb/rpc/rpc_call.h"
+#include "yb/rpc/outbound_data.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/transfer.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
@@ -172,7 +173,7 @@ struct OutboundCallMetrics {
 // then passed to the reactor thread to send on the wire. It's typically
 // kept using a shared_ptr because a call may terminate in any number
 // of different threads, making it tricky to enforce single ownership.
-class OutboundCall : public RpcCall {
+class OutboundCall : public OutboundData {
  public:
   OutboundCall(const ConnectionId& conn_id, const RemoteMethod& remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
@@ -196,7 +197,7 @@ class OutboundCall : public RpcCall {
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  CHECKED_STATUS SerializeTo(std::vector<Slice>* slices);
+  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
 
   // Callback after the call has been put on the outbound connection queue.
   void SetQueued();
@@ -222,7 +223,7 @@ class OutboundCall : public RpcCall {
   // Fill in the call response.
   void SetResponse(gscoped_ptr<CallResponse> resp);
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp);
 
@@ -262,6 +263,9 @@ class OutboundCall : public RpcCall {
   };
 
   static std::string StateName(State state);
+
+  void NotifyTransferFinished() override;
+  void NotifyTransferAborted(const Status& status) override;
 
   void set_state(State new_state);
   State state() const;
@@ -304,8 +308,7 @@ class OutboundCall : public RpcCall {
   google::protobuf::Message* response_;
 
   // Buffers for storing segments of the wire-format request.
-  faststring header_buf_;
-  faststring request_buf_;
+  util::RefCntBuffer buffer_;
 
   // Once a response has been received for this call, contains that response.
   // Otherwise NULL.

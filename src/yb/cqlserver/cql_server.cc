@@ -25,11 +25,18 @@ TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 namespace yb {
 namespace cqlserver {
 
-CQLServer::CQLServer(const CQLServerOptions& opts, const boost::asio::io_service& io)
+namespace {
+
+boost::posix_time::time_duration refresh_interval() {
+  return boost::posix_time::seconds(FLAGS_cql_nodelist_refresh_interval_secs);
+}
+
+}
+
+CQLServer::CQLServer(const CQLServerOptions& opts, boost::asio::io_service* io)
     : RpcAndWebServerBase("CQLServer", opts, "yb.cqlserver"),
       opts_(opts),
-      timer_(const_cast<boost::asio::io_service&>(io),
-             boost::posix_time::seconds(FLAGS_cql_nodelist_refresh_interval_secs)) {
+      timer_(*io, refresh_interval()) {
 }
 
 Status CQLServer::Start() {
@@ -48,6 +55,11 @@ Status CQLServer::Start() {
 }
 
 Status CQLServer::Shutdown() {
+  boost::system::error_code ec;
+  timer_.cancel(ec);
+  if (ec) {
+    LOG(WARNING) << "Failed to cancel timer: " << ec;
+  }
   server::RpcAndWebServerBase::Shutdown();
   return Status::OK();
 }
@@ -60,14 +72,18 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
     scoped_refptr<CQLServerEvent> server_event(new CQLServerEvent(std::move(event_response)));
     Status s = messenger_->QueueEventOnAllReactors(server_event);
     if (!s.ok()) {
-      LOG (WARNING) << "Failed to send CQL node list refresh event: " << s.ToString();
+      LOG(WARNING) << "Failed to send CQL node list refresh event: " << s.ToString();
     }
 
     // Reschedule the timer.
-    timer_.expires_at(timer_.expires_at() +
-        boost::posix_time::seconds(FLAGS_cql_nodelist_refresh_interval_secs));
+    boost::system::error_code ec;
+    auto new_expires = timer_.expires_at() + refresh_interval();
+    timer_.expires_at(new_expires, ec);
+    if (ec) {
+      LOG(WARNING) << "Failed to reschedule timer: " << ec;
+    }
     timer_.async_wait(boost::bind(&CQLServer::CQLNodeListRefresh, this,
-                                  boost::asio::placeholders::error));
+        boost::asio::placeholders::error));
   }
 }
 

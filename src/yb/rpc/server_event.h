@@ -14,7 +14,7 @@ namespace rpc {
 class ServerEvent : public OutboundData {
  public:
   virtual ~ServerEvent() {}
-  virtual void Serialize(std::vector<Slice>* slices) const = 0;
+  virtual void Serialize(std::deque<util::RefCntBuffer>* buffers) const = 0;
   virtual std::string ToString() const = 0;
 };
 

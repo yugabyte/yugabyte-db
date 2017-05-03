@@ -22,6 +22,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 
 namespace google {
@@ -39,7 +40,6 @@ namespace rpc {
 
 class InboundCall;
 typedef scoped_refptr<InboundCall> InboundCallPtr;
-class RpcSidecar;
 class UserCredentials;
 
 #define PANIC_RPC(rpc_context, message) \
@@ -148,7 +148,7 @@ class RpcContext {
   // Upon success, writes the index of the sidecar (necessary to be retrieved
   // later) to 'idx'. Call may fail if all sidecars have already been used
   // by the RPC response.
-  CHECKED_STATUS AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx);
+  CHECKED_STATUS AddRpcSidecar(util::RefCntBuffer car, int* idx);
 
   // Return the credentials of the remote user who made this call.
   const UserCredentials& user_credentials() const;

@@ -776,7 +776,7 @@ class SchemaChangeResultResponse : public ResultResponse {
   SchemaChangeResultResponse(const CQLRequest& request, const sql::SchemaChangeResult& result);
   virtual ~SchemaChangeResultResponse() override;
 
-  virtual void Serialize(faststring* mesg) const override;
+  void Serialize(faststring* mesg) const override;
 
  protected:
   virtual void SerializeResultBody(faststring* mesg) const override;
@@ -890,13 +890,16 @@ class AuthSuccessResponse : public CQLResponse {
 class CQLServerEvent : public rpc::ServerEvent {
  public:
   explicit CQLServerEvent(std::unique_ptr<EventResponse> event_response);
-  void Serialize(std::vector<Slice>* slices) const override;
+  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
   std::string ToString() const override;
  private:
+  void NotifyTransferFinished() override;
+  void NotifyTransferAborted(const Status& status) override;
+
   std::unique_ptr<EventResponse> event_response_;
   // Need to keep the serialized response around since we return a reference to it via Slice in
   // Serialize().
-  faststring serialized_response_;
+  util::RefCntBuffer serialized_response_;
 };
 
 }  // namespace cqlserver

@@ -74,6 +74,23 @@ OutboundCallMetrics::OutboundCallMetrics(const scoped_refptr<MetricEntity>& enti
       time_to_response(METRIC_handler_latency_outbound_call_time_to_response.Instantiate(entity)) {
 }
 
+namespace {
+
+std::atomic<int32_t> call_id_ = {0};
+
+int32_t NextCallId() {
+  for (;;) {
+    auto result = ++call_id_;
+    if (result > 0) {
+      return result;
+    }
+    // When call id overflows, we reset it to zero.
+    call_id_.compare_exchange_weak(result, 0);
+  }
+}
+
+} // namespace
+
 ///
 /// OutboundCall
 ///
@@ -100,7 +117,7 @@ OutboundCall::OutboundCall(
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
            << (controller->timeout().Initialized() ? controller->timeout().ToString() : "none");
-  header_.set_call_id(kInvalidCallId);
+  header_.set_call_id(NextCallId());
   remote_method.ToPB(header_.mutable_remote_method());
   start_ = MonoTime::Now(MonoTime::FINE);
 }
@@ -116,28 +133,60 @@ OutboundCall::~OutboundCall() {
   }
 }
 
-Status OutboundCall::SerializeTo(vector<Slice>* slices) {
-  size_t param_len = request_buf_.size();
-  if (PREDICT_FALSE(param_len == 0)) {
-    return STATUS(InvalidArgument, "Must call SetRequestParam() before SerializeTo()");
+void OutboundCall::NotifyTransferFinished() {
+  // TODO: would be better to cancel the transfer while it is still on the queue if we
+  // timed out before the transfer started, but there is still a race in the case of
+  // a partial send that we have to handle here
+  if (IsFinished()) {
+    DCHECK(IsTimedOut());
+  } else {
+    SetSent();
   }
+}
+
+void OutboundCall::NotifyTransferAborted(const Status& status) {
+  VLOG(1) << "Connection torn down before " << ToString()
+          << " could send its call: " << status.ToString();
+  if (IsFinished()) {
+    DCHECK(IsTimedOut());
+  } else {
+    SetFailed(status);
+  }
+}
+
+void OutboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
+  output->push_back(buffer_);
+}
+
+Status OutboundCall::SetRequestParam(const Message& message) {
+  using serialization::SerializeHeader;
+  using serialization::SerializeMessage;
 
   const MonoDelta &timeout = controller_->timeout();
   if (timeout.Initialized()) {
     header_.set_timeout_millis(timeout.ToMilliseconds());
   }
 
-  CHECK_OK(serialization::SerializeHeader(header_, param_len, &header_buf_));
-
-  // Return the concatenated packet.
-  slices->push_back(Slice(header_buf_));
-  slices->push_back(Slice(request_buf_));
-  TRACE_TO(trace_, "Serialized");
-  return Status::OK();
-}
-
-Status OutboundCall::SetRequestParam(const Message& message) {
-  return serialization::SerializeMessage(message, &request_buf_);
+  size_t message_size = 0;
+  auto status = SerializeMessage(message,
+                                 /* param_buf */ nullptr,
+                                 /* additional_size */ 0,
+                                 /* use_cached_size */ false,
+                                 /* offset */ 0,
+                                 &message_size);
+  if (!status.ok()) {
+    return status;
+  }
+  size_t header_size = 0;
+  status = SerializeHeader(header_, message_size, &buffer_, message_size, &header_size);
+  if (!status.ok()) {
+    return status;
+  }
+  return SerializeMessage(message,
+                          &buffer_,
+                          /* additional_size */ 0,
+                          /* use_cached_size */ true,
+                          header_size);
 }
 
 Status OutboundCall::status() const {
@@ -230,7 +279,8 @@ void OutboundCall::CallCallback() {
 
 void OutboundCall::SetResponse(gscoped_ptr<CallResponse> resp) {
   TRACE_TO(trace_, "Response received.");
-  // Track time taken to be queued.
+  // Track time taken to be responded.
+
   if (outbound_call_metrics_) {
     outbound_call_metrics_->time_to_response->Increment(
         MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds());
@@ -281,17 +331,6 @@ void OutboundCall::SetSent() {
   }
   set_state(SENT);
   TRACE_TO(trace_, "Call Sent.");
-
-  // This method is called in the reactor thread, so free the header buf,
-  // which was also allocated from this thread. tcmalloc's thread caching
-  // behavior is a lot more efficient if memory is freed from the same thread
-  // which allocated it -- this lets it keep to thread-local operations instead
-  // of taking a mutex to put memory back on the global freelist.
-  delete [] header_buf_.release();
-
-  // request_buf_ is also done being used here, but since it was allocated by
-  // the caller thread, we would rather let that thread free it whenever it
-  // deletes the RpcController.
 }
 
 void OutboundCall::SetFailed(const Status &status,

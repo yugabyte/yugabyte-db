@@ -19,19 +19,22 @@
 
 #include <stdint.h>
 
-#include <glog/logging.h>
 #include <google/protobuf/message_lite.h>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/serialization.h"
-#include "yb/rpc/transfer.h"
 #include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
+
+DECLARE_int32(rpc_max_message_size);
 
 namespace yb {
 namespace rpc {
@@ -62,17 +65,17 @@ Status SendFramedMessageBlocking(Socket* sock, const MessageLite& header, const 
   DCHECK(!is_non_blocking) << "Socket must be in blocking mode to use SendFramedMessage";
 
   // Serialize message
-  faststring param_buf;
+  util::RefCntBuffer param_buf;
   RETURN_NOT_OK(serialization::SerializeMessage(msg, &param_buf));
 
   // Serialize header and initial length
-  faststring header_buf;
+  util::RefCntBuffer header_buf;
   RETURN_NOT_OK(serialization::SerializeHeader(header, param_buf.size(), &header_buf));
 
   // Write header & param to stream
   size_t nsent;
-  RETURN_NOT_OK(sock->BlockingWrite(header_buf.data(), header_buf.size(), &nsent, deadline));
-  RETURN_NOT_OK(sock->BlockingWrite(param_buf.data(), param_buf.size(), &nsent, deadline));
+  RETURN_NOT_OK(sock->BlockingWrite(header_buf.udata(), header_buf.size(), &nsent, deadline));
+  RETURN_NOT_OK(sock->BlockingWrite(param_buf.udata(), param_buf.size(), &nsent, deadline));
 
   return Status::OK();
 }
@@ -108,7 +111,8 @@ Status ReceiveFramedMessageBlocking(Socket* sock, faststring* recv_buf,
   recv_buf->resize(payload_len + kMsgLengthPrefixLength);
   RETURN_NOT_OK(sock->BlockingRecv(recv_buf->data() + kMsgLengthPrefixLength,
                 payload_len, &recvd, deadline));
-  RETURN_NOT_OK(serialization::ParseYBMessage(Slice(*recv_buf), header, param_buf));
+  Slice slice(recv_buf->data(), payload_len + kMsgLengthPrefixLength);
+  RETURN_NOT_OK(serialization::ParseYBMessage(slice, header, param_buf));
   return Status::OK();
 }
 

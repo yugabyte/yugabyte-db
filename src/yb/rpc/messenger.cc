@@ -371,6 +371,9 @@ void Messenger::UpdateServicesCache(std::lock_guard<percpu_rwlock>* guard) {
   auto* old = rpc_services_cache_.exchange(new_cache);
 
   if (old) {
+    // Service cache update is quite rare situation otherwise rpc_service is quite frequent.
+    // Because of this we use "atomic lock" in rpc_service and busy wait in UpdateServicesCache.
+    // So we could process rpc_service quickly, and stuck in UpdateServicesCache for sometime.
     while (rpc_services_lock_count_ != 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -388,6 +391,7 @@ const scoped_refptr<RpcService> Messenger::rpc_service(const string& service_nam
   if (cache != nullptr) {
     auto it = cache->find(service_name);
     if (it != cache->end()) {
+      // Since our cache is a cache of whole rpc_services_ map, we could check only it.
       result = it->second;
     }
   }

@@ -121,22 +121,17 @@ class GenericCalculatorService : public ServiceIf {
       LOG(FATAL) << "couldn't parse: " << param.ToDebugString();
     }
 
-    gscoped_ptr<faststring> first(new faststring);
-    gscoped_ptr<faststring> second(new faststring);
-
     Random r(req.random_seed());
-    first->resize(req.size1());
-    RandomString(first->data(), req.size1(), &r);
+    auto first = util::RefCntBuffer(req.size1());
+    RandomString(first.udata(), req.size1(), &r);
 
-    second->resize(req.size2());
-    RandomString(second->data(), req.size2(), &r);
+    auto second = util::RefCntBuffer(req.size2());
+    RandomString(second.udata(), req.size2(), &r);
 
     SendTwoStringsResponsePB resp;
     int idx1, idx2;
-    CHECK_OK(incoming->AddRpcSidecar(
-        make_gscoped_ptr(new RpcSidecar(first.Pass())), &idx1));
-    CHECK_OK(incoming->AddRpcSidecar(
-        make_gscoped_ptr(new RpcSidecar(second.Pass())), &idx2));
+    CHECK_OK(incoming->AddRpcSidecar(first, &idx1));
+    CHECK_OK(incoming->AddRpcSidecar(second, &idx2));
     resp.set_sidecar1(idx1);
     resp.set_sidecar2(idx2);
 

@@ -62,8 +62,7 @@ namespace yb {
 namespace rpc {
 
 InboundCall::InboundCall()
-    : sidecars_deleter_(&sidecars_),
-      trace_(new Trace) {
+    : trace_(new Trace) {
   TRACE_TO(trace_, "Created InboundCall");
   RecordCallReceived();
 }
@@ -124,18 +123,18 @@ void InboundCall::Respond(const MessageLite& response,
   TRACE_TO(trace_, "Queueing $0 response", is_success ? "success" : "failure");
 
   LogTrace();
-  QueueResponseToConnection();
+  get_connection()->QueueOutboundData(InboundCallPtr(this));
 }
 
-Status InboundCall::AddRpcSidecar(gscoped_ptr<RpcSidecar> car, int* idx) {
+Status InboundCall::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
   // Check that the number of sidecars does not exceed the number of payload
   // slices that are free (two are used up by the header and main message
   // protobufs).
   if (sidecars_.size() + 2 > OutboundTransfer::kMaxPayloadSlices) {
     return STATUS(ServiceUnavailable, "All available sidecars already used");
   }
-  sidecars_.push_back(car.release());
-  *idx = sidecars_.size() - 1;
+  *idx = sidecars_.size();
+  sidecars_.push_back(std::move(car));
   return Status::OK();
 }
 
@@ -185,10 +184,6 @@ bool InboundCall::ClientTimedOut() const {
 
 const UserCredentials& InboundCall::user_credentials() const {
   return get_connection()->user_credentials();
-}
-
-void InboundCall::Serialize(std::vector<Slice>* slices) const {
-  SerializeResponseTo(slices);
 }
 
 }  // namespace rpc

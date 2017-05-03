@@ -25,6 +25,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/rpc/constants.h"
 #include "yb/util/faststring.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
@@ -44,8 +45,12 @@ enum {
   kHeaderPosAuthProto = 2
 };
 
-Status SerializeMessage(const MessageLite& message, faststring* param_buf,
-                        int additional_size, bool use_cached_size) {
+Status SerializeMessage(const MessageLite& message,
+                        util::RefCntBuffer* param_buf,
+                        int additional_size,
+                        bool use_cached_size,
+                        size_t offset,
+                        size_t* size) {
 
   if (PREDICT_FALSE(!message.IsInitialized())) {
     return STATUS(InvalidArgument, "RPC argument missing required fields",
@@ -62,18 +67,29 @@ Status SerializeMessage(const MessageLite& message, faststring* param_buf,
                 << " bytes)";
   }
 
-  param_buf->resize(size_with_delim);
-  uint8_t* dst = param_buf->data();
-  dst = CodedOutputStream::WriteVarint32ToArray(recorded_size, dst);
-  dst = message.SerializeWithCachedSizesToArray(dst);
-  CHECK_EQ(dst, param_buf->data() + size_with_delim);
+  if (size != nullptr) {
+    *size = offset + size_with_delim;
+  }
+  if (param_buf != nullptr) {
+    if (!*param_buf) {
+      *param_buf = util::RefCntBuffer(offset + size_with_delim);
+    } else {
+      CHECK_EQ(param_buf->size(), offset + size_with_delim) << "offset = " << offset;
+    }
+    uint8_t *dst = param_buf->udata() + offset;
+    dst = CodedOutputStream::WriteVarint32ToArray(recorded_size, dst);
+    dst = message.SerializeWithCachedSizesToArray(dst);
+    CHECK_EQ(dst, param_buf->udata() + param_buf->size());
+  }
 
   return Status::OK();
 }
 
 Status SerializeHeader(const MessageLite& header,
                        size_t param_len,
-                       faststring* header_buf) {
+                       util::RefCntBuffer* header_buf,
+                       size_t reserve_for_param,
+                       size_t* header_size) {
 
   if (PREDICT_FALSE(!header.IsInitialized())) {
     LOG(DFATAL) << "Uninitialized RPC header";
@@ -88,8 +104,11 @@ Status SerializeHeader(const MessageLite& header,
       + header_pb_len;                                  // Length for the header PB itself.
   size_t total_size = header_tot_len + param_len;
 
-  header_buf->resize(header_tot_len);
-  uint8_t* dst = header_buf->data();
+  *header_buf = util::RefCntBuffer(header_tot_len + reserve_for_param);
+  if (header_size != nullptr) {
+    *header_size = header_tot_len;
+  }
+  uint8_t* dst = header_buf->udata();
 
   // 1. The length for the whole request, not including the 4-byte
   // length prefix.
@@ -101,7 +120,7 @@ Status SerializeHeader(const MessageLite& header,
   dst = header.SerializeWithCachedSizesToArray(dst);
 
   // We should have used the whole buffer we allocated.
-  CHECK_EQ(dst, header_buf->data() + header_tot_len);
+  CHECK_EQ(dst, header_buf->udata() + header_tot_len);
 
   return Status::OK();
 }

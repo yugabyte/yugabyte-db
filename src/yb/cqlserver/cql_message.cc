@@ -1509,15 +1509,24 @@ void AuthSuccessResponse::SerializeBody(faststring* mesg) const {
 CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
     : event_response_(std::move(event_response)) {
   CHECK_NOTNULL(event_response_.get());
-  event_response_->Serialize(&serialized_response_);
+  faststring temp;
+  event_response_->Serialize(&temp);
+  serialized_response_ = util::RefCntBuffer(temp);
 }
 
-void CQLServerEvent::Serialize(std::vector<Slice>* slices) const {
-  slices->push_back(Slice(serialized_response_));
+void CQLServerEvent::Serialize(std::deque<util::RefCntBuffer>* output) const {
+  output->push_back(serialized_response_);
 }
 
 std::string CQLServerEvent::ToString() const {
   return event_response_->ToString();
+}
+
+void CQLServerEvent::NotifyTransferFinished() {
+}
+
+void CQLServerEvent::NotifyTransferAborted(const Status& status) {
+  LOG(WARNING) << "CQLServerEvent transfer aborted: " << status.ToString();
 }
 
 }  // namespace cqlserver

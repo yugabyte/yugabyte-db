@@ -65,8 +65,6 @@ class YBConnection : public Connection {
  protected:
   virtual void CreateInboundTransfer() override;
 
-  TransferCallbacks* GetResponseTransferCallback(OutboundDataPtr outbound_data) override;
-
   virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
 
   virtual void HandleFinishedTransfer() override;
@@ -100,13 +98,13 @@ class YBInboundCall : public InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  virtual void SerializeResponseTo(std::vector<Slice>* slices) const override;
+  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
 
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
-  virtual CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                                 bool is_success) override;
+  CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
+                                         bool is_success) override;
 
   virtual void QueueResponseToConnection() override;
   virtual void LogTrace() const override;
@@ -118,16 +116,17 @@ class YBInboundCall : public InboundCall {
   // call response will be ignored anyway.
   virtual MonoTime GetClientDeadline() const override;
  protected:
-  scoped_refptr<Connection> get_connection() override;
-  const scoped_refptr<Connection> get_connection() const override;
+  scoped_refptr<Connection> get_connection() const override;
 
  private:
+  void NotifyTransferFinished() override;
+  void NotifyTransferAborted(const Status& status) override;
+
   // The header of the incoming call. Set by ParseFrom()
   RequestHeader header_;
 
   // The buffers for serialized response. Set by SerializeResponseBuffer().
-  faststring response_hdr_buf_;
-  faststring response_msg_buf_;
+  util::RefCntBuffer response_buf_;
 
   // The connection on which this inbound call arrived.
   scoped_refptr<YBConnection> conn_;

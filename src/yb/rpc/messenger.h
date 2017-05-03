@@ -241,6 +241,8 @@ class Messenger {
   // RPC services that handle inbound requests.
   RpcServicesMap rpc_services_;
   std::atomic<RpcServicesMap*> rpc_services_cache_ = {nullptr};
+
+  // The following atomic is used like lock when we change rpc_service_cache_.
   mutable std::atomic<int> rpc_services_lock_count_ = {0};
 
   std::vector<Reactor*> reactors_;

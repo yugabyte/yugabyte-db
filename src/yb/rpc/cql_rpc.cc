@@ -83,25 +83,6 @@ string CQLInboundTransfer::StatusAsString() const {
   return strings::Substitute("$0: $1 bytes received", this, cur_offset_);
 }
 
-class CQLResponseTransferCallbacks : public ResponseTransferCallbacks {
- public:
-  CQLResponseTransferCallbacks(OutboundDataPtr outbound_data, CQLConnection* conn)
-      : outbound_data_(std::move(outbound_data)), conn_(conn) {}
-
-  ~CQLResponseTransferCallbacks() {
-    conn_->FinishedHandlingACall();
-  }
-
- protected:
-  OutboundData* outbound_data() override {
-    return outbound_data_.get();
-  }
-
- private:
-  OutboundDataPtr outbound_data_;
-  CQLConnection* conn_;
-};
-
 CQLConnection::CQLConnection(ReactorThread* reactor_thread,
                              Sockaddr remote,
                              int socket,
@@ -118,10 +99,6 @@ void CQLConnection::CreateInboundTransfer() {
 
 AbstractInboundTransfer *CQLConnection::inbound() const {
   return inbound_.get();
-}
-
-TransferCallbacks* CQLConnection::GetResponseTransferCallback(OutboundDataPtr outbound_data) {
-  return new CQLResponseTransferCallbacks(std::move(outbound_data), this);
 }
 
 void CQLConnection::HandleFinishedTransfer() {
@@ -181,21 +158,23 @@ void CQLInboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_que
   }
 }
 
-void CQLInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
-  TRACE_EVENT0("rpc", "CQLInboundCall::SerializeResponseTo");
+void CQLInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
+  TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
-  slices->push_back(Slice(response_msg_buf_));
+
+  output->push_back(response_msg_buf_);
 }
 
-Status CQLInboundCall::SerializeResponseBuffer(const MessageLite& response,
+Status CQLInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                                bool is_success) {
   if (!is_success) {
     const ErrorStatusPB& error_status = static_cast<const ErrorStatusPB&>(response);
-    response_msg_buf_.append(EncodeAsError(error_status.message()));
+    // TODO proper error reporting
+    response_msg_buf_ = util::RefCntBuffer(EncodeAsError(error_status.message()));
     return Status::OK();
   }
 
-  CHECK(!response_msg_buf_.empty()) << "CQL response is absent.";
+  CHECK(response_msg_buf_) << "CQL response is absent.";
   return Status::OK();
 }
 
@@ -230,11 +209,7 @@ MonoTime CQLInboundCall::GetClientDeadline() const {
   return MonoTime::Max();
 }
 
-scoped_refptr<Connection> CQLInboundCall::get_connection() {
-  return conn_;
-}
-
-const scoped_refptr<Connection> CQLInboundCall::get_connection() const {
+scoped_refptr<Connection> CQLInboundCall::get_connection() const {
   return conn_;
 }
 
@@ -249,6 +224,13 @@ bool CQLInboundCall::TryResume() {
   VLOG(2) << "Resuming " << ToString();
   resume_from_->Run();
   return true;
+}
+
+void CQLInboundCall::NotifyTransferFinished() {
+  conn_->FinishedHandlingACall();
+}
+
+void CQLInboundCall::NotifyTransferAborted(const Status& status) {
 }
 
 } // namespace rpc

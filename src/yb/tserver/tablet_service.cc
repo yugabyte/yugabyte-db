@@ -335,11 +335,13 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(
             SchemaToColumnPBs(rowblock->schema(), yql_write_resp->mutable_column_schemas()),
             response_, context_);
-        gscoped_ptr<faststring> rows_data(new faststring());
-        rowblock->Serialize(yql_write_req.client(), rows_data.get());
+        faststring rows_data;
+        rowblock->Serialize(yql_write_req.client(), &rows_data);
         int rows_data_sidecar_idx = 0;
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(context_->AddRpcSidecar(make_gscoped_ptr(
-            new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx), response_, context_);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            context_->AddRpcSidecar(util::RefCntBuffer(rows_data), &rows_data_sidecar_idx),
+            response_,
+            context_);
         yql_write_resp->set_rows_data_sidecar(rows_data_sidecar_idx);
       }
       if (include_trace_ && Trace::CurrentTrace() != nullptr) {
@@ -925,8 +927,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         TRACE("Done HandleYBLReadRequest");
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
         if (rows_data.get() != nullptr) {
-          s = context->AddRpcSidecar(make_gscoped_ptr(
-              new rpc::RpcSidecar(rows_data.Pass())), &rows_data_sidecar_idx);
+          s = context->AddRpcSidecar(util::RefCntBuffer(*rows_data), &rows_data_sidecar_idx);
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, context);
           yql_response.set_rows_data_sidecar(rows_data_sidecar_idx);
         }
@@ -1250,10 +1251,10 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
   }
 
   size_t batch_size_bytes = GetMaxBatchSizeBytesHint(req);
-  gscoped_ptr<faststring> rows_data(new faststring(batch_size_bytes * 11 / 10));
-  gscoped_ptr<faststring> indirect_data(new faststring(batch_size_bytes * 11 / 10));
+  faststring rows_data(batch_size_bytes * 11 / 10);
+  faststring indirect_data(batch_size_bytes * 11 / 10);
   RowwiseRowBlockPB data;
-  ScanResultCopier collector(&data, rows_data.get(), indirect_data.get());
+  ScanResultCopier collector(&data, &rows_data, &indirect_data);
 
   bool has_more_results = false;
   TabletServerErrorPB::Code error_code;
@@ -1300,15 +1301,13 @@ void TabletServiceImpl::Scan(const ScanRequestPB* req,
 
     // Add sidecar data to context and record the returned indices.
     int rows_idx;
-    CHECK_OK(context->AddRpcSidecar(make_gscoped_ptr(
-        new rpc::RpcSidecar(rows_data.Pass())), &rows_idx));
+    CHECK_OK(context->AddRpcSidecar(util::RefCntBuffer(rows_data), &rows_idx));
     resp->mutable_data()->set_rows_sidecar(rows_idx);
 
     // Add indirect data as a sidecar, if applicable.
-    if (indirect_data->size() > 0) {
+    if (indirect_data.size() > 0) {
       int indirect_idx;
-      CHECK_OK(context->AddRpcSidecar(make_gscoped_ptr(
-          new rpc::RpcSidecar(indirect_data.Pass())), &indirect_idx));
+      CHECK_OK(context->AddRpcSidecar(util::RefCntBuffer(indirect_data), &indirect_idx));
       resp->mutable_data()->set_indirect_data_sidecar(indirect_idx);
     }
 

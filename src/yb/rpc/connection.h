@@ -28,8 +28,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/intrusive/list.hpp>
-
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/connection_types.h"
@@ -44,6 +42,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/object_pool.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -54,6 +53,8 @@ class DumpRunningRpcsRequestPB;
 class RpcConnectionPB;
 
 class ReactorThread;
+
+class ReactorTask;
 
 //
 // A connection between an endpoint and us.
@@ -131,11 +132,14 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // The address of the remote end of the connection.
   const Sockaddr& remote() const { return remote_; }
 
-  // libev callback when data is available to read.
-  void ReadHandler(ev::io& watcher, int revents);  // NOLINT
+  // libev callback when there are some events in socket.
+  void Handler(ev::io& watcher, int revents); // NOLINT
 
-  // libev callback when we may write to the socket.
-  void WriteHandler(ev::io& watcher, int revents);  // NOLINT
+  // Invoked when we have something to read.
+  CHECKED_STATUS ReadHandler();
+
+  // Invoked when socket is ready for writing.
+  CHECKED_STATUS WriteHandler();
 
   // Safe to be called from other threads.
   std::string ToString() const;
@@ -163,16 +167,13 @@ class Connection : public RefCountedThreadSafe<Connection> {
   CHECKED_STATUS DumpPB(const DumpRunningRpcsRequestPB& req,
                 RpcConnectionPB* resp);
 
+  // Do appropriate actions after adding outbound call.
+  void OutboundQueued();
+
  protected:
   friend struct CallAwaitingResponse;
 
-  friend class QueueTransferTask;
-
-  friend class YBResponseTransferCallbacks;
-
-  friend class RedisResponseTransferCallbacks;
-
-  friend class CQLResponseTransferCallbacks;
+  friend class YBInboundCall;
 
   // A call which has been fully sent to the server, which we're waiting for
   // the server to process. This is used on the client side only.
@@ -185,25 +186,11 @@ class Connection : public RefCountedThreadSafe<Connection> {
     Connection* conn;
     OutboundCallPtr call;
     ev::timer timeout_timer;
+    bool sent;
   };
 
   typedef std::unordered_map<uint64_t, CallAwaitingResponse*> car_map_t;
   typedef std::unordered_map<uint64_t, InboundCallPtr> inbound_call_map_t;
-
-  // Returns the next valid (positive) sequential call ID by incrementing a counter
-  // and ensuring we roll over from INT32_MAX to 0.
-  // Negative numbers are reserved for special purposes.
-  int32_t GetNextCallId() {
-    int32_t call_id = next_call_id_;
-    if (PREDICT_FALSE(next_call_id_ == std::numeric_limits<int32_t>::max())) {
-      next_call_id_ = 0;
-    } else {
-      next_call_id_++;
-    }
-    return call_id;
-  }
-
-  virtual TransferCallbacks* GetResponseTransferCallback(OutboundDataPtr outbound_data) = 0;
 
   virtual void CreateInboundTransfer() = 0;
 
@@ -224,10 +211,16 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Set it to Failed.
   void HandleOutboundCallTimeout(CallAwaitingResponse* car);
 
-  // Queue a transfer for sending on this connection.
-  // We will take ownership of the transfer.
-  // This must be called from the reactor thread.
-  void QueueOutbound(gscoped_ptr<OutboundTransfer> transfer);
+  CHECKED_STATUS DoWrite();
+
+  // Does actual outbound data queueing. Invoked in appropriate reactor thread.
+  void DoQueueOutboundData(OutboundDataPtr call, bool batch);
+
+  void ProcessResponseQueue();
+
+  void ClearSending(const Status& status);
+
+  void CallSent(OutboundCallPtr call);
 
   // The reactor thread that created this connection.
   ReactorThread* const reactor_thread_;
@@ -247,19 +240,13 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // The credentials of the user operating on this connection (if a client user).
   UserCredentials user_credentials_;
 
-  // notifies us when our socket is writable.
-  ev::io write_io_;
-
-  // notifies us when our socket is readable.
-  ev::io read_io_;
+  // Notifies us when our socket is readable or writable.
+  ev::io io_;
 
   // Set to true when the connection is registered on a loop.
   // This is used for a sanity check in the destructor that we are properly
   // un-registered before shutting down.
   bool is_epoll_registered_;
-
-  // waiting to be sent
-  boost::intrusive::list<OutboundTransfer> outbound_transfers_; // NOLINT(*)
 
   // Calls which have been sent and are now waiting for a response.
   car_map_t awaiting_response_;
@@ -268,15 +255,8 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // being handled.
   inbound_call_map_t calls_being_handled_;
 
-  // the next call ID to use
-  int32_t next_call_id_;
-
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
   Status shutdown_status_;
-
-  // Temporary vector used when serializing - avoids an allocation
-  // when serializing calls.
-  std::vector<Slice> slices_tmp_;
 
   // Pool from which CallAwaitingResponse objects are allocated.
   // Also a funny name.
@@ -293,26 +273,26 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // it involves spin lock and search in a metrics map. Therefore we prepare metric instances
   // at connection level.
   scoped_refptr<Histogram> handler_latency_outbound_transfer_;
+
+  // Fields sending_* contain bytes and calls we are currently sending to socket.
+  std::deque<util::RefCntBuffer> sending_;
+  std::deque<OutboundDataPtr> sending_outbound_datas_;
+  size_t send_position_ = 0;
+  bool waiting_write_ready_ = false;
+
+  simple_spinlock outbound_data_queue_lock_;
+
+  // Responses we are going to process.
+  std::vector<OutboundDataPtr> outbound_data_to_process_;
+
+  // Responses that are currently being processed.
+  // It could be in function variable, but declared as member for optimization.
+  std::vector<OutboundDataPtr> outbound_data_being_processed_;
+
+  std::shared_ptr<ReactorTask> process_response_queue_task_;
 };
 
-// Callbacks for sending an RPC call response from the server.
-// This takes ownership of the InboundCall object so that, once it has
-// been responded to, we can free up all of the associated memory.
-struct ResponseTransferCallbacks : public TransferCallbacks {
- public:
-  ResponseTransferCallbacks() {}
-
-  virtual ~ResponseTransferCallbacks() {}
-
-  virtual void NotifyTransferFinished() override {
-    delete this;
-  }
-
-  virtual void NotifyTransferAborted(const Status& status) override;
-
- protected:
-  virtual OutboundData* outbound_data() = 0;
-};
+typedef scoped_refptr<Connection> ConnectionPtr;
 
 #define RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status) \
   if (PREDICT_FALSE(!status.ok())) {                            \

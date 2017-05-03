@@ -214,25 +214,6 @@ Status RedisInboundTransfer::ReceiveBuffer(Socket& socket) {
   return Status::OK();
 }
 
-class RedisResponseTransferCallbacks : public ResponseTransferCallbacks {
- public:
-  RedisResponseTransferCallbacks(OutboundDataPtr outbound_data, RedisConnection* conn)
-      : outbound_data_(std::move(outbound_data)), conn_(conn) {}
-
-  ~RedisResponseTransferCallbacks() {
-    conn_->FinishedHandlingACall();
-  }
-
- protected:
-  OutboundData* outbound_data() override {
-    return outbound_data_.get();
-  }
-
- private:
-  OutboundDataPtr outbound_data_;
-  RedisConnection* conn_;
-};
-
 RedisConnection::RedisConnection(ReactorThread* reactor_thread,
                                  Sockaddr remote,
                                  int socket,
@@ -249,10 +230,6 @@ void RedisConnection::CreateInboundTransfer() {
 
 AbstractInboundTransfer *RedisConnection::inbound() const {
   return inbound_.get();
-}
-
-TransferCallbacks* RedisConnection::GetResponseTransferCallback(OutboundDataPtr outbound_data) {
-  return new RedisResponseTransferCallbacks(std::move(outbound_data), this);
 }
 
 void RedisConnection::HandleFinishedTransfer() {
@@ -315,18 +292,19 @@ RedisClientCommand& RedisInboundCall::GetClientCommand() {
   return down_cast<RedisInboundTransfer*>(transfer_.get())->client_command();
 }
 
-Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
+Status RedisInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                                  bool is_success) {
   if (!is_success) {
     const ErrorStatusPB& error_status = static_cast<const ErrorStatusPB&>(response);
-    response_msg_buf_.append(EncodeAsError(error_status.message()));
+    response_msg_buf_ = util::RefCntBuffer(EncodeAsError(error_status.message()));
     return Status::OK();
   }
 
   const RedisResponsePB& redis_response = static_cast<const RedisResponsePB&>(response);
 
   if (redis_response.code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
-    response_msg_buf_.append(EncodeAsError("Request was unable to be processed from server."));
+    response_msg_buf_ = util::RefCntBuffer(
+        EncodeAsError("Request was unable to be processed from server."));
     return Status::OK();
   }
 
@@ -336,14 +314,15 @@ Status RedisInboundCall::SerializeResponseBuffer(const MessageLite& response,
   if (redis_response.code() != RedisResponsePB_RedisStatusCode_OK) {
     // We send a nil response for all non-ok statuses as of now.
     // TODO: Follow redis error messages.
-    response_msg_buf_.append(kNilResponse);
+    response_msg_buf_ = util::RefCntBuffer(kNilResponse);
   } else {
     if (redis_response.has_string_response()) {
-      response_msg_buf_.append(EncodeAsSimpleString(redis_response.string_response()));
+      response_msg_buf_ = util::RefCntBuffer(
+          EncodeAsSimpleString(redis_response.string_response()));
     } else if (redis_response.has_int_response()) {
-      response_msg_buf_.append(EncodeAsInteger(redis_response.int_response()));
+      response_msg_buf_ = util::RefCntBuffer(EncodeAsInteger(redis_response.int_response()));
     } else {
-      response_msg_buf_.append(EncodeAsSimpleString("OK"));
+      response_msg_buf_ = util::RefCntBuffer(EncodeAsSimpleString("OK"));
     }
   }
   return Status::OK();
@@ -382,18 +361,20 @@ void RedisInboundCall::QueueResponseToConnection() {
   conn_->QueueOutboundData(InboundCallPtr(this));
 }
 
-scoped_refptr<Connection> RedisInboundCall::get_connection() {
+scoped_refptr<Connection> RedisInboundCall::get_connection() const {
   return conn_;
 }
 
-const scoped_refptr<Connection> RedisInboundCall::get_connection() const {
-  return conn_;
+void RedisInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
+  output->push_back(response_msg_buf_);
 }
 
-void RedisInboundCall::SerializeResponseTo(vector<Slice>* slices) const {
-  TRACE_EVENT0("rpc", "RedisInboundCall::SerializeResponseTo");
-  CHECK_GT(response_msg_buf_.size(), 0);
-  slices->push_back(Slice(response_msg_buf_));
+void RedisInboundCall::NotifyTransferFinished() {
+  conn_->FinishedHandlingACall();
+}
+
+void RedisInboundCall::NotifyTransferAborted(const Status& status) {
+  NotifyTransferFinished();
 }
 
 } // namespace rpc

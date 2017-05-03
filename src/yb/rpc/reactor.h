@@ -81,6 +81,23 @@ class ReactorTask : public std::enable_shared_from_this<ReactorTask> {
   virtual ~ReactorTask();
 };
 
+template <class F>
+class FunctorReactorTask : public ReactorTask {
+ public:
+  explicit FunctorReactorTask(const F& f) : f_(f) {}
+
+  void Run(ReactorThread *reactor) override  {
+    f_(reactor);
+  }
+ private:
+  F f_;
+};
+
+template <class F>
+std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f) {
+  return std::make_shared<FunctorReactorTask<F>>(f);
+}
+
 // A ReactorTask that is scheduled to run at some point in the future.
 //
 // Semantically it works like RunFunctionTask with a few key differences:
