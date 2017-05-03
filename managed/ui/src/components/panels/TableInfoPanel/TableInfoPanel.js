@@ -16,6 +16,10 @@ export default class TableInfoPanel extends Component {
       { name: "Table Type", data: tableInfo.tableType},
       { name: "Table UUID", data: tableInfo.tableUUID}
     ]
+    // Show Key Space if Table is CQL type
+    if (tableInfo.tableType && tableInfo.tableType !== "REDIS_TABLE_TYPE") {
+      tableInfoItems.push({ name: "Key Space", data: tableInfo.tableDetails && tableInfo.tableDetails.keyspace})
+    }
 
     return (
       <DescriptionList listItems={tableInfoItems} />
