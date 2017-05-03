@@ -32,10 +32,7 @@
 package org.yb.client;
 
 import org.junit.AfterClass;
-import org.yb.ColumnSchema;
-import org.yb.Common;
-import org.yb.Schema;
-import org.yb.Type;
+import org.yb.*;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,23 +57,23 @@ public class TestYBTable extends BaseYBClientTest {
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(0)
         .setName("key")
-        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.INT32))
+        .setType(ProtobufHelper.YQLTypeToPb(YQLType.INT32))
         .setIsKey(true)
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(1)
         .setName("column1_i")
-        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.INT32))
+        .setType(ProtobufHelper.YQLTypeToPb(YQLType.INT32))
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(2)
         .setName("column2_i")
-        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.INT32))
+        .setType(ProtobufHelper.YQLTypeToPb(YQLType.INT32))
         .build());
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(3)
         .setName("column3_s")
-        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.STRING))
+        .setType(ProtobufHelper.YQLTypeToPb(YQLType.STRING))
         .setIsNullable(true)
         .setCfileBlockSize(4096)
         .setEncoding(Common.EncodingType.DICT_ENCODING)
@@ -85,7 +82,7 @@ public class TestYBTable extends BaseYBClientTest {
     pb.addColumns(Common.ColumnSchemaPB.newBuilder()
         .setId(4)
         .setName("column4_b")
-        .setType(ProtobufHelper.dataTypeToPb(Common.DataType.BOOL))
+        .setType(ProtobufHelper.YQLTypeToPb(YQLType.BOOL))
         .build());
     if (!defaultTTL) {
       pb.setTableProperties(Common.TablePropertiesPB.newBuilder()

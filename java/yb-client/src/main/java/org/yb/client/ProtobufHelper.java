@@ -36,15 +36,13 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ZeroCopyLiteralByteString;
-import org.yb.ColumnSchema;
-import org.yb.Common;
-import org.yb.Schema;
-import org.yb.Type;
+import org.yb.*;
 import org.yb.annotations.InterfaceAudience;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @InterfaceAudience.Private
 public class ProtobufHelper {
@@ -78,13 +76,20 @@ public class ProtobufHelper {
     return columnToPb(Common.ColumnSchemaPB.newBuilder(), column);
   }
 
-  public static Common.YQLTypePB typeToPb(Type type) {
-    return dataTypeToPb(type.getDataType());
-  }
-
-  public static Common.YQLTypePB dataTypeToPb(Common.DataType dataType) {
+  public static Common.YQLTypePB YQLTypeToPb(YQLType yqlType) {
     Common.YQLTypePB.Builder typeBuilder = Common.YQLTypePB.newBuilder();
-    typeBuilder.setMain(dataType);
+    typeBuilder.setMain(yqlType.getMain());
+    typeBuilder.addAllParams(yqlType.getParams().stream()
+                                                .map(ProtobufHelper::YQLTypeToPb)
+                                                .collect(Collectors.toList()));
+    // User-defined types have additional information (set declared keyspace and type name).
+    if (yqlType.getMain() == Common.DataType.USER_DEFINED_TYPE) {
+      Common.YQLTypePB.UDTypeInfo.Builder udtBuilder = Common.YQLTypePB.UDTypeInfo.newBuilder();
+      udtBuilder.setName(yqlType.getUdtName());
+      udtBuilder.setKeyspaceName(yqlType.getUdtKeyspaceName());
+      typeBuilder.setUdtypeInfo(udtBuilder);
+    }
+
     return typeBuilder.build();
   }
 
@@ -92,7 +97,7 @@ public class ProtobufHelper {
   columnToPb(Common.ColumnSchemaPB.Builder schemaBuilder, ColumnSchema column) {
     schemaBuilder
         .setName(column.getName())
-        .setType(typeToPb(column.getType()))
+        .setType(YQLTypeToPb(column.getYQLType()))
         .setIsKey(column.isKey())
         .setIsHashKey(column.isHashKey())
         .setIsNullable(column.isNullable())

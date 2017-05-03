@@ -46,7 +46,10 @@ public class ColumnSchema {
 
   private final Integer id;
   private final String name;
+  // TODO Having both type and yqlType is redundant. After YugaWare is updated and Kudu
+  // dependencies cleaned up, type can be removed.
   private final Type type;
+  private final YQLType yqlType;
   private final boolean key;
   private final boolean hashKey;
   private final boolean nullable;
@@ -131,13 +134,14 @@ public class ColumnSchema {
     }
   };
 
-  private ColumnSchema(Integer id, String name, Type type, boolean key, boolean hashKey,
+  private ColumnSchema(Integer id, String name, YQLType yqlType, boolean key, boolean hashKey,
                        boolean nullable, Object defaultValue, int desiredBlockSize,
                        Encoding encoding, CompressionAlgorithm compressionAlgorithm,
                        SortOrder sortOrder) {
     this.id = id;
     this.name = name;
-    this.type = type;
+    this.type = yqlType.toType();
+    this.yqlType = yqlType;
     this.key = key;
     this.hashKey = hashKey;
     this.nullable = nullable;
@@ -156,8 +160,18 @@ public class ColumnSchema {
    * Get the column's Type
    * @return the type
    */
+  @Deprecated
   public Type getType() {
     return type;
+  }
+
+
+  /**
+   * Get the column's YQLType
+   * @return the type
+   */
+  public YQLType getYQLType() {
+    return yqlType;
   }
 
   /**
@@ -267,7 +281,7 @@ public class ColumnSchema {
   public static class ColumnSchemaBuilder {
     private Integer id = null;
     private final String name;
-    private final Type type;
+    private final YQLType yqlType;
     private boolean key = false;
     private boolean hashKey = false;
     private boolean nullable = false;
@@ -282,9 +296,20 @@ public class ColumnSchema {
      * @param name column's name
      * @param type column's type
      */
+    @Deprecated
     public ColumnSchemaBuilder(String name, Type type) {
       this.name = name;
-      this.type = type;
+      this.yqlType = YQLType.fromType(type);
+    }
+
+    /**
+     * Constructor for the required parameters.
+     * @param name column's name
+     * @param yqlType column's YQL Type
+     */
+    public ColumnSchemaBuilder(String name, YQLType yqlType) {
+      this.name = name;
+      this.yqlType = yqlType;
     }
 
     /**
@@ -399,7 +424,7 @@ public class ColumnSchema {
      * @return a new {@link ColumnSchema}
      */
     public ColumnSchema build() {
-      return new ColumnSchema(id, name, type,
+      return new ColumnSchema(id, name, yqlType,
                               key, hashKey, nullable, defaultValue,
                               blockSize, encoding, compressionAlgorithm, sortOrder);
     }
