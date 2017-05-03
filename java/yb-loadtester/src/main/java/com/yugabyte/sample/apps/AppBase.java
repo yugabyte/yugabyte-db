@@ -89,7 +89,8 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   protected synchronized Jedis getRedisClient() {
     if (jedisClient == null) {
       Node node = getRandomNode();
-      jedisClient = new Jedis(node.getHost(), node.getPort());
+      // Set the timeout to something more than the timeout in the proxy layer.
+      jedisClient = new Jedis(node.getHost(), node.getPort(), /* timeout ms */ 61000);
     }
     return jedisClient;
   }
