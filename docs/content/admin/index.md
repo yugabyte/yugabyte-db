@@ -28,6 +28,18 @@ If no cloud providers are configured yet, the main Dashboard page highlights the
 
 ![Configure Cloud Provider](/images/configure-cloud-provider.png)
 
+### Docker Platform
+
+The [single node yugabyte-db container](/get-started-dev) is a great way to get started in a developer's localhost environment. Another approach is to spin up a multi-node YugaByte universe on the localhost using Docker containers. This is a simple approach for testing important day-to-day operational scenarios such as scale-up/scale-down and availability under node failures.
+
+Go to the Docker tab in the Configuration section and click Setup to initialize Docker as a cloud provider. Note that Docker Platform is already installed on the YugaWare host when you installed Replicated.
+
+![Configure Docker](/images/configure-docker-1.png)
+
+![Docker Configured Successfully](/images/configure-docker-2.png)
+
+As you can see above, the above initialization setup creates 2 dummy regions (US West and US East) with 3 dummy availability zones each. Now we are ready to create a containerized YugaByte universe running on the YugaWare host.
+
 ### Amazon Web Services
 
 YugaWare ensures that YugaByte instances run inside your own AWS account and are secured by a dedicated VPC and Key Pair. After you provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html), YugaWare invokes AWS APIs to perform the following actions. Note that the AWS Account Name should be unique for each instance of YugaWare integrating with a given AWS Account.
@@ -42,13 +54,9 @@ YugaWare ensures that YugaByte instances run inside your own AWS account and are
 
 ![AWS Configured Successfully](/images/configure-aws-2.png)
 
-Now we are ready to create a YugaByte universe (aka cluster) on AWS.
+Now we are ready to create a YugaByte universe on AWS.
 
 ### Google Cloud Platform
-
-\<docs coming soon\>
-
-### Docker Platform
 
 \<docs coming soon\>
 
@@ -66,8 +74,13 @@ If there are no universes created yet, the Dashboard page will look like the fol
 
 Click on "Create Universe" to enter your intent for the universe. The **Provider**, **Regions** and **Instance Type** fields were initialized based on the [cloud providers configured](/admin/#configure-cloud-providers). As soon as **Provider**, **Regions** and **Nodes** are entered, an intelligent Node Placement Policy kicks in to specify how the nodes should be placed across all the Availability Zones so that maximum availability is guaranteed. 
 
-![Create Universe](/images/create-univ.png)
+Here's how to create a universe on the [AWS](#amazon-web-services) cloud provider.
+![Create Universe on AWS](/images/create-univ.png)
 
+Here's how to create a universe on the [Docker](#docker-platform) cloud provider.
+![Create Universe on Docker](/images/create-univ-docker.png)
+
+Here's how a Universe in Pending state looks like.
 ![Dashboard with Pending Universe](/images/pending-univ-dashboard.png)
 
 ![Detail for a Pending Universe](/images/pending-univ-detail.png)

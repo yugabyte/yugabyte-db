@@ -4,7 +4,7 @@ title: Get started (Development)
 weight: 10
 ---
 
-Getting started with YugaByte in a developer's **localhost** environment is easy. Simply run the YugaByte DB docker container with the instructions below and you will have a Cassandra server running on your localhost's port 9042 (the default CQL port) in no time.
+Getting started with YugaByte in a developer's **localhost** environment is easy. Simply run the YugaByte DB docker container with the instructions below and you will have a Apache Cassandra server running on your localhost's port 9042 (the default CQL port) in no time.
 
 ## Prerequisites
 

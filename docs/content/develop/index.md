@@ -17,7 +17,7 @@ Log into the YugaWare host machine.
 sudo docker exec -it yugaware bash
 
 # run the time-series sample app
-java -jar /opt/yugabyte/utils/yb-sample-app.jar --workload CassandraTimeseries --nodes 10.151.22.132:9042,10.151.38.209:9042,10.151.50.1:9042
+java -jar /opt/yugabyte/utils/yb-sample-apps.jar --workload CassandraTimeseries --nodes 10.151.22.132:9042,10.151.38.209:9042,10.151.50.1:9042
 ```
 
 Other values of the `workload` param are `CassandraStockTicker`, `CassandraKeyValue`, `RedisKeyValue`
