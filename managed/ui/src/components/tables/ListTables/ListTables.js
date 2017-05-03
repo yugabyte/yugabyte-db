@@ -65,9 +65,9 @@ export default class ListTables extends Component {
     if (isValidArray(self.props.tables.universeTablesList)) {
       self.props.tables.universeTablesList.forEach(function (item, idx) {
         if (item.tableType === "REDIS_TABLE_TYPE") {
-          numRedisTables++;
+            numRedisTables++;
         } else {
-          numCassandraTables++;
+            numCassandraTables++;
         }
       });
     }
@@ -114,9 +114,13 @@ class ListTableGrid extends Component {
       if (data.status === "success") {
         return <Link to={`/universes/${universeUUID}/tables/${data.tableID}`}>{tableName}</Link>;
       } else {
-        return tableName
+        return tableName;
       }
-    }
+    };
+
+    var formatKeySpace = function(cell) {
+      return <div className="top-5">{cell}</div>
+    };
 
     const tablePlacementDummyData = {"read": "-", "write": "-"};
 
@@ -140,13 +144,14 @@ class ListTableGrid extends Component {
     if (isValidArray(self.props.tables.universeTablesList)) {
       listItems = self.props.tables.universeTablesList.map(function (item, idx) {
         return {
+          "keySpace": item.keySpace,
           "tableID": item.tableUUID,
           "tableType": item.tableType,
           "tableName": item.tableName,
           "status": "success",
           "read": tablePlacementDummyData.read,
           "write": tablePlacementDummyData.write
-        }
+        };
       });
     }
 
@@ -175,6 +180,9 @@ class ListTableGrid extends Component {
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn dataField={"tableType"} dataFormat={ getTableIcon }
                            columnClassName={"table-type-image-header yb-table-cell"} className={"yb-table-cell"}/>
+        <TableHeaderColumn dataField={"keySpace"}
+                           columnClassName={"yb-table-cell"} dataFormat={formatKeySpace}>
+          Key Space</TableHeaderColumn>
         <TableHeaderColumn dataField={"tableName"} dataFormat={getTableName}
                            columnClassName={"table-name-label yb-table-cell"} className={"yb-table-cell"}>
           Table Name</TableHeaderColumn>
