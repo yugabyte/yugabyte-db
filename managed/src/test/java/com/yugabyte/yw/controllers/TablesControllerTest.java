@@ -47,6 +47,7 @@ import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.client.shaded.com.google.protobuf.ByteString;
+import org.yb.master.Master;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -96,17 +97,24 @@ public class TablesControllerTest extends WithApplication {
     tableNames.add("Table1");
     tableNames.add("Table2");
     TableInfo ti1 = TableInfo.newBuilder()
-                             .setName("Table1")
+                             .setName("Table1").setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
                              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
                              .setTableType(TableType.REDIS_TABLE_TYPE)
                              .build();
     TableInfo ti2 = TableInfo.newBuilder()
-                             .setName("Table2")
+                             .setName("Table2").setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("$$$Default"))
                              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
                              .setTableType(TableType.YQL_TABLE_TYPE)
                              .build();
+    // Create System type table, this will not be returned in response
+    TableInfo ti3 = TableInfo.newBuilder()
+      .setName("Table3").setNamespace(Master.NamespaceIdentifierPB.newBuilder().setName("system"))
+      .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
+      .setTableType(TableType.YQL_TABLE_TYPE)
+      .build();
     tableInfoList.add(ti1);
     tableInfoList.add(ti2);
+    tableInfoList.add(ti3);
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
 
@@ -125,17 +133,25 @@ public class TablesControllerTest extends WithApplication {
     Iterator<JsonNode> it = json.elements();
     int numTables = 0;
     while (it.hasNext()) {
-      numTables++;
       JsonNode table = it.next();
       String tableName = table.get("tableName").asText();
       String tableType = table.get("tableType").asText();
+      String tableKeySpace = table.get("keySpace") != null ? table.get("keySpace").asText() : null;
+      // Display table only if table is redis type or table is CQL type but not of system keyspace
+      if (tableType.equals("REDIS_TABLE_TYPE") ||
+         (!tableKeySpace.toLowerCase().equals("system") && !tableKeySpace.toLowerCase().equals("system_schema"))) {
+           numTables++;
+      }
       LOG.info("Table name: " + tableName + ", table type: " + tableType);
       assertTrue(tableNames.contains(tableName));
       if (tableName.equals("Table1")) {
         assertEquals(TableType.REDIS_TABLE_TYPE.toString(), tableType);
+        assertEquals(tableKeySpace, null);
       } else if (tableName.equals("Table2")) {
         assertEquals(TableType.YQL_TABLE_TYPE.toString(), tableType);
+        assertEquals(tableKeySpace, "$$$Default");
       }
+
     }
     LOG.info("Processed " + numTables + " tables");
     assertEquals(numTables, tableNames.size());
