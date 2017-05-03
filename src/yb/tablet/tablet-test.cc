@@ -753,7 +753,7 @@ class MyCommonHooks : public Tablet::FlushCompactCommonHooks {
     return Status::OK();
   }
 
-  virtual Status PostTakeMvccSnapshot() override {
+  Status PostTakeMvccSnapshot() override {
     // before we flush we update the MemRowSet afterwards we update the
     // DeltaMemStore
     if (!flushed_) {
@@ -762,20 +762,20 @@ class MyCommonHooks : public Tablet::FlushCompactCommonHooks {
       return DoHook(DELTA_MUTATION);
     }
   }
-  virtual Status PostWriteSnapshot() override {
+  Status PostWriteSnapshot() override {
     if (!flushed_) {
       return DoHook(MRS_MUTATION);
     } else {
       return DoHook(DELTA_MUTATION);
     }
   }
-  virtual Status PostSwapInDuplicatingRowSet() override {
+  Status PostSwapInDuplicatingRowSet() override {
     return DoHook(DUPLICATED_MUTATION);
   }
-  virtual Status PostReupdateMissedDeltas() override {
+  Status PostReupdateMissedDeltas() override {
     return DoHook(DUPLICATED_MUTATION);
   }
-  virtual Status PostSwapNewRowSet() override {
+  Status PostSwapNewRowSet() override {
     return DoHook(DELTA_MUTATION);
   }
  protected:

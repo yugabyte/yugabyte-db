@@ -75,9 +75,9 @@ class MergingIterator : public InternalIterator {
     }
   }
 
-  virtual bool Valid() const override { return (current_ != nullptr); }
+  bool Valid() const override { return (current_ != nullptr); }
 
-  virtual void SeekToFirst() override {
+  void SeekToFirst() override {
     ClearHeaps();
     for (auto& child : children_) {
       child.SeekToFirst();
@@ -89,7 +89,7 @@ class MergingIterator : public InternalIterator {
     current_ = CurrentForward();
   }
 
-  virtual void SeekToLast() override {
+  void SeekToLast() override {
     ClearHeaps();
     InitMaxHeap();
     for (auto& child : children_) {
@@ -102,7 +102,7 @@ class MergingIterator : public InternalIterator {
     current_ = CurrentReverse();
   }
 
-  virtual void Seek(const Slice& target) override {
+  void Seek(const Slice& target) override {
     ClearHeaps();
     for (auto& child : children_) {
       {
@@ -123,7 +123,7 @@ class MergingIterator : public InternalIterator {
     }
   }
 
-  virtual void Next() override {
+  void Next() override {
     assert(Valid());
 
     // Ensure that all children are positioned after key().
@@ -169,7 +169,7 @@ class MergingIterator : public InternalIterator {
     current_ = CurrentForward();
   }
 
-  virtual void Prev() override {
+  void Prev() override {
     assert(Valid());
     // Ensure that all children are positioned before key().
     // If we are moving in the reverse direction, it is already
@@ -222,17 +222,17 @@ class MergingIterator : public InternalIterator {
     current_ = CurrentReverse();
   }
 
-  virtual Slice key() const override {
+  Slice key() const override {
     assert(Valid());
     return current_->key();
   }
 
-  virtual Slice value() const override {
+  Slice value() const override {
     assert(Valid());
     return current_->value();
   }
 
-  virtual Status status() const override {
+  Status status() const override {
     Status s;
     for (auto& child : children_) {
       s = child.status();
@@ -243,7 +243,7 @@ class MergingIterator : public InternalIterator {
     return s;
   }
 
-  virtual Status PinData() override {
+  Status PinData() override {
     Status s;
     if (data_pinned_) {
       return s;
@@ -263,7 +263,7 @@ class MergingIterator : public InternalIterator {
     return s;
   }
 
-  virtual Status ReleasePinnedData() override {
+  Status ReleasePinnedData() override {
     Status s;
     if (!data_pinned_) {
       return s;
@@ -280,7 +280,7 @@ class MergingIterator : public InternalIterator {
     return s;
   }
 
-  virtual bool IsKeyPinned() const override {
+  bool IsKeyPinned() const override {
     assert(Valid());
     return current_->IsKeyPinned();
   }

@@ -142,12 +142,12 @@ class ShortenedIndexBuilder : public IndexBuilder {
     index_block_builder_.Add(*last_key_in_current_block, handle_encoding);
   }
 
-  virtual Status Finish(IndexBlocks* index_blocks) override {
+  Status Finish(IndexBlocks* index_blocks) override {
     index_blocks->index_block_contents = index_block_builder_.Finish();
     return Status::OK();
   }
 
-  virtual size_t EstimatedSize() const override {
+  size_t EstimatedSize() const override {
     return index_block_builder_.CurrentSizeEstimate();
   }
 
@@ -196,7 +196,7 @@ class HashIndexBuilder : public IndexBuilder {
                                         first_key_in_next_block, block_handle);
   }
 
-  virtual void OnKeyAdded(const Slice& key) override {
+  void OnKeyAdded(const Slice& key) override {
     auto key_prefix = hash_key_extractor_->Transform(key);
     bool is_first_entry = pending_block_num_ == 0;
 
@@ -223,7 +223,7 @@ class HashIndexBuilder : public IndexBuilder {
     }
   }
 
-  virtual Status Finish(IndexBlocks* index_blocks) override {
+  Status Finish(IndexBlocks* index_blocks) override {
     FlushPendingPrefix();
     primary_index_builder_.Finish(index_blocks);
     index_blocks->meta_blocks.insert(
@@ -233,7 +233,7 @@ class HashIndexBuilder : public IndexBuilder {
     return Status::OK();
   }
 
-  virtual size_t EstimatedSize() const override {
+  size_t EstimatedSize() const override {
     return primary_index_builder_.EstimatedSize() + prefix_block_.size() +
            prefix_meta_block_.size();
   }
@@ -421,7 +421,7 @@ class BlockBasedTableBuilder::BlockBasedTablePropertiesCollector
     return Status::OK();
   }
 
-  virtual Status Finish(UserCollectedProperties* properties) override {
+  Status Finish(UserCollectedProperties* properties) override {
     std::string val;
     PutFixed32(&val, static_cast<uint32_t>(index_type_));
     properties->insert({BlockBasedTablePropertyNames::kIndexType, val});
@@ -433,11 +433,11 @@ class BlockBasedTableBuilder::BlockBasedTablePropertiesCollector
   }
 
   // The name of the properties collector can be used for debugging purpose.
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "BlockBasedTablePropertiesCollector";
   }
 
-  virtual UserCollectedProperties GetReadableProperties() const override {
+  UserCollectedProperties GetReadableProperties() const override {
     // Intentionally left blank.
     return UserCollectedProperties();
   }

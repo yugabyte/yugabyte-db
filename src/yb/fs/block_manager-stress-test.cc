@@ -87,12 +87,12 @@ class BlockManagerStressTest : public YBTest {
     total_blocks_deleted_(0) {
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     CHECK_OK(bm_->Create());
     CHECK_OK(bm_->Open());
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     // If non-standard paths were provided we need to delete them in
     // between test runs.
     if (!FLAGS_block_manager_paths.empty()) {

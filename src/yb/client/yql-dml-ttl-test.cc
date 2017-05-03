@@ -13,7 +13,7 @@ class YqlDmlTTLTest : public YqlDmlBase {
   YqlDmlTTLTest() {
   }
 
-  virtual void addColumns(YBSchemaBuilder *b) override {
+  void addColumns(YBSchemaBuilder *b) override {
     b->AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
     b->AddColumn("c1")->Type(INT32);
     b->AddColumn("c2")->Type(STRING);

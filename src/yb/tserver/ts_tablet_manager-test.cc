@@ -55,7 +55,7 @@ class TsTabletManagerTest : public YBTest {
     : schema_({ ColumnSchema("key", UINT32) }, 1) {
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
 
     mini_server_.reset(

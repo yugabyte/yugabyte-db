@@ -168,13 +168,13 @@ class HashLinkListRep : public MemTableRep {
                   int bucket_entries_logging_threshold,
                   bool if_log_bucket_dist_when_flash);
 
-  virtual KeyHandle Allocate(const size_t len, char** buf) override;
+  KeyHandle Allocate(const size_t len, char** buf) override;
 
-  virtual void Insert(KeyHandle handle) override;
+  void Insert(KeyHandle handle) override;
 
-  virtual bool Contains(const char* key) const override;
+  bool Contains(const char* key) const override;
 
-  virtual size_t ApproximateMemoryUsage() override;
+  size_t ApproximateMemoryUsage() override;
 
   virtual void Get(const LookupKey& k, void* callback_args,
                    bool (*callback_func)(void* arg,
@@ -182,7 +182,7 @@ class HashLinkListRep : public MemTableRep {
 
   virtual ~HashLinkListRep();
 
-  virtual MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override;
+  MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override;
 
   virtual MemTableRep::Iterator* GetDynamicPrefixIterator(
        Arena* arena = nullptr) override;
@@ -259,25 +259,25 @@ class HashLinkListRep : public MemTableRep {
     }
 
     // Returns true iff the iterator is positioned at a valid node.
-    virtual bool Valid() const override { return iter_.Valid(); }
+    bool Valid() const override { return iter_.Valid(); }
 
     // Returns the key at the current position.
     // REQUIRES: Valid()
-    virtual const char* key() const override {
+    const char* key() const override {
       assert(Valid());
       return iter_.key();
     }
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    virtual void Next() override {
+    void Next() override {
       assert(Valid());
       iter_.Next();
     }
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    virtual void Prev() override {
+    void Prev() override {
       assert(Valid());
       iter_.Prev();
     }
@@ -293,11 +293,11 @@ class HashLinkListRep : public MemTableRep {
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToFirst() override { iter_.SeekToFirst(); }
+    void SeekToFirst() override { iter_.SeekToFirst(); }
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToLast() override { iter_.SeekToLast(); }
+    void SeekToLast() override { iter_.SeekToLast(); }
    private:
     MemtableSkipList::Iterator iter_;
     // To destruct with the iterator.
@@ -317,25 +317,25 @@ class HashLinkListRep : public MemTableRep {
     virtual ~LinkListIterator() {}
 
     // Returns true iff the iterator is positioned at a valid node.
-    virtual bool Valid() const override { return node_ != nullptr; }
+    bool Valid() const override { return node_ != nullptr; }
 
     // Returns the key at the current position.
     // REQUIRES: Valid()
-    virtual const char* key() const override {
+    const char* key() const override {
       assert(Valid());
       return node_->key;
     }
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    virtual void Next() override {
+    void Next() override {
       assert(Valid());
       node_ = node_->Next();
     }
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    virtual void Prev() override {
+    void Prev() override {
       // Prefix iterator does not support total order.
       // We simply set the iterator to invalid state
       Reset(nullptr);
@@ -350,7 +350,7 @@ class HashLinkListRep : public MemTableRep {
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToFirst() override {
+    void SeekToFirst() override {
       // Prefix iterator does not support total order.
       // We simply set the iterator to invalid state
       Reset(nullptr);
@@ -358,7 +358,7 @@ class HashLinkListRep : public MemTableRep {
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToLast() override {
+    void SeekToLast() override {
       // Prefix iterator does not support total order.
       // We simply set the iterator to invalid state
       Reset(nullptr);
@@ -387,7 +387,7 @@ class HashLinkListRep : public MemTableRep {
           memtable_rep_(memtable_rep) {}
 
     // Advance to the first entry with a key >= target
-    virtual void Seek(const Slice& k, const char* memtable_key) override {
+    void Seek(const Slice& k, const char* memtable_key) override {
       auto transformed = memtable_rep_.GetPrefix(k);
       auto* bucket = memtable_rep_.GetBucket(transformed);
 
@@ -416,21 +416,21 @@ class HashLinkListRep : public MemTableRep {
       }
     }
 
-    virtual bool Valid() const override {
+    bool Valid() const override {
       if (skip_list_iter_) {
         return skip_list_iter_->Valid();
       }
       return HashLinkListRep::LinkListIterator::Valid();
     }
 
-    virtual const char* key() const override {
+    const char* key() const override {
       if (skip_list_iter_) {
         return skip_list_iter_->key();
       }
       return HashLinkListRep::LinkListIterator::key();
     }
 
-    virtual void Next() override {
+    void Next() override {
       if (skip_list_iter_) {
         skip_list_iter_->Next();
       } else {
@@ -449,17 +449,17 @@ class HashLinkListRep : public MemTableRep {
     // instantiating an empty bucket over which to iterate.
    public:
     EmptyIterator() { }
-    virtual bool Valid() const override { return false; }
-    virtual const char* key() const override {
+    bool Valid() const override { return false; }
+    const char* key() const override {
       assert(false);
       return nullptr;
     }
-    virtual void Next() override {}
-    virtual void Prev() override {}
+    void Next() override {}
+    void Prev() override {}
     virtual void Seek(const Slice& user_key,
                       const char* memtable_key) override {}
-    virtual void SeekToFirst() override {}
-    virtual void SeekToLast() override {}
+    void SeekToFirst() override {}
+    void SeekToLast() override {}
 
    private:
   };

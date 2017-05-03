@@ -52,7 +52,7 @@ class PutOperator : public MergeOperator {
     return true;
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "PutOperator";
   }
 };

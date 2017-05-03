@@ -52,7 +52,7 @@ public:
     CHECK_OK(ThreadPoolBuilder("test-peer-pool").set_max_threads(1).Build(&pool_));
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
 
@@ -76,7 +76,7 @@ public:
     message_queue_->RegisterObserver(consensus_.get());
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     CHECK_OK(log_->WaitUntilAllFlushed());
   }
 

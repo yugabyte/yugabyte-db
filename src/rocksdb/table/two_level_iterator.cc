@@ -35,22 +35,22 @@ class TwoLevelIterator : public InternalIterator {
     }
   }
 
-  virtual void Seek(const Slice& target) override;
-  virtual void SeekToFirst() override;
-  virtual void SeekToLast() override;
-  virtual void Next() override;
-  virtual void Prev() override;
+  void Seek(const Slice& target) override;
+  void SeekToFirst() override;
+  void SeekToLast() override;
+  void Next() override;
+  void Prev() override;
 
-  virtual bool Valid() const override { return second_level_iter_.Valid(); }
-  virtual Slice key() const override {
+  bool Valid() const override { return second_level_iter_.Valid(); }
+  Slice key() const override {
     assert(Valid());
     return second_level_iter_.key();
   }
-  virtual Slice value() const override {
+  Slice value() const override {
     assert(Valid());
     return second_level_iter_.value();
   }
-  virtual Status status() const override {
+  Status status() const override {
     // It'd be nice if status() returned a const Status& instead of a Status
     if (!first_level_iter_.status().ok()) {
       return first_level_iter_.status();
@@ -61,11 +61,11 @@ class TwoLevelIterator : public InternalIterator {
       return status_;
     }
   }
-  virtual Status PinData() override { return second_level_iter_.PinData(); }
-  virtual Status ReleasePinnedData() override {
+  Status PinData() override { return second_level_iter_.PinData(); }
+  Status ReleasePinnedData() override {
     return second_level_iter_.ReleasePinnedData();
   }
-  virtual bool IsKeyPinned() const override {
+  bool IsKeyPinned() const override {
     return second_level_iter_.iter() ? second_level_iter_.IsKeyPinned() : false;
   }
 

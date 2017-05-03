@@ -49,7 +49,7 @@ class TSStressTest : public TabletServerTestBase {
     FLAGS_enable_maintenance_manager = true;
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     TabletServerTestBase::SetUp();
     StartTabletServer();
 

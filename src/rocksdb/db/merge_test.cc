@@ -66,7 +66,7 @@ class CountMergeOperator : public AssociativeMergeOperator {
                                              logger);
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "UInt64AddOperator";
   }
 
@@ -231,7 +231,7 @@ class MergeBasedCounters : public Counters {
   }
 
   // mapped to a rocksdb Merge operation
-  virtual bool add(const std::string& key, uint64_t value) override {
+  bool add(const std::string& key, uint64_t value) override {
     char encoded[sizeof(uint64_t)];
     EncodeFixed64(encoded, value);
     Slice slice(encoded, sizeof(uint64_t));

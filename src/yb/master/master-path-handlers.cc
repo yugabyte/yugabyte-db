@@ -339,7 +339,7 @@ class JsonKeyspaceDumper : public NamespaceVisitor, public JsonDumperBase {
  public:
   explicit JsonKeyspaceDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
-  virtual std::string name() const override { return "keyspaces"; }
+  std::string name() const override { return "keyspaces"; }
 
   virtual Status Visit(const std::string& keyspace_id,
                        const SysNamespaceEntryPB& metadata) override {
@@ -359,9 +359,9 @@ class JsonTableDumper : public TableVisitor, public JsonDumperBase {
  public:
   explicit JsonTableDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
-  virtual std::string name() const override { return "tables"; }
+  std::string name() const override { return "tables"; }
 
-  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
+  Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
     if (metadata.state() != SysTablesEntryPB::RUNNING) {
       return Status::OK();
     }
@@ -388,9 +388,9 @@ class JsonTabletDumper : public TabletVisitor, public JsonDumperBase {
  public:
   explicit JsonTabletDumper(JsonWriter* jw) : JsonDumperBase(jw) {}
 
-  virtual std::string name() const override { return "tablets"; }
+  std::string name() const override { return "tablets"; }
 
-  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
+  Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
     const std::string& table_id = metadata.table_id();
     if (metadata.state() != SysTabletsEntryPB::RUNNING) {
       return Status::OK();

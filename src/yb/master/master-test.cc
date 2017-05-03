@@ -85,7 +85,7 @@ using strings::Substitute;
 
 class MasterTest : public YBTest {
  protected:
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
 
     // Set an RPC timeout for the controllers.
@@ -109,7 +109,7 @@ class MasterTest : public YBTest {
     proxy_.reset(new MasterServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     mini_master_->Shutdown();
     YBTest::TearDown();
   }

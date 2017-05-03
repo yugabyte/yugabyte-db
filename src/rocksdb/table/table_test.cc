@@ -67,11 +67,11 @@ std::string Reverse(const Slice& key) {
 
 class ReverseKeyComparator : public Comparator {
  public:
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "rocksdb.ReverseBytewiseComparator";
   }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(const Slice& a, const Slice& b) const override {
     return BytewiseComparator()->Compare(Reverse(a), Reverse(b));
   }
 
@@ -83,7 +83,7 @@ class ReverseKeyComparator : public Comparator {
     *start = Reverse(s);
   }
 
-  virtual void FindShortSuccessor(std::string* key) const override {
+  void FindShortSuccessor(std::string* key) const override {
     std::string s = Reverse(*key);
     BytewiseComparator()->FindShortSuccessor(&s);
     *key = Reverse(s);
@@ -189,7 +189,7 @@ class BlockConstructor: public Constructor {
     block_ = new Block(std::move(contents));
     return Status::OK();
   }
-  virtual InternalIterator* NewIterator() const override {
+  InternalIterator* NewIterator() const override {
     return block_->NewIterator(comparator_);
   }
 
@@ -214,19 +214,19 @@ class KeyConvertingIterator : public InternalIterator {
       delete iter_;
     }
   }
-  virtual bool Valid() const override { return iter_->Valid(); }
-  virtual void Seek(const Slice& target) override {
+  bool Valid() const override { return iter_->Valid(); }
+  void Seek(const Slice& target) override {
     ParsedInternalKey ikey(target, kMaxSequenceNumber, kTypeValue);
     std::string encoded;
     AppendInternalKey(&encoded, ikey);
     iter_->Seek(encoded);
   }
-  virtual void SeekToFirst() override { iter_->SeekToFirst(); }
-  virtual void SeekToLast() override { iter_->SeekToLast(); }
-  virtual void Next() override { iter_->Next(); }
-  virtual void Prev() override { iter_->Prev(); }
+  void SeekToFirst() override { iter_->SeekToFirst(); }
+  void SeekToLast() override { iter_->SeekToLast(); }
+  void Next() override { iter_->Next(); }
+  void Prev() override { iter_->Prev(); }
 
-  virtual Slice key() const override {
+  Slice key() const override {
     assert(Valid());
     ParsedInternalKey parsed_key;
     if (!ParseInternalKey(iter_->key(), &parsed_key)) {
@@ -236,8 +236,8 @@ class KeyConvertingIterator : public InternalIterator {
     return parsed_key.user_key;
   }
 
-  virtual Slice value() const override { return iter_->value(); }
-  virtual Status status() const override {
+  Slice value() const override { return iter_->value(); }
+  Status status() const override {
     return status_.ok() ? iter_->status() : status_;
   }
 
@@ -303,7 +303,7 @@ class TableConstructor: public Constructor {
         std::move(file_reader_), GetSink()->contents().size(), &table_reader_);
   }
 
-  virtual InternalIterator* NewIterator() const override {
+  InternalIterator* NewIterator() const override {
     ReadOptions ro;
     InternalIterator* iter = table_reader_->NewIterator(ro);
     if (convert_to_internal_key_) {
@@ -329,7 +329,7 @@ class TableConstructor: public Constructor {
     return table_reader_.get();
   }
 
-  virtual bool AnywayDeleteIterator() const override {
+  bool AnywayDeleteIterator() const override {
     return convert_to_internal_key_;
   }
 
@@ -392,14 +392,14 @@ class MemTableConstructor: public Constructor {
     }
     return Status::OK();
   }
-  virtual InternalIterator* NewIterator() const override {
+  InternalIterator* NewIterator() const override {
     return new KeyConvertingIterator(
         memtable_->NewIterator(ReadOptions(), &arena_), true);
   }
 
-  virtual bool AnywayDeleteIterator() const override { return true; }
+  bool AnywayDeleteIterator() const override { return true; }
 
-  virtual bool IsArenaMode() const override { return true; }
+  bool IsArenaMode() const override { return true; }
 
  private:
   mutable Arena arena_;
@@ -413,15 +413,15 @@ class MemTableConstructor: public Constructor {
 class InternalIteratorFromIterator : public InternalIterator {
  public:
   explicit InternalIteratorFromIterator(Iterator* it) : it_(it) {}
-  virtual bool Valid() const override { return it_->Valid(); }
-  virtual void Seek(const Slice& target) override { it_->Seek(target); }
-  virtual void SeekToFirst() override { it_->SeekToFirst(); }
-  virtual void SeekToLast() override { it_->SeekToLast(); }
-  virtual void Next() override { it_->Next(); }
-  virtual void Prev() override { it_->Prev(); }
+  bool Valid() const override { return it_->Valid(); }
+  void Seek(const Slice& target) override { it_->Seek(target); }
+  void SeekToFirst() override { it_->SeekToFirst(); }
+  void SeekToLast() override { it_->SeekToLast(); }
+  void Next() override { it_->Next(); }
+  void Prev() override { it_->Prev(); }
   Slice key() const override { return it_->key(); }
   Slice value() const override { return it_->value(); }
-  virtual Status status() const override { return it_->status(); }
+  Status status() const override { return it_->status(); }
 
  private:
   unique_ptr<Iterator> it_;
@@ -454,11 +454,11 @@ class DBConstructor: public Constructor {
     return Status::OK();
   }
 
-  virtual InternalIterator* NewIterator() const override {
+  InternalIterator* NewIterator() const override {
     return new InternalIteratorFromIterator(db_->NewIterator(ReadOptions()));
   }
 
-  virtual DB* db() const override { return db_; }
+  DB* db() const override { return db_; }
 
  private:
   void NewDB() {
@@ -590,9 +590,9 @@ class FixedOrLessPrefixTransform : public SliceTransform {
       prefix_len_(prefix_len) {
   }
 
-  virtual const char* Name() const override { return "rocksdb.FixedPrefix"; }
+  const char* Name() const override { return "rocksdb.FixedPrefix"; }
 
-  virtual Slice Transform(const Slice& src) const override {
+  Slice Transform(const Slice& src) const override {
     assert(InDomain(src));
     if (src.size() < prefix_len_) {
       return src;
@@ -600,9 +600,9 @@ class FixedOrLessPrefixTransform : public SliceTransform {
     return Slice(src.data(), prefix_len_);
   }
 
-  virtual bool InDomain(const Slice& src) const override { return true; }
+  bool InDomain(const Slice& src) const override { return true; }
 
-  virtual bool InRange(const Slice& dst) const override {
+  bool InRange(const Slice& dst) const override {
     return (dst.size() <= prefix_len_);
   }
 };

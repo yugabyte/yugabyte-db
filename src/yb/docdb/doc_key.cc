@@ -405,12 +405,12 @@ class CustomFilterBitsBuilder : public rocksdb::FilterBitsBuilder {
  public:
   CustomFilterBitsBuilder() : policy_(new DocDbAwareFilterPolicy()) {}
 
-  virtual void AddKey(const rocksdb::Slice& key) override {
+  void AddKey(const rocksdb::Slice& key) override {
     // Copying the data in.
     string_keys_.push_back(std::string(key.data(), key.size()));
   }
 
-  virtual rocksdb::Slice Finish(std::unique_ptr<const char[]>* buf) override {
+  rocksdb::Slice Finish(std::unique_ptr<const char[]>* buf) override {
     CHECK_LE(string_keys_.size(), std::numeric_limits<int>::max());
     // Generate the required Slice[] input.
     const int num_input_slices = string_keys_.size();
@@ -443,7 +443,7 @@ class CustomFilterBitsReader : public rocksdb::FilterBitsReader {
   explicit CustomFilterBitsReader(const rocksdb::Slice& contents)
       : filter_(contents), policy_(new DocDbAwareFilterPolicy()) {}
 
-  virtual bool MayMatch(const rocksdb::Slice& entry) override {
+  bool MayMatch(const rocksdb::Slice& entry) override {
     return policy_->KeyMayMatch(entry, filter_);
   }
 

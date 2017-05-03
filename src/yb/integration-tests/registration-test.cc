@@ -58,7 +58,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     : schema_({ ColumnSchema("c1", UINT32) }, 1) {
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
 
@@ -68,7 +68,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
   }
 
-  virtual void DoTearDown() override {
+  void DoTearDown() override {
     cluster_->Shutdown();
   }
 

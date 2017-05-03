@@ -41,7 +41,7 @@ class CheckpointImpl : public Checkpoint {
   // The directory should not already exist and will be created by this API.
   // The directory will be an absolute path
   using Checkpoint::CreateCheckpoint;
-  virtual Status CreateCheckpoint(const std::string& checkpoint_dir) override;
+  Status CreateCheckpoint(const std::string& checkpoint_dir) override;
 
  private:
   DB* db_;

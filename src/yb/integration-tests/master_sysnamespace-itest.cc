@@ -18,7 +18,7 @@ class MasterSysNamespaceTest : public YBTest {
   ~MasterSysNamespaceTest() {}
 
  protected:
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = 3;
@@ -30,7 +30,7 @@ class MasterSysNamespaceTest : public YBTest {
                                         cluster_->leader_mini_master()->bound_rpc_addr()));
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();

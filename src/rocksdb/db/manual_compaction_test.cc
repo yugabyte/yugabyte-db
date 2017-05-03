@@ -52,7 +52,7 @@ class DestroyAllCompactionFilter : public CompactionFilter {
     return existing_value.ToString() == "destroy";
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "DestroyAllCompactionFilter";
   }
 };

@@ -42,15 +42,15 @@ class DummyDB : public StackableDB {
      : StackableDB(nullptr), options_(options), dbname_(dbname),
        deletions_enabled_(true), sequence_number_(0) {}
 
-  virtual SequenceNumber GetLatestSequenceNumber() const override {
+  SequenceNumber GetLatestSequenceNumber() const override {
     return ++sequence_number_;
   }
 
-  virtual const std::string& GetName() const override {
+  const std::string& GetName() const override {
     return dbname_;
   }
 
-  virtual Env* GetEnv() const override {
+  Env* GetEnv() const override {
     return options_.env;
   }
 
@@ -60,13 +60,13 @@ class DummyDB : public StackableDB {
     return options_;
   }
 
-  virtual Status EnableFileDeletions(bool force) override {
+  Status EnableFileDeletions(bool force) override {
     EXPECT_TRUE(!deletions_enabled_);
     deletions_enabled_ = true;
     return Status::OK();
   }
 
-  virtual Status DisableFileDeletions() override {
+  Status DisableFileDeletions() override {
     EXPECT_TRUE(deletions_enabled_);
     deletions_enabled_ = false;
     return Status::OK();
@@ -80,7 +80,7 @@ class DummyDB : public StackableDB {
     return Status::OK();
   }
 
-  virtual ColumnFamilyHandle* DefaultColumnFamily() const override {
+  ColumnFamilyHandle* DefaultColumnFamily() const override {
     return nullptr;
   }
 
@@ -89,27 +89,27 @@ class DummyDB : public StackableDB {
     explicit DummyLogFile(const std::string& path, bool alive)
         : path_(path), alive_(alive) {}
 
-    virtual std::string PathName() const override {
+    std::string PathName() const override {
       return path_;
     }
 
-    virtual uint64_t LogNumber() const override {
+    uint64_t LogNumber() const override {
       // what business do you have calling this method?
       EXPECT_TRUE(false);
       return 0;
     }
 
-    virtual WalFileType Type() const override {
+    WalFileType Type() const override {
       return alive_ ? kAliveLogFile : kArchivedLogFile;
     }
 
-    virtual SequenceNumber StartSequence() const override {
+    SequenceNumber StartSequence() const override {
       // backupabledb should not need this method
       EXPECT_TRUE(false);
       return 0;
     }
 
-    virtual uint64_t SizeFileBytes() const override {
+    uint64_t SizeFileBytes() const override {
       // backupabledb should not need this method
       EXPECT_TRUE(false);
       return 0;
@@ -120,7 +120,7 @@ class DummyDB : public StackableDB {
     bool alive_;
   }; // DummyLogFile
 
-  virtual Status GetSortedWalFiles(VectorLogPtr& files) override {
+  Status GetSortedWalFiles(VectorLogPtr& files) override {
     EXPECT_TRUE(!deletions_enabled_);
     files.resize(wal_files_.size());
     for (size_t i = 0; i < files.size(); ++i) {
@@ -147,7 +147,7 @@ class TestEnv : public EnvWrapper {
   class DummySequentialFile : public SequentialFile {
    public:
     DummySequentialFile() : SequentialFile(), rnd_(5) {}
-    virtual Status Read(size_t n, Slice* result, char* scratch) override {
+    Status Read(size_t n, Slice* result, char* scratch) override {
       size_t read_size = (n > size_left) ? size_left : n;
       for (size_t i = 0; i < read_size; ++i) {
         scratch[i] = rnd_.Next() & 255;
@@ -157,7 +157,7 @@ class TestEnv : public EnvWrapper {
       return Status::OK();
     }
 
-    virtual Status Skip(uint64_t n) override {
+    Status Skip(uint64_t n) override {
       size_left = (n > size_left) ? size_left - n : 0;
       return Status::OK();
     }
@@ -188,7 +188,7 @@ class TestEnv : public EnvWrapper {
     return EnvWrapper::NewWritableFile(f, r, options);
   }
 
-  virtual Status DeleteFile(const std::string& fname) override {
+  Status DeleteFile(const std::string& fname) override {
     MutexLock l(&mutex_);
     EXPECT_GT(limit_delete_files_, 0U);
     limit_delete_files_--;

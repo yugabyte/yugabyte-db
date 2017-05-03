@@ -68,7 +68,7 @@ class TestMajorDeltaCompaction : public YBRowSetTest {
     }
   };
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBRowSetTest::SetUp();
   }
 

@@ -31,7 +31,7 @@ using integration_tests::YBTableTestBase;
 
 class KVTableTsFailoverTest : public YBTableTestBase {
  public:
-  virtual bool use_external_mini_cluster() override { return true; }
+  bool use_external_mini_cluster() override { return true; }
 };
 
 TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {

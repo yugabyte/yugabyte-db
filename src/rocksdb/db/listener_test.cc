@@ -59,7 +59,7 @@ struct TestPropertiesCollector : public rocksdb::TablePropertiesCollector {
     return Status::OK();
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "TestTablePropertiesCollector";
   }
 

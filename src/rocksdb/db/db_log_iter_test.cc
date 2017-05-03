@@ -257,10 +257,10 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorBlobs) {
               ToString(value.size()) + ")";
       return Status::OK();
     }
-    virtual void LogData(const Slice& blob) override {
+    void LogData(const Slice& blob) override {
       seen += "LogData(" + blob.ToString() + ")";
     }
-    virtual Status DeleteCF(uint32_t cf, const Slice& key) override {
+    Status DeleteCF(uint32_t cf, const Slice& key) override {
       seen += "Delete(" + ToString(cf) + ", " + key.ToString() + ")";
       return Status::OK();
     }

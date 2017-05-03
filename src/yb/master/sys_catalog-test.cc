@@ -47,7 +47,7 @@ namespace master {
 
 class SysCatalogTest : public YBTest {
  protected:
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
 
     // Start master with the create flag on.
@@ -64,7 +64,7 @@ class SysCatalogTest : public YBTest {
     proxy_.reset(new MasterServiceProxy(client_messenger_, mini_master_->bound_rpc_addr()));
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     mini_master_->Shutdown();
     YBTest::TearDown();
   }
@@ -87,7 +87,7 @@ class TestTableLoader : public TableVisitor {
     tables.clear();
   }
 
-  virtual Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
+  Status Visit(const std::string& table_id, const SysTablesEntryPB& metadata) override {
     // Setup the table info
     TableInfo *table = new TableInfo(table_id);
     TableMetadataLock l(table, TableMetadataLock::WRITE);
@@ -212,7 +212,7 @@ class TestTabletLoader : public TabletVisitor {
     tablets.clear();
   }
 
-  virtual Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
+  Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
     // Setup the tablet info
     TabletInfo *tablet = new TabletInfo(nullptr, tablet_id);
     TabletMetadataLock l(tablet, TabletMetadataLock::WRITE);
@@ -520,7 +520,7 @@ class TestNamespaceLoader : public NamespaceVisitor {
     namespaces.clear();
   }
 
-  virtual Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) override {
+  Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) override {
     // Setup the namespace info
     NamespaceInfo* const ns = new NamespaceInfo(ns_id);
     NamespaceMetadataLock l(ns, NamespaceMetadataLock::WRITE);

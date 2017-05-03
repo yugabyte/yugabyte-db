@@ -25,7 +25,7 @@ class YqlDmlTest : public YqlDmlBase {
   YqlDmlTest() {
   }
 
-  virtual void addColumns(YBSchemaBuilder *b) override {
+  void addColumns(YBSchemaBuilder *b) override {
     b->AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
     b->AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
     b->AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();

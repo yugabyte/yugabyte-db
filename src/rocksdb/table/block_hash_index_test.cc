@@ -23,28 +23,28 @@ class MapIterator : public InternalIterator {
  public:
   explicit MapIterator(const Data& data) : data_(data), pos_(data_.end()) {}
 
-  virtual bool Valid() const override { return pos_ != data_.end(); }
+  bool Valid() const override { return pos_ != data_.end(); }
 
-  virtual void SeekToFirst() override { pos_ = data_.begin(); }
+  void SeekToFirst() override { pos_ = data_.begin(); }
 
-  virtual void SeekToLast() override {
+  void SeekToLast() override {
     pos_ = data_.end();
     --pos_;
   }
 
-  virtual void Seek(const Slice& target) override {
+  void Seek(const Slice& target) override {
     pos_ = data_.find(target.ToString());
   }
 
-  virtual void Next() override { ++pos_; }
+  void Next() override { ++pos_; }
 
-  virtual void Prev() override { --pos_; }
+  void Prev() override { --pos_; }
 
-  virtual Slice key() const override { return pos_->first; }
+  Slice key() const override { return pos_->first; }
 
-  virtual Slice value() const override { return pos_->second; }
+  Slice value() const override { return pos_->second; }
 
-  virtual Status status() const override { return Status::OK(); }
+  Status status() const override { return Status::OK(); }
 
  private:
   const Data& data_;

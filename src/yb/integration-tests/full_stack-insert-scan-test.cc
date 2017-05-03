@@ -126,7 +126,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
   const int kNumInsertsPerClient;
   const int kNumRows;
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBMiniClusterTestBase::SetUp();
   }
 
@@ -143,7 +143,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(client_->OpenTable(kTableName, &reader_table_));
   }
 
-  virtual void DoTearDown() override {
+  void DoTearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
     }

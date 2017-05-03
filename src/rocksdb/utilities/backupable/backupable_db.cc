@@ -110,7 +110,7 @@ class BackupEngineImpl : public BackupEngine {
                                restore_options);
   }
 
-  virtual Status VerifyBackup(BackupID backup_id) override;
+  Status VerifyBackup(BackupID backup_id) override;
 
   Status Initialize();
 
@@ -1709,7 +1709,7 @@ class BackupEngineReadOnlyImpl : public BackupEngineReadOnly {
 
   virtual ~BackupEngineReadOnlyImpl() {}
 
-  virtual void GetBackupInfo(std::vector<BackupInfo>* backup_info) override {
+  void GetBackupInfo(std::vector<BackupInfo>* backup_info) override {
     backup_engine_->GetBackupInfo(backup_info);
   }
 
@@ -1732,7 +1732,7 @@ class BackupEngineReadOnlyImpl : public BackupEngineReadOnly {
                                                      restore_options);
   }
 
-  virtual Status VerifyBackup(BackupID backup_id) override {
+  Status VerifyBackup(BackupID backup_id) override {
     return backup_engine_->VerifyBackup(backup_id);
   }
 

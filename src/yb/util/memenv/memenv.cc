@@ -171,7 +171,7 @@ class SequentialFileImpl : public SequentialFile {
   ~SequentialFileImpl() {
   }
 
-  virtual Status Read(size_t n, Slice* result, uint8_t* scratch) override {
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
     Status s = file_->Read(pos_, n, result, scratch);
     if (s.ok()) {
       pos_ += result->size();
@@ -179,7 +179,7 @@ class SequentialFileImpl : public SequentialFile {
     return s;
   }
 
-  virtual Status Skip(uint64_t n) override {
+  Status Skip(uint64_t n) override {
     if (pos_ > file_->Size()) {
       return STATUS(IOError, "pos_ > file_->Size()");
     }
@@ -191,7 +191,7 @@ class SequentialFileImpl : public SequentialFile {
     return Status::OK();
   }
 
-  virtual const string& filename() const override {
+  const string& filename() const override {
     return file_->filename();
   }
 
@@ -214,16 +214,16 @@ class RandomAccessFileImpl : public RandomAccessFile {
     return file_->Read(offset, n, result, scratch);
   }
 
-  virtual Status Size(uint64_t *size) const override {
+  Status Size(uint64_t *size) const override {
     *size = file_->Size();
     return Status::OK();
   }
 
-  virtual const string& filename() const override {
+  const string& filename() const override {
     return file_->filename();
   }
 
-  virtual size_t memory_footprint() const override {
+  size_t memory_footprint() const override {
     // The FileState is actually shared between multiple files, but the double
     // counting doesn't matter much since MemEnv is only used in tests.
     return yb_malloc_usable_size(this) + file_->memory_footprint();
@@ -242,32 +242,32 @@ class WritableFileImpl : public WritableFile {
   ~WritableFileImpl() {
   }
 
-  virtual Status PreAllocate(uint64_t size) override {
+  Status PreAllocate(uint64_t size) override {
     return file_->PreAllocate(size);
   }
 
-  virtual Status Append(const Slice& data) override {
+  Status Append(const Slice& data) override {
     return file_->Append(data);
   }
 
   // This is a dummy implementation that simply serially appends all
   // slices using regular I/O.
-  virtual Status AppendVector(const vector<Slice>& data_vector) override {
+  Status AppendVector(const vector<Slice>& data_vector) override {
     for (const Slice& data : data_vector) {
       RETURN_NOT_OK(file_->Append(data));
     }
     return Status::OK();
   }
 
-  virtual Status Close() override { return Status::OK(); }
+  Status Close() override { return Status::OK(); }
 
-  virtual Status Flush(FlushMode mode) override { return Status::OK(); }
+  Status Flush(FlushMode mode) override { return Status::OK(); }
 
-  virtual Status Sync() override { return Status::OK(); }
+  Status Sync() override { return Status::OK(); }
 
-  virtual uint64_t Size() const override { return file_->Size(); }
+  uint64_t Size() const override { return file_->Size(); }
 
-  virtual const string& filename() const override {
+  const string& filename() const override {
     return file_->filename();
   }
 
@@ -289,7 +289,7 @@ class RWFileImpl : public RWFile {
     return file_->Read(offset, length, result, scratch);
   }
 
-  virtual Status Write(uint64_t offset, const Slice& data) override {
+  Status Write(uint64_t offset, const Slice& data) override {
     uint64_t file_size = file_->Size();
     // TODO: Modify FileState to allow rewriting.
     if (offset < file_size) {
@@ -304,32 +304,32 @@ class RWFileImpl : public RWFile {
     return file_->Append(data);
   }
 
-  virtual Status PreAllocate(uint64_t offset, size_t length) override {
+  Status PreAllocate(uint64_t offset, size_t length) override {
     return Status::OK();
   }
 
-  virtual Status PunchHole(uint64_t offset, size_t length) override {
+  Status PunchHole(uint64_t offset, size_t length) override {
     return Status::OK();
   }
 
-  virtual Status Flush(FlushMode mode, uint64_t offset, size_t length) override {
+  Status Flush(FlushMode mode, uint64_t offset, size_t length) override {
     return Status::OK();
   }
 
-  virtual Status Sync() override {
+  Status Sync() override {
     return Status::OK();
   }
 
-  virtual Status Close() override {
+  Status Close() override {
     return Status::OK();
   }
 
-  virtual Status Size(uint64_t* size) const override {
+  Status Size(uint64_t* size) const override {
     *size = file_->Size();
     return Status::OK();
   }
 
-  virtual const string& filename() const override {
+  const string& filename() const override {
     return file_->filename();
   }
 
@@ -426,7 +426,7 @@ class InMemoryEnv : public EnvWrapper {
     // Unreachable.
   }
 
-  virtual bool FileExists(const std::string& fname) override {
+  bool FileExists(const std::string& fname) override {
     MutexLock lock(mutex_);
     return file_map_.find(fname) != file_map_.end();
   }
@@ -448,7 +448,7 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  virtual Status DeleteFile(const std::string& fname) override {
+  Status DeleteFile(const std::string& fname) override {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       return STATUS(IOError, fname, "File not found");
@@ -458,20 +458,20 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  virtual Status CreateDir(const std::string& dirname) override {
+  Status CreateDir(const std::string& dirname) override {
     gscoped_ptr<WritableFile> file;
     return NewWritableFile(dirname, &file);
   }
 
-  virtual Status DeleteDir(const std::string& dirname) override {
+  Status DeleteDir(const std::string& dirname) override {
     return DeleteFile(dirname);
   }
 
-  virtual Status SyncDir(const std::string& dirname) override {
+  Status SyncDir(const std::string& dirname) override {
     return Status::OK();
   }
 
-  virtual Status DeleteRecursively(const std::string& dirname) override {
+  Status DeleteRecursively(const std::string& dirname) override {
     CHECK(!dirname.empty());
     string dir(dirname);
     if (dir[dir.size() - 1] != '/') {
@@ -493,7 +493,7 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  virtual Status GetFileSize(const std::string& fname, uint64_t* file_size) override {
+  Status GetFileSize(const std::string& fname, uint64_t* file_size) override {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       return STATUS(IOError, fname, "File not found");
@@ -503,11 +503,11 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  virtual Status GetFileSizeOnDisk(const std::string& fname, uint64_t* file_size) override {
+  Status GetFileSizeOnDisk(const std::string& fname, uint64_t* file_size) override {
     return GetFileSize(fname, file_size);
   }
 
-  virtual Status GetBlockSize(const string& fname, uint64_t* block_size) override {
+  Status GetBlockSize(const string& fname, uint64_t* block_size) override {
     // The default for ext3/ext4 filesystems.
     *block_size = 4096;
     return Status::OK();
@@ -533,12 +533,12 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  virtual Status UnlockFile(FileLock* lock) override {
+  Status UnlockFile(FileLock* lock) override {
     delete lock;
     return Status::OK();
   }
 
-  virtual Status GetTestDirectory(std::string* path) override {
+  Status GetTestDirectory(std::string* path) override {
     *path = "/test";
     return Status::OK();
   }
@@ -549,12 +549,12 @@ class InMemoryEnv : public EnvWrapper {
     LOG(FATAL) << "Not implemented";
   }
 
-  virtual Status Canonicalize(const string& path, string* result) override {
+  Status Canonicalize(const string& path, string* result) override {
     *result = path;
     return Status::OK();
   }
 
-  virtual Status GetTotalRAMBytes(int64_t* ram) override {
+  Status GetTotalRAMBytes(int64_t* ram) override {
     LOG(FATAL) << "Not implemented";
   }
 

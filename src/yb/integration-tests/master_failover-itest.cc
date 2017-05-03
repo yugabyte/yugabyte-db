@@ -71,12 +71,12 @@ class MasterFailoverTest : public YBTest {
     opts_.extra_tserver_flags.push_back("--heartbeat_interval_ms=500");
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
     ASSERT_NO_FATAL_FAILURE(RestartCluster());
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
     }

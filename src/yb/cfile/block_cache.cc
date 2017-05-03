@@ -60,7 +60,7 @@ class Deleter : public CacheDeleter {
  public:
   explicit Deleter(Cache* cache) : cache_(cache) {
   }
-  virtual void Delete(const Slice& slice, void* value) override {
+  void Delete(const Slice& slice, void* value) override {
     Slice *value_slice = reinterpret_cast<Slice *>(value);
 
     // The actual data was allocated from the cache's memory

@@ -23,7 +23,7 @@ class TraceEventSyntheticDelayRegistry : public TraceEventSyntheticDelayClock {
   void ResetAllDelays();
 
   // TraceEventSyntheticDelayClock implementation.
-  virtual MonoTime Now() override;
+  MonoTime Now() override;
 
  private:
   TraceEventSyntheticDelayRegistry();

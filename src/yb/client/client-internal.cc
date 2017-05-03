@@ -688,14 +688,14 @@ class GetTableSchemaRpc : public Rpc {
                     const MonoTime& deadline,
                     const shared_ptr<rpc::Messenger>& messenger);
 
-  virtual void SendRpc() override;
+  void SendRpc() override;
 
-  virtual string ToString() const override;
+  string ToString() const override;
 
   virtual ~GetTableSchemaRpc();
 
  private:
-  virtual void SendRpcCb(const Status& status) override;
+  void SendRpcCb(const Status& status) override;
 
   void ResetLeaderMasterAndRetry();
 

@@ -66,7 +66,7 @@ namespace {
       return Status::OK();
     }
 
-    virtual void SetUserSequenceNumber(SequenceNumber user_sequence_number) override {
+    void SetUserSequenceNumber(SequenceNumber user_sequence_number) override {
       user_sequence_number_ = user_sequence_number;
     }
 

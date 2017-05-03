@@ -32,7 +32,7 @@ class FullFilterBitsBuilder : public FilterBitsBuilder {
 
   ~FullFilterBitsBuilder() {}
 
-  virtual void AddKey(const Slice& key) override {
+  void AddKey(const Slice& key) override {
     uint32_t hash = BloomHash(key);
     if (hash_entries_.size() == 0 || hash != hash_entries_.back()) {
       hash_entries_.push_back(hash);
@@ -53,7 +53,7 @@ class FullFilterBitsBuilder : public FilterBitsBuilder {
   // +----------------------------------------------------------------+
   // | ...                | num_probes : 1 byte | num_lines : 4 bytes |
   // +----------------------------------------------------------------+
-  virtual Slice Finish(std::unique_ptr<const char[]>* buf) override {
+  Slice Finish(std::unique_ptr<const char[]>* buf) override {
     uint32_t total_bits, num_lines;
     char* data = ReserveSpace(static_cast<int>(hash_entries_.size()),
                               &total_bits, &num_lines);
@@ -167,7 +167,7 @@ class FullFilterBitsReader : public FilterBitsReader {
 
   ~FullFilterBitsReader() {}
 
-  virtual bool MayMatch(const Slice& entry) override {
+  bool MayMatch(const Slice& entry) override {
     if (data_len_ <= 5) {   // remain same with original filter
       return false;
     }
@@ -266,7 +266,7 @@ class BloomFilterPolicy : public FilterPolicy {
   ~BloomFilterPolicy() {
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "rocksdb.BuiltinBloomFilter";
   }
 
@@ -326,7 +326,7 @@ class BloomFilterPolicy : public FilterPolicy {
     return true;
   }
 
-  virtual FilterBitsBuilder* GetFilterBitsBuilder() const override {
+  FilterBitsBuilder* GetFilterBitsBuilder() const override {
     if (use_block_based_builder_) {
       return nullptr;
     }

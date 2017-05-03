@@ -100,7 +100,7 @@ class XFTransactionWriteHandler : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  virtual void LogData(const Slice& blob) override { txn_->PutLogData(blob); }
+  void LogData(const Slice& blob) override { txn_->PutLogData(blob); }
 };
 
 // Whenever DBImpl::Write is called, create a transaction and do the write via

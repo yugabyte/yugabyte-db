@@ -24,7 +24,7 @@ TEST_F(WritableFileWriterTest, RangeSync) {
       size_ += data.size();
       return Status::OK();
     }
-    virtual Status Truncate(uint64_t size) override {
+    Status Truncate(uint64_t size) override {
       return Status::OK();
     }
     Status Close() override {
@@ -90,7 +90,7 @@ TEST_F(WritableFileWriterTest, AppendStatusReturn) {
    public:
     explicit FakeWF() : use_os_buffer_(true), io_error_(false) {}
 
-    virtual bool UseOSBuffer() const override { return use_os_buffer_; }
+    bool UseOSBuffer() const override { return use_os_buffer_; }
     Status Append(const Slice& data) override {
       if (io_error_) {
         return Status::IOError("Fake IO error");

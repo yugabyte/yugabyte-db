@@ -100,7 +100,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
                          "safe to change at runtime");
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
 
@@ -130,7 +130,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Tablet successfully located";
   }
 
-  virtual void DoTearDown() override {
+  void DoTearDown() override {
     tablet_peer_.reset();
     cluster_->Shutdown();
   }
@@ -255,7 +255,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
 // Subclass which creates three servers and a replicated cluster.
 class ReplicatedAlterTableTest : public AlterTableTest {
  protected:
-  virtual int num_replicas() const override { return 3; }
+  int num_replicas() const override { return 3; }
 };
 
 const YBTableName AlterTableTest::kTableName("fake-table");

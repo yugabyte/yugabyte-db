@@ -248,7 +248,7 @@ namespace {
       }
       return Status::OK();
     }
-    virtual void LogData(const Slice& blob) override {
+    void LogData(const Slice& blob) override {
       seen += "LogData(" + blob.ToString() + ")";
     }
   };
@@ -383,8 +383,8 @@ TEST_F(WriteBatchTest, DISABLED_ManyUpdates) {
       EXPECT_TRUE(false);
       return Status::OK();
     }
-    virtual void LogData(const Slice& blob) override { EXPECT_TRUE(false); }
-    virtual bool Continue() override { return num_seen < kNumUpdates; }
+    void LogData(const Slice& blob) override { EXPECT_TRUE(false); }
+    bool Continue() override { return num_seen < kNumUpdates; }
   } handler;
 
   batch.Iterate(&handler);
@@ -434,8 +434,8 @@ TEST_F(WriteBatchTest, DISABLED_LargeKeyValue) {
       EXPECT_TRUE(false);
       return Status::OK();
     }
-    virtual void LogData(const Slice& blob) override { EXPECT_TRUE(false); }
-    virtual bool Continue() override { return num_seen < 2; }
+    void LogData(const Slice& blob) override { EXPECT_TRUE(false); }
+    bool Continue() override { return num_seen < 2; }
   } handler;
 
   batch.Iterate(&handler);
@@ -467,11 +467,11 @@ TEST_F(WriteBatchTest, Continue) {
       ++num_seen;
       return TestHandler::MergeCF(column_family_id, key, value);
     }
-    virtual void LogData(const Slice& blob) override {
+    void LogData(const Slice& blob) override {
       ++num_seen;
       TestHandler::LogData(blob);
     }
-    virtual bool Continue() override { return num_seen < 5; }
+    bool Continue() override { return num_seen < 5; }
   } handler;
 
   batch.Put(Slice("k1"), Slice("v1"));

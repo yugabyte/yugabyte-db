@@ -138,12 +138,12 @@ class TestWritableFile : public WritableFile {
                             unique_ptr<WritableFile>&& f,
                             FaultInjectionTestEnv* env);
   virtual ~TestWritableFile();
-  virtual Status Append(const Slice& data) override;
-  virtual Status Truncate(uint64_t size) override { return target_->Truncate(size); }
-  virtual Status Close() override;
-  virtual Status Flush() override;
-  virtual Status Sync() override;
-  virtual bool IsSyncThreadSafe() const override { return true; }
+  Status Append(const Slice& data) override;
+  Status Truncate(uint64_t size) override { return target_->Truncate(size); }
+  Status Close() override;
+  Status Flush() override;
+  Status Sync() override;
+  bool IsSyncThreadSafe() const override { return true; }
 
  private:
   FileState state_;
@@ -159,7 +159,7 @@ class TestDirectory : public Directory {
       : env_(env), dirname_(dirname), dir_(dir) {}
   ~TestDirectory() {}
 
-  virtual Status Fsync() override;
+  Status Fsync() override;
 
  private:
   FaultInjectionTestEnv* env_;
@@ -215,7 +215,7 @@ class FaultInjectionTestEnv : public EnvWrapper {
     return s;
   }
 
-  virtual Status DeleteFile(const std::string& f) override {
+  Status DeleteFile(const std::string& f) override {
     if (!IsFilesystemActive()) {
       return Status::Corruption("Not Active");
     }

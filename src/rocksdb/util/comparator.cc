@@ -24,15 +24,15 @@ class BytewiseComparatorImpl : public Comparator {
  public:
   BytewiseComparatorImpl() { }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "leveldb.BytewiseComparator";
   }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(const Slice& a, const Slice& b) const override {
     return a.compare(b);
   }
 
-  virtual bool Equal(const Slice& a, const Slice& b) const override {
+  bool Equal(const Slice& a, const Slice& b) const override {
     return a == b;
   }
 
@@ -59,7 +59,7 @@ class BytewiseComparatorImpl : public Comparator {
     }
   }
 
-  virtual void FindShortSuccessor(std::string* key) const override {
+  void FindShortSuccessor(std::string* key) const override {
     // Find first character that can be incremented
     size_t n = key->size();
     for (size_t i = 0; i < n; i++) {
@@ -78,11 +78,11 @@ class ReverseBytewiseComparatorImpl : public BytewiseComparatorImpl {
  public:
   ReverseBytewiseComparatorImpl() { }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "rocksdb.ReverseBytewiseComparator";
   }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(const Slice& a, const Slice& b) const override {
     return -a.compare(b);
   }
 };

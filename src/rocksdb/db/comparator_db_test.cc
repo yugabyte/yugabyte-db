@@ -28,20 +28,20 @@ class KVIter : public Iterator {
  public:
   explicit KVIter(const stl_wrappers::KVMap* map)
       : map_(map), iter_(map_->end()) {}
-  virtual bool Valid() const override { return iter_ != map_->end(); }
-  virtual void SeekToFirst() override { iter_ = map_->begin(); }
-  virtual void SeekToLast() override {
+  bool Valid() const override { return iter_ != map_->end(); }
+  void SeekToFirst() override { iter_ = map_->begin(); }
+  void SeekToLast() override {
     if (map_->empty()) {
       iter_ = map_->end();
     } else {
       iter_ = map_->find(map_->rbegin()->first);
     }
   }
-  virtual void Seek(const Slice& k) override {
+  void Seek(const Slice& k) override {
     iter_ = map_->lower_bound(k.ToString());
   }
-  virtual void Next() override { ++iter_; }
-  virtual void Prev() override {
+  void Next() override { ++iter_; }
+  void Prev() override {
     if (iter_ == map_->begin()) {
       iter_ = map_->end();
       return;
@@ -49,9 +49,9 @@ class KVIter : public Iterator {
     --iter_;
   }
 
-  virtual Slice key() const override { return iter_->first; }
-  virtual Slice value() const override { return iter_->second; }
-  virtual Status status() const override { return Status::OK(); }
+  Slice key() const override { return iter_->first; }
+  Slice value() const override { return iter_->second; }
+  Status status() const override { return Status::OK(); }
 
  private:
   const stl_wrappers::KVMap* const map_;
@@ -168,9 +168,9 @@ class DoubleComparator : public Comparator {
  public:
   DoubleComparator() {}
 
-  virtual const char* Name() const override { return "DoubleComparator"; }
+  const char* Name() const override { return "DoubleComparator"; }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(const Slice& a, const Slice& b) const override {
 #ifndef CYGWIN
     double da = std::stod(a.ToString());
     double db = std::stod(b.ToString());
@@ -189,16 +189,16 @@ class DoubleComparator : public Comparator {
   virtual void FindShortestSeparator(std::string* start,
                                      const Slice& limit) const override {}
 
-  virtual void FindShortSuccessor(std::string* key) const override {}
+  void FindShortSuccessor(std::string* key) const override {}
 };
 
 class HashComparator : public Comparator {
  public:
   HashComparator() {}
 
-  virtual const char* Name() const override { return "HashComparator"; }
+  const char* Name() const override { return "HashComparator"; }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(const Slice& a, const Slice& b) const override {
     uint32_t ha = Hash(a.data(), a.size(), 66);
     uint32_t hb = Hash(b.data(), b.size(), 66);
     if (ha == hb) {
@@ -212,16 +212,16 @@ class HashComparator : public Comparator {
   virtual void FindShortestSeparator(std::string* start,
                                      const Slice& limit) const override {}
 
-  virtual void FindShortSuccessor(std::string* key) const override {}
+  void FindShortSuccessor(std::string* key) const override {}
 };
 
 class TwoStrComparator : public Comparator {
  public:
   TwoStrComparator() {}
 
-  virtual const char* Name() const override { return "TwoStrComparator"; }
+  const char* Name() const override { return "TwoStrComparator"; }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(const Slice& a, const Slice& b) const override {
     assert(a.size() >= 2);
     assert(b.size() >= 2);
     size_t size_a1 = static_cast<size_t>(a[0]);
@@ -244,7 +244,7 @@ class TwoStrComparator : public Comparator {
   virtual void FindShortestSeparator(std::string* start,
                                      const Slice& limit) const override {}
 
-  virtual void FindShortSuccessor(std::string* key) const override {}
+  void FindShortSuccessor(std::string* key) const override {}
 };
 }  // namespace
 

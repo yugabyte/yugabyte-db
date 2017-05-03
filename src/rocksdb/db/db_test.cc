@@ -2300,7 +2300,7 @@ class KeepFilter : public CompactionFilter {
     return false;
   }
 
-  virtual const char* Name() const override { return "KeepFilter"; }
+  const char* Name() const override { return "KeepFilter"; }
 };
 
 class KeepFilterFactory : public CompactionFilterFactory {
@@ -2317,7 +2317,7 @@ class KeepFilterFactory : public CompactionFilterFactory {
     return std::unique_ptr<CompactionFilter>(new KeepFilter());
   }
 
-  virtual const char* Name() const override { return "KeepFilterFactory"; }
+  const char* Name() const override { return "KeepFilterFactory"; }
   bool check_context_;
   std::atomic_bool expect_full_compaction_;
   std::atomic_bool expect_manual_compaction_;
@@ -2333,7 +2333,7 @@ class DelayFilter : public CompactionFilter {
     return true;
   }
 
-  virtual const char* Name() const override { return "DelayFilter"; }
+  const char* Name() const override { return "DelayFilter"; }
 
  private:
   DBTestBase* db_test;
@@ -2347,7 +2347,7 @@ class DelayFilterFactory : public CompactionFilterFactory {
     return std::unique_ptr<CompactionFilter>(new DelayFilter(db_test));
   }
 
-  virtual const char* Name() const override { return "DelayFilterFactory"; }
+  const char* Name() const override { return "DelayFilterFactory"; }
 
  private:
   DBTestBase* db_test;
@@ -3269,17 +3269,17 @@ TEST_F(DBTest, OverlapInLevel0) {
 TEST_F(DBTest, ComparatorCheck) {
   class NewComparator : public Comparator {
    public:
-    virtual const char* Name() const override {
+    const char* Name() const override {
       return "rocksdb.NewComparator";
     }
-    virtual int Compare(const Slice& a, const Slice& b) const override {
+    int Compare(const Slice& a, const Slice& b) const override {
       return BytewiseComparator()->Compare(a, b);
     }
     virtual void FindShortestSeparator(std::string* s,
                                        const Slice& l) const override {
       BytewiseComparator()->FindShortestSeparator(s, l);
     }
-    virtual void FindShortSuccessor(std::string* key) const override {
+    void FindShortSuccessor(std::string* key) const override {
       BytewiseComparator()->FindShortSuccessor(key);
     }
   };
@@ -3302,10 +3302,10 @@ TEST_F(DBTest, ComparatorCheck) {
 TEST_F(DBTest, CustomComparator) {
   class NumberComparator : public Comparator {
    public:
-    virtual const char* Name() const override {
+    const char* Name() const override {
       return "test.NumberComparator";
     }
-    virtual int Compare(const Slice& a, const Slice& b) const override {
+    int Compare(const Slice& a, const Slice& b) const override {
       return ToNumber(a) - ToNumber(b);
     }
     virtual void FindShortestSeparator(std::string* s,
@@ -3313,7 +3313,7 @@ TEST_F(DBTest, CustomComparator) {
       ToNumber(*s);     // Check format
       ToNumber(l);      // Check format
     }
-    virtual void FindShortSuccessor(std::string* key) const override {
+    void FindShortSuccessor(std::string* key) const override {
       ToNumber(*key);   // Check format
     }
    private:
@@ -4892,7 +4892,7 @@ static void MTThreadBody(void* arg) {
 class MultiThreadedDBTest : public DBTest,
                             public ::testing::WithParamInterface<int> {
  public:
-  virtual void SetUp() override { option_config_ = GetParam(); }
+  void SetUp() override { option_config_ = GetParam(); }
 
   static std::vector<int> GenerateOptionConfigs() {
     std::vector<int> optionConfigs;
@@ -5034,7 +5034,7 @@ class ModelDB: public DB {
    public:
     KVMap map_;
 
-    virtual SequenceNumber GetSequenceNumber() const override {
+    SequenceNumber GetSequenceNumber() const override {
       // no need to call this
       assert(false);
       return 0;
@@ -5143,13 +5143,13 @@ class ModelDB: public DB {
       std::vector<Iterator*>* iterators) override {
     return Status::NotSupported("Not supported yet");
   }
-  virtual const Snapshot* GetSnapshot() override {
+  const Snapshot* GetSnapshot() override {
     ModelSnapshot* snapshot = new ModelSnapshot;
     snapshot->map_ = map_;
     return snapshot;
   }
 
-  virtual void ReleaseSnapshot(const Snapshot* snapshot) override {
+  void ReleaseSnapshot(const Snapshot* snapshot) override {
     delete reinterpret_cast<const ModelSnapshot*>(snapshot);
   }
 
@@ -5158,14 +5158,14 @@ class ModelDB: public DB {
     class Handler : public WriteBatch::Handler {
      public:
       KVMap* map_;
-      virtual void Put(const Slice& key, const Slice& value) override {
+      void Put(const Slice& key, const Slice& value) override {
         (*map_)[key.ToString()] = value.ToString();
       }
-      virtual void Merge(const Slice& key, const Slice& value) override {
+      void Merge(const Slice& key, const Slice& value) override {
         // ignore merge for now
         // (*map_)[key.ToString()] = value.ToString();
       }
-      virtual void Delete(const Slice& key) override {
+      void Delete(const Slice& key) override {
         map_->erase(key.ToString());
       }
     };
@@ -5227,7 +5227,7 @@ class ModelDB: public DB {
   }
 
   using DB::NumberLevels;
-  virtual int NumberLevels(ColumnFamilyHandle* column_family) override {
+  int NumberLevels(ColumnFamilyHandle* column_family) override {
     return 1;
   }
 
@@ -5243,9 +5243,9 @@ class ModelDB: public DB {
     return -1;
   }
 
-  virtual const std::string& GetName() const override { return name_; }
+  const std::string& GetName() const override { return name_; }
 
-  virtual Env* GetEnv() const override { return nullptr; }
+  Env* GetEnv() const override { return nullptr; }
 
   using DB::GetOptions;
   virtual const Options& GetOptions(
@@ -5254,7 +5254,7 @@ class ModelDB: public DB {
   }
 
   using DB::GetDBOptions;
-  virtual const DBOptions& GetDBOptions() const override { return options_; }
+  const DBOptions& GetDBOptions() const override { return options_; }
 
   using DB::Flush;
   virtual Status Flush(const rocksdb::FlushOptions& options,
@@ -5263,14 +5263,14 @@ class ModelDB: public DB {
     return ret;
   }
 
-  virtual Status SyncWAL() override {
+  Status SyncWAL() override {
     return Status::OK();
   }
 
 #ifndef ROCKSDB_LITE
-  virtual Status DisableFileDeletions() override { return Status::OK(); }
+  Status DisableFileDeletions() override { return Status::OK(); }
 
-  virtual Status EnableFileDeletions(bool force) override {
+  Status EnableFileDeletions(bool force) override {
     return Status::OK();
   }
   virtual Status GetLiveFiles(std::vector<std::string>&, uint64_t* size,
@@ -5278,11 +5278,11 @@ class ModelDB: public DB {
     return Status::OK();
   }
 
-  virtual Status GetSortedWalFiles(VectorLogPtr& files) override {
+  Status GetSortedWalFiles(VectorLogPtr& files) override {
     return Status::OK();
   }
 
-  virtual Status DeleteFile(std::string name) override { return Status::OK(); }
+  Status DeleteFile(std::string name) override { return Status::OK(); }
 
   virtual Status GetUpdatesSince(
       rocksdb::SequenceNumber, unique_ptr<rocksdb::TransactionLogIterator>*,
@@ -5296,13 +5296,13 @@ class ModelDB: public DB {
       ColumnFamilyMetaData* metadata) override {}
 #endif  // ROCKSDB_LITE
 
-  virtual Status GetDbIdentity(std::string& identity) const override {
+  Status GetDbIdentity(std::string& identity) const override {
     return Status::OK();
   }
 
-  virtual SequenceNumber GetLatestSequenceNumber() const override { return 0; }
+  SequenceNumber GetLatestSequenceNumber() const override { return 0; }
 
-  virtual ColumnFamilyHandle* DefaultColumnFamily() const override {
+  ColumnFamilyHandle* DefaultColumnFamily() const override {
     return nullptr;
   }
 
@@ -5315,20 +5315,20 @@ class ModelDB: public DB {
     ~ModelIter() {
       if (owned_) delete map_;
     }
-    virtual bool Valid() const override { return iter_ != map_->end(); }
-    virtual void SeekToFirst() override { iter_ = map_->begin(); }
-    virtual void SeekToLast() override {
+    bool Valid() const override { return iter_ != map_->end(); }
+    void SeekToFirst() override { iter_ = map_->begin(); }
+    void SeekToLast() override {
       if (map_->empty()) {
         iter_ = map_->end();
       } else {
         iter_ = map_->find(map_->rbegin()->first);
       }
     }
-    virtual void Seek(const Slice& k) override {
+    void Seek(const Slice& k) override {
       iter_ = map_->lower_bound(k.ToString());
     }
-    virtual void Next() override { ++iter_; }
-    virtual void Prev() override {
+    void Next() override { ++iter_; }
+    void Prev() override {
       if (iter_ == map_->begin()) {
         iter_ = map_->end();
         return;
@@ -5336,9 +5336,9 @@ class ModelDB: public DB {
       --iter_;
     }
 
-    virtual Slice key() const override { return iter_->first; }
-    virtual Slice value() const override { return iter_->second; }
-    virtual Status status() const override { return Status::OK(); }
+    Slice key() const override { return iter_->first; }
+    Slice value() const override { return iter_->second; }
+    Status status() const override { return Status::OK(); }
 
    private:
     const KVMap* const map_;
@@ -5410,7 +5410,7 @@ static bool CompareIterators(int step,
 class DBTestRandomized : public DBTest,
                          public ::testing::WithParamInterface<int> {
  public:
-  virtual void SetUp() override { option_config_ = GetParam(); }
+  void SetUp() override { option_config_ = GetParam(); }
 
   static std::vector<int> GenerateOptionConfigs() {
     std::vector<int> option_configs;
@@ -7831,7 +7831,7 @@ class DelayedMergeOperator : public MergeOperator {
     return true;
   }
 
-  virtual const char* Name() const override { return "DelayedMergeOperator"; }
+  const char* Name() const override { return "DelayedMergeOperator"; }
 };
 
 TEST_F(DBTest, MergeTestTime) {
@@ -10200,7 +10200,7 @@ TEST_F(DBTest, WalFilterTest) {
       return option_to_return;
     }
 
-    virtual const char* Name() const override { return "TestWalFilter"; }
+    const char* Name() const override { return "TestWalFilter"; }
   };
 
   // Create 3 batches with two keys each
@@ -10349,7 +10349,7 @@ TEST_F(DBTest, WalFilterTestWithChangeBatch) {
         : new_write_batch_(new_write_batch),
           num_keys_to_add_in_new_batch_(num_keys_to_add_in_new_batch),
           num_keys_added_(0) {}
-    virtual void Put(const Slice& key, const Slice& value) override {
+    void Put(const Slice& key, const Slice& value) override {
       if (num_keys_added_ < num_keys_to_add_in_new_batch_) {
         new_write_batch_->Put(key, value);
         ++num_keys_added_;
@@ -10391,7 +10391,7 @@ TEST_F(DBTest, WalFilterTestWithChangeBatch) {
       return WalProcessingOption::kContinueProcessing;
     }
 
-    virtual const char* Name() const override {
+    const char* Name() const override {
       return "TestWalFilterWithChangeBatch";
     }
   };
@@ -10479,7 +10479,7 @@ TEST_F(DBTest, WalFilterTestWithChangeBatchExtraKeys) {
       return WalProcessingOption::kContinueProcessing;
     }
 
-    virtual const char* Name() const override {
+    const char* Name() const override {
       return "WalFilterTestWithChangeBatchExtraKeys";
     }
   };

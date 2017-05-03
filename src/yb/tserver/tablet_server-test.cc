@@ -64,7 +64,7 @@ namespace tserver {
 class TabletServerTest : public TabletServerTestBase {
  public:
   // Starts the tablet server, override to start it later.
-  virtual void SetUp() override {
+  void SetUp() override {
     TabletServerTestBase::SetUp();
     StartTabletServer();
   }
@@ -686,33 +686,33 @@ class MyCommonHooks : public Tablet::FlushCompactCommonHooks,
   }
 
   // This should go in pre-flush and get flushed
-  virtual Status PostSwapNewMemRowSet() override {
+  Status PostSwapNewMemRowSet() override {
     return DoHook(1, 10 + iteration_);
   }
   // This should go in after the flush, but before
   // the duplicating row set, i.e., this should appear as
   // a missed delta.
-  virtual Status PostTakeMvccSnapshot() override {
+  Status PostTakeMvccSnapshot() override {
     return DoHook(2, 20 + iteration_);
   }
   // This too should appear as a missed delta.
-  virtual Status PostWriteSnapshot() override {
+  Status PostWriteSnapshot() override {
     return DoHook(3, 30 + iteration_);
   }
   // This should appear as a duplicated mutation
-  virtual Status PostSwapInDuplicatingRowSet() override {
+  Status PostSwapInDuplicatingRowSet() override {
     return DoHook(4, 40 + iteration_);
   }
   // This too should appear as a duplicated mutation
-  virtual Status PostReupdateMissedDeltas() override {
+  Status PostReupdateMissedDeltas() override {
     return DoHook(5, 50 + iteration_);
   }
   // This should go into the new delta.
-  virtual Status PostSwapNewRowSet() override {
+  Status PostSwapNewRowSet() override {
     return DoHook(6, 60 + iteration_);
   }
   // This should go in pre-flush (only on compactions)
-  virtual Status PostSelectIterators() override {
+  Status PostSelectIterators() override {
     return DoHook(7, 70 + iteration_);
   }
   void increment_iteration() {

@@ -444,13 +444,13 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
     return Status::OK();
   }
 
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
+  size_t GetUniqueId(char* id, size_t max_size) const override {
     return file_->GetUniqueId(id, max_size);
   }
 
-  virtual void Hint(AccessPattern pattern) override { file_->Hint(pattern); }
+  void Hint(AccessPattern pattern) override { file_->Hint(pattern); }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) override {
+  Status InvalidateCache(size_t offset, size_t length) override {
     return file_->InvalidateCache(offset, length);
   }
 

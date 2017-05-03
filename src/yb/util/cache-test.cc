@@ -56,7 +56,7 @@ class CacheTest : public YBTest,
  public:
 
   // Implementation of the CacheDeleter interface
-  virtual void Delete(const Slice& key, void* v) override {
+  void Delete(const Slice& key, void* v) override {
     deleted_keys_.push_back(DecodeKey(key));
     deleted_values_.push_back(DecodeValue(v));
   }
@@ -68,7 +68,7 @@ class CacheTest : public YBTest,
 
   static const int kCacheSize = 14*1024*1024;
 
-  virtual void SetUp() override {
+  void SetUp() override {
 
 #if defined(__linux__)
     if (google::GetCommandLineFlagInfoOrDie("nvm_cache_path").is_default) {

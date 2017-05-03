@@ -842,7 +842,7 @@ class MemTableInserter : public WriteBatch::Handler {
     }
   }
 
-  virtual void SetUserSequenceNumber(SequenceNumber user_sequence_number) override {
+  void SetUserSequenceNumber(SequenceNumber user_sequence_number) override {
     assert(user_sequence_number != kMaxSequenceNumber);
     user_sequence_number_ = user_sequence_number;
     has_user_sequence_number_ = true;

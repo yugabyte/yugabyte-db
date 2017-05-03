@@ -47,7 +47,7 @@ using client::YBTableName;
 
 class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
  public:
-  virtual void SetUp() override {
+  void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
     ExternalMiniClusterOptions opts = default_opts();
@@ -60,7 +60,7 @@ class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
     ASSERT_OK(cluster_->Start());
   }
 
-  virtual void DoTearDown() override {
+  void DoTearDown() override {
     alarm(0);
     cluster_->Shutdown();
     YBMiniClusterTestBase::DoTearDown();
@@ -156,7 +156,7 @@ TEST_F(ClientStressTest, TestStartScans) {
 // Override the base test to run in multi-master mode.
 class ClientStressTest_MultiMaster : public ClientStressTest {
  protected:
-  virtual bool multi_master() const override {
+  bool multi_master() const override {
     return true;
   }
 };
@@ -205,7 +205,7 @@ TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
 // Override the base test to start a cluster with a low memory limit.
 class ClientStressTest_LowMemory : public ClientStressTest {
  protected:
-  virtual ExternalMiniClusterOptions default_opts() const override {
+  ExternalMiniClusterOptions default_opts() const override {
     // There's nothing scientific about this number; it must be low enough to
     // trigger memory pressure request rejection yet high enough for the
     // servers to make forward progress.

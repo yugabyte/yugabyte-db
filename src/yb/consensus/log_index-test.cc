@@ -29,7 +29,7 @@ using consensus::OpId;
 
 class LogIndexTest : public YBTest {
  public:
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
     index_ = new LogIndex(GetTestDataDirectory());
   }

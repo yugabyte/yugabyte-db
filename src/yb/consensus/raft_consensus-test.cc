@@ -174,7 +174,7 @@ class RaftConsensusTest : public YBTest {
     options_.tablet_id = kTestTablet;
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     LogOptions options;
     string test_path = GetTestPath("test-peer-root");
 

@@ -32,7 +32,7 @@ class KeepFilter : public CompactionFilter {
     return false;
   }
 
-  virtual const char* Name() const override { return "KeepFilter"; }
+  const char* Name() const override { return "KeepFilter"; }
 };
 
 class DeleteFilter : public CompactionFilter {
@@ -44,7 +44,7 @@ class DeleteFilter : public CompactionFilter {
     return true;
   }
 
-  virtual const char* Name() const override { return "DeleteFilter"; }
+  const char* Name() const override { return "DeleteFilter"; }
 };
 
 class DeleteISFilter : public CompactionFilter {
@@ -60,9 +60,9 @@ class DeleteISFilter : public CompactionFilter {
     return false;
   }
 
-  virtual bool IgnoreSnapshots() const override { return true; }
+  bool IgnoreSnapshots() const override { return true; }
 
-  virtual const char* Name() const override { return "DeleteFilter"; }
+  const char* Name() const override { return "DeleteFilter"; }
 };
 
 class DelayFilter : public CompactionFilter {
@@ -75,7 +75,7 @@ class DelayFilter : public CompactionFilter {
     return true;
   }
 
-  virtual const char* Name() const override { return "DelayFilter"; }
+  const char* Name() const override { return "DelayFilter"; }
 
  private:
   DBTestBase* db_test;
@@ -91,7 +91,7 @@ class ConditionalFilter : public CompactionFilter {
     return value.ToString() == *filtered_value_;
   }
 
-  virtual const char* Name() const override { return "ConditionalFilter"; }
+  const char* Name() const override { return "ConditionalFilter"; }
 
  private:
   const std::string* filtered_value_;
@@ -110,7 +110,7 @@ class ChangeFilter : public CompactionFilter {
     return false;
   }
 
-  virtual const char* Name() const override { return "ChangeFilter"; }
+  const char* Name() const override { return "ChangeFilter"; }
 };
 
 class KeepFilterFactory : public CompactionFilterFactory {
@@ -136,7 +136,7 @@ class KeepFilterFactory : public CompactionFilterFactory {
 
   bool compaction_filter_created() const { return compaction_filter_created_; }
 
-  virtual const char* Name() const override { return "KeepFilterFactory"; }
+  const char* Name() const override { return "KeepFilterFactory"; }
   bool check_context_;
   bool check_context_cf_id_;
   std::atomic_bool expect_full_compaction_;
@@ -156,7 +156,7 @@ class DeleteFilterFactory : public CompactionFilterFactory {
     }
   }
 
-  virtual const char* Name() const override { return "DeleteFilterFactory"; }
+  const char* Name() const override { return "DeleteFilterFactory"; }
 };
 
 // Delete Filter Factory which ignores snapshots
@@ -171,7 +171,7 @@ class DeleteISFilterFactory : public CompactionFilterFactory {
     }
   }
 
-  virtual const char* Name() const override { return "DeleteFilterFactory"; }
+  const char* Name() const override { return "DeleteFilterFactory"; }
 };
 
 class DelayFilterFactory : public CompactionFilterFactory {
@@ -182,7 +182,7 @@ class DelayFilterFactory : public CompactionFilterFactory {
     return std::unique_ptr<CompactionFilter>(new DelayFilter(db_test));
   }
 
-  virtual const char* Name() const override { return "DelayFilterFactory"; }
+  const char* Name() const override { return "DelayFilterFactory"; }
 
  private:
   DBTestBase* db_test;
@@ -199,7 +199,7 @@ class ConditionalFilterFactory : public CompactionFilterFactory {
         new ConditionalFilter(&filtered_value_));
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "ConditionalFilterFactory";
   }
 
@@ -216,7 +216,7 @@ class ChangeFilterFactory : public CompactionFilterFactory {
     return std::unique_ptr<CompactionFilter>(new ChangeFilter());
   }
 
-  virtual const char* Name() const override { return "ChangeFilterFactory"; }
+  const char* Name() const override { return "ChangeFilterFactory"; }
 };
 
 #ifndef ROCKSDB_LITE

@@ -23,11 +23,11 @@ class RemoteBootstrapKuduTest : public RemoteBootstrapTest {
  public:
   RemoteBootstrapKuduTest() : RemoteBootstrapTest(KUDU_COLUMNAR_TABLE_TYPE) {}
 
-  virtual void SetUp() override {
+  void SetUp() override {
     RemoteBootstrapTest::SetUp();
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     RemoteBootstrapTest::TearDown();
   }
 };

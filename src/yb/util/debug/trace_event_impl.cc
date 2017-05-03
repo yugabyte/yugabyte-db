@@ -115,7 +115,7 @@ class TraceBufferRingBuffer : public TraceBuffer {
     STLDeleteElements(&chunks_);
   }
 
-  virtual gscoped_ptr<TraceBufferChunk> GetChunk(size_t* index) override {
+  gscoped_ptr<TraceBufferChunk> GetChunk(size_t* index) override {
     // Because the number of threads is much less than the number of chunks,
     // the queue should never be empty.
     DCHECK(!QueueIsEmpty());
@@ -150,20 +150,20 @@ class TraceBufferRingBuffer : public TraceBuffer {
     queue_tail_ = NextQueueIndex(queue_tail_);
   }
 
-  virtual bool IsFull() const override {
+  bool IsFull() const override {
     return false;
   }
 
-  virtual size_t Size() const override {
+  size_t Size() const override {
     // This is approximate because not all of the chunks are full.
     return chunks_.size() * kTraceBufferChunkSize;
   }
 
-  virtual size_t Capacity() const override {
+  size_t Capacity() const override {
     return max_chunks_ * kTraceBufferChunkSize;
   }
 
-  virtual TraceEvent* GetEventByHandle(TraceEventHandle handle) override {
+  TraceEvent* GetEventByHandle(TraceEventHandle handle) override {
     if (handle.chunk_index >= chunks_.size())
       return nullptr;
     TraceBufferChunk* chunk = chunks_[handle.chunk_index];
@@ -172,7 +172,7 @@ class TraceBufferRingBuffer : public TraceBuffer {
     return chunk->GetEventAt(handle.event_index);
   }
 
-  virtual const TraceBufferChunk* NextChunk() override {
+  const TraceBufferChunk* NextChunk() override {
     if (chunks_.empty())
       return nullptr;
 
@@ -187,7 +187,7 @@ class TraceBufferRingBuffer : public TraceBuffer {
     return nullptr;
   }
 
-  virtual gscoped_ptr<TraceBuffer> CloneForIteration() const override {
+  gscoped_ptr<TraceBuffer> CloneForIteration() const override {
     gscoped_ptr<ClonedTraceBuffer> cloned_buffer(new ClonedTraceBuffer());
     for (size_t queue_index = queue_head_; queue_index != queue_tail_;
         queue_index = NextQueueIndex(queue_index)) {
@@ -209,12 +209,12 @@ class TraceBufferRingBuffer : public TraceBuffer {
     }
 
     // The only implemented method.
-    virtual const TraceBufferChunk* NextChunk() override {
+    const TraceBufferChunk* NextChunk() override {
       return current_iteration_index_ < chunks_.size() ?
           chunks_[current_iteration_index_++] : nullptr;
     }
 
-    virtual gscoped_ptr<TraceBufferChunk> GetChunk(size_t* index) override {
+    gscoped_ptr<TraceBufferChunk> GetChunk(size_t* index) override {
       NOTIMPLEMENTED();
       return gscoped_ptr<TraceBufferChunk>();
     }
@@ -222,13 +222,13 @@ class TraceBufferRingBuffer : public TraceBuffer {
                              gscoped_ptr<TraceBufferChunk>) override {
       NOTIMPLEMENTED();
     }
-    virtual bool IsFull() const override { return false; }
-    virtual size_t Size() const override { return 0; }
-    virtual size_t Capacity() const override { return 0; }
-    virtual TraceEvent* GetEventByHandle(TraceEventHandle handle) override {
+    bool IsFull() const override { return false; }
+    size_t Size() const override { return 0; }
+    size_t Capacity() const override { return 0; }
+    TraceEvent* GetEventByHandle(TraceEventHandle handle) override {
       return nullptr;
     }
-    virtual gscoped_ptr<TraceBuffer> CloneForIteration() const override {
+    gscoped_ptr<TraceBuffer> CloneForIteration() const override {
       NOTIMPLEMENTED();
       return gscoped_ptr<TraceBuffer>();
     }
@@ -286,7 +286,7 @@ class TraceBufferVector : public TraceBuffer {
     STLDeleteElements(&chunks_);
   }
 
-  virtual gscoped_ptr<TraceBufferChunk> GetChunk(size_t* index) override {
+  gscoped_ptr<TraceBufferChunk> GetChunk(size_t* index) override {
     // This function may be called when adding normal events or indirectly from
     // AddMetadataEventsWhileLocked(). We can not DECHECK(!IsFull()) because we
     // have to add the metadata events and flush thread-local buffers even if
@@ -308,20 +308,20 @@ class TraceBufferVector : public TraceBuffer {
     chunks_[index] = chunk.release();
   }
 
-  virtual bool IsFull() const override {
+  bool IsFull() const override {
     return chunks_.size() >= kTraceEventVectorBufferChunks;
   }
 
-  virtual size_t Size() const override {
+  size_t Size() const override {
     // This is approximate because not all of the chunks are full.
     return chunks_.size() * kTraceBufferChunkSize;
   }
 
-  virtual size_t Capacity() const override {
+  size_t Capacity() const override {
     return kTraceEventVectorBufferChunks * kTraceBufferChunkSize;
   }
 
-  virtual TraceEvent* GetEventByHandle(TraceEventHandle handle) override {
+  TraceEvent* GetEventByHandle(TraceEventHandle handle) override {
     if (handle.chunk_index >= chunks_.size())
       return nullptr;
     TraceBufferChunk* chunk = chunks_[handle.chunk_index];
@@ -330,7 +330,7 @@ class TraceBufferVector : public TraceBuffer {
     return chunk->GetEventAt(handle.event_index);
   }
 
-  virtual const TraceBufferChunk* NextChunk() override {
+  const TraceBufferChunk* NextChunk() override {
     while (current_iteration_index_ < chunks_.size()) {
       // Skip in-flight chunks.
       const TraceBufferChunk* chunk = chunks_[current_iteration_index_++];
@@ -340,7 +340,7 @@ class TraceBufferVector : public TraceBuffer {
     return nullptr;
   }
 
-  virtual gscoped_ptr<TraceBuffer> CloneForIteration() const override {
+  gscoped_ptr<TraceBuffer> CloneForIteration() const override {
     NOTIMPLEMENTED();
     return gscoped_ptr<TraceBuffer>();
   }

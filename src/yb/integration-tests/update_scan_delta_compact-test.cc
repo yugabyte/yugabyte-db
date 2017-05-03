@@ -78,7 +78,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
     CHECK_OK(b.Build(&schema_));
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBMiniClusterTestBase::SetUp();
   }
 
@@ -92,7 +92,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
     ASSERT_OK(client_->OpenTable(kTableName, &table_));
   }
 
-  virtual void DoTearDown() override {
+  void DoTearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
     }

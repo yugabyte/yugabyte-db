@@ -525,32 +525,32 @@ class ShardedLRUCache : public Cache {
     const uint32_t hash = HashSlice(key);
     return shards_[Shard(hash)]->Insert(key, hash, value, charge, deleter);
   }
-  virtual Handle* Lookup(const Slice& key, CacheBehavior caching) override {
+  Handle* Lookup(const Slice& key, CacheBehavior caching) override {
     const uint32_t hash = HashSlice(key);
     return shards_[Shard(hash)]->Lookup(key, hash, caching == EXPECT_IN_CACHE);
   }
-  virtual void Release(Handle* handle) override {
+  void Release(Handle* handle) override {
     LRUHandle* h = reinterpret_cast<LRUHandle*>(handle);
     shards_[Shard(h->hash)]->Release(handle);
   }
-  virtual void Erase(const Slice& key) override {
+  void Erase(const Slice& key) override {
     const uint32_t hash = HashSlice(key);
     shards_[Shard(hash)]->Erase(key, hash);
   }
-  virtual void* Value(Handle* handle) override {
+  void* Value(Handle* handle) override {
     return reinterpret_cast<LRUHandle*>(handle)->value;
   }
-  virtual uint64_t NewId() override {
+  uint64_t NewId() override {
     std::lock_guard<MutexType> l(id_mutex_);
     return ++(last_id_);
   }
-  virtual void SetMetrics(const scoped_refptr<MetricEntity>& entity) override {
+  void SetMetrics(const scoped_refptr<MetricEntity>& entity) override {
     metrics_.reset(new CacheMetrics(entity));
     for (NvmLRUCache* cache : shards_) {
       cache->SetMetrics(metrics_.get());
     }
   }
-  virtual uint8_t* Allocate(int size) override {
+  uint8_t* Allocate(int size) override {
     // Try allocating from each of the shards -- if vmem is tight,
     // this can cause eviction, so we might have better luck in different
     // shards.
@@ -561,10 +561,10 @@ class ShardedLRUCache : public Cache {
     // TODO: increment a metric here on allocation failure.
     return NULL;
   }
-  virtual void Free(uint8_t *ptr) override {
+  void Free(uint8_t *ptr) override {
     vmem_free(vmp_, ptr);
   }
-  virtual uint8_t* MoveToHeap(uint8_t* ptr, int size) override {
+  uint8_t* MoveToHeap(uint8_t* ptr, int size) override {
     uint8_t* ret = new uint8_t[size];
     memcpy(ret, ptr, size);
     vmem_free(vmp_, ptr);

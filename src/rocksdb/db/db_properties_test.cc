@@ -890,7 +890,7 @@ class CountingUserTblPropCollector : public TablePropertiesCollector {
     return Status::OK();
   }
 
-  virtual UserCollectedProperties GetReadableProperties() const override {
+  UserCollectedProperties GetReadableProperties() const override {
     return UserCollectedProperties{};
   }
 

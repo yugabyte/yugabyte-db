@@ -58,7 +58,7 @@ static const int kMaxColumns = 30;
 
 class AlterTableRandomized : public YBTest {
  public:
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
 
     ExternalMiniClusterOptions opts;
@@ -74,7 +74,7 @@ class AlterTableRandomized : public YBTest {
     ASSERT_OK(cluster_->CreateClient(&builder, &client_));
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     cluster_->Shutdown();
     YBTest::TearDown();
   }

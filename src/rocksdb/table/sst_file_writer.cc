@@ -33,18 +33,18 @@ class SstFileWriter::SstFileWriterPropertiesCollector
     return Status::OK();
   }
 
-  virtual Status Finish(UserCollectedProperties* properties) override {
+  Status Finish(UserCollectedProperties* properties) override {
     std::string version_val;
     PutFixed32(&version_val, static_cast<int32_t>(version_));
     properties->insert({ExternalSstFilePropertyNames::kVersion, version_val});
     return Status::OK();
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "SstFileWriterPropertiesCollector";
   }
 
-  virtual UserCollectedProperties GetReadableProperties() const override {
+  UserCollectedProperties GetReadableProperties() const override {
     return {{ExternalSstFilePropertyNames::kVersion, ToString(version_)}};
   }
 
@@ -63,7 +63,7 @@ class SstFileWriter::SstFileWriterPropertiesCollectorFactory
     return new SstFileWriterPropertiesCollector(version_);
   }
 
-  virtual const char* Name() const override {
+  const char* Name() const override {
     return "SstFileWriterPropertiesCollector";
   }
 

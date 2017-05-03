@@ -31,7 +31,7 @@ class DBTestUniversalCompactionBase
  public:
   explicit DBTestUniversalCompactionBase(
       const std::string& path) : DBTestBase(path) {}
-  virtual void SetUp() override {
+  void SetUp() override {
     num_levels_ = std::get<0>(GetParam());
     exclusive_manual_compaction_ = std::get<1>(GetParam());
   }
@@ -67,7 +67,7 @@ class KeepFilter : public CompactionFilter {
     return false;
   }
 
-  virtual const char* Name() const override { return "KeepFilter"; }
+  const char* Name() const override { return "KeepFilter"; }
 };
 
 class KeepFilterFactory : public CompactionFilterFactory {
@@ -84,7 +84,7 @@ class KeepFilterFactory : public CompactionFilterFactory {
     return std::unique_ptr<CompactionFilter>(new KeepFilter());
   }
 
-  virtual const char* Name() const override { return "KeepFilterFactory"; }
+  const char* Name() const override { return "KeepFilterFactory"; }
   bool check_context_;
   std::atomic_bool expect_full_compaction_;
   std::atomic_bool expect_manual_compaction_;
@@ -100,7 +100,7 @@ class DelayFilter : public CompactionFilter {
     return true;
   }
 
-  virtual const char* Name() const override { return "DelayFilter"; }
+  const char* Name() const override { return "DelayFilter"; }
 
  private:
   DBTestBase* db_test;
@@ -114,7 +114,7 @@ class DelayFilterFactory : public CompactionFilterFactory {
     return std::unique_ptr<CompactionFilter>(new DelayFilter(db_test));
   }
 
-  virtual const char* Name() const override { return "DelayFilterFactory"; }
+  const char* Name() const override { return "DelayFilterFactory"; }
 
  private:
   DBTestBase* db_test;

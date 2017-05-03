@@ -103,7 +103,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       : inserters_(FLAGS_num_client_threads) {
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     TabletServerIntegrationTestBase::SetUp();
     FLAGS_consensus_rpc_timeout_ms = kConsensusRpcTimeoutForTests;
   }

@@ -86,20 +86,20 @@ class HashCuckooRep : public MemTableRep {
   }
 
   // return false, indicating HashCuckooRep does not support merge operator.
-  virtual bool IsMergeOperatorSupported() const override { return false; }
+  bool IsMergeOperatorSupported() const override { return false; }
 
   // return false, indicating HashCuckooRep does not support snapshot.
-  virtual bool IsSnapshotSupported() const override { return false; }
+  bool IsSnapshotSupported() const override { return false; }
 
   // Returns true iff an entry that compares equal to key is in the collection.
-  virtual bool Contains(const char* internal_key) const override;
+  bool Contains(const char* internal_key) const override;
 
-  virtual ~HashCuckooRep() override {}
+  ~HashCuckooRep() override {}
 
   // Insert the specified key (internal_key) into the mem-table.  Assertion
   // fails if
   // the current mem-table already contains the specified key.
-  virtual void Insert(KeyHandle handle) override;
+  void Insert(KeyHandle handle) override;
 
   // This function returns bucket_count_ * approximate_entry_size_ when any
   // of the followings happen to disallow further write operations:
@@ -107,7 +107,7 @@ class HashCuckooRep : public MemTableRep {
   // 2. when the backup_table_ is used.
   //
   // otherwise, this function will always return 0.
-  virtual size_t ApproximateMemoryUsage() override {
+  size_t ApproximateMemoryUsage() override {
     if (is_nearly_full_) {
       return bucket_count_ * approximate_entry_size_;
     }
@@ -133,33 +133,33 @@ class HashCuckooRep : public MemTableRep {
     // Initialize an iterator over the specified collection.
     // The returned iterator is not valid.
     // explicit Iterator(const MemTableRep* collection);
-    virtual ~Iterator() override{};
+    ~Iterator() override{};
 
     // Returns true iff the iterator is positioned at a valid node.
-    virtual bool Valid() const override;
+    bool Valid() const override;
 
     // Returns the key at the current position.
     // REQUIRES: Valid()
-    virtual const char* key() const override;
+    const char* key() const override;
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    virtual void Next() override;
+    void Next() override;
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    virtual void Prev() override;
+    void Prev() override;
 
     // Advance to the first entry with a key >= target
-    virtual void Seek(const Slice& user_key, const char* memtable_key) override;
+    void Seek(const Slice& user_key, const char* memtable_key) override;
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToFirst() override;
+    void SeekToFirst() override;
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToLast() override;
+    void SeekToLast() override;
   };
 
   struct CuckooStepBuffer {
@@ -262,7 +262,7 @@ class HashCuckooRep : public MemTableRep {
   // are sorted according to the user specified KeyComparator.  Note that
   // any insert after this function call may affect the sorted nature of
   // the returned iterator.
-  virtual MemTableRep::Iterator* GetIterator(Arena* arena) override {
+  MemTableRep::Iterator* GetIterator(Arena* arena) override {
     std::vector<const char*> compact_buckets;
     for (unsigned int bid = 0; bid < bucket_count_; ++bid) {
       const char* bucket = cuckoo_array_[bid].load(std::memory_order_relaxed);

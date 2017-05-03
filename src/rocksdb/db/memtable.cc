@@ -240,8 +240,8 @@ class MemTableIterator : public InternalIterator {
     }
   }
 
-  virtual bool Valid() const override { return valid_; }
-  virtual void Seek(const Slice& k) override {
+  bool Valid() const override { return valid_; }
+  void Seek(const Slice& k) override {
     PERF_TIMER_GUARD(seek_on_memtable_time);
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
     if (bloom_ != nullptr) {
@@ -257,47 +257,47 @@ class MemTableIterator : public InternalIterator {
     iter_->Seek(k, nullptr);
     valid_ = iter_->Valid();
   }
-  virtual void SeekToFirst() override {
+  void SeekToFirst() override {
     iter_->SeekToFirst();
     valid_ = iter_->Valid();
   }
-  virtual void SeekToLast() override {
+  void SeekToLast() override {
     iter_->SeekToLast();
     valid_ = iter_->Valid();
   }
-  virtual void Next() override {
+  void Next() override {
     assert(Valid());
     iter_->Next();
     valid_ = iter_->Valid();
   }
-  virtual void Prev() override {
+  void Prev() override {
     assert(Valid());
     iter_->Prev();
     valid_ = iter_->Valid();
   }
-  virtual Slice key() const override {
+  Slice key() const override {
     assert(Valid());
     return GetLengthPrefixedSlice(iter_->key());
   }
-  virtual Slice value() const override {
+  Slice value() const override {
     assert(Valid());
     Slice key_slice = GetLengthPrefixedSlice(iter_->key());
     return GetLengthPrefixedSlice(key_slice.data() + key_slice.size());
   }
 
-  virtual Status status() const override { return Status::OK(); }
+  Status status() const override { return Status::OK(); }
 
-  virtual Status PinData() override {
+  Status PinData() override {
     // memtable data is always pinned
     return Status::OK();
   }
 
-  virtual Status ReleasePinnedData() override {
+  Status ReleasePinnedData() override {
     // memtable data is always pinned
     return Status::OK();
   }
 
-  virtual bool IsKeyPinned() const override {
+  bool IsKeyPinned() const override {
     // memtable data is always pinned
     return true;
   }

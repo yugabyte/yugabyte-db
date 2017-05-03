@@ -9,11 +9,11 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
  public:
   RemoteBootstrapRocksDBTest() : RemoteBootstrapTest(YQL_TABLE_TYPE) {}
 
-  virtual void SetUp() override {
+  void SetUp() override {
     RemoteBootstrapTest::SetUp();
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     RemoteBootstrapTest::TearDown();
   }
 };

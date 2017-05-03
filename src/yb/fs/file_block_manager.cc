@@ -217,21 +217,21 @@ class FileWritableBlock : public WritableBlock {
 
   virtual ~FileWritableBlock();
 
-  virtual Status Close() override;
+  Status Close() override;
 
-  virtual Status Abort() override;
+  Status Abort() override;
 
-  virtual BlockManager* block_manager() const override;
+  BlockManager* block_manager() const override;
 
-  virtual const BlockId& id() const override;
+  const BlockId& id() const override;
 
-  virtual Status Append(const Slice& data) override;
+  Status Append(const Slice& data) override;
 
-  virtual Status FlushDataAsync() override;
+  Status FlushDataAsync() override;
 
-  virtual size_t BytesAppended() const override;
+  size_t BytesAppended() const override;
 
-  virtual State state() const override;
+  State state() const override;
 
  private:
   enum SyncMode {
@@ -377,16 +377,16 @@ class FileReadableBlock : public ReadableBlock {
 
   virtual ~FileReadableBlock();
 
-  virtual Status Close() override;
+  Status Close() override;
 
-  virtual const BlockId& id() const override;
+  const BlockId& id() const override;
 
-  virtual Status Size(uint64_t* sz) const override;
+  Status Size(uint64_t* sz) const override;
 
   virtual Status Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const override;
 
-  virtual size_t memory_footprint() const override;
+  size_t memory_footprint() const override;
 
  private:
   // Back pointer to the owning block manager.

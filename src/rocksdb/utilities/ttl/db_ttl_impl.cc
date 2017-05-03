@@ -277,7 +277,7 @@ Status DBWithTTLImpl::Write(const WriteOptions& opts, WriteBatch* updates) {
       WriteBatchInternal::Delete(&updates_ttl, column_family_id, key);
       return Status::OK();
     }
-    virtual void LogData(const Slice& blob) override {
+    void LogData(const Slice& blob) override {
       updates_ttl.PutLogData(blob);
     }
 

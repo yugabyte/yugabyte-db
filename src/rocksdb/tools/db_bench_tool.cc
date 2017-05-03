@@ -862,7 +862,7 @@ class ReportFileOpEnv : public EnvWrapper {
                    ReportFileOpCounters* counters)
           : target_(std::move(target)), counters_(counters) {}
 
-      virtual Status Read(size_t n, Slice* result, char* scratch) override {
+      Status Read(size_t n, Slice* result, char* scratch) override {
         counters_->read_counter_.fetch_add(1, std::memory_order_relaxed);
         Status rv = target_->Read(n, result, scratch);
         counters_->bytes_read_.fetch_add(result->size(),
@@ -870,7 +870,7 @@ class ReportFileOpEnv : public EnvWrapper {
         return rv;
       }
 
-      virtual Status Skip(uint64_t n) override { return target_->Skip(n); }
+      Status Skip(uint64_t n) override { return target_->Skip(n); }
     };
 
     Status s = target()->NewSequentialFile(f, r, soptions);

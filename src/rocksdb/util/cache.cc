@@ -534,7 +534,7 @@ class ShardedLRUCache : public Cache {
   virtual ~ShardedLRUCache() {
     delete[] shards_;
   }
-  virtual void SetCapacity(size_t capacity) override {
+  void SetCapacity(size_t capacity) override {
     int num_shards = 1 << num_shard_bits_;
     const size_t per_shard = (capacity + (num_shards - 1)) / num_shards;
     MutexLock l(&capacity_mutex_);
@@ -543,7 +543,7 @@ class ShardedLRUCache : public Cache {
     }
     capacity_ = capacity;
   }
-  virtual void SetStrictCapacityLimit(bool strict_capacity_limit) override {
+  void SetStrictCapacityLimit(bool strict_capacity_limit) override {
     int num_shards = 1 << num_shard_bits_;
     for (int s = 0; s < num_shards; s++) {
       shards_[s].SetStrictCapacityLimit(strict_capacity_limit);
@@ -557,32 +557,32 @@ class ShardedLRUCache : public Cache {
     return shards_[Shard(hash)].Insert(key, hash, value, charge, deleter,
                                        handle);
   }
-  virtual Handle* Lookup(const Slice& key) override {
+  Handle* Lookup(const Slice& key) override {
     const uint32_t hash = HashSlice(key);
     return shards_[Shard(hash)].Lookup(key, hash);
   }
-  virtual void Release(Handle* handle) override {
+  void Release(Handle* handle) override {
     LRUHandle* h = reinterpret_cast<LRUHandle*>(handle);
     shards_[Shard(h->hash)].Release(handle);
   }
-  virtual void Erase(const Slice& key) override {
+  void Erase(const Slice& key) override {
     const uint32_t hash = HashSlice(key);
     shards_[Shard(hash)].Erase(key, hash);
   }
-  virtual void* Value(Handle* handle) override {
+  void* Value(Handle* handle) override {
     return reinterpret_cast<LRUHandle*>(handle)->value;
   }
-  virtual uint64_t NewId() override {
+  uint64_t NewId() override {
     MutexLock l(&id_mutex_);
     return ++(last_id_);
   }
-  virtual size_t GetCapacity() const override { return capacity_; }
+  size_t GetCapacity() const override { return capacity_; }
 
-  virtual bool HasStrictCapacityLimit() const override {
+  bool HasStrictCapacityLimit() const override {
     return strict_capacity_limit_;
   }
 
-  virtual size_t GetUsage() const override {
+  size_t GetUsage() const override {
     // We will not lock the cache when getting the usage from shards.
     int num_shards = 1 << num_shard_bits_;
     size_t usage = 0;
@@ -592,11 +592,11 @@ class ShardedLRUCache : public Cache {
     return usage;
   }
 
-  virtual size_t GetUsage(Handle* handle) const override {
+  size_t GetUsage(Handle* handle) const override {
     return reinterpret_cast<LRUHandle*>(handle)->charge;
   }
 
-  virtual size_t GetPinnedUsage() const override {
+  size_t GetPinnedUsage() const override {
     // We will not lock the cache when getting the usage from shards.
     int num_shards = 1 << num_shard_bits_;
     size_t usage = 0;
@@ -606,7 +606,7 @@ class ShardedLRUCache : public Cache {
     return usage;
   }
 
-  virtual void DisownData() override { shards_ = nullptr; }
+  void DisownData() override { shards_ = nullptr; }
 
   virtual void ApplyToAllCacheEntries(void (*callback)(void*, size_t),
                                       bool thread_safe) override {

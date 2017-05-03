@@ -21,7 +21,7 @@ namespace rocksdb {
 // For testing: emit an array with one hash value per key
 class TestHashFilter : public FilterPolicy {
  public:
-  virtual const char* Name() const override { return "TestHashFilter"; }
+  const char* Name() const override { return "TestHashFilter"; }
 
   virtual void CreateFilter(const Slice* keys, int n,
                             std::string* dst) const override {

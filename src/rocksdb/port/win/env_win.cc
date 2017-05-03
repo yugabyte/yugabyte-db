@@ -242,7 +242,7 @@ class WinMmapReadableFile : public RandomAccessFile {
     return s;
   }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) override {
+  Status InvalidateCache(size_t offset, size_t length) override {
     return Status::OK();
   }
 };
@@ -462,7 +462,7 @@ class WinMmapFile : public WritableFile {
     }
   }
 
-  virtual Status Append(const Slice& data) override {
+  Status Append(const Slice& data) override {
     const char* src = data.data();
     size_t left = data.size();
 
@@ -494,11 +494,11 @@ class WinMmapFile : public WritableFile {
 
   // Means Close() will properly take care of truncate
   // and it does not need any additional information
-  virtual Status Truncate(uint64_t size) override {
+  Status Truncate(uint64_t size) override {
     return Status::OK();
   }
 
-  virtual Status Close() override {
+  Status Close() override {
     Status s;
 
     assert(NULL != hFile_);
@@ -535,10 +535,10 @@ class WinMmapFile : public WritableFile {
     return s;
   }
 
-  virtual Status Flush() override { return Status::OK(); }
+  Status Flush() override { return Status::OK(); }
 
   // Flush only data
-  virtual Status Sync() override {
+  Status Sync() override {
     Status s;
 
     // Some writes occurred since last sync
@@ -570,7 +570,7 @@ class WinMmapFile : public WritableFile {
   /**
   * Flush data as well as metadata to stable storage.
   */
-  virtual Status Fsync() override {
+  Status Fsync() override {
     Status s;
 
     // Flush metadata if pending
@@ -594,16 +594,16 @@ class WinMmapFile : public WritableFile {
   * size that is returned from the filesystem because we use mmap
   * to extend file by map_size every time.
   */
-  virtual uint64_t GetFileSize() override {
+  uint64_t GetFileSize() override {
     size_t used = dst_ - mapped_begin_;
     return file_offset_ + used;
   }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) override {
+  Status InvalidateCache(size_t offset, size_t length) override {
     return Status::OK();
   }
 
-  virtual Status Allocate(uint64_t offset, uint64_t len) override {
+  Status Allocate(uint64_t offset, uint64_t len) override {
     return Status::OK();
   }
 };
@@ -635,7 +635,7 @@ class WinSequentialFile : public SequentialFile {
     CloseHandle(file_);
   }
 
-  virtual Status Read(size_t n, Slice* result, char* scratch) override {
+  Status Read(size_t n, Slice* result, char* scratch) override {
     Status s;
     size_t r = 0;
 
@@ -660,7 +660,7 @@ class WinSequentialFile : public SequentialFile {
     return s;
   }
 
-  virtual Status Skip(uint64_t n) override {
+  Status Skip(uint64_t n) override {
     // Can't handle more than signed max as SetFilePointerEx accepts a signed 64-bit
     // integer. As such it is a highly unlikley case to have n so large.
     if (n > _I64_MAX) {
@@ -676,7 +676,7 @@ class WinSequentialFile : public SequentialFile {
     return Status::OK();
   }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) override {
+  Status InvalidateCache(size_t offset, size_t length) override {
     return Status::OK();
   }
 };
@@ -805,7 +805,7 @@ class WinRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  virtual void EnableReadAhead() override { this->Hint(SEQUENTIAL); }
+  void EnableReadAhead() override { this->Hint(SEQUENTIAL); }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const override {
@@ -907,11 +907,11 @@ class WinRandomAccessFile : public RandomAccessFile {
     return s;
   }
 
-  virtual bool ShouldForwardRawRequest() const override {
+  bool ShouldForwardRawRequest() const override {
     return true;
   }
 
-  virtual void Hint(AccessPattern pattern) override {
+  void Hint(AccessPattern pattern) override {
     if (pattern == SEQUENTIAL && !use_os_buffer_ &&
         compaction_readahead_size_ > 0) {
       std::lock_guard<std::mutex> lg(buffer_mut_);
@@ -927,7 +927,7 @@ class WinRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) override {
+  Status InvalidateCache(size_t offset, size_t length) override {
     return Status::OK();
   }
 };
@@ -973,15 +973,15 @@ class WinWritableFile : public WritableFile {
   }
 
   // Indicates if the class makes use of unbuffered I/O
-  virtual bool UseOSBuffer() const override {
+  bool UseOSBuffer() const override {
     return use_os_buffer_;
   }
 
-  virtual size_t GetRequiredBufferAlignment() const override {
+  size_t GetRequiredBufferAlignment() const override {
     return alignment_;
   }
 
-  virtual Status Append(const Slice& data) override {
+  Status Append(const Slice& data) override {
 
     // Used for buffered access ONLY
     assert(use_os_buffer_);
@@ -1004,7 +1004,7 @@ class WinWritableFile : public WritableFile {
     return s;
   }
 
-  virtual Status PositionedAppend(const Slice& data, uint64_t offset) override {
+  Status PositionedAppend(const Slice& data, uint64_t offset) override {
     Status s;
 
     SSIZE_T ret = pwrite(hFile_, data.data(), data.size(), offset);
@@ -1025,7 +1025,7 @@ class WinWritableFile : public WritableFile {
 
   // Need to implement this so the file is truncated correctly
   // when buffered and unbuffered mode
-  virtual Status Truncate(uint64_t size) override {
+  Status Truncate(uint64_t size) override {
     Status s =  ftruncate(filename_, hFile_, size);
     if (s.ok()) {
       filesize_ = size;
@@ -1033,7 +1033,7 @@ class WinWritableFile : public WritableFile {
     return s;
   }
 
-  virtual Status Close() override {
+  Status Close() override {
 
     Status s;
 
@@ -1057,11 +1057,11 @@ class WinWritableFile : public WritableFile {
 
   // write out the cached data to the OS cache
   // This is now taken care of the WritableFileWriter
-  virtual Status Flush() override {
+  Status Flush() override {
     return Status::OK();
   }
 
-  virtual Status Sync() override {
+  Status Sync() override {
     Status s;
     // Calls flush buffers
     if (fsync(hFile_) < 0) {
@@ -1072,9 +1072,9 @@ class WinWritableFile : public WritableFile {
     return s;
   }
 
-  virtual Status Fsync() override { return Sync(); }
+  Status Fsync() override { return Sync(); }
 
-  virtual uint64_t GetFileSize() override {
+  uint64_t GetFileSize() override {
     // Double accounting now here with WritableFileWriter
     // and this size will be wrong when unbuffered access is used
     // but tests implement their own writable files and do not use WritableFileWrapper
@@ -1083,7 +1083,7 @@ class WinWritableFile : public WritableFile {
     return filesize_;
   }
 
-  virtual Status Allocate(uint64_t offset, uint64_t len) override {
+  Status Allocate(uint64_t offset, uint64_t len) override {
     Status status;
     TEST_KILL_RANDOM("WinWritableFile::Allocate", rocksdb_kill_odds);
 
@@ -1109,7 +1109,7 @@ class WinDirectory : public Directory {
  public:
   WinDirectory() {}
 
-  virtual Status Fsync() override { return Status::OK(); }
+  Status Fsync() override { return Status::OK(); }
 };
 
 class WinFileLock : public FileLock {
@@ -1159,7 +1159,7 @@ class WinEnv : public Env {
     delete thread_status_updater_;
   }
 
-  virtual Status DeleteFile(const std::string& fname) override {
+  Status DeleteFile(const std::string& fname) override {
     Status result;
 
     if (_unlink(fname.c_str())) {
@@ -1379,7 +1379,7 @@ class WinEnv : public Env {
     return s;
   }
 
-  virtual Status FileExists(const std::string& fname) override {
+  Status FileExists(const std::string& fname) override {
     // F_OK == 0
     const int F_OK_ = 0;
     return _access(fname.c_str(), F_OK_) == 0 ? Status::OK()
@@ -1415,7 +1415,7 @@ class WinEnv : public Env {
     return status;
   }
 
-  virtual Status CreateDir(const std::string& name) override {
+  Status CreateDir(const std::string& name) override {
     Status result;
 
     if (_mkdir(name.c_str()) != 0) {
@@ -1426,7 +1426,7 @@ class WinEnv : public Env {
     return result;
   }
 
-  virtual Status CreateDirIfMissing(const std::string& name) override {
+  Status CreateDirIfMissing(const std::string& name) override {
     Status result;
 
     if (DirExists(name)) {
@@ -1446,7 +1446,7 @@ class WinEnv : public Env {
     return result;
   }
 
-  virtual Status DeleteDir(const std::string& name) override {
+  Status DeleteDir(const std::string& name) override {
     Status result;
     if (_rmdir(name.c_str()) != 0) {
       auto code = errno;
@@ -1573,7 +1573,7 @@ class WinEnv : public Env {
     return result;
   }
 
-  virtual Status UnlockFile(FileLock* lock) override {
+  Status UnlockFile(FileLock* lock) override {
     Status result;
 
     assert(lock != nullptr);
@@ -1587,15 +1587,15 @@ class WinEnv : public Env {
                         void* tag = nullptr,
                         void (*unschedFunction)(void* arg) = 0) override;
 
-  virtual int UnSchedule(void* arg, Priority pri) override;
+  int UnSchedule(void* arg, Priority pri) override;
 
-  virtual void StartThread(void (*function)(void* arg), void* arg) override;
+  void StartThread(void (*function)(void* arg), void* arg) override;
 
-  virtual void WaitForJoin() override;
+  void WaitForJoin() override;
 
-  virtual unsigned int GetThreadPoolQueueLen(Priority pri = LOW) const override;
+  unsigned int GetThreadPoolQueueLen(Priority pri = LOW) const override;
 
-  virtual Status GetTestDirectory(std::string* result) override {
+  Status GetTestDirectory(std::string* result) override {
     std::string output;
 
     const char* env = getenv("TEST_TMPDIR");
@@ -1635,7 +1635,7 @@ class WinEnv : public Env {
     return thread_id;
   }
 
-  virtual uint64_t GetThreadID() const override { return gettid(); }
+  uint64_t GetThreadID() const override { return gettid(); }
 
   virtual Status NewLogger(const std::string& fname,
                            std::shared_ptr<Logger>* result) override {
@@ -1677,7 +1677,7 @@ class WinEnv : public Env {
     return s;
   }
 
-  virtual uint64_t NowMicros() override {
+  uint64_t NowMicros() override {
     if (GetSystemTimePreciseAsFileTime_ != NULL) {
       // all std::chrono clocks on windows proved to return
       // values that may repeat that is not good enough for some uses.
@@ -1703,7 +1703,7 @@ class WinEnv : public Env {
     return duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
   }
 
-  virtual uint64_t NowNanos() override {
+  uint64_t NowNanos() override {
     // all std::chrono clocks on windows have the same resolution that is only
     // good enough for microseconds but not nanoseconds
     // On Windows 8 and Windows 2012 Server
@@ -1717,11 +1717,11 @@ class WinEnv : public Env {
     return li.QuadPart;
   }
 
-  virtual void SleepForMicroseconds(int micros) override {
+  void SleepForMicroseconds(int micros) override {
     std::this_thread::sleep_for(std::chrono::microseconds(micros));
   }
 
-  virtual Status GetHostName(char* name, uint64_t len) override {
+  Status GetHostName(char* name, uint64_t len) override {
     Status s;
     DWORD nSize = static_cast<DWORD>(
         std::min<uint64_t>(len, std::numeric_limits<DWORD>::max()));
@@ -1778,17 +1778,17 @@ class WinEnv : public Env {
   }
 
   // Allow increasing the number of worker threads.
-  virtual void SetBackgroundThreads(int num, Priority pri) override {
+  void SetBackgroundThreads(int num, Priority pri) override {
     assert(pri >= Priority::LOW && pri <= Priority::HIGH);
     thread_pools_[pri].SetBackgroundThreads(num);
   }
 
-  virtual void IncBackgroundThreadsIfNeeded(int num, Priority pri) override {
+  void IncBackgroundThreadsIfNeeded(int num, Priority pri) override {
     assert(pri >= Priority::LOW && pri <= Priority::HIGH);
     thread_pools_[pri].IncBackgroundThreadsIfNeeded(num);
   }
 
-  virtual std::string TimeToString(uint64_t secondsSince1970) override {
+  std::string TimeToString(uint64_t secondsSince1970) override {
     std::string result;
 
     const time_t seconds = secondsSince1970;

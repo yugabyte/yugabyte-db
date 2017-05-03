@@ -112,7 +112,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
     // Reduce the TS<->Master heartbeat interval
@@ -142,7 +142,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     return rows;
   }
 
-  virtual void DoTearDown() override {
+  void DoTearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
@@ -2392,7 +2392,7 @@ class DLSCallback : public YBStatusCallback {
   explicit DLSCallback(Atomic32* i) : i(i) {
   }
 
-  virtual void Run(const Status& s) override {
+  void Run(const Status& s) override {
     CHECK_OK(s);
     NoBarrier_AtomicIncrement(i, 1);
     delete this;

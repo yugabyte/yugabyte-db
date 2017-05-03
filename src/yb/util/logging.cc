@@ -65,7 +65,7 @@ class SimpleSink : public google::LogSink {
  public:
   explicit SimpleSink(LoggingCallback cb) : cb_(std::move(cb)) {}
 
-  virtual ~SimpleSink() override {
+  ~SimpleSink() override {
   }
 
   virtual void send(google::LogSeverity severity, const char* full_filename,

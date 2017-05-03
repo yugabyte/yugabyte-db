@@ -101,7 +101,7 @@ class FileSubstitutions : public Substituter {
     return Status::OK();
   }
 
-  virtual void InitSubstitutionMap(map<string, string> *map) const override {
+  void InitSubstitutionMap(map<string, string> *map) const override {
     typedef std::map<string, string>::value_type kv_pair;
     for (const kv_pair &pair : map_) {
       (*map)[pair.first] = pair.second;
@@ -166,7 +166,7 @@ class MethodSubstitutions : public Substituter {
     : method_(method) {
   }
 
-  virtual void InitSubstitutionMap(map<string, string> *map) const override {
+  void InitSubstitutionMap(map<string, string> *map) const override {
     (*map)["rpc_name"] = method_->name();
     (*map)["rpc_full_name"] = method_->full_name();
     (*map)["rpc_full_name_plainchars"] =
@@ -217,7 +217,7 @@ class ServiceSubstitutions : public Substituter {
     : service_(service)
   {}
 
-  virtual void InitSubstitutionMap(map<string, string> *map) const override {
+  void InitSubstitutionMap(map<string, string> *map) const override {
     (*map)["service_name"] = service_->name();
     (*map)["full_service_name"] = service_->full_name();
     (*map)["service_method_count"] = SimpleItoa(service_->method_count());

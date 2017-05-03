@@ -186,7 +186,7 @@ class LargestFlushedSeqNumCollector : public rocksdb::EventListener {
 
   ~LargestFlushedSeqNumCollector() {}
 
-  virtual void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& info) override {
+  void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& info) override {
     SetLargestSeqNum(info.largest_seqno);
     LOG(INFO) << "RocksDB flushed up to seqno = " << info.largest_seqno << " for tablet "
               << tablet_id_;

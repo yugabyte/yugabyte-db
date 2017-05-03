@@ -292,7 +292,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status FileExists(const std::string& fname) override {
+  Status FileExists(const std::string& fname) override {
     int result = access(fname.c_str(), F_OK);
 
     if (result == 0) {
@@ -328,7 +328,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status DeleteFile(const std::string& fname) override {
+  Status DeleteFile(const std::string& fname) override {
     Status result;
     if (unlink(fname.c_str()) != 0) {
       result = IOError(fname, errno);
@@ -336,7 +336,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status CreateDir(const std::string& name) override {
+  Status CreateDir(const std::string& name) override {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
       result = IOError(name, errno);
@@ -344,7 +344,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status CreateDirIfMissing(const std::string& name) override {
+  Status CreateDirIfMissing(const std::string& name) override {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
       if (errno != EEXIST) {
@@ -358,7 +358,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status DeleteDir(const std::string& name) override {
+  Status DeleteDir(const std::string& name) override {
     Status result;
     if (rmdir(name.c_str()) != 0) {
       result = IOError(name, errno);
@@ -409,7 +409,7 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual Status LockFile(const std::string& fname, FileLock** lock) override {
+  Status LockFile(const std::string& fname, FileLock** lock) override {
     *lock = nullptr;
     Status result;
     int fd;
@@ -432,7 +432,7 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual Status UnlockFile(FileLock* lock) override {
+  Status UnlockFile(FileLock* lock) override {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
     if (LockOrUnlock(my_lock->filename, my_lock->fd_, false) == -1) {
@@ -447,15 +447,15 @@ class PosixEnv : public Env {
                         Priority pri = LOW, void* tag = nullptr,
                         void (*unschedFunction)(void* arg) = 0) override;
 
-  virtual int UnSchedule(void* arg, Priority pri) override;
+  int UnSchedule(void* arg, Priority pri) override;
 
-  virtual void StartThread(void (*function)(void* arg), void* arg) override;
+  void StartThread(void (*function)(void* arg), void* arg) override;
 
-  virtual void WaitForJoin() override;
+  void WaitForJoin() override;
 
-  virtual unsigned int GetThreadPoolQueueLen(Priority pri = LOW) const override;
+  unsigned int GetThreadPoolQueueLen(Priority pri = LOW) const override;
 
-  virtual Status GetTestDirectory(std::string* result) override {
+  Status GetTestDirectory(std::string* result) override {
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
       *result = env;
@@ -486,7 +486,7 @@ class PosixEnv : public Env {
     return gettid(tid);
   }
 
-  virtual uint64_t GetThreadID() const override {
+  uint64_t GetThreadID() const override {
     return gettid(pthread_self());
   }
 
@@ -511,13 +511,13 @@ class PosixEnv : public Env {
     }
   }
 
-  virtual uint64_t NowMicros() override {
+  uint64_t NowMicros() override {
     struct timeval tv;
     gettimeofday(&tv, nullptr);
     return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
-  virtual uint64_t NowNanos() override {
+  uint64_t NowNanos() override {
 #if defined(OS_LINUX) || defined(OS_FREEBSD)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -535,9 +535,9 @@ class PosixEnv : public Env {
 #endif
   }
 
-  virtual void SleepForMicroseconds(int micros) override { usleep(micros); }
+  void SleepForMicroseconds(int micros) override { usleep(micros); }
 
-  virtual Status GetHostName(char* name, uint64_t len) override {
+  Status GetHostName(char* name, uint64_t len) override {
     int ret = gethostname(name, static_cast<size_t>(len));
     if (ret < 0) {
       if (errno == EFAULT || errno == EINVAL)
@@ -548,7 +548,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status GetCurrentTime(int64_t* unix_time) override {
+  Status GetCurrentTime(int64_t* unix_time) override {
     time_t ret = time(nullptr);
     if (ret == (time_t) -1) {
       return IOError("GetCurrentTime", errno);
@@ -575,25 +575,25 @@ class PosixEnv : public Env {
   }
 
   // Allow increasing the number of worker threads.
-  virtual void SetBackgroundThreads(int num, Priority pri) override {
+  void SetBackgroundThreads(int num, Priority pri) override {
     assert(pri >= Priority::LOW && pri <= Priority::HIGH);
     thread_pools_[pri].SetBackgroundThreads(num);
   }
 
   // Allow increasing the number of worker threads.
-  virtual void IncBackgroundThreadsIfNeeded(int num, Priority pri) override {
+  void IncBackgroundThreadsIfNeeded(int num, Priority pri) override {
     assert(pri >= Priority::LOW && pri <= Priority::HIGH);
     thread_pools_[pri].IncBackgroundThreadsIfNeeded(num);
   }
 
-  virtual void LowerThreadPoolIOPriority(Priority pool = LOW) override {
+  void LowerThreadPoolIOPriority(Priority pool = LOW) override {
     assert(pool >= Priority::LOW && pool <= Priority::HIGH);
 #ifdef OS_LINUX
     thread_pools_[pool].LowerIOPriority();
 #endif
   }
 
-  virtual std::string TimeToString(uint64_t secondsSince1970) override {
+  std::string TimeToString(uint64_t secondsSince1970) override {
     const time_t seconds = (time_t)secondsSince1970;
     struct tm t;
     int maxsize = 64;

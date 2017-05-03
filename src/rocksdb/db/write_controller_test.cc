@@ -16,7 +16,7 @@ class TimeSetEnv : public EnvWrapper {
  public:
   explicit TimeSetEnv() : EnvWrapper(nullptr) {}
   uint64_t now_micros_ = 6666;
-  virtual uint64_t NowMicros() override { return now_micros_; }
+  uint64_t NowMicros() override { return now_micros_; }
 };
 
 TEST_F(WriteControllerTest, ChangeDelayRateTest) {

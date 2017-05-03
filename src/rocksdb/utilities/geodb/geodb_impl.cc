@@ -169,10 +169,10 @@ class GeoIteratorImpl : public GeoIterator {
     : values_(std::move(values)) {
     iter_ = values_.begin();
   }
-  virtual void Next() override;
-  virtual bool Valid() const override;
-  virtual const GeoObject& geo_object() override;
-  virtual Status status() const override;
+  void Next() override;
+  bool Valid() const override;
+  const GeoObject& geo_object() override;
+  Status status() const override;
 };
 
 class GeoErrorIterator : public GeoIterator {
@@ -180,13 +180,13 @@ class GeoErrorIterator : public GeoIterator {
   Status status_;
  public:
   explicit GeoErrorIterator(Status s) : status_(s) {}
-  virtual void Next() override {};
-  virtual bool Valid() const override { return false; }
-  virtual const GeoObject& geo_object() override {
+  void Next() override {};
+  bool Valid() const override { return false; }
+  const GeoObject& geo_object() override {
     GeoObject* g = new GeoObject();
     return *g;
   }
-  virtual Status status() const override { return status_; }
+  Status status() const override { return status_; }
 };
 
 void GeoIteratorImpl::Next() {

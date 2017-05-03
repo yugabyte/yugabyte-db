@@ -100,7 +100,7 @@ class TestMaintenanceOp : public MaintenanceOp {
 
   virtual ~TestMaintenanceOp() {}
 
-  virtual bool Prepare() override {
+  bool Prepare() override {
     std::lock_guard<Mutex> guard(lock_);
     if (state_ != OP_RUNNABLE) {
       return false;
@@ -111,7 +111,7 @@ class TestMaintenanceOp : public MaintenanceOp {
     return true;
   }
 
-  virtual void Perform() override {
+  void Perform() override {
     DLOG(INFO) << "Performing op " << name();
     std::lock_guard<Mutex> guard(lock_);
     CHECK_EQ(OP_RUNNING, state_);
@@ -119,7 +119,7 @@ class TestMaintenanceOp : public MaintenanceOp {
     state_change_cond_.Broadcast();
   }
 
-  virtual void UpdateStats(MaintenanceOpStats* stats) override {
+  void UpdateStats(MaintenanceOpStats* stats) override {
     std::lock_guard<Mutex> guard(lock_);
     stats->set_runnable(state_ == OP_RUNNABLE);
     stats->set_ram_anchored(consumption_.consumption());
@@ -172,11 +172,11 @@ class TestMaintenanceOp : public MaintenanceOp {
     perf_improvement_ = perf_improvement;
   }
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const override {
+  scoped_refptr<Histogram> DurationHistogram() const override {
     return maintenance_op_duration_;
   }
 
-  virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override {
+  scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override {
     return maintenance_ops_running_;
   }
 

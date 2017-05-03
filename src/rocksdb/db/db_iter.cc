@@ -99,17 +99,17 @@ class DBIter: public Iterator {
       iter_->PinData();
     }
   }
-  virtual bool Valid() const override { return valid_; }
-  virtual Slice key() const override {
+  bool Valid() const override { return valid_; }
+  Slice key() const override {
     assert(valid_);
     return saved_key_.GetKey();
   }
-  virtual Slice value() const override {
+  Slice value() const override {
     assert(valid_);
     return (direction_ == kForward && !current_entry_is_merged_) ?
       iter_->value() : saved_value_;
   }
-  virtual Status status() const override {
+  Status status() const override {
     if (status_.ok()) {
       return iter_->status();
     } else {
@@ -161,11 +161,11 @@ class DBIter: public Iterator {
     return Status::InvalidArgument("Undentified property.");
   }
 
-  virtual void Next() override;
-  virtual void Prev() override;
-  virtual void Seek(const Slice& target) override;
-  virtual void SeekToFirst() override;
-  virtual void SeekToLast() override;
+  void Next() override;
+  void Prev() override;
+  void Seek(const Slice& target) override;
+  void SeekToFirst() override;
+  void SeekToLast() override;
 
  private:
   void ReverseToBackward();

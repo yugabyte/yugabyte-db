@@ -229,7 +229,7 @@ class TableLoader : public TableVisitor {
  public:
   explicit TableLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status Visit(const TableId& table_id, const SysTablesEntryPB& metadata) override {
+  Status Visit(const TableId& table_id, const SysTablesEntryPB& metadata) override {
     CHECK(!ContainsKey(catalog_manager_->table_ids_map_, table_id))
           << "Table already exists: " << table_id;
 
@@ -264,7 +264,7 @@ class TabletLoader : public TabletVisitor {
  public:
   explicit TabletLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) override {
+  Status Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) override {
     // Lookup the table
     const TableId& table_id = metadata.table_id();
     scoped_refptr<TableInfo> table(FindPtrOrNull(
@@ -326,7 +326,7 @@ class NamespaceLoader : public NamespaceVisitor {
  public:
   explicit NamespaceLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
 
-  virtual Status Visit(const NamespaceId& ns_id, const SysNamespaceEntryPB& metadata) override {
+  Status Visit(const NamespaceId& ns_id, const SysNamespaceEntryPB& metadata) override {
     CHECK(!ContainsKey(catalog_manager_->namespace_ids_map_, ns_id))
       << "Namespace already exists: " << ns_id;
 
@@ -2894,7 +2894,7 @@ class PickSpecificUUID : public TSPicker {
   PickSpecificUUID(Master* master, string ts_uuid)
       : master_(master), ts_uuid_(std::move(ts_uuid)) {}
 
-  virtual Status PickReplica(TSDescriptor** ts_desc) override {
+  Status PickReplica(TSDescriptor** ts_desc) override {
     shared_ptr<TSDescriptor> ts;
     if (!master_->ts_manager()->LookupTSByUUID(ts_uuid_, &ts)) {
       return STATUS(NotFound, "unknown tablet server id", ts_uuid_);
@@ -2918,7 +2918,7 @@ class PickLeaderReplica : public TSPicker {
     tablet_(tablet) {
   }
 
-  virtual Status PickReplica(TSDescriptor** ts_desc) override {
+  Status PickReplica(TSDescriptor** ts_desc) override {
     TabletInfo::ReplicaMap replica_locations;
     tablet_->GetReplicaLocations(&replica_locations);
     for (const TabletInfo::ReplicaMap::value_type& r : replica_locations) {
@@ -2990,7 +2990,7 @@ class RetryingTSRpcTask : public MonitoredTask {
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
   // a different terminal state before we were able to abort it, return that state.
-  virtual State AbortAndReturnPrevState() override {
+  State AbortAndReturnPrevState() override {
     auto prev_state = state();
     while (prev_state == MonitoredTask::kStateRunning ||
            prev_state == MonitoredTask::kStateWaiting) {
@@ -3007,12 +3007,12 @@ class RetryingTSRpcTask : public MonitoredTask {
     return prev_state;
   }
 
-  virtual State state() const override {
+  State state() const override {
     return state_.load();
   }
 
-  virtual MonoTime start_timestamp() const override { return start_ts_; }
-  virtual MonoTime completion_timestamp() const override { return end_ts_; }
+  MonoTime start_timestamp() const override { return start_ts_; }
+  MonoTime completion_timestamp() const override { return end_ts_; }
 
  protected:
   // Send an RPC request and register a callback.
@@ -3268,18 +3268,18 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
     req_.mutable_config()->CopyFrom(tablet_pb.committed_consensus_state().config());
   }
 
-  virtual Type type() const override { return ASYNC_CREATE_REPLICA; }
+  Type type() const override { return ASYNC_CREATE_REPLICA; }
 
-  virtual string type_name() const override { return "Create Tablet"; }
+  string type_name() const override { return "Create Tablet"; }
 
-  virtual string description() const override {
+  string description() const override {
     return "CreateTablet RPC for tablet " + tablet_id_ + " on TS " + permanent_uuid_;
   }
 
  protected:
-  virtual string tablet_id() const override { return tablet_id_; }
+  string tablet_id() const override { return tablet_id_; }
 
-  virtual void HandleResponse(int attempt) override {
+  void HandleResponse(int attempt) override {
     if (!resp_.has_error()) {
       PerformStateTransition(kStateRunning, kStateComplete);
     } else {
@@ -3296,7 +3296,7 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTask {
     }
   }
 
-  virtual bool SendRequest(int attempt) override {
+  bool SendRequest(int attempt) override {
     ts_proxy_->CreateTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
     VLOG(1) << "Send create tablet request to " << permanent_uuid_ << ":\n"
             << " (attempt " << attempt << "):\n"
@@ -3326,18 +3326,18 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
             std::move(cas_config_opid_index_less_or_equal)),
         reason_(std::move(reason)) {}
 
-  virtual Type type() const override { return ASYNC_DELETE_REPLICA; }
+  Type type() const override { return ASYNC_DELETE_REPLICA; }
 
-  virtual string type_name() const override { return "Delete Tablet"; }
+  string type_name() const override { return "Delete Tablet"; }
 
-  virtual string description() const override {
+  string description() const override {
     return tablet_id_ + " Delete Tablet RPC for TS=" + permanent_uuid_;
   }
 
  protected:
-  virtual string tablet_id() const override { return tablet_id_; }
+  string tablet_id() const override { return tablet_id_; }
 
-  virtual void HandleResponse(int attempt) override {
+  void HandleResponse(int attempt) override {
     bool delete_done = false;
     if (resp_.has_error()) {
       Status status = StatusFromPB(resp_.error().status());
@@ -3385,7 +3385,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
     }
   }
 
-  virtual bool SendRequest(int attempt) override {
+  bool SendRequest(int attempt) override {
     tserver::DeleteTabletRequestPB req;
     req.set_dest_uuid(permanent_uuid_);
     req.set_tablet_id(tablet_id_);
@@ -3428,21 +3428,21 @@ class AsyncAlterTable : public RetryingTSRpcTask {
       tablet_(tablet) {
   }
 
-  virtual Type type() const override { return ASYNC_ALTER_TABLE; }
+  Type type() const override { return ASYNC_ALTER_TABLE; }
 
-  virtual string type_name() const override { return "Alter Table"; }
+  string type_name() const override { return "Alter Table"; }
 
-  virtual string description() const override {
+  string description() const override {
     return tablet_->ToString() + " Alter Table RPC";
   }
 
  private:
-  virtual string tablet_id() const override { return tablet_->tablet_id(); }
+  string tablet_id() const override { return tablet_->tablet_id(); }
   string permanent_uuid() const {
     return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
   }
 
-  virtual void HandleResponse(int attempt) override {
+  void HandleResponse(int attempt) override {
     if (resp_.has_error()) {
       Status status = StatusFromPB(resp_.error().status());
 
@@ -3474,7 +3474,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
     }
   }
 
-  virtual bool SendRequest(int attempt) override {
+  bool SendRequest(int attempt) override {
     TableMetadataLock l(tablet_->table().get(), TableMetadataLock::READ);
 
     tserver::AlterSchemaRequestPB req;
@@ -3513,7 +3513,7 @@ class CommonInfoForRaftTask : public RetryingTSRpcTask {
     deadline_ = MonoTime::Max();  // Never time out.
   }
 
-  virtual string tablet_id() const override { return tablet_->tablet_id(); }
+  string tablet_id() const override { return tablet_->tablet_id(); }
   virtual string change_config_ts_uuid() const { return change_config_ts_uuid_; }
 
  protected:
@@ -3544,11 +3544,11 @@ class AsyncChangeConfigTask : public CommonInfoForRaftTask {
       : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {
   }
 
-  virtual Type type() const override { return ASYNC_CHANGE_CONFIG; }
+  Type type() const override { return ASYNC_CHANGE_CONFIG; }
 
-  virtual string type_name() const override { return "ChangeConfig"; }
+  string type_name() const override { return "ChangeConfig"; }
 
-  virtual string description() const override {
+  string description() const override {
     return Substitute(
         "$0 RPC for tablet $1 on peer $2 with cas_config_opid_index $3", type_name(),
         tablet_->tablet_id(), permanent_uuid(), cstate_.config().opid_index());
@@ -3626,12 +3626,12 @@ class AsyncAddServerTask : public AsyncChangeConfigTask {
       const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
 
-  virtual Type type() const override { return ASYNC_ADD_SERVER; }
+  Type type() const override { return ASYNC_ADD_SERVER; }
 
-  virtual string type_name() const override { return "AddServer ChangeConfig"; }
+  string type_name() const override { return "AddServer ChangeConfig"; }
 
  protected:
-  virtual bool PrepareRequest(int attempt) override;
+  bool PrepareRequest(int attempt) override;
 };
 
 bool AsyncAddServerTask::PrepareRequest(int attempt) {
@@ -3685,12 +3685,12 @@ class AsyncRemoveServerTask : public AsyncChangeConfigTask {
       const ConsensusStatePB& cstate, const string& change_config_ts_uuid)
       : AsyncChangeConfigTask(master, callback_pool, tablet, cstate, change_config_ts_uuid) {}
 
-  virtual Type type() const override { return ASYNC_REMOVE_SERVER; }
+  Type type() const override { return ASYNC_REMOVE_SERVER; }
 
   string type_name() const override { return "RemoveServer ChangeConfig"; }
 
  protected:
-  virtual bool PrepareRequest(int attempt) override;
+  bool PrepareRequest(int attempt) override;
 };
 
 bool AsyncRemoveServerTask::PrepareRequest(int attempt) {
@@ -3728,7 +3728,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
     : CommonInfoForRaftTask(master, callback_pool, tablet, cstate, change_config_ts_uuid),
       should_remove_(should_remove), new_leader_uuid_(new_leader_uuid) {}
 
-  virtual Type type() const override { return ASYNC_TRY_STEP_DOWN; }
+  Type type() const override { return ASYNC_TRY_STEP_DOWN; }
 
   string type_name() const override { return "Stepdown Leader"; }
 
@@ -3739,9 +3739,9 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   string new_leader_uuid() const { return new_leader_uuid_; }
 
  protected:
-  virtual bool PrepareRequest(int attempt) override;
-  virtual bool SendRequest(int attempt) override;
-  virtual void HandleResponse(int attempt) override;
+  bool PrepareRequest(int attempt) override;
+  bool SendRequest(int attempt) override;
+  void HandleResponse(int attempt) override;
 
   const bool should_remove_;
   const string new_leader_uuid_;

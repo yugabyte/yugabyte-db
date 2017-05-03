@@ -296,7 +296,7 @@ class ValueGetterFromDB : public ValueGetter {
  public:
   ValueGetterFromDB(DB* db, ColumnFamilyHandle* cf) : db_(db), cf_(cf) {}
 
-  virtual bool Get(uint64_t id) override {
+  bool Get(uint64_t id) override {
     std::string encoded_id;
     PutFixed64BigEndian(&encoded_id, id);
     status_ = db_->Get(ReadOptions(), cf_, encoded_id, &value_);
@@ -308,9 +308,9 @@ class ValueGetterFromDB : public ValueGetter {
     return true;
   }
 
-  virtual const Slice value() const override { return value_; }
+  const Slice value() const override { return value_; }
 
-  virtual Status status() const override { return status_; }
+  Status status() const override { return status_; }
 
  private:
   std::string value_;
@@ -323,7 +323,7 @@ class ValueGetterFromIterator : public ValueGetter {
  public:
   explicit ValueGetterFromIterator(Iterator* iterator) : iterator_(iterator) {}
 
-  virtual bool Get(uint64_t id) override {
+  bool Get(uint64_t id) override {
     std::string encoded_id;
     PutFixed64BigEndian(&encoded_id, id);
     iterator_->Seek(encoded_id);
@@ -336,9 +336,9 @@ class ValueGetterFromIterator : public ValueGetter {
     return true;
   }
 
-  virtual const Slice value() const override { return iterator_->value(); }
+  const Slice value() const override { return iterator_->value(); }
 
-  virtual Status status() const override { return status_; }
+  Status status() const override { return status_; }
 
  private:
   std::unique_ptr<Iterator> iterator_;
@@ -406,9 +406,9 @@ class SpatialIndexCursor : public Cursor {
     }
   }
 
-  virtual bool Valid() const override { return valid_; }
+  bool Valid() const override { return valid_; }
 
-  virtual void Next() override {
+  void Next() override {
     assert(valid_);
 
     ++primary_keys_iterator_;
@@ -420,12 +420,12 @@ class SpatialIndexCursor : public Cursor {
     ExtractData();
   }
 
-  virtual const Slice blob() override { return current_blob_; }
-  virtual const FeatureSet& feature_set() override {
+  const Slice blob() override { return current_blob_; }
+  const FeatureSet& feature_set() override {
     return current_feature_set_;
   }
 
-  virtual Status status() const override {
+  Status status() const override {
     if (!status_.ok()) {
       return status_;
     }
@@ -487,15 +487,15 @@ class SpatialIndexCursor : public Cursor {
 class ErrorCursor : public Cursor {
  public:
   explicit ErrorCursor(Status s) : s_(s) { assert(!s.ok()); }
-  virtual Status status() const override { return s_; }
-  virtual bool Valid() const override { return false; }
-  virtual void Next() override { assert(false); }
+  Status status() const override { return s_; }
+  bool Valid() const override { return false; }
+  void Next() override { assert(false); }
 
-  virtual const Slice blob() override {
+  const Slice blob() override {
     assert(false);
     return Slice();
   }
-  virtual const FeatureSet& feature_set() override {
+  const FeatureSet& feature_set() override {
     assert(false);
     // compiler complains otherwise
     return trash_;
@@ -590,7 +590,7 @@ class SpatialDBImpl : public SpatialDB {
     return Write(write_options, &batch);
   }
 
-  virtual Status Compact(int num_threads) override {
+  Status Compact(int num_threads) override {
     std::vector<ColumnFamilyHandle*> column_families;
     column_families.push_back(data_column_family_);
 

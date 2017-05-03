@@ -40,7 +40,7 @@ class MasterChangeConfigTest : public YBTest {
   ~MasterChangeConfigTest() {}
 
  protected:
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
     ExternalMiniClusterOptions opts;
     opts.master_rpc_ports = { 0, 0, 0 }; // external mini-cluster Start() gets the free ports.
@@ -61,7 +61,7 @@ class MasterChangeConfigTest : public YBTest {
     }
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();

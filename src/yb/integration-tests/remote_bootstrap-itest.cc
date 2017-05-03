@@ -82,7 +82,7 @@ namespace yb {
 
 class RemoteBootstrapITest : public YBTest {
  public:
-  virtual void TearDown() override {
+  void TearDown() override {
     if (HasFatalFailure()) {
       LOG(INFO) << "Found fatal failure";
       for (int i = 0; i < 3; i++) {

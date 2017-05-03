@@ -90,7 +90,7 @@ class TestRandomAccess : public YBTabletTest {
     expected_tablet_state_.resize(FLAGS_keyspace_size);
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(tablet().get(), &client_schema_));
   }

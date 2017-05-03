@@ -650,11 +650,11 @@ class RunFunctionTask : public ReactorTask {
  public:
   explicit RunFunctionTask(std::function<Status()> f) : function_(std::move(f)), latch_(1) {}
 
-  virtual void Run(ReactorThread *reactor) override {
+  void Run(ReactorThread *reactor) override {
     status_ = function_();
     latch_.CountDown();
   }
-  virtual void Abort(const Status &status) override {
+  void Abort(const Status &status) override {
     status_ = status;
     latch_.CountDown();
   }
@@ -694,11 +694,11 @@ class QueueServerEventTask : public ReactorTask {
       : server_event_(server_event) {
   }
 
-  virtual void Run(ReactorThread *thread) override {
+  void Run(ReactorThread *thread) override {
     CHECK_OK(thread->QueueEventOnAllConnections(server_event_));
   }
 
-  virtual void Abort(const Status &status) override {
+  void Abort(const Status &status) override {
     LOG (ERROR) << strings::Substitute("Aborted queueing event $0 due to $1",
                                        server_event_->ToString(), status.ToString());
   }
@@ -713,11 +713,11 @@ class RegisterConnectionTask : public ReactorTask {
     conn_(conn)
   {}
 
-  virtual void Run(ReactorThread *thread) override {
+  void Run(ReactorThread *thread) override {
     thread->RegisterConnection(conn_);
   }
 
-  virtual void Abort(const Status &status) override {
+  void Abort(const Status &status) override {
     // We don't need to Shutdown the connection since it was never registered.
     // This is only used for inbound connections, and inbound connections will
     // never have any calls added to them until they've been registered.
@@ -749,11 +749,11 @@ class AssignOutboundCallTask : public ReactorTask {
   explicit AssignOutboundCallTask(OutboundCallPtr call)
       : call_(std::move(call)) {}
 
-  virtual void Run(ReactorThread *reactor) override {
+  void Run(ReactorThread *reactor) override {
     reactor->AssignOutboundCall(call_);
   }
 
-  virtual void Abort(const Status &status) override {
+  void Abort(const Status &status) override {
     call_->SetFailed(status);
   }
 

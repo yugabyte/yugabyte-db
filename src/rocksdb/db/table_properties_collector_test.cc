@@ -28,7 +28,7 @@ namespace rocksdb {
 class TablePropertiesTest : public testing::Test,
                             public testing::WithParamInterface<bool> {
  public:
-  virtual void SetUp() override { backward_mode_ = GetParam(); }
+  void SetUp() override { backward_mode_ = GetParam(); }
 
   bool backward_mode_;
 };
@@ -102,7 +102,7 @@ class RegularKeysStartWithA: public TablePropertiesCollector {
     return Status::OK();
   }
 
-  virtual UserCollectedProperties GetReadableProperties() const override {
+  UserCollectedProperties GetReadableProperties() const override {
     return UserCollectedProperties{};
   }
 
@@ -139,7 +139,7 @@ class RegularKeysStartWithABackwardCompatible
     return Status::OK();
   }
 
-  virtual UserCollectedProperties GetReadableProperties() const override {
+  UserCollectedProperties GetReadableProperties() const override {
     return UserCollectedProperties{};
   }
 
@@ -168,7 +168,7 @@ class RegularKeysStartWithAInternal : public IntTblPropCollector {
     return Status::OK();
   }
 
-  virtual UserCollectedProperties GetReadableProperties() const override {
+  UserCollectedProperties GetReadableProperties() const override {
     return UserCollectedProperties{};
   }
 
@@ -201,7 +201,7 @@ class RegularKeysStartWithAFactory : public IntTblPropCollectorFactory,
 
 class FlushBlockEveryThreePolicy : public FlushBlockPolicy {
  public:
-  virtual bool Update(const Slice& key, const Slice& value) override {
+  bool Update(const Slice& key, const Slice& value) override {
     return (++count_ % 3U == 0);
   }
 

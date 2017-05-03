@@ -292,7 +292,7 @@ class TestPlainTableReader : public PlainTableReader {
   virtual ~TestPlainTableReader() {}
 
  private:
-  virtual bool MatchBloom(uint32_t hash) const override {
+  bool MatchBloom(uint32_t hash) const override {
     bool ret = PlainTableReader::MatchBloom(hash);
     if (*expect_bloom_not_match_) {
       EXPECT_TRUE(!ret);

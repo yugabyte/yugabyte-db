@@ -183,12 +183,12 @@ class BinarySearchIndexReader : public IndexReader {
     return index_block_->NewIterator(comparator_, iter, true);
   }
 
-  virtual size_t size() const override { return index_block_->size(); }
-  virtual size_t usable_size() const override {
+  size_t size() const override { return index_block_->size(); }
+  size_t usable_size() const override {
     return index_block_->usable_size();
   }
 
-  virtual size_t ApproximateMemoryUsage() const override {
+  size_t ApproximateMemoryUsage() const override {
     assert(index_block_);
     return index_block_->ApproximateMemoryUsage();
   }
@@ -295,12 +295,12 @@ class HashIndexReader : public IndexReader {
     return index_block_->NewIterator(comparator_, iter, total_order_seek);
   }
 
-  virtual size_t size() const override { return index_block_->size(); }
-  virtual size_t usable_size() const override {
+  size_t size() const override { return index_block_->size(); }
+  size_t usable_size() const override {
     return index_block_->usable_size();
   }
 
-  virtual size_t ApproximateMemoryUsage() const override {
+  size_t ApproximateMemoryUsage() const override {
     assert(index_block_);
     return index_block_->ApproximateMemoryUsage() +
            prefixes_contents_.data.size();
@@ -473,7 +473,7 @@ class BloomFilterAwareIterator : public ForwardingIterator {
 
   virtual ~BloomFilterAwareIterator() {}
 
-  virtual void Seek(const Slice& target) override {
+  void Seek(const Slice& target) override {
     if (skip_filters_) {
       internal_iter_.Seek(target);
     } else {

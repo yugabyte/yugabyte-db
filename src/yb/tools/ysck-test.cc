@@ -43,7 +43,7 @@ class MockYsckTabletServer : public YsckTabletServer {
         address_("<mock>") {
   }
 
-  virtual Status Connect() const override {
+  Status Connect() const override {
     return connect_status_;
   }
 
@@ -55,12 +55,12 @@ class MockYsckTabletServer : public YsckTabletServer {
     callback.Run(Status::OK(), 0);
   }
 
-  virtual Status CurrentHybridTime(uint64_t* hybrid_time) const override {
+  Status CurrentHybridTime(uint64_t* hybrid_time) const override {
     *hybrid_time = 0;
     return Status::OK();
   }
 
-  virtual const std::string& address() const override {
+  const std::string& address() const override {
     return address_;
   }
 
@@ -77,21 +77,21 @@ class MockYsckMaster : public YsckMaster {
       : connect_status_(Status::OK()) {
   }
 
-  virtual Status Connect() const override {
+  Status Connect() const override {
     return connect_status_;
   }
 
-  virtual Status RetrieveTabletServers(TSMap* tablet_servers) override {
+  Status RetrieveTabletServers(TSMap* tablet_servers) override {
     *tablet_servers = tablet_servers_;
     return Status::OK();
   }
 
-  virtual Status RetrieveTablesList(vector<shared_ptr<YsckTable>>* tables) override {
+  Status RetrieveTablesList(vector<shared_ptr<YsckTable>>* tables) override {
     tables->assign(tables_.begin(), tables_.end());
     return Status::OK();
   }
 
-  virtual Status RetrieveTabletsList(const shared_ptr<YsckTable>& table) override {
+  Status RetrieveTabletsList(const shared_ptr<YsckTable>& table) override {
     return Status::OK();
   }
 

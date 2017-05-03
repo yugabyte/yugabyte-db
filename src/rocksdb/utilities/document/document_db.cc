@@ -385,7 +385,7 @@ class SimpleSortedIndex : public Index {
   SimpleSortedIndex(const std::string& field, const std::string& name)
       : field_(field), name_(name) {}
 
-  virtual const char* Name() const override { return name_.c_str(); }
+  const char* Name() const override { return name_.c_str(); }
 
   virtual void GetIndexKey(const JSONDocument& document, std::string* key) const
       override {
@@ -399,11 +399,11 @@ class SimpleSortedIndex : public Index {
       }
     }
   }
-  virtual const Comparator* GetComparator() const override {
+  const Comparator* GetComparator() const override {
     return BytewiseComparator();
   }
 
-  virtual bool UsefulIndex(const Filter& filter) const override {
+  bool UsefulIndex(const Filter& filter) const override {
     return filter.GetInterval(field_) != nullptr;
   }
   // REQUIRES: UsefulIndex(filter) == true
@@ -520,20 +520,20 @@ class CursorWithFilterIndexed : public Cursor {
     AdvanceUntilSatisfies();
   }
 
-  virtual bool Valid() const override {
+  bool Valid() const override {
     return valid_ && secondary_index_iter_->Valid();
   }
-  virtual void Next() override {
+  void Next() override {
     assert(Valid());
     Advance();
     AdvanceUntilSatisfies();
   }
   // temporary object. copy it if you want to use it
-  virtual const JSONDocument& document() const override {
+  const JSONDocument& document() const override {
     assert(Valid());
     return *current_json_document_;
   }
-  virtual Status status() const override {
+  Status status() const override {
     if (!status_.ok()) {
       return status_;
     }
@@ -623,16 +623,16 @@ class CursorFromIterator : public Cursor {
     UpdateCurrentJSON();
   }
 
-  virtual bool Valid() const override { return status_.ok() && iter_->Valid(); }
-  virtual void Next() override {
+  bool Valid() const override { return status_.ok() && iter_->Valid(); }
+  void Next() override {
     iter_->Next();
     UpdateCurrentJSON();
   }
-  virtual const JSONDocument& document() const override {
+  const JSONDocument& document() const override {
     assert(Valid());
     return *current_json_document_;
   };
-  virtual Status status() const override {
+  Status status() const override {
     if (!status_.ok()) {
       return status_;
     }
@@ -664,17 +664,17 @@ class CursorWithFilter : public Cursor {
     assert(filter_.get() != nullptr);
     SeekToNextSatisfies();
   }
-  virtual bool Valid() const override { return base_cursor_->Valid(); }
-  virtual void Next() override {
+  bool Valid() const override { return base_cursor_->Valid(); }
+  void Next() override {
     assert(Valid());
     base_cursor_->Next();
     SeekToNextSatisfies();
   }
-  virtual const JSONDocument& document() const override {
+  const JSONDocument& document() const override {
     assert(Valid());
     return base_cursor_->document();
   }
-  virtual Status status() const override { return base_cursor_->status(); }
+  Status status() const override { return base_cursor_->status(); }
 
  private:
   void SeekToNextSatisfies() {
@@ -691,10 +691,10 @@ class CursorWithFilter : public Cursor {
 class CursorError : public Cursor {
  public:
   explicit CursorError(Status s) : s_(s) { assert(!s.ok()); }
-  virtual Status status() const override { return s_; }
-  virtual bool Valid() const override { return false; }
-  virtual void Next() override {}
-  virtual const JSONDocument& document() const override {
+  Status status() const override { return s_; }
+  bool Valid() const override { return false; }
+  void Next() override {}
+  const JSONDocument& document() const override {
     assert(false);
     // compiler complains otherwise
     return trash_;
@@ -772,7 +772,7 @@ class DocumentDBImpl : public DocumentDB {
     return DocumentDB::Write(write_options, &batch);
   }
 
-  virtual Status DropIndex(const std::string& name) override {
+  Status DropIndex(const std::string& name) override {
     MutexLock l(&write_mutex_);
 
     auto index_iter = name_to_index_.find(name);
@@ -1054,7 +1054,7 @@ class DocumentDBImpl : public DocumentDB {
                                 ColumnFamilyHandle* column_family) override {
     return nullptr;
   }
-  virtual Iterator* NewIterator(const ReadOptions& options) override {
+  Iterator* NewIterator(const ReadOptions& options) override {
     return nullptr;
   }
 

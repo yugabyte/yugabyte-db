@@ -297,7 +297,7 @@ class RpcTransactionCompletionCallback : public TransactionCompletionCallback {
   RpcTransactionCompletionCallback(rpc::RpcContext* const context, Response* const response)
       : context_(context), response_(response) { }
 
-  virtual void TransactionCompleted() override {
+  void TransactionCompleted() override {
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_);
     } else {
@@ -322,7 +322,7 @@ class WriteTransactionCompletionCallback : public TransactionCompletionCallback 
       tablet::WriteTransactionState* const state, bool trace = false)
       : context_(context), response_(response), state_(state), include_trace_(trace) { }
 
-  virtual void TransactionCompleted() override {
+  void TransactionCompleted() override {
     if (!status_.ok()) {
       SetupErrorAndRespond(get_error(), status_, code_, context_);
     } else {
@@ -431,18 +431,18 @@ class ScanResultCopier : public ScanResultCollector {
     SetLastRow(row_block, &last_primary_key_);
   }
 
-  virtual int BlocksProcessed() const override { return blocks_processed_; }
+  int BlocksProcessed() const override { return blocks_processed_; }
 
   // Returns number of bytes buffered to return.
-  virtual int64_t ResponseSize() const override {
+  int64_t ResponseSize() const override {
     return rows_data_->size() + indirect_data_->size();
   }
 
-  virtual const faststring& last_primary_key() const override {
+  const faststring& last_primary_key() const override {
     return last_primary_key_;
   }
 
-  virtual int64_t NumRowsReturned() const override {
+  int64_t NumRowsReturned() const override {
     return num_rows_returned_;
   }
 
@@ -483,14 +483,14 @@ class ScanResultChecksummer : public ScanResultCollector {
     SetLastRow(row_block, &encoded_last_row_);
   }
 
-  virtual int BlocksProcessed() const override { return blocks_processed_; }
+  int BlocksProcessed() const override { return blocks_processed_; }
 
   // Returns a constant -- we only return checksum based on a time budget.
-  virtual int64_t ResponseSize() const override { return sizeof(agg_checksum_); }
+  int64_t ResponseSize() const override { return sizeof(agg_checksum_); }
 
-  virtual const faststring& last_primary_key() const override { return encoded_last_row_; }
+  const faststring& last_primary_key() const override { return encoded_last_row_; }
 
-  virtual int64_t NumRowsReturned() const override {
+  int64_t NumRowsReturned() const override {
     return 0;
   }
 

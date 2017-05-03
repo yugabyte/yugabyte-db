@@ -48,7 +48,7 @@ class ConsensusMetadataTest : public YBTest {
     : fs_manager_(env_.get(), GetTestPath("fs_root")) {
   }
 
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
     ASSERT_OK(fs_manager_.CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_.Open());

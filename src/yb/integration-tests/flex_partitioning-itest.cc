@@ -67,7 +67,7 @@ class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> 
   FlexPartitioningITest()
     : random_(GetRandomSeed32()) {
   }
-  virtual void SetUp() override {
+  void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
     ExternalMiniClusterOptions opts;
@@ -84,7 +84,7 @@ class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> 
                                            &ts_map_));
   }
 
-  virtual void DoTearDown() override {
+  void DoTearDown() override {
     cluster_->Shutdown();
     YBMiniClusterTestBase::DoTearDown();
     STLDeleteValues(&ts_map_);

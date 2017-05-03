@@ -25,27 +25,27 @@ public:
       transform_(transform), lookahead_(lookahead) {
   }
 
-  virtual KeyHandle Allocate(const size_t len, char** buf) override {
+  KeyHandle Allocate(const size_t len, char** buf) override {
     *buf = skip_list_.AllocateKey(len);
     return static_cast<KeyHandle>(*buf);
   }
 
   // Insert key into the list.
   // REQUIRES: nothing that compares equal to key is currently in the list.
-  virtual void Insert(KeyHandle handle) override {
+  void Insert(KeyHandle handle) override {
     skip_list_.Insert(static_cast<char*>(handle));
   }
 
-  virtual void InsertConcurrently(KeyHandle handle) override {
+  void InsertConcurrently(KeyHandle handle) override {
     skip_list_.InsertConcurrently(static_cast<char*>(handle));
   }
 
   // Returns true iff an entry that compares equal to key is in the list.
-  virtual bool Contains(const char* key) const override {
+  bool Contains(const char* key) const override {
     return skip_list_.Contains(key);
   }
 
-  virtual size_t ApproximateMemoryUsage() override {
+  size_t ApproximateMemoryUsage() override {
     // All memory is allocated through allocator; nothing to report here
     return 0;
   }
@@ -70,7 +70,7 @@ public:
     return (end_count >= start_count) ? (end_count - start_count) : 0;
   }
 
-  virtual ~SkipListRep() override { }
+  ~SkipListRep() override { }
 
   // Iteration over the contents of a skip list
   class Iterator : public MemTableRep::Iterator {
@@ -83,28 +83,28 @@ public:
         const InlineSkipList<const MemTableRep::KeyComparator&>* list)
         : iter_(list) {}
 
-    virtual ~Iterator() override { }
+    ~Iterator() override { }
 
     // Returns true iff the iterator is positioned at a valid node.
-    virtual bool Valid() const override {
+    bool Valid() const override {
       return iter_.Valid();
     }
 
     // Returns the key at the current position.
     // REQUIRES: Valid()
-    virtual const char* key() const override {
+    const char* key() const override {
       return iter_.key();
     }
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    virtual void Next() override {
+    void Next() override {
       iter_.Next();
     }
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    virtual void Prev() override {
+    void Prev() override {
       iter_.Prev();
     }
 
@@ -120,13 +120,13 @@ public:
 
     // Position at the first entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    virtual void SeekToFirst() override {
+    void SeekToFirst() override {
       iter_.SeekToFirst();
     }
 
     // Position at the last entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    virtual void SeekToLast() override {
+    void SeekToLast() override {
       iter_.SeekToLast();
     }
    protected:
@@ -142,18 +142,18 @@ public:
     explicit LookaheadIterator(const SkipListRep& rep) :
         rep_(rep), iter_(&rep_.skip_list_), prev_(iter_) {}
 
-    virtual ~LookaheadIterator() override {}
+    ~LookaheadIterator() override {}
 
-    virtual bool Valid() const override {
+    bool Valid() const override {
       return iter_.Valid();
     }
 
-    virtual const char *key() const override {
+    const char *key() const override {
       assert(Valid());
       return iter_.key();
     }
 
-    virtual void Next() override {
+    void Next() override {
       assert(Valid());
 
       bool advance_prev = true;
@@ -178,7 +178,7 @@ public:
       iter_.Next();
     }
 
-    virtual void Prev() override {
+    void Prev() override {
       assert(Valid());
       iter_.Prev();
       prev_ = iter_;
@@ -208,12 +208,12 @@ public:
       prev_ = iter_;
     }
 
-    virtual void SeekToFirst() override {
+    void SeekToFirst() override {
       iter_.SeekToFirst();
       prev_ = iter_;
     }
 
-    virtual void SeekToLast() override {
+    void SeekToLast() override {
       iter_.SeekToLast();
       prev_ = iter_;
     }
@@ -227,7 +227,7 @@ public:
     InlineSkipList<const MemTableRep::KeyComparator&>::Iterator prev_;
   };
 
-  virtual MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override {
+  MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override {
     if (lookahead_ > 0) {
       void *mem =
         arena ? arena->AllocateAligned(sizeof(SkipListRep::LookaheadIterator))

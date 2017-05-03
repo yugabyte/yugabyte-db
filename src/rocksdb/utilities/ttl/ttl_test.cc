@@ -30,7 +30,7 @@ class SpecialTimeEnv : public EnvWrapper {
   }
 
   void Sleep(int64_t sleep_time) { current_time_ += sleep_time; }
-  virtual Status GetCurrentTime(int64_t* current_time) override {
+  Status GetCurrentTime(int64_t* current_time) override {
     *current_time = current_time_;
     return Status::OK();
   }
@@ -328,7 +328,7 @@ class TtlTest : public testing::Test {
       }
     }
 
-    virtual const char* Name() const override {
+    const char* Name() const override {
       return "TestFilter";
     }
 
@@ -350,7 +350,7 @@ class TtlTest : public testing::Test {
             new TestFilter(kSampleSize_, kNewValue_));
       }
 
-      virtual const char* Name() const override {
+      const char* Name() const override {
         return "TestFilterFactory";
       }
 

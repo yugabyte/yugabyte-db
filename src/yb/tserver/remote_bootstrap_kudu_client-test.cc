@@ -24,7 +24,7 @@ namespace tserver {
 
 class RemoteBootstrapKuduClientTest : public RemoteBootstrapClientTest {
  public:
-  virtual void SetUp() override {
+  void SetUp() override {
     RemoteBootstrapClientTest::SetUp();
   }
 };

@@ -19,12 +19,12 @@ class TestFilterBitsBuilder : public FilterBitsBuilder {
   explicit TestFilterBitsBuilder() {}
 
   // Add Key to filter
-  virtual void AddKey(const Slice& key) override {
+  void AddKey(const Slice& key) override {
     hash_entries_.push_back(Hash(key.data(), key.size(), 1));
   }
 
   // Generate the filter using the keys that are added
-  virtual Slice Finish(std::unique_ptr<const char[]>* buf) override {
+  Slice Finish(std::unique_ptr<const char[]>* buf) override {
     uint32_t len = static_cast<uint32_t>(hash_entries_.size()) * 4;
     char* data = new char[len];
     for (size_t i = 0; i < hash_entries_.size(); i++) {
@@ -44,7 +44,7 @@ class TestFilterBitsReader : public FilterBitsReader {
   explicit TestFilterBitsReader(const Slice& contents)
       : data_(contents.data()), len_(static_cast<uint32_t>(contents.size())) {}
 
-  virtual bool MayMatch(const Slice& entry) override {
+  bool MayMatch(const Slice& entry) override {
     uint32_t h = Hash(entry.data(), entry.size(), 1);
     for (size_t i = 0; i + 4 <= len_; i += 4) {
       if (h == DecodeFixed32(data_ + i)) {
@@ -62,7 +62,7 @@ class TestFilterBitsReader : public FilterBitsReader {
 
 class TestHashFilter : public FilterPolicy {
  public:
-  virtual const char* Name() const override { return "TestHashFilter"; }
+  const char* Name() const override { return "TestHashFilter"; }
 
   virtual void CreateFilter(const Slice* keys, int n,
                             std::string* dst) const override {
@@ -83,7 +83,7 @@ class TestHashFilter : public FilterPolicy {
     return false;
   }
 
-  virtual FilterBitsBuilder* GetFilterBitsBuilder() const override {
+  FilterBitsBuilder* GetFilterBitsBuilder() const override {
     return new TestFilterBitsBuilder();
   }
 
