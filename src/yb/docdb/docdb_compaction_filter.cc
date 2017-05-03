@@ -12,6 +12,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/value.h"
+#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::shared_ptr;
 using std::unique_ptr;
@@ -58,8 +59,13 @@ bool DocDBCompactionFilter::Filter(int level,
   }
 
   SubDocKey subdoc_key;
+
   // TODO: Find a better way for handling of data corruption encountered during compactions.
-  CHECK_OK(subdoc_key.FullyDecodeFrom(key));
+  const Status key_decode_status = subdoc_key.FullyDecodeFrom(key);
+  CHECK(key_decode_status.ok())
+      << "Error decoding a key during compaction: " << key_decode_status.ToString() << "\n"
+      << "    Key (raw): " << FormatRocksDBSliceAsStr(key) << "\n"
+      << "    Key (best-effort decoded): " << BestEffortDocDBKeyToStr(key);
 
   if (is_first_key_value_) {
     CHECK_EQ(0, overwrite_ht_.size());
@@ -72,7 +78,7 @@ bool DocDBCompactionFilter::Filter(int level,
   // SubDocKey.
   overwrite_ht_.resize(min(overwrite_ht_.size(), num_shared_components));
 
-  const HybridTime ht = subdoc_key.hybrid_time();
+  const DocHybridTime& ht = subdoc_key.doc_hybrid_time();
 
   // We're comparing the hybrid_time in this key with the _previous_ stack top of overwrite_ht_,
   // after truncating the previous hybrid_time to the number of components in the common prefix
@@ -90,8 +96,8 @@ bool DocDBCompactionFilter::Filter(int level,
   // k1 col2 T9   Truncating the stack to [T10], setting prev_overwrite_ht to 10, and therefore
   //              deciding to remove this entry because 9 < 10.
   //
-  const HybridTime prev_overwrite_ht =
-      overwrite_ht_.empty() ? HybridTime::kMin : overwrite_ht_.back();
+  const DocHybridTime prev_overwrite_ht =
+      overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
 
   // We only keep entries with hybrid_time equal to or later than the latest time the subdocument
   // was fully overwritten or deleted prior to or at the history cutoff hybrid_time. The intuition
@@ -125,12 +131,14 @@ bool DocDBCompactionFilter::Filter(int level,
     overwrite_ht_.pop_back();
   }
 
+  const bool ht_at_or_below_cutoff = ht.hybrid_time() <= history_cutoff_;
+
   // See if we found a higher hybrid_time not exceeding the history cutoff hybrid_time at which the
   // subdocument (including a primitive value) rooted at the current key was fully overwritten.
   // In case ts > history_cutoff_, we just keep the parent document's highest known overwrite
   // hybrid_time that does not exceed the cutoff hybrid_time. In that case this entry is obviously
   // too new to be garbage-collected.
-  overwrite_ht_.push_back(ht <= history_cutoff_ ? max(prev_overwrite_ht, ht) : prev_overwrite_ht);
+  overwrite_ht_.push_back(ht_at_or_below_cutoff ? max(prev_overwrite_ht, ht) : prev_overwrite_ht);
 
   CHECK_EQ(new_stack_size, overwrite_ht_.size());
   prev_subdoc_key_ = std::move(subdoc_key);
@@ -166,7 +174,7 @@ bool DocDBCompactionFilter::Filter(int level,
   // compactions. However, we do need to update the overwrite hybrid_time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid_times.
-  return value_type == ValueType::kTombstone && ht <= history_cutoff_ && is_full_compaction_;
+  return value_type == ValueType::kTombstone && ht_at_or_below_cutoff && is_full_compaction_;
 }
 
 const char* DocDBCompactionFilter::Name() const {

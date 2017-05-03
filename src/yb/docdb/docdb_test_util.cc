@@ -16,8 +16,13 @@
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/in_mem_docdb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -27,6 +32,11 @@ using std::string;
 using std::unique_ptr;
 using std::vector;
 using std::stringstream;
+
+using strings::Substitute;
+
+using yb::util::ApplyEagerLineContinuation;
+using yb::util::FormatBytesAsStr;
 
 namespace yb {
 namespace docdb {
@@ -185,7 +195,9 @@ vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, bool use_hash,
     for (int i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
       result.back().AppendSubKeysAndMaybeHybridTime(GenRandomPrimitiveValue(rng));
     }
-    result.back().set_hybrid_time(HybridTime((*rng)()));
+    const IntraTxnWriteId write_id = static_cast<IntraTxnWriteId>(
+        (*rng)() % 2 == 0 ? 0 : (*rng)() % 1000000);
+    result.back().set_hybrid_time(DocHybridTime(HybridTime((*rng)()), write_id));
   }
   return result;
 }
@@ -307,15 +319,70 @@ void DocDBRocksDBFixture::DestroyRocksDB() {
   CHECK_OK(rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options_));
 }
 
-rocksdb::Status DocDBRocksDBFixture::WriteToRocksDB(const DocWriteBatch& doc_write_batch,
-                                                    const HybridTime& hybrid_time) {
-  rocksdb::Status status = doc_write_batch.WriteToRocksDBInTest(hybrid_time, write_options_);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed writing to RocksDB: " << status.ToString();
+void DocDBRocksDBFixture::PopulateRocksDBWriteBatch(
+    const DocWriteBatch& dwb,
+    rocksdb::WriteBatch *rocksdb_write_batch,
+    HybridTime hybrid_time) const {
+  IntraTxnWriteId write_id = 0;
+  for (const auto& entry : dwb.key_value_pairs()) {
+    SubDocKey subdoc_key;
+    // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
+    // don't contain the HybridTime.
+    CHECK_OK_PREPEND(subdoc_key.FullyDecodeFromKeyWithoutHybridTime(entry.first),
+                     Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
+
+    string rocksdb_key;
+    if (hybrid_time.is_valid()) {
+      // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
+      const KeyBytes encoded_ht =
+          PrimitiveValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
+      rocksdb_key = entry.first + encoded_ht.data();
+    } else {
+      // Useful when printing out a write batch that does not yet know the HybridTime it will be
+      // committed with.
+      rocksdb_key = entry.first;
+    }
+    rocksdb_write_batch->Put(rocksdb_key, entry.second);
+    ++write_id;
   }
-  return status;
 }
 
+Status DocDBRocksDBFixture::WriteToRocksDB(
+    const DocWriteBatch& doc_write_batch,
+    const HybridTime& hybrid_time) {
+  if (doc_write_batch.IsEmpty()) {
+    return Status::OK();
+  }
+  CHECK(hybrid_time.is_valid());
+
+  rocksdb::WriteBatch rocksdb_write_batch;
+  PopulateRocksDBWriteBatch(doc_write_batch, &rocksdb_write_batch, hybrid_time);
+  const rocksdb::Status rocksdb_write_status =
+      rocksdb_->Write(write_options(), &rocksdb_write_batch);
+  if (!rocksdb_write_status.ok()) {
+    LOG(ERROR) << "Failed writing to RocksDB: " << rocksdb_write_status.ToString();
+    return STATUS_SUBSTITUTE(RuntimeError,
+                             "Error writing to RocksDB: $0", rocksdb_write_status.ToString());
+  }
+  return Status::OK();
+}
+
+Status DocDBRocksDBFixture::WriteToRocksDBAndClear(
+    DocWriteBatch* dwb,
+    const HybridTime& hybrid_time) {
+  RETURN_NOT_OK(WriteToRocksDB(*dwb, hybrid_time));
+  dwb->Clear();
+  return Status::OK();
+}
+
+string DocDBRocksDBFixture::FormatDocWriteBatch(const DocWriteBatch &dwb) {
+  WriteBatchFormatter formatter;
+  rocksdb::WriteBatch rocksdb_write_batch;
+  PopulateRocksDBWriteBatch(dwb, &rocksdb_write_batch);
+  rocksdb::Status iteration_status = rocksdb_write_batch.Iterate(&formatter);
+  CHECK(iteration_status.ok());
+  return formatter.str();
+}
 
 void DocDBRocksDBFixture::SetHistoryCutoffHybridTime(HybridTime history_cutoff) {
   down_cast<FixedHybridTimeRetentionPolicy*>(
@@ -338,8 +405,8 @@ string DocDBRocksDBFixture::DocDBDebugDumpToStr() {
   return yb::docdb::DocDBDebugDumpToStr(rocksdb());
 }
 
-void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEqVerboseTrimmed(const string &expected) {
-  ASSERT_STR_EQ_VERBOSE_TRIMMED(expected, DocDBDebugDumpToStr());
+void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(ApplyEagerLineContinuation(expected), DocDBDebugDumpToStr());
 }
 
 string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
@@ -348,42 +415,51 @@ string DocDBRocksDBFixture::DebugWalkDocument(const KeyBytes& encoded_doc_key) {
   return doc_visitor.ToString();
 }
 
-void DocDBRocksDBFixture::SetPrimitive(const DocPath& doc_path,
-                                       const Value& value,
-                                       const HybridTime hybrid_time,
-                                       DocWriteBatch* doc_write_batch,
-                                       InitMarkerBehavior use_init_marker) {
-  DocWriteBatch local_doc_write_batch(rocksdb_.get());
-  if (doc_write_batch == nullptr) {
-    doc_write_batch = &local_doc_write_batch;
-  } else {
-    doc_write_batch->CheckBelongsToSameRocksDB(rocksdb_.get());
-  }
-  doc_write_batch->Clear();
-  ASSERT_OK(doc_write_batch->SetPrimitive(doc_path, value, hybrid_time, use_init_marker));
-  ASSERT_OK(WriteToRocksDB(*doc_write_batch));
-}
-
-void DocDBRocksDBFixture::InsertSubDocument(
+Status DocDBRocksDBFixture::SetPrimitive(
     const DocPath& doc_path,
-    const SubDocument& value,
-    HybridTime hybrid_time,
+    const Value& value,
+    const HybridTime hybrid_time,
     InitMarkerBehavior use_init_marker) {
   DocWriteBatch local_doc_write_batch(rocksdb_.get());
-  local_doc_write_batch.Clear();
-  ASSERT_OK(local_doc_write_batch.InsertSubDocument(doc_path, value, hybrid_time, use_init_marker));
-  ASSERT_OK(WriteToRocksDB(local_doc_write_batch));
+  RETURN_NOT_OK(local_doc_write_batch.SetPrimitive(doc_path, value, use_init_marker));
+  return WriteToRocksDB(local_doc_write_batch, hybrid_time);
 }
 
-void DocDBRocksDBFixture::ExtendSubDocument(
+Status DocDBRocksDBFixture::SetPrimitive(
+    const DocPath& doc_path,
+    const PrimitiveValue& primitive_value,
+    const HybridTime hybrid_time,
+    InitMarkerBehavior use_init_marker) {
+  return SetPrimitive(doc_path, Value(primitive_value), hybrid_time, use_init_marker);
+}
+
+Status DocDBRocksDBFixture::InsertSubDocument(
     const DocPath& doc_path,
     const SubDocument& value,
+    const HybridTime hybrid_time,
+    InitMarkerBehavior use_init_marker) {
+  DocWriteBatch dwb(rocksdb_.get());
+  RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, use_init_marker));
+  return WriteToRocksDB(dwb, hybrid_time);
+}
+
+Status DocDBRocksDBFixture::ExtendSubDocument(
+    const DocPath& doc_path,
+    const SubDocument& value,
+    const HybridTime hybrid_time,
+    InitMarkerBehavior use_init_marker) {
+  DocWriteBatch dwb(rocksdb_.get());
+  RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, use_init_marker));
+  return WriteToRocksDB(dwb, hybrid_time);
+}
+
+Status DocDBRocksDBFixture::DeleteSubDoc(
+    const DocPath& doc_path,
     HybridTime hybrid_time,
     InitMarkerBehavior use_init_marker) {
-  DocWriteBatch local_doc_write_batch(rocksdb_.get());
-  local_doc_write_batch.Clear();
-  ASSERT_OK(local_doc_write_batch.ExtendSubDocument(doc_path, value, hybrid_time, use_init_marker));
-  ASSERT_OK(WriteToRocksDB(local_doc_write_batch));
+  DocWriteBatch dwb(rocksdb());
+  RETURN_NOT_OK(dwb.DeleteSubDoc(doc_path, use_init_marker));
+  return WriteToRocksDB(dwb, hybrid_time);
 }
 
 void DocDBRocksDBFixture::DocDBDebugDumpToConsole() {
@@ -469,13 +545,13 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 
   if (is_deletion) {
     DOCDB_DEBUG_LOG("Iteration $0: deleting doc path $1", current_iteration, doc_path.ToString());
-    ASSERT_OK(dwb.DeleteSubDoc(doc_path, hybrid_time));
+    ASSERT_OK(dwb.DeleteSubDoc(doc_path));
     ASSERT_OK(in_mem_docdb_.DeleteSubDoc(doc_path));
   } else {
     DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
                     current_iteration, doc_path.ToString(), value.ToString());
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, value));
-    const auto set_primitive_status = dwb.SetPrimitive(doc_path, value, hybrid_time);
+    const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
       DocDBDebugDump(rocksdb(), std::cerr);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
@@ -486,7 +562,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   // We perform our randomly chosen operation first, both on the production version of DocDB
   // sitting on top of RocksDB, and on the in-memory single-threaded debug version used for
   // validation.
-  fixture_->WriteToRocksDB(dwb);
+  ASSERT_OK(fixture_->WriteToRocksDB(dwb, hybrid_time));
   const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
 
   // In case we are asked to compact history, we read the document from RocksDB before and after the

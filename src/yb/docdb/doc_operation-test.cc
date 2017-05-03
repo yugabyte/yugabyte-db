@@ -53,39 +53,39 @@ class DocOperationTest : public DocDBTestBase {
     YQLWriteOperation yql_write_op(yql_writereq_pb, schema, yql_writeresp_pb);
     DocWriteBatch doc_write_batch(rocksdb());
     CHECK_OK(yql_write_op.Apply(&doc_write_batch, rocksdb(), HybridTime()));
-    WriteToRocksDB(doc_write_batch, hybrid_time);
+    ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
 
   void AssertWithTTL(YQLWriteRequestPB_YQLStmtType stmt_type) {
     if (stmt_type == YQLWriteRequestPB::YQL_STMT_INSERT) {
-      AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+      AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(Max)]) -> null; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max)]) -> 2; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max)]) -> 3; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max, w=1)]) -> 2; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=2)]) -> 3; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=3)]) -> 4; ttl: 2.000s
       )#");
     } else {
-      AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+      AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max)]) -> 2; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max)]) -> 3; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=1)]) -> 3; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4; ttl: 2.000s
       )#");
     }
   }
 
   void AssertWithoutTTL(YQLWriteRequestPB_YQLStmtType stmt_type) {
     if (stmt_type == YQLWriteRequestPB::YQL_STMT_INSERT) {
-      AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+      AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(Max)]) -> null
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max)]) -> 2
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max)]) -> 3
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max, w=1)]) -> 2
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=2)]) -> 3
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=3)]) -> 4
       )#");
     } else {
-      AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+      AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max)]) -> 2
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max)]) -> 3
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> 4
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=1)]) -> 3
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=2)]) -> 4
       )#");
     }
   }
@@ -167,9 +167,9 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
   RedisWriteOperation redis_write_operation(redis_write_operation_pb, HybridTime::kMax);
   DocWriteBatch doc_write_batch(db);
-  CHECK_OK(redis_write_operation.Apply(&doc_write_batch, db, HybridTime()));
+  ASSERT_OK(redis_write_operation.Apply(&doc_write_batch, db, HybridTime()));
 
-  WriteToRocksDB(doc_write_batch);
+  ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
   // Read key from rocksdb.
   const KeyBytes doc_key = DocKey::FromRedisKey(123, "abc").Encode();
@@ -181,7 +181,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   // Verify correct ttl.
   MonoDelta ttl;
   auto value = iter->value();
-  CHECK_OK(Value::DecodeTTL(&value, &ttl));
+  ASSERT_OK(Value::DecodeTTL(&value, &ttl));
   EXPECT_EQ(2000, ttl.ToMilliseconds());
 }
 
@@ -225,11 +225,11 @@ TEST_F(DocOperationTest, TestYQLWriteNulls) {
   WriteYQL(yql_writereq_pb, schema, &yql_writeresp_pb);
 
   // Null columns are converted to tombstones.
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+  AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(Max)]) -> null
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max)]) -> DEL
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max)]) -> DEL
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max)]) -> DEL
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(Max, w=1)]) -> DEL
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(Max, w=2)]) -> DEL
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(Max, w=3)]) -> DEL
       )#");
 }
 
@@ -242,11 +242,11 @@ TEST_F(DocOperationTest, TestYQLReadWriteSimple) {
   WriteYQLRow(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
            1000, HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0));
 
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(4096000)]) -> null; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(4096000)]) -> 1; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(4096000)]) -> 2; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 3; ttl: 1.000s
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
       )#");
 
   // Now read the value.
@@ -262,20 +262,20 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 3; ttl: 1.000s
 TEST_F(DocOperationTest, TestYQLReadWithoutLivenessColumn) {
   const DocKey doc_key(0, PrimitiveValues(100), PrimitiveValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(2)), HybridTime(1000),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(3)), HybridTime(2000),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(4)), HybridTime(3000),
-                         nullptr, InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::kOptional));
 
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(1000)]) -> 2
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(2000)]) -> 3
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> 4
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> 2
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> 3
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> 4
       )#");
 
   // Now verify we can read without the system column id.
@@ -292,20 +292,20 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> 4
 TEST_F(DocOperationTest, TestYQLReadWithTombstone) {
   DocKey doc_key(0, PrimitiveValues(100), PrimitiveValues());
   KeyBytes encoded_doc_key(doc_key.Encode());
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1000),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(2000),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(3000),
-                         nullptr, InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::kOptional));
 
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(2000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       )#");
 
   Schema schema = CreateSchema();
@@ -317,27 +317,27 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
   // Now verify row exists even with one valid column.
   doc_key = DocKey(0, PrimitiveValues(100), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1001),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(2), MonoDelta::FromMilliseconds(1)), HybridTime(2001),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(101)), HybridTime(3001),
-                         nullptr, InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::kOptional));
 
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(1001)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(2001)]) -> 2; ttl: 0.001s
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(2000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3001)]) -> 101
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1001)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2001)]) -> 2; ttl: 0.001s
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3001)]) -> 101
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components({PrimitiveValue(100)});
-  DocYQLScanSpec yql_scan_spec(schema, 0, hashed_components, nullptr);
+  DocYQLScanSpec yql_scan_spec(schema, 0, hashed_components, /* condition = */ nullptr);
   DocRowwiseIterator yql_iter(schema, schema, rocksdb(),
                               HybridClock::HybridTimeFromMicroseconds(3000));
   ASSERT_OK(yql_iter.Init(yql_scan_spec));
@@ -353,32 +353,32 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
   // Now verify row exists as long as liveness system column exists.
   doc_key = DocKey(0, PrimitiveValues(101), PrimitiveValues());
   encoded_doc_key = doc_key.Encode();
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key,
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
                                  PrimitiveValue::SystemColumnId(
                                      SystemColumnIds::kLivenessColumn)),
                          Value(PrimitiveValue(ValueType::kNull)),
-                         HybridTime(1000), nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
+                         HybridTime(1000), InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(1000),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(2))),
                          Value(PrimitiveValue(2), MonoDelta::FromMilliseconds(1)), HybridTime(2000),
-                         nullptr, InitMarkerBehavior::kOptional));
-  NO_FATALS(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
+                         InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(3))),
                          Value(PrimitiveValue(ValueType::kTombstone)), HybridTime(3000),
-                         nullptr, InitMarkerBehavior::kOptional));
+                         InitMarkerBehavior::kOptional));
 
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(1001)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(2001)]) -> 2; ttl: 0.001s
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(2000)]) -> DEL
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3001)]) -> 101
-SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(3000)]) -> DEL
-SubDocKey(DocKey(0x0000, [101], []), [SystemColumnId(0); HT(1000)]) -> null
-SubDocKey(DocKey(0x0000, [101], []), [ColumnId(1); HT(1000)]) -> DEL
-SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT(2000)]) -> 2; ttl: 0.001s
-SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(3000)]) -> DEL
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1001)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2001)]) -> 2; ttl: 0.001s
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(2); HT(p=0, l=2000)]) -> DEL
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3001)]) -> 101
+SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
+SubDocKey(DocKey(0x0000, [101], []), [SystemColumnId(0); HT(p=0, l=1000)]) -> null
+SubDocKey(DocKey(0x0000, [101], []), [ColumnId(1); HT(p=0, l=1000)]) -> DEL
+SubDocKey(DocKey(0x0000, [101], []), [ColumnId(2); HT(p=0, l=2000)]) -> 2; ttl: 0.001s
+SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
       )#");
 
   vector<PrimitiveValue> hashed_components_system({PrimitiveValue(101)});
@@ -401,29 +401,36 @@ TEST_F(DocOperationTest, TestYQLCompactions) {
   yb::YQLResponsePB yql_writeresp_pb;
 
   HybridTime t0 = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0);
+  HybridTime t0prime = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 1);
   HybridTime t1 = HybridClock::AddPhysicalTimeToHybridTime(t0, MonoDelta::FromMilliseconds(1001));
 
   // Define the schema.
   Schema schema = CreateSchema();
   WriteYQLRow(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
-           1000, t0);
+      1000, t0);
 
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(4096000)]) -> null; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(4096000)]) -> 1; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(4096000)]) -> 2; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 3; ttl: 1.000s
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
       )#");
 
   CompactHistoryBefore(t1);
 
   // Verify all entries are purged.
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
+  AssertDocDbDebugDumpStrEq(R"#(
       )#");
 
   // Add a row with a TTL.
   WriteYQLRow(YQLWriteRequestPB_YQLStmtType_YQL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
-           1000, t0);
+      1000, t0);
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
+     )#");
 
   // Update the columns with a higher TTL.
   yb::YQLWriteRequestPB yql_update_pb;
@@ -436,23 +443,26 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 3; ttl: 1.000s
   AddColumnValues(&yql_writereq_pb, vector<int32_t>({10, 20, 30}));
   yql_writereq_pb.set_ttl(2000);
 
-  // Write to docdb.
-  WriteYQL(yql_writereq_pb, schema, &yql_writeresp_pb, t0);
+  // Write to docdb at the same physical time and a bumped-up logical time.
+  WriteYQL(yql_writereq_pb, schema, &yql_writeresp_pb, t0prime);
 
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(4096000)]) -> null; ttl: 1.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(4096000)]) -> 10; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(4096000)]) -> 20; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 30; ttl: 2.000s
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT(p=1000)]) -> null; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, l=1)]) -> 10; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, w=1)]) -> 1; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, l=1, w=1)]) -> 20; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, w=2)]) -> 2; ttl: 1.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, l=1, w=2)]) -> 30; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, w=3)]) -> 3; ttl: 1.000s
       )#");
 
   CompactHistoryBefore(t1);
 
   // Verify the rest of the columns still live.
-  AssertDocDbDebugDumpStrEqVerboseTrimmed(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(4096000)]) -> 10; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(4096000)]) -> 20; ttl: 2.000s
-SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(4096000)]) -> 30; ttl: 2.000s
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT(p=1000, l=1)]) -> 10; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT(p=1000, l=1, w=1)]) -> 20; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT(p=1000, l=1, w=2)]) -> 30; ttl: 2.000s
       )#");
 
   // Verify reads work well without system column id.

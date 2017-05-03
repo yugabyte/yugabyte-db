@@ -850,20 +850,37 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
 
   WriteBatch rocksdb_write_batch;
 
-  for (int i = 0; i < put_batch.kv_pairs_size(); ++i) {
-    const auto& kv_pair = put_batch.kv_pairs(i);
+  for (int write_id = 0; write_id < put_batch.kv_pairs_size(); ++write_id) {
+    const auto& kv_pair = put_batch.kv_pairs(write_id);
     CHECK(kv_pair.has_key());
     CHECK(kv_pair.has_value());
-    docdb::SubDocKey subdoc_key;
 
-    const auto s = subdoc_key.FullyDecodeFrom(kv_pair.key());
-    CHECK(s.ok())
-        << "Failed decoding key: " << s.ToString() << "; "
-        << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
-        << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
-        << "put_batch:\n" << put_batch.DebugString();
-    subdoc_key.ReplaceMaxHybridTimeWith(hybrid_time);
-    rocksdb_write_batch.Put(subdoc_key.Encode().AsSlice(), kv_pair.value());
+#ifndef NDEBUG
+    // Debug-only: ensure all keys we get in Raft replication can be decoded.
+    {
+      docdb::SubDocKey subdoc_key;
+      Status s = subdoc_key.FullyDecodeFromKeyWithoutHybridTime(kv_pair.key());
+      CHECK(s.ok())
+          << "Failed decoding key: " << s.ToString() << "; "
+          << "Problematic key: " << docdb::BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
+          << "value: " << util::FormatBytesAsStr(kv_pair.value()) << "\n"
+          << "put_batch:\n" << put_batch.DebugString();
+    }
+#endif
+
+    string key_with_ts = kv_pair.key();
+    // We replicate encoded SubDocKeys without a HybridTime at the end, and only append it here.
+    // The reason for this is that the HybridTime timestamp is only picked at the time of appending
+    // an entry to the tablet's Raft log. Also this is a good way to save network bandwidth.
+    //
+    // "Write id" is the final component of our HybridTime encoding (or, to be more precise,
+    // DocHybridTime encoding) that helps disambiguate between different updates to the
+    // same key (row/column) within a transaction. We set it based on the position of the write
+    // operation in its write batch.
+    key_with_ts.push_back(static_cast<char>(ValueType::kHybridTime));  // Don't forget ValueType!
+    DocHybridTime(hybrid_time, write_id).AppendEncodedInDocDbFormat(&key_with_ts);
+
+    rocksdb_write_batch.Put(key_with_ts, kv_pair.value());
   }
   rocksdb_write_batch.AddAllUserSequenceNumbers(raft_index);
 
@@ -1009,7 +1026,7 @@ Status Tablet::AcquireLocksAndPerformDocOperations(WriteTransactionState *state)
           RETURN_NOT_OK(KeyValueBatchFromYQLWriteBatch(
               req, &key_value_write_request, &locks_held, state->response(), state));
         } else {
-          // Kudu-compatible codepath - we'll construct a new WriteRequestPB for raft replication.
+          // Kudu-compatible codepath - we'll construct a new WriteRequestPB for Raft replication.
           RETURN_NOT_OK(KeyValueBatchFromKuduRowOps(req, &key_value_write_request, &locks_held));
         }
         invalid_table_type = false;

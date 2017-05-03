@@ -7,6 +7,13 @@ namespace yb {
 namespace util {
 
 template<typename T>
+int CompareUsingLessThan(const T& a, const T& b) {
+  if (a < b) return -1;
+  if (b < a) return 1;
+  return 0;
+}
+
+template<typename T>
 int CompareVectors(const std::vector<T>& a, const std::vector<T>& b) {
   auto a_iter = a.begin();
   auto b_iter = b.begin();
@@ -25,6 +32,13 @@ int CompareVectors(const std::vector<T>& a, const std::vector<T>& b) {
   return 1;
 }
 
+// http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c
+template <typename T>
+inline int sgn(T val) {
+  return (T(0) < val) - (val < T(0));
+}
+
 }  // namespace util
 }  // namespace yb
+
 #endif  // YB_UTIL_COMPARE_UTIL_H

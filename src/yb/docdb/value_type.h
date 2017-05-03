@@ -59,7 +59,7 @@ enum class ValueType : char {
 
   kObject = '{',  // ASCII code 123
 
-  // This is used for sanity checking.
+  // This is used for sanity checking. TODO: rename to kInvalid since this is an enum class.
   kInvalidValueType = 127
 };
 
@@ -78,18 +78,23 @@ constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
          value_type != ValueType::kTombstone;
 }
 
+// Decode the first byte of the given slice as a ValueType.
 inline ValueType DecodeValueType(const rocksdb::Slice& value) {
-  CHECK(!value.empty());  // TODO: graceful error handling.
-  return static_cast<ValueType>(value.data()[0]);
+  return value.empty() ? ValueType::kInvalidValueType : static_cast<ValueType>(value.data()[0]);
 }
 
+// Decode the first byte of the given slice as a ValueType and consume it.
 inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
-  CHECK(!slice->empty());  // TODO: graceful error handling.
-  return static_cast<ValueType>(slice->ConsumeByte());
+  return slice->empty() ? ValueType::kInvalidValueType
+                        : static_cast<ValueType>(slice->ConsumeByte());
 }
 
 inline std::ostream& operator<<(std::ostream& out, const ValueType value_type) {
   return out << ValueTypeToStr(value_type);
+}
+
+inline ValueType DecodeValueType(char value_type_byte) {
+  return static_cast<ValueType>(value_type_byte);
 }
 
 }  // namespace docdb

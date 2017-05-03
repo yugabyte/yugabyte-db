@@ -2,12 +2,9 @@
 
 #include "yb/util/bytes_formatter.h"
 
-#include <assert.h>
-
-#include <glog/logging.h>
-
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/cast.h"
 
 using std::string;
 using strings::Substitute;
@@ -62,6 +59,10 @@ string FormatBytesAsStr(const char* data,
 
 string FormatBytesAsStr(const string& s, QuotesType quotes_type, size_t max_length) {
   return FormatBytesAsStr(s.c_str(), s.size(), quotes_type, max_length);
+}
+
+string FormatSliceAsStr(const Slice& s, QuotesType quotes_type, size_t max_length) {
+  return FormatBytesAsStr(to_char_ptr(s.data()), s.size(), quotes_type, max_length);
 }
 
 }  // namespace util

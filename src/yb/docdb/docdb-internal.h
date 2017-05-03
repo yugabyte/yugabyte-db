@@ -20,7 +20,9 @@
   } while (false)
 
 #else
-#define DOCDB_DEBUG_LOG(...)
+// Still compile the debug logging code to make sure it does not get broken silently.
+#define DOCDB_DEBUG_LOG(...) \
+  do { if (false) { strings::Substitute(__VA_ARGS__); } } while (false)
 #endif
 
 #endif  // YB_DOCDB_DOCDB_INTERNAL_H_

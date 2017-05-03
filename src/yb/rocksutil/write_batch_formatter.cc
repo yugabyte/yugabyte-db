@@ -19,38 +19,44 @@ WriteBatchFormatter::WriteBatchFormatter()
       update_index_(0) {
 }
 
-Status WriteBatchFormatter::PutCF(uint32_t column_family_id,
-                                  const Slice& key,
-                                  const Slice& value) {
+rocksdb::Status WriteBatchFormatter::PutCF(
+    uint32_t column_family_id,
+    const rocksdb::Slice& key,
+    const rocksdb::Slice& value) {
   StartOutputLine(__FUNCTION__);
   OutputField(key);
   OutputField(value);
   FinishOutputLine();
-  return Status::OK();
+  return rocksdb::Status::OK();
 }
 
-Status WriteBatchFormatter::DeleteCF(uint32_t column_family_id, const Slice& key) {
+rocksdb::Status WriteBatchFormatter::DeleteCF(
+    uint32_t column_family_id,
+    const rocksdb::Slice& key) {
   StartOutputLine(__FUNCTION__);
   OutputField(key);
   FinishOutputLine();
-  return Status::OK();
+  return rocksdb::Status::OK();
 }
 
-Status WriteBatchFormatter::SingleDeleteCF(uint32_t column_family_id, const Slice& key) {
+rocksdb::Status WriteBatchFormatter::SingleDeleteCF(
+    uint32_t column_family_id,
+    const rocksdb::Slice& key) {
   StartOutputLine(__FUNCTION__);
   OutputField(key);
   FinishOutputLine();
-  return Status::OK();
+  return rocksdb::Status::OK();
 }
 
-Status WriteBatchFormatter::MergeCF(uint32_t column_family_id,
-                                    const Slice& key,
-                                    const Slice& value) {
+rocksdb::Status WriteBatchFormatter::MergeCF(
+    uint32_t column_family_id,
+    const rocksdb::Slice& key,
+    const rocksdb::Slice& value) {
   StartOutputLine(__FUNCTION__);
   OutputField(key);
   OutputField(value);
   FinishOutputLine();
-  return Status::OK();
+  return rocksdb::Status::OK();
 }
 
 void WriteBatchFormatter::SetUserSequenceNumber(SequenceNumber user_sequence_number) {
@@ -64,7 +70,7 @@ void WriteBatchFormatter::StartOutputLine(const char* name) {
   need_separator_ = false;
 }
 
-void WriteBatchFormatter::OutputField(const Slice& value) {
+void WriteBatchFormatter::OutputField(const rocksdb::Slice& value) {
   if (need_separator_) {
     out_ << ", ";
   }
@@ -76,5 +82,4 @@ void WriteBatchFormatter::FinishOutputLine() {
   out_ << ")" << endl;
 }
 
-
-}
+}  // namespace yb

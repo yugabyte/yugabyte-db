@@ -16,6 +16,8 @@
 #include "yb/docdb/in_mem_docdb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/util/test_util.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace docdb {
@@ -110,9 +112,20 @@ class DocDBRocksDBFixture {
   void OpenRocksDB();
   void DestroyRocksDB();
 
+  // Populates the given RocksDB write batch from the given DocWriteBatch. If a valid hybrid_time is
+  // specified, it is appended to every key.
+  void PopulateRocksDBWriteBatch(
+      const DocWriteBatch& dwb,
+      rocksdb::WriteBatch *rocksdb_write_batch,
+      HybridTime hybrid_time = HybridTime::kInvalidHybridTime) const;
+
   // Writes the given DocWriteBatch to RocksDB. We substitue the hybrid time, if provided.
-  rocksdb::Status WriteToRocksDB(const DocWriteBatch& write_batch,
-                                 const HybridTime& hybrid_time = HybridTime::kMax);
+  CHECKED_STATUS WriteToRocksDB(const DocWriteBatch& write_batch, const HybridTime& hybrid_time);
+
+  // The same as WriteToRocksDB but also clears the write batch afterwards.
+  CHECKED_STATUS WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time);
+
+  std::string FormatDocWriteBatch(const DocWriteBatch& dwb);
 
   void SetHistoryCutoffHybridTime(HybridTime history_cutoff);
   void CompactHistoryBefore(HybridTime history_cutoff);
@@ -122,37 +135,43 @@ class DocDBRocksDBFixture {
   std::string DocDBDebugDumpToStr();
 
   // Checks that contents of the entire RocksDB database is exactly as expected.
-  void AssertDocDbDebugDumpStrEqVerboseTrimmed(const string &expected);
+  void AssertDocDbDebugDumpStrEq(const string &expected);
 
   // "Walks" the latest state of the given document using using DebugDocVisitor and returns a string
   // that lists all "events" encountered (document start/end, object start/end/keys/values, etc.)
   std::string DebugWalkDocument(const KeyBytes& encoded_doc_key);
 
-  void SetPrimitive(const DocPath& doc_path,
-                    const Value& value,
-                    HybridTime hybrid_time,
-                    DocWriteBatch* doc_write_batch = nullptr,
-                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+  // ----------------------------------------------------------------------------------------------
+  // SetPrimitive taking a Value
 
-  void SetPrimitive(const DocPath& doc_path,
-                    const PrimitiveValue& value,
-                    HybridTime hybrid_time,
-                    DocWriteBatch* doc_write_batch = nullptr,
-                    InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired) {
-    SetPrimitive(doc_path, Value(value), hybrid_time, doc_write_batch, use_init_marker);
-  }
+  CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path,
+      const Value& value,
+      HybridTime hybrid_time,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
 
-  void InsertSubDocument(
+  CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path,
+      const PrimitiveValue& value,
+      HybridTime hybrid_time,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+
+  CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
 
-  void ExtendSubDocument(
+  CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
       HybridTime hybrid_time,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional);
+
+  CHECKED_STATUS DeleteSubDoc(
+      const DocPath& doc_path,
+      HybridTime hybrid_time,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
 
   void DocDBDebugDumpToConsole();
 

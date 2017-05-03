@@ -63,11 +63,12 @@ TEST(PrimitiveValueTest, TestToString) {
   ASSERT_EQ("ArrayIndex(123)", PrimitiveValue::ArrayIndex(123).ToString());
   ASSERT_EQ("ArrayIndex(-123)", PrimitiveValue::ArrayIndex(-123).ToString());
 
-  ASSERT_EQ("HT(1002003004005006007)",
-      PrimitiveValue(HybridTime(1002003004005006007L)).ToString());
+  ASSERT_EQ("HT(p=100200300400500, l=1234)",
+      PrimitiveValue(HybridTime(100200300400500l * 4096 + 1234)).ToString());
 
   // HybridTimes use an unsigned 64-bit integer as an internal representation.
-  ASSERT_EQ("HT(0)", PrimitiveValue(HybridTime(0)).ToString());
+  ASSERT_EQ("HT(Min)", PrimitiveValue(HybridTime(0)).ToString());
+  ASSERT_EQ("HT(Initial)", PrimitiveValue(HybridTime(1)).ToString());
   ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(numeric_limits<uint64_t>::max())).ToString());
   ASSERT_EQ("HT(Max)", PrimitiveValue(HybridTime(-1)).ToString());
 
@@ -120,6 +121,25 @@ TEST(PrimitiveValueTest, TestEncoding) {
       PrimitiveValue(std::numeric_limits<int64_t>::min()));
   TestEncoding(R"#("I\xff\xff\xff\xff\xff\xff\xff\xff")#",
       PrimitiveValue(std::numeric_limits<int64_t>::max()));
+
+  // HybridTime encoding --------------------------------------------------------------------------
+
+  TestEncoding(R"#("#\xff\x05S\x1e\x85.\xbb52\x7fK")#",
+               PrimitiveValue(HybridTime(1234567890123L, 3456)));
+
+  TestEncoding(R"#("#\x80\x80C")#",
+               PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch)));
+
+  // A little lower timestamp results in a little higher value that gets sorted later.
+  TestEncoding(R"#("#\x81\x80C")#",
+               PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch - 1)));
+
+  // On the other hand, with a higher timestamp, "~" is 0x7e, which is sorted earlier than 0x80.
+  TestEncoding(R"#("#~\x80C")#",
+               PrimitiveValue(HybridTime::FromMicros(kYugaByteMicrosecondEpoch + 1)));
+
+  TestEncoding(R"#("#\xff\x05T=\xf7)\xbc\x18\x80J")#",
+               PrimitiveValue(HybridTime::FromMicros(1000)));
 }
 
 TEST(PrimitiveValueTest, TestCompareStringsWithEmbeddedZeros) {

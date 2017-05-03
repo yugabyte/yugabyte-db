@@ -161,27 +161,36 @@ class SubDocKey {
 
   SubDocKey(const DocKey& doc_key, HybridTime hybrid_time)
       : doc_key_(doc_key),
-        hybrid_time_(hybrid_time) {
+        doc_ht_(DocHybridTime(hybrid_time)) {
   }
 
   SubDocKey(DocKey&& doc_key,
             HybridTime hybrid_time)
       : doc_key_(std::move(doc_key)),
-        hybrid_time_(hybrid_time) {
+        doc_ht_(DocHybridTime(hybrid_time)) {
+  }
+
+  SubDocKey(const DocKey& doc_key, const DocHybridTime& hybrid_time)
+      : doc_key_(doc_key),
+        doc_ht_(std::move(hybrid_time)) {
+  }
+
+  static SubDocKey MakeSeekKey(const DocKey& doc_key, HybridTime hybrid_time) {
+    return SubDocKey(doc_key, DocHybridTime(hybrid_time, kMaxWriteId));
   }
 
   SubDocKey(const DocKey& doc_key,
             HybridTime hybrid_time,
             std::vector<PrimitiveValue> subkeys)
       : doc_key_(doc_key),
-        hybrid_time_(hybrid_time),
+        doc_ht_(DocHybridTime(hybrid_time)),
         subkeys_(subkeys) {
   }
 
   template <class ...T>
   SubDocKey(const DocKey& doc_key, T... subkeys_and_maybe_hybrid_time)
       : doc_key_(doc_key),
-        hybrid_time_(HybridTime::kInvalidHybridTime) {
+        doc_ht_(DocHybridTime::kInvalid) {
     AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
   }
 
@@ -194,7 +203,7 @@ class SubDocKey {
   // we append it last.
   template<class ...T>
   void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key,
-                                      T... subkeys_and_maybe_hybrid_time) {
+                                       T... subkeys_and_maybe_hybrid_time) {
     EnsureHasNoHybridTimeYet();
     subkeys_.emplace_back(subdoc_key);
     AppendSubKeysAndMaybeHybridTime(subkeys_and_maybe_hybrid_time...);
@@ -208,10 +217,10 @@ class SubDocKey {
 
   template<class ...T>
   void AppendSubKeysAndMaybeHybridTime(PrimitiveValue subdoc_key, HybridTime hybrid_time) {
-    DCHECK_EQ(HybridTime::kInvalidHybridTime, hybrid_time_);
+    DCHECK(!has_hybrid_time());
     subkeys_.emplace_back(subdoc_key);
     DCHECK_NE(HybridTime::kInvalidHybridTime, hybrid_time);
-    hybrid_time_ = hybrid_time;
+    doc_ht_ = DocHybridTime(hybrid_time);
   }
 
   void RemoveLastSubKey() {
@@ -220,7 +229,7 @@ class SubDocKey {
   }
 
   void remove_hybrid_time() {
-    hybrid_time_ = HybridTime::kInvalidHybridTime;
+    doc_ht_ = DocHybridTime::kInvalid;
   }
 
   void Clear();
@@ -237,14 +246,18 @@ class SubDocKey {
   //     Otherwise, we allow decoding an incomplete SubDocKey without a hybrid_time in the end. Note
   //     that we also allow input that has a few bytes in the end but not enough to represent a
   //     hybrid_time.
-  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
-                    bool require_hybrid_time = true);
+  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice, bool require_hybrid_time = true);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
   // hybrid_time is omitted, we don't allow any extra bytes to be present in the slice.
-  CHECKED_STATUS FullyDecodeFrom(const rocksdb::Slice& slice,
-                         bool require_hybrid_time = true);
+  CHECKED_STATUS FullyDecodeFrom(
+      const rocksdb::Slice& slice,
+      bool require_hybrid_time = true);
+
+  CHECKED_STATUS FullyDecodeFromKeyWithoutHybridTime(const rocksdb::Slice& slice) {
+    return FullyDecodeFrom(slice, /* require_hybrid_time = */ false);
+  }
 
   std::string ToString() const;
 
@@ -273,26 +286,32 @@ class SubDocKey {
 
   HybridTime hybrid_time() const {
     DCHECK(has_hybrid_time());
-    return hybrid_time_;
+    return doc_ht_.hybrid_time();
   }
 
-  void set_hybrid_time(HybridTime hybrid_time) {
-    DCHECK_NE(hybrid_time, HybridTime::kInvalidHybridTime);
-    hybrid_time_ = hybrid_time;
+  const DocHybridTime& doc_hybrid_time() const {
+    DCHECK(has_hybrid_time());
+    return doc_ht_;
   }
 
-  // When we come up with a batch of DocDB updates, we don't yet know the hybrid_time, because the
-  // hybrid_time is only determined at the time the write operation is appended to the Raft log.
-  // Therefore, we initially use HybridTime::kMax, and we have to replace it with the actual
-  // hybrid_time later.
-  void ReplaceMaxHybridTimeWith(HybridTime hybrid_time);
+  void set_hybrid_time(const DocHybridTime& hybrid_time) {
+    DCHECK(hybrid_time.is_valid());
+    doc_ht_ = hybrid_time;
+  }
+
+  // Sets HybridTime with the maximum write id so that the reader can see the values written at
+  // exactly the given hybrid time. Useful when constructing a seek key.
+  void SetHybridTimeForReadPath(HybridTime hybrid_time) {
+    DCHECK(hybrid_time.is_valid());
+    doc_ht_ = DocHybridTime(hybrid_time, kMaxWriteId);
+  }
 
   bool has_hybrid_time() const {
-    return hybrid_time_ != HybridTime::kInvalidHybridTime;
+    return doc_ht_.is_valid();
   }
 
   void RemoveHybridTime() {
-    hybrid_time_ = HybridTime::kInvalidHybridTime;
+    doc_ht_ = DocHybridTime::kInvalid;
   }
 
   // @return The number of initial components (including document key and subkeys) that this
@@ -359,13 +378,13 @@ class SubDocKey {
 
  private:
   DocKey doc_key_;
-  HybridTime hybrid_time_;
+  DocHybridTime doc_ht_;
   std::vector<PrimitiveValue> subkeys_;
 
   void EnsureHasNoHybridTimeYet() {
     DCHECK(!has_hybrid_time())
         << "Trying to append a primitive value to a SubDocKey " << ToString()
-        << " that already has a hybrid_time set: " << hybrid_time_.ToDebugString();
+        << " that already has a hybrid_time set: " << doc_ht_.ToString();
   }
 };
 

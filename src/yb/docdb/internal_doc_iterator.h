@@ -7,6 +7,7 @@
 
 #include "rocksdb/db.h"
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
@@ -97,7 +98,7 @@ class InternalDocIterator {
   // existing subdocument.
   void AppendToPrefix(const PrimitiveValue& subkey);
 
-  void AppendHybridTimeToPrefix(HybridTime ht);
+  void AppendHybridTimeToPrefix(const DocHybridTime& ht);
 
   std::string ToDebugString();
 
@@ -124,7 +125,7 @@ class InternalDocIterator {
   // The "generation hybrid time" of the current subdocument, i.e. the hybrid time at which the
   // document was last fully overwritten or deleted. The notion of "last" may mean "last as of the
   // hybrid time we're scanning at". Only valid if subdoc_exists() or subdoc_deleted().
-  HybridTime subdoc_ht_;
+  DocHybridTime subdoc_ht_;
 
   Trilean subdoc_exists_;
 

@@ -123,11 +123,9 @@ Status CheckDeadlineNotWithinMicros(const MonoTime& deadline, int64_t wait_for_u
 
 }  // anonymous namespace
 
-// Left shifting 12 bits gives us 12 bits for the logical value
-// and should still keep accurate microseconds time until 2100+
-const int HybridClock::kBitsToShift = 12;
-// This mask gives us back the logical bits.
-const uint64_t HybridClock::kLogicalBitMask = (1 << kBitsToShift) - 1;
+const int HybridClock::kBitsToShift = HybridTime::kBitsForLogicalComponent;
+
+const uint64_t HybridClock::kLogicalBitMask = HybridTime::kLogicalBitMask;
 
 const uint64_t HybridClock::kNanosPerSec = 1000000;
 
@@ -460,11 +458,11 @@ string HybridClock::Stringify(HybridTime hybrid_time) {
 }
 
 uint64_t HybridClock::GetLogicalValue(const HybridTime& hybrid_time) {
-  return hybrid_time.value() & kLogicalBitMask;
+  return hybrid_time.GetLogicalValue();
 }
 
 uint64_t HybridClock::GetPhysicalValueMicros(const HybridTime& hybrid_time) {
-  return hybrid_time.value() >> kBitsToShift;
+  return hybrid_time.GetPhysicalValueMicros();
 }
 
 uint64_t HybridClock::GetPhysicalValueNanos(const HybridTime& hybrid_time) {
@@ -480,13 +478,12 @@ HybridTime HybridClock::HybridTimeFromMicroseconds(uint64_t micros) {
 }
 
 HybridTime HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
-    uint64_t micros,
-    uint64_t logical_value) {
-  return HybridTime((micros << kBitsToShift) + logical_value);
+    MicrosTime micros, LogicalTimeComponent logical_value) {
+  return HybridTime::FromMicrosecondsAndLogicalValue(micros, logical_value);
 }
 
 HybridTime HybridClock::AddPhysicalTimeToHybridTime(const HybridTime& original,
-                                                  const MonoDelta& to_add) {
+                                                    const MonoDelta& to_add) {
   uint64_t new_physical = GetPhysicalValueMicros(original) + to_add.ToMicroseconds();
   uint64_t old_logical = GetLogicalValue(original);
   return HybridTimeFromMicrosecondsAndLogicalValue(new_physical, old_logical);

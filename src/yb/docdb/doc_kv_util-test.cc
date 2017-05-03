@@ -37,17 +37,23 @@ TEST(DocKVUtilTest, KeyBelongsToDocKeyInTest) {
 
 TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
   string initial_str;
-  uint64_t cur_ht = 0;
+  HybridTimeRepr cur_ht_value = 0;
   for (int i = 0; i < 10; ++i) {
     initial_str.push_back('a');
     string buf = initial_str;
-    for (int j = 0; j < 2; ++j) {
-      auto ht = HybridTime(cur_ht);
-      cur_ht += kHybridTimeInversionMask / 10;
-      int pos = buf.size();
-      AppendEncodedHybridTimeToKey(ht, &buf);
-      rocksdb::Slice slice(buf);
-      ASSERT_EQ(ht, DecodeHybridTimeFromKey(slice, pos));
+    static constexpr int kNumHTValuesToTry = 10;
+    for (int j = 0; j < kNumHTValuesToTry ; ++j) {
+      static constexpr int kNumWriteIdsToTry = 10;
+      for (int k = 0; k < kNumWriteIdsToTry; ++k) {
+        const auto write_id = std::numeric_limits<IntraTxnWriteId>::max() / kNumWriteIdsToTry * k;
+        const auto htw = DocHybridTime(HybridTime(cur_ht_value), write_id);
+        htw.AppendEncodedInDocDbFormat(&buf);
+        rocksdb::Slice slice(buf);
+        DocHybridTime decoded_ht;
+        ASSERT_OK(DecodeHybridTimeFromEndOfKey(slice, &decoded_ht));
+        ASSERT_EQ(htw, decoded_ht);
+      }
+      cur_ht_value += std::numeric_limits<uint64_t>::max() / kNumHTValuesToTry;
     }
   }
 }

@@ -1,14 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
-#include "yb/server/hybrid_clock.h"
 
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/util/bytes_formatter.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
+#include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/server/hybrid_clock.h"
 
 using std::string;
 
@@ -31,30 +28,39 @@ bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_d
   }
 }
 
-HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key) {
-  const int pos = key.size() - kBytesPerHybridTime;
-  return DecodeHybridTimeFromKey(key, pos);
+Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, DocHybridTime* hybrid_time)  {
+  auto yb_slice = RocksDBToYBSlice(*slice);
+  RETURN_NOT_OK(hybrid_time->DecodeFrom(&yb_slice));
+  *slice = YBToRocksDBSlice(yb_slice);
+  return Status::OK();
 }
 
-HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key, const int pos) {
-  CHECK_GE(key.size(), pos + sizeof(int64_t));
-  // We invert all bits of the 64-bit hybrid_time (which is equivalent to subtracting the
-  // hybrid_time from the maximum unsigned 64-bit integer) so that newer hybrid_times are sorted
-  // first.
-
-  return HybridTime(BigEndian::Load64(key.data() + pos) ^ kHybridTimeInversionMask);
+Status DecodeHybridTimeFromEndOfKey(
+    const rocksdb::Slice &key,
+    DocHybridTime *dest) {
+  return dest->DecodeFromEnd(RocksDBToYBSlice(key));
 }
 
-Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, HybridTime* hybrid_time) {
-  if (slice->size() < kBytesPerHybridTime) {
-    return STATUS(Corruption,
-        Substitute("$0 bytes is not enough to decode a hybrid_time, need $1: $2",
-            slice->size(),
-            kBytesPerHybridTime,
-            FormatRocksDBSliceAsStr(*slice)));
+// Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
+// last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
+// encoded DocHybridTime is ValueType::kHybridTime.
+Status CheckHybridTimeSizeAndValueType(
+    const rocksdb::Slice& key,
+    int* ht_byte_size_dest) {
+  RETURN_NOT_OK(
+      DocHybridTime::CheckAndGetEncodedSize(RocksDBToYBSlice(key), ht_byte_size_dest));
+  const size_t hybrid_time_value_type_offset = key.size() - *ht_byte_size_dest - 1;
+  const ValueType value_type = DecodeValueType(key[hybrid_time_value_type_offset]);
+  if (value_type != ValueType::kHybridTime) {
+    return STATUS_SUBSTITUTE(
+        Corruption,
+        "Expected to find value type kHybridTime preceding the HybridTime component of the "
+            "encoded key, found $0. DocHybridTime bytes: $1",
+        ValueTypeToStr(value_type),
+        ToShortDebugStr(rocksdb::Slice(key.data() + hybrid_time_value_type_offset,
+                                       key.size() - hybrid_time_value_type_offset)));
   }
-  *hybrid_time = HybridTime(BigEndian::Load64(slice->data()) ^ kHybridTimeInversionMask);
-  slice->remove_prefix(kBytesPerHybridTime);
+
   return Status::OK();
 }
 
@@ -172,7 +178,9 @@ CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice& key, const MonoDelta& ttl,
                              const HybridTime& read_hybrid_time, bool* has_expired) {
   *has_expired = false;
   if (!ttl.Equals(Value::kMaxTtl)) {
-    RETURN_NOT_OK(HasExpiredTTL(DecodeHybridTimeFromKey(key), ttl, read_hybrid_time, has_expired));
+    DocHybridTime ht;
+    RETURN_NOT_OK(ht.DecodeFromEnd(RocksDBToYBSlice(key)));
+    RETURN_NOT_OK(HasExpiredTTL(ht.hybrid_time(), ttl, read_hybrid_time, has_expired));
   }
   return Status::OK();
 }

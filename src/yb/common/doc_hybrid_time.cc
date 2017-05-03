@@ -1,0 +1,192 @@
+// Copyright (c) YugaByte, Inc.
+
+#include "yb/common/doc_hybrid_time.h"
+
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/cast.h"
+#include "yb/util/status.h"
+#include "yb/util/varint.h"
+#include "yb/util/fast_varint.h"
+
+using yb::util::VarInt;
+using yb::util::FastEncodeDescendingVarInt;
+using yb::util::FastDecodeDescendingVarInt;
+using yb::util::FormatBytesAsStr;
+using yb::util::FormatSliceAsStr;
+using yb::util::QuotesType;
+using yb::util::to_char_ptr;
+using yb::util::to_uchar_ptr;
+
+using strings::Substitute;
+using strings::SubstituteAndAppend;
+
+namespace yb {
+
+// It does not really matter what write id we use here. We determine DocHybridTime validity
+// based on the HybridTime validity.
+const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalidHybridTime);
+
+const DocHybridTime DocHybridTime::kMin = DocHybridTime(HybridTime::kMin, 0);
+const DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWriteId);
+
+constexpr int kNumBitsForHybridTimeSize = 5;
+constexpr int kHybridTimeSizeMask = (1 << kNumBitsForHybridTimeSize) - 1;
+
+void DocHybridTime::AppendEncodedInDocDbFormat(std::string* dest) const {
+  // We compute the difference between the physical time as microseconds since the UNIX epoch and
+  // the "YugaByte epoch" as a signed operation, so that we can still represent hybrid times earlier
+  // than the YugaByte epoch.
+  const size_t initial_string_size = dest->size();
+  FastEncodeDescendingVarInt(
+      static_cast<int64_t>(hybrid_time_.GetPhysicalValueMicros()) -
+          static_cast<int64_t>(kYugaByteMicrosecondEpoch),
+      dest);
+  FastEncodeDescendingVarInt(hybrid_time_.GetLogicalValue(), dest);
+
+  // We add one to write_id to ensure the negated value used in the encoding is always negative
+  // (i.e. is never zero).  Then we shift it left by kNumBitsForHybridTimeSize bits so that we
+  // always have kNumBitsForHybridTimeSize lowest bits to store the encoded size. This way we can
+  // also decode the VarInt, negate it, obtain an always-positive value, and look at the lowest
+  // kNumBitsForHybridTimeSize bits to get the encoded size of the entire DocHybridTime.
+  //
+  // It is important that we cast to int64_t before adding 1, otherwise WriteId might overflow.
+  // (As of 04/17/2017 we're using a 32-bit unsigned int for WriteId).
+  FastEncodeDescendingVarInt(
+      (static_cast<int64_t>(write_id_) + 1) << kNumBitsForHybridTimeSize, dest);
+
+  // Store the encoded DocHybridTime size in the last kNumBitsForHybridTimeSize bits so we
+  // can decode the hybrid time from the end of an encoded DocKey efficiently.
+  const uint8_t last_byte = static_cast<uint8_t>(dest->back());
+
+  const uint8_t encoded_size = dest->size() - initial_string_size;
+  DCHECK_LE(1, encoded_size);
+  DCHECK_LE(encoded_size, kMaxBytesPerEncodedHybridTime);
+  (*dest)[dest->size() - 1] = static_cast<char>(
+      (last_byte & ~kHybridTimeSizeMask) | encoded_size);
+}
+
+Status DocHybridTime::DecodeFrom(Slice *slice) {
+  const size_t previous_size = slice->size();
+  {
+    int64_t decoded_micros = 0;
+    RETURN_NOT_OK(FastDecodeDescendingVarInt(slice, &decoded_micros));
+    decoded_micros += kYugaByteMicrosecondEpoch;
+
+    int64_t decoded_logical = 0;
+    RETURN_NOT_OK(FastDecodeDescendingVarInt(slice, &decoded_logical));
+
+    hybrid_time_ = HybridTime::FromMicrosecondsAndLogicalValue(decoded_micros, decoded_logical);
+  }
+
+  int64_t decoded_shifted_write_id = 0;
+  const auto ptr_before_decoding_write_id = slice->data();
+  RETURN_NOT_OK(FastDecodeDescendingVarInt(slice, &decoded_shifted_write_id));
+
+  if (decoded_shifted_write_id < 0) {
+    return STATUS_SUBSTITUTE(
+        Corruption,
+        "Negative decoded_shifted_write_id: $0. Was trying to decode from: $1",
+        decoded_shifted_write_id,
+        FormatSliceAsStr(
+            Slice(ptr_before_decoding_write_id,
+                  slice->data() + slice->size() - ptr_before_decoding_write_id),
+            QuotesType::kDoubleQuotes,
+            /* max_length = */ 32));
+  }
+  write_id_ = (decoded_shifted_write_id >> kNumBitsForHybridTimeSize) - 1;
+
+  const size_t bytes_decoded = previous_size - slice->size();
+  const size_t size_at_the_end = (*(slice->data() - 1)) & kHybridTimeSizeMask;
+  if (size_at_the_end != bytes_decoded) {
+    return STATUS_SUBSTITUTE(
+        Corruption,
+        "Wrong encoded DocHybridTime size at the end: $0. Expected: $1. "
+            "Encoded timestamp: $2.",
+        size_at_the_end,
+        bytes_decoded,
+        FormatBytesAsStr(to_char_ptr(slice->data() - bytes_decoded), bytes_decoded));
+  }
+
+  return Status::OK();
+}
+
+Status DocHybridTime::FullyDecodeFrom(const Slice& encoded) {
+  Slice s = encoded;
+  RETURN_NOT_OK(DecodeFrom(&s));
+  if (!s.empty()) {
+    return STATUS_SUBSTITUTE(
+        Corruption,
+        "$0 extra bytes left when decoding a DocHybridTime $1",
+        s.size(), FormatSliceAsStr(encoded, QuotesType::kDoubleQuotes, /* max_length = */ 32));
+  }
+  return Status::OK();
+}
+
+Status DocHybridTime::DecodeFromEnd(const Slice& encoded_key_with_ht_at_end) {
+  int encoded_size = 0;
+  RETURN_NOT_OK(CheckAndGetEncodedSize(encoded_key_with_ht_at_end, &encoded_size));
+  Slice s(encoded_key_with_ht_at_end.data() + encoded_key_with_ht_at_end.size() - encoded_size,
+          encoded_size);
+  return FullyDecodeFrom(s);
+}
+
+string DocHybridTime::ToString() const {
+  if (write_id_ == 0) {
+    return hybrid_time_.ToDebugString();
+  }
+
+  string s = hybrid_time_.ToDebugString();
+  s.resize(s.length() - 1);
+  if (write_id_ == kMaxWriteId) {
+    s += ", w=Max)";
+  } else {
+    SubstituteAndAppend(&s, ", w=$0)", write_id_);
+  }
+  return s;
+}
+
+Status DocHybridTime::CheckEncodedSize(int encoded_ht_size, size_t encoded_key_size) {
+  if (encoded_key_size == 0) {
+    return STATUS(RuntimeError,
+                  "Got an empty encoded key when looking for a DocHybridTime at the end.");
+  }
+
+  SCHECK_GE(encoded_ht_size,
+            1,
+            Corruption,
+            Substitute("Encoded HybridTime must be at least one byte, found $0.", encoded_ht_size));
+
+  SCHECK_LE(encoded_ht_size,
+            kMaxBytesPerEncodedHybridTime,
+            Corruption,
+            Substitute("Encoded HybridTime can't be more than $0 bytes, found $1.",
+                       kMaxBytesPerEncodedHybridTime, encoded_ht_size));
+
+
+  SCHECK_LT(encoded_ht_size,
+            encoded_key_size,
+            Corruption,
+            Substitute(
+                "Trying to extract an encoded HybridTime with a size of $0 bytes from "
+                    "an encoded key of length $1 bytes (must be strictly less -- one byte is "
+                    "used for value type).",
+                encoded_ht_size, encoded_key_size));
+
+  return Status::OK();
+}
+
+int DocHybridTime::GetEncodedSize(const Slice& encoded_key) {
+  // We are not checking for errors here -- see CheckEncodedSize for that. We return something
+  // even for a zero-size slice.
+  return encoded_key.empty() ? 0
+      : static_cast<uint8_t>(encoded_key.data()[encoded_key.size() - 1]) & kHybridTimeSizeMask;
+}
+
+CHECKED_STATUS DocHybridTime::CheckAndGetEncodedSize(
+    const Slice& encoded_key, int* encoded_ht_size) {
+  *encoded_ht_size = GetEncodedSize(encoded_key);
+  return CheckEncodedSize(*encoded_ht_size, encoded_key.size());
+}
+
+}  // namespace yb

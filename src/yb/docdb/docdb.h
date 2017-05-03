@@ -12,9 +12,10 @@
 #include "rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/docdb/doc_operation.h"
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb.pb.h"
@@ -78,14 +79,14 @@ class DocWriteBatch {
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   CHECKED_STATUS SetPrimitive(
-      const DocPath& doc_path, const Value& value, HybridTime hybrid_time = HybridTime::kMax,
+      const DocPath& doc_path, const Value& value,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
 
-  CHECKED_STATUS SetPrimitive(const DocPath& doc_path,
-                              const PrimitiveValue& value,
-                              HybridTime hybrid_time = HybridTime::kMax,
-                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired) {
-    return SetPrimitive(doc_path, Value(value), hybrid_time, use_init_marker);
+  CHECKED_STATUS SetPrimitive(
+      const DocPath& doc_path,
+      const PrimitiveValue& value,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired) {
+    return SetPrimitive(doc_path, Value(value), use_init_marker);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -95,30 +96,25 @@ class DocWriteBatch {
   CHECKED_STATUS ExtendSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
-      HybridTime hybrid_time = HybridTime::kMax,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional,
       MonoDelta ttl = Value::kMaxTtl);
 
   CHECKED_STATUS InsertSubDocument(
       const DocPath& doc_path,
       const SubDocument& value,
-      HybridTime hybrid_time = HybridTime::kMax,
       InitMarkerBehavior use_init_marker = InitMarkerBehavior::kOptional,
       MonoDelta ttl = Value::kMaxTtl);
 
-  CHECKED_STATUS DeleteSubDoc(const DocPath& doc_path, HybridTime hybrid_time = HybridTime::kMax,
-                              InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
+  CHECKED_STATUS DeleteSubDoc(
+      const DocPath& doc_path,
+      InitMarkerBehavior use_init_marker = InitMarkerBehavior::kRequired);
 
-  std::string ToDebugString();
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
 
-  void PopulateRocksDBWriteBatchInTest(
-      rocksdb::WriteBatch *rocksdb_write_batch,
-      HybridTime hybrid_time = HybridTime::kMax) const;
-
-  rocksdb::Status WriteToRocksDBInTest(
-      const HybridTime hybrid_time, const rocksdb::WriteOptions &write_options) const;
+  const std::vector<std::pair<std::string, std::string>> key_value_pairs() const {
+    return put_batch_;
+  }
 
   void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
 
@@ -126,21 +122,21 @@ class DocWriteBatch {
   // performs. The internal seek count is reset.
   int GetAndResetNumRocksDBSeeks();
 
-  // This is used in tests to verify we are not trying to apply a DocWriteBatch to a different
-  // RocksDB instance than it was constructed with.
-  void CheckBelongsToSameRocksDB(const rocksdb::DB* rocksdb) const;
-
   rocksdb::DB* rocksdb() { return rocksdb_; }
 
  private:
-  // This method performs the necessary operations to set a primitive value for a given docpath
-  // assuming the appropriate operations have been taken care of for subkeys with index <
-  // subkey_index. This method assumes responsibility of ensuring the proper docdb structure
+  // This member function performs the necessary operations to set a primitive value for a given
+  // docpath assuming the appropriate operations have been taken care of for subkeys with index <
+  // subkey_index. This method assumes responsibility of ensuring the proper DocDB structure
   // (e.g: init markers) is maintained for subdocuments starting at the given subkey_index.
-  CHECKED_STATUS SetPrimitiveInternal(const DocPath& doc_path, const Value& value,
-                                      InternalDocIterator *doc_iter,
-                                      const HybridTime hybrid_time, const bool is_deletion,
-                                      const int num_subkeys, InitMarkerBehavior use_init_marker);
+  CHECKED_STATUS SetPrimitiveInternal(
+      const DocPath& doc_path,
+      const Value& value,
+      InternalDocIterator *doc_iter,
+      bool is_deletion,
+      int num_subkeys,
+      InitMarkerBehavior use_init_marker);
+
   DocWriteBatchCache cache_;
 
   rocksdb::DB* rocksdb_;
@@ -182,10 +178,6 @@ Status ApplyDocWriteTransaction(const std::vector<std::unique_ptr<DocOperation>>
                                 const HybridTime& hybrid_time,
                                 rocksdb::DB *rocksdb,
                                 KeyValueWriteBatchPB* write_batch);
-
-Status HandleRedisReadTransaction(rocksdb::DB *rocksdb,
-    const std::vector<std::unique_ptr<RedisReadOperation>>& doc_read_ops,
-    HybridTime hybrid_time);
 
 // A visitor class that could be overridden to consume results of scanning SubDocuments.
 // See e.g. SubDocumentBuildingVisitor (used in implementing GetSubDocument) as example usage.

@@ -26,12 +26,12 @@ namespace yb {
 namespace docdb {
 
 void DocWriteBatchCache::Put(const KeyBytes& key_bytes,
-                             HybridTime gen_ht,
+                             DocHybridTime gen_ht,
                              ValueType value_type) {
   DOCDB_DEBUG_LOG(
       "Writing to DocWriteBatchCache: encoded_key_prefix=$0, gen_ht=$1, value_type=$2",
       BestEffortDocDBKeyToStr(key_bytes),
-      gen_ht.ToDebugString(),
+      gen_ht.ToString(),
       ValueTypeToStr(value_type));
   prefix_to_gen_ht_[key_bytes.AsStringRef()] = std::make_pair(gen_ht, value_type);
 }
@@ -68,7 +68,7 @@ string DocWriteBatchCache::ToDebugString() {
 string DocWriteBatchCache::EntryToStr(const Entry& entry) {
   ostringstream ss;
   ss << "("
-     << entry.first.ToDebugString() << ", "
+     << entry.first.ToString() << ", "
      << ValueTypeToStr(entry.second)
      << ")";
   return ss.str();

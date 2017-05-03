@@ -17,20 +17,18 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/util/faststring.h"
 #include "yb/util/memcmpable_varint.h"
-#include "yb/util/status.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/mathlimits.h"
 
+using std::string;
 using strings::Substitute;
+using strings::SubstituteAndAppend;
 
 namespace yb {
 
-const HybridTime HybridTime::kMin(MathLimits<HybridTime::val_type>::kMin);
-const HybridTime HybridTime::kMax(MathLimits<HybridTime::val_type>::kMax);
-const HybridTime HybridTime::kInitialHybridTime(MathLimits<HybridTime::val_type>::kMin + 1);
-const HybridTime HybridTime::kInvalidHybridTime(MathLimits<HybridTime::val_type>::kMax - 1);
+const HybridTime HybridTime::kMin(kMinHybridTimeValue);
+const HybridTime HybridTime::kMax(kMaxHybridTimeValue);
+const HybridTime HybridTime::kInitialHybridTime(kInitialHybridTimeValue);
+const HybridTime HybridTime::kInvalidHybridTime(kInvalidHybridTimeValue);
 
 bool HybridTime::DecodeFrom(Slice *input) {
   return GetMemcmpableVarint64(input, &v);
@@ -45,8 +43,24 @@ string HybridTime::ToString() const {
 }
 
 string HybridTime::ToDebugString() const {
-  return Substitute("$0($1)", kHybridTimeDebugStrPrefix,
-                    v == kMax.v ? "Max" : ToString());
+  string s(kHybridTimeDebugStrPrefix);
+  s += "(";
+  switch (v) {
+    case kMinHybridTimeValue: s += "Min"; break;
+    case kInitialHybridTimeValue: s += "Initial"; break;
+
+    // For Max and Invalid, don't put the value in the string because it is a large constant.
+    case kMaxHybridTimeValue: s += "Max"; break;
+    case kInvalidHybridTimeValue: s += "Invalid"; break;
+    default:
+      SubstituteAndAppend(&s, "p=$0", GetPhysicalValueMicros());
+      const LogicalTimeComponent logical = GetLogicalValue();
+      if (logical != 0) {
+        SubstituteAndAppend(&s, ", l=$0", logical);
+      }
+  }
+  s += ")";
+  return s;
 }
 
 uint64_t HybridTime::ToUint64() const {

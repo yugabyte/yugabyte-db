@@ -55,8 +55,8 @@ Status::Status(Code code,
     //                             char const*, int)
     //    ~/code/yugabyte/src/yb/util/status.h:137:
     //        @ yb::Status::Corruption(char const*, int, yb::Slice const&, yb::Slice const&, short)
-    //    ~/code/yugabyte/src/yb/common/hybrid_time_with_write_id.cc:94:
-    //        @ yb::HybridTimeWithWriteId::DecodeFrom(yb::Slice*)
+    //    ~/code/yugabyte/src/yb/common/doc_hybrid_time.cc:94:
+    //        @ yb::DocHybridTime::DecodeFrom(yb::Slice*)
     LOG(WARNING) << "Non-OK status generated: " << ToString() << ", stack trace:\n"
                  << GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE, /* skip frames: */ 2);
   }

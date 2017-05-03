@@ -2,14 +2,15 @@
 
 #include "yb/docdb/internal_doc_iterator.h"
 
-#include <string>
 #include <sstream>
+#include <string>
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rocksutil/yb_rocksdb.h"
 
 using std::endl;
 using std::string;
@@ -17,6 +18,8 @@ using std::stringstream;
 using std::unique_ptr;
 
 using strings::Substitute;
+
+using yb::util::to_underlying;
 
 namespace yb {
 namespace docdb {
@@ -45,7 +48,8 @@ void InternalDocIterator::AppendToPrefix(const PrimitiveValue& subkey) {
   subkey.AppendToKey(&key_prefix_);
 }
 
-void InternalDocIterator::AppendHybridTimeToPrefix(HybridTime hybrid_time) {
+void InternalDocIterator::AppendHybridTimeToPrefix(
+    const DocHybridTime& hybrid_time) {
   key_prefix_.AppendHybridTime(hybrid_time);
 }
 
@@ -92,23 +96,10 @@ Status InternalDocIterator::SeekToKeyPrefix() {
         // TODO: make this return a Status and propagate it to the caller.
         subdoc_type_ = DecodeValueType(iter_->value());
 
-        // TODO: return a Status here.
         // TODO: with optional init markers we can find something that is more than one level
         //       deep relative to the current prefix.
 
-        // The expected key consists of the hybrid_time-less key prefix, one byte for the
-        // hybrid_time value type, and the hybrid_time itself.
-        int expected_key_size = key_prefix_.size() + 1 + kBytesPerHybridTime;
-        if (key.size() != expected_key_size) {
-          const string error_msg = Substitute(
-              "Expected key size $0 but found $1: $2",
-              expected_key_size, key.size(), ToShortDebugStr(key));
-          LOG(WARNING) << "Corruption in " << __func__ << ": " << error_msg;
-          return STATUS(Corruption, error_msg);
-        }
-
-        // TODO: proper error handling using Status.
-        subdoc_ht_ = DecodeHybridTimeFromKey(key);
+        RETURN_NOT_OK(DecodeHybridTimeFromEndOfKey(key, &subdoc_ht_));
 
         // Cache the results of reading from RocksDB so that we don't have to read again in a later
         // operation in the same DocWriteBatch.
@@ -126,6 +117,8 @@ Status InternalDocIterator::SeekToKeyPrefix() {
           // SubDocKey(DocKey([], ["a"]), [HT(36)]) -> false
           // SubDocKey(DocKey([], ["a"]), [HT(1)]) -> {}
           // SubDocKey(DocKey([], ["a"]), ["y", HT(35)]) -> "lD\x97\xaf^m\x0a1\xa0\xfc\xc8YM"
+          //
+          // Caveat (04/17/2017): the HybridTime encoding in the above example is outdated.
           //
           // In the above layout, if we try to set "a.y.x" to a new value, we first seek to the
           // document key "a" and find that it exists, but then we seek to "a.y" and find that it

@@ -22,11 +22,11 @@ namespace docdb {
 // This class is not thread-safe.
 class DocWriteBatchCache {
  public:
-  using Entry = std::pair<HybridTime, ValueType>;
+  using Entry = std::pair<DocHybridTime, ValueType>;
 
   // Records the generation hybrid_time corresponding to the given encoded key prefix, which is
   // assumed not to include the hybrid_time at the end.
-  void Put(const KeyBytes& encoded_key_prefix, HybridTime gen_ht, ValueType value_type);
+  void Put(const KeyBytes& encoded_key_prefix, DocHybridTime gen_ht, ValueType value_type);
 
   // Returns the latest generation hybrid_time for the document/subdocument identified by the given
   // encoded key prefix.

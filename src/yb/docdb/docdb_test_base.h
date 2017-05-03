@@ -41,6 +41,10 @@ class DocDBTestBase : public YBTest, protected DocDBRocksDBFixture {
   //                       snapshot having index 0.
   void RestoreToRocksDBLogicalSnapshot(int snapshot_index);
 
+  void RestoreToLastLogicalRocksDBSnapshot() {
+    RestoreToRocksDBLogicalSnapshot(logical_snapshots_.size() - 1);
+  }
+
   int num_logical_snapshots() { return logical_snapshots_.size(); }
 
   const std::vector<LogicalRocksDBDebugSnapshot>& logical_snapshots() {

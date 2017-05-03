@@ -63,18 +63,23 @@ std::vector<SubDocKey> GenRandomDocOrSubDocKeys<SubDocKey>(RandomNumberGenerator
 }
 
 template <typename DocOrSubDocKey>
+void TestRoundTripDocOrSubDocKeyEncodingDecoding(const DocOrSubDocKey& doc_or_subdoc_key) {
+  KeyBytes encoded_key = doc_or_subdoc_key.Encode();
+  DocOrSubDocKey decoded_key;
+  ASSERT_OK(decoded_key.FullyDecodeFrom(encoded_key.AsSlice()));
+  ASSERT_EQ(doc_or_subdoc_key, decoded_key);
+  KeyBytes reencoded_doc_key = decoded_key.Encode();
+  ASSERT_EQ(encoded_key.ToString(), reencoded_doc_key.ToString());
+}
+
+template <typename DocOrSubDocKey>
 void TestRoundTripDocOrSubDocKeyEncodingDecoding() {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
   for (int use_hash = 0; use_hash <= 1; ++use_hash) {
-    auto keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
+    auto doc_or_subdoc_keys = GenRandomDocOrSubDocKeys<DocOrSubDocKey>(
         &rng, use_hash, kNumDocOrSubDocKeysPerBatch);
-    for (const auto& key : keys) {
-      KeyBytes encoded_key = key.Encode();
-      DocOrSubDocKey decoded_key;
-      ASSERT_OK(decoded_key.FullyDecodeFrom(encoded_key.AsSlice()));
-      ASSERT_EQ(key, decoded_key);
-      KeyBytes reencoded_doc_key = decoded_key.Encode();
-      ASSERT_EQ(encoded_key.ToString(), reencoded_doc_key.ToString());
+    for (const auto& doc_or_subdoc_key : doc_or_subdoc_keys) {
+      TestRoundTripDocOrSubDocKeyEncodingDecoding(doc_or_subdoc_key);
     }
   }
 }
@@ -130,15 +135,15 @@ TEST(DocKeyTest, TestDocKeyToString) {
 
 TEST(DocKeyTest, TestSubDocKeyToString) {
   ASSERT_EQ(
-      "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT(12345)])",
+      "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT(p=12345)])",
       SubDocKey(DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
-                HybridTime(12345L)).ToString());
+                HybridTime::FromMicros(12345L)).ToString());
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), "
-      "[\"subkey1\"; HT(20000)])",
+      "[\"subkey1\"; HT(p=20000)])",
       SubDocKey(
           DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
-          PrimitiveValue("subkey1"), HybridTime(20000L)
+          PrimitiveValue("subkey1"), HybridTime::FromMicros(20000L)
       ).ToString());
 
 }
@@ -215,7 +220,7 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
                              PrimitiveValue("sk1"),
                              PrimitiveValue("sk2"),
                              PrimitiveValue(BINARY_STRING("sk3""\x00"), SortOrder::kDescending),
-                             HybridTime(1000));
+                             HybridTime::FromMicros(1000));
   const KeyBytes encoded_subdoc_key(subdoc_key.Encode());
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
@@ -224,14 +229,14 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
                $sk1\x00\x00\
                $sk2\x00\x00\
                a\x8c\x94\xcc\xff\xfe\xff\xff\
-               #\xff\xff\xff\xff\xff\xff\xfc\x17"
+               #\xff\x05T=\xf7)\xbc\x18\x80J"
           )#"
       ),
       encoded_subdoc_key.ToString()
   );
   SubDocKey decoded_subdoc_key;
   ASSERT_OK(decoded_subdoc_key.FullyDecodeFrom(encoded_subdoc_key.AsSlice()));
-  ASSERT_EQ(decoded_subdoc_key, subdoc_key);
+  ASSERT_EQ(subdoc_key, decoded_subdoc_key);
 }
 
 TEST(DocKeyTest, TestRandomizedDocKeyRoundTripEncodingDecoding) {
@@ -287,7 +292,8 @@ TEST(DocKeyTest, TestSubDocKeyStartsWith) {
       ASSERT_TRUE(subdoc_key.StartsWith(doc_key_only));
       ASSERT_FALSE(doc_key_only.StartsWith(subdoc_key));
       SubDocKey with_another_doc_gen_ht(subdoc_key);
-      with_another_doc_gen_ht.set_hybrid_time(HybridTime(subdoc_key.hybrid_time().ToUint64() + 1));
+      with_another_doc_gen_ht.set_hybrid_time(
+          DocHybridTime(subdoc_key.hybrid_time().ToUint64() + 1, 0, kMinWriteId));
       ASSERT_FALSE(with_another_doc_gen_ht.StartsWith(doc_key_only_with_ht));
       ASSERT_FALSE(with_another_doc_gen_ht.StartsWith(subdoc_key));
       ASSERT_FALSE(subdoc_key.StartsWith(with_another_doc_gen_ht));
@@ -298,7 +304,8 @@ TEST(DocKeyTest, TestSubDocKeyStartsWith) {
 TEST(DocKeyTest, TestNumSharedPrefixComponents) {
   const DocKey doc_key({PrimitiveValue("a"), PrimitiveValue("b")});
   const DocKey doc_key2({PrimitiveValue("aa")});
-  const SubDocKey k1(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L), HybridTime(12345));
+  const SubDocKey k1(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L),
+                     HybridTime::FromMicros(12345));
 
   // If the document key is different, we have no shared prefix components.
   ASSERT_EQ(0, k1.NumSharedPrefixComponents(SubDocKey(doc_key2)));
@@ -321,7 +328,7 @@ TEST(DocKeyTest, TestNumSharedPrefixComponents) {
 
 std::string EncodeSimpleSubDocKeyFromSlice(const rocksdb::Slice& input) {
   DocKey dk(DocKey(PrimitiveValues(std::string(input.data()))));
-  return SubDocKey(dk, HybridTime(12345L)).Encode().AsStringRef();
+  return SubDocKey(dk, HybridTime::FromMicros(12345L)).Encode().AsStringRef();
 }
 
 TEST(DocKeyTest, TestKeyMatchingThroughFilter) {
@@ -362,6 +369,12 @@ TEST(DocKeyTest, TestKeyMatchingThroughNewInterface) {
   ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("bar")));
   ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("test")));
   ASSERT_TRUE(!reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("fake")));
+}
+
+TEST(DocKeyTest, TestWriteId) {
+  SubDocKey subdoc_key(DocKey({PrimitiveValue("a"), PrimitiveValue(135)}),
+                       DocHybridTime(1000000, 4091, 135));
+  TestRoundTripDocOrSubDocKeyEncodingDecoding(subdoc_key);
 }
 
 }  // namespace docdb

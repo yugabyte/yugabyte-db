@@ -135,8 +135,8 @@ class HybridClock : public Clock {
   static HybridTime HybridTimeFromMicroseconds(uint64_t micros);
 
   // Obtains a new HybridTime that embeds both the physical and logical values.
-  static HybridTime HybridTimeFromMicrosecondsAndLogicalValue(uint64_t micros,
-                                                            uint64_t logical_value);
+  static HybridTime HybridTimeFromMicrosecondsAndLogicalValue(
+      MicrosTime micros, LogicalTimeComponent logical_value);
 
   // Creates a new hybrid_time whose physical time is GetPhysicalValue(original) +
   // 'micros_to_add' and which retains the same logical value.

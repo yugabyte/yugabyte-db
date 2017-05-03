@@ -7,18 +7,20 @@
 #include <glog/logging.h>
 
 #include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/subdocument.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/decimal.h"
 #include "yb/rocksutil/yb_rocksdb.h"
-#include "yb/docdb/subdocument.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/decimal.h"
 
 using std::string;
 using strings::Substitute;
 using yb::YQLValuePB;
 using yb::util::Decimal;
 using yb::util::FormatBytesAsStr;
+using yb::util::CompareUsingLessThan;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
 // default clause so that we can ensure that we're handling all possible primitive value types
@@ -88,8 +90,7 @@ string PrimitiveValue::ToString() const {
     case ValueType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
     case ValueType::kHybridTime:
-      // TODO: print out hybrid_times in a human-readable way?
-      return hybrid_time_val_.ToDebugString();
+      return hybrid_time_val_.ToString();
     case ValueType::kUInt16Hash:
       return Substitute("UInt16Hash($0)", uint16_val_);
     case ValueType::kColumnId:
@@ -186,7 +187,7 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       return;
 
     case ValueType::kHybridTime:
-      key_bytes->AppendHybridTime(hybrid_time_val_);
+      hybrid_time_val_.AppendEncodedInDocDbFormat(key_bytes->mutable_data());
       return;
 
     case ValueType::kUInt16Hash:
@@ -261,10 +262,6 @@ string PrimitiveValue::ToValue() const {
       return result;
     }
 
-    case ValueType::kHybridTime:
-      AppendBigEndianUInt64(hybrid_time_val_.value(), &result);
-      return result;
-
     case ValueType::kUInt16Hash:
       // Hashes are not allowed in a value.
       break;
@@ -274,6 +271,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kTtl: FALLTHROUGH_INTENDED;
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: FALLTHROUGH_INTENDED;
+    case ValueType::kHybridTime: FALLTHROUGH_INTENDED;
     case ValueType::kInvalidValueType:
       break;
   }
@@ -442,16 +440,15 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       return Status::OK();
     }
 
-    case ValueType::kHybridTime:
-      if (slice->size() < kBytesPerHybridTime) {
-        return STATUS(Corruption,
-            Substitute("Not enough bytes to decode a hybrid_time: $0, need $1",
-                slice->size(), kBytesPerHybridTime));
-      }
-      hybrid_time_val_ = DecodeHybridTimeFromKey(*slice, /* pos = */ 0);
-      slice->remove_prefix(kBytesPerHybridTime);
-      type_ = value_type;
+    case ValueType::kHybridTime: {
+      Slice yb_slice = RocksDBToYBSlice(*slice);
+
+      new(&hybrid_time_val_) DocHybridTime();
+      RETURN_NOT_OK(hybrid_time_val_.DecodeFrom(&yb_slice));
+      type_ = ValueType::kHybridTime;
+      *slice = YBToRocksDBSlice(yb_slice);
       return Status::OK();
+    }
 
     case ValueType::kDouble:
       // Doubles are not allowed in a key as of 07/15/2016.
@@ -659,7 +656,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 }
 
 int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
-  int result = GenericCompare(type_, other.type_);
+  int result = CompareUsingLessThan(type_, other.type_);
   if (result != 0) {
     return result;
   }
@@ -673,29 +670,29 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
-      return GenericCompare(int64_val_, other.int64_val_);
+      return CompareUsingLessThan(int64_val_, other.int64_val_);
     case ValueType::kDouble:
-      return GenericCompare(double_val_, other.double_val_);
+      return CompareUsingLessThan(double_val_, other.double_val_);
     case ValueType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case ValueType::kDecimal:
       return decimal_val_.compare(other.decimal_val_);
     case ValueType::kUInt16Hash:
-      return GenericCompare(uint16_val_, other.uint16_val_);
+      return CompareUsingLessThan(uint16_val_, other.uint16_val_);
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
     case ValueType::kTimestamp:
-      return GenericCompare(timestamp_val_, other.timestamp_val_);
+      return CompareUsingLessThan(timestamp_val_, other.timestamp_val_);
     case ValueType::kInetaddressDescending: FALLTHROUGH_INTENDED;
     case ValueType::kInetaddress:
-      return GenericCompare(*inetaddress_val_, *(other.inetaddress_val_));
+      return CompareUsingLessThan(*inetaddress_val_, *(other.inetaddress_val_));
     case ValueType::kUuidDescending: FALLTHROUGH_INTENDED;
     case ValueType::kUuid:
-      return GenericCompare(uuid_val_, other.uuid_val_);
+      return CompareUsingLessThan(uuid_val_, other.uuid_val_);
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId:
-      return GenericCompare(column_id_val_, other.column_id_val_);
+      return CompareUsingLessThan(column_id_val_, other.column_id_val_);
     case ValueType::kHybridTime:
-      // HybridTimes are sorted in reverse order.
-      return -GenericCompare(hybrid_time_val_.value(), other.hybrid_time_val_.value());
+      // HybridTimes are sorted in reverse order when wrapped in a PrimitiveValue.
+      return -hybrid_time_val_.CompareTo(other.hybrid_time_val_);
     IGNORE_NON_PRIMITIVE_VALUE_TYPES_IN_SWITCH;
   }
   LOG(FATAL) << "Comparing invalid PrimitiveValues: " << *this << " and " << other;

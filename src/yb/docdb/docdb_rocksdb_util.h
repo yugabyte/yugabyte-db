@@ -6,20 +6,28 @@
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/include/rocksdb/options.h"
+#include "rocksdb/slice.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {
 
-// Seek to a given prefix and max_hybrid_time while ignoring expired values.
+// Seek to a given prefix and hybrid_time. If an expired value is found, it is still considered
+// "valid" for the purpose of this function, but the value get transformed into a tombstone (a
+// deletion marker).
+//
+// search_key is an encoded form of a SubDocKey with no timestamp. This identifies a subdocument
+// that we're trying to find the next RocksDB key/value pair.
 Status SeekToValidKvAtTs(
     rocksdb::Iterator *iter,
     const rocksdb::Slice &search_key,
     HybridTime hybrid_time,
     SubDocKey *found_key,
-    Value *found_value,
-    bool *is_found);
+    bool *is_found = nullptr,
+    Value *found_value = nullptr);
 
 // See to a rocksdb point that is at least sub_doc_key.
 // If the iterator is already positioned far enough, does not perform a seek.
@@ -27,10 +35,12 @@ void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter);
 
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
 
-// Debug mode: allow printing detailed information about RocksDB seeks.
+// A wrapper around the RocksDB seek operation that uses Next() up to the configured number of
+// times to avoid invalidating iterator state. In debug mode it also allows printing detailed
+// information about RocksDB seeks.
 void PerformRocksDBSeek(
     rocksdb::Iterator *iter,
-    const rocksdb::Slice &key,
+    const rocksdb::Slice &seek_key,
     const char* file_name,
     int line);
 

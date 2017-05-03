@@ -72,7 +72,8 @@ Status DocRowwiseIterator::Init(ScanSpec *spec) {
   } else {
     row_key_ = DocKey();
   }
-  ROCKSDB_SEEK(db_iter_.get(), SubDocKey(row_key_, hybrid_time_).Encode().AsSlice());
+  ROCKSDB_SEEK(db_iter_.get(),
+               SubDocKey(row_key_, DocHybridTime(hybrid_time_, kMaxWriteId)).Encode().AsSlice());
   row_ready_ = false;
 
   if (spec->exclusive_upper_bound_key() != nullptr) {

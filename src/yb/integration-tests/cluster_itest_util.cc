@@ -275,7 +275,7 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
     vector<Sockaddr> addresses;
     RETURN_NOT_OK(host_port.ResolveAddresses(&addresses));
 
-    gscoped_ptr<TServerDetails> peer(new TServerDetails);
+    gscoped_ptr<TServerDetails> peer(new TServerDetails());
     peer->instance_id.CopyFrom(entry.instance_id());
     peer->registration.CopyFrom(entry.registration());
 

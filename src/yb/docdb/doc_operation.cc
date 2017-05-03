@@ -31,8 +31,7 @@ DocPath KuduWriteOperation::DocPathToLock() const {
 
 Status KuduWriteOperation::Apply(
     DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) {
-  return doc_write_batch->SetPrimitive(doc_path_, value_, HybridTime::kMax,
-                                       InitMarkerBehavior::kOptional);
+  return doc_write_batch->SetPrimitive(doc_path_, value_, InitMarkerBehavior::kOptional);
 }
 
 DocPath RedisWriteOperation::DocPathToLock() const {
@@ -136,7 +135,7 @@ Status RedisWriteOperation::ApplySet(DocWriteBatch* doc_write_batch) {
       doc_write_batch->SetPrimitive(
           DocPath::DocPathFromRedisKey(
               kv.hash_code(), kv.key(), kv.subkey_size() > 0 ? kv.subkey(0) : ""),
-          Value(PrimitiveValue(kv.value(0)), ttl), HybridTime::kMax));
+          Value(PrimitiveValue(kv.value(0)), ttl)));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   return Status::OK();
 }
@@ -161,7 +160,7 @@ Status RedisWriteOperation::ApplyGetSet(DocWriteBatch* doc_write_batch) {
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(kv.value(0))), HybridTime::kMax);
+      Value(PrimitiveValue(kv.value(0))));
 }
 
 Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
@@ -186,8 +185,7 @@ Status RedisWriteOperation::ApplyAppend(DocWriteBatch* doc_write_batch) {
   response_.set_int_response(new_value.length());
 
   return doc_write_batch->SetPrimitive(
-      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(new_value)), HybridTime::kMax);
+      DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()), Value(PrimitiveValue(new_value)));
 }
 
 // TODO (akashnil): Actually check if the value existed, return 0 if not. handle multidel in future.
@@ -196,7 +194,7 @@ Status RedisWriteOperation::ApplyDel(DocWriteBatch* doc_write_batch) {
   const RedisKeyValuePB& kv = request_.key_value();
   RETURN_NOT_OK(doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(ValueType::kTombstone)), HybridTime::kMax));
+      Value(PrimitiveValue(ValueType::kTombstone))));
   response_.set_code(RedisResponsePB_RedisStatusCode_OK);
   // Currently we only support deleting one key
   response_.set_int_response(1);
@@ -224,7 +222,7 @@ Status RedisWriteOperation::ApplySetRange(DocWriteBatch* doc_write_batch) {
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(value)), HybridTime::kMax);
+      Value(PrimitiveValue(value)));
 }
 
 Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t incr) {
@@ -262,7 +260,7 @@ Status RedisWriteOperation::ApplyIncr(DocWriteBatch* doc_write_batch, int64_t in
 
   return doc_write_batch->SetPrimitive(
       DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key()),
-      Value(PrimitiveValue(std::to_string(new_value))), HybridTime::kMax);
+      Value(PrimitiveValue(std::to_string(new_value))));
 }
 
 Status RedisWriteOperation::ApplyPush(DocWriteBatch* doc_write_batch) {
@@ -552,8 +550,8 @@ Status YQLWriteOperation::Apply(
           const DocPath sub_path(doc_key_.Encode(),
                                  PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
           const auto value = Value(PrimitiveValue(), ttl);
-          RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value, HybridTime::kMax,
-                                                      InitMarkerBehavior::kOptional));
+          RETURN_NOT_OK(doc_write_batch->SetPrimitive(sub_path, value,
+              InitMarkerBehavior::kOptional));
         }
         if (request_.column_values_size() > 0) {
           for (const auto& column_value : request_.column_values()) {
@@ -564,8 +562,8 @@ Status YQLWriteOperation::Apply(
             const auto& column = schema_.column_by_id(ColumnId(column_value.column_id()));
             const auto sub_doc = SubDocument::FromYQLValuePB(column.type(), column_value.value(),
                                                            column.sorting_type());
-            RETURN_NOT_OK(doc_write_batch->InsertSubDocument(sub_path, sub_doc, HybridTime::kMax,
-                                                        InitMarkerBehavior::kOptional, ttl));
+            RETURN_NOT_OK(doc_write_batch->InsertSubDocument(
+                sub_path, sub_doc, InitMarkerBehavior::kOptional, ttl));
           }
         }
         break;
@@ -579,12 +577,10 @@ Status YQLWriteOperation::Apply(
                 << "column id missing: " << column_value.DebugString();
             const DocPath sub_path(doc_key_.Encode(),
                                    PrimitiveValue(ColumnId(column_value.column_id())));
-            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, HybridTime::kMax,
-                                                        InitMarkerBehavior::kOptional));
+            RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(sub_path, InitMarkerBehavior::kOptional));
           }
         } else {
-          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_, HybridTime::kMax,
-                                                      InitMarkerBehavior::kOptional));
+          RETURN_NOT_OK(doc_write_batch->DeleteSubDoc(doc_path_, InitMarkerBehavior::kOptional));
         }
         break;
       }

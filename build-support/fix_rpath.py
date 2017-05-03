@@ -102,8 +102,8 @@ def update_interpreter(binary_path):
     if interpreter_path.endswith('/' + linuxbrew_interpreter_path_suffix):
         new_interpreter_path = os.path.join(HOME_DIR, linuxbrew_interpreter_path_suffix)
         if new_interpreter_path != interpreter_path:
-            logging.info("Setting interpreter to '{}' on '{}'".format(
-                    new_interpreter_path, binary_path))
+            logging.debug(
+                "Setting interpreter to '{}' on '{}'".format(new_interpreter_path, binary_path))
             run_program([patchelf_path, '--set-interpreter', new_interpreter_path, binary_path])
     return True
 
@@ -306,8 +306,7 @@ def main():
                                       pipes.quote(new_rpath_str),
                                       binary_path)
                     ) >> 8
-                    logging.info(
-                        "Setting rpath on '%s' to '%s'" % (binary_path, new_rpath_str))
+                    logging.debug("Setting rpath on '%s' to '%s'" % (binary_path, new_rpath_str))
                     if set_rpath_exit_code != 0:
                         logging.warn("Could not set rpath on '%s': exit code %d" % (
                                      binary_path, set_rpath_exit_code))

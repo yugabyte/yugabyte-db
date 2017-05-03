@@ -39,6 +39,8 @@ target_link_libraries(server_common
 set(YB_TEST_LINK_LIBS server_common ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(hybrid_clock-test)
 ADD_YB_TEST(logical_clock-test)
+# This test is here and not in common because we need access to HybridClock.
+ADD_YB_TEST(doc_hybrid_time-test)
 
 #########################################
 # server_base_proto

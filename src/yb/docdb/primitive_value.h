@@ -11,28 +11,22 @@
 
 #include "rocksdb/slice.h"
 
-#include "yb/docdb/value_type.h"
-#include "yb/docdb/key_bytes.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/util/decimal.h"
-#include "yb/util/timestamp.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/common/yql_protocol.pb.h"
 #include "yb/common/yql_rowblock.h"
+#include "yb/docdb/key_bytes.h"
+#include "yb/docdb/value_type.h"
+#include "yb/util/decimal.h"
+#include "yb/util/timestamp.h"
 
 namespace yb {
 namespace docdb {
 
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
-
-template<typename T>
-int GenericCompare(const T& a, const T& b) {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-}
 
 enum class SystemColumnIds : int32_t {
   kLivenessColumn = 0 // Stores the TTL for the row.
@@ -145,7 +139,12 @@ class PrimitiveValue {
   }
 
   explicit PrimitiveValue(const HybridTime& hybrid_time) : type_(ValueType::kHybridTime) {
-    hybrid_time_val_ = hybrid_time;
+    hybrid_time_val_ = DocHybridTime(hybrid_time);
+  }
+
+  explicit PrimitiveValue(const DocHybridTime& hybrid_time)
+      : type_(ValueType::kHybridTime),
+        hybrid_time_val_(hybrid_time) {
   }
 
   explicit PrimitiveValue(const ColumnId column_id) : type_(ValueType::kColumnId) {
@@ -207,7 +206,7 @@ class PrimitiveValue {
 
   KeyBytes ToKeyBytes() const;
 
-  HybridTime hybrid_time() const {
+  DocHybridTime hybrid_time() const {
     DCHECK(type_ == ValueType::kHybridTime);
     return hybrid_time_val_;
   }
@@ -294,7 +293,7 @@ class PrimitiveValue {
   union {
     int64_t int64_val_;
     uint16_t uint16_val_;
-    HybridTime hybrid_time_val_;
+    DocHybridTime hybrid_time_val_;
     std::string str_val_;
     double double_val_;
     Timestamp timestamp_val_;

@@ -10,6 +10,7 @@
 #include "rocksdb/slice.h"
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/endian.h"
 #include "yb/util/decimal.h"
@@ -23,15 +24,6 @@ namespace docdb {
 
 constexpr int kEncodedKeyStrTerminatorSize = 2;
 
-constexpr int kBytesPerHybridTime = sizeof(yb::HybridTime);
-
-// Hybrid times are assumed to be represented as 64-bit integers.
-static_assert(kBytesPerHybridTime == 8, "Expected hybrid_time size to be 8 bytes");
-
-// This is used to invert all bits in a 64-bit hybrid time so that higher hybrid times appear first
-// in the sorted order.
-constexpr uint64_t kHybridTimeInversionMask = 0xffffffffffffffffL;
-
 // We are flipping the sign bit of 64-bit integers appearing as object keys in a document so that
 // negative numbers sort earlier.
 constexpr uint64_t kInt64SignBitFlipMask = 0x8000000000000000L;
@@ -42,30 +34,26 @@ constexpr uint64_t kInt64SignBitFlipMask = 0x8000000000000000L;
 // This is only used in unit tests as of 08/02/2016.
 bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const std::string &encoded_doc_key);
 
-// Decode a hybrid time stored at the given position in the given slice. Hybrid times are stored
-// inside keys as big-endian 64-bit integers with all bits inverted for reverse sorting.
-yb::HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key, int pos);
+// Decode a DocHybridTime stored in the end of the given slice.
+CHECKED_STATUS DecodeHybridTimeFromEndOfKey(const rocksdb::Slice &key, DocHybridTime *dest);
 
-// Decode a hybrid time stored in the given slice assuming it is the last 8 bytes. Hybrid times
-// are stored inside keys as big-endian 64-bit integers with all bits inverted for reverse sorting.
-yb::HybridTime DecodeHybridTimeFromKey(const rocksdb::Slice& key);
+// Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
+// last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
+// encoded DocHybridTime is ValueType::kHybridTime.
+CHECKED_STATUS CheckHybridTimeSizeAndValueType(
+    const rocksdb::Slice& key,
+    int* ht_byte_size_dest);
 
 // Consumes hybrid time from the given slice, decreasing the slice size by the hybrid time size.
 // Hybrid time is stored in a "key-appropriate" format (bits inverted for reverse sorting).
 // @param slice The slice holding RocksDB key bytes.
 // @param hybrid_time Where to store the hybrid time. Undefined in case of failure.
-yb::Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, HybridTime* hybrid_time);
+yb::Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, DocHybridTime* hybrid_time);
 
 inline void AppendBigEndianUInt64(uint64_t u, std::string* dest) {
   char buf[sizeof(uint64_t)];
   BigEndian::Store64(buf, u);
   dest->append(buf, sizeof(buf));
-}
-
-// Encodes and appends hybrid time to the given string representing a RocksDB key. Hybrid times are
-// encoded as big-endian 64-bit integers with all bits inverted for reverse sorting.
-inline void AppendEncodedHybridTimeToKey(yb::HybridTime hybrid_time, std::string *dest) {
-  AppendBigEndianUInt64(hybrid_time.value() ^ kHybridTimeInversionMask, dest);
 }
 
 // Encode and append the given signed 64-bit integer to the destination string holding a RocksDB

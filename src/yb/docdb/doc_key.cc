@@ -20,6 +20,7 @@ using strings::Substitute;
 
 using yb::util::to_underlying;
 using yb::util::CompareVectors;
+using yb::util::CompareUsingLessThan;
 
 namespace yb {
 namespace docdb {
@@ -181,7 +182,7 @@ int DocKey::CompareTo(const DocKey& other) const {
 
   int result = 0;
   if (hash_present_) {
-    result = GenericCompare(hash_, other.hash_);
+    result = CompareUsingLessThan(hash_, other.hash_);
     if (result != 0) return result;
   }
   result = CompareVectors(hashed_group_, other.hashed_group_);
@@ -236,7 +237,7 @@ KeyBytes SubDocKey::Encode(bool include_hybrid_time) const {
   }
   if (has_hybrid_time() && include_hybrid_time) {
     key_bytes.AppendValueType(ValueType::kHybridTime);
-    key_bytes.AppendHybridTime(hybrid_time_);
+    doc_ht_.AppendEncodedInDocDbFormat(key_bytes.mutable_data());
   }
   return key_bytes;
 }
@@ -248,13 +249,13 @@ Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_ti
   RETURN_NOT_OK(doc_key_.DecodeFrom(slice));
   while (!slice->empty() && *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
     subkeys_.emplace_back();
-    auto& current_subkey = subkeys_.back();
     RETURN_NOT_OK_PREPEND(
-        current_subkey.DecodeFromKey(slice),
+        subkeys_.back().DecodeFromKey(slice),
         Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
   }
-  if (slice->size() < kBytesPerHybridTime + 1) {
+  if (slice->empty()) {
     if (!require_hybrid_time) {
+      doc_ht_ = DocHybridTime::kInvalid;
       return Status::OK();
     }
     return STATUS_SUBSTITUTE(
@@ -262,8 +263,13 @@ Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_ti
         "Found too few bytes in the end of a SubDocKey for a type-prefixed hybrid_time: $0",
         ToShortDebugStr(*slice));
   }
-  CHECK_EQ(to_underlying(ValueType::kHybridTime), slice->ConsumeByte());
-  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &hybrid_time_));
+
+  // The reason the following is not handled as a Status is that the logic above (loop + emptiness
+  // check) should guarantee this is the only possible case left.
+  DCHECK_EQ(ValueType::kHybridTime, DecodeValueType(*slice));
+  slice->ConsumeByte();
+
+  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &doc_ht_));
 
   return Status::OK();
 }
@@ -297,7 +303,7 @@ string SubDocKey::ToString() const {
     if (need_comma) {
       result << "; ";
     }
-    result << hybrid_time_.ToDebugString();
+    result << doc_ht_.ToString();
   }
   result << "])";
   return result.str();
@@ -306,7 +312,7 @@ string SubDocKey::ToString() const {
 void SubDocKey::Clear() {
   doc_key_.Clear();
   subkeys_.clear();
-  hybrid_time_ = HybridTime::kInvalidHybridTime;
+  doc_ht_ = DocHybridTime::kInvalid;
 }
 
 bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
@@ -315,7 +321,7 @@ bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
          // either has to be undefined in the prefix, or the entire key must match, including
          // subkeys and the hybrid_time (in this case the prefix is the same as this key).
          (!prefix.has_hybrid_time() ||
-          (hybrid_time_ == prefix.hybrid_time_ && prefix.num_subkeys() == num_subkeys())) &&
+          (doc_ht_ == prefix.doc_ht_ && prefix.num_subkeys() == num_subkeys())) &&
          prefix.num_subkeys() <= num_subkeys() &&
          // std::mismatch finds the first difference between two sequences. Prior to C++14, the
          // behavior is undefined if the second range is shorter than the first range, so we make
@@ -327,7 +333,7 @@ bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
 
 bool SubDocKey::operator ==(const SubDocKey& other) const {
   return doc_key_ == other.doc_key_ &&
-         hybrid_time_ == other.hybrid_time_&&
+         doc_ht_ == other.doc_ht_&&
          subkeys_ == other.subkeys_;
 }
 
@@ -340,7 +346,7 @@ int SubDocKey::CompareTo(const SubDocKey& other) const {
   if (result != 0) return result;
 
   // HybridTimes are sorted in reverse order.
-  return -hybrid_time_.CompareTo(other.hybrid_time_);
+  return -doc_ht_.CompareTo(other.doc_ht_);
 }
 
 string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
@@ -368,12 +374,6 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
 
 std::string BestEffortDocDBKeyToStr(const rocksdb::Slice& slice) {
   return BestEffortDocDBKeyToStr(KeyBytes(slice));
-}
-
-void SubDocKey::ReplaceMaxHybridTimeWith(HybridTime hybrid_time) {
-  if (hybrid_time_ == HybridTime::kMax) {
-    hybrid_time_ = hybrid_time;
-  }
 }
 
 int SubDocKey::NumSharedPrefixComponents(const SubDocKey& other) const {

@@ -86,6 +86,26 @@ Build types:
 EOT
 }
 
+setup_vars_for_cxx_test() {
+  expect_num_args 1 "$@"
+  if [[ $cxx_test_name == $1 ]]; then
+    # Duplicate test name specified, ignore.
+    return
+  fi
+  if [[ -n $cxx_test_name ]]; then
+    fatal "Only one C++ test name can be specified (found '$cxx_test_name' and '$1')."
+  fi
+  cxx_test_name=$1
+  make_targets+=( "$cxx_test_name" )
+  build_java=false
+
+  # This is necessary to avoid failures if we are just building one test.
+  test_existence_check=false
+}
+
+# -------------------------------------------------------------------------------------------------
+# Command line parsing
+
 build_type="debug"
 build_type_specified=false
 verbose=false
@@ -189,12 +209,8 @@ while [ $# -gt 0 ]; do
     --no-tcmalloc)
       no_tcmalloc=true
     ;;
-    --cxx-test)
-      cxx_test_name="$2"
-      make_targets+=( "$2" )
-      build_java=false
-      # This is necessary to avoid failures if we are just building one test.
-      test_existence_check=false
+    --cxx-test|--ct)
+      setup_vars_for_cxx_test "$2"
       shift
     ;;
     --ctest)
@@ -256,9 +272,9 @@ while [ $# -gt 0 ]; do
       fi
       forward_args_to_repeat_unit_test=true
     ;;
-    rocksdb_*)
-      # Assume this is a CMake target we've created for RocksDB tests.
-      make_opts+=( "$1" )
+    [a-z]*test)
+      log "'$1' looks like a C++ test name, assuming --cxx-test"
+      setup_vars_for_cxx_test "$1"
     ;;
     *)
       echo "Invalid option: '$1'" >&2

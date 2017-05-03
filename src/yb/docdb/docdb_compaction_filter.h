@@ -75,7 +75,7 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   // doc_key1 subkey1 HT(21) -> "value2"  | [20, 23]      | 21 < 23, deleting the entry
   // doc_key1 subkey1 HT(15) -> "value1"  | [20, 23]      | 15 < 23, deleting the entry
 
-  mutable std::vector<HybridTime> overwrite_ht_;
+  mutable std::vector<DocHybridTime> overwrite_ht_;
 
   // We use this to only log a message that the filter is being used once on the first call to
   // the Filter function.

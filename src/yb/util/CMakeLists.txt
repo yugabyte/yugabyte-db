@@ -178,6 +178,7 @@ set(UTIL_SRCS
   decimal.cc
   port_picker.cc
   uuid.cc
+  fast_varint.cc
   )
 
 if(NOT APPLE)
@@ -346,6 +347,7 @@ ADD_YB_TEST(varint-test)
 ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
+ADD_YB_TEST(fast_varint-test)
 
 #######################################
 # jsonwriter_test_proto

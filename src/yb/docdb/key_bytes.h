@@ -7,6 +7,7 @@
 
 #include "rocksdb/slice.h"
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/schema.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/value_type.h"
@@ -90,16 +91,16 @@ class KeyBytes {
     AppendInt64ToKey(~x, &data_);
   }
 
-  void AppendUInt32(uint32_t x) {
-    AppendUInt32ToKey(x, &data_);
-  }
-
   void AppendUInt16(int16_t x) {
     AppendUInt16ToKey(x, &data_);
   }
 
-  void AppendHybridTime(HybridTime hybrid_time) {
-    AppendEncodedHybridTimeToKey(hybrid_time, &data_);
+  void AppendHybridTimeForSeek(HybridTime hybrid_time) {
+    DocHybridTime(hybrid_time, kMaxWriteId).AppendEncodedInDocDbFormat(&data_);
+  }
+
+  void AppendHybridTime(const DocHybridTime& hybrid_time) {
+    hybrid_time.AppendEncodedInDocDbFormat(&data_);
   }
 
   void AppendColumnId(ColumnId column_id) {
@@ -114,11 +115,7 @@ class KeyBytes {
 
   // Assuming the key bytes currently end with a hybrid time, replace that hybrid time with a
   // different one.
-  void ReplaceLastHybridTime(HybridTime hybrid_time) {
-    CHECK_GE(data_.size(), kBytesPerHybridTime);
-    data_.resize(data_.size() - kBytesPerHybridTime);
-    AppendHybridTime(hybrid_time);
-  }
+  CHECKED_STATUS ReplaceLastHybridTimeForSeek(HybridTime hybrid_time);
 
   size_t size() const { return data_.size(); }
 
@@ -126,36 +123,11 @@ class KeyBytes {
     return slice.starts_with(data_);
   }
 
-  // Checks whether the other slice can be obtained by adding a hybrid_time.
-  bool OnlyLacksHybridTimeFrom(const rocksdb::Slice& other_slice) const {
-    if (size() + 1 + kBytesPerHybridTime != other_slice.size()) {
-      return false;
-    }
-    if (other_slice[size()] != static_cast<char>(ValueType::kHybridTime)) {
-      return false;
-    }
-    return other_slice.starts_with(AsSlice());
-  }
-
-  // Checks whether the given slice starts with this sequence of key bytes.
-  bool OnlyDiffersByLastHybridTimeFrom(const rocksdb::Slice& other_slice) const {
-    if (size() != other_slice.size() || size() < kBytesPerHybridTime) {
-      return false;
-    }
-
-    auto this_as_slice = AsSlice();
-    this_as_slice.remove_suffix(kBytesPerHybridTime);
-    return other_slice.starts_with(this_as_slice);
-  }
+  // Checks whether the other slice can be obtained by adding an encoded DocHybridTime to
+  // to this encoded key.
+  CHECKED_STATUS OnlyLacksHybridTimeFrom(const rocksdb::Slice& other_slice, bool* result) const;
 
   rocksdb::Slice AsSlice() const { return rocksdb::Slice(data_); }
-
-  rocksdb::Slice AsSliceWithoutHybridTime() const {
-    CHECK_GE(data_.size(), kBytesPerHybridTime);
-    auto slice = AsSlice();
-    slice.remove_suffix(kBytesPerHybridTime);
-    return slice;
-  }
 
   // @return This key prefix as a string reference. Assumes the reference won't be used beyond
   //         the lifetime of this object.
@@ -196,6 +168,10 @@ class KeyBytes {
   }
 
  private:
+  int encoded_hybrid_time_size() const {
+    return data_.empty() ? 0 : static_cast<uint8_t>(data_.back());
+  }
+
   std::string data_;
 };
 

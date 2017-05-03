@@ -230,6 +230,15 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 #define VLOG_WITH_PREFIX(verboselevel) LOG_IF(INFO, VLOG_IS_ON(verboselevel)) \
   << LogPrefix()
 
+// DCHECK_ONLY_NOTNULL is like DCHECK_NOTNULL, but does not result in an unused expression in
+// release mode, so it is suitable for being used as a stand-alone statement. In other words, use
+// DCHECK_NOTNULL when you care about the result (e.g. when assigning it to a variable), and use
+// DCHECK_ONLY_NOTNULL when you want to verify that an expression is not null in debug mode, but do
+// nothing in release.
+// E.g.
+//   DCHECK_ONLY_NOTNULL(my_ptr)
+//   SomeType* p = DCHECK_NOTNULL(SomeFunc());
+
 #ifndef NDEBUG
 #define DCHECK_ONLY_NOTNULL(expr) do { DCHECK_NOTNULL(expr); } while(false)
 #else

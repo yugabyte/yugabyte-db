@@ -7,6 +7,7 @@
 #include <string>
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace util {
@@ -33,6 +34,11 @@ std::string FormatBytesAsStr(const char* data,
 
 // Similar to FormatBytesAsStr(const char*, size_t, quote_type), but takes std::string.
 std::string FormatBytesAsStr(const std::string& s,
+                             QuotesType quote_type = QuotesType::kDefaultQuoteType,
+                             size_t max_length = std::numeric_limits<size_t>::max());
+
+// Similar to FormatBytesAsStr(const char*, size_t, quote_type), but takes a yb::util::Slice.
+std::string FormatSliceAsStr(const yb::Slice& slice,
                              QuotesType quote_type = QuotesType::kDefaultQuoteType,
                              size_t max_length = std::numeric_limits<size_t>::max());
 
