@@ -419,48 +419,6 @@ class CQLResponse : public CQLMessage {
 
   // Function to serialize a response body that all CQLResponse subclasses need to implement
   virtual void SerializeBody(faststring* mesg) const = 0;
-
-  // Serialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the integer type.
-  // <converter> converts the number from machine byte-order to network order and <data_type>
-  // is the coverter's return type. The converter's return type <data_type> is unsigned while
-  // <num_type> may be signed or unsigned.
-  template<typename num_type, typename data_type>
-  inline void SerializeNum(
-      void (*converter)(void *, data_type), const num_type val, faststring* mesg) const {
-    data_type byte_value;
-    (*converter)(&byte_value, static_cast<data_type>(val));
-    mesg->append(&byte_value, sizeof(byte_value));
-  }
-
-  // Serialize a CQL byte stream (string or bytes). <len_type> is the length type.
-  // <len_serializer> serializes the byte length from machine byte-order to network order.
-  template<typename len_type>
-  inline void SerializeBytes(
-      void (CQLResponse::*len_serializer)(len_type, faststring* mesg) const, std::string val,
-      faststring* mesg) const {
-    (this->*len_serializer)(static_cast<len_type>(val.size()), mesg);
-    mesg->append(val);
-  }
-
-  void SerializeInt(int32_t value, faststring* mesg) const;
-  void SerializeLong(int64_t value, faststring* mesg) const;
-  void SerializeByte(uint8_t value, faststring* mesg) const;
-  void SerializeShort(uint16_t value, faststring* mesg) const;
-  void SerializeString(const std::string& value, faststring* mesg) const;
-  void SerializeLongString(const std::string& value, faststring* mesg) const;
-  void SerializeUUID(const std::string& value, faststring* mesg) const;
-  void SerializeStringList(const std::vector<std::string>& list, faststring* mesg) const;
-  void SerializeBytes(const std::string& value, faststring* mesg) const;
-  void SerializeShortBytes(const std::string& value, faststring* mesg) const;
-  void SerializeInet(const Sockaddr& value, faststring* mesg) const;
-  void SerializeConsistency(Consistency value, faststring* mesg) const;
-  void SerializeStringMap(const std::unordered_map<std::string, std::string>& map,
-      faststring* mesg) const;
-  void SerializeStringMultiMap(
-      const std::unordered_map<std::string, std::vector<std::string>>& map, faststring* mesg) const;
-  void SerializeBytesMap(const std::unordered_map<std::string, std::string>& map,
-                         faststring* mesg) const;
-  void SerializeValue(const Value& value, faststring* mesg) const;
 };
 
 // ------------------------------ Individual CQL responses -----------------------------------

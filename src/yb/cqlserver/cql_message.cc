@@ -685,84 +685,116 @@ void CQLResponse::SerializeHeader(faststring* mesg) const {
 #undef SERIALIZE_INT
 #undef SERIALIZE_LONG
 
-void CQLResponse::SerializeInt(const int32_t value, faststring* mesg) const {
-  static_assert(sizeof(int32_t) == kIntSize, "inconsistent int size");
+// --------------------------- Serialization utility functions -------------------------------
+namespace {
+
+using yb::cqlserver::CQLMessage;
+
+// Serialize a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the integer type.
+// <converter> converts the number from machine byte-order to network order and <data_type>
+// is the coverter's return type. The converter's return type <data_type> is unsigned while
+// <num_type> may be signed or unsigned.
+template<typename num_type, typename data_type>
+void SerializeNum(void (*converter)(void *, data_type), const num_type val, faststring* mesg) {
+  data_type byte_value;
+  (*converter)(&byte_value, static_cast<data_type>(val));
+  mesg->append(&byte_value, sizeof(byte_value));
+}
+
+// Serialize a CQL byte stream (string or bytes). <len_type> is the length type.
+// <len_serializer> serializes the byte length from machine byte-order to network order.
+template<typename len_type>
+void SerializeBytes(
+    void (*len_serializer)(len_type, faststring* mesg), string val,
+    faststring* mesg) {
+  (*len_serializer)(static_cast<len_type>(val.size()), mesg);
+  mesg->append(val);
+}
+
+void SerializeInt(const int32_t value, faststring* mesg) {
+  static_assert(sizeof(int32_t) == CQLMessage::kIntSize, "inconsistent int size");
   SerializeNum(NetworkByteOrder::Store32, value, mesg);
 }
 
-void CQLResponse::SerializeLong(const int64_t value, faststring* mesg) const {
-  static_assert(sizeof(int64_t) == kLongSize, "inconsistent long size");
+#if 0 // Save this function for future use
+void SerializeLong(const int64_t value, faststring* mesg) {
+  static_assert(sizeof(int64_t) == CQLMessage::kLongSize, "inconsistent long size");
   SerializeNum(NetworkByteOrder::Store64, value, mesg);
 }
+#endif
 
-void CQLResponse::SerializeByte(const uint8_t value, faststring* mesg) const {
-  static_assert(sizeof(uint8_t) == kByteSize, "inconsistent byte size");
+void SerializeByte(const uint8_t value, faststring* mesg) {
+  static_assert(sizeof(uint8_t) == CQLMessage::kByteSize, "inconsistent byte size");
   SerializeNum(Store8, value, mesg);
 }
 
-void CQLResponse::SerializeShort(const uint16_t value, faststring* mesg) const {
-  static_assert(sizeof(uint16_t) == kShortSize, "inconsistent short size");
+void SerializeShort(const uint16_t value, faststring* mesg) {
+  static_assert(sizeof(uint16_t) == CQLMessage::kShortSize, "inconsistent short size");
   SerializeNum(NetworkByteOrder::Store16, value, mesg);
 }
 
-void CQLResponse::SerializeString(const string& value, faststring* mesg) const {
-  SerializeBytes(&CQLResponse::SerializeShort, value, mesg);
+void SerializeString(const string& value, faststring* mesg) {
+  SerializeBytes(&SerializeShort, value, mesg);
 }
 
-void CQLResponse::SerializeLongString(const string& value, faststring* mesg) const {
-  SerializeBytes(&CQLResponse::SerializeInt, value, mesg);
+#if 0 // Save these functions for future use
+void SerializeLongString(const string& value, faststring* mesg) {
+  SerializeBytes(&SerializeInt, value, mesg);
 }
 
-void CQLResponse::SerializeUUID(const string& value, faststring* mesg) const {
-  if (value.size() == kUUIDSize) {
+void SerializeUUID(const string& value, faststring* mesg) {
+  if (value.size() == CQLMessage::kUUIDSize) {
     mesg->append(value);
   } else {
     LOG(ERROR) << "Internal error: inconsistent UUID size: " << value.size();
-    uint8_t empty_uuid[kUUIDSize] = {0};
+    uint8_t empty_uuid[CQLMessage::kUUIDSize] = {0};
     mesg->append(empty_uuid, sizeof(empty_uuid));
   }
 }
+#endif
 
-void CQLResponse::SerializeStringList(const vector<string>& list, faststring* mesg) const {
+void SerializeStringList(const vector<string>& list, faststring* mesg) {
   SerializeShort(list.size(), mesg);
   for (int i = 0; i < list.size(); ++i) {
     SerializeString(list[i], mesg);
   }
 }
 
-void CQLResponse::SerializeBytes(const string& value, faststring* mesg) const {
-  SerializeBytes(&CQLResponse::SerializeInt, value, mesg);
+void SerializeBytes(const string& value, faststring* mesg) {
+  SerializeBytes(&SerializeInt, value, mesg);
 }
 
-void CQLResponse::SerializeShortBytes(const string& value, faststring* mesg) const {
-  SerializeBytes(&CQLResponse::SerializeShort, value, mesg);
+void SerializeShortBytes(const string& value, faststring* mesg) {
+  SerializeBytes(&SerializeShort, value, mesg);
 }
 
-void CQLResponse::SerializeInet(const Sockaddr& value, faststring* mesg) const {
+void SerializeInet(const Sockaddr& value, faststring* mesg) {
   // TODO(Robert): support IPv6
-  SerializeByte(kIPv4Size, mesg);
+  SerializeByte(CQLMessage::kIPv4Size, mesg);
   const auto& addr = value.addr();
-  mesg->append(ToChar(&addr.sin_addr.s_addr), kIPv4Size);
+  mesg->append(ToChar(&addr.sin_addr.s_addr), CQLMessage::kIPv4Size);
   const uint16_t port = ntohs(addr.sin_port);
   SerializeInt(port, mesg);
 }
 
-void CQLResponse::SerializeConsistency(const Consistency value, faststring* mesg) const {
-  static_assert(sizeof(Consistency) == kConsistencySize, "inconsistent consistency size");
+#if 0 // Save these functions for future use
+void SerializeConsistency(const CQLMessage::Consistency value, faststring* mesg) {
+  static_assert(
+      sizeof(CQLMessage::Consistency) == CQLMessage::kConsistencySize,
+      "inconsistent consistency size");
   SerializeNum(NetworkByteOrder::Store16, value, mesg);
 }
 
-void CQLResponse::SerializeStringMap(const unordered_map<string, string>& map,
-                                     faststring* mesg) const {
+void SerializeStringMap(const unordered_map<string, string>& map, faststring* mesg) {
   SerializeShort(map.size(), mesg);
   for (const auto& element : map) {
     SerializeString(element.first, mesg);
     SerializeString(element.second, mesg);
   }
 }
+#endif
 
-void CQLResponse::SerializeStringMultiMap(
-    const unordered_map<string, vector<string>>& map, faststring* mesg) const {
+void SerializeStringMultiMap(const unordered_map<string, vector<string>>& map, faststring* mesg) {
   SerializeShort(map.size(), mesg);
   for (const auto& element : map) {
     SerializeString(element.first, mesg);
@@ -770,8 +802,8 @@ void CQLResponse::SerializeStringMultiMap(
   }
 }
 
-void CQLResponse::SerializeBytesMap(const unordered_map<string, string>& map,
-                                    faststring* mesg) const {
+#if 0 // Save these functions for future use
+void SerializeBytesMap(const unordered_map<string, string>& map, faststring* mesg) {
   SerializeShort(map.size(), mesg);
   for (const auto& element : map) {
     SerializeString(element.first, mesg);
@@ -779,22 +811,25 @@ void CQLResponse::SerializeBytesMap(const unordered_map<string, string>& map,
   }
 }
 
-void CQLResponse::SerializeValue(const Value& value, faststring* mesg) const {
+void SerializeValue(const CQLMessage::Value& value, faststring* mesg) {
   switch (value.kind) {
-    case Value::Kind::NOT_NULL:
+    case CQLMessage::Value::Kind::NOT_NULL:
       SerializeInt(value.value.size(), mesg);
       mesg->append(value.value);
       return;
-    case Value::Kind::IS_NULL:
+    case CQLMessage::Value::Kind::IS_NULL:
       SerializeInt(-1, mesg);
       return;
-    case Value::Kind::NOT_SET: // NOT_SET value kind should appear in request messages only.
+    case CQLMessage::Value::Kind::NOT_SET: // NOT_SET value kind should appear in request msg only.
       break;
-    // default: fall through
+      // default: fall through
   }
   LOG(ERROR) << "Internal error: invalid/unknown value kind " << static_cast<uint32_t>(value.kind);
   SerializeInt(-1, mesg);
 }
+#endif
+
+} // namespace
 
 // ------------------------------ Individual CQL responses -----------------------------------
 ErrorResponse::ErrorResponse(const CQLRequest& request, const Code code, const string& message)
