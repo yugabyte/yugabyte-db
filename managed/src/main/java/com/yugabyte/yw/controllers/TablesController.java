@@ -134,12 +134,18 @@ public class TablesController extends AuthenticatedController {
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
       for (TableInfo table : tableInfoList) {
-        ObjectNode node = Json.newObject();
-        node.put("tableType", table.getTableType().toString());
-        node.put("tableName", table.getName());
-        String tableUUID =  table.getId().toStringUtf8();
-        node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
-        resultNode.add(node);
+        String tableKeySpace = table.getNamespace().getName().toString();
+        if (!tableKeySpace.toLowerCase().equals("system") && !tableKeySpace.toLowerCase().equals("system_schema")) {
+          ObjectNode node = Json.newObject();
+          if (!table.getTableType().toString().equals("REDIS_TABLE_TYPE")) {
+            node.put("keySpace", tableKeySpace);
+          }
+          node.put("tableType", table.getTableType().toString());
+          node.put("tableName", table.getName());
+          String tableUUID = table.getId().toStringUtf8();
+          node.put("tableUUID", String.valueOf(getUUIDRepresentation(tableUUID)));
+          resultNode.add(node);
+        }
       }
       return ok(resultNode);
     } catch (Exception e) {
