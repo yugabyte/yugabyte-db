@@ -98,7 +98,8 @@ Status MvccManager::StartTransactionAtHybridTime(HybridTime hybrid_time) {
                             hybrid_time.value()));
   }
 
-  EnforceInvariantsIfNecessary(hybrid_time);
+  // Not calling EnforceInvariantsIfNecessary here because a new leader can abort pending
+  // transactions and start new transactions with earlier hybrid times.
   return Status::OK();
 }
 
