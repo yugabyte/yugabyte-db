@@ -313,27 +313,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return taskList;
   }
 
-  /**
-   * Create a task list to ping all servers until they are up.
-   *
-   * @param nodes : a collection of nodes that need to be pinged.
-   * @param type  : Master or tserver type server running on these nodes.
-   */
-  public TaskList createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
-    TaskList taskList = new TaskList("WaitForServer", executor);
-    for (NodeDetails node : nodes) {
-      WaitForServer.Params params = new WaitForServer.Params();
-      params.universeUUID = taskParams().universeUUID;
-      params.nodeName = node.nodeName;
-      params.serverType = type;
-      WaitForServer task = new WaitForServer();
-      task.initialize(params);
-      taskList.addTask(task);
-    }
-    taskListQueue.add(taskList);
-    return taskList;
-  }
-
   public TaskList createWaitForMasterLeaderTask() {
     TaskList taskList = new TaskList("WaitForMasterLeader", executor);
     WaitForMasterLeader task = new WaitForMasterLeader();

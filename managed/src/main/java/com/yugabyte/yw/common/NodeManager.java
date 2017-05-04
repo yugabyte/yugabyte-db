@@ -139,7 +139,10 @@ public class NodeManager extends DevopsBase {
       subcommand.add(masterAddresses);
     }
 
-    String ybServerPackage = releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+    String ybServerPackage = null;
+    if (taskParam.ybSoftwareVersion != null) {
+      ybServerPackage = releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
+    }
 
     switch(taskParam.type) {
       case Everything:
@@ -179,15 +182,16 @@ public class NodeManager extends DevopsBase {
           }
 
           String processType = taskParam.getProperty("processType");
-
           if (processType == null) {
-            throw new RuntimeException("Invalid processType property: " + processType);
-          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER)) {
+            throw new RuntimeException("Null processType property.");
+          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER.toString())) {
             subcommand.add("--tags");
             subcommand.add("master-gflags");
-          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER)) {
+          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.toString())) {
             subcommand.add("--tags");
             subcommand.add("tserver-gflags");
+          } else {
+            throw new RuntimeException("Invalid processType property: " + processType);
           }
           subcommand.add("--replace_gflags");
           subcommand.add("--gflags");
