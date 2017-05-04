@@ -1098,7 +1098,7 @@ namespace {
     RETURN_NOT_OK(SetStringValue("local cluster", schema, master::kSystemLocalClusterNameColumn,
                                  &row));
     RETURN_NOT_OK(SetStringValue("3.4.2", schema, master::kSystemLocalCQLVersionColumn, &row));
-    RETURN_NOT_OK(SetStringValue("datacenter", schema, master::kSystemLocalDataCenterColumn, &row));
+    RETURN_NOT_OK(SetStringValue("", schema, master::kSystemLocalDataCenterColumn, &row));
     RETURN_NOT_OK(SetIntValue(0, schema, master::kSystemLocalGossipGenerationColumn, &row));
     RETURN_NOT_OK(SetInetValue(broadcast_addr, schema, master::kSystemLocalListenAddressColumn,
                                &row));

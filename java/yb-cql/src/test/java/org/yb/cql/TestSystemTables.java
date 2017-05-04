@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import org.yb.client.MiniYBCluster;
 import org.yb.master.Master;
 
 import static org.junit.Assert.assertEquals;
@@ -32,6 +33,9 @@ public class TestSystemTables extends TestBase {
           found = true;
         }
       }
+      assertNotNull(row.getUUID("host_id"));
+      assertNotNull(row.getString("data_center"));
+      assertNotNull(row.getString("rack"));
       assertTrue(found);
     }
   }
@@ -52,6 +56,7 @@ public class TestSystemTables extends TestBase {
   public void testSystemPeersTable() throws Exception {
     // Pick only 1 contact point since all will have same IP.
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
+    assertEquals(NUM_TABLET_SERVERS, contactPoints.size());
     InetAddress contactPoint = contactPoints.get(0).getAddress();
 
     ResultSet rs = session.execute("SELECT * FROM system.peers;");
@@ -62,11 +67,37 @@ public class TestSystemTables extends TestBase {
       contactPoint.getHostAddress()));
     List <Row> rows = rs.all();
     assertEquals(1, rows.size());
-    assertEquals(contactPoint, rows.get(0).getInet("peer"));
-    assertEquals(contactPoint, rows.get(0).getInet("rpc_address"));
+    Row row = rows.get(0);
+    assertEquals(contactPoint, row.getInet("peer"));
+    assertEquals(contactPoint, row.getInet("rpc_address"));
+    assertEquals(contactPoint, row.getInet("preferred_ip"));
 
     rs = session.execute("SELECT * FROM system.peers WHERE peer = '181.123.12.1'");
     assertEquals(0, rs.all().size());
+
+    // Now kill a tablet server and verify peers table has one less entry.
+    miniCluster.killTabletServerOnPort(miniCluster.getTabletServerPorts().iterator().next());
+
+    // Wait for TServer to timeout.
+    Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS);
+
+    // Now verify one tserver is missing.
+    long start = System.currentTimeMillis();
+    while (System.currentTimeMillis() - start < 30000) {
+      try {
+        rs = session.execute("SELECT * FROM system.peers;");
+        break;
+      } catch (Exception e) {
+        // Ignoring exception since reconnection might be in progress.
+        Thread.sleep(1000);
+      }
+    }
+    assertEquals(NUM_TABLET_SERVERS - 1, rs.all().size());
+
+    // Start the tserver back up and wait for NUM_TABLET_SERVERS + 1 (since master never forgets
+    // tservers).
+    miniCluster.startTServer(NUM_TABLET_SERVERS + 1, null);
+    assertTrue(miniCluster.waitForTabletServers(NUM_TABLET_SERVERS + 1));
   }
 
   @Test
@@ -102,7 +133,7 @@ public class TestSystemTables extends TestBase {
     checkContactPoints("broadcast_address", row);
     assertEquals("local cluster", row.getString("cluster_name"));
     assertEquals("3.4.2", row.getString("cql_version"));
-    assertEquals("datacenter", row.getString("data_center"));
+    assertEquals("", row.getString("data_center"));
     assertEquals(0, row.getInt("gossip_generation"));
     checkContactPoints("listen_address", row);
     assertEquals("4", row.getString("native_protocol_version"));

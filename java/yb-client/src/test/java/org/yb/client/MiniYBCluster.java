@@ -108,6 +108,10 @@ public class MiniYBCluster implements AutoCloseable {
   // How often to push node list refresh events to CQL clients (in seconds)
   public static final int CQL_NODE_LIST_REFRESH = 5;
 
+  public static final int TSERVER_HEARTBEAT_TIMEOUT_MS = 5 * 1000;
+
+  public static final int TSERVER_HEARTBEAT_INTERVAL_MS = 500;
+
   // We support 127.0.0.1 - 127.0.0.16 on MAC as loopback IPs.
   private static final int NUM_MAX_LOCALHOSTS = 16;
 
@@ -238,8 +242,14 @@ public class MiniYBCluster implements AutoCloseable {
     startTServer(tserverProcesses.size(), tserverArgs, getNextPotentiallyFreePort());
   }
 
-  private int startTServer(int tserver_index, List<String> tserverArgs,
-                          int free_port) throws Exception {
+  public void startTServer(int tserver_index,
+                           List<String> tserverArgs) throws Exception {
+    startTServer(tserver_index, tserverArgs, getNextPotentiallyFreePort());
+  }
+
+  private int startTServer(int tserver_index,
+                           List<String> tserverArgs,
+                           int free_port) throws Exception {
     String baseDirPath = TestUtils.getBaseDir();
     long now = System.currentTimeMillis();
     String localhost = getLocalHost(tserver_index);
@@ -267,6 +277,7 @@ public class MiniYBCluster implements AutoCloseable {
       "--yb_num_shards_per_tserver=3",
       "--logtostderr",
       "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH,
+      "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
       "--cql_proxy_webserver_port=" + cql_web_port);
     if (tserverArgs != null) {
       for (String arg : tserverArgs) {
@@ -393,6 +404,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--local_ip_for_outbound_sockets=" + localhost,
         "--rpc_bind_addresses=" + localhost + ":" + masterRpcPorts.get(i),
         "--logtostderr",
+        "--tserver_unresponsive_timeout_ms=" + TSERVER_HEARTBEAT_TIMEOUT_MS,
         "--webserver_port=" + masterWebPorts.get(i));
       if (numMasters > 1) {
         masterCmdLine.add("--master_addresses=" + masterAddresses);
@@ -503,6 +515,10 @@ public class MiniYBCluster implements AutoCloseable {
       return;
     }
     destroyDaemonAndWait(ts);
+  }
+
+  public Set<Integer> getTabletServerPorts() {
+    return tserverProcesses.keySet();
   }
 
   /**
