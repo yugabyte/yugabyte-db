@@ -14,6 +14,8 @@ CREATE TABLE bar (a NVARCHAR2(10, 1));
 -- OK
 CREATE TABLE bar (a VARCHAR(5000));
 
+CREATE INDEX ON bar(a);
+
 -- cleanup
 DROP TABLE bar;
 

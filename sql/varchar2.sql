@@ -20,6 +20,8 @@ DROP TABLE foo;
 -- OK
 CREATE TABLE foo (a VARCHAR2(5));
 
+CREATE INDEX ON foo(a);
+
 --
 -- test that no value longer than maxlen is allowed
 --

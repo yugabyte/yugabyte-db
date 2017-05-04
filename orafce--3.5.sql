@@ -2171,7 +2171,8 @@ receive = varchar2recv,
 send = varchar2send,
 category = 'S',
 typmod_in = varchar2typmodin,
-typmod_out = varchar2typmodout
+typmod_out = varchar2typmodout,
+collatable = true
 );
 
 /* CREATE CAST */
@@ -2373,7 +2374,8 @@ receive = nvarchar2recv,
 send = nvarchar2send,
 category = 'S',
 typmod_in = nvarchar2typmodin,
-typmod_out = nvarchar2typmodout
+typmod_out = nvarchar2typmodout,
+collatable = true
 );
 
 /* CREATE CAST */
