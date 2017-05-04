@@ -119,7 +119,6 @@ CQLProcessor *CQLServiceImpl::GetProcessor() {
   return cql_processor;
 }
 
-
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     const CQLMessage::QueryId& query_id, const string& keyspace, const string& sql_stmt) {
   // Get exclusive lock before allocating a prepared statement and updating the LRU list.

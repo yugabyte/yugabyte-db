@@ -554,7 +554,7 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
             << "calls per second: " << measured_calls * 1000000 / passed_us
             << " (" << us_per_call << "us per call, NOT latency)";
 #ifndef NDEBUG
-  const int kTimeMultiplier = 3;
+  const int kTimeMultiplier = 5;
 #else
   const int kTimeMultiplier = 1;
 #endif

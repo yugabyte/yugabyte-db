@@ -22,7 +22,6 @@
 
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/inbound_call.h"
-#include "yb/rpc/rpc_sidecar.h"
 #include "yb/rpc/service_if.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"

@@ -78,6 +78,9 @@ void Connection::EpollRegister(ev::loop_ref& loop) {  // NOLINT
   }
   io_.start(socket_.GetFd(), events);
 
+  timer_.set(loop);
+  timer_.set<Connection, &Connection::HandleTimeout>(this); // NOLINT
+
   is_epoll_registered_ = true;
 }
 
@@ -145,13 +148,10 @@ void Connection::Shutdown(const Status& status) {
   }
 
   // Clear any calls which have been sent and were awaiting a response.
-  for (const car_map_t::value_type& v : awaiting_response_) {
-    CallAwaitingResponse* c = v.second;
-    if (c->call && c->sent) {
-      c->call->SetFailed(status);
+  for (auto& v : awaiting_response_) {
+    if (v.second) {
+      v.second->SetFailed(status);
     }
-    // And we must return the CallAwaitingResponse to the pool
-    car_pool_.Destroy(c);
   }
   awaiting_response_.clear();
 
@@ -183,33 +183,33 @@ void Connection::OutboundQueued() {
   }
 }
 
-Connection::CallAwaitingResponse::~CallAwaitingResponse() {
-  DCHECK(conn->reactor_thread_->IsCurrentThread());
-}
-
-void Connection::CallAwaitingResponse::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
-  conn->HandleOutboundCallTimeout(this);
-}
-
-void Connection::HandleOutboundCallTimeout(CallAwaitingResponse* car) {
+void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   DCHECK(reactor_thread_->IsCurrentThread());
-  DCHECK(car->call);
-  // The timeout timer is stopped by the car destructor exiting Connection::HandleCallResponse()
-  DCHECK(!car->call->IsFinished());
 
-  // Mark the call object as failed.
-  car->call->SetTimedOut();
+  if (EV_ERROR & revents) {
+    LOG(WARNING) << "Connection " << ToString() << " got an error in handle timeout";
+    return;
+  }
 
-  // Drop the reference to the call. If the original caller has moved on after
-  // seeing the timeout, we no longer need to hold onto the allocated memory
-  // from the request.
-  car->call.reset();
-
-  // We still leave the CallAwaitingResponse in the map -- this is because we may still
-  // receive a response from the server, and we don't want a spurious log message
-  // when we do finally receive the response. The fact that CallAwaitingResponse::call
-  // is a NULL pointer indicates to the response processing code that the call
-  // already timed out.
+  auto now = MonoTime::FineNow();
+  while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
+    auto call = expiration_queue_.top().second;
+    expiration_queue_.pop();
+    if (!call->IsFinished()) {
+      call->SetTimedOut();
+      auto i = awaiting_response_.find(call->call_id());
+      if (i != awaiting_response_.end()) {
+        i->second.reset();
+      } else {
+        LOG(ERROR) << "Timeout of non awaiting call: " << call->call_id();
+        DCHECK(i != awaiting_response_.end());
+      }
+    }
+  }
+  if (!expiration_queue_.empty()) {
+    auto left = expiration_queue_.top().first - now;
+    timer_.start(left.ToSeconds(), 0);
+  }
 }
 
 void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
@@ -229,23 +229,6 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   sending_outbound_datas_.resize(sending_.size());
   sending_outbound_datas_.back() = call;
   call->SetQueued();
-
-  scoped_car car(car_pool_.make_scoped_ptr(car_pool_.Construct()));
-  car->conn = this;
-  car->call = call;
-  car->sent = false;
-
-  // Set up the timeout timer.
-  const MonoDelta& timeout = call->controller()->timeout();
-  if (timeout.Initialized()) {
-    reactor_thread_->RegisterTimeout(&car->timeout_timer);
-    car->timeout_timer.set<CallAwaitingResponse, // NOLINT(*)
-        &CallAwaitingResponse::HandleTimeout>(car.get());
-    car->timeout_timer.set(timeout.ToSeconds(), 0);
-    car->timeout_timer.start();
-  }
-
-  awaiting_response_[call->call_id()] = car.release();
   OutboundQueued();
 }
 
@@ -328,24 +311,23 @@ void Connection::HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfe
   gscoped_ptr<CallResponse> resp(new CallResponse);
   CHECK_OK(resp->ParseFrom(transfer.Pass()));
 
-  CallAwaitingResponse* car_ptr =
-      EraseKeyReturnValuePtr(&awaiting_response_, resp->call_id());
-  if (PREDICT_FALSE(car_ptr == nullptr)) {
-    LOG(WARNING) << ToString() << ": Got a response for call id " << resp->call_id() << " which "
-                 << "was not pending! Ignoring.";
+  auto awaiting = awaiting_response_.find(resp->call_id());
+  if (awaiting == awaiting_response_.end()) {
+    LOG(ERROR) << ToString() << ": Got a response for call id " << resp->call_id() << " which "
+               << "was not pending! Ignoring.";
+    DCHECK(awaiting != awaiting_response_.end());
     return;
   }
+  auto call = awaiting->second;
+  awaiting_response_.erase(awaiting);
 
-  // The car->timeout_timer ev::timer will be stopped automatically by its destructor.
-  scoped_car car(car_pool_.make_scoped_ptr(car_ptr));
-
-  if (PREDICT_FALSE(car->call.get() == nullptr)) {
+  if (PREDICT_FALSE(!call)) {
     // The call already failed due to a timeout.
     VLOG(1) << "Got response to call id " << resp->call_id() << " after client already timed out";
     return;
   }
 
-  car->call->SetResponse(resp.Pass());
+  call->SetResponse(resp.Pass());
 }
 
 Status Connection::WriteHandler() {
@@ -410,9 +392,20 @@ Status Connection::DoWrite() {
 }
 
 void Connection::CallSent(OutboundCallPtr call) {
-  auto it = awaiting_response_.find(call->call_id());
-  if (it != awaiting_response_.end()) {
-    it->second->sent = true;
+  DCHECK(reactor_thread_->IsCurrentThread());
+
+  awaiting_response_.emplace(call->call_id(), call);
+
+  // Set up the timeout timer.
+  const MonoDelta& timeout = call->controller()->timeout();
+  if (timeout.Initialized()) {
+    auto expires_at = MonoTime::FineNow() + timeout;
+    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
+    expiration_queue_.emplace(expires_at, call);
+    if (reschedule) {
+      timer_.set(timeout.ToSeconds(), 0);
+      timer_.start();
+    }
   }
 }
 
@@ -475,10 +468,14 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
   }
 
   if (direction_ == CLIENT) {
-    for (const car_map_t::value_type& entry : awaiting_response_) {
-      CallAwaitingResponse* c = entry.second;
-      if (c->call) {
-        c->call->DumpPB(req, resp->add_calls_in_flight());
+    for (auto& entry : awaiting_response_) {
+      if (entry.second) {
+        entry.second->DumpPB(req, resp->add_calls_in_flight());
+      }
+    }
+    for (auto& call : sending_outbound_datas_) {
+      if (call) {
+        down_cast<OutboundCall*>(call.get())->DumpPB(req, resp->add_calls_in_flight());
       }
     }
   } else if (direction_ == SERVER) {

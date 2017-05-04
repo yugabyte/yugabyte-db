@@ -247,6 +247,10 @@ class OutboundCall : public OutboundData {
     return header_.call_id();
   }
 
+  Trace* trace() {
+    return trace_.get();
+  }
+
  private:
   friend class RpcController;
 

@@ -25,6 +25,7 @@
 #include <unordered_map>
 
 #include <limits>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -135,6 +136,8 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // libev callback when there are some events in socket.
   void Handler(ev::io& watcher, int revents); // NOLINT
 
+  void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
+
   // Invoked when we have something to read.
   CHECKED_STATUS ReadHandler();
 
@@ -171,25 +174,8 @@ class Connection : public RefCountedThreadSafe<Connection> {
   void OutboundQueued();
 
  protected:
-  friend struct CallAwaitingResponse;
-
   friend class YBInboundCall;
 
-  // A call which has been fully sent to the server, which we're waiting for
-  // the server to process. This is used on the client side only.
-  struct CallAwaitingResponse {
-    ~CallAwaitingResponse();
-
-    // Notification from libev that the call has timed out.
-    void HandleTimeout(ev::timer& watcher, int revents);  // NOLINT
-
-    Connection* conn;
-    OutboundCallPtr call;
-    ev::timer timeout_timer;
-    bool sent;
-  };
-
-  typedef std::unordered_map<uint64_t, CallAwaitingResponse*> car_map_t;
   typedef std::unordered_map<uint64_t, InboundCallPtr> inbound_call_map_t;
 
   virtual void CreateInboundTransfer() = 0;
@@ -206,10 +192,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
   void HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfer);
 
   virtual void HandleFinishedTransfer() = 0;
-
-  // The given CallAwaitingResponse has elapsed its user-defined timeout.
-  // Set it to Failed.
-  void HandleOutboundCallTimeout(CallAwaitingResponse* car);
 
   CHECKED_STATUS DoWrite();
 
@@ -249,7 +231,7 @@ class Connection : public RefCountedThreadSafe<Connection> {
   bool is_epoll_registered_;
 
   // Calls which have been sent and are now waiting for a response.
-  car_map_t awaiting_response_;
+  std::unordered_map<int32_t, OutboundCallPtr> awaiting_response_;
 
   // Calls which have been received on the server and are currently
   // being handled.
@@ -257,11 +239,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
   Status shutdown_status_;
-
-  // Pool from which CallAwaitingResponse objects are allocated.
-  // Also a funny name.
-  ObjectPool<CallAwaitingResponse> car_pool_;
-  typedef ObjectPool<CallAwaitingResponse>::scoped_ptr scoped_car;
 
   // Whether we completed connection negotiation.
   bool negotiation_complete_;
@@ -273,6 +250,20 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // it involves spin lock and search in a metrics map. Therefore we prepare metric instances
   // at connection level.
   scoped_refptr<Histogram> handler_latency_outbound_transfer_;
+
+  struct CompareExpiration {
+    template<class Pair>
+    bool operator()(const Pair& lhs, const Pair& rhs) const {
+      return rhs.first < lhs.first;
+    }
+  };
+
+  typedef std::pair<MonoTime, OutboundCallPtr> ExpirationPair;
+
+  std::priority_queue<ExpirationPair,
+                      std::vector<ExpirationPair>,
+                      CompareExpiration> expiration_queue_;
+  ev::timer timer_;
 
   // Fields sending_* contain bytes and calls we are currently sending to socket.
   std::deque<util::RefCntBuffer> sending_;

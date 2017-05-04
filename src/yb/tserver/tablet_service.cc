@@ -35,7 +35,6 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/rpc/rpc_sidecar.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tserver/remote_bootstrap_service.h"

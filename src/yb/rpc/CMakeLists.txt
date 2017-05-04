@@ -52,13 +52,13 @@ set(YRPC_SRCS
     inbound_call.cc
     messenger.cc
     negotiation.cc
+    outbound_data.cc
     proxy.cc
     reactor.cc
     redis_encoding.cc
     redis_rpc.cc
     remote_method.cc
     rpc.cc
-    outbound_data.cc
     rpc_context.cc
     rpc_controller.cc
     sasl_common.cc

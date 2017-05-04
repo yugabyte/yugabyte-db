@@ -125,6 +125,7 @@ OutboundCall::OutboundCall(
 OutboundCall::~OutboundCall() {
   DCHECK(IsFinished());
   DVLOG(4) << "OutboundCall " << this << " destroyed with state_: " << StateName(state_);
+
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
     LOG(INFO) << ToString() << " took "
               << MonoTime::Now(MonoTime::FINE).GetDeltaSince(start_).ToMicroseconds()
@@ -242,10 +243,14 @@ void OutboundCall::set_state_unlocked(State new_state) {
       DCHECK_EQ(state_, ON_OUTBOUND_QUEUE);
       break;
     case TIMED_OUT:
-      DCHECK(state_ == SENT || state_ == ON_OUTBOUND_QUEUE);
+      DCHECK(state_ == SENT || state_ == ON_OUTBOUND_QUEUE) << "Real state: " << state_;
       break;
     case FINISHED_SUCCESS:
       DCHECK_EQ(state_, SENT);
+      break;
+    case FINISHED_ERROR:
+      DCHECK(state_ == SENT || state_ == ON_OUTBOUND_QUEUE || state_ == READY)
+          << "Real state: " << state_;
       break;
     default:
       // No sanity checks for others.
@@ -578,7 +583,7 @@ Status CallResponse::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
     if (next_offset > entire_message.size()) {
         return STATUS(Corruption, strings::Substitute(
             "Invalid sidecar offsets; the last sidecar ($0) apparently starts "
-            "at $1, but the entire message has length $3",
+            "at $1, but the entire message has length $2",
             last, next_offset, entire_message.size()));
     }
     sidecar_slices_[last] = Slice(entire_message.data() + next_offset,
