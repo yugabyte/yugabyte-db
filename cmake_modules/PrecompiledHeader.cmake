@@ -95,18 +95,20 @@ function(add_precompiled_header _target _input)
   set(_pch_header "${CMAKE_CURRENT_SOURCE_DIR}/${_input}")
   set(_pch_binary_dir "${CMAKE_CURRENT_BINARY_DIR}/${_target}_pch")
   set(_pchfile "${_pch_binary_dir}/${_input}")
-  set(_outdir "${CMAKE_CURRENT_BINARY_DIR}/${_target}_pch/${_name}.gch")
-  file(MAKE_DIRECTORY "${_outdir}")
+  set(_outdir "${_pch_binary_dir}/${_name}.gch")
+  add_custom_command(
+    OUTPUT "${_outdir}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_outdir}"
+    COMMENT "Creating ${_outdir} for precompiled header")
   set(_output_cxx "${_outdir}/.c++")
 
   set(_pch_flags_file "${_pch_binary_dir}/compile_flags.rsp")
   export_all_flags("${_pch_flags_file}")
   set(_compiler_FLAGS "@${_pch_flags_file}")
-  add_custom_command(
-    OUTPUT "${_pchfile}"
-    COMMAND "${CMAKE_COMMAND}" -E copy "${_pch_header}" "${_pchfile}"
-    DEPENDS "${_pch_header}"
-    COMMENT "Updating ${_name}")
+  # We are doing the following trick here:
+  # 1) Create precompiled build_dir/.../file.h.gch from source_dir/.../file.h
+  # 2) Set -include build_dir/.../file.h to all source files. Really this file is missing,
+  #    but compiler is happy because it finds build_dir/.../file.h.gch and uses it.
   add_custom_command(
     OUTPUT "${_output_cxx}"
     COMMAND "${CMAKE_CXX_COMPILER}"
@@ -114,8 +116,8 @@ function(add_precompiled_header _target _input)
             ${_compiler_FLAGS}
             -x c++-header
             -o "${_output_cxx}"
-            "${_pchfile}"
-    DEPENDS "${_pchfile}" "${_pch_flags_file}"
+            "${_pch_header}"
+    DEPENDS "${_pch_header}" "${_pch_flags_file}" "${_outdir}"
     COMMENT "Precompiling ${_name} for ${_target} (C++)")
 
   get_property(_sources TARGET ${_target} PROPERTY SOURCES)
@@ -139,12 +141,7 @@ function(add_precompiled_header _target _input)
       if(NOT _object_depends)
         set(_object_depends)
       endif()
-      list(APPEND _object_depends "${_pchfile}")
-      if(_source MATCHES \\.\(cc|cxx|cpp\)$)
-        list(APPEND _object_depends "${_output_cxx}")
-      else()
-        list(APPEND _object_depends "${_output_c}")
-      endif()
+     list(APPEND _object_depends "${_output_cxx}")
 
       combine_arguments(_pch_compile_flags)
       set_source_files_properties(${_source} PROPERTIES

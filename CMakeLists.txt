@@ -393,6 +393,11 @@ message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
 
 VALIDATE_COMPILER_TYPE()
 
+# Include compiler type and version in the compiler command line so that binaries built by different
+# versions of the compiler will have different keys in ccache.
+ADD_CXX_GLOBAL_COMMON_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
+ADD_CXX_GLOBAL_COMMON_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
+
 ############################################################
 # Compiler flags
 ############################################################
