@@ -5,6 +5,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -74,11 +76,18 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
 
       if (taskParams().upgradeMasters) {
-        createUpgradeTasks(universe.getMasters(), UniverseDefinitionTaskBase.ServerType.MASTER);
+        createAllUpgradeTasks(filterByNodeName(universe.getMasters(), taskParams().nodeNames),
+            ServerType.MASTER);
       }
 
       if (taskParams().upgradeTServers) {
-        createUpgradeTasks(universe.getTServers(), UniverseDefinitionTaskBase.ServerType.TSERVER);
+        createAllUpgradeTasks(filterByNodeName(universe.getTServers(), taskParams().nodeNames),
+            ServerType.TSERVER);
+      }
+
+      // Update the software version on success.
+      if (taskParams().taskType == UpgradeTaskType.Software) {
+        createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion);
       }
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
@@ -95,9 +104,16 @@ public class UpgradeUniverse extends UniverseTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-  public void createUpgradeTasks(List<NodeDetails> nodes, UniverseDefinitionTaskBase.ServerType processType) {
-    List<NodeDetails> filterNodes = filterByNodeName(nodes, taskParams().nodeNames);
-    for (NodeDetails node : filterNodes) {
+  private void createAllUpgradeTasks(List<NodeDetails> servers,
+                                     ServerType processType) {
+    createUpgradeTasks(servers, processType);
+    createWaitForServersTasks(
+        servers, processType).setUserSubTask(SubTaskType.ConfigureUniverse);
+  }
+
+  // The first node state change should be done per node to show the rolling upgrades in action.
+  private void createUpgradeTasks(List<NodeDetails> nodes, ServerType processType) {
+    for (NodeDetails node : nodes) {
       if (taskParams().taskType == UpgradeTaskType.Software) {
         createSetNodeStateTask(node, NodeDetails.NodeState.UpgradeSoftware);
         createSoftwareUpgradeTask(node, processType);
@@ -109,7 +125,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
     }
   }
 
-  public void createSoftwareUpgradeTask(NodeDetails node, UniverseDefinitionTaskBase.ServerType processType) {
+  private void createSoftwareUpgradeTask(NodeDetails node, ServerType processType) {
     TaskList taskList = new TaskList("AnsibleConfigureServers (Download Software) for: " + node.nodeName, executor);
     taskList.addTask(getConfigureTask(node, processType, UpgradeTaskType.Software, UpgradeTaskSubType.Download));
     taskList.setUserSubTask(UserTaskDetails.SubTaskType.DownloadingSoftware);
@@ -126,7 +142,7 @@ public class UpgradeUniverse extends UniverseTaskBase {
                             UserTaskDetails.SubTaskType.InstallingSoftware);
   }
 
-  public void createGFlagsUpgradeTask(NodeDetails node, UniverseDefinitionTaskBase.ServerType processType) {
+  private void createGFlagsUpgradeTask(NodeDetails node, ServerType processType) {
     createServerControlTask(node, processType, "stop", 0, UserTaskDetails.SubTaskType.UpdatingGFlags);
 
     String taskListName = "AnsibleConfigureServers (GFlags Update) for :" + node.nodeName;
@@ -138,13 +154,13 @@ public class UpgradeUniverse extends UniverseTaskBase {
                             UserTaskDetails.SubTaskType.UpdatingGFlags);
   }
 
-  private int getSleepTimeForProcess(UniverseDefinitionTaskBase.ServerType processType) {
-    return processType == UniverseDefinitionTaskBase.ServerType.MASTER ?
+  private int getSleepTimeForProcess(ServerType processType) {
+    return processType == ServerType.MASTER ?
                taskParams().sleepAfterMasterRestartMillis : taskParams().sleepAfterTServerRestartMillis;
   }
 
   private AnsibleConfigureServers getConfigureTask(NodeDetails node,
-                                                   UniverseDefinitionTaskBase.ServerType processType,
+                                                   ServerType processType,
                                                    UpgradeTaskType type,
                                                    UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -177,5 +193,4 @@ public class UpgradeUniverse extends UniverseTaskBase {
 
     return task;
   }
-
 }
