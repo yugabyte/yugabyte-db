@@ -36,6 +36,7 @@ import static org.hamcrest.CoreMatchers.*;
 @RunWith(MockitoJUnitRunner.class)
 public class ReleaseManagerTest {
   static String TMP_STORAGE_PATH = "/tmp/yugaware_tests/releases";
+  static String TMP_DOCKER_STORAGE_PATH = "/tmp/yugaware_tests/docker/releases";
 
   @InjectMocks
   ReleaseManager releaseManager;
@@ -49,17 +50,22 @@ public class ReleaseManagerTest {
   @Before
   public void beforeTest() throws IOException {
     new File(TMP_STORAGE_PATH).mkdirs();
+    new File(TMP_DOCKER_STORAGE_PATH).mkdirs();
   }
 
   @After
   public void tearDown() throws IOException {
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
+    FileUtils.deleteDirectory(new File(TMP_DOCKER_STORAGE_PATH));
   }
 
-  private void createDummyReleases(List<String> versions, boolean multipleRepos) {
+  private void createDummyReleases(List<String> versions, boolean multipleRepos, boolean inDockerPath) {
     versions.forEach((version) -> {
       String versionPath = String.format("%s/%s", TMP_STORAGE_PATH, version);
       new File(versionPath).mkdirs();
+      if (inDockerPath) {
+        versionPath = TMP_DOCKER_STORAGE_PATH;
+      }
       createTempFile(versionPath, "yugabyte.xyz." + version + ".tar.gz", "Sample data");
       if (multipleRepos) {
         createTempFile(versionPath, "devops.xyz." + version + ".tar.gz", "Sample data");
@@ -70,7 +76,7 @@ public class ReleaseManagerTest {
   @Test
   public void testGetLocalReleasesWithValidPath() {
     List<String> versions = ImmutableList.of("0.0.1", "0.0.2", "0.0.3");
-    createDummyReleases(versions, false);
+    createDummyReleases(versions, false, false);
     Map<String, String> releases = releaseManager.getLocalReleases(TMP_STORAGE_PATH);
     assertEquals(3, releases.size());
 
@@ -82,7 +88,7 @@ public class ReleaseManagerTest {
   @Test
   public void testGetLocalReleasesWithMultipleFilesValidPath() {
     List<String> versions = ImmutableList.of("0.0.1", "0.0.2", "0.0.3");
-    createDummyReleases(versions, true);
+    createDummyReleases(versions, true, false);
     Map<String, String> releases = releaseManager.getLocalReleases(TMP_STORAGE_PATH);
     assertEquals(3, releases.size());
 
@@ -107,7 +113,7 @@ public class ReleaseManagerTest {
   public void testLoadReleasesWithReleasePath() {
     when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
     List<String> versions = ImmutableList.of("0.0.1");
-    createDummyReleases(versions, false);
+    createDummyReleases(versions, false, false);
     releaseManager.loadReleasesToDB();
 
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
@@ -118,6 +124,31 @@ public class ReleaseManagerTest {
     Map expectedMap = ImmutableMap.of("0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte.xyz.0.0.1.tar.gz");
     assertEquals(releaseMap.getValue(), expectedMap);
     assertEquals(configType.getValue(), SoftwareReleases);
+  }
+
+  @Test
+  public void testLoadReleasesWithReleaseAndDockerPath() {
+    when(appConfig.getString("yb.releases.path")).thenReturn(TMP_STORAGE_PATH);
+    when(appConfig.getString("yb.docker.release")).thenReturn(TMP_DOCKER_STORAGE_PATH);
+    List<String> versions = ImmutableList.of("0.0.1");
+    createDummyReleases(versions, false, false);
+    List<String> dockerVersions = ImmutableList.of("0.0.2");
+    createDummyReleases(dockerVersions, false, true);
+    releaseManager.loadReleasesToDB();
+    ArgumentCaptor<ConfigHelper.ConfigType> configType;
+    ArgumentCaptor<HashMap> releaseMap;
+    configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
+    releaseMap = ArgumentCaptor.forClass(HashMap.class);
+    Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
+    Map expectedMap = ImmutableMap.of(
+        "0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte.xyz.0.0.1.tar.gz",
+        "0.0.2", TMP_STORAGE_PATH + "/0.0.2/yugabyte.xyz.0.0.2.tar.gz");
+    assertEquals(releaseMap.getValue(), expectedMap);
+    assertEquals(configType.getValue(), SoftwareReleases);
+
+    File dockerStoragePath = new File(TMP_DOCKER_STORAGE_PATH);
+    File[] files = dockerStoragePath.listFiles();
+    assertEquals(0, files.length);
   }
 
   @Test
