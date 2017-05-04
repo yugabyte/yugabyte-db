@@ -39,7 +39,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       this.queryUrl = this.getMetricsUrl() + "/query";
     }
 
-    LOG.info("Executing metric query {}: {}", queryUrl, queryParam);
+    // LOG.info("Executing metric query {}: {}", queryUrl, queryParam);
   }
 
   /**

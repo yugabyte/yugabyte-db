@@ -11,12 +11,15 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -152,6 +155,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.universeUUID = taskParams().universeUUID;
     UniverseUpdateSucceeded task = new UniverseUpdateSucceeded();
+    task.initialize(params);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+  /**
+   * Create a task to mark the final software version on a universe.
+   */
+  public TaskList createUpdateSoftwareVersionTask(String softwareVersion) {
+    TaskList taskList = new TaskList("FinalizeUniverseUpdate", executor);
+    UpdateSoftwareVersion.Params params = new UpdateSoftwareVersion.Params();
+    params.universeUUID = taskParams().universeUUID;
+    params.softwareVersion = softwareVersion;
+    UpdateSoftwareVersion task = new UpdateSoftwareVersion();
     task.initialize(params);
     taskList.addTask(task);
     taskListQueue.add(taskList);
@@ -304,6 +322,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.numTablets = numTablets;
     task.initialize(params);
     taskList.addTask(task);
+    taskListQueue.add(taskList);
+    return taskList;
+  }
+
+
+  /**
+   * Create a task list to ping all servers until they are up.
+   *
+   * @param nodes : a collection of nodes that need to be pinged.
+   * @param type  : Master or tserver type server running on these nodes.
+   */
+  public TaskList createWaitForServersTasks(Collection<NodeDetails> nodes, ServerType type) {
+    TaskList taskList = new TaskList("WaitForServer", executor);
+    for (NodeDetails node : nodes) {
+      WaitForServer.Params params = new WaitForServer.Params();
+      params.universeUUID = taskParams().universeUUID;
+      params.nodeName = node.nodeName;
+      params.serverType = type;
+      WaitForServer task = new WaitForServer();
+      task.initialize(params);
+      taskList.addTask(task);
+    }
     taskListQueue.add(taskList);
     return taskList;
   }

@@ -237,6 +237,14 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (!configureParams.gflags.isEmpty()) {
+          String processType = configureParams.getProperty("processType");
+          if (processType.equals(UniverseDefinitionTaskBase.ServerType.MASTER.toString())) {
+            expectedCommand.add("--tags");
+            expectedCommand.add("master-gflags");
+          } else if (processType.equals(UniverseDefinitionTaskBase.ServerType.TSERVER.toString())) {
+            expectedCommand.add("--tags");
+            expectedCommand.add("tserver-gflags");
+          }
           String gflagsJson =  Json.stringify(Json.toJson(configureParams.gflags));
           expectedCommand.add("--replace_gflags");
           expectedCommand.add("--gflags");
@@ -542,7 +550,7 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
       } catch (RuntimeException re) {
-        assertThat(re.getMessage(), allOf(notNullValue(), is("Invalid processType property: null")));
+        assertThat(re.getMessage(), allOf(notNullValue(), is("Null processType property.")));
       }
     }
   }
