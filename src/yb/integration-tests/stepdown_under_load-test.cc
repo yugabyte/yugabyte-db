@@ -118,7 +118,8 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
     // but might uncover bugs in commit index handling on the new leader.
     ASSERT_OK(FindTabletLeader(ts_map, tablet_id, kDefaultTimeout, &leader));
     CHECK_NOTNULL(leader);
-    ASSERT_OK(LeaderStepDown(leader, tablet_id, non_leader, kDefaultTimeout));
+    auto s = LeaderStepDown(leader, tablet_id, non_leader, kDefaultTimeout);
+    ASSERT_TRUE(s.ok() || s.IsIllegalState());
   }
 
   stop_requested_flag = true;  // stop both reader and writer

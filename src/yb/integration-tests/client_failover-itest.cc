@@ -206,7 +206,12 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   leader_index = missing_replica_index;
   leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()].get();
   ASSERT_OK(itest::StartElection(leader, tablet_id, kTimeout));
-  ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index, leader, tablet_id, kTimeout));
+  // Wait for all tservers to agree and have all the updates including the config change.
+  ASSERT_OK(WaitForServersToAgree(kTimeout,
+                                  active_ts_map,
+                                  tablet_id,
+                                  ++expected_index,
+                                  &expected_index));
 
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
 
@@ -217,7 +222,12 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
       TServerDetails* new_leader = ts_map.second;
       ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &current_leader));
       ASSERT_OK(itest::LeaderStepDown(current_leader, tablet_id, new_leader, kTimeout));
-      ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index, new_leader, tablet_id, kTimeout));
+      // Wait for all tservers to agree and have all the updates including the config change.
+      ASSERT_OK(WaitForServersToAgree(kTimeout,
+                                      active_ts_map,
+                                      tablet_id,
+                                      ++expected_index,
+                                      &expected_index));
       current_leader = new_leader;
       ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &new_leader));
       if (current_leader->uuid() == new_leader->uuid()) {

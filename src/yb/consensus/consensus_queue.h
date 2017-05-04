@@ -239,6 +239,8 @@ class PeerMessageQueue {
 
   virtual CHECKED_STATUS UnRegisterObserver(PeerMessageQueueObserver* observer);
 
+  virtual bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
+
   struct Metrics {
     // Keeps track of the number of ops. that are completed by a majority but still need
     // to be replicated to a minority (IsDone() is true, IsAllDone() is false).

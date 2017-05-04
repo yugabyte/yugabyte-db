@@ -562,6 +562,14 @@ Status RaftConsensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDow
   // to transfer the leadership.
   if (req->has_new_leader_uuid()) {
     new_leader_uuid = req->new_leader_uuid();
+    if (!queue_->CanPeerBecomeLeader(new_leader_uuid)) {
+      resp->mutable_error()->set_code(TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN);
+      StatusToPB(
+          STATUS(IllegalState, "Suggested peer is not caught up yet"),
+          resp->mutable_error()->mutable_status());
+      // We return OK so that the tablet service won't overwrite the error code.
+      return Status::OK();
+    }
     const auto& tablet_id = req->tablet_id();
     bool new_leader_found = false;
     const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();

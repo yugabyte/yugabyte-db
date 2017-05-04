@@ -827,6 +827,23 @@ void PeerMessageQueue::NotifyObserversOfFailedFollowerTask(const string& uuid,
     observer->NotifyFailedFollower(uuid, term, reason);
   }
 }
+bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
+  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
+  if (peer == nullptr) {
+    LOG(ERROR) << "Invalid peer UUID: " << peer_uuid;
+    return false;
+  }
+  const bool peer_can_be_leader =
+      !OpIdLessThan(peer->last_received, queue_state_.majority_replicated_opid);
+  if (!peer_can_be_leader) {
+    LOG(INFO) << Substitute(
+        "Peer $0 cannot become Leader as it is not caught up: Majority OpId $1, Peer OpId $2",
+        peer_uuid, OpIdToString(queue_state_.majority_replicated_opid),
+        OpIdToString(peer->last_received));
+  }
+  return peer_can_be_leader;
+}
 
 PeerMessageQueue::~PeerMessageQueue() {
   Close();

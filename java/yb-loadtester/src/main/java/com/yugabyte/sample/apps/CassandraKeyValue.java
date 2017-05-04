@@ -68,9 +68,9 @@ public class CassandraKeyValue extends AppBase {
   @Override
   public void createTableIfNeeded() {
     try {
-      String create_stmt =
-          String.format("CREATE TABLE %s (k varchar, v varchar, primary key (k))",
-                        tableName);
+      String create_stmt = String.format(
+          "CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k))",
+          tableName);
       if (appConfig.tableTTLSeconds > 0) {
         create_stmt += " WITH default_time_to_live = " + appConfig.tableTTLSeconds;
       }
