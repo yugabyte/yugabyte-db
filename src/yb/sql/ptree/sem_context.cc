@@ -23,6 +23,7 @@ SemContext::SemContext(const char *sql_stmt,
       sql_env_(sql_env),
       refresh_cache_(refresh_cache),
       cache_used_(false),
+      current_table_(nullptr),
       sem_state_(nullptr) {
 }
 

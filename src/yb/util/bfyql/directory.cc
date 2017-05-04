@@ -69,7 +69,7 @@ const vector<BFDecl> kBFDirectory = {
   { "ConvertDoubleToFloat", "cast", VOID, {DOUBLE, FLOAT} },
 
   // Token().
-  { "Token", "token", STRING, {TYPEARGS} },
+  { "Token", "token", INT64, {TYPEARGS} },
 
   // "+".
   { "AddI64I64", "+", INT64,  {INT64, INT64} },

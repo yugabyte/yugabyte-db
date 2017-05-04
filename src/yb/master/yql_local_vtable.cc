@@ -13,7 +13,6 @@ LocalVTable::LocalVTable(const Master* const master)
 
 Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
                                  std::unique_ptr<YQLRowBlock>* vtable) const {
-  using namespace util;
   vector<std::shared_ptr<TSDescriptor> > descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
   vtable->reset(new YQLRowBlock(schema_));
@@ -31,37 +30,39 @@ Status LocalVTable::RetrieveData(const YQLReadRequestPB& request,
         RETURN_NOT_OK(addr.FromString(rpc_address.host()));
 
         YQLRow& row = (*vtable)->Extend();
-        RETURN_NOT_OK(SetColumnValue(kSystemLocalKeyColumn, GetStringValue("local"), &row));
+        RETURN_NOT_OK(SetColumnValue(kSystemLocalKeyColumn, util::GetStringValue("local"), &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalBootstrappedColumn,
-                                     GetStringValue("COMPLETED"), &row));
+                                     util::GetStringValue("COMPLETED"), &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalBroadcastAddressColumn,
-                                     GetInetValue(addr), &row));
+                                     util::GetInetValue(addr), &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalClusterNameColumn,
-                                     GetStringValue("local cluster"), &row));
+                                     util::GetStringValue("local cluster"), &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalCQLVersionColumn,
-                                     GetStringValue("3.4.2"), &row));
-        RETURN_NOT_OK(SetColumnValue(kSystemLocalDataCenterColumn, GetStringValue(""), &row));
-        RETURN_NOT_OK(SetColumnValue(kSystemLocalGossipGenerationColumn, GetIntValue(0),
+                                     util::GetStringValue("3.4.2"), &row));
+        RETURN_NOT_OK(SetColumnValue(kSystemLocalDataCenterColumn, util::GetStringValue(""), &row));
+        RETURN_NOT_OK(SetColumnValue(kSystemLocalGossipGenerationColumn, util::GetIntValue(0),
                                      &row));
-        RETURN_NOT_OK(SetColumnValue(kSystemLocalListenAddressColumn, GetInetValue(addr),
+        RETURN_NOT_OK(SetColumnValue(kSystemLocalListenAddressColumn, util::GetInetValue(addr),
                                      &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalNativeProtocolVersionColumn,
-                                     GetStringValue("4"), &row));
+                                     util::GetStringValue("4"), &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalPartitionerColumn,
-                                     GetStringValue(
+                                     util::GetStringValue(
                                          "org.apache.cassandra.dht.Murmur3Partitioner"),
                                      &row));
-        RETURN_NOT_OK(SetColumnValue(kSystemLocalRackColumn, GetStringValue("rack"), &row));
+        RETURN_NOT_OK(SetColumnValue(kSystemLocalRackColumn, util::GetStringValue("rack"), &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalReleaseVersionColumn,
-                                     GetStringValue("3.9-SNAPSHOT"), &row));
-        RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn, GetInetValue(addr), &row));
+                                     util::GetStringValue("3.9-SNAPSHOT"), &row));
+        RETURN_NOT_OK(SetColumnValue(kSystemLocalRpcAddressColumn, util::GetInetValue(addr), &row));
 
         Uuid schema_version;
         RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalSchemaVersionColumn,
-                                     GetUuidValue(schema_version), &row));
+                                     util::GetUuidValue(schema_version), &row));
         RETURN_NOT_OK(SetColumnValue(kSystemLocalThriftVersionColumn,
-                                     GetStringValue("20.1.0"), &row));
+                                     util::GetStringValue("20.1.0"), &row));
+        // setting tokens
+        RETURN_NOT_OK(SetColumnValue(kSystemLocalTokensColumn, util::GetTokensValue(), &row));
         break;
       }
     }
@@ -98,7 +99,7 @@ Schema LocalVTable::CreateSchema() const {
   CHECK_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, DataType::INET));
   CHECK_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, DataType::UUID));
   CHECK_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, DataType::STRING));
-  CHECK_OK(builder.AddColumn(kSystemLocalTokesnColumn,
+  CHECK_OK(builder.AddColumn(kSystemLocalTokensColumn,
                                   YQLType(DataType::SET, { YQLType(DataType::STRING) })));
   CHECK_OK(builder.AddColumn(
       kSystemLocalTruncatedAtColumn,

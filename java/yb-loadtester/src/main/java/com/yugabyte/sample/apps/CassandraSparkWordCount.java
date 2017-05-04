@@ -2,15 +2,8 @@
 
 package com.yugabyte.sample.apps;
 
-import java.io.IOException;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
-import java.util.List;
 
-import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.Session;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.apache.commons.cli.CommandLine;
@@ -35,36 +28,98 @@ public class CassandraSparkWordCount extends AppBase {
 
     appConfig.numWriterThreads = 2;
   }
-  private static String wordcount_input_file;
 
-  // The keyspace name.
-  // TODO: move to base class.
-  static final String keyspace = "ybdemo";
-  // The output table name.
-  static final String tableName = "wordcounts";
+  private boolean useCassandraInput;
+
+  // input source (file or Cassandra table)
+  private String inputFile;
+  private String inputKeyspace;
+  private String inputTableName;
+
+  // output source (Cassandra table)
+  private String outputKeyspace;
+  private String outputTableName;
+
+  // default values
+  private static final String defaultKeyspace = "ybdemo";
+  private static final String defaultInputTableName = "lines";
+  private static final String defaultOutputTableName = "wordcounts";
+
+  private void executeAndLog(Session session, String stmt) {
+    LOG.info(stmt);
+    session.execute(stmt);
+  }
 
   @Override
   public void initialize(CmdLineOpts configuration) {
     CommandLine commandLine = configuration.getCommandLine();
-    if (commandLine.hasOption("wordcount_input_file")) {
-      wordcount_input_file = commandLine.getOptionValue("wordcount_input_file");
-    } else {
-      // Create a sample file.
-      try {
-        List<String> lines = Arrays.asList("one two three four five",
-                                           "two three four five",
-                                           "three four five",
-                                           "four five",
-                                           "five");
-        wordcount_input_file = "/tmp/wordcount_input_file.txt";
-        Path file = Paths.get(wordcount_input_file);
-        Files.write(file, lines, Charset.forName("UTF-8"));
-      } catch (IOException e) {
-        LOG.fatal("Failed to create input file: " + wordcount_input_file, e);
+
+    //--------------------- Setting Input source (Cassandra table or file) -----------------------\\
+    if (commandLine.hasOption("wordcount_input_file") &&
+        commandLine.hasOption("wordcount_input_table")) {
+      LOG.fatal("Input source can be EITHER file or table: found both options set");
+      System.exit(1);
+    } else if (commandLine.hasOption("wordcount_input_file")) {
+      inputFile = commandLine.getOptionValue("wordcount_input_file");
+      useCassandraInput = false;
+      LOG.info("Using wordcount_input_file: " + inputFile);
+    } else if (commandLine.hasOption("wordcount_input_table")) {
+      String[] fragments = commandLine.getOptionValue("wordcount_input_table").split("\\.");
+      if (fragments.length == 2) {
+        inputKeyspace = fragments[0];
+        inputTableName = fragments[1];
+        useCassandraInput = true;
+        LOG.info("Using wordcount_input_table: " + inputKeyspace + "." + inputTableName);
+      } else {
+        LOG.fatal("Expected <keyspace>.<table name> format for input table: " + fragments.length);
         System.exit(1);
       }
+    } else { // defaults
+      LOG.info("No input given, will create sample table and use it as input.");
+      inputKeyspace = defaultKeyspace;
+      inputTableName = defaultInputTableName;
+      useCassandraInput = true;
+
+      // Setting up sample table
+      Session session = getCassandraClient();
+
+      // Create the keyspace if it doesn't already exist
+      session.execute("CREATE KEYSPACE IF NOT EXISTS " + inputKeyspace);
+      // Drop the sample table if it already exists.
+      session.execute("DROP TABLE IF EXISTS " + inputKeyspace + "." + inputTableName);
+      // Create the input table.
+      executeAndLog(session, "CREATE TABLE " + inputKeyspace + "." + inputTableName +
+              " (id int, line varchar, primary key(id));");
+
+      // Insert some rows.
+      String insert_stmt = "INSERT INTO " + inputKeyspace + "." + inputTableName + "(id, line) " +
+              "VALUES (%d, '%s');";
+      executeAndLog(session, String.format(insert_stmt, 1, "zero one two three four five"));
+      executeAndLog(session, String.format(insert_stmt, 2, "nine eight seven six"));
+      executeAndLog(session, String.format(insert_stmt, 3, "four two"));
+      executeAndLog(session, String.format(insert_stmt, 4, "one seven seven six"));
+      executeAndLog(session, String.format(insert_stmt, 5, "three one four one five nine two six"));
+      executeAndLog(session, String.format(insert_stmt, 6, "two seven one eight two eight one"));
+
+      LOG.info("Created sample table " + inputKeyspace + "." + inputTableName);
     }
-    LOG.info("wordcount_input_file: " + wordcount_input_file);
+
+    //----------------------- Setting Output location (Cassandra table) --------------------------\\
+    if (commandLine.hasOption("wordcount_output_table")) {
+      String[] fragments = commandLine.getOptionValue("wordcount_input_table").split("\\.");
+      if (fragments.length == 2) {
+        outputKeyspace = fragments[0];
+        outputTableName = fragments[1];
+        useCassandraInput = true;
+        LOG.info("Using wordcount_output_table: " + outputKeyspace + "." + outputTableName);
+      } else {
+        LOG.fatal("Expected <keyspace>.<table name> format for output table: " + fragments.length);
+        System.exit(1);
+      }
+    } else { // defaults
+      outputKeyspace = defaultKeyspace;
+      outputTableName = defaultOutputTableName;
+    }
   }
 
   @Override
@@ -83,28 +138,35 @@ public class CassandraSparkWordCount extends AppBase {
     // Create a Cassandra session, and initialize the keyspace.
     Session session = connector.openSession();
 
-    // Drop the demo table if it already exists.
-    session.execute("DROP TABLE IF EXISTS " + keyspace + "." + tableName);
-    // Drop the keyspace if it already exists.
-    session.execute("DROP KEYSPACE IF EXISTS " + keyspace);
-    // Create a new keyspace.
-    session.execute("CREATE KEYSPACE " + keyspace);
-    // Create the output table.
-    session.execute("CREATE TABLE " + keyspace + "." + tableName +
-        " (word VARCHAR PRIMARY KEY, count INT);");
-
-    // Read the input file and convert it to an RDD.
-    JavaRDD<String> textFile = sc.textFile(wordcount_input_file);
+    //------------------------------------------- Input ------------------------------------------\\
+    JavaRDD<String> rows;
+    if (useCassandraInput) {
+      // Read rows from table and convert them to an RDD.
+      rows = javaFunctions(sc).cassandraTable(inputKeyspace, inputTableName)
+              .select("line").map(row -> row.getString("line"));
+    } else {
+      // Read the input file and convert it to an RDD.
+      rows = sc.textFile(inputFile);
+    }
 
     // Perform the word count.
     JavaPairRDD<String, Integer> counts =
-        textFile.flatMap(line -> Arrays.asList(line.split(" ")).iterator())
+        rows.flatMap(line -> Arrays.asList(line.split(" ")).iterator())
             .mapToPair(word -> new Tuple2<String, Integer>(word, 1))
             .reduceByKey((x, y) ->  x +  y);
 
+    //------------------------------------------- Output -----------------------------------------\\
+    // Create keyspace if it doesn't already exist.
+    session.execute("CREATE KEYSPACE IF NOT EXISTS " + outputKeyspace);
+    // Drop the output table if it already exists.
+    session.execute("DROP TABLE IF EXISTS " + outputKeyspace + "." + outputTableName);
+    // Create the output table.
+    session.execute("CREATE TABLE " + outputKeyspace + "." + outputTableName +
+            " (word VARCHAR PRIMARY KEY, count INT);");
+
     // Save the output to the CQL table.
-    javaFunctions(counts).writerBuilder(keyspace,
-                                        tableName,
+    javaFunctions(counts).writerBuilder(outputKeyspace,
+            outputTableName,
                                         mapTupleToRow(String.class, Integer.class))
         .withColumnSelector(someColumns("word", "count"))
         .saveToCassandra();
@@ -117,10 +179,17 @@ public class CassandraSparkWordCount extends AppBase {
   public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);
-    sb.append("Simple Spark word count app that reads a input file to compute word count and ");
+    sb.append("Simple Spark word count app that reads from an input table or file to compute ");
     sb.append(optsSuffix);
     sb.append(optsPrefix);
-    sb.append("saves results in the 'wordcounts' table");
+    sb.append("word count and saves results in an output table");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("Input source is either input_file or input_table. If none is given a sample ");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("Cassandra table " + defaultKeyspace + "." + defaultInputTableName +
+            " is created and used as input");
     sb.append(optsSuffix);
     return sb.toString();
   }
@@ -132,7 +201,13 @@ public class CassandraSparkWordCount extends AppBase {
     sb.append("--num_threads_write " + appConfig.numWriterThreads);
     sb.append(optsSuffix);
     sb.append(optsPrefix);
+    sb.append("--wordcount_output_table " + defaultKeyspace+ "." + defaultOutputTableName);
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
     sb.append("--wordcount_input_file <path to input file>");
+    sb.append(optsSuffix);
+    sb.append(optsPrefix);
+    sb.append("--wordcount_input_table <keyspace>.<table name>");
     sb.append(optsSuffix);
     return sb.toString();
   }

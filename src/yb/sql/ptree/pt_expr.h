@@ -172,7 +172,7 @@ class PTExpr : public TreeNode {
   //   parse tree to run semantic analysis on them.
   // - Run semantic analysis on this node.
   // - The main job of semantics analysis is to run type resolution to find the correct values for
-  //   yql_type_id_ and internal_type_ for expressions.
+  //   yql_type and internal_type_ for expressions.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override = 0;
 
   // Check if an operator is allowed in the current context before analyzing it.
@@ -381,7 +381,7 @@ class PTExpr0 : public expr_class {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
     RETURN_NOT_OK(this->CheckOperator(sem_context));
 
-    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
+    // Analyze this node operator and setup its yql_type and internal_type_.
     RETURN_NOT_OK(this->AnalyzeOperator(sem_context));
 
     // Make sure that this expression has valid data type.
@@ -431,7 +431,7 @@ class PTExpr1 : public expr_class {
     RETURN_NOT_OK(op1_->Analyze(sem_context));
     sem_state.ResetContextState();
 
-    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
+    // Analyze this node operator and setup its yql_type and internal_type_.
     RETURN_NOT_OK(this->AnalyzeOperator(sem_context, op1_));
 
     // Make sure that it has valid data type.
@@ -495,7 +495,7 @@ class PTExpr2 : public expr_class {
     RETURN_NOT_OK(op2_->Analyze(sem_context));
     sem_state.ResetContextState();
 
-    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
+    // Analyze this node operator and setup its yql_type and internal_type_.
     RETURN_NOT_OK(this->AnalyzeOperator(sem_context, op1_, op2_));
 
     // Make sure that it has valid data type.
@@ -569,7 +569,7 @@ class PTExpr3 : public expr_class {
     RETURN_NOT_OK(op3_->Analyze(sem_context));
     sem_state.ResetContextState();
 
-    // Analyze this node operator and setup its yql_type_id_ and internal_type_.
+    // Analyze this node operator and setup its yql_type and internal_type_.
     RETURN_NOT_OK(this->AnalyzeOperator(sem_context, op1_, op2_, op3_));
 
     // Make sure that it has valid data type.
@@ -942,30 +942,22 @@ class PTBindVar : public PTExpr {
   }
 
   // Access functions for name.
-  MCSharedPtr<MCString> name() const {
+  const MCSharedPtr<MCString>& name() const {
     return name_;
-  }
-
-  // Access functions for descriptor.
-  const ColumnDesc *desc() const {
-    return desc_;
   }
 
   // Expression return type in DocDB format.
   virtual InternalType internal_type() const override {
-    DCHECK(desc_ != nullptr);
-    return desc_->internal_type();
+    return internal_type_;
   }
 
   // Expression return type in Cassandra format.
   virtual const YQLType& yql_type() const override {
-    DCHECK(desc_ != nullptr);
-    return desc_->yql_type();
+    return yql_type_;
   }
 
   virtual DataType yql_type_id() const override {
-    DCHECK(desc_ != nullptr);
-    return desc_->yql_type().main();
+    return yql_type_.main();
   }
 
   // Node type.
@@ -978,17 +970,11 @@ class PTBindVar : public PTExpr {
     return ExprOperator::kBindVar;
   }
 
-  // Reset to clear and release previous semantics analysis results.
-  virtual void Reset() override;
-
  private:
   // 0-based position.
   int64_t pos_;
   // Variable name.
   MCSharedPtr<MCString> name_;
-
-  // Fields that should be resolved by semantic analysis.
-  const ColumnDesc *desc_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -1033,6 +1019,10 @@ class PTBcall : public PTExpr {
     return cast_ops_;
   }
 
+  const MCSharedPtr<MCString>& name() const {
+    return name_;
+  }
+
  private:
   // Find opcode to convert actual to formal yql_type_id.
   Status FindCastOpcode(DataType source, DataType target, yb::bfyql::BFOpcode *opcode);
@@ -1048,6 +1038,48 @@ class PTBcall : public PTExpr {
 
   // Casting arguments to correct datatype before calling the builtin-function.
   MCVector<yb::bfyql::BFOpcode> cast_ops_;
+};
+
+class PTToken : public PTBcall {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTToken> SharedPtr;
+  typedef MCSharedPtr<const PTToken> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  PTToken(MemoryContext *memctx,
+          YBLocation::SharedPtr loc,
+          const MCSharedPtr<MCString>& name,
+          PTExprListNode::SharedPtr args) : PTBcall(memctx, loc, name, args) { }
+
+  virtual ~PTToken() { }
+
+  // Support for shared_ptr.
+  template<typename... TypeArgs>
+  inline static PTToken::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTToken>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+
+  // Check if token call is well formed before analyzing it
+  virtual CHECKED_STATUS CheckOperator(SemContext *sem_context) override;
+
+  bool is_partition_key_ref() const {
+    return is_partition_key_ref_;
+  }
+
+  // The name Cassandra uses for the virtual column when binding token ("partition key token")
+  static const string& bindvar_name;
+
+ private:
+  // true if this token call is just reference to the partition key, e.g.: "token(h1, h2, h3)"
+  // TODO not supported yet: false for regular builtin calls to be evaluated, e.g.: "token(2,3,4)"
+  bool is_partition_key_ref_ = false;
+
 };
 
 }  // namespace sql

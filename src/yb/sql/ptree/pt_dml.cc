@@ -30,6 +30,7 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
     num_hash_key_columns_(0),
     key_where_ops_(memctx),
     where_ops_(memctx),
+    partition_key_ops_(memctx),
     write_only_(write_only),
     ttl_seconds_(ttl_seconds),
     bind_variables_(memctx),
@@ -60,6 +61,7 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
   if (table_ == nullptr) {
     return sem_context->Error(table_loc(), ErrorCode::TABLE_NOT_FOUND);
   }
+  sem_context->set_current_table(table_);
 
   const YBSchema& schema = table_->schema();
   const int num_columns = schema.num_columns();
@@ -117,7 +119,9 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr
   // Construct the state variables and analyze the expression.
   MCVector<ColumnOpCounter> op_counters(sem_context->PTempMem());
   op_counters.resize(num_columns());
-  WhereExprState where_state(&where_ops_, &key_where_ops_, &op_counters, write_only_);
+  ColumnOpCounter partition_key_counter;
+  WhereExprState where_state(&where_ops_, &key_where_ops_, &partition_key_ops_, &op_counters,
+      &partition_key_counter, write_only_);
 
   SemState sem_state(sem_context, DataType::BOOL, InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
@@ -325,6 +329,47 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
+  // Check that if where clause is present, it must follow CQL rules.
+  return Status::OK();
+}
+
+
+CHECKED_STATUS WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
+                                                     const PTRelationExpr *expr,
+                                                     PTExpr::SharedPtr value) {
+  switch (expr->yql_op()) {
+    case YQL_OP_LESS_THAN: {
+      partition_key_counter_->increase_lt();
+      break;
+    }
+    case YQL_OP_LESS_THAN_EQUAL: {
+      partition_key_counter_->increase_lt();
+      break;
+    }
+    case YQL_OP_EQUAL: {
+      partition_key_counter_->increase_eq();
+      break;
+    }
+    case YQL_OP_GREATER_THAN_EQUAL: {
+      partition_key_counter_->increase_gt();
+      break;
+    }
+    case YQL_OP_GREATER_THAN: {
+      partition_key_counter_->increase_gt();
+      break;
+    }
+
+    default:
+      return sem_context->Error(expr->loc(), "Operator is not supported for token in where clause",
+                                ErrorCode::CQL_STATEMENT_INVALID);
+  }
+
+  if (!partition_key_counter_->isValid()) {
+    return sem_context->Error(expr->loc(), "Illogical where condition for token in where clause");
+  }
+
+  PartitionKeyOp pkey_op(expr->yql_op(), value);
+  partition_key_ops_->push_back(std::move(pkey_op));
   return Status::OK();
 }
 

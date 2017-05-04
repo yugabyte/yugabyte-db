@@ -80,7 +80,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
       // Process values arguments.
       const PTExpr::SharedPtr& expr = *iter;
       SemState sem_state(sem_context, col_desc->yql_type(), col_desc->internal_type(),
-                         col_desc, name->bindvar_name());
+                         name->bindvar_name());
       RETURN_NOT_OK(expr->Analyze(sem_context));
       RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
@@ -114,7 +114,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
 
       // Process values arguments.
       SemState sem_state(sem_context, col_desc->yql_type(), col_desc->internal_type(),
-                         col_desc, (*iter)->bindvar_name());
+                         (*iter)->bindvar_name());
       RETURN_NOT_OK(expr->Analyze(sem_context));
       RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 

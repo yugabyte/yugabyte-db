@@ -25,8 +25,8 @@ class DocYQLScanSpec : public common::YQLScanSpec {
   // will not include any static column for the start key. If the static columns are needed, a
   // separate scan spec can be used to read just those static columns.
   DocYQLScanSpec(
-      const Schema& schema, uint32_t hash_code,
-      const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
+      const Schema& schema, int32_t hash_code, int32_t max_hash_code,
+      const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* req,
       bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
 
   // Return the inclusive lower and upper bounds of the scan.
@@ -58,9 +58,15 @@ class DocYQLScanSpec : public common::YQLScanSpec {
   // Schema of the columns to scan.
   const Schema& schema_;
 
-  // Hash code, hashed components and optional WHERE condition clause to scan.
-  // The hashed_components and condition are owned by the caller of YQLScanSpec.
-  const uint32_t hash_code_;
+  // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
+  // hash values are positive int16_t, here -1 is default and means unset
+  const int32_t hash_code_;
+
+  // Max hash code to scan at (upper bound, only useful if hashed_components_ are empty)
+  // hash values are positive int16_t, here -1 is default and means unset
+  const int32_t max_hash_code_;
+
+  // The hashed_components are owned by the caller of YQLScanSpec.
   const std::vector<PrimitiveValue>* hashed_components_;
 
   // Specific doc key to scan if not empty.

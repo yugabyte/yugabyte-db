@@ -349,17 +349,17 @@ TEST_F(BfYqlTest, TestVariadicBuiltin) {
   // - BFExecApiTest::ExecYqlFunc("builin_name") will combine the two steps of finding and
   //   executing opcode into one function call. This is only convenient for testing. In actual code,
   //   except execute-immediate feature, this process is divided into two steps.
-  result->set_yql_type_id(DataType::INT32);
+  result->set_yql_type_id(DataType::STRING);
   ASSERT_NOK(BFExecApiTest::ExecYqlFunc("token", params, result));
 
   // Use correct return type.
-  result->set_yql_type_id(DataType::STRING);
+  result->set_yql_type_id(DataType::INT64);
   ASSERT_OK(BFExecApiTest::ExecYqlFunc("token", params, result));
 
   // Call the C++ function Token() directly and verify result.
   BFTestValue::SharedPtr expected_result = make_shared<BFTestValue>();
   ASSERT_OK((Token<BFTestValue::SharedPtr, BFTestValue::SharedPtr>(params, expected_result)));
-  ASSERT_EQ(result->string_value(), expected_result->string_value());
+  ASSERT_EQ(result->int64_value(), expected_result->int64_value());
 
   // Convert shared_ptr to raw pointer to test the API for raw pointers.
   BFTestValue *raw_result = result.get();
@@ -368,17 +368,17 @@ TEST_F(BfYqlTest, TestVariadicBuiltin) {
     raw_params[pindex] = params[pindex].get();
   }
 
-  // Use correct return type.
-  raw_result->set_yql_type_id(DataType::INT32);
+  // Use wrong return type and expect error.
+  raw_result->set_yql_type_id(DataType::STRING);
   ASSERT_NOK(BFExecApiTest::ExecYqlFunc("token", raw_params, raw_result));
 
   // Use correct return type.
-  raw_result->set_yql_type_id(DataType::STRING);
+  raw_result->set_yql_type_id(DataType::INT64);
   ASSERT_OK(BFExecApiTest::ExecYqlFunc("token", raw_params, raw_result));
 
   // Call the C++ function Token() directly and verify result.
   ASSERT_OK((Token<BFTestValue::SharedPtr, BFTestValue::SharedPtr>(params, expected_result)));
-  ASSERT_EQ(raw_result->string_value(), expected_result->string_value());
+  ASSERT_EQ(raw_result->int64_value(), expected_result->int64_value());
 }
 
 // Test bad function calls.

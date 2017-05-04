@@ -46,13 +46,11 @@ class SemState {
   SemState(SemContext *sem_context,
            DataType expected_yql_type_id = DataType::UNKNOWN_DATA,
            InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
-           const ColumnDesc *bindvar_desc = nullptr,
            const MCSharedPtr<MCString>& bindvar_name = nullptr);
 
   SemState(SemContext *sem_context,
            const YQLType& expected_yql_type,
            InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
-           const ColumnDesc *bindvar_desc = nullptr,
            const MCSharedPtr<MCString>& bindvar_name = nullptr);
 
   // Destructor: Reset sem_context back to previous_state_.
@@ -70,11 +68,9 @@ class SemState {
   // TODO(mihnea) Remove the overload after working with YQLType for collection.
   void SetExprState(DataType yql_type_id,
                     InternalType internal_type,
-                    const ColumnDesc *desc = nullptr,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr);
   void SetExprState(const YQLType& yql_type,
                     InternalType internal_type,
-                    const ColumnDesc *desc = nullptr,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr);
 
   // Set the current state using previous state's values.
@@ -87,8 +83,9 @@ class SemState {
   const YQLType& expected_yql_type() const { return expected_yql_type_; }
   InternalType expected_internal_type() const { return expected_internal_type_; }
   WhereExprState *where_state() const { return where_state_; }
-  const ColumnDesc *bindvar_desc() const { return bindvar_desc_; }
   const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
+
+  void set_bindvar_name(string bindvar_name);
 
  private:
   // Context that owns this SemState.
@@ -102,9 +99,6 @@ class SemState {
   YQLType expected_yql_type_;       // The expected sql type of an expression.
   InternalType expected_internal_type_; // The expected internal type of an expression.
 
-  // Bind variable shouldn't need the full column description. However, the current code uses this,
-  // so we pass this value along for now.
-  const ColumnDesc *bindvar_desc_;
   MCSharedPtr<MCString> bindvar_name_;
 
   // State variables for where expression.

@@ -156,7 +156,8 @@ class Executor {
   CHECKED_STATUS WhereClauseToPB(YQLReadRequestPB *req,
                                  YBPartialRow *row,
                                  const MCVector<ColumnOp>& key_where_ops,
-                                 const MCList<ColumnOp>& where_ops);
+                                 const MCList<ColumnOp>& where_ops,
+                                 const MCList<PartitionKeyOp>& partition_key_ops);
 
   // Convert where clause to protobuf for write request.
   CHECKED_STATUS WhereClauseToPB(YQLWriteRequestPB *req,

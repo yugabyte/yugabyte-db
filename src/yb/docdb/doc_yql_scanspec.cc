@@ -11,7 +11,8 @@ DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const DocKey& doc_key)
     : YQLScanSpec(nullptr),
       range_(nullptr),
       schema_(schema),
-      hash_code_(0),
+      hash_code_(-1),
+      max_hash_code_(-1),
       hashed_components_(nullptr),
       doc_key_(doc_key),
       start_doc_key_(DocKey()),
@@ -22,13 +23,14 @@ DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const DocKey& doc_key)
 
 
 DocYQLScanSpec::DocYQLScanSpec(
-    const Schema& schema, const uint32_t hash_code,
+    const Schema& schema, const int32_t hash_code, const int32_t max_hash_code,
     const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
     const bool include_static_columns, const DocKey& start_doc_key)
     : YQLScanSpec(condition),
-      range_(condition != nullptr ? new common::YQLScanRange(schema, *condition) : nullptr),
+      range_(condition ? new common::YQLScanRange(schema, *condition) : nullptr),
       schema_(schema),
       hash_code_(hash_code),
+      max_hash_code_(max_hash_code),
       hashed_components_(&hashed_components),
       doc_key_(),
       start_doc_key_(start_doc_key),
@@ -40,11 +42,22 @@ DocYQLScanSpec::DocYQLScanSpec(
 }
 
 DocKey DocYQLScanSpec::bound_key(const bool lower_bound) const {
-  // If no hashed_component, start from the beginning.
+  // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
+    // use lower bound hash code if set in request (for scans using token)
+    if (lower_bound && hash_code_ != -1) {
+      return DocKey(hash_code_, {}, {});
+    }
+    // use upper bound hash code if set in request (for scans using token)
+    if (!lower_bound && max_hash_code_ != -1) {
+      return DocKey(max_hash_code_, {}, {});
+    }
+
     return DocKey();
   }
-  return DocKey(hash_code_,
+
+  // if hash_code not set (-1) default to 0 (start from the beginning)
+  return DocKey(hash_code_ == - 1 ? 0 : hash_code_,
                 *hashed_components_,
                 range_components(lower_bound, /* allow_null */ false));
 }

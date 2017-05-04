@@ -40,7 +40,7 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
-  sem_context->set_current_table(this);
+  sem_context->set_current_create_table_stmt(this);
 
   // Processing table elements.
   RETURN_NOT_OK(elements_->Analyze(sem_context));
@@ -251,7 +251,7 @@ CHECKED_STATUS PTColumnDefinition::Analyze(SemContext *sem_context) {
   }
 
   // Add the analyzed column to table.
-  PTCreateTable *table = sem_context->current_table();
+  PTCreateTable *table = sem_context->current_create_table_stmt();
   RETURN_NOT_OK(table->AppendColumn(sem_context, this));
 
   // Restore the context value as we are done with this colummn.
@@ -273,7 +273,7 @@ PTPrimaryKey::~PTPrimaryKey() {
 
 CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
   // Check if primary key is defined more than one time.
-  PTCreateTable *table = sem_context->current_table();
+  PTCreateTable *table = sem_context->current_create_table_stmt();
   if (table->primary_columns().size() > 0 || table->hash_columns().size() > 0) {
     return sem_context->Error(loc(), "Too many primary key", ErrorCode::INVALID_TABLE_DEFINITION);
   }

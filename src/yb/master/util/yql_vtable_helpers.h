@@ -37,6 +37,16 @@ inline YQLValuePB GetBoolValue(const bool bool_val) {
   return value_pb;
 }
 
+// TODO (mihnea) when partitioning issue is solved this should take arguments and return the
+// appropriate result for each node.
+inline YQLValuePB GetTokensValue() {
+  YQLValuePB value_pb;
+  YQLValue::set_set_value(&value_pb);
+  YQLValuePB *token = YQLValue::add_set_elem(&value_pb);
+  token->set_string_value("0");
+  return value_pb;
+}
+
 }  // namespace util
 }  // namespace master
 }  // namespace yb

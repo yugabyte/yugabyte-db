@@ -497,7 +497,40 @@ CHECKED_STATUS Executor::WhereClauseToPB(YQLWriteRequestPB *req,
 CHECKED_STATUS Executor::WhereClauseToPB(YQLReadRequestPB *req,
                                          YBPartialRow *row,
                                          const MCVector<ColumnOp>& key_where_ops,
-                                         const MCList<ColumnOp>& where_ops) {
+                                         const MCList<ColumnOp>& where_ops,
+                                         const MCList<PartitionKeyOp>& partition_key_ops) {
+
+  // Setup the lower/upper bounds on the partition key -- if any
+  for (const auto& op : partition_key_ops) {
+    YQLExpressionPB hash_code_pb;
+    RETURN_NOT_OK(PTExprToPB(op.expr(), &hash_code_pb));
+    DCHECK(hash_code_pb.has_value()) << "Integer constant expected";
+
+    // TODO(mihnea) check for overflow
+    uint16_t hash_code = static_cast<uint16_t>(hash_code_pb.value().int64_value());
+    // internally we use [start, end) intervals -- start-inclusive, end-exclusive
+    switch (op.yb_op()) {
+      case YQL_OP_GREATER_THAN:
+        req->set_hash_code(hash_code + 1);
+        break;
+      case YQL_OP_GREATER_THAN_EQUAL:
+        req->set_hash_code(hash_code);
+        break;
+      case YQL_OP_LESS_THAN:
+        req->set_max_hash_code(hash_code);
+        break;
+      case YQL_OP_LESS_THAN_EQUAL:
+        req->set_max_hash_code(hash_code + 1);
+        break;
+      case YQL_OP_EQUAL:
+        req->set_hash_code(hash_code);
+        req->set_max_hash_code(hash_code + 1);
+        break;
+
+      default:
+        LOG(FATAL) << "Unsupported operator for token-based partition key condition";
+    }
+  }
 
   // Setup the hash key columns. This may be empty
   for (const auto& op : key_where_ops) {
@@ -608,11 +641,24 @@ void Executor::ExecPTNodeAsync(
   // Where clause - Hash, range, and regular columns.
   YBPartialRow *row = select_op->mutable_row();
 
-  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops());
+  Status st = WhereClauseToPB(req, row, tnode->key_where_ops(), tnode->where_ops(),
+                              tnode->partition_key_ops());
   if (!st.ok()) {
     CB_RETURN(
         cb,
         exec_context_->Error(tnode->loc(), st.ToString().c_str(), ErrorCode::INVALID_ARGUMENTS));
+  }
+
+  if (req->has_max_hash_code()) {
+    uint16_t next_hash_code = paging_params->next_partition_key().empty() ? 0
+        : PartitionSchema::DecodeMultiColumnHashValue(paging_params->next_partition_key());
+
+    // if reached max_hash_code stop and return the current result
+    if (next_hash_code >= req->max_hash_code()) {
+      current_result->clear_paging_state();
+      cb.Run(Status::OK(), current_result);
+      return;
+    }
   }
 
   // Specify selected columns.

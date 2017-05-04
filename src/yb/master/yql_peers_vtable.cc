@@ -18,7 +18,6 @@ PeersVTable::PeersVTable(const Master* const master)
 
 Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
                                  unique_ptr<YQLRowBlock>* vtable) const {
-  using namespace util;
   // Retrieve all lives nodes known by the master.
   // TODO: Ideally we would like to populate this table with all valid nodes of the cluster, but
   // currently the master just has a list of all nodes it has heard from and which one of those
@@ -58,7 +57,7 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
   // Populate the YQL rows.
   vtable->reset(new YQLRowBlock(schema_));
   for (const auto& kv : peers) {
-    YQLValuePB inet_addr = GetInetValue(kv.first);
+    YQLValuePB inet_addr = util::GetInetValue(kv.first);
 
     YQLRow& row = (*vtable)->Extend();
     RETURN_NOT_OK(SetColumnValue(kPeer, inet_addr, &row));
@@ -68,18 +67,21 @@ Status PeersVTable::RetrieveData(const YQLReadRequestPB& request,
     // Datacenter and rack.
     CloudInfoPB cloud_info = kv.second.registration().common().cloud_info();
     RETURN_NOT_OK(SetColumnValue(kDataCenter,
-                                 GetStringValue(cloud_info.placement_region()), &row));
-    RETURN_NOT_OK(SetColumnValue(kRack, GetStringValue(cloud_info.placement_zone()), &row));
+                                 util::GetStringValue(cloud_info.placement_region()), &row));
+    RETURN_NOT_OK(SetColumnValue(kRack, util::GetStringValue(cloud_info.placement_zone()), &row));
 
     // HostId.
     Uuid host_id;
     RETURN_NOT_OK(host_id.FromHexString(kv.second.tserver_instance().permanent_uuid()));
-    RETURN_NOT_OK(SetColumnValue(kHostId, GetUuidValue(host_id), &row));
+    RETURN_NOT_OK(SetColumnValue(kHostId, util::GetUuidValue(host_id), &row));
 
     // schema_version.
     Uuid schema_version;
     CHECK_OK(schema_version.FromString(master::kDefaultSchemaVersion));
-    RETURN_NOT_OK(SetColumnValue(kSchemaVersion, GetUuidValue(schema_version), &row));
+    RETURN_NOT_OK(SetColumnValue(kSchemaVersion, util::GetUuidValue(schema_version), &row));
+
+    // Tokens.
+    RETURN_NOT_OK(SetColumnValue(kTokens, util::GetTokensValue(), &row));
   }
   return Status::OK();
 }

@@ -240,6 +240,9 @@ message YQLReadRequestPB {
   // The remote endpoint sending this request. This is filled in by the server and should not be
   // set.
   optional HostPortPB remote_endpoint = 13;
+
+  // the upper limit for partition (hash) key scan ranges
+  optional uint32 max_hash_code = 14;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------

@@ -3105,6 +3105,19 @@ func_application:
     }
     $$ = MAKE_NODE(@1, PTBcall, $1, $3);
   }
+  // special treatment for token because it is a reserved keyword and produces a dedicated C++ class
+  | TOKEN '(' ')' {
+    PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
+    auto name = parser_->MakeString($1);
+    $$ = MAKE_NODE(@1, PTToken, name, args);
+  }
+  | TOKEN '(' func_arg_list opt_sort_clause ')' {
+    if ($4 != nullptr) {
+      PARSER_UNSUPPORTED(@1);
+    }
+    auto name = parser_->MakeString($1);
+    $$ = MAKE_NODE(@1, PTToken, name, $3);
+  }
   | func_name '(' VARIADIC func_arg_expr opt_sort_clause ')' {
     PARSER_UNSUPPORTED(@1);
   }
@@ -3856,11 +3869,6 @@ property_name: name             { $$ = $1; };
 func_name:
   type_function_name {
     $$ = $1;
-  }
-  // Although we implement TOKEN as builtin function, apache CQL defines it as KEYWORD. For
-  // compatibility reason, keep it as keyword here.
-  | TOKEN {
-    $$ = parser_->MakeString($1);
   }
   | ColId indirection {
     PARSER_UNSUPPORTED(@1);

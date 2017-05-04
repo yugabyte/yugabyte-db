@@ -1162,4 +1162,115 @@ public class TestBindVariable extends BaseCQLTest {
     LOG.info("End test");
   }
 
+  @Test
+  public void testBindWithToken() throws Exception {
+    LOG.info("Begin test");
+
+    // this is the name CQL uses for the virtual column that token() references
+    String token_vcol_name = "partition key token";
+
+    // Setup test table.
+    setupTable("test_bind", 10 /* num_rows */);
+
+    {
+      // Simple bind (by position) with token.
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
+      ResultSet rs = session.execute(select_stmt, new Integer(7), "h7", new Long(0));
+
+      // Checking result.
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+    }
+
+    {
+      // Simple bind (by name) with token.
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
+      ResultSet rs = session.execute(select_stmt,
+              new HashMap<String, Object>() {{
+                put("h1", new Integer(7));
+                put("h2", "h7");
+                put(token_vcol_name, new Long(0));
+              }});
+
+      // Checking result.
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+    }
+
+    {
+      // Prepare bind (by position) with token
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
+      PreparedStatement stmt = session.prepare(select_stmt);
+      ResultSet rs = session.execute(stmt.bind(new Integer(7), "h7", new Long(0)));
+      // Checking result.
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+    }
+
+    {
+      // Prepare bind (by name) with token
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+              " WHERE h1 = ? AND h2 = ? AND token(h1, h2) >= ?;";
+      PreparedStatement stmt = session.prepare(select_stmt);
+      ResultSet rs = session.execute(stmt
+              .bind()
+              .setInt("h1", 7)
+              .setString("h2", "h7")
+              .setLong(token_vcol_name, 0));
+      // Checking result.
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+    }
+
+    {
+      // Prepare bind (by name with named markers) with token
+      String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +
+              " WHERE h1 = :b1 AND h2 = :b2 AND token(h1, h2) >= :b3;";
+      PreparedStatement stmt = session.prepare(select_stmt);
+      ResultSet rs = session.execute(stmt
+              .bind()
+              .setInt("b1", 7)
+              .setString("b2", "h7")
+              .setLong("b3", 0));
+      // Checking result.
+      assertEquals(1, rs.getAvailableWithoutFetching());
+      Row row = rs.one();
+      assertEquals(7, row.getInt(0));
+      assertEquals("h7", row.getString(1));
+      assertEquals(107, row.getInt(2));
+      assertEquals("r107", row.getString(3));
+      assertEquals(1007, row.getInt(4));
+      assertEquals("v1007", row.getString(5));
+    }
+
+    LOG.info("End test");
+  }
+
 }

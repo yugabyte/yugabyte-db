@@ -854,5 +854,389 @@ TEST_F(YbSqlQuery, TestPagination) {
   EXPECT_EQ(55, sum);
 }
 
+TEST_F(YbSqlQuery, TestScanWithBounds) {
+  //------------------------------------------------------------------------------------------------
+  // Setting up cluster
+  //------------------------------------------------------------------------------------------------
+
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  // Create test table.
+  CHECK_OK(processor->Run("CREATE TABLE scan_bounds_test (h1 int, h2 text, r1 int, v1 int,"
+                          " PRIMARY KEY((h1, h2), r1));"));
+
+  client::YBTableName name(kDefaultKeyspaceName, "scan_bounds_test");
+  shared_ptr<client::YBTable> table;
+
+  ASSERT_OK(client_->OpenTable(name, &table));
+
+  //------------------------------------------------------------------------------------------------
+  // Initializing rows data
+  //------------------------------------------------------------------------------------------------
+
+  // generating input data with hash_code and inserting into table
+  std::vector<std::tuple<uint16_t, int, string, int, int>> rows;
+  for (int i = 0; i < 10; i++) {
+    std::string i_str = std::to_string(i);
+    YBPartialRow row(&table->InternalSchema());
+    CHECK_OK(row.SetInt32(0, i));
+    CHECK_OK(row.SetString(1, i_str));
+    CHECK_OK(row.SetInt32(2, i));
+    CHECK_OK(row.SetInt32(3, i));
+    std::string part_key;
+    CHECK_OK(table->partition_schema().EncodeKey(row, &part_key));
+    uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(part_key);
+    std::tuple<uint16_t, int, string, int, int> values(hash_code, i, i_str, i, i);
+    rows.push_back(values);
+    string stmt = Substitute("INSERT INTO scan_bounds_test (h1, h2, r1, v1) VALUES "
+                             "($0, '$1', $2, $3);", i, i, i, i);
+    CHECK_OK(processor->Run(stmt));
+  }
+
+  // ordering rows by hash code
+  std::sort(rows.begin(), rows.end(),
+      [](const std::tuple<uint16_t, int, string, int, int>& r1,
+         const std::tuple<uint16_t, int, string, int, int>& r2) -> bool {
+        return std::get<0>(r1) < std::get<0>(r2);
+      });
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Select with lower bound
+  //------------------------------------------------------------------------------------------------
+
+  //---------------------------------- Exclusive Lower Bound ---------------------------------------
+  string select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) > $0";
+
+  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  string select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) - 1);
+  CHECK_OK(processor->Run(select_stmt));
+  auto row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(10, row_block->row_count());
+  for (int i = 0; i < 10; i++) {
+    YQLRow &row = row_block->row(i);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Partial range: hashes 4, 5, 6, 7, 8, 9
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[3]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(6, row_block->row_count());
+  for (int i = 4; i < 10; i++) {
+    YQLRow &row = row_block->row(i - 4);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Empty range: no hashes
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  //---------------------------------- Inclusive Lower Bound ---------------------------------------
+  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) >= $0";
+
+  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(10, row_block->row_count());
+  for (int i = 0; i < 10; i++) {
+    YQLRow &row = row_block->row(i);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Partial range: hashes 6, 7, 8, 9
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[6]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(4, row_block->row_count());
+  for (int i = 6; i < 10; i++) {
+    YQLRow &row = row_block->row(i - 6);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Empty range: no hashes
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + 1);
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Select with upper bound
+  //------------------------------------------------------------------------------------------------
+
+  //---------------------------------- Exclusive Upper Bound ---------------------------------------
+  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) < $0";
+
+  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + 1);
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(10, row_block->row_count());
+  for (int i = 0; i < 10; i++) {
+    YQLRow &row = row_block->row(i);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Partial range: hashes 0, 1, 2, 3, 4, 5, 6
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[7]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block.reset();
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(7, row_block->row_count());
+  for (int i = 0; i < 7; i++) {
+    YQLRow &row = row_block->row(i);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Empty range: no hashes
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  //---------------------------------- Inclusive Upper Bound ---------------------------------------
+  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) <= $0";
+
+  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(10, row_block->row_count());
+  for (int i = 0; i < 10; i++) {
+    YQLRow &row = row_block->row(i);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Partial range: hashes 0, 1, 2
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[2]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block.reset();
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(3, row_block->row_count());
+  for (int i = 0; i < 3; i++) {
+    YQLRow &row = row_block->row(i);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Empty range: no hashes
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[0]) - 1);
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Select with both lower and upper bounds
+  //------------------------------------------------------------------------------------------------
+  select_stmt_template =
+      "SELECT * FROM scan_bounds_test WHERE token(h1, h2) $0 $1 AND token(h1, h2) $2 $3";
+
+  // Entire range: hashes 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[0]),
+      "<=", std::get<0>(rows[9]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(10, row_block->row_count());
+  for (int i = 0; i < 10; i++) {
+    YQLRow &row = row_block->row(i);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Partial Range: hashes 2, 3, 4, 5, 6, 7, 8
+  select_stmt = Substitute(select_stmt_template, ">", std::get<0>(rows[1]),
+      "<=", std::get<0>(rows[8]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(7, row_block->row_count());
+  for (int i = 2; i < 9; i++) {
+    YQLRow &row = row_block->row(i - 2);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Partial Range: hashes 4, 5, 6
+  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[4]),
+      "<", std::get<0>(rows[7]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(3, row_block->row_count());
+  for (int i = 4; i < 7; i++) {
+    YQLRow &row = row_block->row(i - 4);
+    EXPECT_EQ(std::get<1>(rows[i]), row.column(0).int32_value());
+    EXPECT_EQ(std::get<2>(rows[i]), row.column(1).string_value());
+    EXPECT_EQ(std::get<3>(rows[i]), row.column(2).int32_value());
+    EXPECT_EQ(std::get<4>(rows[i]), row.column(3).int32_value());
+  }
+
+  // Empty Range (inclusive lower bound): no hashes
+  select_stmt = Substitute(select_stmt_template, ">=", std::get<0>(rows[2]),
+      "<", std::get<0>(rows[2]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  // Empty Range (inclusive upper bound): no hashes
+  select_stmt = Substitute(select_stmt_template, ">", std::get<0>(rows[2]),
+      "<=", std::get<0>(rows[2]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Select with exact partition key (equal condition with token)
+  //------------------------------------------------------------------------------------------------
+  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE token(h1, h2) = $0";
+
+  // testing existing hash: 2
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[2]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(1, row_block->row_count());
+  YQLRow &row2 = row_block->row(0);
+  EXPECT_EQ(std::get<1>(rows[2]), row2.column(0).int32_value());
+  EXPECT_EQ(std::get<2>(rows[2]), row2.column(1).string_value());
+  EXPECT_EQ(std::get<3>(rows[2]), row2.column(2).int32_value());
+  EXPECT_EQ(std::get<4>(rows[2]), row2.column(3).int32_value());
+
+  // testing non-existing hash: empty
+  select_stmt = Substitute(select_stmt_template, std::get<0>(rows[9]) + 1);
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  EXPECT_EQ(0, row_block->row_count());
+
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Select with conditions on both partition key and individual hash columns
+  //   - These queries are not always logical (i.e. partition key condition is usually irrelevant
+  //   - if part. column values are given) but Cassandra supports them so we replicate its behavior
+  //------------------------------------------------------------------------------------------------
+  select_stmt_template = "SELECT * FROM scan_bounds_test WHERE "
+                         "h1 = $0 AND h2 = '$1' AND token(h1, h2) $2 $3";
+
+  // checking existing row with exact partition key: 6
+  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[6]), std::get<2>(rows[6]),
+                           "=", std::get<0>(rows[6]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result
+  ASSERT_EQ(1, row_block->row_count());
+  YQLRow &row6 = row_block->row(0);
+  EXPECT_EQ(std::get<1>(rows[6]), row6.column(0).int32_value());
+  EXPECT_EQ(std::get<2>(rows[6]), row6.column(1).string_value());
+  EXPECT_EQ(std::get<3>(rows[6]), row6.column(2).int32_value());
+  EXPECT_EQ(std::get<4>(rows[6]), row6.column(3).int32_value());
+
+  // checking existing row with partition key bound: 3 with partition upper bound 7 (to include 3)
+  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[3]), std::get<2>(rows[3]),
+                           "<=", std::get<0>(rows[7]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result, expecting referenced row
+  ASSERT_EQ(1, row_block->row_count());
+  YQLRow &row3 = row_block->row(0);
+  EXPECT_EQ(std::get<1>(rows[3]), row3.column(0).int32_value());
+  EXPECT_EQ(std::get<2>(rows[3]), row3.column(1).string_value());
+  EXPECT_EQ(std::get<3>(rows[3]), row3.column(2).int32_value());
+  EXPECT_EQ(std::get<4>(rows[3]), row3.column(3).int32_value());
+
+  // checking existing row with partition key bound: 4 with partition lower bound 5 (to exclude 4)
+  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[4]), std::get<2>(rows[4]),
+                           ">=", std::get<0>(rows[5]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result -- expecting no rows since partition key restriction excludes referenced row
+  EXPECT_EQ(0, row_block->row_count());
+
+  // checking existing row with partition key bound: 7 with partition upper bound 6 (to exclude 7)
+  select_stmt = Substitute(select_stmt_template, std::get<1>(rows[7]), std::get<2>(rows[7]),
+      "<=", std::get<0>(rows[6]));
+  CHECK_OK(processor->Run(select_stmt));
+  row_block = processor->row_block();
+  // checking result -- expecting no rows since partition key restriction excludes referenced row
+  EXPECT_EQ(0, row_block->row_count());
+
+  //------------------------------------------------------------------------------------------------
+  // Testing Invalid Statements
+  //------------------------------------------------------------------------------------------------
+
+  // Invalid number of arguments for token
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token() > 0");
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1) > 0");
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2,h1) > 0");
+
+  // Invalid argument values for token
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h2,h1) > 0");
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h1) > 0");
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h2,h2) > 0");
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(r1,h2) > 0");
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(r1,v1) > 0");
+
+  // Illogical conditions on token
+  // Two "greater-than" bounds
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) > 0 AND token(h1,h2) >= 0");
+  // Two "less-than" bounds
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) <= 0 AND token(h1,h2) < 0");
+  // Two "equal" conditions
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND token(h1,h2) = 0");
+  // Both "equal" and "less than" conditions
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND token(h1,h2) <= 0");
+  // Both "equal" and "greater than" conditions
+  CHECK_INVALID_STMT("SELECT * FROM scan_bounds_test WHERE token(h1,h2) = 0 AND token(h1,h2) >= 0");
+
+}
+
 } // namespace sql
 } // namespace yb

@@ -136,7 +136,8 @@ public class TestSystemTables extends BaseCQLTest {
     assertEquals("3.9-SNAPSHOT", row.getString("release_version"));
     checkContactPoints("rpc_address", row);
     assertEquals("20.1.0", row.getString("thrift_version"));
-    assertTrue(row.isNull("tokens"));
+    // no expectations on exact token values, but column must be set
+    assertFalse(row.isNull("tokens"));
 
     // Verify where clauses and projections work.
     results = session.execute("SELECT tokens, partitioner, key FROM system.local;").all();
@@ -144,7 +145,8 @@ public class TestSystemTables extends BaseCQLTest {
     row = results.get(0);
     assertEquals("local", row.getString("key"));
     assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
-    assertTrue(row.isNull("tokens"));
+    // no expectations on exact token values, but column must be set
+    assertFalse(row.isNull("tokens"));
     assertFalse(row.getColumnDefinitions().contains("cluster_name"));
     assertFalse(row.getColumnDefinitions().contains("bootstrapped"));
     assertFalse(row.getColumnDefinitions().contains("broadcast_address"));

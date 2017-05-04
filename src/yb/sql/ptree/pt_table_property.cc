@@ -235,7 +235,7 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   }
 
   auto order_column_iter = order_columns.begin();
-  for (auto &pc : sem_context->current_table()->primary_columns()) {
+  for (auto &pc : sem_context->current_create_table_stmt()->primary_columns()) {
     if (order_column_iter == order_columns.end()) {
       break;
     }

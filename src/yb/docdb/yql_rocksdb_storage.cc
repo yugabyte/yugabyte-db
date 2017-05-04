@@ -34,7 +34,11 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
                                                    HybridTime* req_hybrid_time)
                                                    const {
   // Populate dockey from YQL key columns.
-  docdb::DocKeyHash hash_code = static_cast<docdb::DocKeyHash>(request.hash_code());
+  int32_t hash_code = request.has_hash_code() ?
+      static_cast<docdb::DocKeyHash>(request.hash_code()) : -1;
+  int32_t max_hash_code = request.has_max_hash_code() ?
+      static_cast<docdb::DocKeyHash>(request.max_hash_code()) : -1;
+
   vector<PrimitiveValue> hashed_components;
   RETURN_NOT_OK(YQLColumnValuesToPrimitiveValues(
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
@@ -62,7 +66,7 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
 
   // Construct the scan spec basing on the WHERE condition.
   spec->reset(new DocYQLScanSpec(
-      schema, hash_code, hashed_components,
+      schema, hash_code, max_hash_code, hashed_components,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       include_static_columns, start_sub_doc_key.doc_key()));
   return Status::OK();

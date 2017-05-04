@@ -266,6 +266,12 @@ public class CmdLineOpts {
     options.addOption("wordcount_input_file", true,
                       "[CassandraSparkWordCount] Input file with words to count.");
 
+    options.addOption("wordcount_input_table", true,
+                      "[CassandraSparkWordCount] Input table with words to count.");
+
+    options.addOption("wordcount_input_table", true,
+                      "[CassandraSparkWordCount] Output table to write wordcounts to.");
+
     CommandLineParser parser = new BasicParser();
     CommandLine commandLine = null;
 

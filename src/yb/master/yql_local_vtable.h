@@ -37,7 +37,7 @@ class LocalVTable : public YQLVirtualTable {
   static constexpr const char* const kSystemLocalRpcAddressColumn = "rpc_address";
   static constexpr const char* const kSystemLocalSchemaVersionColumn = "schema_version";
   static constexpr const char* const kSystemLocalThriftVersionColumn = "thrift_version";
-  static constexpr const char* const kSystemLocalTokesnColumn = "tokens";
+  static constexpr const char* const kSystemLocalTokensColumn = "tokens";
   static constexpr const char* const kSystemLocalTruncatedAtColumn = "truncated_at";
 };
 

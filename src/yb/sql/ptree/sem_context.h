@@ -80,10 +80,11 @@ class SemContext : public ProcessContext {
     current_processing_id_.column_ = column;
   }
 
-  PTCreateTable *current_table() {
+  PTCreateTable *current_create_table_stmt() {
     return current_processing_id_.table_;
   }
-  void set_current_table(PTCreateTable *table) {
+
+  void set_current_create_table_stmt(PTCreateTable *table) {
     current_processing_id_.table_ = table;
   }
 
@@ -133,11 +134,6 @@ class SemContext : public ProcessContext {
     return sem_state_->where_state();
   }
 
-  const ColumnDesc *bindvar_desc() const {
-    DCHECK(sem_state_) << "State variable is not set for the expression";
-    return sem_state_->bindvar_desc();
-  }
-
   const MCSharedPtr<MCString>& bindvar_name() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->bindvar_name();
@@ -150,6 +146,12 @@ class SemContext : public ProcessContext {
 
   void reset_sem_state(SemState *previous_state) {
     sem_state_ = previous_state;
+  }
+
+  std::shared_ptr<client::YBTable> current_table() { return current_table_; }
+
+  void set_current_table(std::shared_ptr<client::YBTable> table) {
+    current_table_ = table;
   }
 
  private:
@@ -171,8 +173,11 @@ class SemContext : public ProcessContext {
   // Is metadata cache used?
   bool cache_used_;
 
+  // The semantic analyzer will set the current table for dml queries.
+  std::shared_ptr<client::YBTable> current_table_;
+
   // sem_state_ consists of state variables that are used to process one tree node. It is generally
-  // set and reset at the beginning and end of the semantic analyzation of one treenode.
+  // set and reset at the beginning and end of the semantic analysis of one treenode.
   SemState *sem_state_;
 };
 

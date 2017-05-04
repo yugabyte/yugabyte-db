@@ -104,7 +104,9 @@ class RowsResult : public ExecutedResult {
 
   // Constructors.
   explicit RowsResult(client::YBqlOp *op);
-  RowsResult(client::YBTable* table, const std::string& rows_data);
+  RowsResult(const client::YBTableName& table_name,
+             const std::vector<ColumnSchema>& column_schemas,
+             const std::string& rows_data);
   virtual ~RowsResult() override;
 
   // Result type.
@@ -118,6 +120,7 @@ class RowsResult : public ExecutedResult {
   YQLClient client() const { return client_; }
 
   CHECKED_STATUS Append(const RowsResult& other);
+  void clear_paging_state() { paging_state_.clear(); }
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.

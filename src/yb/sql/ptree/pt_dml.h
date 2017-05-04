@@ -32,6 +32,13 @@ class ColumnOpCounter {
   void increase_lt() { lt_count_++; }
   void increase_eq() { eq_count_++; }
 
+  bool isValid() {
+    // 1. each condition type can be set at most once
+    // 2. equality and inequality (less/greater) conditions cannot appear together
+    return (gt_count_ <= 1 && lt_count_ <= 1 && eq_count_ <= 1) &&
+           (eq_count_ == 0 || gt_count_ == 0 && lt_count_ == 0);
+  }
+
  private:
   int gt_count_;
   int lt_count_;
@@ -43,15 +50,27 @@ class WhereExprState {
  public:
   WhereExprState(MCList<ColumnOp> *ops,
                  MCVector<ColumnOp> *key_ops,
+                 MCList<PartitionKeyOp> *partition_key_ops,
                  MCVector<ColumnOpCounter> *op_counters,
+                 ColumnOpCounter *partition_key_counter,
                  bool write_only)
-      : ops_(ops), key_ops_(key_ops), op_counters_(op_counters), write_only_(write_only) {
+      : ops_(ops),
+        key_ops_(key_ops),
+        partition_key_ops_(partition_key_ops),
+        op_counters_(op_counters),
+        partition_key_counter_(partition_key_counter),
+        write_only_(write_only) {
   }
 
   CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
                                  const PTRelationExpr *expr,
                                  const ColumnDesc *col_desc,
                                  PTExpr::SharedPtr value);
+
+
+  CHECKED_STATUS AnalyzePartitionKeyOp(SemContext *sem_context,
+                                       const PTRelationExpr *expr,
+                                       PTExpr::SharedPtr value);
 
  private:
   // Operators on all columns.
@@ -60,8 +79,13 @@ class WhereExprState {
   // Operators on key columns.
   MCVector<ColumnOp> *key_ops_;
 
+  MCList<PartitionKeyOp> *partition_key_ops_;
+
   // Counters of '=', '<', and '>' operators for each column in the where expression.
   MCVector<ColumnOpCounter> *op_counters_;
+
+  // conters on conditions on the partition key (i.e. using `token`)
+  ColumnOpCounter *partition_key_counter_;
 
   // update, insert, delete.
   bool write_only_;
@@ -157,6 +181,10 @@ class PTDmlStmt : public PTCollection {
     return where_ops_;
   }
 
+  const MCList<PartitionKeyOp>& partition_key_ops() const {
+    return partition_key_ops_;
+  }
+
   bool has_ttl() const {
     return ttl_seconds_ != nullptr;
   }
@@ -211,6 +239,9 @@ class PTDmlStmt : public PTCollection {
   // CREATE TABLE statement.
   MCVector<ColumnOp> key_where_ops_;
   MCList<ColumnOp> where_ops_;
+
+  // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
+  MCList<PartitionKeyOp> partition_key_ops_;
 
   // Predicate for write operator (UPDATE & DELETE).
   bool write_only_;

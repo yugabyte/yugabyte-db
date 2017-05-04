@@ -350,16 +350,45 @@ void YBqlReadOp::SetHashCode(const uint16_t hash_code) {
 }
 
 Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
+  // if this is a continued query use the partition key from the paging state
   if (yql_read_request_->has_paging_state() &&
       yql_read_request_->paging_state().has_next_partition_key() &&
       !yql_read_request_->paging_state().next_partition_key().empty()) {
     *partition_key = yql_read_request_->paging_state().next_partition_key();
     return Status::OK();
-  } else if (yql_read_request_->hashed_column_values().empty()) {
-    partition_key->clear();
+  }
+
+  // otherwise, if hashed columns are set, use them to compute the exact key
+  if (!yql_read_request_->hashed_column_values().empty()) {
+    RETURN_NOT_OK(YBOperation::GetPartitionKey(partition_key));
+
+    // make sure given key is not smaller than lower bound (if any)
+    if (yql_read_request_->has_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(yql_read_request_->hash_code());
+      auto lower_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      if (*partition_key < lower_bound) *partition_key = std::move(lower_bound);
+    }
+
+    // make sure given key is not bigger than upper bound (if any)
+    if (yql_read_request_->has_max_hash_code()) {
+      uint16 hash_code = static_cast<uint16>(yql_read_request_->max_hash_code());
+      auto upper_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      if (*partition_key > upper_bound) *partition_key = std::move(upper_bound);
+    }
+
     return Status::OK();
   }
-  return YBOperation::GetPartitionKey(partition_key);
+
+  // otherwise, use request hash code if set (i.e. lower-bound from condition using "token")
+  if (yql_read_request_->has_hash_code()) {
+    uint16 hash_code = static_cast<uint16>(yql_read_request_->hash_code());
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+    return Status::OK();
+  }
+
+  // default to empty key, this will start a scan from the beginning
+  partition_key->clear();
+  return Status::OK();
 }
 
 }  // namespace client

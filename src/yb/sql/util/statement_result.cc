@@ -32,11 +32,8 @@ namespace {
 vector<ColumnSchema> GetBindVariableSchemasFromDmlStmt(const PTDmlStmt *stmt) {
   vector<ColumnSchema> bind_variable_schemas;
   bind_variable_schemas.reserve(stmt->bind_variables().size());
-  const auto& schema = stmt->table()->schema();
   for (const PTBindVar *var : stmt->bind_variables()) {
-    const ColumnDesc *col_desc = var->desc();
-    const auto column = schema.ColumnById(col_desc->id());
-    bind_variable_schemas.emplace_back(string(var->name()->c_str()), column.type());
+    bind_variable_schemas.emplace_back(string(var->name()->c_str()), var->yql_type());
   }
   return bind_variable_schemas;
 }
@@ -133,9 +130,11 @@ RowsResult::RowsResult(YBqlOp *op)
   }
 }
 
-RowsResult::RowsResult(client::YBTable* table, const std::string& rows_data)
-    : table_name_(table->name()),
-      column_schemas_(table->schema().columns()),
+RowsResult::RowsResult(const client::YBTableName& table_name,
+                       const std::vector<ColumnSchema>& column_schemas,
+                       const std::string& rows_data)
+    : table_name_(table_name),
+      column_schemas_(column_schemas),
       client_(YQLClient::YQL_CLIENT_CQL),
       rows_data_(rows_data) {
 }

@@ -1136,7 +1136,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // Use the given number of tablets to create partitions and ignore the other schema options in
     // the request.
     int32_t num_tablets = req.num_tablets();
-    LOG(INFO) << "num_tablets: ### " << num_tablets;
+    LOG(INFO) << "num_tablets: " << num_tablets;
     RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
 
   } else {

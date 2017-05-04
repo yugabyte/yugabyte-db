@@ -72,8 +72,14 @@ Status Token(const vector<PTypePtr>& params, RTypePtr result) {
     value += kSeparator;
   }
 
-  // TODO(neil) Return a hash value of result instead of the full string.
-  result->set_string_value(value);
+  // TODO sample hash-function -- should eventually compute the correct hash value here
+  int64_t hash = 0;
+  const char *cstr = value.c_str();
+  while (*cstr) {
+    hash = hash << 1 ^ *cstr++;
+  }
+
+  result->set_int64_value(hash);
 
   return Status::OK();
 }

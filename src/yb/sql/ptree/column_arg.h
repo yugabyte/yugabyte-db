@@ -89,6 +89,24 @@ class ColumnOp : public ColumnArg {
   yb::YQLOperator yb_op_;
 };
 
+class PartitionKeyOp {
+ public:
+  PartitionKeyOp(yb::YQLOperator yb_op, PTExpr::SharedPtr expr)
+      : yb_op_(yb_op), expr_(expr) {}
+
+  YQLOperator yb_op() const {
+    return yb_op_;
+  }
+
+  PTExpr::SharedPtr expr() const {
+    return expr_;
+  }
+
+ private:
+  YQLOperator yb_op_;
+  PTExpr::SharedPtr expr_;
+};
+
 }  // namespace sql
 }  // namespace yb
 

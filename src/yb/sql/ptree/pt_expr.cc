@@ -26,6 +26,7 @@ CHECKED_STATUS PTExpr::CheckOperator(SemContext *sem_context) {
       case YQL_OP_LESS_THAN_EQUAL:
       case YQL_OP_GREATER_THAN:
       case YQL_OP_GREATER_THAN_EQUAL:
+      case YQL_OP_NOOP:
         break;
       default:
         return sem_context->Error(loc(), "This operator is not allowed in where clause",
@@ -100,8 +101,9 @@ CHECKED_STATUS PTExpr::AnalyzeLeftRightOperands(SemContext *sem_context,
 }
 
 CHECKED_STATUS PTExpr::CheckLhsExpr(SemContext *sem_context) {
-  if (op_ != ExprOperator::kRef) {
-    return sem_context->Error(loc(), "Only column reference is allowed for left hand value",
+  if (op_ != ExprOperator::kRef && op_ != ExprOperator::kBcall) {
+    return sem_context->Error(loc(),
+                              "Only column refs and builtin calls are allowed for left hand value",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
@@ -113,12 +115,13 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
     case ExprOperator::kConst: FALLTHROUGH_INTENDED;
     case ExprOperator::kCollection: FALLTHROUGH_INTENDED;
     case ExprOperator::kUMinus: FALLTHROUGH_INTENDED;
-    case ExprOperator::kBindVar:
+    case ExprOperator::kBindVar: FALLTHROUGH_INTENDED;
+    case ExprOperator::kRef: FALLTHROUGH_INTENDED;
     case ExprOperator::kBcall:
       break;
     default:
-      return sem_context->Error(loc(), "Only literal value and bind marker are allowed for "
-                                "right hand value", ErrorCode::CQL_STATEMENT_INVALID);
+      return sem_context->Error(loc(), "Operator not allowed as right hand value",
+                                ErrorCode::CQL_STATEMENT_INVALID);
   }
   return Status::OK();
 }
@@ -345,12 +348,14 @@ CHECKED_STATUS PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
 // Relations expressions: ==, !=, >, >=, between, ...
 
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp1(SemState *sem_state) {
+  // passing down where state
+  sem_state->CopyPreviousWhereState();
   // No expectation for operand 1. All types are accepted.
   return Status::OK();
 }
 
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
-  // The states of operand2 is dependend on operand1.
+  // The states of operand2 is dependent on operand1.
   PTExpr::SharedPtr operand1 = op1();
   DCHECK(operand1 != nullptr);
 
@@ -358,11 +363,18 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
     const PTRef *ref = static_cast<const PTRef*>(operand1.get());
     sem_state->SetExprState(ref->yql_type(),
                             ref->internal_type(),
-                            ref->desc(),
                             ref->bindvar_name());
   } else {
     sem_state->SetExprState(operand1->yql_type(), operand1->internal_type());
   }
+
+  if (operand1->expr_op() == ExprOperator::kBcall) {
+    PTBcall* bcall = static_cast<PTBcall *>(operand1.get());
+    if (strcmp(bcall->name()->c_str(), "token") == 0) {
+      sem_state->set_bindvar_name(PTToken::bindvar_name);
+    }
+  }
+
   return Status::OK();
 }
 
@@ -421,10 +433,26 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
 
   WhereExprState *where_state = sem_context->where_state();
   if (where_state != nullptr) {
-    // CheckLhsExpr already takes care of this error check, so this must be a ref.
-    DCHECK(op1->expr_op() == ExprOperator::kRef);
-    const PTRef *ref = static_cast<const PTRef*>(op1.get());
-    return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2);
+    // CheckLhsExpr already checks that this is either kRef or kBcall
+    DCHECK(op1->expr_op() == ExprOperator::kRef || op1->expr_op() == ExprOperator::kBcall);
+    if (op1->expr_op() == ExprOperator::kRef) {
+      const PTRef *ref = static_cast<const PTRef *>(op1.get());
+      return where_state->AnalyzeColumnOp(sem_context, this, ref->desc(), op2);
+    } else if (op1->expr_op() == ExprOperator::kBcall) {
+      const PTBcall *bcall = static_cast<const PTBcall *>(op1.get());
+      if (strcmp(bcall->name()->c_str(), "token") == 0) {
+        const PTToken *token = static_cast<const PTToken *>(bcall);
+        if (token->is_partition_key_ref()) {
+          return where_state->AnalyzePartitionKeyOp(sem_context, this, op2);
+        } else {
+          return sem_context->Error(loc(), "Only token calls that reference partition key allowed",
+              ErrorCode::FEATURE_NOT_SUPPORTED);
+        }
+      } else {
+        return sem_context->Error(loc(), "Expected token found different builtin call",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      }
+    }
   }
   return Status::OK();
 }
@@ -569,8 +597,7 @@ PTBindVar::PTBindVar(MemoryContext *memctx,
                      const MCSharedPtr<MCString>& name)
     : PTExpr(memctx, loc, ExprOperator::kBindVar),
       pos_(kUnsetPosition),
-      name_(name),
-      desc_(nullptr) {
+      name_(name) {
 }
 
 PTBindVar::PTBindVar(MemoryContext *memctx,
@@ -578,8 +605,7 @@ PTBindVar::PTBindVar(MemoryContext *memctx,
                      int64_t pos)
     : PTExpr(memctx, loc, ExprOperator::kBindVar),
       pos_(pos),
-      name_(nullptr),
-      desc_(nullptr) {
+      name_(nullptr) {
 }
 
 PTBindVar::~PTBindVar() {
@@ -588,25 +614,14 @@ PTBindVar::~PTBindVar() {
 CHECKED_STATUS PTBindVar::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
 
-  // We don't support expresion yet, but when we do, not all bind variables are associated with a
-  // table column. In those cases, sem_context->expr_col_desc() == nullptr. Add a DCHECK() to make
-  // sure we revisit this when bind variables in expressions are supported.
-  desc_ = sem_context->bindvar_desc();
-  DCHECK(desc_);
-  yql_type_ = desc_->yql_type();
-  internal_type_ = desc_->internal_type();
-
-  // TODO(neil) Adding name to col_desc and use it instead of sem_state.
   if (name_ == nullptr) {
     name_ = sem_context->bindvar_name();
   }
 
-  const InternalType expected_itype = sem_context->expr_expected_internal_type();
-  if (expected_itype == InternalType::VALUE_NOT_SET) {
-    expected_internal_type_ = internal_type_;
-  } else {
-    expected_internal_type_ = expected_itype;
-  }
+  yql_type_ = sem_context->expr_expected_yql_type();
+  internal_type_ = sem_context->expr_expected_internal_type();
+  expected_internal_type_ = internal_type_;
+
   return Status::OK();
 }
 
@@ -614,9 +629,54 @@ void PTBindVar::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
-void PTBindVar::Reset() {
-  desc_ = nullptr;
+//--------------------------------------------------------------------------------------------------
+
+// Collection constants.
+CHECKED_STATUS PTToken::Analyze(SemContext *sem_context) {
+  if (sem_context->sem_state()->where_state() == nullptr) {
+    return sem_context->Error(loc(), "Token builtin call currently only allowed in where clause",
+        ErrorCode::FEATURE_NOT_SUPPORTED);
+  }
+
+  RETURN_NOT_OK(PTBcall::Analyze(sem_context));
+  RETURN_NOT_OK(CheckOperator(sem_context));
+
+  return CheckExpectedTypeCompatibility(sem_context);
 }
+
+CHECKED_STATUS PTToken::CheckOperator(SemContext *sem_context) {
+  size_t size = sem_context->current_table()->schema().num_hash_key_columns();
+  is_partition_key_ref_ = true;
+  if (args().size() != size) {
+    is_partition_key_ref_ = false;
+  } else {
+    int index = 0;
+    for (const PTExpr::SharedPtr &arg : args()) {
+      if (arg->expr_op() != ExprOperator::kRef) {
+        is_partition_key_ref_ = false;
+        break;
+      }
+      PTRef *col_ref = static_cast<PTRef *>(arg.get());
+      RETURN_NOT_OK(col_ref->Analyze(sem_context));
+      if (col_ref->desc()->index() != index) {
+        is_partition_key_ref_ = false;
+        break;
+      }
+      index++;
+    }
+  }
+
+  // TODO (mihnea) add support for this later
+  if (!is_partition_key_ref_) {
+    return sem_context->Error(loc(),
+        "Token call only allowed as reference to partition key as virtual column",
+        ErrorCode::FEATURE_NOT_SUPPORTED);
+  }
+
+  return Status::OK();
+}
+
+const string& PTToken::bindvar_name = "partition key token";
 
 }  // namespace sql
 }  // namespace yb
