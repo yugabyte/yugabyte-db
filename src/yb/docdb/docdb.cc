@@ -736,13 +736,6 @@ yb::Status GetSubDocument(
 
   // By this point key_bytes is the encoded representation of the DocKey and all the subkeys of
   // subdocument_key.
-  {
-    SubDocKey ignored_found_subdoc_key;
-    // The following is only to position the iterator at the first key that has subdocument_key as a
-    // prefix, and a HybridTime at or below scan_ht. We are
-    RETURN_NOT_OK(
-        SeekToValidKvAtTs(rocksdb_iter, key_bytes.AsSlice(), scan_ht, &ignored_found_subdoc_key));
-  }
 
   if (projection == nullptr) {
     // This is only to initialize the iterator properly for BuildSubDocument call.
