@@ -28,7 +28,7 @@ PTProperty::~PTProperty() {
 Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
                                        const string& property_name,
                                        int64_t *val) {
-  DCHECK_NOTNULL(val);
+  DCHECK_ONLY_NOTNULL(val);
 
   if (expr == nullptr) {
     return STATUS(InvalidArgument, Substitute("Invalid integer value for '$0'", property_name));
@@ -59,7 +59,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
 Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
                                           const string& property_name,
                                           double *val) {
-  DCHECK_NOTNULL(val);
+  DCHECK_ONLY_NOTNULL(val);
 
   if (expr == nullptr) {
     return STATUS(InvalidArgument, Substitute("Invalid float value for '$0'", property_name));
@@ -88,7 +88,7 @@ Status PTProperty::GetDoubleValueFromExpr(PTExpr::SharedPtr expr,
 Status PTProperty::GetBoolValueFromExpr(PTExpr::SharedPtr expr,
                                         const string& property_name,
                                         bool *val) {
-  DCHECK_NOTNULL(val);
+  DCHECK_ONLY_NOTNULL(val);
 
   if (expr == nullptr) {
     return STATUS(InvalidArgument, Substitute("'$0' should either be true or false",
@@ -118,7 +118,7 @@ Status PTProperty::GetStringValueFromExpr(PTExpr::SharedPtr expr,
                                           bool to_lower_case,
                                           const string& property_name,
                                           string *val) {
-  DCHECK_NOTNULL(val);
+  DCHECK_ONLY_NOTNULL(val);
 
   if (expr && expr->yql_type_id() == DataType::STRING) {
     auto mcstr = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
