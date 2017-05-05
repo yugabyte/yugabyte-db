@@ -10,13 +10,14 @@ import { Tab, Tabs } from 'react-bootstrap';
 import './UniverseAppsModal.scss';
 
 const appTypes = [
-  { code: "CassandraKeyValue", type: "cassandra", title: "Cassandra Key Value",
-    description: "This app writes out 1M unique string keys " +
-    "each with a string value. There are multiple readers and writers that update these " +
-		"keys and read them indefinitely. Note that the number of reads and writes to " +
-		"perform can be specified as a parameter.",
-    options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
-    {"num_threads_read": "24"}, {"num_threads_write": "2"}, {"table_ttl_seconds": "-1"}]
+  { code: "CassandraTimeseries", type: "cassandra", title: "Cassandra Timeseries",
+    description: "This app models 100 users, each of whom own 5-10 devices. Each device emits " +
+    "5-10 metrics per second. The data is written into the 'ts_metrics_raw' table, which retains data " +
+    "for one day. Note that the number of metrics written is a lot more than the number of metrics read " +
+    "as is typical in such workloads. Every read query fetches the last 1-3 hours of metrics for a user's device.",
+    options: [{"num_users": "100"}, {"min_nodes_per_user": "5"},{"max_nodes_per_user": "10"},
+    {"min_metrics_count": "5"}, {"max_metrics_count": "10"},{"data_emit_rate_millis": "1000"},
+    {"num_threads_read": "1"}, {"num_threads_write": "16"}, {"table_ttl_seconds": "86400"}]
   },
   { code: "CassandraStockTicker", type: "cassandra", title: "Cassandra Stock Ticker",
     description: "This app models 10,000 stock tickers	each of which emits quote data every second. " +
@@ -27,14 +28,13 @@ const appTypes = [
     options: [{"num_ticker_symbols": "10000"}, {"data_emit_rate_millis": "1000"},
     {"num_threads_read": "32"}, {"num_threads_write": "4"}, {"table_ttl_seconds": "86400"}]
   },
-  { code: "CassandraTimeseries", type: "cassandra", title: "Cassandra Timeseries",
-    description: "This app models 100 users, each of whom own 5-10 devices. Each device emits " +
-    "5-10 metrics per second. The data is written into the 'ts_metrics_raw' table, which retains data " +
-    "for one day. Note that the number of metrics written is a lot more than the number of metrics read " +
-    "as is typical in such workloads. Every read query fetches the last 1-3 hours of metrics for a user's device.",
-    options: [{"num_users": "100"}, {"min_nodes_per_user": "5"},{"max_nodes_per_user": "10"},
-    {"min_metrics_count": "5"}, {"max_metrics_count": "10"},{"data_emit_rate_millis": "1000"},
-    {"num_threads_read": "1"}, {"num_threads_write": "16"}, {"table_ttl_seconds": "86400"}]
+  { code: "CassandraKeyValue", type: "cassandra", title: "Cassandra Key Value",
+    description: "This app writes out 1M unique string keys " +
+    "each with a string value. There are multiple readers and writers that update these " +
+		"keys and read them indefinitely. Note that the number of reads and writes to " +
+		"perform can be specified as a parameter.",
+    options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
+    {"num_threads_read": "24"}, {"num_threads_write": "2"}, {"table_ttl_seconds": "-1"}]
   },
   { code: "RedisKeyValue", type: "redis", title: "Redis Key Value",
     description: "This app writes out 1M unique string keys each with a string value. There are multiple "+
@@ -88,7 +88,7 @@ export default class UniverseAppsModal extends Component {
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
           <label className="app-description">{appType.description}</label>
           <YBCodeBlock label="Usage:">
-            java -jar yb-sample-apps.jar --workload {appType.code} --nodes {hostPorts}
+            java -jar /opt/yugabyte/utils/yb-sample-apps.jar --workload {appType.code} --nodes {hostPorts}
           </YBCodeBlock>
           <YBCodeBlock label="Other options (with default values):">
             {appOptions}
@@ -98,7 +98,7 @@ export default class UniverseAppsModal extends Component {
 
     return (
       <div className="universe-apps-modal">
-        <YBButton btnText={"Apps"} btnClass={"btn btn-default open-modal-btn"} onClick={this.toggleAppsModal}/>
+        <YBButton btnText={"Run Sample Apps"} btnClass={"btn btn-default open-modal-btn"} onClick={this.toggleAppsModal}/>
         <YBModal title={"Run Sample Apps"} visible={this.state.showAppsModal}
                  onHide={this.toggleAppsModal} className={"universe-apps-modal"}>
           <Tabs defaultActiveKey={0} id="apps-modal">
