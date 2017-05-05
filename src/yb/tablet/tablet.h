@@ -215,6 +215,14 @@ class Tablet : public AbstractTablet {
                                   uint64_t raft_index,
                                   HybridTime hybrid_time);
 
+  // Takes a Redis WriteRequestPB as input with its redis_write_batch.
+  // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
+  // replicated by Raft. (Makes a copy, it is caller's responsibility to deallocate
+  // write_request afterwards if it is no longer needed).
+  // The operation acquires the necessary locks required to correctly serialize concurrent write
+  // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
+  // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
+  // committed.
   CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(
       const tserver::WriteRequestPB& redis_write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* redis_write_batch_pb,
@@ -233,6 +241,7 @@ class Tablet : public AbstractTablet {
                                           const YQLRowBlock& rowblock,
                                           YQLResponsePB* response) const override;
 
+  // The YQL equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromYQLWriteBatch(
       const tserver::WriteRequestPB& write_request,
       std::unique_ptr<const tserver::WriteRequestPB>* write_batch_pb,
@@ -240,14 +249,7 @@ class Tablet : public AbstractTablet {
       tserver::WriteResponsePB* write_response,
       WriteTransactionState* tx_state);
 
-  // Takes a Kudu WriteRequestPB as input with its row operations.
-  // Constructs a WriteRequestPB containing a serialized WriteBatch that will be
-  // replicated by Raft. (Makes a copy, it is caller's responsibility to deallocate
-  // kudu_write_request_pb afterwards if it is no longer needed).
-  // The operation acquires the necessary locks required to correctly serialize concurrent write
-  // operations to same/conflicting part of the key/sub-key space. The locks acquired are returned
-  // via the 'keys_locked' vector, so that they may be unlocked later when the operation has been
-  // committed.
+  // The Kudu equivalent of KeyValueBatchFromRedisWriteBatch, works similarly.
   CHECKED_STATUS KeyValueBatchFromKuduRowOps(
       const tserver::WriteRequestPB &kudu_write_request_pb,
       std::unique_ptr<const tserver::WriteRequestPB> *kudu_write_batch_pb,

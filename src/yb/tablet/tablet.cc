@@ -909,7 +909,7 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     RedisWriteRequestPB req = redis_write_request.redis_write_batch(i);
     doc_ops.emplace_back(new RedisWriteOperation(req, read_hybrid_time));
   }
-  WriteRequestPB* const write_request_copy = new WriteRequestPB(redis_write_request);
+  WriteRequestPB* const write_request_copy = new WriteRequestPB();
   redis_write_batch_pb->reset(write_request_copy);
   RETURN_NOT_OK(StartDocWriteTransaction(
       doc_ops, keys_locked, write_request_copy->mutable_write_batch()));
@@ -917,7 +917,7 @@ Status Tablet::KeyValueBatchFromRedisWriteBatch(
     responses->emplace_back(
         (down_cast<RedisWriteOperation*>(doc_ops[i].get()))->response());
   }
-  write_request_copy->clear_row_operations();
+  write_request_copy->set_tablet_id(redis_write_request.tablet_id());
 
   return Status::OK();
 }
@@ -983,7 +983,7 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
     doc_ops.emplace_back(new YQLWriteOperation(
         req, metadata_->schema(), write_response->add_yql_response_batch()));
   }
-  WriteRequestPB* const write_request_copy = new WriteRequestPB(write_request);
+  WriteRequestPB* const write_request_copy = new WriteRequestPB();
   write_batch_pb->reset(write_request_copy);
   RETURN_NOT_OK(StartDocWriteTransaction(
       doc_ops, keys_locked, write_request_copy->mutable_write_batch()));
@@ -996,7 +996,7 @@ Status Tablet::KeyValueBatchFromYQLWriteBatch(
       tx_state->yql_write_ops()->emplace_back(unique_ptr<YQLWriteOperation>(yql_write_op));
     }
   }
-  write_request_copy->clear_row_operations();
+  write_request_copy->set_tablet_id(write_request.tablet_id());
 
   return Status::OK();
 }
@@ -1071,12 +1071,13 @@ Status Tablet::KeyValueBatchFromKuduRowOps(const WriteRequestPB &kudu_write_requ
 
   RETURN_NOT_OK(row_operation_decoder.DecodeOperations(&row_ops));
 
-  WriteRequestPB* const write_request_copy = new WriteRequestPB(kudu_write_request_pb);
+  WriteRequestPB* const write_request_copy = new WriteRequestPB();
   kudu_write_batch_pb->reset(write_request_copy);
   RETURN_NOT_OK(
       CreateWriteBatchFromKuduRowOps(
           row_ops, write_request_copy->mutable_write_batch(), keys_locked));
-  write_request_copy->clear_row_operations();
+
+  write_request_copy->set_tablet_id(kudu_write_request_pb.tablet_id());
 
   return Status::OK();
 }

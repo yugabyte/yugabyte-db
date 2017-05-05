@@ -332,10 +332,6 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 
   }
 
-  // Set up schema
-  CHECK_OK(SchemaToPB(*schema, req_.mutable_schema(),
-                      SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES | SCHEMA_PB_WITHOUT_IDS));
-
   RowOperationsPB* requested = req_.mutable_row_operations();
 
   // Add the rows
@@ -374,6 +370,11 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
         CHECK_NE(table()->table_type(), YBTableType::REDIS_TABLE_TYPE)
             << "unsupported table type " << table()->table_type() << " for insert/update/delete";
         enc.Add(ToInternalWriteType(op->yb_op->type()), op->yb_op->row());
+        if (!req_.has_schema()) {
+          // Only in the Kudu case, we still need the schema as part of every WriteRequest.
+          CHECK_OK(SchemaToPB(*schema, req_.mutable_schema(),
+              SCHEMA_PB_WITHOUT_STORAGE_ATTRIBUTES | SCHEMA_PB_WITHOUT_IDS));
+        }
         break;
       }
       case YBOperation::Type::REDIS_READ: FALLTHROUGH_INTENDED;
