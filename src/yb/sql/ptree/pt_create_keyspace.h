@@ -8,6 +8,7 @@
 #define YB_SQL_PTREE_PT_CREATE_KEYSPACE_H_
 
 #include "yb/sql/ptree/tree_node.h"
+#include "yb/sql/ptree/pt_keyspace_property.h"
 
 namespace yb {
 namespace sql {
@@ -27,7 +28,8 @@ class PTCreateKeyspace : public TreeNode {
   PTCreateKeyspace(MemoryContext *memctx,
                    YBLocation::SharedPtr loc,
                    const MCString::SharedPtr& name,
-                   bool create_if_not_exists);
+                   bool create_if_not_exists,
+                   const PTKeyspacePropertyListNode::SharedPtr& keyspace_properties);
   virtual ~PTCreateKeyspace();
 
   template<typename... TypeArgs>
@@ -53,9 +55,14 @@ class PTCreateKeyspace : public TreeNode {
     return name_->c_str();
   }
 
+  PTKeyspacePropertyListNode::SharedPtr keyspace_properties() const {
+    return keyspace_properties_;
+  }
+
  private:
   MCString::SharedPtr name_;
   bool create_if_not_exists_;
+  const PTKeyspacePropertyListNode::SharedPtr keyspace_properties_;
 };
 
 }  // namespace sql

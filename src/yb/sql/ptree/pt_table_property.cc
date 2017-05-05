@@ -37,9 +37,7 @@ PTTableProperty::PTTableProperty(MemoryContext *memctx,
                    YBLocation::SharedPtr loc,
                    const MCString::SharedPtr& lhs,
                    const PTExpr::SharedPtr& rhs)
-    : TreeNode(memctx, loc),
-      lhs_(lhs),
-      rhs_(rhs),
+    : PTProperty(memctx, loc, lhs, rhs),
       property_type_(PropertyType::kTableProperty) {
 }
 
@@ -47,178 +45,55 @@ PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
                                  const MCString::SharedPtr& name,
                                  const PTOrderBy::Direction direction)
-    : TreeNode(memctx, loc), name_(name), direction_(direction),
+    : PTProperty(memctx, loc), name_(name), direction_(direction),
       property_type_(PropertyType::kClusteringOrder) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc)
-    : TreeNode(memctx, loc) {
+    : PTProperty(memctx, loc) {
 }
 
 PTTableProperty::~PTTableProperty() {
 }
 
-namespace {
-Status GetIntValueFromExpr(PTExpr::SharedPtr expr, const string& property_name, int64_t *val) {
-  DCHECK_ONLY_NOTNULL(val);
-
-  if (expr == nullptr) {
-    return STATUS(InvalidArgument, Substitute("Invalid integer value for '$0'", property_name));
-  }
-
-  if (expr->yql_type_id() == DataType::VARINT || expr->yql_type_id() == DataType::STRING) {
-    MCString::SharedPtr str_val;
-    if (expr->yql_type_id() == DataType::STRING) {
-      str_val = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
-    } else {
-      str_val = std::dynamic_pointer_cast<PTConstVarInt>(expr)->Eval();
-    }
-    try {
-      *val = std::stoll(str_val->c_str());
-    } catch (...) {
-      return STATUS(InvalidArgument, Substitute("Invalid integer value $0 for '$1'",
-                                                str_val->c_str(), property_name));
-    }
-    return Status::OK();
-  } else if (YQLType::IsInteger(expr->yql_type_id())) {
-    *val = std::dynamic_pointer_cast<PTConstInt>(expr)->Eval();
-    return Status::OK();
-  }
-  return STATUS(InvalidArgument, Substitute("Invalid integer value for '$0'", property_name));
-}
-
-Status GetDoubleValueFromExpr(PTExpr::SharedPtr expr, const string& property_name, double *val) {
-  DCHECK_ONLY_NOTNULL(val);
-
-  if (expr == nullptr) {
-    return STATUS(InvalidArgument, Substitute("Invalid float value for '$0'", property_name));
-  }
-  if (YQLType::IsNumeric(expr->yql_type_id())) {
-    if (YQLType::IsInteger(expr->yql_type_id())) {
-      *val = std::dynamic_pointer_cast<PTConstInt>(expr)->Eval();
-    } else {
-      *val = std::dynamic_pointer_cast<PTConstDouble>(expr)->Eval();
-    }
-    return Status::OK();
-  } else if (expr->yql_type_id() == DataType::STRING) {
-    auto str_val = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
-    try {
-      *val = std::stold(str_val->c_str());
-    } catch (...) {
-      return STATUS(InvalidArgument, Substitute("Invalid float value $0 for '$1'",
-                                                str_val->c_str(), property_name));
-    }
-    return Status::OK();
-  }
-  return STATUS(InvalidArgument, Substitute("Invalid float value for '$0'", property_name));
-}
-
-Status GetBoolValueFromExpr(PTExpr::SharedPtr expr, const string& property_name, bool *val) {
-  DCHECK_ONLY_NOTNULL(val);
-
-  if (expr == nullptr) {
-    return STATUS(InvalidArgument, Substitute("'$0' should either be true or false",
-                                              property_name));
-  }
-  if (expr->yql_type_id() == DataType::BOOL) {
-    *val = std::dynamic_pointer_cast<PTConstBool>(expr)->Eval();
-    return Status::OK();
-  } else if (expr->yql_type_id() == DataType::STRING) {
-    auto mcstr = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
-    string str_val;
-    ToLowerCase(mcstr->c_str(), &str_val);
-    if (str_val == "true") {
-      *val = true;
-      return Status::OK();
-    } else if (str_val == "false") {
-      *val = false;
-      return Status::OK();
-    }
-    return STATUS(InvalidArgument, Substitute("'$0' should either be true or false, not $1",
-                                              property_name, str_val));
-  }
-  return STATUS(InvalidArgument, Substitute("'$0' should either be true or false", property_name));
-}
-
-Status GetStringValueFromExpr(PTExpr::SharedPtr expr, const string& property_name, string *val) {
-  DCHECK_ONLY_NOTNULL(val);
-
-  if (expr && expr->yql_type_id() == DataType::STRING) {
-    auto mcstr = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
-    ToLowerCase(mcstr->c_str(), val);
-    return Status::OK();
-  }
-  return STATUS(InvalidArgument, Substitute("Invalid string value for '$0'", property_name));
-}
-
-// Returns true if s ends with substring end, and s has at least one more character before
-// end. If left is a valid string pointer, it will contain s minus the end substring.
-// Example 1: s = "15ms", end = "ms", then this function will return true and set left to "15".
-// Example 2: s = "ms", end = "ms", this function will return false.
-bool StringEndsWith(const string& s, const char *end, size_t end_len, string *left) {
-  // For our purpose, s should always have at least one character before the string we are looking
-  // for.
-  if (s.length() <= end_len) {
-    return false;
-  }
-  if (s.find(end, s.length() - end_len) != string::npos) {
-    if (left != nullptr) {
-      *left = s.substr(0, s.length() - end_len);
-    }
-    return true;
-  }
-  return false;
-}
-
-}  // namespace
-
-static const auto invalid_argument_len = std::strlen("Invalid argument: ");
-#define RETURN_ERROR_NOT_OK(s) do { \
-    ::yb::Status _s = (s); \
-    if (PREDICT_FALSE(!_s.ok())) { \
-      auto err_str = s.ToString(false); \
-      err_str.replace(0, invalid_argument_len, ""); \
-      return sem_context->Error(loc(), err_str.c_str()); \
-    } \
-  } while (0)
 
 Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
-      string generic_error = Substitute("Invalid value $0 for option 'speculative_retry'", val);
+  string generic_error = Substitute("Invalid value $0 for option 'speculative_retry'", val);
 
-      // Accepted values: ALWAYS, Xpercentile, Nms, NONE.
-      if (val == common::kSpeculativeRetryAlways || val == common::kSpeculativeRetryNone) {
-        return Status::OK();
-      }
+  // Accepted values: ALWAYS, Xpercentile, Nms, NONE.
+  if (val == common::kSpeculativeRetryAlways || val == common::kSpeculativeRetryNone) {
+    return Status::OK();
+  }
 
-      string numeric_val;
-      if (StringEndsWith(val, common::kSpeculativeRetryMs, common::kSpeculativeRetryMsLen,
-                         &numeric_val)) {
-        try {
-          std::stold(numeric_val);
-        } catch (std::invalid_argument e) {
-          return STATUS(InvalidArgument, generic_error);
-        }
-        return Status::OK();
-      }
-
-      if (StringEndsWith(val, common::kSpeculativeRetryPercentile,
-                         common::kSpeculativeRetryPercentileLen, &numeric_val)) {
-        long double percentile;
-        try {
-          percentile = std::stold(numeric_val);
-        } catch (std::invalid_argument e) {
-          return STATUS(InvalidArgument, generic_error);
-        }
-
-        if (percentile < 0.0 || percentile > 100.0) {
-          return STATUS(InvalidArgument, Substitute(
-              "Invalid value $0 for PERCENTILE option 'speculative_retry': "
-              "must be between 0.0 and 100.0", numeric_val));
-        }
-        return Status::OK();
-      }
+  string numeric_val;
+  if (StringEndsWith(val, common::kSpeculativeRetryMs, common::kSpeculativeRetryMsLen,
+                     &numeric_val)) {
+    try {
+      std::stold(numeric_val);
+    } catch (std::invalid_argument e) {
       return STATUS(InvalidArgument, generic_error);
     }
+    return Status::OK();
+  }
+
+  if (StringEndsWith(val, common::kSpeculativeRetryPercentile,
+                     common::kSpeculativeRetryPercentileLen, &numeric_val)) {
+    long double percentile;
+    try {
+      percentile = std::stold(numeric_val);
+    } catch (std::invalid_argument e) {
+      return STATUS(InvalidArgument, generic_error);
+    }
+
+    if (percentile < 0.0 || percentile > 100.0) {
+      return STATUS(InvalidArgument, Substitute(
+          "Invalid value $0 for PERCENTILE option 'speculative_retry': "
+          "must be between 0.0 and 100.0", numeric_val));
+    }
+    return Status::OK();
+  }
+  return STATUS(InvalidArgument, generic_error);
+}
 
 CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
 
@@ -236,7 +111,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
 
   switch (iterator->second) {
     case KVProperty::kBloomFilterFpChance:
-      RETURN_ERROR_NOT_OK(GetDoubleValueFromExpr(rhs_, table_property_name,
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetDoubleValueFromExpr(rhs_, table_property_name,
                                                              &double_val));
       if (double_val <= 0.0 || double_val > 1.0) {
         return sem_context->Error(loc(),
@@ -248,7 +123,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     case KVProperty::kCrcCheckChance: FALLTHROUGH_INTENDED;
     case KVProperty::kDclocalReadRepairChance: FALLTHROUGH_INTENDED;
     case KVProperty::kReadRepairChance:
-      RETURN_ERROR_NOT_OK(GetDoubleValueFromExpr(rhs_, table_property_name,
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetDoubleValueFromExpr(rhs_, table_property_name,
                                                              &double_val));
       if (double_val < 0.0 || double_val > 1.0) {
         return sem_context->Error(loc(),
@@ -259,7 +134,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       }
       break;
     case KVProperty::kDefaultTimeToLive:
-      RETURN_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       // TTL value is entered by user in seconds, but we store internally in milliseconds.
       if (!common::IsValidTTLSeconds(int_val)) {
         return sem_context->Error(loc(), Substitute("Valid ttl range : [$0, $1]",
@@ -270,7 +145,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       break;
     case KVProperty::kGcGraceSeconds: FALLTHROUGH_INTENDED;
     case KVProperty::kMemtableFlushPeriodInMs:
-      RETURN_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       if (int_val < 0) {
         return sem_context->Error(loc(),
             Substitute("$0 must be greater than or equal to 0 (got $1)",
@@ -282,7 +157,7 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
     case KVProperty::kMinIndexInterval: FALLTHROUGH_INTENDED;
     case KVProperty::kMaxIndexInterval:
       // TODO(hector): Check that kMaxIndexInterval is greater than kMinIndexInterval.
-      RETURN_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetIntValueFromExpr(rhs_, table_property_name, &int_val));
       if (int_val < 1) {
         return sem_context->Error(loc(),
             Substitute("$0 must be greater than or equal to 1 (got $1)",
@@ -291,11 +166,13 @@ CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
       }
       break;
     case KVProperty::kSpeculativeRetry:
-      RETURN_ERROR_NOT_OK(GetStringValueFromExpr(rhs_, table_property_name, &str_val));
-      RETURN_ERROR_NOT_OK(AnalyzeSpeculativeRetry(str_val));
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetStringValueFromExpr(rhs_, true, table_property_name,
+                                                             &str_val));
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeSpeculativeRetry(str_val));
       break;
     case KVProperty::kComment:
-      RETURN_ERROR_NOT_OK(GetStringValueFromExpr(rhs_, table_property_name, &str_val));
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(GetStringValueFromExpr(rhs_, true, table_property_name,
+                                                             &str_val));
       break;
     case KVProperty::kCompaction: FALLTHROUGH_INTENDED;
     case KVProperty::kCaching: FALLTHROUGH_INTENDED;
@@ -403,14 +280,15 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
   ToLowerCase(lhs_->c_str(), &table_property_name);
   auto iterator = kPropertyDataTypes.find(table_property_name);
   if (iterator == kPropertyDataTypes.end()) {
-    return STATUS(InvalidArgument, strings::Substitute("$0 is not a valid table property",
-                                                       lhs_->c_str()));
+    return STATUS(InvalidArgument, Substitute("$0 is not a valid table property", lhs_->c_str()));
   }
   switch (iterator->second) {
     case KVProperty::kDefaultTimeToLive: {
       // TTL value is entered by user in seconds, but we store internally in milliseconds.
       int64_t val;
-      GetIntValueFromExpr(rhs_, table_property_name, &val);
+      if (!GetIntValueFromExpr(rhs_, table_property_name, &val).ok()) {
+        return STATUS(InvalidArgument, Substitute("Invalid value for default_time_to_live"));
+      }
       table_property->SetDefaultTimeToLive(val * MonoTime::kMillisecondsPerSecond);
       break;
     }
@@ -468,16 +346,20 @@ CHECKED_STATUS PTTablePropertyMap::Analyze(SemContext *sem_context) {
 
   switch (property_type) {
     case PropertyMapType::kCaching:
-      RETURN_ERROR_NOT_OK(AnalyzeCaching());
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeCaching());
       break;
     case PropertyMapType::kCompaction:
-      RETURN_ERROR_NOT_OK(AnalyzeCompaction());
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeCompaction());
       break;
     case PropertyMapType::kCompression:
-      RETURN_ERROR_NOT_OK(AnalyzeCompression());
+      RETURN_SEM_CONTEXT_ERROR_NOT_OK(AnalyzeCompression());
       break;
   }
   return Status::OK();
+}
+
+void PTTablePropertyMap::PrintSemanticAnalysisResult(SemContext *sem_context) {
+  VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
 Status PTTablePropertyMap::AnalyzeCompaction() {
@@ -567,7 +449,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
       case Compaction::Subproperty::kClass:
         LOG(FATAL) << "Invalid subproperty";
       case Compaction::Subproperty::kCompactionWindowUnit:
-        RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), subproperty_name, &str_val));
+        RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name, &str_val));
         if (Compaction::kWindowUnits.find(str_val) ==
             Compaction::kWindowUnits.end()) {
           return STATUS(InvalidArgument,
@@ -611,7 +493,7 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
         }
         break;
       case Compaction::Subproperty::kTimestampResolution:
-        RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), subproperty_name, &str_val));
+        RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name, &str_val));
         if (Compaction::kTimestampResolutionUnits.find(str_val) ==
             Compaction::kTimestampResolutionUnits.end()) {
           return STATUS(InvalidArgument,
@@ -659,7 +541,7 @@ Status PTTablePropertyMap::AnalyzeCaching() {
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     if (subproperty_name == common::kCachingKeys) {
       // First try to read the value as a string.
-      RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), subproperty_name, &str_val));
+      RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name, &str_val));
       if (common::IsValidCachingKeysString(str_val)) {
         continue;
       }
@@ -667,7 +549,7 @@ Status PTTablePropertyMap::AnalyzeCaching() {
           "'$1' and '$2' are allowed", common::kCachingKeys, common::kCachingAll,
           common::kCachingNone));
     } else if (subproperty_name == common::kCachingRowsPerPartition) {
-      if (GetStringValueFromExpr(subproperty->rhs(), subproperty_name, &str_val).ok()) {
+      if (GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name, &str_val).ok()) {
         if (common::IsValidCachingRowsPerPartitionString(str_val)) {
           continue;
         }
@@ -696,13 +578,14 @@ Status PTTablePropertyMap::AnalyzeCompression() {
     string subproperty_name;
     ToLowerCase(subproperty->lhs()->c_str(), &subproperty_name);
     if (subproperty_name == "class") {
-      RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), subproperty_name, &class_name));
+      RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name,
+                                           &class_name));
       if (class_name.empty()) {
         return STATUS(InvalidArgument,
             "The 'class' option must not be empty. To disable compression use 'enabled' : false");
       }
     } else if (subproperty_name == "sstable_compression") {
-      RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), subproperty_name,
+      RETURN_NOT_OK(GetStringValueFromExpr(subproperty->rhs(), true, subproperty_name,
                                            &sstable_compression));
       has_sstable_compression = true;
     }

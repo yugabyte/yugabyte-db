@@ -9,6 +9,7 @@
 #include "yb/sql/ptree/list_node.h"
 #include "yb/sql/ptree/pt_expr.h"
 #include "yb/sql/ptree/pt_name.h"
+#include "yb/sql/ptree/pt_property.h"
 #include "yb/sql/ptree/pt_select.h"
 #include "yb/sql/ptree/tree_node.h"
 
@@ -21,7 +22,7 @@ enum class PropertyType : int {
   kTablePropertyMap,
 };
 
-class PTTableProperty : public TreeNode {
+class PTTableProperty : public PTProperty {
  public:
   enum class KVProperty : int {
     kBloomFilterFpChance,
@@ -75,14 +76,6 @@ class PTTableProperty : public TreeNode {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  MCString::SharedPtr lhs() const {
-    return lhs_;
-  }
-
-  PTExpr::SharedPtr rhs() const {
-    return rhs_;
-  }
-
   CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const;
 
   PropertyType property_type() const {
@@ -109,8 +102,6 @@ class PTTableProperty : public TreeNode {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
   }
 
-  MCString::SharedPtr lhs_;
-  PTExpr::SharedPtr rhs_;
   MCString::SharedPtr name_;
   PTOrderBy::Direction direction_;
   PropertyType property_type_;

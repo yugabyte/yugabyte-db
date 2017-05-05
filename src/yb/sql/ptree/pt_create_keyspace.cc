@@ -13,18 +13,25 @@ namespace sql {
 //--------------------------------------------------------------------------------------------------
 
 PTCreateKeyspace::PTCreateKeyspace(MemoryContext *memctx,
-                                   YBLocation::SharedPtr loc,
-                                   const MCString::SharedPtr& name,
-                                   bool create_if_not_exists)
+    YBLocation::SharedPtr loc,
+    const MCString::SharedPtr& name,
+    bool create_if_not_exists,
+    const PTKeyspacePropertyListNode::SharedPtr& keyspace_properties)
     : TreeNode(memctx, loc),
       name_(name),
-      create_if_not_exists_(create_if_not_exists) {
+      create_if_not_exists_(create_if_not_exists),
+      keyspace_properties_(keyspace_properties) {
 }
 
 PTCreateKeyspace::~PTCreateKeyspace() {
 }
 
 CHECKED_STATUS PTCreateKeyspace::Analyze(SemContext *sem_context) {
+  if (keyspace_properties_ != nullptr) {
+    // Process table properties.
+    RETURN_NOT_OK(keyspace_properties_->Analyze(sem_context));
+  }
+
   if (VLOG_IS_ON(3)) {
     PrintSemanticAnalysisResult(sem_context);
   }

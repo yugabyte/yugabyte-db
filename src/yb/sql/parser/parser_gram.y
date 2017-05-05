@@ -105,6 +105,9 @@ typedef PTSelectStmt::SharedPtr        PSelectStmt;
 typedef PTTableRef::SharedPtr          PTableRef;
 typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
 typedef PTAssign::SharedPtr            PAssign;
+typedef PTKeyspaceProperty::SharedPtr     PKeyspaceProperty;
+typedef PTKeyspacePropertyListNode::SharedPtr     PKeyspacePropertyListNode;
+typedef PTKeyspacePropertyMap::SharedPtr  PKeyspacePropertyMap;
 typedef PTTableProperty::SharedPtr     PTableProperty;
 typedef PTTablePropertyListNode::SharedPtr     PTablePropertyListNode;
 typedef PTTablePropertyMap::SharedPtr  PTablePropertyMap;
@@ -264,6 +267,11 @@ DECLARE_bool(yql_experiment_support_expression);
 %type <PAssignListNode>   set_clause_list
 
 %type <objtype>           drop_type cql_drop_type sql_drop_type
+
+%type <PKeyspaceProperty>    keyspace_property_map_list_element
+%type <PKeyspacePropertyMap> keyspace_property_map_list keyspace_property_map
+%type <PKeyspacePropertyListNode> opt_keyspace_options keyspace_property keyspace_properties
+
 %type <PTableProperty>    column_ordering property_map_list_element
 %type <PTablePropertyMap> property_map_list property_map
 %type <PTablePropertyListNode>   opt_table_options table_property table_properties orderingList
@@ -752,35 +760,38 @@ schema_stmt:
 //--------------------------------------------------------------------------------------------------
 // CREATE KEYSPACE statement.
 // Syntax:
-//   CREATE KEYSPACE | SCHEMA [ IF NOT EXISTS ] keyspace_name
+//   CREATE KEYSPACE | SCHEMA [ IF NOT EXISTS ] keyspace_name [ WITH REPLICATION = map
+//                                                              AND DURABLE_WRITES =  true | false ]
 //--------------------------------------------------------------------------------------------------
 
 CreateSchemaStmt:
-  CREATE KEYSPACE ColId OptSchemaEltList {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false);
+  CREATE KEYSPACE ColId OptSchemaEltList opt_keyspace_options {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false, $5);
   }
-  | CREATE SCHEMA ColId OptSchemaEltList {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false);
+  | CREATE SCHEMA ColId OptSchemaEltList opt_keyspace_options {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false, $5);
   }
-  | CREATE KEYSPACE IF_P NOT_LA EXISTS ColId OptSchemaEltList {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true);
+  | CREATE KEYSPACE IF_P NOT_LA EXISTS ColId OptSchemaEltList opt_keyspace_options {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true, $8);
   }
-  | CREATE SCHEMA IF_P NOT_LA EXISTS ColId OptSchemaEltList {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true);
+  | CREATE SCHEMA IF_P NOT_LA EXISTS ColId OptSchemaEltList opt_keyspace_options {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true, $8);
   }
-  | CREATE KEYSPACE OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+  | CREATE KEYSPACE OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList opt_keyspace_options {
     PARSER_UNSUPPORTED(@4);
     $$ = nullptr;
   }
-  | CREATE SCHEMA OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+  | CREATE SCHEMA OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList opt_keyspace_options {
     PARSER_UNSUPPORTED(@4);
     $$ = nullptr;
   }
-  | CREATE KEYSPACE IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+  | CREATE KEYSPACE IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList
+  opt_keyspace_options {
     PARSER_UNSUPPORTED(@7);
     $$ = nullptr;
   }
-  | CREATE SCHEMA IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList {
+  | CREATE SCHEMA IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList
+  opt_keyspace_options {
     PARSER_UNSUPPORTED(@7);
     $$ = nullptr;
   }
@@ -797,6 +808,88 @@ OptSchemaEltList:
   }
   | /* EMPTY */ {
   }
+;
+
+opt_keyspace_options:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | WITH keyspace_properties {
+    $$ = $2;
+  }
+;
+
+keyspace_properties:
+  keyspace_property {
+    $$ = $1;
+  }
+  | keyspace_properties AND keyspace_property {
+    $1->AppendList($3);
+    $$ = $1;
+  }
+;
+
+keyspace_property:
+  property_name '=' TRUE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
+    PTKeyspaceProperty::SharedPtr pt_keyspace_property =
+        MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constbool);
+    $$ = MAKE_NODE(@1, PTKeyspacePropertyListNode, pt_keyspace_property);
+  }
+  | property_name '=' FALSE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, false);
+    PTKeyspaceProperty::SharedPtr pt_keyspace_property =
+        MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constbool);
+    $$ = MAKE_NODE(@1, PTKeyspacePropertyListNode, pt_keyspace_property);
+  }
+  | property_name '=' Sconst {
+    PTConstText::SharedPtr pt_consttext = MAKE_NODE(@3, PTConstText, $3);
+    PTKeyspaceProperty::SharedPtr pt_keyspace_property =
+        MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_consttext);
+    $$ = MAKE_NODE(@1, PTKeyspacePropertyListNode, pt_keyspace_property);
+  }
+  | property_name '=' keyspace_property_map {
+    $3->SetPropertyName($1);
+    $$ = MAKE_NODE(@1, PTKeyspacePropertyListNode, $3);
+  }
+;
+
+keyspace_property_map:
+  '{' keyspace_property_map_list '}' {
+    $$ = $2;
+  }
+;
+
+keyspace_property_map_list:
+  keyspace_property_map_list_element {
+    $$ = MAKE_NODE(@1, PTKeyspacePropertyMap);
+    $$->AppendMapElement($1);
+  }
+  | keyspace_property_map_list ',' keyspace_property_map_list_element {
+    $1->AppendMapElement($3);
+    $$ = $1;
+  }
+;
+
+keyspace_property_map_list_element:
+  Sconst ':' Iconst {
+    PTConstInt::SharedPtr pt_constint = MAKE_NODE(@3, PTConstInt, $3);
+    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constint);
+  }
+  | Sconst ':' FCONST {
+    PTConstDouble::SharedPtr pt_constdouble = MAKE_NODE(@3, PTConstDouble, stold($3->c_str()));
+    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constdouble);
+  }
+  | Sconst ':' TRUE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
+    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constbool);
+  }
+  | Sconst ':' FALSE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, false);
+    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_constbool);  }
+  | Sconst ':' Sconst {
+    PTConstText::SharedPtr pt_consttext = MAKE_NODE(@3, PTConstText, $3);
+    $$ = MAKE_NODE(@1, PTKeyspaceProperty, $1, pt_consttext);  }
 ;
 
 //--------------------------------------------------------------------------------------------------
