@@ -337,6 +337,10 @@ class Thread : public RefCountedThreadSafe<Thread> {
 // the given entity.
 Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metrics,
                                   WebCallbackRegistry* web);
+
+// This initializes the thread manager and warms up libunwind's state (see ENG-1402).
+void InitThreading();
+
 } // namespace yb
 
 #endif /* YB_UTIL_THREAD_H */

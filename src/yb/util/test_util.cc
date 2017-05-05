@@ -27,6 +27,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/spinlock_profiling.h"
+#include "yb/util/thread.h"
 
 DEFINE_string(test_leave_files, "on_failure",
               "Whether to leave test files around after the test run. "
@@ -50,6 +51,7 @@ static const uint64 kTestBeganAtMicros = Env::Default()->NowMicros();
 YBTest::YBTest()
   : env_(new EnvWrapper(Env::Default())),
     test_dir_(GetTestDataDirectory()) {
+  InitThreading();
 }
 
 // env passed in from subclass, for tests that run in-memory

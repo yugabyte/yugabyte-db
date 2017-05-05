@@ -95,43 +95,31 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-static uint64_t GetCpuUTime() {
+namespace {
+
+uint64_t GetCpuUTime() {
   rusage ru;
   CHECK_ERR(getrusage(RUSAGE_SELF, &ru));
   return ru.ru_utime.tv_sec * 1000UL + ru.ru_utime.tv_usec / 1000UL;
 }
 
-static uint64_t GetCpuSTime() {
+uint64_t GetCpuSTime() {
   rusage ru;
   CHECK_ERR(getrusage(RUSAGE_SELF, &ru));
   return ru.ru_stime.tv_sec * 1000UL + ru.ru_stime.tv_usec / 1000UL;
 }
 
-static uint64_t GetVoluntaryContextSwitches() {
+uint64_t GetVoluntaryContextSwitches() {
   rusage ru;
   CHECK_ERR(getrusage(RUSAGE_SELF, &ru));
   return ru.ru_nvcsw;;
 }
 
-static uint64_t GetInVoluntaryContextSwitches() {
+uint64_t GetInVoluntaryContextSwitches() {
   rusage ru;
   CHECK_ERR(getrusage(RUSAGE_SELF, &ru));
   return ru.ru_nivcsw;
 }
-
-class ThreadMgr;
-
-__thread Thread* Thread::tls_ = NULL;
-
-// Singleton instance of ThreadMgr. Only visible in this file, used only by Thread.
-// The Thread class adds a reference to thread_manager while it is supervising a thread so
-// that a race between the end of the process's main thread (and therefore the destruction
-// of thread_manager) and the end of a thread that tries to remove itself from the
-// manager after the destruction can be avoided.
-static shared_ptr<ThreadMgr> thread_manager;
-
-// Controls the single (lazy) initialization of thread_manager.
-static GoogleOnceType once = GOOGLE_ONCE_INIT;
 
 // A singleton class that tracks all live threads, and groups them together for easy
 // auditing. Used only by Thread.
@@ -390,16 +378,34 @@ void ThreadMgr::ThreadPathHandler(const WebCallbackRegistry::WebRequest& req,
   }
 }
 
-static void InitThreading() {
+// Singleton instance of ThreadMgr. Only visible in this file, used only by Thread.
+// The Thread class adds a reference to thread_manager while it is supervising a thread so
+// that a race between the end of the process's main thread (and therefore the destruction
+// of thread_manager) and the end of a thread that tries to remove itself from the
+// manager after the destruction can be avoided.
+shared_ptr<ThreadMgr> thread_manager;
+
+// Controls the single (lazy) initialization of thread_manager.
+std::once_flag init_threading_internal_once_flag;
+
+void InitThreadingInternal() {
   // Warm up the stack trace library. This avoids a race in libunwind initialization
   // by making sure we initialize it before we start any other threads.
   ignore_result(GetStackTraceHex());
-  thread_manager.reset(new ThreadMgr());
+  thread_manager = std::make_shared<ThreadMgr>();
 }
+
+} // anonymous namespace
+
+void InitThreading() {
+  std::call_once(init_threading_internal_once_flag, InitThreadingInternal);
+}
+
+__thread Thread* Thread::tls_ = nullptr;
 
 Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metrics,
                                   WebCallbackRegistry* web) {
-  GoogleOnceInit(&once, &InitThreading);
+  InitThreading();
   return thread_manager->StartInstrumentation(server_metrics, web);
 }
 
@@ -493,6 +499,7 @@ std::string Thread::ToString() const {
 
 Status Thread::StartThread(const std::string& category, const std::string& name,
                            const ThreadFunctor& functor, scoped_refptr<Thread> *holder) {
+  InitThreading();
   const string log_prefix = Substitute("$0 ($1) ", name, category);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "starting thread");
 
@@ -550,7 +557,6 @@ void* Thread::SuperviseThread(void* arg) {
   string name = strings::Substitute("$0-$1", t->name(), system_tid);
 
   // Take an additional reference to the thread manager, which we'll need below.
-  GoogleOnceInit(&once, &InitThreading);
   ANNOTATE_IGNORE_SYNC_BEGIN();
   shared_ptr<ThreadMgr> thread_mgr_ref = thread_manager;
   ANNOTATE_IGNORE_SYNC_END();

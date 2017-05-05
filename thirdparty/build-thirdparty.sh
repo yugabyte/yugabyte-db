@@ -650,7 +650,7 @@ fi
 
 # End of non-TSAN builds.
 
-## Build C++ dependencies with TSAN instrumentation
+## Build dependencies with TSAN instrumentation
 if [[ -n $F_TSAN  ]]; then
 
   # Achieving good results with TSAN requires that the C++ standard library be instrumented with
@@ -694,6 +694,16 @@ if [[ -n $F_TSAN  ]]; then
   save_env
   set_tsan_build_flags instrumented
 
+  # C libraries that require TSAN instrumentation.
+  if is_linux && [ -n "$F_ALL" -o -n "$F_LIBUNWIND" ]; then
+    do_build_if_necessary libunwind
+  fi
+
+  if is_linux && [ -n "$F_ALL" -o -n "$F_LIBBACKTRACE" ]; then
+    do_build_if_necessary libbacktrace
+  fi
+
+  # C++ libraries that require TSAN instrumentation.
   if [ -n "$F_ALL" -o -n "$F_PROTOBUF" ]; then
     do_build_if_necessary protobuf
   fi
