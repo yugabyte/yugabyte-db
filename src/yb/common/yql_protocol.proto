@@ -210,6 +210,8 @@ message YQLReadRequestPB {
 
   // Column ids to read (select)
   repeated int32 column_ids = 7; // required
+  // Reading distinct columns?
+  optional bool distinct = 12 [default = false];
 
   // Limit number of rows to return. For YQL SELECT, this limit is the smaller of the page size (max
   // (max number of rows to return per fetch) & the LIMIT clause if present in the SELECT statement.

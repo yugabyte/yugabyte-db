@@ -37,8 +37,9 @@ class TestCFileSet : public YBRowSetTest {
   TestCFileSet() :
     YBRowSetTest(Schema(
       { ColumnSchema("c0", UINT32),
-        ColumnSchema("c1", UINT32, false, false, ColumnSchema::SortingType::kNotSpecified, nullptr,
-                     nullptr, GetRLEStorage()),
+            ColumnSchema("c1", UINT32, false, false, false,
+                         ColumnSchema::SortingType::kNotSpecified, nullptr, nullptr,
+                         GetRLEStorage()),
         ColumnSchema("c2", UINT32)},
       1)) {
   }

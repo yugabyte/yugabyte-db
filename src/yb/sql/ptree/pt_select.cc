@@ -56,6 +56,7 @@ PTExprListNode::SharedPtr PTValues::Tuple(int index) const {
 
 PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
+                           const bool distinct,
                            PTListNode::SharedPtr target,
                            PTTableRefListNode::SharedPtr from_clause,
                            PTExpr::SharedPtr where_clause,
@@ -64,6 +65,7 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
                            PTListNode::SharedPtr order_by_clause,
                            PTExpr::SharedPtr limit_clause)
     : PTDmlStmt(memctx, loc, false),
+      distinct_(distinct),
       target_(target),
       from_clause_(from_clause),
       where_clause_(where_clause),
@@ -128,6 +130,26 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   return Status::OK();
 }
 
+namespace {
+
+CHECKED_STATUS AnalyzeDistinctColumn(TreeNode *target,
+                                     const ColumnDesc *col_desc,
+                                     SemContext *sem_context) {
+  if (col_desc->is_primary() && !col_desc->is_hash()) {
+    return sem_context->Error(
+        target->loc(), "Selecting distinct range column is not yet supported",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  if (!col_desc->is_primary() && !col_desc->is_static()) {
+    return sem_context->Error(
+        target->loc(), "Selecting distinct non-static column is not yet supported",
+        ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  return Status::OK();
+}
+
+} // namespace
+
 CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
   // any expression except for references to table column.
@@ -145,11 +167,18 @@ CHECKED_STATUS PTSelectStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_con
     }
     int num_cols = num_columns();
     for (int idx = 0; idx < num_cols; idx++) {
-      selected_columns_->push_back(&table_columns_[idx]);
+      const ColumnDesc *col_desc = &table_columns_[idx];
+      if (distinct_) {
+        RETURN_NOT_OK(AnalyzeDistinctColumn(target, col_desc, sem_context));
+      }
+      selected_columns_->push_back(col_desc);
     }
   } else { // Add the column descriptor to selected_columns_.
     RETURN_NOT_OK(ref->Analyze(sem_context));
     const ColumnDesc *col_desc = ref->desc();
+    if (distinct_) {
+      RETURN_NOT_OK(AnalyzeDistinctColumn(target, col_desc, sem_context));
+    }
     selected_columns_->push_back(col_desc);
   }
 

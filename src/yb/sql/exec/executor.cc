@@ -15,6 +15,7 @@ namespace sql {
 using std::string;
 using std::shared_ptr;
 
+using client::YBColumnSpec;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBTable;
@@ -221,9 +222,12 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
                   tnode->columns_loc(), exec_status.ToString().c_str(),
                   ErrorCode::INVALID_TABLE_DEFINITION));
     }
-    b.AddColumn(column->yb_name())->Type(column->yql_type())
-                                  ->Nullable()
-                                  ->Order(column->order());
+    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->yql_type())
+                                                              ->Nullable()
+                                                              ->Order(column->order());
+    if (column->is_static()) {
+      column_spec->StaticColumn();
+    }
   }
 
   TableProperties table_properties;
@@ -1171,6 +1175,9 @@ void Executor::ExecPTNodeAsync(
   for (const ColumnDesc *col_desc : tnode->selected_columns()) {
     req->add_column_ids(col_desc->id());
   }
+
+  // Specify distinct columns or non.
+  req->set_distinct(tnode->distinct());
 
   // Default row count limit is the page size less the rows buffered in current_result locally.
   // And we should return paging state when page size limit is hit.

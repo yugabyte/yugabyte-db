@@ -1639,7 +1639,8 @@ TEST_F(TabletServerTest, TestAlterSchema) {
   const int32_t c2_write_default = 5;
   const int32_t c2_read_default = 7;
   SchemaBuilder builder(schema_);
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, ColumnSchema::SortingType::kNotSpecified,
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, false,
+                              ColumnSchema::SortingType::kNotSpecified,
                               &c2_read_default, &c2_write_default));
   Schema s2 = builder.Build();
 
@@ -1695,7 +1696,8 @@ TEST_F(TabletServerTest, TestAlterSchema_AddColWithoutWriteDefault) {
   // Add a column with a read-default but no write-default.
   const uint32_t c2_read_default = 7;
   SchemaBuilder builder(schema_);
-  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, ColumnSchema::SortingType::kNotSpecified,
+  ASSERT_OK(builder.AddColumn("c2", INT32, false, false, false,
+                              ColumnSchema::SortingType::kNotSpecified,
                               &c2_read_default, nullptr));
   Schema s2 = builder.Build();
 

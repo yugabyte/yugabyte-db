@@ -159,6 +159,7 @@ class YB_EXPORT YBColumnSchema {
                  YQLType type,
                  bool is_nullable = false,
                  bool is_hash_key = false,
+                 bool is_static = false,
                  ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
                  const void* default_value = NULL,
                  YBColumnStorageAttributes attributes = YBColumnStorageAttributes());
@@ -176,6 +177,7 @@ class YB_EXPORT YBColumnSchema {
   YQLType type() const;
   bool is_hash_key() const;
   bool is_nullable() const;
+  bool is_static() const;
   yb::ColumnSchema::SortingType sorting_type() const;
 
   // TODO: Expose default column value and attributes?
@@ -252,6 +254,10 @@ class YB_EXPORT YBColumnSpec {
   // Set this column to be a hash primary key column of the table. A hash value of all hash columns
   // in the primary key will be used to determine what partition (tablet) a particular row falls in.
   YBColumnSpec* HashPrimaryKey();
+
+  // Set this column to be static. A static column is a column whose value is shared among rows of
+  // the same hash key.
+  YBColumnSpec* StaticColumn();
 
   // Set this column to be not nullable.
   // Column nullability may not be changed once a table is created.

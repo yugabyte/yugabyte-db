@@ -1762,5 +1762,106 @@ TEST_F(DocDBTest, TestDisambiguationOnWriteId) {
   }
 }
 
+TEST_F(DocDBTest, StaticColumnCompaction) {
+  const DocKey hk(0, PrimitiveValues("h1")); // hash key
+  const DocKey pk1(hk.hash(), hk.hashed_group(), PrimitiveValues("r1")); // primary key
+  const DocKey pk2(hk.hash(), hk.hashed_group(), PrimitiveValues("r2")); //   "      "
+  const KeyBytes encoded_hk(hk.Encode());
+  const KeyBytes encoded_pk1(pk1.Encode());
+  const KeyBytes encoded_pk2(pk2.Encode());
+
+  const MonoDelta one_ms = MonoDelta::FromMilliseconds(1);
+  const MonoDelta two_ms = MonoDelta::FromMilliseconds(2);
+  const HybridTime t0 = HybridTime::FromMicros(1000);
+  const HybridTime t1 = server::HybridClock::AddPhysicalTimeToHybridTime(t0, two_ms);
+  const HybridTime t2 = server::HybridClock::AddPhysicalTimeToHybridTime(t1, two_ms);
+
+  // Add some static columns: s1 and s2 with TTL, s3 and s4 without.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s1")),
+      Value(PrimitiveValue("v1"), one_ms), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s2")),
+      Value(PrimitiveValue("v2"), two_ms), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s3")),
+      Value(PrimitiveValue("v3old")), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s4")),
+      Value(PrimitiveValue("v4")), t0, InitMarkerBehavior::kOptional));
+
+  // Add some non-static columns for pk1: c5 and c6 with TTL, c7 and c8 without.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c5")),
+      Value(PrimitiveValue("v51"), one_ms), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c6")),
+      Value(PrimitiveValue("v61"), two_ms), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c7")),
+      Value(PrimitiveValue("v71old")), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c8")),
+      Value(PrimitiveValue("v81")), t0, InitMarkerBehavior::kOptional));
+
+  // More non-static columns for another primary key pk2.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c5")),
+      Value(PrimitiveValue("v52"), one_ms), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c6")),
+      Value(PrimitiveValue("v62"), two_ms), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c7")),
+      Value(PrimitiveValue("v72")), t0, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c8")),
+      Value(PrimitiveValue("v82")), t0, InitMarkerBehavior::kOptional));
+
+  // Update s3 and delete s4 at t1.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s3")),
+      Value(PrimitiveValue("v3new")), t1, InitMarkerBehavior::kOptional));
+  ASSERT_OK(SetPrimitive(DocPath(encoded_hk, PrimitiveValue("s4")),
+      Value(PrimitiveValue(ValueType::kTombstone)), t1, InitMarkerBehavior::kOptional));
+
+  // Update c7 of pk1 at t1 also.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk1, PrimitiveValue("c7")),
+      Value(PrimitiveValue("v71new")), t1, InitMarkerBehavior::kOptional));
+
+  // Delete c8 of pk2 at t2.
+  ASSERT_OK(SetPrimitive(DocPath(encoded_pk2, PrimitiveValue("c8")),
+      Value(PrimitiveValue(ValueType::kTombstone)), t2, InitMarkerBehavior::kOptional));
+
+  // Verify before compaction.
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s1"; HT(p=1000)]) -> "v1"; ttl: 0.001s
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s2"; HT(p=1000)]) -> "v2"; ttl: 0.002s
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s3"; HT(p=3000)]) -> "v3new"
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s3"; HT(p=1000)]) -> "v3old"
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s4"; HT(p=3000)]) -> DEL
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s4"; HT(p=1000)]) -> "v4"
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c5"; HT(p=1000)]) -> "v51"; ttl: 0.001s
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c6"; HT(p=1000)]) -> "v61"; ttl: 0.002s
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c7"; HT(p=3000)]) -> "v71new"
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c7"; HT(p=1000)]) -> "v71old"
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c8"; HT(p=1000)]) -> "v81"
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c5"; HT(p=1000)]) -> "v52"; ttl: 0.001s
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c6"; HT(p=1000)]) -> "v62"; ttl: 0.002s
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c7"; HT(p=1000)]) -> "v72"
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c8"; HT(p=5000)]) -> DEL
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c8"; HT(p=1000)]) -> "v82"
+      )#");
+
+  // Compact at t1 = HT(p=3000).
+  CompactHistoryBefore(t1);
+
+  // Verify after compaction:
+  //   s1 -> expired
+  //   s4 -> deleted
+  //   s3 = v3old -> compacted
+  //   pk1.c5 -> expired
+  //   pk1.c7 = v71old -> compacted
+  //   pk2.c5 -> expired
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s2"; HT(p=1000)]) -> "v2"; ttl: 0.002s
+SubDocKey(DocKey(0x0000, ["h1"], []), ["s3"; HT(p=3000)]) -> "v3new"
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c6"; HT(p=1000)]) -> "v61"; ttl: 0.002s
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c7"; HT(p=3000)]) -> "v71new"
+SubDocKey(DocKey(0x0000, ["h1"], ["r1"]), ["c8"; HT(p=1000)]) -> "v81"
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c6"; HT(p=1000)]) -> "v62"; ttl: 0.002s
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c7"; HT(p=1000)]) -> "v72"
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c8"; HT(p=5000)]) -> DEL
+SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c8"; HT(p=1000)]) -> "v82"
+      )#");
+}
+
 }  // namespace docdb
 }  // namespace yb

@@ -28,8 +28,13 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(const Schema& projection,
 CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(const YQLReadRequestPB& request,
                                                  const HybridTime& hybrid_time,
                                                  const Schema& schema,
+                                                 const bool include_static_columns,
                                                  std::unique_ptr<common::YQLScanSpec>* spec,
                                                  HybridTime* req_hybrid_time) const {
+  // There should be no static columns in system tables so we are not handling it.
+  if (include_static_columns) {
+    return STATUS(IllegalState, "system table contains no static columns");
+  }
   spec->reset(new common::YQLScanSpec(
       request.has_where_condition() ? &request.where_condition() : nullptr));
   *req_hybrid_time = hybrid_time;

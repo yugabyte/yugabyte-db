@@ -78,6 +78,33 @@ class PTPrimaryKey : public PTConstraint {
 };
 
 //--------------------------------------------------------------------------------------------------
+// Static column qualifier.
+
+class PTStatic : public TreeNode {
+ public:
+  //------------------------------------------------------------------------------------------------
+  // Public types.
+  typedef MCSharedPtr<PTStatic> SharedPtr;
+  typedef MCSharedPtr<const PTStatic> SharedPtrConst;
+
+  //------------------------------------------------------------------------------------------------
+  // Constructor and destructor.
+  explicit PTStatic(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
+      : TreeNode(memctx, loc) {
+  }
+  virtual ~PTStatic() {
+  }
+
+  template<typename... TypeArgs>
+  inline static PTStatic::SharedPtr MakeShared(MemoryContext *memctx, TypeArgs&&... args) {
+    return MCMakeShared<PTStatic>(memctx, std::forward<TypeArgs>(args)...);
+  }
+
+  // Node semantics analysis.
+  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+};
+
+//--------------------------------------------------------------------------------------------------
 // Table column.
 
 class PTColumnDefinition : public TreeNode {
@@ -93,7 +120,7 @@ class PTColumnDefinition : public TreeNode {
                      YBLocation::SharedPtr loc,
                      const MCString::SharedPtr& name,
                      const PTBaseType::SharedPtr& datatype,
-                     const PTListNode::SharedPtr& constraints);
+                     const PTListNode::SharedPtr& qualifiers);
   virtual ~PTColumnDefinition();
 
   template<typename... TypeArgs>
@@ -120,6 +147,14 @@ class PTColumnDefinition : public TreeNode {
   void set_is_hash_key() {
     is_primary_key_ = true;
     is_hash_key_ = true;
+  }
+
+  // Access function for is_static_.
+  bool is_static() const {
+    return is_static_;
+  }
+  void set_is_static() {
+    is_static_ = true;
   }
 
   // Access function for order_.
@@ -153,9 +188,10 @@ class PTColumnDefinition : public TreeNode {
  private:
   const MCString::SharedPtr name_;
   PTBaseType::SharedPtr datatype_;
-  PTListNode::SharedPtr constraints_;
+  PTListNode::SharedPtr qualifiers_;
   bool is_primary_key_;
   bool is_hash_key_;
+  bool is_static_;
   int32_t order_;
   // Sorting order. Only relevant when this key is a primary key.
   ColumnSchema::SortingType sorting_type_;

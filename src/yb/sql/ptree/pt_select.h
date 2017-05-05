@@ -152,6 +152,7 @@ class PTSelectStmt : public PTDmlStmt {
   // Constructor and destructor.
   PTSelectStmt(MemoryContext *memctx,
                YBLocation::SharedPtr loc,
+               bool distinct,
                PTListNode::SharedPtr target,
                PTTableRefListNode::SharedPtr from_clause,
                PTExpr::SharedPtr where_clause,
@@ -184,6 +185,10 @@ class PTSelectStmt : public PTDmlStmt {
 
   virtual void SetLimitClause(PTExpr::SharedPtr limit_clause) {
     limit_clause_ = limit_clause;
+  }
+
+  bool distinct() const {
+    return distinct_;
   }
 
   bool has_limit() const {
@@ -221,12 +226,13 @@ class PTSelectStmt : public PTDmlStmt {
   // The following members represent different components of SELECT statement. However, Cassandra
   // doesn't support all of SQL syntax and semantics.
   //
-  // SELECT <target_>
+  // SELECT [DISTINCT] <target_>
   //   FROM      <from_clause_>
   //   WHERE     <where_clause_>
   //   GROUP BY  <group_by_clause_> HAVING <having_clause_>
   //   ORDER BY  <order_by_clause_>
   //   LIMIT     <limit_clause_>
+  const bool distinct_;
   PTListNode::SharedPtr target_;
   PTTableRefListNode::SharedPtr from_clause_;
   PTExpr::SharedPtr where_clause_;

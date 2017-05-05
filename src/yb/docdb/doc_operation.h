@@ -3,6 +3,8 @@
 #ifndef YB_DOCDB_DOC_OPERATION_H_
 #define YB_DOCDB_DOC_OPERATION_H_
 
+#include <list>
+
 #include "rocksdb/db.h"
 
 #include "yb/common/yql_storage_interface.h"
@@ -27,7 +29,7 @@ class DocOperation {
   // YQLWriteOperation for a DML with a "... IF <condition> ..." clause needs to read the row to
   // evaluate the condition before the write and needs a read snapshot for a consistent read.
   virtual bool RequireReadSnapshot() const = 0;
-  virtual DocPath DocPathToLock() const = 0;
+  virtual std::list<DocPath> DocPathsToLock() const = 0;
   virtual CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) = 0;
 };
@@ -39,7 +41,7 @@ class KuduWriteOperation: public DocOperation {
 
   bool RequireReadSnapshot() const override { return false; }
 
-  DocPath DocPathToLock() const override;
+  std::list<DocPath> DocPathsToLock() const override;
 
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
@@ -59,7 +61,7 @@ class RedisWriteOperation: public DocOperation {
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
 
-  DocPath DocPathToLock() const override;
+  std::list<DocPath> DocPathsToLock() const override;
 
   const RedisResponsePB &response();
 
@@ -107,7 +109,7 @@ class YQLWriteOperation : public DocOperation {
 
   bool RequireReadSnapshot() const override;
 
-  DocPath DocPathToLock() const override;
+  std::list<DocPath> DocPathsToLock() const override;
 
   CHECKED_STATUS Apply(
       DocWriteBatch* doc_write_batch, rocksdb::DB *rocksdb, const HybridTime& hybrid_time) override;
@@ -119,13 +121,26 @@ class YQLWriteOperation : public DocOperation {
   const YQLRowBlock* rowblock() const { return rowblock_.get(); }
 
  private:
+  // Initialize hashed_doc_key_ and/or pk_doc_key_.
+  CHECKED_STATUS InitializeKeys(bool hashed_key, bool primary_key);
+
   CHECKED_STATUS IsConditionSatisfied(
       const YQLConditionPB& condition, rocksdb::DB *rocksdb, const HybridTime& hybrid_time,
       bool* should_apply, std::unique_ptr<YQLRowBlock>* rowblock);
 
   const Schema& schema_;
-  const DocKey doc_key_;
-  const DocPath doc_path_;
+
+  // Doc key and doc path for hashed key (i.e. without range columns). Present when there is a
+  // static column being written.
+  std::unique_ptr<DocKey> hashed_doc_key_;
+  std::unique_ptr<DocPath> hashed_doc_path_;
+
+  // Doc key and doc path for primary key (i.e. with range columns). Present when there is a
+  // non-static column being written or when writing the primary key alone (i.e. range columns are
+  // present or table does not have range columns).
+  std::unique_ptr<DocKey> pk_doc_key_;
+  std::unique_ptr<DocPath> pk_doc_path_;
+
   const YQLWriteRequestPB request_;
   YQLResponsePB* response_;
   // The row and the column schema that is returned to the CQL client for an INSERT/UPDATE/DELETE

@@ -26,15 +26,15 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
 
   // Valid statement: CREATE with PRIMARY KEY
   PARSE_VALID_STMT("CREATE TABLE human_resource"
-                  "  (id int, name varchar, salary int, PRIMARY KEY (id, name));");
+                   "  (id int, name varchar, salary int, PRIMARY KEY (id, name));");
 
   // Valid statement: CREATE with PRIMARY KEY
   PARSE_VALID_STMT("CREATE TABLE human_resource"
-                  "  (id int, name varchar, salary int, PRIMARY KEY ((id), name));");
+                   "  (id int, name varchar, salary int, PRIMARY KEY ((id), name));");
 
   // Valid statement: CREATE with PRIMARY KEY
   PARSE_VALID_STMT("CREATE TABLE human_resource"
-                  "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary));");
+                   "  (id int, name varchar, salary int, PRIMARY KEY ((id, name), salary));");
 
   // Valid statement: INSERT.
   PARSE_VALID_STMT("INSERT INTO human_resource(id, name) VALUES(7, \"Scott Tiger\");");
@@ -125,6 +125,21 @@ TEST_F(YbSqlTestParser, TestSqlParser) {
 
   // Invalid statement: CREATE table with invalid type.
   PARSE_INVALID_STMT("CREATE TABLE human_resource (c1 ine, c2 int, c3 int, PRIMARY KEY(c1));");
+}
+
+TEST_F(YbSqlTestParser, TestStaticColumn) {
+  // Valid statement: CREATE TABLE with STATIC column.
+  PARSE_VALID_STMT("CREATE TABLE human_resource"
+                   "  (bldg_num int, room_num int, room_count int STATIC, sq_ft int, "
+                   "PRIMARY KEY ((bldg_num), room_num));");
+
+  // Valid statement: SELECT with DISTINCT.
+  PARSE_VALID_STMT("SELECT DISTINCT h1, s1 FROM t;");
+
+  // Invalid statement: wrong STATIC position.
+  PARSE_INVALID_STMT("CREATE TABLE human_resource"
+                     "  (bldg_num int, room_num int, room_count STATIC int, sq_ft int, "
+                     "PRIMARY KEY ((bldg_num), room_num));");
 }
 
 }  // namespace sql

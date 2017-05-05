@@ -27,6 +27,7 @@
 #include "yb/docdb/docdb_compaction_filter.h"
 
 using std::endl;
+using std::list;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
@@ -59,17 +60,21 @@ void PrepareDocWriteTransaction(const vector<unique_ptr<DocOperation>>& doc_writ
   *need_read_snapshot = false;
   unordered_map<string, LockType> lock_type_map;
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
-    // TODO(akashnil): avoid materializing the vector, do the work of the called function in place.
-    const vector<string> doc_op_locks = doc_op->DocPathToLock().GetLockPrefixKeys();
-    assert(doc_op_locks.size() > 0);
-    for (int i = 0; i < doc_op_locks.size(); i++) {
-      auto iter = lock_type_map.find(doc_op_locks[i]);
-      if (iter == lock_type_map.end()) {
-        lock_type_map[doc_op_locks[i]] = LockType::SHARED;
-        keys_locked->push_back(doc_op_locks[i]);
+    const list<DocPath> doc_paths = doc_op->DocPathsToLock();
+    for (const auto& doc_path : doc_paths) {
+      // TODO(akashnil): avoid materializing the vector, do the work of the called function in
+      // place.
+      const vector<string> doc_op_locks = doc_path.GetLockPrefixKeys();
+      assert(doc_op_locks.size() > 0);
+      for (int i = 0; i < doc_op_locks.size(); i++) {
+        auto iter = lock_type_map.find(doc_op_locks[i]);
+        if (iter == lock_type_map.end()) {
+          lock_type_map[doc_op_locks[i]] = LockType::SHARED;
+          keys_locked->push_back(doc_op_locks[i]);
+        }
       }
+      lock_type_map[doc_op_locks[doc_op_locks.size() - 1]] = LockType::EXCLUSIVE;
     }
-    lock_type_map[doc_op_locks[doc_op_locks.size() - 1]] = LockType::EXCLUSIVE;
     if (doc_op->RequireReadSnapshot()) {
       *need_read_snapshot = true;
     }

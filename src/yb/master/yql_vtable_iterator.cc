@@ -23,11 +23,12 @@ CHECKED_STATUS YQLVTableIterator::NextBlock(RowBlock *dst) {
   return STATUS(NotSupported, "YQLVTableIterator::NextBlock(RowBlock*) not supported!");
 }
 
-CHECKED_STATUS YQLVTableIterator::NextRow(YQLValueMap* value_map) {
+CHECKED_STATUS YQLVTableIterator::NextRow(const Schema& projection, YQLValueMap* value_map) {
   if (vtable_index_ >= vtable_->row_count()) {
     return STATUS(NotFound, "No more rows left!");
   }
 
+  // TODO: return columns in projection only.
   YQLRow& row = vtable_->row(vtable_index_);
   for (int i = 0; i < row.schema().num_columns(); i++) {
     (*value_map)[row.schema().column_id(i)] =
@@ -35,6 +36,12 @@ CHECKED_STATUS YQLVTableIterator::NextRow(YQLValueMap* value_map) {
   }
   vtable_index_++;
   return Status::OK();
+}
+
+void YQLVTableIterator::SkipRow() {
+  if (vtable_index_ < vtable_->row_count()) {
+    vtable_index_++;
+  }
 }
 
 CHECKED_STATUS YQLVTableIterator::SetPagingStateIfNecessary(const YQLReadRequestPB& request,

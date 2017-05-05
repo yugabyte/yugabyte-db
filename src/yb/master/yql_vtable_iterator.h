@@ -20,7 +20,12 @@ class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
 
   CHECKED_STATUS NextBlock(RowBlock *dst) override;
 
-  CHECKED_STATUS NextRow(YQLValueMap* value_map) override;
+  CHECKED_STATUS NextRow(const Schema& projection, YQLValueMap* value_map) override;
+
+  // Virtual table does not contain any static column.
+  bool IsNextStaticColumn() const override { return false; }
+
+  void SkipRow() override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const YQLReadRequestPB& request,
                                            const YQLRowBlock& rowblock,

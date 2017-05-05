@@ -70,6 +70,7 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
                              schema.ColumnId(idx),
                              idx < num_hash_key_columns_,
                              idx < num_key_columns_,
+                             col.is_static(),
                              col.type(),
                              YBColumnSchema::ToInternalDataType(col.type()));
 
@@ -104,18 +105,41 @@ CHECKED_STATUS PTDmlStmt::AnalyzeWhereClause(SemContext *sem_context,
   // Analyze where expression.
 
   if (write_only_) {
-    // Make sure that all hash entries are referenced in where expression.
+    // Make sure that all hash key entries are referenced in where expression.
     key_where_ops_.resize(num_key_columns_);
     RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats));
-    for (int idx = 0; idx < num_key_columns_; idx++) {
+    for (int idx = 0; idx < num_hash_key_columns_; idx++) {
       if (!col_stats[idx].has_eq_) {
         return sem_context->Error(where_clause->loc(),
                                   "Missing condition on key columns in WHERE clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
     }
+    // If writing static columns only, check that either all range key entries are referenced in the
+    // where expression or none is referenced. Else, check that all range key are referenced.
+    int range_keys = 0;
+    for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+      if (col_stats[idx].has_eq_) {
+        range_keys++;
+      }
+    }
+    if (StaticColumnArgsOnly()) {
+      if (range_keys != num_key_columns_ - num_hash_key_columns_ && range_keys != 0)
+        return sem_context->Error(where_clause->loc(),
+                                  "Missing condition on key columns in WHERE clause",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
+      if (range_keys == 0) {
+        key_where_ops_.resize(num_hash_key_columns_);
+      }
+    } else {
+      if (range_keys != num_key_columns_ - num_hash_key_columns_)
+        return sem_context->Error(where_clause->loc(),
+                                  "Missing condition on key columns in WHERE clause",
+                                  ErrorCode::CQL_STATEMENT_INVALID);
+    }
   } else {
-    // Add the hash to the where clause if the list is incomplete.
+    // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
+    // whole-table scan.
     bool has_incomplete_hash = false;
     key_where_ops_.resize(num_hash_key_columns_);
     RETURN_NOT_OK(AnalyzeWhereExpr(sem_context, where_clause.get(), &col_stats));
@@ -291,6 +315,36 @@ CHECKED_STATUS PTDmlStmt::AnalyzeUsingClause(SemContext *sem_context) {
   }
   return Status::OK();
 }
+
+// Are we writing to static columns only, i.e. no range columns or non-static columns.
+bool PTDmlStmt::StaticColumnArgsOnly() const {
+  if (column_args_->empty()) {
+    return false;
+  }
+  bool write_range_columns = false;
+  for (int idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+    if (column_args_->at(idx).IsInitialized()) {
+      write_range_columns = true;
+      break;
+    }
+  }
+  bool write_static_columns = false;
+  bool write_non_static_columns = false;
+  for (int idx = num_key_columns_; idx < column_args_->size(); idx++) {
+    if (column_args_->at(idx).IsInitialized()) {
+      if (column_args_->at(idx).desc()->is_static()) {
+        write_static_columns = true;
+      } else {
+        write_non_static_columns = true;
+      }
+      if (write_static_columns && write_non_static_columns) {
+        break;
+      }
+    }
+  }
+  return write_static_columns && !write_range_columns && !write_non_static_columns;
+}
+
 
 void PTDmlStmt::Reset() {
   for (auto itr = bind_variables_.cbegin(); itr != bind_variables_.cend(); itr++) {

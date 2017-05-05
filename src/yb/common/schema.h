@@ -161,6 +161,7 @@ class ColumnSchema {
                YQLType type,
                bool is_nullable = false,
                bool is_hash_key = false,
+               bool is_static = false,
                SortingType sorting_type = SortingType::kNotSpecified,
                const void* read_default = NULL,
                const void* write_default = NULL,
@@ -169,6 +170,7 @@ class ColumnSchema {
         type_(type),
         is_nullable_(is_nullable),
         is_hash_key_(is_hash_key),
+        is_static_(is_static),
         sorting_type_(sorting_type),
         read_default_(read_default ? new Variant(type.main(), read_default) : NULL),
         attributes_(std::move(attributes)) {
@@ -185,11 +187,12 @@ class ColumnSchema {
                DataType type,
                bool is_nullable = false,
                bool is_hash_key = false,
+               bool is_static = false,
                SortingType sorting_type = SortingType::kNotSpecified,
                const void* read_default = NULL,
                const void* write_default = NULL,
                ColumnStorageAttributes attributes = ColumnStorageAttributes())
-      : ColumnSchema(name, YQLType(type), is_nullable, is_hash_key, sorting_type,
+      : ColumnSchema(name, YQLType(type), is_nullable, is_hash_key, is_static, sorting_type,
                      read_default, write_default, attributes) { }
 
   const YQLType type() const {
@@ -206,6 +209,10 @@ class ColumnSchema {
 
   bool is_hash_key() const {
     return is_hash_key_;
+  }
+
+  bool is_static() const {
+    return is_static_;
   }
 
   SortingType sorting_type() const {
@@ -362,6 +369,7 @@ class ColumnSchema {
   YQLType type_;
   bool is_nullable_;
   bool is_hash_key_;
+  bool is_static_;
   SortingType sorting_type_;
   // use shared_ptr since the ColumnSchema is always copied around.
   std::shared_ptr<Variant> read_default_;
@@ -611,6 +619,11 @@ class Schema {
   // Returns true if the schema contains nullable columns
   bool has_nullables() const {
     return has_nullables_;
+  }
+
+  // Returns true if the schema contains static columns
+  bool has_statics() const {
+    return has_statics_;
   }
 
   // Returns true if the specified column (by index) is a key
@@ -988,6 +1001,9 @@ class Schema {
   // Cached indicator whether any columns are nullable.
   bool has_nullables_;
 
+  // Cached indicator whether any columns are static.
+  bool has_statics_;
+
   TableProperties table_properties_;
 
   // NOTE: if you add more members, make sure to add the appropriate
@@ -1043,8 +1059,8 @@ class SchemaBuilder {
   CHECKED_STATUS AddColumn(const ColumnSchema& column, bool is_key);
 
   CHECKED_STATUS AddColumn(const string& name, YQLType type) {
-    return AddColumn(name, type, false, false, ColumnSchema::SortingType::kNotSpecified, NULL,
-                     NULL);
+    return AddColumn(name, type, false, false, false, ColumnSchema::SortingType::kNotSpecified,
+                     NULL, NULL);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1053,7 +1069,8 @@ class SchemaBuilder {
   }
 
   CHECKED_STATUS AddNullableColumn(const string& name, YQLType type) {
-    return AddColumn(name, type, true, false, ColumnSchema::SortingType::kNotSpecified, NULL, NULL);
+    return AddColumn(name, type, true, false, false, ColumnSchema::SortingType::kNotSpecified, NULL,
+                     NULL);
   }
 
   // convenience function for adding columns with simple (non-parametric) data types
@@ -1065,6 +1082,7 @@ class SchemaBuilder {
                            YQLType type,
                            bool is_nullable,
                            bool is_hash_key,
+                           bool is_static,
                            yb::ColumnSchema::SortingType sorting_type,
                            const void *read_default,
                            const void *write_default);
@@ -1074,11 +1092,12 @@ class SchemaBuilder {
                            DataType type,
                            bool is_nullable,
                            bool is_hash_key,
+                           bool is_static,
                            yb::ColumnSchema::SortingType sorting_type,
                            const void *read_default,
                            const void *write_default) {
-    return AddColumn(name, YQLType(type), is_nullable, is_hash_key, sorting_type, read_default,
-        write_default);
+    return AddColumn(name, YQLType(type), is_nullable, is_hash_key, is_static, sorting_type,
+                     read_default, write_default);
   }
 
   CHECKED_STATUS RemoveColumn(const string& name);

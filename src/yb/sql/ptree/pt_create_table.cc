@@ -54,8 +54,18 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
 
     // Remove a column from regular column list if it's already in hash or primary list.
     if (coldef->is_hash_key()) {
+      if (coldef->is_static()) {
+        return sem_context->Error(coldef->loc(),
+                                  "Hash column cannot be static",
+                                  ErrorCode::INVALID_TABLE_DEFINITION);
+      }
       iter = columns_.erase(iter);
     } else if (coldef->is_primary_key()) {
+      if (coldef->is_static()) {
+        return sem_context->Error(coldef->loc(),
+                                  "Primary key column cannot be static",
+                                  ErrorCode::INVALID_TABLE_DEFINITION);
+      }
       iter = columns_.erase(iter);
     } else {
       iter++;
@@ -71,6 +81,19 @@ CHECKED_STATUS PTCreateTable::Analyze(SemContext *sem_context) {
     } else {
       // ERROR: Primary key is not defined.
       return sem_context->Error(elements_->loc(), ErrorCode::MISSING_PRIMARY_KEY);
+    }
+  }
+
+  // After primary key columns are fully analyzed, return error if the table contains no range
+  // (primary) column but a static column. With no range column, every non-key column is static
+  // by nature and Cassandra raises error in such a case.
+  if (primary_columns_.empty()) {
+    for (const auto& column : columns_) {
+      if (column->is_static()) {
+        return sem_context->Error(column->loc(),
+                                  "Static column not allowed in a table without a range column",
+                                  ErrorCode::INVALID_TABLE_DEFINITION);
+      }
     }
   }
 
@@ -201,13 +224,14 @@ PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
                                        YBLocation::SharedPtr loc,
                                        const MCString::SharedPtr& name,
                                        const PTBaseType::SharedPtr& datatype,
-                                       const PTListNode::SharedPtr& constraints)
+                                       const PTListNode::SharedPtr& qualifiers)
     : TreeNode(memctx, loc),
       name_(name),
       datatype_(datatype),
-      constraints_(constraints),
+      qualifiers_(qualifiers),
       is_primary_key_(false),
       is_hash_key_(false),
+      is_static_(false),
       order_(-1),
       sorting_type_(ColumnSchema::SortingType::kNotSpecified) {
 }
@@ -220,10 +244,10 @@ CHECKED_STATUS PTColumnDefinition::Analyze(SemContext *sem_context) {
   SymbolEntry cached_entry = *sem_context->current_processing_id();
   sem_context->set_current_column(this);
 
-  // Analyze column constraint.
+  // Analyze column qualifiers.
   RETURN_NOT_OK(sem_context->MapSymbol(*name_, this));
-  if (constraints_ != nullptr) {
-    RETURN_NOT_OK(constraints_->Analyze(sem_context));
+  if (qualifiers_ != nullptr) {
+    RETURN_NOT_OK(qualifiers_->Analyze(sem_context));
   }
 
   // Add the analyzed column to table.
@@ -259,13 +283,21 @@ CHECKED_STATUS PTPrimaryKey::Analyze(SemContext *sem_context) {
     PTColumnDefinition *column = sem_context->current_column();
     column->set_is_hash_key();
     RETURN_NOT_OK(table->AppendHashColumn(sem_context, column));
-
   } else {
     // Decorate all name node of this key as this is a table constraint.
     TreeNodeOperator<SemContext, PTName> func = &PTName::SetupPrimaryKey;
     TreeNodeOperator<SemContext, PTName> nested_func = &PTName::SetupHashAndPrimaryKey;
     RETURN_NOT_OK((columns_->Apply<SemContext, PTName>(sem_context, func, 1, 1, nested_func)));
   }
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS PTStatic::Analyze(SemContext *sem_context) {
+  // Decorate the current column as static.
+  PTColumnDefinition *column = sem_context->current_column();
+  column->set_is_static();
   return Status::OK();
 }
 

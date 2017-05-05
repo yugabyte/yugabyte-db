@@ -555,7 +555,7 @@ DECLARE_bool(yql_experiment_support_expression);
                           SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE
                           SEQUENCES SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF
                           SHARE SHOW SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE
-                          STANDALONE_P START STATEMENT STATISTICS STDIN STDOUT STORAGE
+                          STANDALONE_P START STATEMENT STATIC STATISTICS STDIN STDOUT STORAGE
                           STRICT_P STRIP_P SUBSTRING SYMMETRIC SYSID SYSTEM_P
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
@@ -1017,6 +1017,9 @@ ColConstraint:
 ColConstraintElem:
   PRIMARY KEY opt_definition OptConsTableSpace {
     $$ = MAKE_NODE(@1, PTPrimaryKey);
+  }
+  | STATIC {
+    $$ = MAKE_NODE(@1, PTStatic);
   }
   | NOT NULL_P {
     PARSER_UNSUPPORTED(@1);
@@ -1736,11 +1739,11 @@ select_clause:
 simple_select:
   SELECT opt_all_clause opt_target_list into_clause from_clause opt_where_clause
   group_clause having_clause opt_window_clause {
-    $$ = MAKE_NODE(@1, PTSelectStmt, $3, $5, $6, $7, $8, nullptr, nullptr);
+    $$ = MAKE_NODE(@1, PTSelectStmt, false, $3, $5, $6, $7, $8, nullptr, nullptr);
   }
   | SELECT distinct_clause target_list into_clause from_clause opt_where_clause
   group_clause having_clause opt_window_clause {
-    PARSER_UNSUPPORTED(@2);
+    $$ = MAKE_NODE(@1, PTSelectStmt, true, $3, $5, $6, $7, $8, nullptr, nullptr);
   }
   | TABLE relation_expr {
     PARSER_UNSUPPORTED(@1);
@@ -1825,6 +1828,7 @@ distinct_clause:
   DISTINCT {
   }
   | DISTINCT ON '(' expr_list ')' {
+    PARSER_UNSUPPORTED(@2);
   }
 ;
 
@@ -4649,6 +4653,7 @@ unreserved_keyword:
   | STANDALONE_P { $$ = $1; }
   | START { $$ = $1; }
   | STATEMENT { $$ = $1; }
+  | STATIC { $$ = $1; }
   | STATISTICS { $$ = $1; }
   | STDIN { $$ = $1; }
   | STDOUT { $$ = $1; }

@@ -301,6 +301,13 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
     dst->Resize(0);
     return STATUS(NotFound, "end of iter");
   }
+
+  // Ensure row is ready to be read. HasNext() must be called before reading the first row, or
+  // again after the previous row has been read or skipped.
+  if (!row_ready_) {
+    return STATUS(InternalError, "next row has not be prepared for reading");
+  }
+
   if (PREDICT_FALSE(dst->row_capacity() == 0)) {
     return Status::OK();
   }
@@ -345,7 +352,15 @@ Status DocRowwiseIterator::NextBlock(RowBlock* dst) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::NextRow(YQLValueMap* value_map) {
+void DocRowwiseIterator::SkipRow() {
+  row_ready_ = false;
+}
+
+bool DocRowwiseIterator::IsNextStaticColumn() const {
+  return schema_.has_statics() && row_key_.range_group().empty();
+}
+
+Status DocRowwiseIterator::NextRow(const Schema& projection, YQLValueMap* value_map) {
   if (!status_.ok()) {
     // An error happened in HasNext.
     return status_;
@@ -355,20 +370,31 @@ Status DocRowwiseIterator::NextRow(YQLValueMap* value_map) {
     return STATUS(NotFound, "end of iter");
   }
 
+  // Ensure row is ready to be read. HasNext() must be called before reading the first row, or
+  // again after the previous row has been read or skipped.
+  if (!row_ready_) {
+    return STATUS(InternalError, "next row has not be prepared for reading");
+  }
+
   // Populate the key column values from the doc key. The key column values in doc key were
-  // written in the same order as in the table schema (see DocKeyFromYQLKey).
+  // written in the same order as in the table schema (see DocKeyFromYQLKey). If the range columns
+  // are present, read them also.
   RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
       schema_, 0, schema_.num_hash_key_columns(),
       "hash", row_key_.hashed_group(), value_map));
-  RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
-      schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
-      "range", row_key_.range_group(), value_map));
+  if (!row_key_.range_group().empty()) {
+    RETURN_NOT_OK(SetYQLPrimaryKeyColumnValues(
+        schema_, schema_.num_hash_key_columns(), schema_.num_range_key_columns(),
+        "range", row_key_.range_group(), value_map));
+  }
 
-  for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
-    const auto& column_id = projection_.column_id(i);
-    const auto yql_type = projection_.column(i).type();
-    SubDocument::ToYQLValuePB(*row_.GetChild(PrimitiveValue(column_id)), yql_type,
-        &(*value_map)[column_id]);
+  for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
+    const auto& column_id = projection.column_id(i);
+    const auto yql_type = projection.column(i).type();
+    const SubDocument* column_value = row_.GetChild(PrimitiveValue(column_id));
+    if (column_value != nullptr) {
+      SubDocument::ToYQLValuePB(*column_value, yql_type, &(*value_map)[column_id]);
+    }
   }
   row_ready_ = false;
   return Status::OK();

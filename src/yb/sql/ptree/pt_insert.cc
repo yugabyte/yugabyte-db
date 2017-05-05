@@ -147,14 +147,33 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
     }
   }
 
-  // Now check that each column in primary key is associated with an argument.
+  // Now check that each column in the hash key is associated with an argument.
   // NOTE: we assumed that primary_indexes and arguments are sorted by column_index.
-  int num_keys = num_key_columns();
-  for (idx = 0; idx < num_keys; idx++) {
+  for (idx = 0; idx < num_hash_key_columns_; idx++) {
     if (!column_args_->at(idx).IsInitialized()) {
       return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
     }
-    if (column_args_->at(idx).expr()->is_null()) {
+  }
+  // If inserting static columns only, check that either each column in the range key is associated
+  // with an argument or no range key has an argument. Else, check that all range columns
+  // have arguments.
+  int range_keys = 0;
+  for (idx = num_hash_key_columns_; idx < num_key_columns_; idx++) {
+    if (column_args_->at(idx).IsInitialized()) {
+      range_keys++;
+    }
+  }
+  if (StaticColumnArgsOnly()) {
+    if (range_keys != num_key_columns_ - num_hash_key_columns_ && range_keys != 0)
+      return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
+  } else {
+    if (range_keys != num_key_columns_ - num_hash_key_columns_)
+      return sem_context->Error(value_clause_->loc(), ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
+  }
+
+  // Primary key cannot be null.
+  for (idx = 0; idx < num_key_columns_; idx++) {
+    if (column_args_->at(idx).IsInitialized() && column_args_->at(idx).expr()->is_null()) {
       return sem_context->Error(value_clause_->loc(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }

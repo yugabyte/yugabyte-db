@@ -21,6 +21,7 @@ class YQLRocksDBStorage : public common::YQLStorageIf {
   CHECKED_STATUS BuildYQLScanSpec(const YQLReadRequestPB& request,
                                   const HybridTime& hybrid_time,
                                   const Schema& schema,
+                                  bool include_static_columns,
                                   std::unique_ptr<common::YQLScanSpec>* spec,
                                   HybridTime* req_hybrid_time) const override;
  private:

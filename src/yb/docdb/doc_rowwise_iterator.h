@@ -58,13 +58,19 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Init YQL read scan.
   CHECKED_STATUS Init(const common::YQLScanSpec& spec) override;
 
-  // Read next row into a value map.
-  CHECKED_STATUS NextRow(YQLValueMap* value_map) override;
+  // Is the next row to read a row with a static column?
+  bool IsNextStaticColumn() const override;
+
+  // Read next row into a value map using the specified projection.
+  CHECKED_STATUS NextRow(const Schema& projection, YQLValueMap* value_map) override;
 
   CHECKED_STATUS SetPagingStateIfNecessary(const YQLReadRequestPB& request,
                                            const YQLRowBlock& rowblock,
                                            const size_t row_count_limit,
                                            YQLResponsePB* response) const override;
+
+  // Skip the current row.
+  void SkipRow() override;
 
  private:
 

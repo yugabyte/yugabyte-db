@@ -343,7 +343,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   ASSERT_OK(yql_iter.Init(yql_scan_spec));
   ASSERT_TRUE(yql_iter.HasNext());
   YQLValueMap value_map;
-  ASSERT_OK(yql_iter.NextRow(&value_map));
+  ASSERT_OK(yql_iter.NextRow(schema, &value_map));
   ASSERT_EQ(4, value_map.size());
   EXPECT_EQ(100, value_map.at(ColumnId(0)).int32_value());
   EXPECT_TRUE(YQLValue::IsNull(value_map.at(ColumnId(1))));
@@ -388,7 +388,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT(p=0, l=3000)]) -> DEL
   ASSERT_OK(yql_iter_system.Init(yql_scan_spec_system));
   ASSERT_TRUE(yql_iter_system.HasNext());
   YQLValueMap value_map_system;
-  ASSERT_OK(yql_iter_system.NextRow(&value_map_system));
+  ASSERT_OK(yql_iter_system.NextRow(schema, &value_map_system));
   ASSERT_EQ(4, value_map_system.size());
   EXPECT_EQ(101, value_map_system.at(ColumnId(0)).int32_value());
   EXPECT_TRUE(YQLValue::IsNull(value_map_system.at(ColumnId(1))));

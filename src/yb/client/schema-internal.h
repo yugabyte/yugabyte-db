@@ -39,6 +39,7 @@ class YBColumnSpec::Data {
         has_nullable(false),
         primary_key(false),
         hash_primary_key(false),
+        static_column(false),
         has_default(false),
         default_val(NULL),
         remove_default(false),
@@ -73,6 +74,8 @@ class YBColumnSpec::Data {
 
   bool primary_key;
   bool hash_primary_key;
+
+  bool static_column;
 
   bool has_default;
   YBValue* default_val; // Owned.

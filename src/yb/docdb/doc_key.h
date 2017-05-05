@@ -57,12 +57,15 @@ class DocKey {
   // @param range_components Components of the key that we want to be able to do range scans on.
   DocKey(DocKeyHash hash,
          const std::vector<PrimitiveValue>& hashed_components,
-         const std::vector<PrimitiveValue>& range_components);
+         const std::vector<PrimitiveValue>& range_components = std::vector<PrimitiveValue>());
 
   KeyBytes Encode() const;
 
   // Resets the state to an empty document key.
   void Clear();
+
+  // Clear the range components of the document key only.
+  void ClearRangeComponents();
 
   DocKeyHash hash() const {
     return hash_;
@@ -356,7 +359,7 @@ class SubDocKey {
   //  6. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["x", "x", "y", "x", HT(1)]) -> true |
   //  7. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", HT(3)]) -> {}                  |
   //  8. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", HT(3)]) -> {}             |
-  //  9. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", "x", HT(3)]) ->           |
+  //  9. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d"]), ["y", "y", "x", HT(3)]) -> {}        |
   // ...                                                                                        |
   // 20. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["y", HT(3)]) -> {}             |
   // 21. SubDocKey(DocKey(0x1234, ["a", "b"], ["c", "d", "e"]), ["z", HT(3)]) -> {}             |
@@ -374,7 +377,7 @@ class SubDocKey {
   // SubDocKey(DocKey(0x1234, ["a", "b"], [])).AdvanceOutOfDocKeyPrefix() will seek to #30
   // (*** 2 ***).
 
-  KeyBytes AdvanceOutOfDocKeyPrefix();
+  KeyBytes AdvanceOutOfDocKeyPrefix() const;
 
  private:
   DocKey doc_key_;

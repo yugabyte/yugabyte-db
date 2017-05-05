@@ -14,12 +14,18 @@ namespace docdb {
 class DocYQLScanSpec : public common::YQLScanSpec {
  public:
 
+  // Scan for the specified doc_key. If the doc_key specify a full primary key, the scan spec will
+  // not include any static column for the primary key. If the static columns are needed, a separate
+  // scan spec can be used to read just those static columns.
   DocYQLScanSpec(const Schema& schema, const DocKey& doc_key);
 
+  // Scan for the given hash key and a condition. If a start_doc_key is specified, the scan spec
+  // will not include any static column for the start key. If the static columns are needed, a
+  // separate scan spec can be used to read just those static columns.
   DocYQLScanSpec(
       const Schema& schema, uint32_t hash_code,
       const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
-      const DocKey& start_doc_key = DocKey());
+      bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
 
   // Return the inclusive lower and upper bounds of the scan.
   CHECKED_STATUS lower_bound(DocKey* key) const {
@@ -53,8 +59,12 @@ class DocYQLScanSpec : public common::YQLScanSpec {
   // Starting doc key when requested by the client.
   const DocKey start_doc_key_;
 
+  // Lower/upper doc keys basing on the range.
   const DocKey lower_doc_key_;
   const DocKey upper_doc_key_;
+
+  // Does the scan include static columns also?
+  const bool include_static_columns_;
 };
 
 }  // namespace docdb

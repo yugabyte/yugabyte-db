@@ -14,14 +14,15 @@ DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const DocKey& doc_key)
       doc_key_(&doc_key),
       start_doc_key_(DocKey()),
       lower_doc_key_(DocKey()),
-      upper_doc_key_(DocKey()) {
+      upper_doc_key_(DocKey()),
+      include_static_columns_(false) {
   }
 
 
 DocYQLScanSpec::DocYQLScanSpec(
     const Schema& schema, const uint32_t hash_code,
     const std::vector<PrimitiveValue>& hashed_components, const YQLConditionPB* condition,
-    const DocKey& start_doc_key)
+    const bool include_static_columns, const DocKey& start_doc_key)
     : YQLScanSpec(condition),
       range_(condition != nullptr ? new common::YQLScanRange(schema, *condition) : nullptr),
       schema_(schema),
@@ -30,7 +31,8 @@ DocYQLScanSpec::DocYQLScanSpec(
       doc_key_(nullptr),
       start_doc_key_(start_doc_key),
       lower_doc_key_(bound_key(true)),
-      upper_doc_key_(bound_key(false)) {
+      upper_doc_key_(bound_key(false)),
+      include_static_columns_(include_static_columns) {
   // Initialize the upper and lower doc keys.
   CHECK(hashed_components_ != nullptr) << "hashed primary key columns missing";
 }
@@ -62,6 +64,7 @@ Status DocYQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
     *key = *doc_key_;
     return Status::OK();
   }
+
   // If start doc_key is set, that is the lower bound for the scan range.
   if (lower_bound && !start_doc_key_.empty()) {
     if (range_.get() != nullptr) {
@@ -79,7 +82,18 @@ Status DocYQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
     return Status::OK();
   }
 
-  *key = lower_bound ? lower_doc_key_ : upper_doc_key_;
+  if (lower_bound) {
+    *key = lower_doc_key_;
+
+    // For lower-bound key, if static columns should be incldued in the scan, the lower-bound key
+    // should be the hash key with no range components in order to include the static columns.
+    if (include_static_columns_) {
+      key->ClearRangeComponents();
+    }
+
+  } else {
+    *key = upper_doc_key_;
+  }
   return Status::OK();
 }
 

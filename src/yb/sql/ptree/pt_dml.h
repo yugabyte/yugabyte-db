@@ -163,6 +163,9 @@ class PTDmlStmt : public PTCollection {
   // Semantic-analyzing the USING TTL clause.
   CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
 
+  // Does column_args_ contain static columns only (i.e. writing static column only)?
+  bool StaticColumnArgsOnly() const;
+
   // The sematic analyzer will decorate this node with the following information.
   std::shared_ptr<client::YBTable> table_;
 

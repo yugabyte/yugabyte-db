@@ -23,8 +23,14 @@ class YQLRowwiseIteratorIf : public RowwiseIterator {
   // interface supports returning multiple rows at a time.
   virtual CHECKED_STATUS NextBlock(RowBlock *dst) override = 0;
 
-  // Read next row into a value map.
-  virtual CHECKED_STATUS NextRow(YQLValueMap* value_map) = 0;
+  // Is the next row column to read a static column?
+  virtual bool IsNextStaticColumn() const = 0;
+
+  // Read next row into a value map using the specified projection.
+  virtual CHECKED_STATUS NextRow(const Schema& projection, YQLValueMap* value_map) = 0;
+
+  // Skip the current row.
+  virtual void SkipRow() = 0;
 
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.

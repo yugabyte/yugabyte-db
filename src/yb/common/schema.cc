@@ -111,6 +111,7 @@ void Schema::CopyFrom(const Schema& other) {
   }
 
   has_nullables_ = other.has_nullables_;
+  has_statics_ = other.has_statics_;
   table_properties_ = other.table_properties_;
 }
 
@@ -123,6 +124,7 @@ void Schema::swap(Schema& other) {
   name_to_index_.swap(other.name_to_index_);
   id_to_index_.swap(other.id_to_index_);
   std::swap(has_nullables_, other.has_nullables_);
+  std::swap(has_statics_, other.has_statics_);
   std::swap(table_properties_, other.table_properties_);
 }
 
@@ -135,18 +137,18 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
   num_hash_key_columns_ = 0;
   table_properties_ = table_properties;
 
-  // Determine whether any column is nullable and count number of hash columns.
+  // Determine whether any column is nullable or static, and count number of hash columns.
   has_nullables_ = false;
+  has_statics_ = false;
   for (const ColumnSchema& col : cols_) {
     if (col.is_hash_key()) {
       num_hash_key_columns_++;
     }
     if (col.is_nullable()) {
       has_nullables_ = true;
-
-      // Stop the counting. Because all hash columns are listed first, all hash keys have already
-      // been counted when we reach a nullable column.
-      break;
+    }
+    if (col.is_static()) {
+      has_statics_ = true;
     }
   }
 
@@ -165,12 +167,17 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
       "The number of ids does not match with the number of columns");
   }
 
-  // Verify that the key columns are not nullable
+  // Verify that the key columns are not nullable nor static
   for (int i = 0; i < key_columns; ++i) {
     if (PREDICT_FALSE(cols_[i].is_nullable())) {
       return STATUS(InvalidArgument,
         "Bad schema", strings::Substitute("Nullable key columns are not "
                                           "supported: $0", cols_[i].name()));
+    }
+    if (PREDICT_FALSE(cols_[i].is_static())) {
+      return STATUS(InvalidArgument,
+        "Bad schema", strings::Substitute("Static key columns are not "
+                                          "allowed: $0", cols_[i].name()));
     }
   }
 
@@ -443,11 +450,12 @@ Status SchemaBuilder::AddColumn(const string& name,
                                 YQLType type,
                                 bool is_nullable,
                                 bool is_hash_key,
+                                bool is_static,
                                 ColumnSchema::SortingType sorting_type,
                                 const void *read_default,
                                 const void *write_default) {
-  return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key, sorting_type, read_default,
-                                write_default), false);
+  return AddColumn(ColumnSchema(name, type, is_nullable, is_hash_key, is_static, sorting_type,
+                                read_default, write_default), false);
 }
 
 Status SchemaBuilder::RemoveColumn(const string& name) {

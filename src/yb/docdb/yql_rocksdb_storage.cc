@@ -24,6 +24,7 @@ CHECKED_STATUS YQLRocksDBStorage::GetIterator(const Schema& projection, const Sc
 CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& request,
                                                    const HybridTime& hybrid_time,
                                                    const Schema& schema,
+                                                   const bool include_static_columns,
                                                    std::unique_ptr<common::YQLScanSpec>* spec,
                                                    HybridTime* req_hybrid_time)
                                                    const {
@@ -49,7 +50,7 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
   spec->reset(new DocYQLScanSpec(
       schema, hash_code, hashed_components,
       request.has_where_condition() ? &request.where_condition() : nullptr,
-      start_sub_doc_key.doc_key()));
+      include_static_columns, start_sub_doc_key.doc_key()));
   return Status::OK();
 }
 
