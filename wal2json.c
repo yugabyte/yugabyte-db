@@ -215,7 +215,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("unknown parameter %s = %s",
+					 errmsg("option \"%s\" = \"%s\" is unknown",
 						elem->defname,
 						elem->arg ? strVal(elem->arg) : "(null)")));
 	}

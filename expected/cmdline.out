@@ -8,7 +8,7 @@ SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2js
 (1 row)
 
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'nosuchopt', '42');
-ERROR:  unknown parameter nosuchopt = 42
+ERROR:  option "nosuchopt" = "42" is unknown
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 
 ----------
