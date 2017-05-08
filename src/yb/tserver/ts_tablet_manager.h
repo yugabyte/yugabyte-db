@@ -83,14 +83,15 @@ class TransitionInProgressDeleter;
     } \
   } while (0)
 
-#define SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(expr, tablet_peer, meta, uuid, msg) \
+#define SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(expr, tablet_peer, meta, uuid, msg, \
+                                                  ts_manager_ptr) \
   do { \
     Status _s = (expr); \
     if (PREDICT_FALSE(!_s.ok())) { \
       if (tablet_peer) { \
         tablet_peer->Shutdown(); \
       } \
-      LogAndTombstone((meta), (msg), (uuid), _s, nullptr); \
+      LogAndTombstone((meta), (msg), (uuid), _s, ts_manager_ptr); \
       return _s; \
     } \
   } while (0)
@@ -244,6 +245,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
                             const std::string& wal_root_dir);
 
   bool IsTabletInTransition(const std::string& tablet_id) const;
+
+  TabletServer* server() { return server_; }
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);

@@ -5,6 +5,7 @@ package com.yugabyte.sample.apps;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.log4j.Logger;
 
@@ -39,7 +40,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // Object to track read and write metrics.
   private static MetricsTracker metricsTracker = new MetricsTracker();
   // State variable to track if this workload has finished.
-  protected boolean hasFinished = false;
+  protected AtomicBoolean hasFinished = new AtomicBoolean(false);
   // The Cassandra client variables.
   protected Cluster cassandra_cluster = null;
   protected Session cassandra_session = null;
@@ -205,7 +206,15 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    * Returns true if the workload has finished running, false otherwise.
    */
   public boolean hasFinished() {
-    return hasFinished;
+    return hasFinished.get();
+  }
+
+  /**
+   * Stops the workload running for this app. The purpose of this method is to allow a clean stop
+   * of the workload from external inputs.
+   */
+  public void stopApp() {
+    hasFinished.set(true);
   }
 
   /**
@@ -216,7 +225,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   public void performWrite() {
     // If we have written enough keys we are done.
     if (appConfig.numKeysToWrite > 0 && numKeysWritten >= appConfig.numKeysToWrite - 1) {
-      hasFinished = true;
+      hasFinished.set(true);
       return;
     }
     // Perform the write and track the number of successfully written keys.
@@ -237,7 +246,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   public void performRead() {
     // If we have read enough keys we are done.
     if (appConfig.numKeysToRead > 0 && numKeysRead >= appConfig.numKeysToRead - 1) {
-      hasFinished = true;
+      hasFinished.set(true);
       return;
     }
     // Perform the read and track the number of successfully read keys.
@@ -285,5 +294,9 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
       }
     }
     return loadGenerator;
+  }
+
+  public int numOps() {
+    return numKeysRead + numKeysWritten;
   }
 }

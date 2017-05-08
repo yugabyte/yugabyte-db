@@ -278,6 +278,7 @@ const RaftConfigPB& ReplicaState::GetActiveConfigUnlocked() const {
 }
 
 bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch) {
+  DCHECK(update_lock_.is_locked());
 
   *term_mismatch = false;
 
@@ -301,7 +302,7 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
                << "committed_index=" << committed_index << ", "
                << "last_received_index=" << last_received_index << ". Current state:"
                << ToStringUnlocked();
-    DumpPendingTransactions();
+    DumpPendingTransactionsUnlocked();
     CHECK(false);
   }
 
@@ -376,11 +377,11 @@ const ConsensusOptions& ReplicaState::GetOptions() const {
   return options_;
 }
 
-void ReplicaState::DumpPendingTransactions() {
-  UniqueLock lock(update_lock_);
-
-  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_txns_.size() << " pending transactions.";
-  for (const auto& txn : pending_txns_) {
+void ReplicaState::DumpPendingTransactionsUnlocked() {
+  DCHECK(update_lock_.is_locked());
+  LOG_WITH_PREFIX_UNLOCKED(INFO) << "Dumping " << pending_txns_.size()
+                                 << " pending transactions.";
+  for (const auto &txn : pending_txns_) {
     LOG_WITH_PREFIX_UNLOCKED(INFO) << txn.second->replicate_msg()->ShortDebugString();
   }
 }

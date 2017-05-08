@@ -297,6 +297,17 @@ Status TabletPeer::CheckRunning() const {
   return Status::OK();
 }
 
+Status TabletPeer::CheckShutdownOrNotStarted() const {
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    if (state_ != SHUTDOWN && state_ != NOT_STARTED) {
+      return STATUS(IllegalState, Substitute("The tablet is not in a shutdown state: $0",
+                                             TabletStatePB_Name(state_)));
+    }
+  }
+  return Status::OK();
+}
+
 Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   MonoTime start(MonoTime::Now(MonoTime::FINE));
 

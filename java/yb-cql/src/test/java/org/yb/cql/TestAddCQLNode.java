@@ -1,6 +1,5 @@
 package org.yb.cql;
 
-import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Host;
 import org.junit.Test;
 import org.yb.client.MiniYBCluster;

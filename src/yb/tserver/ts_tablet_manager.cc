@@ -52,6 +52,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/stopwatch.h"
@@ -390,7 +391,7 @@ Status CheckLeaderTermNotLower(
 
 Status HandleReplacingStaleTablet(
     scoped_refptr<TabletMetadata> meta,
-    scoped_refptr<TabletPeer> old_tablet_peer,
+    scoped_refptr<tablet::TabletPeer> old_tablet_peer,
     const string& tablet_id,
     const string& uuid,
     const int64_t& leader_term) {
@@ -402,6 +403,7 @@ Status HandleReplacingStaleTablet(
                  << "Found tablet in TABLET_DATA_COPYING state during StartRemoteBootstrap()";
     }
     case TABLET_DATA_TOMBSTONED: {
+      RETURN_NOT_OK(old_tablet_peer->CheckShutdownOrNotStarted());
       int64_t last_logged_term = meta->tombstone_last_logged_opid().term();
       RETURN_NOT_OK(CheckLeaderTermNotLower(tablet_id,
                                             uuid,
@@ -519,17 +521,20 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   OpenTablet(meta, nullptr);
 
   // If OpenTablet fails, tablet_peer->error() will be set.
-  TOMBSTONE_NOT_OK(tablet_peer->error(),
-                   meta,
-                   fs_manager_->uuid(),
-                   "Remote bootstrap: Failure calling OpenTablet()",
-                   this);
+  SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(tablet_peer->error(),
+                                            tablet_peer,
+                                            meta,
+                                            fs_manager_->uuid(),
+                                            "Remote bootstrap: Failure calling OpenTablet()",
+                                            this);
 
-  TOMBSTONE_NOT_OK(rb_client->VerifyRemoteBootstrapSucceeded(tablet_peer->shared_consensus()),
-                   meta,
-                   fs_manager_->uuid(),
-                   "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded",
-                   this);
+  SHUTDOWN_AND_TOMBSTONE_TABLET_PEER_NOT_OK(
+      rb_client->VerifyRemoteBootstrapSucceeded(tablet_peer->shared_consensus()),
+      tablet_peer,
+      meta,
+      fs_manager_->uuid(),
+      "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded",
+      this);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
 
@@ -1269,6 +1274,15 @@ void LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
     // This failure should only either indicate a bug or an IO error.
     LOG(FATAL) << kLogPrefix << "Failed to tombstone tablet after remote bootstrap: "
                << delete_status.ToString();
+  }
+
+  // Remove the child tracker if present.
+  if (ts_manager != nullptr) {
+    shared_ptr<MemTracker> tracker;
+    if (MemTracker::FindTracker(Substitute("tablet-$0", meta->tablet_id()), &tracker,
+                                ts_manager->server()->mem_tracker())) {
+      tracker->UnregisterFromParent();
+    }
   }
 }
 

@@ -92,6 +92,9 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // Check that the tablet is in a RUNNING state.
   CHECKED_STATUS CheckRunning() const;
 
+  // Check that the tablet is in a SHUTDOWN/NOT_STARTED state.
+  CHECKED_STATUS CheckShutdownOrNotStarted() const;
+
   // Wait until the tablet is in a RUNNING state or if there's a timeout.
   // TODO have a way to wait for any state?
   CHECKED_STATUS WaitUntilConsensusRunning(const MonoDelta& timeout);

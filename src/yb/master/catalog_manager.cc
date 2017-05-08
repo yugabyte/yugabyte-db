@@ -2838,7 +2838,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
                                             sys_catalog_->tablet_peer(),
                                             meta,
                                             master_->fs_manager()->uuid(),
-                                            "Remote bootstrap: Failure opening sys catalog");
+                                            "Remote bootstrap: Failure opening sys catalog",
+                                            nullptr);
 
   // Set up the in-memory master list and also flush the cmeta.
   RETURN_NOT_OK(UpdateMastersListInMemoryAndDisk());
@@ -2859,7 +2860,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
         sys_catalog_->tablet_peer(),
         meta,
         master_->fs_manager()->uuid(),
-        "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded");
+        "Remote bootstrap: Failure calling VerifyRemoteBootstrapSucceeded",
+        nullptr);
   }
 
 
@@ -4865,8 +4867,6 @@ Status CatalogManager::SetBlackList(const BlacklistPB& blacklist) {
     blacklistState.tservers_.insert(hp);
   }
 
-  blacklistState.initial_load_ = blacklist.initial_replica_load();
-
   return Status::OK();
 }
 
@@ -4876,9 +4876,10 @@ Status CatalogManager::SetClusterConfig(
 
   // Save the list of blacklisted servers to be used for completion checking.
   if (config.has_server_blacklist()) {
-    config.mutable_server_blacklist()->set_initial_replica_load(GetNumBlacklistReplicas());
-
     RETURN_NOT_OK(SetBlackList(config.server_blacklist()));
+
+    config.mutable_server_blacklist()->set_initial_replica_load(GetNumBlacklistReplicas());
+    blacklistState.initial_load_ = config.server_blacklist().initial_replica_load();
   }
 
   ClusterConfigMetadataLock l(cluster_config_.get(), ClusterConfigMetadataLock::WRITE);

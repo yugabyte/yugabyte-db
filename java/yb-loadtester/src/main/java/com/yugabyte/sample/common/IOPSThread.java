@@ -30,10 +30,33 @@ public class IOPSThread extends Thread {
   // The app that is being run.
   protected AppBase app;
 
+  private int numExceptions = 0;
+
+  private volatile boolean ioThreadFailed = false;
+
   public IOPSThread(int threadIdx, AppBase app, IOType ioType) {
     this.threadIdx = threadIdx;
     this.app = app;
     this.ioType = ioType;
+  }
+
+  public int getNumExceptions() {
+    return numExceptions;
+  }
+
+  public boolean hasFailed() {
+    return ioThreadFailed;
+  }
+
+  public int numOps() {
+    return app.numOps();
+  }
+
+  /**
+   * Cleanly shuts down the IOPSThread.
+   */
+  public void stopThread() {
+    this.app.stopApp();
   }
 
   /**
@@ -52,18 +75,21 @@ public class IOPSThread extends Thread {
           }
           numConsecutiveExceptions = 0;
         } catch (RuntimeException e) {
+          numExceptions++;
           if (numConsecutiveExceptions++ % 10 == 0) {
             LOG.info("Caught Exception ", e);
           }
           if (numConsecutiveExceptions > 500) {
             LOG.error("Had more than " + numConsecutiveExceptions
                       + " consecutive exceptions. Exiting.", e);
+            ioThreadFailed = true;
             return;
           }
           try {
             Thread.sleep(1000);
           } catch (InterruptedException ie) {
             LOG.error("Sleep interrupted.", ie);
+            ioThreadFailed = true;
             return;
           }
         }

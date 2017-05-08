@@ -45,6 +45,58 @@ public class MiniYBCluster implements AutoCloseable {
     TSERVER
   }
 
+  public static class DaemonInfo {
+    public DaemonInfo(YBDaemon daemon, int web_port, String localhostIP) {
+      this.daemon = daemon;
+      this.web_port = web_port;
+      this.localhostIP = localhostIP;
+    }
+
+    public YBDaemon getDaemon() {
+      return this.daemon;
+    }
+
+    public String getLocalhostIP() {
+      return this.localhostIP;
+    }
+
+    public int getWebPort() {
+      return this.web_port;
+    }
+
+    private final YBDaemon daemon;
+    private final int web_port;
+    private final String localhostIP;
+  }
+
+  public static class TServerInfo extends DaemonInfo {
+
+    public TServerInfo(YBDaemon daemon, int web_port, int redis_web_port, int cql_web_port,
+                       String localhostIP) {
+      super(daemon, web_port, localhostIP);
+      this.redis_web_port = redis_web_port;
+      this.cql_web_port = cql_web_port;
+    }
+
+    public int getCqlWebPort() {
+      return this.cql_web_port;
+    }
+
+    // Certain files are not used currently, but could be of use in the future.
+    private final int redis_web_port;
+    private final int cql_web_port;
+  }
+
+  /**
+   * This class can be extended in the future to have additional master information.
+   */
+  public static class MasterInfo extends DaemonInfo {
+
+    public MasterInfo(YBDaemon daemon, int web_port, String localhostIP) {
+      super(daemon, web_port, localhostIP);
+    }
+  }
+
   private static class YBDaemon {
     public YBDaemon(YBDaemonType type, String[] commandLine, Process process) {
       this.type = type;
@@ -119,10 +171,10 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<Thread> PROCESS_INPUT_PRINTERS = new ArrayList<>();
 
   // Map of ports to master servers.
-  private final Map<Integer, YBDaemon> masterProcesses = new ConcurrentHashMap<>();
+  private final Map<Integer, MasterInfo> masterProcesses = new ConcurrentHashMap<>();
 
   // Map of ports to tablet servers.
-  private final Map<Integer, YBDaemon> tserverProcesses = new ConcurrentHashMap<>();
+  private final Map<Integer, TServerInfo> tserverProcesses = new ConcurrentHashMap<>();
 
   private final List<String> pathsToDelete = new ArrayList<>();
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
@@ -291,7 +343,11 @@ public class MiniYBCluster implements AutoCloseable {
       configureAndStartProcess(YBDaemonType.TSERVER,
         tsCmdLine.toArray(new String[tsCmdLine.size()]),
         "yb-tserver:" + localhost + ":" + rpc_port);
-    tserverProcesses.put(rpc_port, daemon);
+
+    // Save the TServer information.
+    TServerInfo ts = new TServerInfo(daemon, web_port, redis_web_port, cql_web_port, localhost);
+
+    tserverProcesses.put(rpc_port, ts);
     daemon.setRpcPort(rpc_port);
     cqlContactPoints.add(new InetSocketAddress(localhost, CQL_PORT));
     free_port = cql_web_port + 1;
@@ -334,7 +390,7 @@ public class MiniYBCluster implements AutoCloseable {
     final YBDaemon daemon = configureAndStartProcess(
         YBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),
         "yb-master:" + localhost + ":" + rpcPort);
-    masterProcesses.put(rpcPort, daemon);
+    masterProcesses.put(rpcPort, new MasterInfo(daemon, webPort, localhost));
     daemon.setRpcPort(rpcPort);
 
     HostAndPort newHp = HostAndPort.fromParts(localhost, rpcPort);
@@ -416,10 +472,11 @@ public class MiniYBCluster implements AutoCloseable {
           masterCmdLine.add(arg);
         }
       }
+      YBDaemon daemon = configureAndStartProcess(YBDaemonType.MASTER,
+        masterCmdLine.toArray(new String[masterCmdLine.size()]),
+        "yb-master:" + localhost + ":" + masterRpcPorts.get(i));
       masterProcesses.put(masterRpcPorts.get(i),
-          configureAndStartProcess(YBDaemonType.MASTER,
-                                   masterCmdLine.toArray(new String[masterCmdLine.size()]),
-                                   "yb-master:" + localhost + ":" + masterRpcPorts.get(i)));
+        new MasterInfo(daemon, masterWebPorts.get(i), localhost));
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -511,7 +568,7 @@ public class MiniYBCluster implements AutoCloseable {
    * @throws InterruptedException
    */
   public void killTabletServerOnPort(int port) throws Exception {
-    YBDaemon ts = tserverProcesses.remove(port);
+    YBDaemon ts = tserverProcesses.remove(port).getDaemon();
     if (ts == null) {
       // The TS is already dead, good.
       return;
@@ -519,8 +576,12 @@ public class MiniYBCluster implements AutoCloseable {
     destroyDaemonAndWait(ts);
   }
 
-  public Set<Integer> getTabletServerPorts() {
-    return tserverProcesses.keySet();
+  public Map<Integer, TServerInfo> getTabletServers() {
+    return tserverProcesses;
+  }
+
+  public Map<Integer, MasterInfo> getMasters() {
+    return masterProcesses;
   }
 
   /**
@@ -530,7 +591,7 @@ public class MiniYBCluster implements AutoCloseable {
    * @throws InterruptedException
    */
   public void killMasterOnPort(int port) throws Exception {
-    YBDaemon master = masterProcesses.remove(port);
+    YBDaemon master = masterProcesses.remove(port).getDaemon();
     if (master == null) {
       // The master is already dead, good.
       return;
@@ -569,8 +630,17 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public void shutdown() throws Exception {
     List<Process> processes = new ArrayList<>();
-    processes.addAll(destroyDaemons(masterProcesses.values()));
-    processes.addAll(destroyDaemons(tserverProcesses.values()));
+    ArrayList<YBDaemon> masterDaemons = new ArrayList<YBDaemon>();
+    for (MasterInfo master : masterProcesses.values()) {
+      masterDaemons.add(master.getDaemon());
+    }
+    processes.addAll(destroyDaemons(masterDaemons));
+
+    ArrayList<YBDaemon> tserverDaemons = new ArrayList<YBDaemon>();
+    for (TServerInfo ts : tserverProcesses.values()) {
+      tserverDaemons.add(ts.getDaemon());
+    }
+    processes.addAll(destroyDaemons(tserverDaemons));
     for (Process process : processes) {
       process.waitFor();
     }
@@ -629,6 +699,21 @@ public class MiniYBCluster implements AutoCloseable {
    * @return CQL contact points
    */
   public List<InetSocketAddress> getCQLContactPoints() {
+    return cqlContactPoints;
+  }
+
+  /**
+   * Returns a comma separated list of CQL contact points.
+   * @return CQL contact points
+   */
+  public String getCQLContactPointsAsString() {
+    String cqlContactPoints = "";
+    for (InetSocketAddress contactPoint : getCQLContactPoints()) {
+      if (!cqlContactPoints.isEmpty()) {
+        cqlContactPoints += ",";
+      }
+      cqlContactPoints += contactPoint.getHostName() + ":" + contactPoint.getPort();
+    }
     return cqlContactPoints;
   }
 

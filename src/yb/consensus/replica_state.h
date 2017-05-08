@@ -281,7 +281,7 @@ class ReplicaState {
   CHECKED_STATUS CancelPendingTransactions();
 
   // API to dump pending transactions. Added to debug ENG-520.
-  void DumpPendingTransactions();
+  void DumpPendingTransactionsUnlocked();
 
   void NewIdUnlocked(OpId* id);
 

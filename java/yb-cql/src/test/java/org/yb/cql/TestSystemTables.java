@@ -76,7 +76,7 @@ public class TestSystemTables extends TestBase {
     assertEquals(0, rs.all().size());
 
     // Now kill a tablet server and verify peers table has one less entry.
-    miniCluster.killTabletServerOnPort(miniCluster.getTabletServerPorts().iterator().next());
+    miniCluster.killTabletServerOnPort(miniCluster.getTabletServers().keySet().iterator().next());
 
     // Wait for TServer to timeout.
     Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS);

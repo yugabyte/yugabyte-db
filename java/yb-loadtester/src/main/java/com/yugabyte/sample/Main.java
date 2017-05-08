@@ -64,7 +64,53 @@ public class Main {
     this.app = cmdLineOpts.getAppInstance();
   }
 
+  /**
+   * Cleanly shuts down all IOPS threads.
+   */
+  public void stopAllThreads() {
+    for (IOPSThread iopsThread : iopsThreads) {
+      iopsThread.stopThread();
+    }
+  }
+
+  public int getNumExceptions() {
+    int numExceptions = 0;
+    for (IOPSThread iopsThread : iopsThreads) {
+      numExceptions += iopsThread.getNumExceptions();
+    }
+    return numExceptions;
+  }
+
+  public boolean hasThreadFailed() {
+    for (IOPSThread iopsThread : iopsThreads) {
+      if (iopsThread.hasFailed()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public boolean hasFailures() {
+    for (IOPSThread iopsThread : iopsThreads) {
+      if (iopsThread.getNumExceptions() > 0 || iopsThread.hasFailed()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public int numOps() {
+    int count = 0;
+    for (IOPSThread iopsThread : iopsThreads) {
+      count += iopsThread.numOps();
+    }
+    return count;
+  }
+
   public void run() {
+    // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
+    // all columns.
+    System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
     try {
       // If this is a simple app, run it and return.
       if (app.appConfig.appType == AppConfig.Type.Simple) {
@@ -108,9 +154,6 @@ public class Main {
   }
 
   public static void main(String[] args) throws Exception {
-    // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
-    // all columns.
-    System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
     CmdLineOpts configuration = CmdLineOpts.createFromArgs(args);
     Main main = new Main(configuration);
     main.run();
