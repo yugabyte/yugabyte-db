@@ -13,6 +13,8 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
+#include <gflags/gflags.h>
+
 #include <inttypes.h>
 #include <limits>
 #include <queue>
@@ -26,6 +28,10 @@
 #include "util/statistics.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
+
+DEFINE_bool(aggressive_compaction_for_read_amp, false,
+            "Determines if we should compact aggressively to reduce read amplification based on "
+            "number of files alone, without regards to relative sizes of the SSTable files.");
 
 namespace rocksdb {
 
@@ -1346,23 +1352,35 @@ Compaction* UniversalCompactionPicker::PickCompaction(
       LOG_TO_BUFFER(log_buffer, "[%s] Universal: compacting for size ratio\n",
                   cf_name.c_str());
     } else {
-      // Size amplification and file size ratios are within configured limits.
-      // If max read amplification is exceeding configured limits, then force
-      // compaction without looking at filesize ratios and try to reduce
-      // the number of files to fewer than level0_file_num_compaction_trigger.
-      // This is guaranteed by NeedsCompaction()
-      assert(sorted_runs.size() >=
-             static_cast<size_t>(
-                 mutable_cf_options.level0_file_num_compaction_trigger));
-      unsigned int num_files =
-          static_cast<unsigned int>(sorted_runs.size()) -
+      // ENG-1401: We trigger compaction logic when num files exceeds
+      // level0_file_num_compaction_trigger. However, we only want to compact based on
+      // files being of comparable sizes. This is already checked in the block above.
+      // Previously, if we didn't find any such candidates, then we were falling down
+      // into the block below to compact files without regards to their relative sizes,
+      // if the number of files is greater than level0_file_num_compaction_trigger.
+      // This was causing a lot of read/write amplification.
+      //
+      // Ideally, we should just remove this block below. For now, putting this
+      // under a gflag.
+      if (FLAGS_aggressive_compaction_for_read_amp) {
+        // Size amplification and file size ratios are within configured limits.
+        // If max read amplification is exceeding configured limits, then force
+        // compaction without looking at filesize ratios and try to reduce
+        // the number of files to fewer than level0_file_num_compaction_trigger.
+        // This is guaranteed by NeedsCompaction()
+        assert(sorted_runs.size() >=
+               static_cast<size_t>(
+                   mutable_cf_options.level0_file_num_compaction_trigger));
+        unsigned int num_files =
+        static_cast<unsigned int>(sorted_runs.size()) -
           mutable_cf_options.level0_file_num_compaction_trigger;
-      if ((c = PickCompactionUniversalReadAmp(
-               cf_name, mutable_cf_options, vstorage, score, UINT_MAX,
-               num_files, sorted_runs, log_buffer)) != nullptr) {
-        LOG_TO_BUFFER(log_buffer,
-                    "[%s] Universal: compacting for file num -- %u\n",
-                    cf_name.c_str(), num_files);
+        if ((c = PickCompactionUniversalReadAmp(
+                     cf_name, mutable_cf_options, vstorage, score, UINT_MAX,
+                     num_files, sorted_runs, log_buffer)) != nullptr) {
+          LOG_TO_BUFFER(log_buffer,
+                        "[%s] Universal: compacting for file num -- %u\n",
+                        cf_name.c_str(), num_files);
+        }
       }
     }
   }
