@@ -1,0 +1,5 @@
+/regression.diffs
+/regression.out
+/results/
+/wal2json.so
+*.o
