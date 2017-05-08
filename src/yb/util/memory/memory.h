@@ -73,13 +73,7 @@ void OverwriteWithPattern(char* p, size_t len, StringPiece pattern);
 // same allocator that has been used to create it).
 class Buffer {
  public:
-  ~Buffer();
-
-  void* data() const { return data_; }   // The data buffer.
-  size_t size() const { return size_; }  // In bytes.
-
- private:
-  friend class BufferAllocator;
+  Buffer() : data_(nullptr), size_(0), allocator_(nullptr) {}
 
   Buffer(void* data, size_t size, BufferAllocator* allocator)
       : data_(CHECK_NOTNULL(data)),
@@ -92,6 +86,36 @@ class Buffer {
                          "NEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNEW");
 #endif
   }
+
+  Buffer(Buffer&& rhs)
+    : data_(rhs.data_), size_(rhs.size_), allocator_(rhs.allocator_) {
+    rhs.Release();
+  }
+
+  Buffer(const Buffer& rhs) = delete;
+  void operator=(const Buffer& rhs) = delete;
+
+  ~Buffer();
+
+  void* data() const { return data_; }   // The data buffer.
+  uint8_t* udata() const { return static_cast<uint8_t*>(data_); }
+  uint8_t* end() const { return udata() + size_; }
+  size_t size() const { return size_; }  // In bytes.
+
+  void Release() {
+    data_ = nullptr;
+    allocator_ = nullptr;
+  }
+
+  explicit operator bool() const {
+    return data_ != nullptr;
+  }
+
+  bool operator!() const {
+    return data_ == nullptr;
+  }
+ private:
+  friend class BufferAllocator;
 
   // Called by a successful realloc.
   void Update(void* new_data, size_t new_size) {
@@ -107,8 +131,7 @@ class Buffer {
 
   void* data_;
   size_t size_;
-  BufferAllocator* const allocator_;
-  DISALLOW_COPY_AND_ASSIGN(Buffer);
+  BufferAllocator* allocator_;
 };
 
 // Allocators allow applications to control memory usage. They are
@@ -129,62 +152,21 @@ class BufferAllocator {
   // CAVEAT: The allocator must outlive all buffers returned by it.
   //
   // Corner cases:
-  // 1. If requested == 0, the allocator will always return a non-NULL Buffer
+  // 1. If requested == 0, the allocator will always return a valid Buffer
   //    with a non-NULL data pointer and zero capacity.
-  // 2. If minimal == 0, the allocator will always return a non-NULL Buffer
+  // 2. If minimal == 0, the allocator will always return a valid Buffer
   //    with a non-NULL data pointer, possibly with zero capacity.
-  Buffer* BestEffortAllocate(size_t requested, size_t minimal) {
+  Buffer BestEffortAllocate(size_t requested, size_t minimal) {
     DCHECK_LE(minimal, requested);
-    Buffer* result = AllocateInternal(requested, minimal, this);
+    Buffer result = AllocateInternal(requested, minimal, this);
     LogAllocation(requested, minimal, result);
     return result;
   }
 
   // Called by the user when a new block of memory is needed. Equivalent to
   // BestEffortAllocate(requested, requested).
-  Buffer* Allocate(size_t requested) {
+  Buffer Allocate(size_t requested) {
     return BestEffortAllocate(requested, requested);
-  }
-
-  // Called by the user when a previously allocated block needs to be resized.
-  // Mimics semantics of <cstdlib> realloc. The 'requested' and 'minimal'
-  // represent the desired final buffer size, with semantics as in the Allocate.
-  // If the 'buffer' parameter is NULL, the call is equivalent to
-  // Allocate(requested, minimal). Otherwise, a reallocation of the buffer's
-  // data is attempted. On success, the original 'buffer' parameter is returned,
-  // but the buffer itself might have updated size and data. On failure,
-  // returns NULL, and leaves the input buffer unmodified.
-  // Reallocation might happen in-place, preserving the original data
-  // pointer, but it is not guaranteed - e.g. this function might degenerate to
-  // Allocate-Copy-Free. Either way, the content of the data buffer, up to the
-  // minimum of the new and old size, is preserved.
-  //
-  // Corner cases:
-  // 1. If requested == 0, the allocator will always return a non-NULL Buffer
-  //    with a non-NULL data pointer and zero capacity.
-  // 2. If minimal == 0, the allocator will always return a non-NULL Buffer
-  //    with a non-NULL data pointer, possibly with zero capacity.
-  Buffer* BestEffortReallocate(size_t requested,
-                               size_t minimal,
-                               Buffer* buffer) {
-    DCHECK_LE(minimal, requested);
-    Buffer* result;
-    if (buffer == NULL) {
-      result = AllocateInternal(requested, minimal, this);
-      LogAllocation(requested, minimal, result);
-      return result;
-    } else {
-      result =  ReallocateInternal(requested, minimal, buffer, this) ?
-          buffer : NULL;
-      LogAllocation(requested, minimal, buffer);
-      return result;
-    }
-  }
-
-  // Called by the user when a previously allocated block needs to be resized.
-  // Equivalent to BestEffortReallocate(requested, requested, buffer).
-  Buffer* Reallocate(size_t requested, Buffer* buffer) {
-    return BestEffortReallocate(requested, requested, buffer);
   }
 
   // Returns the amount of memory (in bytes) still available for this allocator.
@@ -199,10 +181,8 @@ class BufferAllocator {
   BufferAllocator() {}
 
   // Expose the constructor to subclasses of BufferAllocator.
-  Buffer* CreateBuffer(void* data,
-                       size_t size,
-                       BufferAllocator* allocator) {
-    return new Buffer(data, size, allocator);
+  Buffer CreateBuffer(void* data, size_t size, BufferAllocator* allocator) {
+    return Buffer(data, size, allocator);
   }
 
   // Expose Buffer::Update to subclasses of BufferAllocator.
@@ -211,10 +191,10 @@ class BufferAllocator {
   }
 
   // Called by chained buffer allocators.
-  Buffer* DelegateAllocate(BufferAllocator* delegate,
-                           size_t requested,
-                           size_t minimal,
-                           BufferAllocator* originator) {
+  Buffer DelegateAllocate(BufferAllocator* delegate,
+                          size_t requested,
+                          size_t minimal,
+                          BufferAllocator* originator) {
     return delegate->AllocateInternal(requested, minimal, originator);
   }
 
@@ -234,9 +214,9 @@ class BufferAllocator {
 
  private:
   // Implemented by concrete subclasses.
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) = 0;
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) = 0;
 
   // Implemented by concrete subclasses. Returns false on failure.
   virtual bool ReallocateInternal(size_t requested,
@@ -249,7 +229,7 @@ class BufferAllocator {
 
   // Logs a warning message if the allocation failed or if it returned less than
   // the required number of bytes.
-  void LogAllocation(size_t required, size_t minimal, Buffer* buffer);
+  void LogAllocation(size_t required, size_t minimal, const Buffer& buffer);
 
   DISALLOW_COPY_AND_ASSIGN(BufferAllocator);
 };
@@ -277,9 +257,9 @@ class HeapBufferAllocator : public BufferAllocator {
   friend class Singleton<HeapBufferAllocator>;
 
   // Always allocates 'requested'-sized buffer, or returns NULL on OOM.
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override;
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override;
 
   virtual bool ReallocateInternal(size_t requested,
                                   size_t minimal,
@@ -311,9 +291,9 @@ class ClearingBufferAllocator : public BufferAllocator {
   }
 
  private:
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override;
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override;
 
   virtual bool ReallocateInternal(size_t requested,
                                   size_t minimal,
@@ -460,9 +440,9 @@ class MediatingBufferAllocator : public BufferAllocator {
   }
 
  private:
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override;
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override;
 
   virtual bool ReallocateInternal(size_t requested,
                                   size_t minimal,
@@ -512,9 +492,9 @@ class MemoryLimit : public BufferAllocator {
   void SetQuota(const size_t quota) { quota_.SetQuota(quota); }
 
  private:
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override {
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override {
     return DelegateAllocate(&allocator_, requested, minimal, originator);
   }
   virtual bool ReallocateInternal(size_t requested,
@@ -561,42 +541,35 @@ class SoftQuotaBypassingBufferAllocator : public BufferAllocator {
   size_t AdjustMinimal(size_t requested, size_t minimal) const {
     return min(requested, max(minimal, Available()));
   }
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override {
+
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override {
     // Try increasing the "minimal" parameter to allocate more aggresively
     // within the bypassed amount of soft quota.
-    Buffer* result = DelegateAllocate(&allocator_,
-                                      requested,
-                                      AdjustMinimal(requested, minimal),
-                                      originator);
-    if (result != NULL) {
+    Buffer result = DelegateAllocate(&allocator_,
+                                     requested,
+                                     AdjustMinimal(requested, minimal),
+                                     originator);
+    if (result) {
       return result;
     } else {
-      return DelegateAllocate(&allocator_,
-                              requested,
-                              minimal,
-                              originator);
+      return DelegateAllocate(&allocator_, requested, minimal, originator);
     }
   }
+
   virtual bool ReallocateInternal(size_t requested,
                                   size_t minimal,
                                   Buffer* buffer,
                                   BufferAllocator* originator) override {
-    if (DelegateReallocate(&allocator_,
-                           requested,
-                           AdjustMinimal(requested, minimal),
-                           buffer,
-                           originator)) {
+    size_t adjusted_minimal = AdjustMinimal(requested, minimal);
+    if (DelegateReallocate(&allocator_, requested, adjusted_minimal, buffer, originator)) {
       return true;
     } else {
-      return DelegateReallocate(&allocator_,
-                                requested,
-                                minimal,
-                                buffer,
-                                originator);
+      return DelegateReallocate(&allocator_, requested, minimal, buffer, originator);
     }
   }
+
   virtual void FreeInternal(Buffer* buffer) override {
     DelegateFree(&allocator_, buffer);
   }
@@ -650,9 +623,9 @@ class MemoryStatisticsCollectingBufferAllocator : public BufferAllocator {
   }
 
  private:
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override;
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override;
 
   virtual bool ReallocateInternal(size_t requested,
                                   size_t minimal,
@@ -700,9 +673,9 @@ class MemoryTrackingBufferAllocator : public BufferAllocator {
   // mem_tracker_->Consume(bytes) and always return true.
   bool TryConsume(int64_t bytes);
 
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override;
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override;
 
   virtual bool ReallocateInternal(size_t requested,
                                   size_t minimal,
@@ -746,9 +719,9 @@ class ThreadSafeBufferAllocator : public BufferAllocator {
   const DelegateAllocatorType* delegate() const { return delegate_; }
 
  private:
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override {
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override {
     lock_guard_maybe<Mutex> lock(mutex());
     return DelegateAllocate(delegate(), requested, minimal, originator);
   }
@@ -841,9 +814,9 @@ class OwningBufferAllocator : public BufferAllocator {
   }
 
  private:
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override {
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override {
     return DelegateAllocate(delegate_, requested, minimal, originator);
   }
 
@@ -884,11 +857,11 @@ class GuaranteeMemory : public BufferAllocator {
   }
 
  private:
-  virtual Buffer* AllocateInternal(size_t requested,
-                                   size_t minimal,
-                                   BufferAllocator* originator) override {
+  virtual Buffer AllocateInternal(size_t requested,
+                                  size_t minimal,
+                                  BufferAllocator* originator) override {
     if (requested > Available()) {
-      return NULL;
+      return Buffer();
     } else {
       return DelegateAllocate(&limit_, requested, requested, originator);
     }

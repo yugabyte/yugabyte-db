@@ -15,13 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <memory>
+#include <vector>
+
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/thread/thread.hpp>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <memory>
-#include <vector>
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/memory/arena.h"
@@ -74,7 +76,7 @@ TEST(TestArena, TestSingleThreaded) {
 
 
 TEST(TestArena, TestMultiThreaded) {
-  CHECK(FLAGS_num_threads < 256);
+  CHECK_LT(FLAGS_num_threads, 256);
 
   ThreadSafeArena arena(1024, 1024);
 
@@ -101,6 +103,18 @@ TEST(TestArena, TestAlignment) {
   }
 }
 
+void TestAllocations(const shared_ptr<MemTracker>& tracker, ArenaBase<false>* arena) {
+  const size_t component_size = sizeof(ArenaComponent<false>);
+  // Try some child operations.
+  ASSERT_EQ(256, tracker->consumption());
+  void *allocated = arena->AllocateBytes(256 - component_size);
+  ASSERT_TRUE(allocated);
+  ASSERT_EQ(256, tracker->consumption());
+  allocated = arena->AllocateBytes(256);
+  ASSERT_NE(allocated, nullptr);
+  ASSERT_EQ(768, tracker->consumption());
+}
+
 // MemTrackers update their ancestors when consuming and releasing memory to compute
 // usage totals. However, the lifetimes of parent and child trackers can be different.
 // Validate that child trackers can still correctly update their parent stats even when
@@ -119,14 +133,7 @@ TEST(TestArena, TestMemoryTrackerParentReferences) {
       new MemoryTrackingBufferAllocator(HeapBufferAllocator::Get(), child_tracker));
   MemoryTrackingArena arena(256, 1024, allocator);
 
-  // Try some child operations.
-  ASSERT_EQ(256, child_tracker->consumption());
-  void *allocated = arena.AllocateBytes(256);
-  ASSERT_TRUE(allocated);
-  ASSERT_EQ(256, child_tracker->consumption());
-  allocated = arena.AllocateBytes(256);
-  ASSERT_TRUE(allocated);
-  ASSERT_EQ(768, child_tracker->consumption());
+  TestAllocations(child_tracker, &arena);
 }
 
 TEST(TestArena, TestMemoryTrackingDontEnforce) {
@@ -134,13 +141,7 @@ TEST(TestArena, TestMemoryTrackingDontEnforce) {
   shared_ptr<MemoryTrackingBufferAllocator> allocator(
       new MemoryTrackingBufferAllocator(HeapBufferAllocator::Get(), mem_tracker));
   MemoryTrackingArena arena(256, 1024, allocator);
-  ASSERT_EQ(256, mem_tracker->consumption());
-  void *allocated = arena.AllocateBytes(256);
-  ASSERT_TRUE(allocated);
-  ASSERT_EQ(256, mem_tracker->consumption());
-  allocated = arena.AllocateBytes(256);
-  ASSERT_TRUE(allocated);
-  ASSERT_EQ(768, mem_tracker->consumption());
+  TestAllocations(mem_tracker, &arena);
 
   // In DEBUG mode after Reset() the last component of an arena is
   // cleared, but is then created again; in release mode, the last
@@ -152,7 +153,7 @@ TEST(TestArena, TestMemoryTrackingDontEnforce) {
 
   // Allocate beyond allowed consumption. This should still go
   // through, since enforce_limit is false.
-  allocated = arena.AllocateBytes(1024);
+  auto allocated = arena.AllocateBytes(1024 - sizeof(ArenaComponent<false>));
   ASSERT_TRUE(allocated);
 
   ASSERT_EQ(1536, mem_tracker->consumption());
@@ -166,11 +167,12 @@ TEST(TestArena, TestMemoryTrackingEnforced) {
                                         true));
   MemoryTrackingArena arena(256, 1024, allocator);
   ASSERT_EQ(256, mem_tracker->consumption());
-  void *allocated = arena.AllocateBytes(256);
+  const size_t component_size = sizeof(ArenaComponent<false>);
+  void *allocated = arena.AllocateBytes(256 - component_size);
   ASSERT_TRUE(allocated);
   ASSERT_EQ(256, mem_tracker->consumption());
-  allocated = arena.AllocateBytes(1024);
-  ASSERT_FALSE(allocated);
+  allocated = arena.AllocateBytes(1024 - component_size);
+  ASSERT_EQ(allocated, nullptr);
   ASSERT_EQ(256, mem_tracker->consumption());
 }
 

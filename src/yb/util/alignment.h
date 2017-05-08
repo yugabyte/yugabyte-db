@@ -19,10 +19,52 @@
 #ifndef YB_UTIL_ALIGNMENT_H
 #define YB_UTIL_ALIGNMENT_H
 
+#include <cstddef>
+
+namespace yb {
+
 // Round down 'x' to the nearest 'align' boundary
 #define YB_ALIGN_DOWN(x, align) ((x) & (-(align)))
 
-// Round up 'x' to the nearest 'align' boundary
-#define YB_ALIGN_UP(x, align) (((x) + ((align) - 1)) & (-(align)))
+template<class T>
+class AlignmentTraits {
+ public:
+  typedef T value_type;
 
-#endif
+  static value_type to_int(T x) {
+    return x;
+  }
+
+  static T from_int(value_type value) {
+    return value;
+  }
+};
+
+template<class T>
+class AlignmentTraits<T*> {
+ public:
+  typedef size_t value_type;
+
+  static value_type to_int(T* ptr) {
+    return reinterpret_cast<value_type>(ptr);
+  }
+
+  static T* from_int(value_type value) {
+    return reinterpret_cast<T*>(value);
+  }
+};
+
+// Round up 'ptr' to the nearest 'align' boundary.
+// T should be pointer or integer type.
+template<class T>
+T align_up(T ptr, typename AlignmentTraits<T>::value_type alignment_bytes) {
+  typedef AlignmentTraits<T> Traits;
+  typedef typename Traits::value_type int_type;
+  static_assert(sizeof(T) == sizeof(int_type), "Invalid source size in align_up");
+  auto x = Traits::to_int(ptr);
+  return Traits::from_int((x + alignment_bytes - 1) & -alignment_bytes);
+}
+
+} // namespace yb
+
+#endif // YB_UTIL_ALIGNMENT_H

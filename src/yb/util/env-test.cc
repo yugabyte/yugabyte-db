@@ -16,9 +16,10 @@
 // under the License.
 
 #include <fcntl.h>
+#include <sys/types.h>
+
 #include <memory>
 #include <string>
-#include <sys/types.h>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -248,7 +249,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
       } else {
         // 10% of the time pick a size such that the file size after writing this slice is a
         // multiple of FLAGS_o_direct_block_size_bytes.
-        auto bytes_needed = YB_ALIGN_UP(total_size, FLAGS_o_direct_block_size_bytes) - total_size;
+        auto bytes_needed = align_up(total_size, FLAGS_o_direct_block_size_bytes) - total_size;
         slice_size = FLAGS_o_direct_block_size_bytes + bytes_needed;
       }
       if (total_size + slice_size > kMaxFileSize) {
@@ -422,14 +423,14 @@ TEST_F(TestEnv, TestHolePunch) {
 class ShortReadRandomAccessFile : public RandomAccessFile {
  public:
   explicit ShortReadRandomAccessFile(shared_ptr<RandomAccessFile> wrapped)
-      : wrapped_(std::move(wrapped)) {}
+      : wrapped_(std::move(wrapped)), seed_(SeedRandom()) {}
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       uint8_t *scratch) const override {
     CHECK_GT(n, 0);
     // Divide the requested amount of data by a small integer,
     // and issue the shorter read to the underlying file.
-    int short_n = n / ((rand() % 3) + 1);
+    int short_n = n / ((rand_r(&seed_) % 3) + 1);
     if (short_n == 0) {
       short_n = 1;
     }
@@ -451,6 +452,7 @@ class ShortReadRandomAccessFile : public RandomAccessFile {
 
  private:
   const shared_ptr<RandomAccessFile> wrapped_;
+  mutable unsigned int seed_;
 };
 
 // Write 'size' bytes of data to a file, with a simple pattern stored in it.
@@ -589,8 +591,8 @@ TEST_F(TestEnv, TestReopen) {
   ASSERT_OK(reader->Size(&size));
   ASSERT_EQ(first.length() + second.length(), size);
   Slice s;
-  uint8_t scratch[size];
-  ASSERT_OK(env_util::ReadFully(reader.get(), 0, size, &s, scratch));
+  std::vector<uint8_t> scratch(size);
+  ASSERT_OK(env_util::ReadFully(reader.get(), 0, size, &s, scratch.data()));
   ASSERT_EQ(first + second, s.ToString());
 }
 

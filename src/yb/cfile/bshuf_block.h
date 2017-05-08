@@ -23,9 +23,10 @@
 #ifndef YB_CFILE_BSHUF_BLOCK_H
 #define YB_CFILE_BSHUF_BLOCK_H
 
-#include <algorithm>
 #include <stdint.h>
 #include <bitshuffle.h>
+
+#include <algorithm>
 
 #include "yb/cfile/block_encodings.h"
 #include "yb/cfile/cfile_util.h"
@@ -321,7 +322,7 @@ class BShufBlockDecoder : public BlockDecoder {
   // Return the number of padding elements needed to ensure that the
   // number of elements is a multiple of 8.
   uint32_t NumOfPaddingNeeded() const {
-    return YB_ALIGN_UP(num_elems_, 8) - num_elems_;
+    return align_up(num_elems_, 8) - num_elems_;
   }
 
   CHECKED_STATUS Expand() {
@@ -373,4 +374,4 @@ Status BShufBlockDecoder<UINT32>::CopyNextValuesToArray(size_t* n, uint8_t* arra
 
 } // namespace cfile
 } // namespace yb
-#endif
+#endif // YB_CFILE_BSHUF_BLOCK_H

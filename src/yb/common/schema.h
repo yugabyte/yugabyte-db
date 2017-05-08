@@ -1002,7 +1002,7 @@ class Schema {
   bool has_nullables_;
 
   // Cached indicator whether any columns are static.
-  bool has_statics_;
+  bool has_statics_ = false;
 
   TableProperties table_properties_;
 

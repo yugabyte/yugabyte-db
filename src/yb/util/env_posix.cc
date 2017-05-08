@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <fts.h>
-#include <glog/logging.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -22,6 +21,8 @@
 
 #include <set>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
@@ -675,7 +676,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
     }
 
     filesize_ = next_write_offset_ + written;
-    CHECK_EQ(filesize_, YB_ALIGN_UP(filesize_, block_size_));
+    CHECK_EQ(filesize_, align_up(filesize_, block_size_));
 
     next_write_offset_ = filesize_;
 
@@ -700,7 +701,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
 
   Status MaybeAllocateMemory(size_t data_size) {
     auto buffered_data_size = last_block_idx_ * block_size_ + last_block_used_bytes_;
-    auto bytes_to_write = YB_ALIGN_UP(buffered_data_size + data_size, block_size_);
+    auto bytes_to_write = align_up(buffered_data_size + data_size, block_size_);
     auto blocks_to_write = bytes_to_write / block_size_;
 
     if (blocks_to_write > block_ptr_vec_.size()) {
@@ -1015,13 +1016,12 @@ class PosixEnv : public Env {
     ::snprintf(fname.get(), name_template.size() + 1, "%s", name_template.c_str());
     int fd = -1;
 #if defined(__linux__)
-    if (opts.o_direct) {
+    if (opts.o_direct)
       fd = ::mkostemp(fname.get(), O_DIRECT | O_NOATIME | O_SYNC);
-    } else
+    else
 #endif
-    {
       fd = ::mkstemp(fname.get());
-    }
+
     if (fd < 0) {
       return IOError(Substitute("Call to mkstemp() failed on name template $0", name_template),
                      errno);
@@ -1409,13 +1409,11 @@ class PosixEnv : public Env {
     }
     PosixWritableFile *posix_writable_file;
 #if defined(__linux)
-    if (opts.o_direct) {
+    if (opts.o_direct)
       posix_writable_file = new PosixDirectIOWritableFile(fname, fd, file_size, opts.sync_on_close);
-    } else
+    else
 #endif
-    {
       posix_writable_file = new PosixWritableFile(fname, fd, file_size, opts.sync_on_close);
-    }
     result->reset(posix_writable_file);
     return Status::OK();
   }

@@ -23,12 +23,14 @@
 #ifndef YB_UTIL_MEMORY_ARENA_H_
 #define YB_UTIL_MEMORY_ARENA_H_
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <vector>
 
 #include <boost/signals2/dummy_mutex.hpp>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -48,17 +50,20 @@ namespace yb {
 template<bool THREADSAFE> struct ArenaTraits;
 
 template <> struct ArenaTraits<true> {
-  typedef Atomic32 offset_type;
+  typedef std::atomic<uint8_t*> pointer;
   typedef Mutex mutex_type;
   typedef simple_spinlock spinlock_type;
 };
 
 template <> struct ArenaTraits<false> {
-  typedef uint32_t offset_type;
+  typedef uint8_t* pointer;
   // For non-threadsafe, we don't need any real locking.
   typedef boost::signals2::dummy_mutex mutex_type;
   typedef boost::signals2::dummy_mutex spinlock_type;
 };
+
+template <bool THREADSAFE>
+class ArenaComponent;
 
 // A helper class for storing variable-length blobs (e.g. strings). Once a blob
 // is added to the arena, its index stays fixed. No reallocation happens.
@@ -89,6 +94,8 @@ class ArenaBase {
   // Creates an arena using a default (heap) allocator with unbounded capacity.
   // Discretion advised.
   ArenaBase(size_t initial_buffer_size, size_t max_buffer_size);
+
+  virtual ~ArenaBase();
 
   // Adds content of the specified Slice to the arena, and returns a
   // pointer to it. The pointer is guaranteed to remain valid during the
@@ -155,13 +162,22 @@ class ArenaBase {
  private:
   typedef typename ArenaTraits<THREADSAFE>::mutex_type mutex_type;
   // Encapsulates a single buffer in the arena.
-  class Component;
+  typedef ArenaComponent<THREADSAFE> Component;
 
   // Fallback for AllocateBytes non-fast-path
   void* AllocateBytesFallback(const size_t size, const size_t align);
 
-  Component* NewComponent(size_t requested_size, size_t minimum_size);
-  void AddComponent(Component *component);
+  // Tries to allocate of maximal size between minimum_size and requested_size
+  Buffer NewBuffer(size_t requested_size, size_t minimum_size);
+
+  // Tries to allocate buffer of size between mid_size and requested_size.
+  // If it fails then tries the same between min_size and requested_size.
+  Buffer NewBufferInTwoAttempts(size_t requested_size, size_t mid_size, size_t min_size);
+
+  // Add component to component list, makes in current.
+  // If component is nullptr then it is created, otherwise it should be component
+  // created at this buffer.
+  void AddComponentUnlocked(Buffer buffer, Component* component = nullptr);
 
   // Load the current component, with "Acquire" semantics (see atomicops.h)
   // if the arena is meant to be thread-safe.
@@ -186,17 +202,16 @@ class ArenaBase {
   }
 
   BufferAllocator* const buffer_allocator_;
-  vector<std::shared_ptr<Component> > arena_;
 
   // The current component to allocate from.
   // Use AcquireLoadCurrent and ReleaseStoreCurrent to load/store.
-  Component* current_;
+  Component* current_ = nullptr;
   const size_t max_buffer_size_;
-  size_t arena_footprint_;
+  size_t arena_footprint_ = 0;
 
   // True if this Arena has already emitted a warning about surpassing
   // the global warning size threshold.
-  bool warned_;
+  bool warned_ = false;
 
   // Lock covering 'slow path' allocation, when new components are
   // allocated and added to the arena's list. Also covers any other
@@ -306,55 +321,53 @@ class ThreadSafeArena : public ArenaBase<true> {
 // Arena implementation that is integrated with MemTracker in order to
 // track heap-allocated space consumed by the arena.
 
-class MemoryTrackingArena : public ArenaBase<false> {
+class MemoryTrackingBufferAllocatorHolder {
  public:
-
-  MemoryTrackingArena(
-      size_t initial_buffer_size,
-      size_t max_buffer_size,
-      const std::shared_ptr<MemoryTrackingBufferAllocator>& tracking_allocator)
-      : ArenaBase<false>(tracking_allocator.get(), initial_buffer_size, max_buffer_size),
-        tracking_allocator_(tracking_allocator) {}
-
-  ~MemoryTrackingArena() {
-  }
-
+  explicit MemoryTrackingBufferAllocatorHolder(
+    const std::shared_ptr<MemoryTrackingBufferAllocator>& tracking_allocator)
+      : tracking_allocator_(tracking_allocator) {
+    }
  private:
-
   // This is required in order for the Arena to survive even after tablet is shut down,
   // e.g., in the case of Scanners running scanners (see tablet_server-test.cc)
   std::shared_ptr<MemoryTrackingBufferAllocator> tracking_allocator_;
 };
 
-class ThreadSafeMemoryTrackingArena : public ArenaBase<true> {
+class MemoryTrackingArena : public MemoryTrackingBufferAllocatorHolder, public ArenaBase<false> {
  public:
+  MemoryTrackingArena(
+      size_t initial_buffer_size,
+      size_t max_buffer_size,
+      const std::shared_ptr<MemoryTrackingBufferAllocator>& tracking_allocator)
+      : MemoryTrackingBufferAllocatorHolder(tracking_allocator),
+        ArenaBase<false>(tracking_allocator.get(), initial_buffer_size, max_buffer_size) {}
+};
 
+class ThreadSafeMemoryTrackingArena : public MemoryTrackingBufferAllocatorHolder,
+                                      public ArenaBase<true> {
+ public:
   ThreadSafeMemoryTrackingArena(
       size_t initial_buffer_size,
       size_t max_buffer_size,
       const std::shared_ptr<MemoryTrackingBufferAllocator>& tracking_allocator)
-      : ArenaBase<true>(tracking_allocator.get(), initial_buffer_size, max_buffer_size),
-        tracking_allocator_(tracking_allocator) {}
-
-  ~ThreadSafeMemoryTrackingArena() {
-  }
-
- private:
-
-  // See comment in MemoryTrackingArena above.
-  std::shared_ptr<MemoryTrackingBufferAllocator> tracking_allocator_;
+      : MemoryTrackingBufferAllocatorHolder(tracking_allocator),
+        ArenaBase<true>(tracking_allocator.get(), initial_buffer_size, max_buffer_size) {}
 };
 
 // Implementation of inline and template methods
 
 template<bool THREADSAFE>
-class ArenaBase<THREADSAFE>::Component {
+class ArenaComponent {
  public:
-  explicit Component(Buffer* buffer)
-      : buffer_(buffer),
-        data_(static_cast<uint8_t*>(buffer->data())),
-        offset_(0),
-        size_(buffer->size()) {}
+  explicit ArenaComponent(size_t size, ArenaComponent* next)
+      : end_(begin_of_this() + size),
+        position_(begin()),
+        next_(next) {
+    CHECK_LE(position_, end_);
+  }
+
+  ArenaComponent(const ArenaComponent& rhs) = delete;
+  void operator=(const ArenaComponent& rhs) = delete;
 
   // Tries to reserve space in this component. Returns the pointer to the
   // reserved space if successful; NULL on failure (if there's no more room).
@@ -364,21 +377,51 @@ class ArenaBase<THREADSAFE>::Component {
 
   uint8_t *AllocateBytesAligned(const size_t size, const size_t alignment);
 
-  size_t size() const { return size_; }
-  void Reset() {
-    ASAN_POISON_MEMORY_REGION(data_, size_);
-    offset_ = 0;
+  uint8_t* begin() {
+    return const_cast<uint8_t*>(begin_of_this() + sizeof(*this));
+  }
+
+  uint8_t* end() { return end_; }
+  size_t size() { return end() - begin(); }
+  size_t full_size() { return end() - begin_of_this(); }
+
+  // Resets used memory of this component, destroys the rest of the component chain.
+  // `allocator` should be the same as the one used to allocate memory for this component chain.
+  void Reset(BufferAllocator* allocator) {
+    ASAN_POISON_MEMORY_REGION(begin(), size());
+    position_ = begin();
+    if (next_ != nullptr) {
+      next_->Destroy(allocator);
+      next_ = nullptr;
+    }
+  }
+
+  // Destroys component chain.
+  // `allocator` should be the same as the one used to allocate memory for this component chain.
+  void Destroy(BufferAllocator* allocator) {
+    ArenaComponent* current = this;
+    while (current != nullptr) {
+      auto next = current->next_;
+      size_t size = current->full_size();
+      current->AsanUnpoison(current, size);
+      current->~ArenaComponent();
+      Buffer buffer(current, size, allocator);
+      current = next;
+    }
   }
 
  private:
+  uint8_t* begin_of_this() {
+    return PointerCast<uint8_t*>(this);
+  }
+
   // Mark the given range unpoisoned in ASAN.
   // This is a no-op in a non-ASAN build.
   void AsanUnpoison(const void* addr, size_t size);
 
-  gscoped_ptr<Buffer> buffer_;
-  uint8_t* const data_;
-  typename ArenaTraits<THREADSAFE>::offset_type offset_;
-  const size_t size_;
+  uint8_t* end_;
+  typename ArenaTraits<THREADSAFE>::pointer position_;
+  ArenaComponent* next_;
 
 #ifdef ADDRESS_SANITIZER
   // Lock used around unpoisoning memory when ASAN is enabled.
@@ -387,13 +430,11 @@ class ArenaBase<THREADSAFE>::Component {
   typedef typename ArenaTraits<THREADSAFE>::spinlock_type spinlock_type;
   spinlock_type asan_lock_;
 #endif
-  DISALLOW_COPY_AND_ASSIGN(Component);
 };
-
 
 // Thread-safe implementation
 template <>
-inline uint8_t *ArenaBase<true>::Component::AllocateBytesAligned(
+inline uint8_t *ArenaComponent<true>::AllocateBytesAligned(
   const size_t size, const size_t alignment) {
   // Special case check the allowed alignments. Currently, we only ensure
   // the allocated buffer components are 16-byte aligned, and the code path
@@ -401,48 +442,45 @@ inline uint8_t *ArenaBase<true>::Component::AllocateBytesAligned(
   DCHECK(alignment == 1 || alignment == 2 || alignment == 4 ||
          alignment == 8 || alignment == 16)
     << "bad alignment: " << alignment;
-  retry:
-  Atomic32 offset = Acquire_Load(&offset_);
 
-  Atomic32 aligned = YB_ALIGN_UP(offset, alignment);
-  Atomic32 new_offset = aligned + size;
+  for (;;) {
+    uint8_t* position = position_;
 
-  if (PREDICT_TRUE(new_offset <= size_)) {
-    bool success = Acquire_CompareAndSwap(&offset_, offset, new_offset) == offset;
-    if (PREDICT_TRUE(success)) {
-      AsanUnpoison(data_ + aligned, size);
-      return data_ + aligned;
+    const auto aligned = align_up(position, alignment);
+    const auto new_position = aligned + size;
+
+    if (PREDICT_TRUE(new_position <= end_)) {
+      bool success = position_.compare_exchange_strong(position, new_position);
+      if (PREDICT_TRUE(success)) {
+        AsanUnpoison(aligned, size);
+        return aligned;
+      }
     } else {
-      // Raced with another allocator
-      goto retry;
+      return nullptr;
     }
-  } else {
-    return NULL;
   }
 }
 
 // Non-Threadsafe implementation
 template <>
-inline uint8_t *ArenaBase<false>::Component::AllocateBytesAligned(
+inline uint8_t *ArenaComponent<false>::AllocateBytesAligned(
   const size_t size, const size_t alignment) {
   DCHECK(alignment == 1 || alignment == 2 || alignment == 4 ||
          alignment == 8 || alignment == 16)
     << "bad alignment: " << alignment;
-  size_t aligned = YB_ALIGN_UP(offset_, alignment);
-  uint8_t* destination = data_ + aligned;
-  size_t save_offset = offset_;
-  offset_ = aligned + size;
-  if (PREDICT_TRUE(offset_ <= size_)) {
-    AsanUnpoison(data_ + aligned, size);
-    return destination;
+  auto aligned = align_up(position_, alignment);
+  auto new_position = aligned + size;
+  if (PREDICT_TRUE(new_position <= end_)) {
+    position_ = new_position;
+    AsanUnpoison(aligned, size);
+    return aligned;
   } else {
-    offset_ = save_offset;
-    return NULL;
+    return nullptr;
   }
 }
 
 template <bool THREADSAFE>
-inline void ArenaBase<THREADSAFE>::Component::AsanUnpoison(const void* addr, size_t size) {
+inline void ArenaComponent<THREADSAFE>::AsanUnpoison(const void* addr, size_t size) {
 #ifdef ADDRESS_SANITIZER
   std::lock_guard<spinlock_type> l(asan_lock_);
   ASAN_UNPOISON_MEMORY_REGION(addr, size);

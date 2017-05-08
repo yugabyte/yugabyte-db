@@ -28,8 +28,8 @@
 // limitations under the License.
 
 
-#ifndef IMPALA_UTIL_BIT_STREAM_UTILS_INLINE_H
-#define IMPALA_UTIL_BIT_STREAM_UTILS_INLINE_H
+#ifndef YB_UTIL_BIT_STREAM_UTILS_INLINE_H
+#define YB_UTIL_BIT_STREAM_UTILS_INLINE_H
 
 #include <algorithm>
 
@@ -48,7 +48,7 @@ inline void BitWriter::PutValue(uint64_t v, int num_bits) {
 
   if (PREDICT_FALSE(bit_offset_ >= 64)) {
     // Flush buffered_values_ and write out bits of v that did not fit
-    buffer_->reserve(YB_ALIGN_UP(byte_offset_ + 8, 8));
+    buffer_->reserve(align_up(byte_offset_ + 8, 8));
     buffer_->resize(byte_offset_ + 8);
     DCHECK_LE(byte_offset_ + 8, buffer_->capacity());
     memcpy(buffer_->data() + byte_offset_, &buffered_values_, 8);
@@ -62,7 +62,7 @@ inline void BitWriter::PutValue(uint64_t v, int num_bits) {
 
 inline void BitWriter::Flush(bool align) {
   int num_bytes = BitUtil::Ceil(bit_offset_, 8);
-  buffer_->reserve(YB_ALIGN_UP(byte_offset_ + num_bytes, 8));
+  buffer_->reserve(align_up(byte_offset_ + num_bytes, 8));
   buffer_->resize(byte_offset_ + num_bytes);
   DCHECK_LE(byte_offset_ + num_bytes, buffer_->capacity());
   memcpy(buffer_->data() + byte_offset_, &buffered_values_, num_bytes);
@@ -76,7 +76,7 @@ inline void BitWriter::Flush(bool align) {
 
 inline uint8_t* BitWriter::GetNextBytePtr(int num_bytes) {
   Flush(/* align */ true);
-  buffer_->reserve(YB_ALIGN_UP(byte_offset_ + num_bytes, 8));
+  buffer_->reserve(align_up(byte_offset_ + num_bytes, 8));
   buffer_->resize(byte_offset_ + num_bytes);
   uint8_t* ptr = buffer_->data() + byte_offset_;
   byte_offset_ += num_bytes;
@@ -219,4 +219,4 @@ inline bool BitReader::GetVlqInt(int32_t* v) {
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_BIT_STREAM_UTILS_INLINE_H

@@ -18,23 +18,24 @@
 // under the License.
 //
 
+#include <string.h>
+
+#include <algorithm>
+#include <cstdlib>
+
+#include <gflags/gflags.h>
+
 #include "yb/util/alignment.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/mem_tracker.h"
 
-#include <gflags/gflags.h>
-#include <string.h>
-
-#include <algorithm>
 using std::copy;
 using std::max;
 using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <cstdlib>
-
 
 namespace yb {
 
@@ -70,34 +71,36 @@ void OverwriteWithPattern(char* p, size_t len, StringPiece pattern) {
 
 Buffer::~Buffer() {
 #if !defined(NDEBUG) && !defined(ADDRESS_SANITIZER)
-  // "unrolling" the string "BAD" makes for a much more efficient
-  // OverwriteWithPattern call in debug mode, so we can keep this
-  // useful bit of code without tests going slower!
-  //
-  // In ASAN mode, we don't bother with this, because when we free the memory, ASAN will
-  // prevent us from accessing it anyway.
-  OverwriteWithPattern(reinterpret_cast<char*>(data_), size_,
-                       "BADBADBADBADBADBADBADBADBADBADBAD"
-                       "BADBADBADBADBADBADBADBADBADBADBAD"
-                       "BADBADBADBADBADBADBADBADBADBADBAD");
+  if (data_ != nullptr) {
+    // "unrolling" the string "BAD" makes for a much more efficient
+    // OverwriteWithPattern call in debug mode, so we can keep this
+    // useful bit of code without tests going slower!
+    //
+    // In ASAN mode, we don't bother with this, because when we free the memory, ASAN will
+    // prevent us from accessing it anyway.
+    OverwriteWithPattern(reinterpret_cast<char*>(data_), size_,
+                         "BADBADBADBADBADBADBADBADBADBADBAD"
+                         "BADBADBADBADBADBADBADBADBADBADBAD"
+                         "BADBADBADBADBADBADBADBADBADBADBAD");
+  }
 #endif
   if (allocator_ != nullptr) allocator_->FreeInternal(this);
 }
 
 void BufferAllocator::LogAllocation(size_t requested,
                                     size_t minimal,
-                                    Buffer* buffer) {
-  if (buffer == nullptr) {
+                                    const Buffer& buffer) {
+  if (!buffer) {
     LOG(WARNING) << "Memory allocation failed. "
                  << "Number of bytes requested: " << requested
                  << ", minimal: " << minimal;
     return;
   }
-  if (buffer->size() < requested) {
+  if (buffer.size() < requested) {
     LOG(WARNING) << "Memory allocation was shorter than requested. "
                  << "Number of bytes requested to allocate: " << requested
                  << ", minimal: " << minimal
-                 << ", and actually allocated: " << buffer->size();
+                 << ", and actually allocated: " << buffer.size();
   }
 }
 
@@ -113,7 +116,7 @@ HeapBufferAllocator::HeapBufferAllocator()
   : aligned_mode_(FLAGS_allocator_aligned_mode) {
 }
 
-Buffer* HeapBufferAllocator::AllocateInternal(
+Buffer HeapBufferAllocator::AllocateInternal(
     const size_t requested,
     const size_t minimal,
     BufferAllocator* const originator) {
@@ -125,8 +128,8 @@ Buffer* HeapBufferAllocator::AllocateInternal(
     if (data != nullptr) {
       return CreateBuffer(data, attempted, originator);
     }
-    if (attempted == minimal) return nullptr;
-    attempted = minimal + (attempted - minimal - 1) / 2;
+    if (attempted == minimal) return Buffer();
+    attempted = (attempted + minimal) / 2;
   }
 }
 
@@ -165,7 +168,7 @@ void HeapBufferAllocator::FreeInternal(Buffer* buffer) {
 void* HeapBufferAllocator::Malloc(size_t size) {
   if (aligned_mode_) {
     void* data;
-    if (posix_memalign(&data, 16, YB_ALIGN_UP(size, 16))) {
+    if (posix_memalign(&data, 16, align_up(size, 16))) {
        return nullptr;
     }
     return data;
@@ -194,12 +197,12 @@ void* HeapBufferAllocator::Realloc(void* previousData, size_t previousSize,
   }
 }
 
-Buffer* ClearingBufferAllocator::AllocateInternal(size_t requested,
-                                                  size_t minimal,
-                                                  BufferAllocator* originator) {
-  Buffer* buffer = DelegateAllocate(delegate_, requested, minimal,
-                                    originator);
-  if (buffer != nullptr) memset(buffer->data(), 0, buffer->size());
+Buffer ClearingBufferAllocator::AllocateInternal(size_t requested,
+                                                 size_t minimal,
+                                                 BufferAllocator* originator) {
+  Buffer buffer = DelegateAllocate(delegate_, requested, minimal,
+                                   originator);
+  if (buffer) memset(buffer.data(), 0, buffer.size());
   return buffer;
 }
 
@@ -221,7 +224,7 @@ void ClearingBufferAllocator::FreeInternal(Buffer* buffer) {
   DelegateFree(delegate_, buffer);
 }
 
-Buffer* MediatingBufferAllocator::AllocateInternal(
+Buffer MediatingBufferAllocator::AllocateInternal(
     const size_t requested,
     const size_t minimal,
     BufferAllocator* const originator) {
@@ -229,15 +232,15 @@ Buffer* MediatingBufferAllocator::AllocateInternal(
   size_t granted;
   if (requested > 0) {
     granted = mediator_->Allocate(requested, minimal);
-    if (granted < minimal) return nullptr;
+    if (granted < minimal) return Buffer();
   } else {
     granted = 0;
   }
-  Buffer* buffer = DelegateAllocate(delegate_, granted, minimal, originator);
-  if (buffer == nullptr) {
+  Buffer buffer = DelegateAllocate(delegate_, granted, minimal, originator);
+  if (!buffer) {
     mediator_->Free(granted);
-  } else if (buffer->size() < granted) {
-    mediator_->Free(granted - buffer->size());
+  } else if (buffer.size() < granted) {
+    mediator_->Free(granted - buffer.size());
   }
   return buffer;
 }
@@ -271,13 +274,13 @@ void MediatingBufferAllocator::FreeInternal(Buffer* buffer) {
   DelegateFree(delegate_, buffer);
 }
 
-Buffer* MemoryStatisticsCollectingBufferAllocator::AllocateInternal(
+Buffer MemoryStatisticsCollectingBufferAllocator::AllocateInternal(
     const size_t requested,
     const size_t minimal,
     BufferAllocator* const originator) {
-  Buffer* buffer = DelegateAllocate(delegate_, requested, minimal, originator);
-  if (buffer != nullptr) {
-    memory_stats_collector_->AllocatedMemoryBytes(buffer->size());
+  Buffer buffer = DelegateAllocate(delegate_, requested, minimal, originator);
+  if (buffer) {
+    memory_stats_collector_->AllocatedMemoryBytes(buffer.size());
   } else {
     memory_stats_collector_->RefusedMemoryBytes(minimal);
   }
@@ -325,12 +328,12 @@ bool MemoryTrackingBufferAllocator::TryConsume(int64_t bytes) {
   return true;
 }
 
-Buffer* MemoryTrackingBufferAllocator::AllocateInternal(size_t requested,
-                                                        size_t minimal,
-                                                        BufferAllocator* originator) {
+Buffer MemoryTrackingBufferAllocator::AllocateInternal(size_t requested,
+                                                       size_t minimal,
+                                                       BufferAllocator* originator) {
   if (TryConsume(requested)) {
-    Buffer* buffer = DelegateAllocate(delegate_, requested, requested, originator);
-    if (buffer == nullptr) {
+    Buffer buffer = DelegateAllocate(delegate_, requested, requested, originator);
+    if (!buffer) {
       mem_tracker_->Release(requested);
     } else {
       return buffer;
@@ -338,14 +341,14 @@ Buffer* MemoryTrackingBufferAllocator::AllocateInternal(size_t requested,
   }
 
   if (TryConsume(minimal)) {
-    Buffer* buffer = DelegateAllocate(delegate_, minimal, minimal, originator);
-    if (buffer == nullptr) {
+    Buffer buffer = DelegateAllocate(delegate_, minimal, minimal, originator);
+    if (!buffer) {
       mem_tracker_->Release(minimal);
     }
     return buffer;
   }
 
-  return nullptr;
+  return Buffer();
 }
 
 
