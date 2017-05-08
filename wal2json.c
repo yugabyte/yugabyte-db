@@ -213,10 +213,11 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 							 strVal(elem->arg), elem->defname)));
 		}
 		else
-		{
-			elog(WARNING, "option %s = %s is unknown",
-				 elem->defname, elem->arg ? strVal(elem->arg) : "(null)");
-		}
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("option \"%s\" = \"%s\" is unknown",
+						elem->defname,
+						elem->arg ? strVal(elem->arg) : "(null)")));
 	}
 }
 
