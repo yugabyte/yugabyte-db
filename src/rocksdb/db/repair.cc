@@ -363,9 +363,9 @@ class Repairer {
         counter++;
         if (empty) {
           empty = false;
-          t->meta.smallest.DecodeFrom(key);
+          t->meta.smallest.key = InternalKey::DecodeFrom(key);
         }
-        t->meta.largest.DecodeFrom(key);
+        t->meta.largest.key = InternalKey::DecodeFrom(key);
         if (parsed.sequence < t->min_sequence) {
           t->min_sequence = parsed.sequence;
         }
@@ -408,11 +408,10 @@ class Repairer {
     for (size_t i = 0; i < tables_.size(); i++) {
       // TODO(opt): separate out into multiple levels
       const TableInfo& t = tables_[i];
-      edit_->AddFile(0, t.meta.fd.GetNumber(), t.meta.fd.GetPathId(),
-          t.meta.fd.GetTotalFileSize(), t.meta.fd.GetBaseFileSize(),
-                     t.meta.smallest, t.meta.largest,
-                     t.min_sequence, t.max_sequence,
-                     t.meta.marked_for_compaction);
+      auto meta = t.meta;
+      meta.smallest.seqno = t.min_sequence;
+      meta.largest.seqno = t.max_sequence;
+      edit_->AddCleanedFile(0, meta);
     }
 
     // fprintf(stderr, "NewDescriptor:\n%s\n", edit_.DebugString().c_str());

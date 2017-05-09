@@ -7,6 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef ROCKSDB_DB_COMPACTION_PICKER_H
+#define ROCKSDB_DB_COMPACTION_PICKER_H
+
 #pragma once
 
 #include <memory>
@@ -124,14 +127,16 @@ class CompactionPicker {
   // *smallest, *largest.
   // REQUIRES: inputs is not empty
   void GetRange(const CompactionInputFiles& inputs,
-                InternalKey* smallest, InternalKey* largest);
+                InternalKey* smallest,
+                InternalKey* largest);
 
   // Stores the minimal range that covers all entries in inputs1 and inputs2
   // in *smallest, *largest.
   // REQUIRES: inputs is not empty
   void GetRange(const CompactionInputFiles& inputs1,
                 const CompactionInputFiles& inputs2,
-                InternalKey* smallest, InternalKey* largest);
+                InternalKey* smallest,
+                InternalKey* largest);
 
   // Add more files to the inputs on "level" to make sure that
   // no newer version of a key is compacted to "level+1" while leaving an older
@@ -150,7 +155,9 @@ class CompactionPicker {
   // Returns true if any one of the parent files are being compacted
   bool RangeInCompaction(VersionStorageInfo* vstorage,
                          const InternalKey* smallest,
-                         const InternalKey* largest, int level, int* index);
+                         const InternalKey* largest,
+                         int level,
+                         int* index);
 
   bool SetupOtherInputs(const std::string& cf_name,
                         const MutableCFOptions& mutable_cf_options,
@@ -349,8 +356,15 @@ class NullCompactionPicker : public CompactionPicker {
 };
 #endif  // !ROCKSDB_LITE
 
+// Test whether two files have overlapping key-ranges.
+bool HaveOverlappingKeyRanges(const Comparator* c,
+                              const SstFileMetaData& a,
+                              const SstFileMetaData& b);
+
 CompressionType GetCompressionType(const ImmutableCFOptions& ioptions,
                                    int level, int base_level,
                                    const bool enable_compression = true);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_COMPACTION_PICKER_H

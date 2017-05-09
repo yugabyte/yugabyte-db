@@ -17,7 +17,11 @@
 // Version,VersionSet are thread-compatible, but require external
 // synchronization on all accesses.
 
+#ifndef ROCKSDB_DB_VERSION_SET_H
+#define ROCKSDB_DB_VERSION_SET_H
+
 #pragma once
+
 #include <atomic>
 #include <deque>
 #include <limits>
@@ -154,8 +158,9 @@ class VersionStorageInfo {
   double CompactionScore(int idx) const { return compaction_score_[idx]; }
 
   void GetOverlappingInputs(
-      int level, const InternalKey* begin,  // nullptr means before all keys
-      const InternalKey* end,               // nullptr means after all keys
+      int level,
+      const InternalKey* begin,   // nullptr means before all keys
+      const InternalKey* end,     // nullptr means after all keys
       std::vector<FileMetaData*>* inputs,
       int hint_index = -1,        // index of overlap file
       int* file_index = nullptr,  // return index of overlap file
@@ -619,7 +624,7 @@ class VersionSet {
                                      int new_levels);
 
   // printf contents (for debugging)
-  Status DumpManifest(Options& options, std::string& manifestFileName,
+  Status DumpManifest(const Options& options, const std::string& manifestFileName,
                       bool verbose, bool hex = false, bool json = false);
 
 #endif  // ROCKSDB_LITE
@@ -790,3 +795,5 @@ class VersionSet {
 };
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_VERSION_SET_H

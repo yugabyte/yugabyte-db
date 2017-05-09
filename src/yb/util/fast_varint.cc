@@ -82,7 +82,7 @@ int SignedPositiveVarIntLength(int64_t v) {
  *    9      2^62-1               11111111 10[v]    00000000 01{-v}
  *   10      2^69-1               11111111 110[v]   00000000 001{-v}
  */
-void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, int *size) {
+void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size) {
   int sign = 1;
   if (v == numeric_limits<int64_t>::min()) {
     // This is a special case because we can't use the positive value codepath (negating this value
@@ -151,8 +151,8 @@ void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, int *size) {
 
 std::string FastEncodeSignedVarIntToStr(int64_t v) {
   string s;
-  char buf[16];
-  int len = 0;
+  char buf[kMaxSignedVarIntBufferSize];
+  size_t len = 0;
   FastEncodeSignedVarInt(v, to_uchar_ptr(buf), &len);
   DCHECK_LE(len, 10);
   s.append(buf, len);

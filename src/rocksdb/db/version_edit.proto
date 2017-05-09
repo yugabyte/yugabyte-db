@@ -1,0 +1,44 @@
+//
+// Copyright (c) YugaByte, Inc.
+//
+package rocksdb;
+
+message DeletedFilePB {
+  optional uint32 level = 1;
+  optional uint64 file_number = 2;
+}
+
+message BoundaryValuesPB {
+  optional bytes key = 1;
+  optional uint64 seqno = 2;
+}
+
+message NewFilePB {
+  optional uint32 level = 1;
+  optional uint64 number = 2;
+  optional uint64 total_file_size = 3;
+  optional uint64 base_file_size = 4;
+  optional BoundaryValuesPB smallest = 5;
+  optional BoundaryValuesPB largest = 6;
+  optional uint32 path_id = 7;
+  optional bool marked_for_compaction = 8;
+}
+
+message VersionEditPB {
+  optional string comparator = 1;
+  optional uint64 log_number = 2;
+  optional uint64 prev_log_number = 3;
+  optional uint64 next_file_number = 4;
+  optional uint32 max_column_family = 5;
+  optional uint64 last_sequence = 6;
+  repeated DeletedFilePB deleted_files = 7;
+  repeated NewFilePB new_files = 8;
+  // Each version edit record should have column_family_id set
+  // If it's not set, it is default (0)
+  optional uint32 column_family = 9;
+  // a version edit can be either column_family add or
+  // column_family drop. If it's column family add,
+  // it includes column family name.
+  optional string column_family_name = 10;
+  optional bool is_column_family_drop = 11;
+}

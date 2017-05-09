@@ -12,6 +12,13 @@
 
 #include <inttypes.h>
 
+#include <cstdlib>
+#include <ctime>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <stdexcept>
+
 #include "db/dbformat.h"
 #include "db/db_impl.h"
 #include "db/log_reader.h"
@@ -28,16 +35,9 @@
 #include "util/string_util.h"
 #include "utilities/ttl/db_ttl_impl.h"
 
-#include <cstdlib>
-#include <ctime>
-#include <limits>
-#include <sstream>
-#include <string>
-#include <stdexcept>
-
 namespace rocksdb {
 
-using namespace std;
+using std::string;
 
 const string LDBCommand::ARG_DB = "db";
 const string LDBCommand::ARG_PATH = "path";
@@ -111,7 +111,7 @@ LDBCommand* LDBCommand::InitFromCmdLineArgs(
   const string OPTION_PREFIX = "--";
 
   for (const auto& arg : args) {
-    if (arg[0] == '-' && arg[1] == '-'){
+    if (arg[0] == '-' && arg[1] == '-') {
       vector<string> splits = StringSplit(arg, '=');
       if (splits.size() == 2) {
         string optionKey = splits[0].substr(OPTION_PREFIX.size());
@@ -216,10 +216,10 @@ bool LDBCommand::ParseIntOption(const map<string, string>& options,
       value = stoi(itr->second);
 #endif
       return true;
-    } catch(const invalid_argument&) {
+    } catch(const std::invalid_argument&) {
       exec_state =
           LDBCommandExecuteResult::Failed(option + " has an invalid value.");
-    } catch(const out_of_range&) {
+    } catch(const std::out_of_range&) {
       exec_state = LDBCommandExecuteResult::Failed(
           option + " has a value out-of-range.");
     }
@@ -279,7 +279,7 @@ Options LDBCommand::PrepareOptionsForOpenDB() {
 
   itr = option_map_.find(ARG_AUTO_COMPACTION);
   if (itr != option_map_.end()) {
-    opt.disable_auto_compactions = ! StringToBool(itr->second);
+    opt.disable_auto_compactions = !StringToBool(itr->second);
   }
 
   itr = option_map_.find(ARG_COMPRESSION_TYPE);
@@ -529,7 +529,7 @@ void DBLoaderCommand::DoCommand() {
 
   int bad_lines = 0;
   string line;
-  while (getline(cin, line, '\n')) {
+  while (getline(std::cin, line, '\n')) {
     string key;
     string value;
     if (ParseKeyValue(line, &key, &value, is_key_hex_, is_value_hex_)) {
@@ -539,12 +539,12 @@ void DBLoaderCommand::DoCommand() {
     } else if (0 == line.find("Created bg thread 0x")) {
       // ignore this line
     } else {
-      bad_lines ++;
+      bad_lines++;
     }
   }
 
   if (bad_lines > 0) {
-    cout << "Warning: " << bad_lines << " bad lines ignored." << endl;
+    std::cout << "Warning: " << bad_lines << " bad lines ignored." << std::endl;
   }
   if (compact_) {
     db_->CompactRange(CompactRangeOptions(), GetCfHandle(), nullptr, nullptr);
@@ -597,8 +597,7 @@ ManifestDumpCommand::ManifestDumpCommand(const vector<string>& params,
                BuildCmdLineOptions({ARG_VERBOSE, ARG_PATH, ARG_HEX, ARG_JSON})),
     verbose_(false),
     json_(false),
-    path_("")
-{
+    path_("") {
   verbose_ = IsFlagPresent(flags, ARG_VERBOSE);
   json_ = IsFlagPresent(flags, ARG_JSON);
 
@@ -739,7 +738,7 @@ void CreateColumnFamilyCommand::DoCommand() {
 namespace {
 
 string ReadableTime(int unixtime) {
-  char time_buffer [80];
+  char time_buffer[80];
   time_t rawtime = unixtime;
   struct tm tInfo;
   struct tm* timeinfo = localtime_r(&rawtime, &tInfo);
@@ -750,27 +749,27 @@ string ReadableTime(int unixtime) {
 
 // This function only called when it's the sane case of >1 buckets in time-range
 // Also called only when timekv falls between ttl_start and ttl_end provided
-void IncBucketCounts(vector<uint64_t>& bucket_counts, int ttl_start,
+void IncBucketCounts(vector<uint64_t>* bucket_counts, int ttl_start,
       int time_range, int bucket_size, int timekv, int num_buckets) {
   assert(time_range > 0 && timekv >= ttl_start && bucket_size > 0 &&
     timekv < (ttl_start + time_range) && num_buckets > 1);
   int bucket = (timekv - ttl_start) / bucket_size;
-  bucket_counts[bucket]++;
+  (*bucket_counts)[bucket]++;
 }
 
 void PrintBucketCounts(const vector<uint64_t>& bucket_counts, int ttl_start,
       int ttl_end, int bucket_size, int num_buckets) {
   int time_point = ttl_start;
   for(int i = 0; i < num_buckets - 1; i++, time_point += bucket_size) {
-    fprintf(stdout, "Keys in range %s to %s : %lu\n",
+    fprintf(stdout, "Keys in range %s to %s : %" PRIu64 "\n",
             ReadableTime(time_point).c_str(),
             ReadableTime(time_point + bucket_size).c_str(),
-            (unsigned long)bucket_counts[i]);
+            bucket_counts[i]);
   }
-  fprintf(stdout, "Keys in range %s to %s : %lu\n",
+  fprintf(stdout, "Keys in range %s to %s : %" PRIu64 "\n",
           ReadableTime(time_point).c_str(),
           ReadableTime(ttl_end).c_str(),
-          (unsigned long)bucket_counts[num_buckets - 1]);
+          bucket_counts[num_buckets - 1]);
 }
 
 }  // namespace
@@ -804,10 +803,10 @@ InternalDumpCommand::InternalDumpCommand(const vector<string>& params,
   if (itr != options.end()) {
     delim_ = itr->second;
     count_delim_ = true;
-   // fprintf(stdout,"delim = %c\n",delim_[0]);
+    // fprintf(stdout,"delim = %c\n",delim_[0]);
   } else {
     count_delim_ = IsFlagPresent(flags, ARG_COUNT_DELIM);
-    delim_=".";
+    delim_ = ".";
   }
 
   print_stats_ = IsFlagPresent(flags, ARG_STATS);
@@ -855,10 +854,10 @@ void InternalDumpCommand::DoCommand() {
     exec_state_ = LDBCommandExecuteResult::Failed("DB is not DBImpl");
     return;
   }
-  string rtype1,rtype2,row,val;
+  string rtype1, rtype2, row, val;
   rtype2 = "";
-  uint64_t c=0;
-  uint64_t s1=0,s2=0;
+  uint64_t c = 0;
+  uint64_t s1 = 0, s2 = 0;
   // Setup internal key iterator
   Arena arena;
   ScopedArenaIterator iter(idb->NewInternalIterator(&arena));
@@ -869,14 +868,13 @@ void InternalDumpCommand::DoCommand() {
   }
 
   if (has_from_) {
-    InternalKey ikey;
-    ikey.SetMaxPossibleForUserKey(from_);
+    InternalKey ikey = InternalKey::MaxPossibleForUserKey(from_);
     iter->Seek(ikey.Encode());
   } else {
     iter->SeekToFirst();
   }
 
-  long long count = 0;
+  int64_t count = 0;
   for (; iter->Valid(); iter->Next()) {
     ParsedInternalKey ikey;
     if (!ParseInternalKey(iter->key(), &ikey)) {
@@ -895,25 +893,24 @@ void InternalDumpCommand::DoCommand() {
     int k;
     if (count_delim_) {
       rtype1 = "";
-      s1=0;
+      s1 = 0;
       row = iter->key().ToString();
       val = iter->value().ToString();
-      for(k=0;row[k]!='\x01' && row[k]!='\0';k++)
+      for (k = 0; row[k] != '\x01' && row[k] != '\0'; k++)
         s1++;
-      for(k=0;val[k]!='\x01' && val[k]!='\0';k++)
+      for (k = 0; val[k] != '\x01' && val[k] != '\0'; k++)
         s1++;
-      for(int j=0;row[j]!=delim_[0] && row[j]!='\0' && row[j]!='\x01';j++)
-        rtype1+=row[j];
-      if(rtype2.compare("") && rtype2.compare(rtype1)!=0) {
-        fprintf(stdout,"%s => count:%lld\tsize:%lld\n",rtype2.c_str(),
-            (long long)c,(long long)s2);
-        c=1;
-        s2=s1;
+      for (int j = 0; row[j] != delim_[0] && row[j] != '\0' && row[j] != '\x01'; j++)
+        rtype1 += row[j];
+      if (rtype2.compare("") && rtype2.compare(rtype1) != 0) {
+        fprintf(stdout, "%s => count:%" PRIu64 "\tsize:%" PRIu64 "\n", rtype2.c_str(), c, s2);
+        c = 1;
+        s2 = s1;
         rtype2 = rtype1;
       } else {
         c++;
-        s2+=s1;
-        rtype2=rtype1;
+        s2 += s1;
+        rtype2 = rtype1;
     }
   }
 
@@ -927,10 +924,10 @@ void InternalDumpCommand::DoCommand() {
     if (max_keys_ > 0 && count >= max_keys_) break;
   }
   if(count_delim_) {
-    fprintf(stdout,"%s => count:%lld\tsize:%lld\n", rtype2.c_str(),
-        (long long)c,(long long)s2);
-  } else
-  fprintf(stdout, "Internal keys in range: %lld\n", (long long) count);
+    fprintf(stdout, "%s => count:%" PRIu64 "\tsize:%" PRIu64 "\n", rtype2.c_str(), c, s2);
+  } else {
+    fprintf(stdout, "Internal keys in range: %" PRId64 "\n", count);
+  }
 }
 
 
@@ -974,10 +971,10 @@ DBDumperCommand::DBDumperCommand(const vector<string>& params,
 #else
       max_keys_ = stoi(itr->second);
 #endif
-    } catch(const invalid_argument&) {
+    } catch(const std::invalid_argument&) {
       exec_state_ = LDBCommandExecuteResult::Failed(ARG_MAX_KEYS +
                                                     " has an invalid value");
-    } catch(const out_of_range&) {
+    } catch(const std::out_of_range&) {
       exec_state_ = LDBCommandExecuteResult::Failed(
           ARG_MAX_KEYS + " has a value out-of-range");
     }
@@ -988,7 +985,7 @@ DBDumperCommand::DBDumperCommand(const vector<string>& params,
     count_delim_ = true;
   } else {
     count_delim_ = IsFlagPresent(flags, ARG_COUNT_DELIM);
-    delim_=".";
+    delim_ = ".";
   }
 
   print_stats_ = IsFlagPresent(flags, ARG_STATS);
@@ -1122,11 +1119,11 @@ void DBDumperCommand::DoDumpCommand() {
       bucket_size <= 0) {
     bucket_size = time_range; // Will have just 1 bucket by default
   }
-  //cretaing variables for row count of each type
-  string rtype1,rtype2,row,val;
+  // Creating variables for row count of each type
+  string rtype1, rtype2, row, val;
   rtype2 = "";
-  uint64_t c=0;
-  uint64_t s1=0,s2=0;
+  uint64_t c = 0;
+  uint64_t s1 = 0, s2 = 0;
 
   // At this point, bucket_size=0 => time_range=0
   int num_buckets = (bucket_size >= time_range)
@@ -1158,7 +1155,7 @@ void DBDumperCommand::DoDumpCommand() {
       --max_keys;
     }
     if (is_db_ttl_ && num_buckets > 1) {
-      IncBucketCounts(bucket_counts, ttl_start, time_range, bucket_size,
+      IncBucketCounts(&bucket_counts, ttl_start, time_range, bucket_size,
                       rawtime, num_buckets);
     }
     ++count;
@@ -1167,18 +1164,17 @@ void DBDumperCommand::DoDumpCommand() {
       row = iter->key().ToString();
       val = iter->value().ToString();
       s1 = row.size()+val.size();
-      for(int j=0;row[j]!=delim_[0] && row[j]!='\0';j++)
-        rtype1+=row[j];
-      if(rtype2.compare("") && rtype2.compare(rtype1)!=0) {
-        fprintf(stdout,"%s => count:%lld\tsize:%lld\n",rtype2.c_str(),
-            (long long )c,(long long)s2);
-        c=1;
-        s2=s1;
+      for (int j = 0; row[j] != delim_[0] && row[j] != '\0'; j++)
+        rtype1 += row[j];
+      if (rtype2.compare("") && rtype2.compare(rtype1) != 0) {
+        fprintf(stdout, "%s => count:%" PRIu64 "\tsize:%" PRIu64 "\n", rtype2.c_str(), c, s2);
+        c = 1;
+        s2 = s1;
         rtype2 = rtype1;
       } else {
           c++;
-          s2+=s1;
-          rtype2=rtype1;
+          s2 += s1;
+          rtype2 = rtype1;
       }
 
     }
@@ -1200,10 +1196,9 @@ void DBDumperCommand::DoDumpCommand() {
     PrintBucketCounts(bucket_counts, ttl_start, ttl_end, bucket_size,
                       num_buckets);
   } else if(count_delim_) {
-    fprintf(stdout,"%s => count:%lld\tsize:%lld\n",rtype2.c_str(),
-        (long long )c,(long long)s2);
+    fprintf(stdout, "%s => count:%" PRIu64 "\tsize:%" PRIu64 "\n", rtype2.c_str(), c, s2);
   } else {
-    fprintf(stdout, "Keys in range: %lld\n", (long long) count);
+    fprintf(stdout, "Keys in range: %" PRIu64 "\n", count);
   }
   // Clean up
   delete iter;
@@ -1479,13 +1474,13 @@ namespace {
 
 struct StdErrReporter : public log::Reader::Reporter {
   void Corruption(size_t bytes, const Status& s) override {
-    cerr << "Corruption detected in log file " << s.ToString() << "\n";
+    std::cerr << "Corruption detected in log file " << s.ToString() << "\n";
   }
 };
 
 class InMemoryHandler : public WriteBatch::Handler {
  public:
-  InMemoryHandler(stringstream& row, bool print_values) : Handler(), row_(row) {
+  InMemoryHandler(std::stringstream& row, bool print_values) : Handler(), row_(row) {
     print_values_ = print_values;
   }
 
@@ -1518,7 +1513,7 @@ class InMemoryHandler : public WriteBatch::Handler {
   virtual ~InMemoryHandler() {}
 
  private:
-  stringstream & row_;
+  std::stringstream & row_;
   bool print_values_;
 };
 
@@ -1541,8 +1536,8 @@ void DumpWalFile(std::string wal_file, bool print_header, bool print_values,
       *exec_state = LDBCommandExecuteResult::Failed("Failed to open WAL file " +
                                                     status.ToString());
     } else {
-      cerr << "Error: Failed to open WAL file " << status.ToString()
-           << std::endl;
+      std::cerr << "Error: Failed to open WAL file " << status.ToString()
+                << std::endl;
     }
   } else {
     StdErrReporter reporter;
@@ -1564,13 +1559,13 @@ void DumpWalFile(std::string wal_file, bool print_header, bool print_values,
     string scratch;
     WriteBatch batch;
     Slice record;
-    stringstream row;
+    std::stringstream row;
     if (print_header) {
-      cout << "Sequence,Count,ByteSize,Physical Offset,Key(s)";
+      std::cout << "Sequence,Count,ByteSize,Physical Offset,Key(s)";
       if (print_values) {
-        cout << " : value ";
+        std::cout << " : value ";
       }
-      cout << "\n";
+      std::cout << "\n";
     }
     while (reader.ReadRecord(&record, &scratch)) {
       row.str("");
@@ -1587,7 +1582,7 @@ void DumpWalFile(std::string wal_file, bool print_header, bool print_values,
         batch.Iterate(&handler);
         row << "\n";
       }
-      cout << row.str();
+      std::cout << row.str();
     }
   }
 }
@@ -1723,7 +1718,7 @@ void ApproxSizeCommand::DoCommand() {
   ranges[0] = Range(start_key_, end_key_);
   uint64_t sizes[1];
   db_->GetApproximateSizes(GetCfHandle(), ranges, 1, sizes);
-  fprintf(stdout, "%lu\n", (unsigned long)sizes[0]);
+  fprintf(stdout, "%" PRIu64 "\n", sizes[0]);
   /* Weird that GetApproximateSizes() returns void, although documentation
    * says that it returns a Status object.
   if (!st.ok()) {
@@ -1750,9 +1745,8 @@ BatchPutCommand::BatchPutCommand(const vector<string>& params,
     for (size_t i = 0; i < params.size(); i += 2) {
       string key = params.at(i);
       string value = params.at(i+1);
-      key_values_.push_back(pair<string, string>(
-                    is_key_hex_ ? HexToString(key) : key,
-                    is_value_hex_ ? HexToString(value) : value));
+      key_values_.emplace_back(is_key_hex_ ? HexToString(key) : key,
+                               is_value_hex_ ? HexToString(value) : value);
     }
   }
 }
@@ -1772,8 +1766,7 @@ void BatchPutCommand::DoCommand() {
   }
   WriteBatch batch;
 
-  for (vector<pair<string, string>>::const_iterator itr
-        = key_values_.begin(); itr != key_values_.end(); ++itr) {
+  for (auto itr = key_values_.begin(); itr != key_values_.end(); ++itr) {
     batch.Put(GetCfHandle(), itr->first, itr->second);
   }
   Status st = db_->Write(WriteOptions(), &batch);
@@ -1836,10 +1829,10 @@ ScanCommand::ScanCommand(const vector<string>& params,
 #else
       max_keys_scanned_ = stoi(itr->second);
 #endif
-    } catch(const invalid_argument&) {
+    } catch(const std::invalid_argument&) {
       exec_state_ = LDBCommandExecuteResult::Failed(ARG_MAX_KEYS +
                                                     " has an invalid value");
-    } catch(const out_of_range&) {
+    } catch(const std::out_of_range&) {
       exec_state_ = LDBCommandExecuteResult::Failed(
           ARG_MAX_KEYS + " has a value out-of-range");
     }
@@ -2066,7 +2059,7 @@ void DBQuerierCommand::DoCommand() {
   string line;
   string key;
   string value;
-  while (getline(cin, line, '\n')) {
+  while (getline(std::cin, line, '\n')) {
 
     // Parse line into vector<string>
     vector<string> tokens;

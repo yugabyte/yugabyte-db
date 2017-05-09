@@ -137,10 +137,10 @@ TEST_F(FlushJobTest, NonEmpty) {
   mutex_.Lock();
   ASSERT_OK(flush_job.Run(&fd));
   mutex_.Unlock();
-  ASSERT_EQ(ToString(0), fd.smallest.user_key().ToString());
-  ASSERT_EQ(ToString(9999), fd.largest.user_key().ToString());
-  ASSERT_EQ(1, fd.smallest_seqno);
-  ASSERT_EQ(9999, fd.largest_seqno);
+  ASSERT_EQ(ToString(0), fd.smallest.key.user_key().ToString());
+  ASSERT_EQ(ToString(9999), fd.largest.key.user_key().ToString());
+  ASSERT_EQ(1, fd.smallest.seqno);
+  ASSERT_EQ(9999, fd.largest.seqno);
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();
 }

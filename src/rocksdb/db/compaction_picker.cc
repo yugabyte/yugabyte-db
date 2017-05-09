@@ -16,6 +16,7 @@
 #endif
 
 #include <inttypes.h>
+
 #include <limits>
 #include <queue>
 #include <string>
@@ -69,8 +70,8 @@ struct UserKeyComparator {
   explicit UserKeyComparator(const Comparator* ucmp) { ucmp_ = ucmp; }
 
   bool operator()(InputFileInfo i1, InputFileInfo i2) const {
-    return (ucmp_->Compare(i1.f->smallest.user_key(),
-                           i2.f->smallest.user_key()) > 0);
+    return (ucmp_->Compare(i1.f->smallest.key.user_key(),
+                           i2.f->smallest.key.user_key()) > 0);
   }
 
  private:
@@ -169,20 +170,20 @@ void CompactionPicker::GetRange(const CompactionInputFiles& inputs,
     for (size_t i = 0; i < inputs.size(); i++) {
       FileMetaData* f = inputs[i];
       if (i == 0) {
-        *smallest = f->smallest;
-        *largest = f->largest;
+        *smallest = f->smallest.key;
+        *largest = f->largest.key;
       } else {
-        if (icmp_->Compare(f->smallest, *smallest) < 0) {
-          *smallest = f->smallest;
+        if (icmp_->Compare(f->smallest.key, *smallest) < 0) {
+          *smallest = f->smallest.key;
         }
-        if (icmp_->Compare(f->largest, *largest) > 0) {
-          *largest = f->largest;
+        if (icmp_->Compare(f->largest.key, *largest) > 0) {
+          *largest = f->largest.key;
         }
       }
     }
   } else {
-    *smallest = inputs[0]->smallest;
-    *largest = inputs[inputs.size() - 1]->largest;
+    *smallest = inputs[0]->smallest.key;
+    *largest = inputs[inputs.size() - 1]->largest.key;
   }
 }
 
@@ -345,7 +346,8 @@ Status CompactionPicker::GetCompactionInputsFromFileNumbers(
 // Returns true if any one of the parent files are being compacted
 bool CompactionPicker::RangeInCompaction(VersionStorageInfo* vstorage,
                                          const InternalKey* smallest,
-                                         const InternalKey* largest, int level,
+                                         const InternalKey* largest,
+                                         int level,
                                          int* level_index) {
   std::vector<FileMetaData*> inputs;
   assert(level < NumberLevels());
@@ -556,7 +558,7 @@ Compaction* CompactionPicker::CompactRange(
       uint64_t s = inputs[i]->compensated_file_size;
       total += s;
       if (total >= limit) {
-        **compaction_end = inputs[i + 1]->smallest;
+        **compaction_end = inputs[i + 1]->smallest.key;
         covering_the_whole_range = false;
         inputs.files.resize(i + 1);
         break;
@@ -635,32 +637,30 @@ Compaction* CompactionPicker::CompactRange(
   return compaction;
 }
 
+// Test whether two files have overlapping key-ranges.
+bool HaveOverlappingKeyRanges(const Comparator* c,
+                              const SstFileMetaData& a,
+                              const SstFileMetaData& b) {
+  return c->Compare(a.largest.key, b.smallest.key) >= 0 &&
+         c->Compare(b.largest.key, a.smallest.key) >= 0;
+}
+
 #ifndef ROCKSDB_LITE
 namespace {
-// Test whether two files have overlapping key-ranges.
-bool HaveOverlappingKeyRanges(
-    const Comparator* c,
-    const SstFileMetaData& a, const SstFileMetaData& b) {
-  if (c->Compare(a.smallestkey, b.smallestkey) >= 0) {
-    if (c->Compare(a.smallestkey, b.largestkey) <= 0) {
-      // b.smallestkey <= a.smallestkey <= b.largestkey
-      return true;
-    }
-  } else if (c->Compare(a.largestkey, b.smallestkey) >= 0) {
-    // a.smallestkey < b.smallestkey <= a.largestkey
-    return true;
+
+// Updates smallest/largest keys using keys from specified file.
+void UpdateBoundaryKeys(const Comparator* comparator,
+                        const SstFileMetaData& file,
+                        SstFileMetaData::BoundaryValues* smallest,
+                        SstFileMetaData::BoundaryValues* largest) {
+  if (smallest != nullptr && comparator->Compare(smallest->key, file.smallest.key) > 0) {
+    smallest->key = file.smallest.key;
   }
-  if (c->Compare(a.largestkey, b.largestkey) <= 0) {
-    if (c->Compare(a.largestkey, b.smallestkey) >= 0) {
-      // b.smallestkey <= a.largestkey <= b.largestkey
-      return true;
-    }
-  } else if (c->Compare(a.smallestkey, b.largestkey) <= 0) {
-    // a.smallestkey <= b.largestkey < a.largestkey
-    return true;
+  if (largest != nullptr && comparator->Compare(largest->key, file.largest.key) < 0) {
+    largest->key = file.largest.key;
   }
-  return false;
 }
+
 }  // namespace
 
 Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
@@ -677,10 +677,9 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
   // TODO(yhchiang): add is_adjustable to CompactionOptions
 
   // the smallest and largest key of the current compaction input
-  std::string smallestkey;
-  std::string largestkey;
+  SstFileMetaData::BoundaryValues smallest, largest;
   // a flag for initializing smallest and largest key
-  bool is_first = false;
+  bool is_first = true;
   const int kNotFound = -1;
 
   // For each level, it does the following things:
@@ -703,10 +702,10 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
           input_files->end()) {
         first_included = std::min(first_included, static_cast<int>(f));
         last_included = std::max(last_included, static_cast<int>(f));
-        if (is_first == false) {
-          smallestkey = current_files[f].smallestkey;
-          largestkey = current_files[f].largestkey;
-          is_first = true;
+        if (is_first) {
+          smallest = current_files[f].smallest;
+          largest = current_files[f].largest;
+          is_first = false;
         }
       }
     }
@@ -720,8 +719,8 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
       // files in the same level.
       while (first_included > 0) {
         if (comparator->Compare(
-                current_files[first_included - 1].largestkey,
-                current_files[first_included].smallestkey) < 0) {
+                current_files[first_included - 1].largest.key,
+                current_files[first_included].smallest.key) < 0) {
           break;
         }
         first_included--;
@@ -729,8 +728,8 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
 
       while (last_included < static_cast<int>(current_files.size()) - 1) {
         if (comparator->Compare(
-                current_files[last_included + 1].smallestkey,
-                current_files[last_included].largestkey) > 0) {
+                current_files[last_included + 1].smallest.key,
+                current_files[last_included].largest.key) > 0) {
           break;
         }
         last_included++;
@@ -751,29 +750,16 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     // update smallest and largest key
     if (l == 0) {
       for (int f = first_included; f <= last_included; ++f) {
-        if (comparator->Compare(
-            smallestkey, current_files[f].smallestkey) > 0) {
-          smallestkey = current_files[f].smallestkey;
-        }
-        if (comparator->Compare(
-            largestkey, current_files[f].largestkey) < 0) {
-          largestkey = current_files[f].largestkey;
-        }
+        UpdateBoundaryKeys(comparator, current_files[f], &smallest, &largest);
       }
     } else {
-      if (comparator->Compare(
-          smallestkey, current_files[first_included].smallestkey) > 0) {
-        smallestkey = current_files[first_included].smallestkey;
-      }
-      if (comparator->Compare(
-          largestkey, current_files[last_included].largestkey) < 0) {
-        largestkey = current_files[last_included].largestkey;
-      }
+      UpdateBoundaryKeys(comparator, current_files[first_included], &smallest, nullptr);
+      UpdateBoundaryKeys(comparator, current_files[last_included], nullptr, &largest);
     }
 
     SstFileMetaData aggregated_file_meta;
-    aggregated_file_meta.smallestkey = smallestkey;
-    aggregated_file_meta.largestkey = largestkey;
+    aggregated_file_meta.smallest = smallest;
+    aggregated_file_meta.largest = largest;
 
     // For all lower levels, include all overlapping files.
     // We need to add overlapping files from the current level too because even
@@ -1142,7 +1128,7 @@ bool LevelCompactionPicker::PickCompactionBySize(VersionStorageInfo* vstorage,
     // Do not pick this file if its parents at level+1 are being compacted.
     // Maybe we can avoid redoing this work in SetupOtherInputs
     *parent_index = -1;
-    if (RangeInCompaction(vstorage, &f->smallest, &f->largest, output_level,
+    if (RangeInCompaction(vstorage, &f->smallest.key, &f->largest.key, output_level,
                           parent_index)) {
       continue;
     }
@@ -1249,19 +1235,21 @@ namespace {
 void GetSmallestLargestSeqno(const std::vector<FileMetaData*>& files,
                              SequenceNumber* smallest_seqno,
                              SequenceNumber* largest_seqno) {
+  assert(smallest_seqno != nullptr);
+  assert(largest_seqno != nullptr);
   bool is_first = true;
   for (FileMetaData* f : files) {
-    assert(f->smallest_seqno <= f->largest_seqno);
+    assert(f->smallest.seqno <= f->largest.seqno);
     if (is_first) {
       is_first = false;
-      *smallest_seqno = f->smallest_seqno;
-      *largest_seqno = f->largest_seqno;
+      *smallest_seqno = f->smallest.seqno;
+      *largest_seqno = f->largest.seqno;
     } else {
-      if (f->smallest_seqno < *smallest_seqno) {
-        *smallest_seqno = f->smallest_seqno;
+      if (f->smallest.seqno < *smallest_seqno) {
+        *smallest_seqno = f->smallest.seqno;
       }
-      if (f->largest_seqno > *largest_seqno) {
-        *largest_seqno = f->largest_seqno;
+      if (f->largest.seqno > *largest_seqno) {
+        *largest_seqno = f->largest.seqno;
       }
     }
   }
@@ -1288,13 +1276,13 @@ bool CompactionPicker::IsInputNonOverlapping(Compaction* c) {
       prev = curr;
       first_iter = 0;
     } else {
-      if (comparator->Compare(prev.f->largest.user_key(),
-                              curr.f->smallest.user_key()) >= 0) {
+      if (comparator->Compare(prev.f->largest.key.user_key(),
+                              curr.f->smallest.key.user_key()) >= 0) {
         // found overlapping files, return false
         return false;
       }
-      assert(comparator->Compare(curr.f->largest.user_key(),
-                                 prev.f->largest.user_key()) > 0);
+      assert(comparator->Compare(curr.f->largest.key.user_key(),
+                                 prev.f->largest.key.user_key()) > 0);
       prev = curr;
     }
 
@@ -1402,13 +1390,13 @@ Compaction* UniversalCompactionPicker::PickCompaction(
   size_t level_index = 0U;
   if (c->start_level() == 0) {
     for (auto f : *c->inputs(0)) {
-      assert(f->smallest_seqno <= f->largest_seqno);
+      assert(f->smallest.seqno <= f->largest.seqno);
       if (is_first) {
         is_first = false;
       } else {
-        assert(prev_smallest_seqno > f->largest_seqno);
+        assert(prev_smallest_seqno > f->largest.seqno);
       }
-      prev_smallest_seqno = f->smallest_seqno;
+      prev_smallest_seqno = f->smallest.seqno;
     }
     level_index = 1U;
   }

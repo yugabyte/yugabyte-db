@@ -1799,7 +1799,7 @@ SequenceNumber Tablet::MaxPersistentSequenceNumber() const {
   rocksdb_->GetLiveFilesMetaData(&live_files_metadata);
   SequenceNumber max_seqno = 0;
   for (auto& live_file_metadata : live_files_metadata) {
-    max_seqno = std::max(max_seqno, live_file_metadata.largest_seqno);
+    max_seqno = std::max(max_seqno, live_file_metadata.largest.seqno);
   }
   return max_seqno;
 }

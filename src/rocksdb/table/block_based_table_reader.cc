@@ -1695,8 +1695,7 @@ Status BlockBasedTable::DumpIndexBlock(WritableFile* out_file) {
       break;
     }
     Slice key = blockhandles_iter->key();
-    InternalKey ikey;
-    ikey.DecodeFrom(key);
+    InternalKey ikey = InternalKey::DecodeFrom(key);
 
     out_file->Append("  HEX    ");
     out_file->Append(ikey.user_key().ToString(true).c_str());
@@ -1762,9 +1761,8 @@ Status BlockBasedTable::DumpDataBlocks(WritableFile* out_file) {
       }
       Slice key = datablock_iter->key();
       Slice value = datablock_iter->value();
-      InternalKey ikey, iValue;
-      ikey.DecodeFrom(key);
-      iValue.DecodeFrom(value);
+      InternalKey ikey = InternalKey::DecodeFrom(key);
+      InternalKey iValue = InternalKey::DecodeFrom(value);
 
       out_file->Append("  HEX    ");
       out_file->Append(ikey.user_key().ToString(true).c_str());

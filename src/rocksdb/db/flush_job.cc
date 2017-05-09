@@ -287,10 +287,7 @@ Status FlushJob::WriteLevel0Table(const autovector<MemTable*>& mems,
     // threads could be concurrently producing compacted files for
     // that key range.
     // Add file to L0
-    edit->AddFile(0 /* level */, meta->fd.GetNumber(), meta->fd.GetPathId(),
-        meta->fd.GetTotalFileSize(), meta->fd.GetBaseFileSize(), meta->smallest, meta->largest,
-                  meta->smallest_seqno, meta->largest_seqno,
-                  meta->marked_for_compaction);
+    edit->AddCleanedFile(0 /* level */, *meta);
   }
 
   InternalStats::CompactionStats stats(1);

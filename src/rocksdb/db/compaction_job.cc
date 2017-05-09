@@ -177,7 +177,7 @@ struct CompactionJob::CompactionState {
     for (const auto& sub_compact_state : sub_compact_states) {
       if (!sub_compact_state.outputs.empty() &&
           sub_compact_state.outputs[0].finished) {
-        return sub_compact_state.outputs[0].meta.smallest.user_key();
+        return sub_compact_state.outputs[0].meta.smallest.key.user_key();
       }
     }
     // If there is no finished output, return an empty slice.
@@ -189,7 +189,7 @@ struct CompactionJob::CompactionState {
          ++it) {
       if (!it->outputs.empty() && it->current_output()->finished) {
         assert(it->current_output() != nullptr);
-        return it->current_output()->meta.largest.user_key();
+        return it->current_output()->meta.largest.key.user_key();
       }
     }
     // If there is no finished output, return an empty slice.
@@ -997,8 +997,8 @@ Status CompactionJob::OpenCompactionOutputFile(
   // Update sequence number boundaries for out.
   for (size_t level_idx = 0; level_idx < compact_->compaction->num_input_levels(); level_idx++) {
     for (FileMetaData *fmd : *compact_->compaction->inputs(level_idx) ) {
-      out.meta.UpdateSeqNoBoundaries(fmd->smallest_seqno);
-      out.meta.UpdateSeqNoBoundaries(fmd->largest_seqno);
+      out.meta.UpdateSeqNoBoundaries(fmd->smallest.seqno);
+      out.meta.UpdateSeqNoBoundaries(fmd->largest.seqno);
     }
   }
   out.finished = false;

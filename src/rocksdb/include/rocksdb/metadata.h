@@ -53,21 +53,27 @@ struct LevelMetaData {
   const std::vector<SstFileMetaData> files;
 };
 
+template<class KeyType>
+struct FileBoundaryValues {
+  KeyType key;                          // Boundary key in the file.
+  SequenceNumber seqno;                 // Boundary sequence number in file.
+};
+
 // The metadata that describes a SST fileset.
 struct SstFileMetaData {
+  typedef FileBoundaryValues<std::string> BoundaryValues;
+
   SstFileMetaData() {}
   SstFileMetaData(const std::string& _file_name,
-                  const std::string& _path, uint64_t _total_size, uint64_t _base_size,
-                  SequenceNumber _smallest_seqno,
-                  SequenceNumber _largest_seqno,
-                  const std::string& _smallestkey,
-                  const std::string& _largestkey,
+                  const std::string& _path,
+                  uint64_t _total_size,
+                  uint64_t _base_size,
+                  const BoundaryValues& _smallest,
+                  const BoundaryValues& _largest,
                   bool _being_compacted) :
     total_size(_total_size), base_size(_base_size), name(_file_name),
-    db_path(_path), smallest_seqno(_smallest_seqno), largest_seqno(_largest_seqno),
-    smallestkey(_smallestkey), largestkey(_largestkey),
+    db_path(_path), smallest(_smallest), largest(_largest),
     being_compacted(_being_compacted) {
-
   }
 
   // Total file(s) (metadata and data (aka s-block) files) size in bytes.
@@ -79,10 +85,8 @@ struct SstFileMetaData {
   // The full path where the file locates.
   std::string db_path;
 
-  SequenceNumber smallest_seqno;  // Smallest sequence number in file.
-  SequenceNumber largest_seqno;   // Largest sequence number in file.
-  std::string smallestkey;     // Smallest user defined key in the file.
-  std::string largestkey;      // Largest user defined key in the file.
+  BoundaryValues smallest;
+  BoundaryValues largest;
   bool being_compacted;  // true if the file is currently being compacted.
 };
 

@@ -110,8 +110,8 @@ DBTablePropertiesTest::TestGetPropertiesOfTablesInRange(
     bool in_range = false;
     for (auto& r : ranges) {
       // smallestkey < limit && largestkey >= start
-      if (r.limit.compare(md.smallestkey) >= 0 &&
-          r.start.compare(md.largestkey) <= 0) {
+      if (r.limit.compare(md.smallest.key) >= 0 &&
+          r.start.compare(md.largest.key) <= 0) {
         in_range = true;
         EXPECT_GT(props.count(fn), 0);
       }

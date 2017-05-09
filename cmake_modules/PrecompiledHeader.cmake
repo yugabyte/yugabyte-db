@@ -118,6 +118,7 @@ function(add_precompiled_header _target _input)
             -o "${_output_cxx}"
             "${_pch_header}"
     DEPENDS "${_pch_header}" "${_pch_flags_file}" "${_outdir}"
+    IMPLICIT_DEPENDS CXX "${_pch_header}"
     COMMENT "Precompiling ${_name} for ${_target} (C++)")
 
   get_property(_sources TARGET ${_target} PROPERTY SOURCES)

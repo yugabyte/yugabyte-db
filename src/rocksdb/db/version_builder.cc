@@ -32,11 +32,11 @@
 namespace rocksdb {
 
 bool NewestFirstBySeqNo(FileMetaData* a, FileMetaData* b) {
-  if (a->smallest_seqno != b->smallest_seqno) {
-    return a->smallest_seqno > b->smallest_seqno;
+  if (a->smallest.seqno != b->smallest.seqno) {
+    return a->smallest.seqno > b->smallest.seqno;
   }
-  if (a->largest_seqno != b->largest_seqno) {
-    return a->largest_seqno > b->largest_seqno;
+  if (a->largest.seqno != b->largest.seqno) {
+    return a->largest.seqno > b->largest.seqno;
   }
   // Break ties by file number
   return a->fd.GetNumber() > b->fd.GetNumber();
@@ -45,7 +45,7 @@ bool NewestFirstBySeqNo(FileMetaData* a, FileMetaData* b) {
 namespace {
 bool BySmallestKey(FileMetaData* a, FileMetaData* b,
                    const InternalKeyComparator* cmp) {
-  int r = cmp->Compare(a->smallest, b->smallest);
+  int r = cmp->Compare(a->smallest.key, b->smallest.key);
   if (r != 0) {
     return (r < 0);
   }
@@ -136,19 +136,19 @@ class VersionBuilder::Rep {
         auto f2 = level_files[i];
         if (level == 0) {
           assert(level_zero_cmp_(f1, f2));
-          assert(f1->largest_seqno > f2->largest_seqno ||
+          assert(f1->largest.seqno > f2->largest.seqno ||
                  // We can have multiple files with seqno = 0 as a result of
                  // using DB::AddFile()
-                 (f1->largest_seqno == 0 && f2->largest_seqno == 0));
+                 (f1->largest.seqno == 0 && f2->largest.seqno == 0));
         } else {
           assert(level_nonzero_cmp_(f1, f2));
 
           // Make sure there is no overlap in levels > 0
-          if (vstorage->InternalComparator()->Compare(f1->largest,
-                                                      f2->smallest) >= 0) {
+          if (vstorage->InternalComparator()->Compare(f1->largest.key,
+                                                      f2->smallest.key) >= 0) {
             fprintf(stderr, "overlapping ranges in same level %s vs. %s\n",
-                    (f1->largest).DebugString().c_str(),
-                    (f2->smallest).DebugString().c_str());
+                    f1->largest.key.DebugString().c_str(),
+                    f2->smallest.key.DebugString().c_str());
             abort();
           }
         }
@@ -264,7 +264,7 @@ class VersionBuilder::Rep {
 #ifndef NDEBUG
         if (level > 0 && prev_file != nullptr) {
           assert(base_vstorage_->InternalComparator()->Compare(
-                     prev_file->smallest, added->smallest) <= 0);
+                     prev_file->smallest.key, added->smallest.key) <= 0);
         }
         prev_file = added;
 #endif

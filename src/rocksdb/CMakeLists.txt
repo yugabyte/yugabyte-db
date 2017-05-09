@@ -4,6 +4,15 @@
 
 include(PrecompiledHeader)
 
+PROTOBUF_GENERATE_CPP(
+  ROCKSDB_PROTO_SRCS ROCKSDB_PROTO_HDRS ROCKSDB_PROTO_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/..
+  PROTO_FILES db/version_edit.proto)
+
+set_source_files_properties(${ROCKSDB_PROTO_SRCS} PROPERTIES
+                            COMPILE_FLAGS "-Wno-shorten-64-to-32")
+
 ### RocksDB sources
 set(ROCKSDB_SRCS
     db/auto_roll_logger.cc
@@ -173,6 +182,7 @@ set(ROCKSDB_SRCS
     util/thread_status_util_debug.cc
     util/xfunc.cc
     util/xxhash.cc
+    ${ROCKSDB_PROTO_SRCS}
 )
 
 set(CMAKE_CXX_FLAGS

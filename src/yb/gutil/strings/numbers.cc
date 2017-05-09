@@ -294,7 +294,7 @@ void ConsumeStrayLeadingZeroes(string *const str) {
 
 int32 ParseLeadingInt32Value(const char *str, int32 deflt) {
   char *error = nullptr;
-  long value = strtol(str, &error, 0);
+  auto value = strtol(str, &error, 0);
   // Limit long values to int32 min/max.  Needed for lp64; no-op on 32 bits.
   if (value > numeric_limits<int32>::max()) {
     value = numeric_limits<int32>::max();
@@ -305,7 +305,7 @@ int32 ParseLeadingInt32Value(const char *str, int32 deflt) {
 }
 
 uint32 ParseLeadingUInt32Value(const char *str, uint32 deflt) {
-  if (numeric_limits<unsigned long>::max() == numeric_limits<uint32>::max()) {
+  if (numeric_limits<size_t>::max() == numeric_limits<uint32>::max()) {
     // When long is 32 bits, we can use strtoul.
     char *error = nullptr;
     const uint32 value = strtoul(str, &error, 0);
@@ -338,7 +338,7 @@ uint32 ParseLeadingUInt32Value(const char *str, uint32 deflt) {
 
 int32 ParseLeadingDec32Value(const char *str, int32 deflt) {
   char *error = nullptr;
-  long value = strtol(str, &error, 10);
+  auto value = strtol(str, &error, 10);
   // Limit long values to int32 min/max.  Needed for lp64; no-op on 32 bits.
   if (value > numeric_limits<int32>::max()) {
     value = numeric_limits<int32>::max();
@@ -349,7 +349,7 @@ int32 ParseLeadingDec32Value(const char *str, int32 deflt) {
 }
 
 uint32 ParseLeadingUDec32Value(const char *str, uint32 deflt) {
-  if (numeric_limits<unsigned long>::max() == numeric_limits<uint32>::max()) {
+  if (numeric_limits<size_t>::max() == numeric_limits<uint32>::max()) {
     // When long is 32 bits, we can use strtoul.
     char *error = nullptr;
     const uint32 value = strtoul(str, &error, 10);
@@ -1099,11 +1099,11 @@ int HexDigitsPrefix(const char* buf, int num_digits) {
 //    strict mode, but "01" == "1" otherwise.
 // ----------------------------------------------------------------------
 
-int AutoDigitStrCmp(const char* a, int alen,
-                    const char* b, int blen,
+int AutoDigitStrCmp(const char* a, size_t alen,
+                    const char* b, size_t blen,
                     bool strict) {
-  int aindex = 0;
-  int bindex = 0;
+  size_t aindex = 0;
+  size_t bindex = 0;
   while ((aindex < alen) && (bindex < blen)) {
     if (isdigit(a[aindex]) && isdigit(b[bindex])) {
       // Compare runs of digits.  Instead of extracting numbers, we
@@ -1113,16 +1113,16 @@ int AutoDigitStrCmp(const char* a, int alen,
       // "1" and "01" in strict mode.
 
       // Skip leading zeroes, but remember how many we found
-      int azeroes = aindex;
-      int bzeroes = bindex;
+      size_t azeroes = aindex;
+      size_t bzeroes = bindex;
       while ((aindex < alen) && (a[aindex] == '0')) aindex++;
       while ((bindex < blen) && (b[bindex] == '0')) bindex++;
       azeroes = aindex - azeroes;
       bzeroes = bindex - bzeroes;
 
       // Count digit lengths
-      int astart = aindex;
-      int bstart = bindex;
+      size_t astart = aindex;
+      size_t bstart = bindex;
       while ((aindex < alen) && isdigit(a[aindex])) aindex++;
       while ((bindex < blen) && isdigit(b[bindex])) bindex++;
       if (aindex - astart < bindex - bstart) {
@@ -1174,12 +1174,12 @@ int AutoDigitStrCmp(const char* a, int alen,
   }
 }
 
-bool AutoDigitLessThan(const char* a, int alen, const char* b, int blen) {
+bool AutoDigitLessThan(const char* a, size_t alen, const char* b, size_t blen) {
   return AutoDigitStrCmp(a, alen, b, blen, false) < 0;
 }
 
-bool StrictAutoDigitLessThan(const char* a, int alen,
-                             const char* b, int blen) {
+bool StrictAutoDigitLessThan(const char* a, size_t alen,
+                             const char* b, size_t blen) {
   return AutoDigitStrCmp(a, alen, b, blen, true) < 0;
 }
 

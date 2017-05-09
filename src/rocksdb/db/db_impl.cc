@@ -1077,7 +1077,7 @@ Status DBImpl::Recover(
       SequenceNumber max_seq_num_from_sstable_metadata = 0;
       for (const auto& live_file_metadata : live_files_metadata) {
         max_seq_num_from_sstable_metadata = std::max(
-            max_seq_num_from_sstable_metadata, live_file_metadata.largest_seqno);
+            max_seq_num_from_sstable_metadata, live_file_metadata.largest.seqno);
       }
       RLOG(InfoLogLevel::INFO_LEVEL,
           db_options_.info_log,
@@ -1492,10 +1492,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   // should not be added to the manifest.
   int level = 0;
   if (s.ok() && meta.fd.GetTotalFileSize() > 0) {
-    edit->AddFile(level, meta.fd.GetNumber(), meta.fd.GetPathId(),
-        meta.fd.GetTotalFileSize(), meta.fd.GetBaseFileSize(), meta.smallest, meta.largest,
-                  meta.smallest_seqno, meta.largest_seqno,
-                  meta.marked_for_compaction);
+    edit->AddCleanedFile(level, meta);
   }
 
   InternalStats::CompactionStats stats(1);
@@ -1612,8 +1609,8 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
     info.job_id = job_id;
     info.triggered_writes_slowdown = triggered_writes_slowdown;
     info.triggered_writes_stop = triggered_writes_stop;
-    info.smallest_seqno = file_meta->smallest_seqno;
-    info.largest_seqno = file_meta->largest_seqno;
+    info.smallest_seqno = file_meta->smallest.seqno;
+    info.largest_seqno = file_meta->largest.seqno;
     info.table_properties = prop;
     for (auto listener : db_options_.listeners) {
       listener->OnFlushCompleted(this, info);
@@ -2164,10 +2161,7 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
     edit.SetColumnFamily(cfd->GetID());
     for (const auto& f : vstorage->LevelFiles(level)) {
       edit.DeleteFile(level, f->fd.GetNumber());
-      edit.AddFile(to_level, f->fd.GetNumber(), f->fd.GetPathId(),
-          f->fd.GetTotalFileSize(), f->fd.GetBaseFileSize(), f->smallest, f->largest,
-                   f->smallest_seqno, f->largest_seqno,
-                   f->marked_for_compaction);
+      edit.AddCleanedFile(to_level, *f);
     }
     RLOG(InfoLogLevel::DEBUG_LEVEL, db_options_.info_log,
         "[%s] Apply version edit:\n%s", cfd->GetName().c_str(),
@@ -2334,7 +2328,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
       cfd->ioptions()->compaction_style == kCompactionStyleFIFO) {
     manual.begin = nullptr;
   } else {
-    begin_storage.SetMaxPossibleForUserKey(*begin);
+    begin_storage = InternalKey::MaxPossibleForUserKey(*begin);
     manual.begin = &begin_storage;
   }
   if (end == nullptr ||
@@ -2342,7 +2336,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
       cfd->ioptions()->compaction_style == kCompactionStyleFIFO) {
     manual.end = nullptr;
   } else {
-    end_storage.SetMinPossibleForUserKey(*end);
+    end_storage = InternalKey::MinPossibleForUserKey(*end);
     manual.end = &end_storage;
   }
 
@@ -3025,10 +3019,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
       for (size_t i = 0; i < c->num_input_files(l); i++) {
         FileMetaData* f = c->input(l, i);
         c->edit()->DeleteFile(c->level(l), f->fd.GetNumber());
-        c->edit()->AddFile(c->output_level(), f->fd.GetNumber(),
-                           f->fd.GetPathId(), f->fd.GetTotalFileSize(), f->fd.GetBaseFileSize(),
-                           f->smallest, f->largest, f->smallest_seqno, f->largest_seqno,
-                           f->marked_for_compaction);
+        c->edit()->AddCleanedFile(c->output_level(), *f);
 
         LOG_TO_BUFFER(log_buffer,
                     "[%s] Moving #%" PRIu64 " to level-%d %" PRIu64 " bytes\n",
@@ -3689,17 +3680,18 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   // version 1 imply that file have only Put Operations with Sequence Number = 0
 
   FileMetaData meta;
-  meta.smallest =
-      InternalKey(file_info->smallest_key, file_info->sequence_number,
-                  ValueType::kTypeValue);
-  meta.largest = InternalKey(file_info->largest_key, file_info->sequence_number,
-                             ValueType::kTypeValue);
-  if (!meta.smallest.Valid() || !meta.largest.Valid()) {
+  meta.smallest.key = InternalKey(file_info->smallest_key,
+                                  file_info->sequence_number,
+                                  ValueType::kTypeValue);
+  meta.largest.key = InternalKey(file_info->largest_key,
+                                 file_info->sequence_number,
+                                 ValueType::kTypeValue);
+  if (!meta.smallest.key.Valid() || !meta.largest.key.Valid()) {
     return Status::Corruption("Generated table have corrupted keys");
   }
-  meta.smallest_seqno = file_info->sequence_number;
-  meta.largest_seqno = file_info->sequence_number;
-  if (meta.smallest_seqno != 0 || meta.largest_seqno != 0) {
+  meta.smallest.seqno = file_info->sequence_number;
+  meta.largest.seqno = file_info->sequence_number;
+  if (meta.smallest.seqno != 0 || meta.largest.seqno != 0) {
     return Status::InvalidArgument(
         "Non zero sequence numbers are not supported");
   }
@@ -3779,10 +3771,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
       // Add file to L0
       VersionEdit edit;
       edit.SetColumnFamily(cfd->GetID());
-      edit.AddFile(0, meta.fd.GetNumber(), meta.fd.GetPathId(),
-          meta.fd.GetTotalFileSize(), meta.fd.GetBaseFileSize(), meta.smallest, meta.largest,
-                   meta.smallest_seqno, meta.largest_seqno,
-                   meta.marked_for_compaction);
+      edit.AddCleanedFile(0, meta);
 
       status = versions_->LogAndApply(cfd, mutable_cf_options, &edit, &mutex_,
                                       directories_.GetDbDir());
@@ -5291,13 +5280,13 @@ Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
       if (begin == nullptr) {
         begin_key = nullptr;
       } else {
-        begin_storage.SetMaxPossibleForUserKey(*begin);
+        begin_storage = InternalKey::MaxPossibleForUserKey(*begin);
         begin_key = &begin_storage;
       }
       if (end == nullptr) {
         end_key = nullptr;
       } else {
-        end_storage.SetMinPossibleForUserKey(*end);
+        end_storage = InternalKey::MinPossibleForUserKey(*end);
         end_key = &end_storage;
       }
 
@@ -5308,10 +5297,10 @@ Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
         level_file = level_files[j];
         if (((begin == nullptr) ||
              (cfd->internal_comparator().user_comparator()->Compare(
-                  level_file->smallest.user_key(), *begin) >= 0)) &&
+                  level_file->smallest.key.user_key(), *begin) >= 0)) &&
             ((end == nullptr) ||
              (cfd->internal_comparator().user_comparator()->Compare(
-                  level_file->largest.user_key(), *end) <= 0))) {
+                  level_file->largest.key.user_key(), *end) <= 0))) {
           if (level_file->being_compacted) {
             continue;
           }

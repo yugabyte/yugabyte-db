@@ -115,12 +115,12 @@ class CompactionJobTest : public testing::Test {
       if (first_key ||
           cfd_->user_comparator()->Compare(key.user_key, smallest) < 0) {
         smallest.assign(key.user_key.data(), key.user_key.size());
-        smallest_key.DecodeFrom(skey);
+        smallest_key = InternalKey::DecodeFrom(skey);
       }
       if (first_key ||
           cfd_->user_comparator()->Compare(key.user_key, largest) > 0) {
         largest.assign(key.user_key.data(), key.user_key.size());
-        largest_key.DecodeFrom(skey);
+        largest_key = InternalKey::DecodeFrom(skey);
       }
 
       first_key = false;
@@ -131,8 +131,16 @@ class CompactionJobTest : public testing::Test {
         env_, GenerateFileName(file_number), std::move(contents)));
 
     VersionEdit edit;
-    edit.AddFile(level, file_number, 0, 10, 10, smallest_key, largest_key,
-        smallest_seqno, largest_seqno, false);
+    FileMetaData::BoundaryValues smallest_values, largest_values;
+    smallest_values.key = smallest_key;
+    smallest_values.seqno = smallest_seqno;
+    largest_values.key = largest_key;
+    largest_values.seqno = largest_seqno;
+    edit.AddFile(level,
+                 FileDescriptor(file_number, 0, 10, 10),
+                 smallest_values,
+                 largest_values,
+                 /* marked_for_compaction */ false);
 
     mutex_.Lock();
     versions_->LogAndApply(versions_->GetColumnFamilySet()->GetDefault(),
@@ -356,10 +364,10 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   auto level1_files = cfd_->current()->storage_info()->LevelFiles(1);
   ASSERT_EQ(2, level0_files.size());
   ASSERT_EQ(0, level1_files.size());
-  ASSERT_EQ(4, level0_files[0]->largest_seqno);
-  ASSERT_EQ(3, level0_files[0]->smallest_seqno);
-  ASSERT_EQ(2, level0_files[1]->largest_seqno);
-  ASSERT_EQ(1, level0_files[1]->smallest_seqno);
+  ASSERT_EQ(4, level0_files[0]->largest.seqno);
+  ASSERT_EQ(3, level0_files[0]->smallest.seqno);
+  ASSERT_EQ(2, level0_files[1]->largest.seqno);
+  ASSERT_EQ(1, level0_files[1]->smallest.seqno);
 
   RunCompaction({level0_files}, expected_results);
 
@@ -367,8 +375,8 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   level1_files = cfd_->current()->storage_info()->LevelFiles(1);
   ASSERT_EQ(0, level0_files.size());
   ASSERT_EQ(1, level1_files.size());
-  ASSERT_EQ(4, level1_files[0]->largest_seqno);
-  ASSERT_EQ(0, level1_files[0]->smallest_seqno);  // kv's seq number gets zeroed out.
+  ASSERT_EQ(4, level1_files[0]->largest.seqno);
+  ASSERT_EQ(0, level1_files[0]->smallest.seqno);  // kv's seq number gets zeroed out.
 }
 
 
@@ -391,10 +399,10 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithDeleteAll) {
   auto level1_files = cfd_->current()->storage_info()->LevelFiles(1);
   ASSERT_EQ(2, level0_files.size());
   ASSERT_EQ(0, level1_files.size());
-  ASSERT_EQ(4, level0_files[0]->largest_seqno);
-  ASSERT_EQ(3, level0_files[0]->smallest_seqno);
-  ASSERT_EQ(2, level0_files[1]->largest_seqno);
-  ASSERT_EQ(1, level0_files[1]->smallest_seqno);
+  ASSERT_EQ(4, level0_files[0]->largest.seqno);
+  ASSERT_EQ(3, level0_files[0]->smallest.seqno);
+  ASSERT_EQ(2, level0_files[1]->largest.seqno);
+  ASSERT_EQ(1, level0_files[1]->smallest.seqno);
   RunCompaction({level0_files}, expected_results);
 
   level0_files = cfd_->current()->storage_info()->LevelFiles(0);

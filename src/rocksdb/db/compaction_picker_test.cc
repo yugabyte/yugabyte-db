@@ -90,10 +90,8 @@ class CompactionPickerTest : public testing::Test {
     // files we split them into (file_size / 2) bytes base file and the rest goes to data file.
     const uint64_t base_file_size = file_size > 512 ? 512 : (file_size / 2);
     f->fd = FileDescriptor(file_number, path_id, file_size, base_file_size);
-    f->smallest = InternalKey(smallest, smallest_seq, kTypeValue);
-    f->largest = InternalKey(largest, largest_seq, kTypeValue);
-    f->smallest_seqno = smallest_seq;
-    f->largest_seqno = largest_seq;
+    f->smallest = MakeFileBoundaryValues(smallest, smallest_seq, kTypeValue);
+    f->largest = MakeFileBoundaryValues(largest, largest_seq, kTypeValue);
     f->compensated_file_size = file_size;
     f->refs = 0;
     vstorage_->AddFile(level, f);

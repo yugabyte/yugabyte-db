@@ -32,10 +32,11 @@ TEST_F(VersionEditTest, EncodeDecode) {
   VersionEdit edit;
   for (int i = 0; i < 4; i++) {
     TestEncodeDecode(edit);
-    edit.AddFile(3, kBig + 300 + i, kBig32Bit + 400 + i, 0, 0,
-                 InternalKey("foo", kBig + 500 + i, kTypeValue),
-                 InternalKey("zoo", kBig + 600 + i, kTypeDeletion),
-                 kBig + 500 + i, kBig + 600 + i, false);
+    edit.AddFile(3,
+                 FileDescriptor(kBig + 300 + i, kBig32Bit + 400 + i, 0, 0),
+                 MakeFileBoundaryValues("foo", kBig + 500 + i, kTypeValue),
+                 MakeFileBoundaryValues("zoo", kBig + 600 + i, kTypeDeletion),
+                 false);
     edit.DeleteFile(4, kBig + 700 + i);
   }
 
@@ -50,15 +51,21 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
   static const uint64_t kBig = 1ull << 50;
 
   VersionEdit edit;
-  edit.AddFile(3, 300, 3, 100, 30, InternalKey("foo", kBig + 500, kTypeValue),
-               InternalKey("zoo", kBig + 600, kTypeDeletion), kBig + 500,
-               kBig + 600, true);
-  edit.AddFile(4, 301, 3, 100, 30, InternalKey("foo", kBig + 501, kTypeValue),
-               InternalKey("zoo", kBig + 601, kTypeDeletion), kBig + 501,
-               kBig + 601, false);
-  edit.AddFile(5, 302, 0, 100, 30, InternalKey("foo", kBig + 502, kTypeValue),
-               InternalKey("zoo", kBig + 602, kTypeDeletion), kBig + 502,
-               kBig + 602, true);
+  edit.AddFile(3,
+               FileDescriptor(300, 3, 100, 30),
+               MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
+               MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
+               true);
+  edit.AddFile(4,
+               FileDescriptor(301, 3, 100, 30),
+               MakeFileBoundaryValues("foo", kBig + 501, kTypeValue),
+               MakeFileBoundaryValues("zoo", kBig + 601, kTypeDeletion),
+               false);
+  edit.AddFile(5,
+               FileDescriptor(302, 0, 100, 30),
+               MakeFileBoundaryValues("foo", kBig + 502, kTypeValue),
+               MakeFileBoundaryValues("zoo", kBig + 602, kTypeDeletion),
+               true);
 
   edit.DeleteFile(4, 700);
 
@@ -85,12 +92,16 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
 TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
   static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
-  edit.AddFile(3, 300, 3, 100, 30, InternalKey("foo", kBig + 500, kTypeValue),
-               InternalKey("zoo", kBig + 600, kTypeDeletion), kBig + 500,
-               kBig + 600, true);
-  edit.AddFile(4, 301, 3, 100, 30, InternalKey("foo", kBig + 501, kTypeValue),
-               InternalKey("zoo", kBig + 601, kTypeDeletion), kBig + 501,
-               kBig + 601, false);
+  edit.AddFile(3,
+               FileDescriptor(300, 3, 100, 30),
+               MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
+               MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
+               true);
+  edit.AddFile(4,
+               FileDescriptor(301, 3, 100, 30),
+               MakeFileBoundaryValues("foo", kBig + 501, kTypeValue),
+               MakeFileBoundaryValues("zoo", kBig + 601, kTypeDeletion),
+               false);
   edit.DeleteFile(4, 700);
 
   edit.SetComparatorName("foo");
@@ -100,29 +111,11 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
 
   std::string encoded;
 
-  // Call back function to add extra customized builds.
-  bool first = true;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
-      "VersionEdit::EncodeTo:NewFile4:CustomizeFields", [&](void* arg) {
-        std::string* str = reinterpret_cast<std::string*>(arg);
-        PutVarint32(str, 33);
-        const std::string str1 = "random_string";
-        PutLengthPrefixedSlice(str, str1);
-        if (first) {
-          first = false;
-          PutVarint32(str, 22);
-          const std::string str2 = "s";
-          PutLengthPrefixedSlice(str, str2);
-        }
-      });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   edit.EncodeTo(&encoded);
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 
   VersionEdit parsed;
   Status s = parsed.DecodeFrom(encoded);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_TRUE(!first);
   auto& new_files = parsed.GetNewFiles();
   ASSERT_TRUE(new_files[0].second.marked_for_compaction);
   ASSERT_TRUE(!new_files[1].second.marked_for_compaction);
@@ -134,9 +127,11 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
 TEST_F(VersionEditTest, NewFile4NotSupportedField) {
   static const uint64_t kBig = 1ull << 50;
   VersionEdit edit;
-  edit.AddFile(3, 300, 3, 100, 30, InternalKey("foo", kBig + 500, kTypeValue),
-               InternalKey("zoo", kBig + 600, kTypeDeletion), kBig + 500,
-               kBig + 600, true);
+  edit.AddFile(3,
+               FileDescriptor(300, 3, 100, 30),
+               MakeFileBoundaryValues("foo", kBig + 500, kTypeValue),
+               MakeFileBoundaryValues("zoo", kBig + 600, kTypeDeletion),
+               true);
 
   edit.SetComparatorName("foo");
   edit.SetLogNumber(kBig + 100);
@@ -145,25 +140,20 @@ TEST_F(VersionEditTest, NewFile4NotSupportedField) {
 
   std::string encoded;
 
-  // Call back function to add extra customized builds.
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
-      "VersionEdit::EncodeTo:NewFile4:CustomizeFields", [&](void* arg) {
-        std::string* str = reinterpret_cast<std::string*>(arg);
-        const std::string str1 = "s";
-        PutLengthPrefixedSlice(str, str1);
-      });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   edit.EncodeTo(&encoded);
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 
   VersionEdit parsed;
   Status s = parsed.DecodeFrom(encoded);
-  ASSERT_NOK(s);
+  ASSERT_OK(s);
 }
 
 TEST_F(VersionEditTest, EncodeEmptyFile) {
   VersionEdit edit;
-  edit.AddFile(0, 0, 0, 0, 0, InternalKey(), InternalKey(), 0, 0, false);
+  edit.AddFile(0,
+               FileDescriptor(0, 0, 0, 0),
+               FileMetaData::BoundaryValues(),
+               FileMetaData::BoundaryValues(),
+               false);
   std::string buffer;
   ASSERT_TRUE(!edit.EncodeTo(&buffer));
 }

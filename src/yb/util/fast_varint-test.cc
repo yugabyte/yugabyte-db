@@ -24,7 +24,7 @@ void CheckEncoding(int64_t v) {
 
   const string correct_encoded(VarInt(v).EncodeToComparable(true, 0));
   uint8_t buf[16];
-  int encoded_size = 0;
+  size_t encoded_size = 0;
 
   FastEncodeSignedVarInt(v, buf, &encoded_size);
   ASSERT_EQ(correct_encoded.size(), encoded_size);
@@ -114,7 +114,7 @@ TEST(FastVarIntTest, TestEncodePerformance) {
     int64_t max_value = static_cast<int64_t>((1ull << i) - 1);
     for (int j = 0; j < 500000; ++j) {
       int64_t v = rng.Next64() % max_value + 1;
-      int encoded_size = v;
+      size_t encoded_size = v;
       FastEncodeSignedVarInt(v, buf, &encoded_size);
     }
   }

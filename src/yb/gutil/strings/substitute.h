@@ -9,8 +9,8 @@ using std::string;
 #include "yb/gutil/strings/stringpiece.h"
 
 
-#ifndef STRINGS_SUBSTITUTE_H_
-#define STRINGS_SUBSTITUTE_H_
+#ifndef YB_GUTIL_STRINGS_SUBSTITUTE_H
+#define YB_GUTIL_STRINGS_SUBSTITUTE_H
 
 namespace strings {
 
@@ -88,32 +88,32 @@ class SubstituteArg {
   // make the caller decide what to do.
   inline SubstituteArg(char value)  // NOLINT(runtime/explicit)
     : text_(scratch_), size_(1) { scratch_[0] = value; }
-  inline SubstituteArg(short value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(short value)  // NOLINT
     : text_(scratch_),
       size_(FastInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  inline SubstituteArg(unsigned short value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(unsigned short value)  // NOLINT
     : text_(scratch_),
       size_(FastUInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  inline SubstituteArg(int value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(int value)  // NOLINT
     : text_(scratch_),
       size_(FastInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  inline SubstituteArg(unsigned int value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(unsigned int value)  // NOLINT
     : text_(scratch_),
       size_(FastUInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  inline SubstituteArg(long value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(long value)  // NOLINT
     : text_(scratch_),
       size_((sizeof(value) == 4 ? FastInt32ToBufferLeft(value, scratch_)
                                 : FastInt64ToBufferLeft(value, scratch_))
             - scratch_) {}
-  inline SubstituteArg(unsigned long value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(unsigned long value)  // NOLINT
     : text_(scratch_),
       size_((sizeof(value) == 4 ? FastUInt32ToBufferLeft(value, scratch_)
                                 : FastUInt64ToBufferLeft(value, scratch_))
             - scratch_) {}
-  inline SubstituteArg(long long value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(long long value)  // NOLINT
     : text_(scratch_),
       size_(FastInt64ToBufferLeft(value, scratch_) - scratch_) {}
-  inline SubstituteArg(unsigned long long value)  // NOLINT(runtime/explicit)
+  inline SubstituteArg(unsigned long long value)  // NOLINT
     : text_(scratch_),
       size_(FastUInt64ToBufferLeft(value, scratch_) - scratch_) {}
   inline SubstituteArg(float value)  // NOLINT(runtime/explicit)
@@ -128,7 +128,7 @@ class SubstituteArg {
   SubstituteArg(const void* value);  // NOLINT(runtime/explicit)
 
   inline const char* data() const { return text_; }
-  inline int size() const { return size_; }
+  inline ptrdiff_t size() const { return size_; }
 
   // Indicates that no argument was given.
   static const SubstituteArg NoArg;
@@ -137,7 +137,7 @@ class SubstituteArg {
   inline SubstituteArg() : text_(NULL), size_(-1) {}
 
   const char* text_;
-  int size_;
+  ptrdiff_t size_;
   char scratch_[kFastToBufferSize];
 };
 
@@ -189,4 +189,4 @@ inline string Substitute(
 
 }  // namespace strings
 
-#endif  // STRINGS_SUBSTITUTE_H_
+#endif // YB_GUTIL_STRINGS_SUBSTITUTE_H

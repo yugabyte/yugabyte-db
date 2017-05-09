@@ -27,6 +27,7 @@
       "severity.rules": {
         "(^readability/inheritance$)": "disabled",
         "(^readability/todo$)": "disabled",
+        "(^runtime/string$)": "disabled",
         "(^whitespace/parens$)": "disabled",
         "(^whitespace/blank_line$)": "disabled",
         "(^build/include_what_you_use$)": "disabled",

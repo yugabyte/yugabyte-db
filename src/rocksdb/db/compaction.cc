@@ -53,12 +53,12 @@ void Compaction::GetBoundaryKeys(
     if (inputs[i].level == 0) {
       // we need to consider all files on level 0
       for (const auto* f : inputs[i].files) {
-        const Slice& start_user_key = f->smallest.user_key();
+        Slice start_user_key = f->smallest.key.user_key();
         if (!initialized ||
             ucmp->Compare(start_user_key, *smallest_user_key) < 0) {
           *smallest_user_key = start_user_key;
         }
-        const Slice& end_user_key = f->largest.user_key();
+        Slice end_user_key = f->largest.key.user_key();
         if (!initialized ||
             ucmp->Compare(end_user_key, *largest_user_key) > 0) {
           *largest_user_key = end_user_key;
@@ -67,12 +67,12 @@ void Compaction::GetBoundaryKeys(
       }
     } else {
       // we only need to consider the first and last file
-      const Slice& start_user_key = inputs[i].files[0]->smallest.user_key();
+      Slice start_user_key = inputs[i].files[0]->smallest.key.user_key();
       if (!initialized ||
           ucmp->Compare(start_user_key, *smallest_user_key) < 0) {
         *smallest_user_key = start_user_key;
       }
-      const Slice& end_user_key = inputs[i].files.back()->largest.user_key();
+      Slice end_user_key = inputs[i].files.back()->largest.key.user_key();
       if (!initialized || ucmp->Compare(end_user_key, *largest_user_key) > 0) {
         *largest_user_key = end_user_key;
       }
@@ -276,9 +276,9 @@ bool Compaction::KeyNotExistsBeyondOutputLevel(
         input_version_->storage_info()->LevelFiles(lvl);
     for (; level_ptrs->at(lvl) < files.size(); level_ptrs->at(lvl)++) {
       auto* f = files[level_ptrs->at(lvl)];
-      if (user_cmp->Compare(user_key, f->largest.user_key()) <= 0) {
+      if (user_cmp->Compare(user_key, f->largest.key.user_key()) <= 0) {
         // We've advanced far enough
-        if (user_cmp->Compare(user_key, f->smallest.user_key()) >= 0) {
+        if (user_cmp->Compare(user_key, f->smallest.key.user_key()) >= 0) {
           // Key falls in this file's range, so definitely
           // exists beyond output level
           return false;
@@ -295,13 +295,13 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
   const InternalKeyComparator* icmp = &cfd_->internal_comparator();
   while (grandparent_index_ < grandparents_.size() &&
       icmp->Compare(internal_key,
-                    grandparents_[grandparent_index_]->largest.Encode()) > 0) {
+                    grandparents_[grandparent_index_]->largest.key.Encode()) > 0) {
     if (seen_key_.load(std::memory_order_acquire)) {
       overlapped_bytes_ += grandparents_[grandparent_index_]->fd.GetTotalFileSize();
     }
     assert(grandparent_index_ + 1 >= grandparents_.size() ||
-           icmp->Compare(grandparents_[grandparent_index_]->largest.Encode(),
-                         grandparents_[grandparent_index_+1]->smallest.Encode())
+           icmp->Compare(grandparents_[grandparent_index_]->largest.key.Encode(),
+                         grandparents_[grandparent_index_ + 1]->smallest.key.Encode())
                          < 0);
     grandparent_index_++;
   }

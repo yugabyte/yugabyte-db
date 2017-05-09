@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
-#ifndef __YB_ROCKSDB_PRECOMPILED_HEADER_H__
-#define __YB_ROCKSDB_PRECOMPILED_HEADER_H__
+#ifndef ROCKSDB_PRECOMPILED_HEADER_H
+#define ROCKSDB_PRECOMPILED_HEADER_H
 
-// Only include standard / system header files here.
+// Only include standard / system / 3rd party header files here.
 
 #include <alloca.h>
 #include <assert.h>
@@ -64,4 +64,6 @@
 #include <utility>
 #include <vector>
 
-#endif
+#include <boost/optional.hpp>
+
+#endif // ROCKSDB_PRECOMPILED_HEADER_H

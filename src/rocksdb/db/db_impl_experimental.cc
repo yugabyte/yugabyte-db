@@ -30,10 +30,10 @@ Status DBImpl::SuggestCompactRange(ColumnFamilyHandle* column_family,
   auto cfd = cfh->cfd();
   InternalKey start_key, end_key;
   if (begin != nullptr) {
-    start_key.SetMaxPossibleForUserKey(*begin);
+    start_key = InternalKey::MaxPossibleForUserKey(*begin);
   }
   if (end != nullptr) {
-    end_key.SetMinPossibleForUserKey(*end);
+    end_key = InternalKey::MinPossibleForUserKey(*end);
   }
   {
     InstrumentedMutexLock l(&mutex_);
@@ -86,7 +86,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
     auto l0_files = vstorage->LevelFiles(0);
     std::sort(l0_files.begin(), l0_files.end(),
               [icmp](FileMetaData* f1, FileMetaData* f2) {
-                return icmp->Compare(f1->largest, f2->largest) < 0;
+                return icmp->Compare(f1->largest.key, f2->largest.key) < 0;
               });
 
     // Check that no L0 file is being compacted and that they have
@@ -103,7 +103,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
 
       if (i == 0) continue;
       auto prev_f = l0_files[i - 1];
-      if (icmp->Compare(prev_f->largest, f->smallest) >= 0) {
+      if (icmp->Compare(prev_f->largest.key, f->smallest.key) >= 0) {
         RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
             "PromoteL0 FAILED. Files %" PRIu64 " and %" PRIu64
             " have overlapping ranges\n",
@@ -128,10 +128,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
     edit.SetColumnFamily(cfd->GetID());
     for (const auto& f : l0_files) {
       edit.DeleteFile(0, f->fd.GetNumber());
-      edit.AddFile(target_level, f->fd.GetNumber(), f->fd.GetPathId(),
-          f->fd.GetTotalFileSize(), f->fd.GetBaseFileSize(), f->smallest, f->largest,
-                   f->smallest_seqno, f->largest_seqno,
-                   f->marked_for_compaction);
+      edit.AddCleanedFile(target_level, *f);
     }
 
     status = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(),

@@ -9,6 +9,12 @@
 
 #ifndef ROCKSDB_LITE
 
+#include <stdlib.h>
+
+#include <vector>
+#include <map>
+#include <string>
+
 #include "rocksdb/db.h"
 #include "db/db_impl.h"
 #include "db/filename.h"
@@ -19,10 +25,6 @@
 #include "util/testutil.h"
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
-#include <vector>
-#include <stdlib.h>
-#include <map>
-#include <string>
 
 namespace rocksdb {
 
@@ -91,7 +93,7 @@ class DeleteFileTest : public testing::Test {
   }
 
   int numKeysInLevels(
-    std::vector<LiveFileMetaData> &metadata,
+    const std::vector<LiveFileMetaData> &metadata,
     std::vector<int> *keysperlevel = nullptr) {
 
     if (keysperlevel != nullptr) {
@@ -100,17 +102,17 @@ class DeleteFileTest : public testing::Test {
 
     int numKeys = 0;
     for (size_t i = 0; i < metadata.size(); i++) {
-      int startkey = atoi(metadata[i].smallestkey.c_str());
-      int endkey = atoi(metadata[i].largestkey.c_str());
+      int startkey = atoi(metadata[i].smallest.key.c_str());
+      int endkey = atoi(metadata[i].largest.key.c_str());
       int numkeysinfile = (endkey - startkey + 1);
       numKeys += numkeysinfile;
       if (keysperlevel != nullptr) {
-        (*keysperlevel)[(int)metadata[i].level] += numkeysinfile;
+        (*keysperlevel)[static_cast<int>(metadata[i].level)] += numkeysinfile;
       }
       fprintf(stderr, "level %d name %s smallest %s largest %s\n",
               metadata[i].level, metadata[i].name.c_str(),
-              metadata[i].smallestkey.c_str(),
-              metadata[i].largestkey.c_str());
+              metadata[i].smallest.key.c_str(),
+              metadata[i].largest.key.c_str());
     }
     return numKeys;
   }
@@ -130,10 +132,10 @@ class DeleteFileTest : public testing::Test {
     ASSERT_OK(dbi->TEST_CompactRange(0, nullptr, nullptr));
   }
 
-  void CheckFileTypeCounts(std::string& dir,
-                            int required_log,
-                            int required_sst,
-                            int required_manifest) {
+  void CheckFileTypeCounts(const std::string& dir,
+                           int required_log,
+                           int required_sst,
+                           int required_manifest) {
     std::vector<std::string> filenames;
     env_->GetChildren(dir, &filenames);
 
@@ -173,12 +175,12 @@ TEST_F(DeleteFileTest, AddKeysAndQueryLevels) {
   }
 
   level1file = metadata[level1index].name;
-  int startkey = atoi(metadata[level1index].smallestkey.c_str());
-  int endkey = atoi(metadata[level1index].largestkey.c_str());
+  int startkey = atoi(metadata[level1index].smallest.key.c_str());
+  int endkey = atoi(metadata[level1index].largest.key.c_str());
   level1keycount = (endkey - startkey + 1);
   level2file = metadata[level2index].name;
-  startkey = atoi(metadata[level2index].smallestkey.c_str());
-  endkey = atoi(metadata[level2index].largestkey.c_str());
+  startkey = atoi(metadata[level2index].smallest.key.c_str());
+  endkey = atoi(metadata[level2index].largest.key.c_str());
   level2keycount = (endkey - startkey + 1);
 
   // COntrolled setup. Levels 1 and 2 should both have 50K files.
@@ -329,10 +331,10 @@ TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
   ASSERT_EQ(2U, metadata.size());
   ASSERT_EQ("new_cf", metadata[0].column_family_name);
   ASSERT_EQ("new_cf", metadata[1].column_family_name);
-  auto old_file = metadata[0].smallest_seqno < metadata[1].smallest_seqno
+  auto old_file = metadata[0].smallest.seqno < metadata[1].smallest.seqno
                       ? metadata[0].name
                       : metadata[1].name;
-  auto new_file = metadata[0].smallest_seqno > metadata[1].smallest_seqno
+  auto new_file = metadata[0].smallest.seqno > metadata[1].smallest.seqno
                       ? metadata[0].name
                       : metadata[1].name;
   ASSERT_TRUE(db->DeleteFile(new_file).IsInvalidArgument());
@@ -368,7 +370,7 @@ TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
   delete db;
 }
 
-} //namespace rocksdb
+} // namespace rocksdb
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

@@ -33,8 +33,8 @@ class GenerateLevelFilesBriefTest : public testing::Test {
            SequenceNumber largest_seq = 100) {
     FileMetaData* f = new FileMetaData;
     f->fd = FileDescriptor(files_.size() + 1, 0, 0, 0);
-    f->smallest = InternalKey(smallest, smallest_seq, kTypeValue);
-    f->largest = InternalKey(largest, largest_seq, kTypeValue);
+    f->smallest = MakeFileBoundaryValues(smallest, smallest_seq, kTypeValue);
+    f->largest = MakeFileBoundaryValues(largest, largest_seq, kTypeValue);
     files_.push_back(f);
   }
 
@@ -98,11 +98,6 @@ class VersionStorageInfoTest : public testing::Test {
   MutableCFOptions mutable_cf_options_;
   VersionStorageInfo vstorage_;
 
-  InternalKey GetInternalKey(const char* ukey,
-                             SequenceNumber smallest_seq = 100) {
-    return InternalKey(ukey, smallest_seq, kTypeValue);
-  }
-
   VersionStorageInfoTest()
       : ucmp_(BytewiseComparator()),
         icmp_(ucmp_),
@@ -127,8 +122,8 @@ class VersionStorageInfoTest : public testing::Test {
     assert(level < vstorage_.num_levels());
     FileMetaData* f = new FileMetaData;
     f->fd = FileDescriptor(file_number, 0, file_size, 64);
-    f->smallest = GetInternalKey(smallest, 0);
-    f->largest = GetInternalKey(largest, 0);
+    f->smallest = MakeFileBoundaryValues(smallest, 0, kTypeValue);
+    f->largest = MakeFileBoundaryValues(largest, 0, kTypeValue);
     f->compensated_file_size = file_size;
     f->refs = 0;
     f->num_entries = 0;

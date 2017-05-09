@@ -15,6 +15,9 @@
 #include <utility>
 #include <vector>
 #include <string>
+
+#include <boost/optional.hpp>
+
 #include "rocksdb/cache.h"
 #include "db/dbformat.h"
 #include "util/arena.h"
@@ -23,6 +26,7 @@
 namespace rocksdb {
 
 class VersionSet;
+class VersionEditPB;
 
 const uint64_t kFileNumberMask = 0x3FFFFFFFFFFFFFFF;
 
@@ -74,13 +78,13 @@ struct FileDescriptor {
 };
 
 struct FileMetaData {
+  typedef FileBoundaryValues<InternalKey> BoundaryValues;
+
   int refs;
   FileDescriptor fd;
-  InternalKey smallest;            // Smallest internal key served by table
-  InternalKey largest;             // Largest internal key served by table
-  bool being_compacted;            // Is this file undergoing compaction?
-  SequenceNumber smallest_seqno;   // The smallest seqno in this file
-  SequenceNumber largest_seqno;    // The largest seqno in this file
+  bool being_compacted;     // Is this file undergoing compaction?
+  BoundaryValues smallest;  // The smallest values in this file
+  BoundaryValues largest;   // The largest values in this file
 
   // Needs to be disposed when refs becomes 0.
   Cache::Handle* table_reader_handle;
@@ -108,16 +112,16 @@ struct FileMetaData {
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
   void UpdateBoundaries(const Slice& key, SequenceNumber seqno) {
-    if (smallest.size() == 0) {
-      smallest.DecodeFrom(key);
+    if (smallest.key.size() == 0) {
+      smallest.key = InternalKey::DecodeFrom(key);
     }
-    largest.DecodeFrom(key);
+    largest.key = InternalKey::DecodeFrom(key);
     UpdateSeqNoBoundaries(seqno);
   }
 
   void UpdateSeqNoBoundaries(SequenceNumber seqno) {
-    smallest_seqno = std::min(smallest_seqno, seqno);
-    largest_seqno = std::max(largest_seqno, seqno);
+    smallest.seqno = std::min(smallest.seqno, seqno);
+    largest.seqno = std::max(largest.seqno, seqno);
   }
 };
 
@@ -157,52 +161,56 @@ class VersionEdit {
   void Clear();
 
   void SetComparatorName(const Slice& name) {
-    has_comparator_ = true;
     comparator_ = name.ToString();
   }
   void SetLogNumber(uint64_t num) {
-    has_log_number_ = true;
     log_number_ = num;
   }
   void SetPrevLogNumber(uint64_t num) {
-    has_prev_log_number_ = true;
     prev_log_number_ = num;
   }
   void SetNextFile(uint64_t num) {
-    has_next_file_number_ = true;
     next_file_number_ = num;
   }
   void SetLastSequence(SequenceNumber seq) {
-    has_last_sequence_ = true;
     last_sequence_ = seq;
   }
   void SetMaxColumnFamily(uint32_t max_column_family) {
-    has_max_column_family_ = true;
     max_column_family_ = max_column_family;
   }
 
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
-  void AddFile(int level, uint64_t file, uint32_t file_path_id,
-               uint64_t file_size, uint64_t base_file_size, const InternalKey& smallest,
-               const InternalKey& largest, const SequenceNumber& smallest_seqno,
-               const SequenceNumber& largest_seqno,
+  void AddFile(int level,
+               const FileDescriptor& fd,
+               const FileMetaData::BoundaryValues& smallest,
+               const FileMetaData::BoundaryValues& largest,
                bool marked_for_compaction) {
-    assert(smallest_seqno <= largest_seqno);
+    assert(smallest.seqno <= largest.seqno);
     FileMetaData f;
-    f.fd = FileDescriptor(file, file_path_id, file_size, base_file_size);
+    f.fd = fd;
+    f.fd.table_reader = nullptr;
     f.smallest = smallest;
     f.largest = largest;
-    f.smallest_seqno = smallest_seqno;
-    f.largest_seqno = largest_seqno;
     f.marked_for_compaction = marked_for_compaction;
     new_files_.emplace_back(level, f);
   }
 
   void AddFile(int level, const FileMetaData& f) {
-    assert(f.smallest_seqno <= f.largest_seqno);
+    assert(f.smallest.seqno <= f.largest.seqno);
     new_files_.emplace_back(level, f);
+  }
+
+  void AddCleanedFile(int level, const FileMetaData& f) {
+    assert(f.smallest.seqno <= f.largest.seqno);
+    FileMetaData nf;
+    nf.fd = f.fd;
+    nf.fd.table_reader = nullptr;
+    nf.smallest = f.smallest;
+    nf.largest = f.largest;
+    nf.marked_for_compaction = f.marked_for_compaction;
+    new_files_.emplace_back(level, nf);
   }
 
   // Delete the specified "file" from the specified "level".
@@ -213,8 +221,12 @@ class VersionEdit {
   // Number of edits
   size_t NumEntries() { return new_files_.size() + deleted_files_.size(); }
 
+  bool IsColumnFamilyAdd() {
+    return column_family_name_ ? true : false;
+  }
+
   bool IsColumnFamilyManipulation() {
-    return is_column_family_add_ || is_column_family_drop_;
+    return IsColumnFamilyAdd() || is_column_family_drop_;
   }
 
   void SetColumnFamily(uint32_t column_family_id) {
@@ -224,16 +236,15 @@ class VersionEdit {
   // set column family ID by calling SetColumnFamily()
   void AddColumnFamily(const std::string& name) {
     assert(!is_column_family_drop_);
-    assert(!is_column_family_add_);
+    assert(!column_family_name_);
     assert(NumEntries() == 0);
-    is_column_family_add_ = true;
     column_family_name_ = name;
   }
 
   // set column family ID by calling SetColumnFamily()
   void DropColumnFamily() {
     assert(!is_column_family_drop_);
-    assert(!is_column_family_add_);
+    assert(!column_family_name_);
     assert(NumEntries() == 0);
     is_column_family_drop_ = true;
   }
@@ -241,8 +252,6 @@ class VersionEdit {
   // return true on success.
   bool EncodeTo(std::string* dst) const;
   Status DecodeFrom(const Slice& src);
-
-  const char* DecodeNewFile4From(Slice* input);
 
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
@@ -258,21 +267,15 @@ class VersionEdit {
   friend class VersionSet;
   friend class Version;
 
-  bool GetLevel(Slice* input, int* level, const char** msg);
+  bool EncodeTo(VersionEditPB* out) const;
 
   int max_level_;
-  std::string comparator_;
-  uint64_t log_number_;
-  uint64_t prev_log_number_;
-  uint64_t next_file_number_;
-  uint32_t max_column_family_;
-  SequenceNumber last_sequence_;
-  bool has_comparator_;
-  bool has_log_number_;
-  bool has_prev_log_number_;
-  bool has_next_file_number_;
-  bool has_last_sequence_;
-  bool has_max_column_family_;
+  boost::optional<std::string> comparator_;
+  boost::optional<uint64_t> log_number_;
+  boost::optional<uint64_t> prev_log_number_;
+  boost::optional<uint64_t> next_file_number_;
+  boost::optional<uint32_t> max_column_family_;
+  boost::optional<SequenceNumber> last_sequence_;
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;
@@ -284,8 +287,7 @@ class VersionEdit {
   // column_family drop. If it's column family add,
   // it also includes column family name.
   bool is_column_family_drop_;
-  bool is_column_family_add_;
-  std::string column_family_name_;
+  boost::optional<std::string> column_family_name_;
 };
 
 }  // namespace rocksdb

@@ -3,8 +3,8 @@
 //
 // Convert strings to numbers or numbers to strings.
 
-#ifndef STRINGS_NUMBERS_H_
-#define STRINGS_NUMBERS_H_
+#ifndef YB_GUTIL_STRINGS_NUMBERS_H
+#define YB_GUTIL_STRINGS_NUMBERS_H
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -326,15 +326,15 @@ inline bool ParseLeadingBoolValue(const string& str, bool deflt) {
 //    strict mode, but "01" == "1" otherwise.
 // ----------------------------------------------------------------------
 
-int AutoDigitStrCmp(const char* a, int alen,
-                    const char* b, int blen,
+int AutoDigitStrCmp(const char* a, size_t alen,
+                    const char* b, size_t blen,
                     bool strict);
 
-bool AutoDigitLessThan(const char* a, int alen,
-                       const char* b, int blen);
+bool AutoDigitLessThan(const char* a, size_t alen,
+                       const char* b, size_t blen);
 
-bool StrictAutoDigitLessThan(const char* a, int alen,
-                             const char* b, int blen);
+bool StrictAutoDigitLessThan(const char* a, size_t alen,
+                             const char* b, size_t blen);
 
 struct autodigit_less
   : public binary_function<const string&, const string&, bool> {
@@ -572,4 +572,4 @@ inline string UInt64ToString(uint64 ui64) {
   return StringPrintf("%7" PRIu64, ui64);
 }
 
-#endif  // STRINGS_NUMBERS_H_
+#endif // YB_GUTIL_STRINGS_NUMBERS_H

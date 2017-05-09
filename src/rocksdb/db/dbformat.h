@@ -7,7 +7,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef ROCKSDB_DB_DBFORMAT_H
+#define ROCKSDB_DB_DBFORMAT_H
+
 #pragma once
+
 #include <stdio.h>
 #include <string>
 #include "rocksdb/comparator.h"
@@ -146,18 +150,14 @@ class InternalKey {
     AppendInternalKey(&rep_, ParsedInternalKey(_user_key, s, t));
   }
 
-  // sets the internal key to be bigger or equal to all internal keys with this
-  // user key
-  void SetMaxPossibleForUserKey(const Slice& _user_key) {
-    AppendInternalKey(&rep_, ParsedInternalKey(_user_key, kMaxSequenceNumber,
-                                               kValueTypeForSeek));
+  // Returns the internal key that is bigger or equal to all internal keys with this user key.
+  static InternalKey MaxPossibleForUserKey(const Slice& _user_key) {
+    return InternalKey(_user_key, kMaxSequenceNumber, kValueTypeForSeek);
   }
 
-  // sets the internal key to be smaller or equal to all internal keys with this
-  // user key
-  void SetMinPossibleForUserKey(const Slice& _user_key) {
-    AppendInternalKey(
-        &rep_, ParsedInternalKey(_user_key, 0, static_cast<ValueType>(0)));
+  // Returns the internal key that is smaller or equal to all internal keys with this user key.
+  static InternalKey MinPossibleForUserKey(const Slice& _user_key) {
+    return InternalKey(_user_key, 0, static_cast<ValueType>(0));
   }
 
   bool Valid() const {
@@ -165,7 +165,10 @@ class InternalKey {
     return ParseInternalKey(Slice(rep_), &parsed);
   }
 
-  void DecodeFrom(const Slice& s) { rep_.assign(s.data(), s.size()); }
+  static InternalKey __attribute__ ((warn_unused_result)) DecodeFrom(const Slice& s) {
+    return InternalKey(s);
+  }
+
   Slice Encode() const {
     assert(!rep_.empty());
     return rep_;
@@ -181,8 +184,27 @@ class InternalKey {
 
   void Clear() { rep_.clear(); }
 
-  std::string DebugString(bool hex = false) const;
+  std::string DebugString(bool hex = false) const {
+    return DebugString(rep_, hex);
+  }
+
+  static std::string DebugString(const std::string& rep, bool hex = false);
+ private:
+  explicit InternalKey(const Slice& slice)
+      : rep_(slice.data(), slice.size()) {
+  }
 };
+
+// Create FileBoundaryValues from specified user_key, seqno, value_type.
+inline FileBoundaryValues<InternalKey> MakeFileBoundaryValues(
+    const std::string& user_key,
+    SequenceNumber seqno,
+    ValueType value_type) {
+  FileBoundaryValues<InternalKey> result;
+  result.key = InternalKey(user_key, seqno, value_type);
+  result.seqno = seqno;
+  return result;
+}
 
 inline int InternalKeyComparator::Compare(
     const InternalKey& a, const InternalKey& b) const {
@@ -474,3 +496,5 @@ extern Status ReadRecordFromWriteBatch(Slice* input, char* tag,
                                        uint32_t* column_family, Slice* key,
                                        Slice* value, Slice* blob);
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_DBFORMAT_H

@@ -54,13 +54,13 @@ class FileIndexerTest : public testing::Test {
 
   void AddFile(int level, int64_t smallest, int64_t largest) {
     auto* f = new FileMetaData();
-    f->smallest = IntKey(smallest);
-    f->largest = IntKey(largest);
+    f->smallest = BoundaryValues(smallest);
+    f->largest = BoundaryValues(largest);
     files[level].push_back(f);
   }
 
-  InternalKey IntKey(int64_t v) {
-    return InternalKey(Slice(reinterpret_cast<char*>(&v), 8), 0, kTypeValue);
+  FileBoundaryValues<InternalKey> BoundaryValues(int64_t v) {
+    return MakeFileBoundaryValues(std::string(reinterpret_cast<char*>(&v), 8), 0, kTypeValue);
   }
 
   void ClearFiles() {

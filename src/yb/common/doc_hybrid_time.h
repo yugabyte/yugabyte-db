@@ -38,7 +38,6 @@ constexpr HybridTimeRepr kYugaByteMicrosecondEpoch = 1500000000ul * 1000000;
 
 class DocHybridTime {
  public:
-
   static const DocHybridTime kInvalid;
   static const DocHybridTime kMin;
   static const DocHybridTime kMax;
@@ -65,12 +64,17 @@ class DocHybridTime {
   HybridTime hybrid_time() const { return hybrid_time_; }
   IntraTxnWriteId write_id() const { return write_id_; }
 
-  void AppendEncodedInDocDbFormat(std::string* dest) const;
+  // Returns pointer to byte after last used byte.
+  char* EncodedInDocDbFormat(char* dest) const;
+
+  void AppendEncodedInDocDbFormat(std::string* dest) const {
+    char buf[kMaxBytesPerEncodedHybridTime];
+    dest->append(buf, EncodedInDocDbFormat(buf));
+  }
 
   std::string EncodedInDocDbFormat() const {
-    std::string s;
-    AppendEncodedInDocDbFormat(&s);
-    return s;
+    char buf[kMaxBytesPerEncodedHybridTime];
+    return std::string(buf, EncodedInDocDbFormat(buf));
   }
 
   // Decodes a DocHybridTime out of the given slice into this object (modifies the slice).

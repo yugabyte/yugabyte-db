@@ -143,7 +143,7 @@ SequentialFileReader* GetSequentialFileReader(SequentialFile* se) {
 void CorruptKeyType(InternalKey* ikey) {
   std::string keystr = ikey->Encode().ToString();
   keystr[keystr.size() - 8] = kTypeLogData;
-  ikey->DecodeFrom(Slice(keystr.data(), keystr.size()));
+  *ikey = InternalKey::DecodeFrom(Slice(keystr.data(), keystr.size()));
 }
 
 std::string KeyStr(const std::string& user_key, const SequenceNumber& seq,

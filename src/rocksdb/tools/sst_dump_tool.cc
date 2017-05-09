@@ -295,8 +295,7 @@ Status SstFileReader::ReadSequential(bool print_kv,
       table_reader_->NewIterator(ReadOptions(verify_checksum_, false));
   uint64_t i = 0;
   if (has_from) {
-    InternalKey ikey;
-    ikey.SetMaxPossibleForUserKey(from_key);
+    InternalKey ikey = InternalKey::MaxPossibleForUserKey(from_key);
     iter->Seek(ikey.Encode());
   } else {
     iter->SeekToFirst();

@@ -12,10 +12,12 @@
 namespace yb {
 namespace util {
 
+constexpr size_t kMaxSignedVarIntBufferSize = 16;
+
 // Computes the number of bytes needed to represent the given number as a signed VarInt.
 int SignedPositiveVarIntLength(int64_t v);
 
-void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, int *size);
+void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size);
 std::string FastEncodeSignedVarIntToStr(int64_t v);
 
 CHECKED_STATUS FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decoded_size);
@@ -29,11 +31,16 @@ inline CHECKED_STATUS FastDecodeVarInt(
 CHECKED_STATUS FastDecodeVarInt(std::string encoded, int64_t* v, int* decoded_size);
 
 // Encoding a "descending VarInt" is simply decoding -v as a VarInt.
-inline void FastEncodeDescendingVarInt(int64_t v, std::string *dest) {
-  char buf[16];
-  int size = 0;
+inline char* FastEncodeDescendingVarInt(int64_t v, char *buf) {
+  size_t size = 0;
   FastEncodeSignedVarInt(-v, yb::util::to_uchar_ptr(buf), &size);
-  dest->append(buf, size);
+  return buf + size;
+}
+
+inline void FastEncodeDescendingVarInt(int64_t v, std::string *dest) {
+  char buf[kMaxSignedVarIntBufferSize];
+  auto* end = FastEncodeDescendingVarInt(v, buf);
+  dest->append(buf, end);
 }
 
 // Decode a "descending VarInt" encoded by FastEncodeDescendingVarInt.

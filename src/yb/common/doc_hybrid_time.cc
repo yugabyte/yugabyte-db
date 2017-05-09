@@ -33,16 +33,15 @@ const DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWr
 constexpr int kNumBitsForHybridTimeSize = 5;
 constexpr int kHybridTimeSizeMask = (1 << kNumBitsForHybridTimeSize) - 1;
 
-void DocHybridTime::AppendEncodedInDocDbFormat(std::string* dest) const {
+char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   // We compute the difference between the physical time as microseconds since the UNIX epoch and
   // the "YugaByte epoch" as a signed operation, so that we can still represent hybrid times earlier
   // than the YugaByte epoch.
-  const size_t initial_string_size = dest->size();
-  FastEncodeDescendingVarInt(
-      static_cast<int64_t>(hybrid_time_.GetPhysicalValueMicros()) -
-          static_cast<int64_t>(kYugaByteMicrosecondEpoch),
-      dest);
-  FastEncodeDescendingVarInt(hybrid_time_.GetLogicalValue(), dest);
+  char* out = dest;
+  out = FastEncodeDescendingVarInt(
+      static_cast<int64_t>(hybrid_time_.GetPhysicalValueMicros() - kYugaByteMicrosecondEpoch),
+      out);
+  out = FastEncodeDescendingVarInt(hybrid_time_.GetLogicalValue(), out);
 
   // We add one to write_id to ensure the negated value used in the encoding is always negative
   // (i.e. is never zero).  Then we shift it left by kNumBitsForHybridTimeSize bits so that we
@@ -52,18 +51,18 @@ void DocHybridTime::AppendEncodedInDocDbFormat(std::string* dest) const {
   //
   // It is important that we cast to int64_t before adding 1, otherwise WriteId might overflow.
   // (As of 04/17/2017 we're using a 32-bit unsigned int for WriteId).
-  FastEncodeDescendingVarInt(
-      (static_cast<int64_t>(write_id_) + 1) << kNumBitsForHybridTimeSize, dest);
+  out = FastEncodeDescendingVarInt(
+      (static_cast<int64_t>(write_id_) + 1) << kNumBitsForHybridTimeSize, out);
 
   // Store the encoded DocHybridTime size in the last kNumBitsForHybridTimeSize bits so we
   // can decode the hybrid time from the end of an encoded DocKey efficiently.
-  const uint8_t last_byte = static_cast<uint8_t>(dest->back());
+  const uint8_t last_byte = static_cast<uint8_t>(out[-1]);
 
-  const uint8_t encoded_size = dest->size() - initial_string_size;
+  const uint8_t encoded_size = static_cast<uint8_t>(out - dest);
   DCHECK_LE(1, encoded_size);
   DCHECK_LE(encoded_size, kMaxBytesPerEncodedHybridTime);
-  (*dest)[dest->size() - 1] = static_cast<char>(
-      (last_byte & ~kHybridTimeSizeMask) | encoded_size);
+  out[-1] = static_cast<char>((last_byte & ~kHybridTimeSizeMask) | encoded_size);
+  return out;
 }
 
 Status DocHybridTime::DecodeFrom(Slice *slice) {
