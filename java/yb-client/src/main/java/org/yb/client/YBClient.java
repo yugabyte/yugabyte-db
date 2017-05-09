@@ -234,6 +234,17 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Change the load balancer state.
+   * @param isEnable if true, load balancer is enabled on master, else is disabled.
+   * @return the response of the operation.
+   */
+  public ChangeLoadBalancerStateResponse changeLoadBalancerState(
+      boolean isEnable) throws Exception {
+    Deferred<ChangeLoadBalancerStateResponse> d = asyncClient.changeLoadBalancerState(isEnable);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the tablet load move completion percentage for blacklisted nodes, if any.
    * @return the response with percent load completed.
    */

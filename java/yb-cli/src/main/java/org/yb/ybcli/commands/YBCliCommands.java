@@ -21,6 +21,7 @@ import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ListTabletServersResponse;
+import org.yb.client.ChangeLoadBalancerStateResponse;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClient;
 import org.yb.master.Master;
@@ -367,6 +368,26 @@ public class YBCliCommands implements CommandMarker {
       }
 
       return "Percent completed = " + resp.getPercentCompleted();
+    } catch (Exception e) {
+      LOG.error("Caught exception ", e);
+      return "Failed: " + e.toString() + "\n";
+    }
+  }
+
+  @CliCommand(value = "set_load_balancer_enable",
+              help = "Set the load balancer state.")
+  public String setLoadBalancerState(
+     @CliOption(key = { "v", "value" },
+                mandatory = true,
+                help = "True implies enable, false implies disable.") final boolean isEnable) {
+    try {
+      ChangeLoadBalancerStateResponse resp = ybClient.changeLoadBalancerState(isEnable);
+
+      if (resp.hasError()) {
+        return "Failed: " + resp.errorMessage();
+      }
+
+      return "Load Balancer was " + (isEnable ? "enabled." : "disabled.");
     } catch (Exception e) {
       LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";
