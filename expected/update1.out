@@ -84,11 +84,11 @@ WARNING:  table "table_with_unique" without primary key or replica identity is n
                                                                                                               data                                                                                                              
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
          ]                                                                                                                                                                                                                     +
  }
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
                  {                                                                                                                                                                                                             +
                          "kind": "update",                                                                                                                                                                                     +
                          "schema": "public",                                                                                                                                                                                   +
@@ -101,11 +101,11 @@ WARNING:  table "table_with_unique" without primary key or replica identity is n
                                  "keytypes": ["int2", "int4", "int8"],                                                                                                                                                         +
                                  "keyvalues": [1, 2, 3]                                                                                                                                                                        +
                          }                                                                                                                                                                                                     +
-                 }
+                 }                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                     +
  }
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
                  {                                                                                                                                                                                                             +
                          "kind": "update",                                                                                                                                                                                     +
                          "schema": "public",                                                                                                                                                                                   +
@@ -118,14 +118,14 @@ WARNING:  table "table_with_unique" without primary key or replica identity is n
                                  "keytypes": ["int2", "int4", "int8"],                                                                                                                                                         +
                                  "keyvalues": [1, 2, 3]                                                                                                                                                                        +
                          }                                                                                                                                                                                                     +
-                 }
+                 }                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                     +
  }
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
          ]                                                                                                                                                                                                                     +
  }
-(10 rows)
+(4 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

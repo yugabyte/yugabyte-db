@@ -105,7 +105,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_schemas = true;
 	data->include_types = true;
 	data->pretty_print = false;
-	data->write_in_chunks = true;
+	data->write_in_chunks = false;
 	data->include_lsn = false;
 
 	data->nr_changes = 0;
