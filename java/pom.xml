@@ -17,7 +17,10 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
---><project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.yb</groupId>
@@ -41,7 +44,7 @@
         <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
         <maven-assembly-plugin.version>2.2.1</maven-assembly-plugin.version>
         <maven-enforcer-plugin.version>1.4</maven-enforcer-plugin.version>
-        <maven-protoc-plugin.version>0.1.10</maven-protoc-plugin.version>
+        <protobuf-maven-plugin.version>0.5.0</protobuf-maven-plugin.version>
         <maven-surefire-plugin.version>2.18</maven-surefire-plugin.version>
         <maven-failsafe-plugin.version>2.18</maven-failsafe-plugin.version>
         <schema-validator-maven-plugin.version>5.5.0-SNAPSHOT</schema-validator-maven-plugin.version>
@@ -304,25 +307,6 @@
           </extension>
         </extensions>
     </build>
-
-    <pluginRepositories>
-      <!-- For maven-protoc-plugin -->
-      <pluginRepository>
-        <id>protoc-plugin</id>
-        <url>http://maven.davidtrott.com/repository</url>
-      </pluginRepository>
-    </pluginRepositories>
-
-  <repositories>
-    <repository>
-      <id>cdh.repo</id>
-      <url>https://repository.cloudera.com/artifactory/cloudera-repos</url>
-      <name>Cloudera Repositories</name>
-      <snapshots>
-        <enabled>false</enabled>
-      </snapshots>
-    </repository>
- </repositories>
 
   <distributionManagement>
     <repository>

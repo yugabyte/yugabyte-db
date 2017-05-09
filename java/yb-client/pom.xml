@@ -125,9 +125,9 @@
         </extensions>
         <plugins>
             <plugin>
-                <groupId>com.google.protobuf.tools</groupId>
-                <artifactId>maven-protoc-plugin</artifactId>
-                <version>${maven-protoc-plugin.version}</version>
+                <groupId>org.xolstice.maven.plugins</groupId>
+                <artifactId>protobuf-maven-plugin</artifactId>
+                <version>${protobuf-maven-plugin.version}</version>
                 <configuration>
                     <!-- Documented at:
                          http://sergei-ivanov.github.io/maven-protoc-plugin/compile-mojo.html -->
