@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.slf4j.Logger;
@@ -81,8 +82,14 @@ public class UpgradeUniverse extends UniverseTaskBase {
       }
 
       if (taskParams().upgradeTServers) {
+        // Disable the load balancer.
+        createLoadBalancerStateChangeTask(false /*enable*/);
+
         createAllUpgradeTasks(filterByNodeName(universe.getTServers(), taskParams().nodeNames),
             ServerType.TSERVER);
+
+        // Enable the load balancer.
+        createLoadBalancerStateChangeTask(true /*enable*/);
       }
 
       // Update the software version on success.
@@ -192,5 +199,18 @@ public class UpgradeUniverse extends UniverseTaskBase {
     task.initialize(params);
 
     return task;
+  }
+
+  private void createLoadBalancerStateChangeTask(boolean enable) {
+    LoadBalancerStateChange.Params params = new LoadBalancerStateChange.Params();
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    params.enable = enable;
+    LoadBalancerStateChange task = new LoadBalancerStateChange();
+    task.initialize(params);
+
+    TaskList taskList = new TaskList("LoadBalancerStateChange", executor);
+    taskList.addTask(task);
+    taskListQueue.add(taskList);
   }
 }
