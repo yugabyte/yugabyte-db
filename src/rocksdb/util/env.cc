@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+//
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
@@ -163,12 +165,15 @@ void HeaderWithContext(const char* file, const int line,
 
 void DebugWithContext(const char* file, const int line,
     Logger *info_log, const char *format, ...) {
+// Log level should be higher than DEBUG, but including the ifndef for compiletime optimization.
+#ifndef NDEBUG
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::DEBUG_LEVEL) {
     va_list ap;
     va_start(ap, format);
     info_log->LogvWithContext(file, line, InfoLogLevel::DEBUG_LEVEL, format, ap);
     va_end(ap);
   }
+#endif
 }
 
 void InfoWithContext(const char* file, const int line,

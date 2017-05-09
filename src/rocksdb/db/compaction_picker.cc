@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+//
 //  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
@@ -13,13 +15,13 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <gflags/gflags.h>
-
 #include <inttypes.h>
 #include <limits>
 #include <queue>
 #include <string>
 #include <utility>
+
+#include <gflags/gflags.h>
 
 #include "db/column_family.h"
 #include "db/filename.h"
@@ -1325,14 +1327,14 @@ Compaction* UniversalCompactionPicker::PickCompaction(
   if (sorted_runs.size() == 0 ||
       sorted_runs.size() <
           (unsigned int)mutable_cf_options.level0_file_num_compaction_trigger) {
-    LOG_TO_BUFFER(log_buffer, "[%s] Universal: nothing to do\n", cf_name.c_str());
+    RDEBUG(ioptions_.info_log, "[%s] Universal: nothing to do\n", cf_name.c_str());
     return nullptr;
   }
   VersionStorageInfo::LevelSummaryStorage tmp;
-  LOG_TO_BUFFER(log_buffer, 3072,
-              "[%s] Universal: sorted runs files(%" ROCKSDB_PRIszt "): %s\n",
-              cf_name.c_str(), sorted_runs.size(),
-              vstorage->LevelSummary(&tmp));
+  RDEBUG(ioptions_.info_log,
+         "[%s] Universal: sorted runs files(%" ROCKSDB_PRIszt "): %s\n",
+         cf_name.c_str(), sorted_runs.size(),
+         vstorage->LevelSummary(&tmp));
 
   // Check for size amplification first.
   Compaction* c;
@@ -1529,8 +1531,8 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalReadAmp(
     if (sr != nullptr) {
       char file_num_buf[kFormatFileNumberBufSize];
       sr->Dump(file_num_buf, sizeof(file_num_buf), true);
-      LOG_TO_BUFFER(log_buffer, "[%s] Universal: Possible candidate %s[%d].",
-                  cf_name.c_str(), file_num_buf, loop);
+      RDEBUG(ioptions_.info_log, "[%s] Universal: Possible candidate %s[%d].",
+             cf_name.c_str(), file_num_buf, loop);
     }
 
     // Check if the succeeding files need compaction.
@@ -1576,14 +1578,15 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalReadAmp(
       done = true;
       break;
     } else {
+#ifndef NDEBUG
       for (size_t i = loop;
            i < loop + candidate_count && i < sorted_runs.size(); i++) {
         const SortedRun* skipping_sr = &sorted_runs[i];
         char file_num_buf[256];
         skipping_sr->DumpSizeInfo(file_num_buf, sizeof(file_num_buf), loop);
-        LOG_TO_BUFFER(log_buffer, "[%s] Universal: Skipping %s", cf_name.c_str(),
-                    file_num_buf);
+        RDEBUG(ioptions_.info_log, "[%s] Universal: Skipping %s", cf_name.c_str(), file_num_buf);
       }
+#endif
     }
   }
   if (!done || candidate_count <= 1) {
@@ -1689,9 +1692,9 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalSizeAmp(
     }
     char file_num_buf[kFormatFileNumberBufSize];
     sr->Dump(file_num_buf, sizeof(file_num_buf), true);
-    LOG_TO_BUFFER(log_buffer, "[%s] Universal: skipping %s[%d] compacted %s",
-                cf_name.c_str(), file_num_buf, loop,
-                " cannot be a candidate to reduce size amp.\n");
+    RDEBUG(ioptions_.info_log, "[%s] Universal: skipping %s[%d] compacted %s",
+           cf_name.c_str(), file_num_buf, loop,
+           " cannot be a candidate to reduce size amp.\n");
     sr = nullptr;
   }
 
@@ -1701,10 +1704,10 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalSizeAmp(
   {
     char file_num_buf[kFormatFileNumberBufSize];
     sr->Dump(file_num_buf, sizeof(file_num_buf), true);
-    LOG_TO_BUFFER(log_buffer,
-                "[%s] Universal: First candidate %s[%" ROCKSDB_PRIszt "] %s",
-                cf_name.c_str(), file_num_buf, start_index,
-                " to reduce size amp.\n");
+    RDEBUG(ioptions_.info_log,
+           "[%s] Universal: First candidate %s[%" ROCKSDB_PRIszt "] %s",
+           cf_name.c_str(), file_num_buf, start_index,
+           " to reduce size amp.\n");
   }
 
   // keep adding up all the remaining files
@@ -1713,10 +1716,9 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalSizeAmp(
     if (sr->being_compacted) {
       char file_num_buf[kFormatFileNumberBufSize];
       sr->Dump(file_num_buf, sizeof(file_num_buf), true);
-      LOG_TO_BUFFER(
-          log_buffer, "[%s] Universal: Possible candidate %s[%d] %s",
-          cf_name.c_str(), file_num_buf, start_index,
-          " is already being compacted. No size amp reduction possible.\n");
+      RDEBUG(ioptions_.info_log, "[%s] Universal: Possible candidate %s[%d] %s",
+             cf_name.c_str(), file_num_buf, start_index,
+             " is already being compacted. No size amp reduction possible.\n");
       return nullptr;
     }
     candidate_size += sr->compensated_file_size;
@@ -1731,18 +1733,16 @@ Compaction* UniversalCompactionPicker::PickCompactionUniversalSizeAmp(
 
   // size amplification = percentage of additional size
   if (candidate_size * 100 < ratio * earliest_file_size) {
-    LOG_TO_BUFFER(
-        log_buffer,
-        "[%s] Universal: size amp not needed. newer-files-total-size %" PRIu64
-        " earliest-file-size %" PRIu64,
-        cf_name.c_str(), candidate_size, earliest_file_size);
+    RDEBUG(ioptions_.info_log,
+           "[%s] Universal: size amp not needed. newer-files-total-size %" PRIu64
+           " earliest-file-size %" PRIu64,
+           cf_name.c_str(), candidate_size, earliest_file_size);
     return nullptr;
   } else {
-    LOG_TO_BUFFER(
-        log_buffer,
-        "[%s] Universal: size amp needed. newer-files-total-size %" PRIu64
-        " earliest-file-size %" PRIu64,
-        cf_name.c_str(), candidate_size, earliest_file_size);
+    RDEBUG(ioptions_.info_log,
+           "[%s] Universal: size amp needed. newer-files-total-size %" PRIu64
+           " earliest-file-size %" PRIu64,
+           cf_name.c_str(), candidate_size, earliest_file_size);
   }
   assert(start_index < sorted_runs.size() - 1);
 
@@ -1807,19 +1807,19 @@ Compaction* FIFOCompactionPicker::PickCompaction(
   if (total_size <= ioptions_.compaction_options_fifo.max_table_files_size ||
       level_files.size() == 0) {
     // total size not exceeded
-    LOG_TO_BUFFER(log_buffer,
-                "[%s] FIFO compaction: nothing to do. Total size %" PRIu64
-                ", max size %" PRIu64 "\n",
-                cf_name.c_str(), total_size,
-                ioptions_.compaction_options_fifo.max_table_files_size);
+    RDEBUG(ioptions_.info_log,
+           "[%s] FIFO compaction: nothing to do. Total size %" PRIu64
+           ", max size %" PRIu64 "\n",
+           cf_name.c_str(), total_size,
+           ioptions_.compaction_options_fifo.max_table_files_size);
     return nullptr;
   }
 
   if (!level0_compactions_in_progress_.empty()) {
-    LOG_TO_BUFFER(log_buffer,
-                "[%s] FIFO compaction: Already executing compaction. No need "
-                "to run parallel compactions since compactions are very fast",
-                cf_name.c_str());
+    RDEBUG(ioptions_.info_log,
+           "[%s] FIFO compaction: Already executing compaction. No need "
+           "to run parallel compactions since compactions are very fast",
+           cf_name.c_str());
     return nullptr;
   }
 
