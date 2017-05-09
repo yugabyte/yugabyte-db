@@ -103,6 +103,7 @@ class TabletPeer : public RefCountedThreadSafe<TabletPeer>,
   // The caller is expected to build and pass a WriteTransactionState that points
   // to the RPC WriteRequest, WriteResponse, RpcContext and to the tablet's
   // MvccManager.
+  // The tx_state is deallocated after use by this function.
   CHECKED_STATUS SubmitWrite(WriteTransactionState *tx_state);
 
   // Called by the tablet service to start an alter schema transaction.
