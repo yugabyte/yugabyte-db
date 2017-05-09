@@ -95,7 +95,8 @@ struct TServerDetails {
 typedef std::unordered_multimap<std::string, TServerDetails*> TabletReplicaMap;
 
 // uuid -> tablet server map.
-typedef std::unordered_map<TServerId, TServerDetails*> TabletServerMap;
+typedef std::unordered_map<TServerId, std::unique_ptr<TServerDetails>> TabletServerMap;
+typedef std::unordered_map<TServerId, TServerDetails*> TabletServerMapUnowned;
 
 // Returns possibly the simplest imaginable schema, with a single int key column.
 client::YBSchema SimpleIntKeyYBSchema();
@@ -122,6 +123,13 @@ Status GetLastOpIdForReplica(const TabletId& tablet_id,
                              const MonoDelta& timeout,
                              consensus::OpId* op_id);
 
+// Creates server vector from map.
+vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers);
+vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers);
+
+// Creates copy of tablet server map, which does not own TServerDetails.
+TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers);
+
 // Wait until all of the servers have converged on the same log index.
 // The converged index must be at least equal to 'minimum_index'.
 //
@@ -133,6 +141,18 @@ Status GetLastOpIdForReplica(const TabletId& tablet_id,
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
                              const TabletId& tablet_id,
+                             int64_t minimum_index,
+                             int64_t* actual_index = nullptr);
+
+Status WaitForServersToAgree(const MonoDelta& timeout,
+                             const TabletServerMapUnowned& tablet_servers,
+                             const TabletId& tablet_id,
+                             int64_t minimum_index,
+                             int64_t* actual_index = nullptr);
+
+Status WaitForServersToAgree(const MonoDelta& timeout,
+                             const vector<TServerDetails*>& tablet_servers,
+                             const string& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index = nullptr);
 
@@ -206,6 +226,16 @@ Status WaitUntilLeader(const TServerDetails* replica,
 // the first replica that believes it is the leader.
 Status FindTabletLeader(const TabletServerMap& tablet_servers,
                         const TabletId& tablet_id,
+                        const MonoDelta& timeout,
+                        TServerDetails** leader);
+
+Status FindTabletLeader(const TabletServerMapUnowned& tablet_servers,
+                        const string& tablet_id,
+                        const MonoDelta& timeout,
+                        TServerDetails** leader);
+
+Status FindTabletLeader(const vector<TServerDetails*>& tservers,
+                        const string& tablet_id,
                         const MonoDelta& timeout,
                         TServerDetails** leader);
 

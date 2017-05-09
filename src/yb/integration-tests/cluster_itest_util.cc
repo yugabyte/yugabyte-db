@@ -161,8 +161,58 @@ Status GetLastOpIdForReplica(const std::string& tablet_id,
   return Status::OK();
 }
 
+vector<TServerDetails*> TServerDetailsVector(const TabletServerMap& tablet_servers) {
+  vector<TServerDetails*> result;
+  result.reserve(tablet_servers.size());
+  for(auto& pair : tablet_servers) {
+    result.push_back(pair.second.get());
+  }
+  return result;
+}
+
+vector<TServerDetails*> TServerDetailsVector(const TabletServerMapUnowned& tablet_servers) {
+  vector<TServerDetails*> result;
+  result.reserve(tablet_servers.size());
+  for(auto& pair : tablet_servers) {
+    result.push_back(pair.second);
+  }
+  return result;
+}
+
+TabletServerMapUnowned CreateTabletServerMapUnowned(const TabletServerMap& tablet_servers) {
+  TabletServerMapUnowned result;
+  for(auto& pair : tablet_servers) {
+    result.emplace(pair.first, pair.second.get());
+  }
+  return result;
+}
+
 Status WaitForServersToAgree(const MonoDelta& timeout,
                              const TabletServerMap& tablet_servers,
+                             const string& tablet_id,
+                             int64_t minimum_index,
+                             int64_t* actual_index) {
+  return WaitForServersToAgree(timeout,
+                               TServerDetailsVector(tablet_servers),
+                               tablet_id,
+                               minimum_index,
+                               actual_index);
+}
+
+Status WaitForServersToAgree(const MonoDelta& timeout,
+                             const TabletServerMapUnowned& tablet_servers,
+                             const TabletId& tablet_id,
+                             int64_t minimum_index,
+                             int64_t* actual_index) {
+  return WaitForServersToAgree(timeout,
+                               TServerDetailsVector(tablet_servers),
+                               tablet_id,
+                               minimum_index,
+                               actual_index);
+}
+
+Status WaitForServersToAgree(const MonoDelta& timeout,
+                             const vector<TServerDetails*>& servers,
                              const string& tablet_id,
                              int64_t minimum_index,
                              int64_t* actual_index) {
@@ -174,8 +224,6 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
   }
 
   for (int i = 1; now.ComesBefore(deadline); i++) {
-    vector<TServerDetails*> servers;
-    AppendValuesFromMap(tablet_servers, &servers);
     vector<OpId> ids;
     Status s = GetLastOpIdForEachReplica(tablet_id, servers, consensus::RECEIVED_OPID, timeout,
                                          &ids);
@@ -257,7 +305,7 @@ Status WaitUntilAllReplicasHaveOp(const int64_t log_index,
 
 Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
                              const shared_ptr<Messenger>& messenger,
-                             unordered_map<string, TServerDetails*>* ts_map) {
+                             TabletServerMap* ts_map) {
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
   rpc::RpcController controller;
@@ -275,7 +323,7 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
     vector<Sockaddr> addresses;
     RETURN_NOT_OK(host_port.ResolveAddresses(&addresses));
 
-    gscoped_ptr<TServerDetails> peer(new TServerDetails());
+    std::unique_ptr<TServerDetails> peer(new TServerDetails());
     peer->instance_id.CopyFrom(entry.instance_id());
     peer->registration.CopyFrom(entry.registration());
 
@@ -286,8 +334,8 @@ Status CreateTabletServerMap(MasterServiceProxy* master_proxy,
                           &peer->consensus_proxy,
                           &peer->generic_proxy);
 
-    InsertOrDie(ts_map, peer->instance_id.permanent_uuid(), peer.get());
-    ignore_result(peer.release());
+    const auto& key = peer->instance_id.permanent_uuid();
+    CHECK(ts_map->emplace(key, std::move(peer)).second) << "duplicate key: " << key;
   }
   return Status::OK();
 }
@@ -543,9 +591,20 @@ Status FindTabletLeader(const TabletServerMap& tablet_servers,
                         const string& tablet_id,
                         const MonoDelta& timeout,
                         TServerDetails** leader) {
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers, &tservers);
+  return FindTabletLeader(TServerDetailsVector(tablet_servers), tablet_id, timeout, leader);
+}
 
+Status FindTabletLeader(const TabletServerMapUnowned& tablet_servers,
+                        const string& tablet_id,
+                        const MonoDelta& timeout,
+                        TServerDetails** leader) {
+  return FindTabletLeader(TServerDetailsVector(tablet_servers), tablet_id, timeout, leader);
+}
+
+Status FindTabletLeader(const vector<TServerDetails*>& tservers,
+                        const string& tablet_id,
+                        const MonoDelta& timeout,
+                        TServerDetails** leader) {
   MonoTime start = MonoTime::Now(MonoTime::FINE);
   MonoTime deadline = start;
   deadline.AddDelta(timeout);

@@ -112,7 +112,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void DoTearDown() override {
     cluster_->Shutdown();
-    STLDeleteValues(&ts_map_);
+    ts_map_.clear();
   }
 
   void CreateBigTable(const YBTableName& table_name, int num_tablets);
@@ -170,7 +170,7 @@ TEST_F(CreateTableStressTest, CreateAndDeleteBigTable) {
   LOG(INFO) << "Waiting for tablets to be removed";
   vector<string> tablet_ids;
   for (int i = 0; i < 1000; i++) {
-    ASSERT_OK(itest::ListRunningTabletIds(ts_map_.begin()->second,
+    ASSERT_OK(itest::ListRunningTabletIds(ts_map_.begin()->second.get(),
                                           MonoDelta::FromSeconds(10),
                                           &tablet_ids));
     if (tablet_ids.empty()) break;

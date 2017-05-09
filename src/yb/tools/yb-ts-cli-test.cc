@@ -68,14 +68,14 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   workload.Setup(); // Easy way to create a new tablet.
 
   vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
-  for (const itest::TabletServerMap::value_type& entry : ts_map_) {
-    TServerDetails* ts = entry.second;
+  for (const auto& entry : ts_map_) {
+    TServerDetails* ts = entry.second.get();
     ASSERT_OK(itest::WaitForNumTabletsOnTS(ts, 1, timeout, &tablets));
   }
   string tablet_id = tablets[0].tablet_status().tablet_id();
 
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()],
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 
@@ -90,7 +90,7 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   ASSERT_OK(Subprocess::Call(argv));
 
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(0, tablet_id, tablet::TABLET_DATA_TOMBSTONED));
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
   ASSERT_OK(itest::WaitUntilTabletInState(ts, tablet_id, tablet::SHUTDOWN, timeout));
 }
 

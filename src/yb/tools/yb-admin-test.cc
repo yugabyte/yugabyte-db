@@ -70,12 +70,11 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   BuildAndStart(ts_flags, master_flags);
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
-  TabletServerMap active_tablet_servers;
-  TabletServerMap::const_iterator iter = tablet_replicas_.find(tablet_id_);
+  itest::TabletServerMapUnowned active_tablet_servers;
+  auto iter = tablet_replicas_.find(tablet_id_);
   TServerDetails* leader = iter->second;
   TServerDetails* follower = (++iter)->second;
   InsertOrDie(&active_tablet_servers, leader->uuid(), leader);

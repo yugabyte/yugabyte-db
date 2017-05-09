@@ -64,9 +64,9 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   workload.Setup(); // Easy way to create a new tablet.
 
   const int kLeaderIndex = 0;
-  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()];
+  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
   const int kFollowerIndex = 4;
-  TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()];
+  TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -75,7 +75,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
 
   // Wait until all replicas are up and running.
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()],
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 
@@ -100,7 +100,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   // Shut down a majority of followers (3 servers) and then try to add the
   // follower back to the config. This will cause the config change to end up
   // in a pending state.
-  unordered_map<string, itest::TServerDetails*> active_ts_map = ts_map_;
+  auto active_ts_map = CreateTabletServerMapUnowned(ts_map_);
   for (int i = 1; i <= 3; i++) {
     cluster_->tablet_server(i)->Shutdown();
     ASSERT_EQ(1, active_ts_map.erase(cluster_->tablet_server(i)->uuid()));
@@ -133,9 +133,9 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   workload.Setup(); // Easy way to create a new tablet.
 
   const int kLeaderIndex = 0;
-  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()];
+  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
   const int kFollowerIndex = 2;
-  TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()];
+  TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -144,7 +144,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
 
   // Wait until all replicas are up and running.
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()],
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 
@@ -192,7 +192,7 @@ TEST_F(TabletReplacementITest, TestEvictAndReplaceDeadFollower) {
   workload.Setup(); // Easy way to create a new tablet.
 
   const int kLeaderIndex = 0;
-  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()];
+  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
   const int kFollowerIndex = 2;
 
   // Figure out the tablet id of the created tablet.
@@ -202,7 +202,7 @@ TEST_F(TabletReplacementITest, TestEvictAndReplaceDeadFollower) {
 
   // Wait until all replicas are up and running.
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()],
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 
@@ -251,9 +251,9 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   workload.Setup(); // Convenient way to create a table.
 
   const int kLeaderIndex = 0;
-  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()];
+  TServerDetails* leader_ts = ts_map_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
   const int kFollowerIndex = 2;
-  TServerDetails* ts_to_remove = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()];
+  TServerDetails* ts_to_remove = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   // Wait for tablet creation and then identify the tablet id.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -262,7 +262,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
 
   // Wait until all replicas are up and running.
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()],
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 

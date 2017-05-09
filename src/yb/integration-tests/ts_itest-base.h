@@ -152,8 +152,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
       for (const master::TabletLocationsPB& location : resp.tablet_locations()) {
         for (const master::TabletLocationsPB_ReplicaPB& replica : location.replicas()) {
-          TServerDetails* server = FindOrDie(tablet_servers_, replica.ts_info().permanent_uuid());
-          tablet_replicas.insert(pair<std::string, TServerDetails*>(location.tablet_id(), server));
+          auto server = FindOrDie(tablet_servers_, replica.ts_info().permanent_uuid()).get();
+          tablet_replicas.emplace(location.tablet_id(), server);
         }
 
         if (tablet_replicas.count(location.tablet_id()) < FLAGS_num_replicas) {
@@ -294,7 +294,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     }
 
     for (const std::string& uuid : uuids) {
-      delete EraseKeyReturnValuePtr(&tablet_servers_, uuid);
+      tablet_servers_.erase(uuid);
     }
   }
 
@@ -400,7 +400,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     if (cluster_) {
       cluster_->Shutdown();
     }
-    STLDeleteValues(&tablet_servers_);
+    tablet_servers_.clear();
   }
 
   void CreateClient(std::shared_ptr<client::YBClient>* client) {

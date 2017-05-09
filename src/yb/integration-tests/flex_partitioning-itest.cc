@@ -87,7 +87,7 @@ class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> 
   void DoTearDown() override {
     cluster_->Shutdown();
     YBMiniClusterTestBase::DoTearDown();
-    STLDeleteValues(&ts_map_);
+    ts_map_.clear();
     STLDeleteElements(&inserted_rows_);
   }
 
@@ -149,7 +149,7 @@ class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> 
 
   int CountTablets() {
     vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB> tablets;
-    CHECK_OK(ListTablets(ts_map_.begin()->second, MonoDelta::FromSeconds(10), &tablets));
+    CHECK_OK(ListTablets(ts_map_.begin()->second.get(), MonoDelta::FromSeconds(10), &tablets));
     return tablets.size();
   }
 
@@ -178,7 +178,7 @@ class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> 
 
   Random random_;
 
-  unordered_map<string, TServerDetails*> ts_map_;
+  TabletServerMap ts_map_;
 
   shared_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;

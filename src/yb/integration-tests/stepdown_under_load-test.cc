@@ -79,7 +79,7 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   vector<TabletId> tablet_ids;
   {
     const auto ts0_uuid = ts_map.begin()->first;
-    auto* const ts0_details = ts_map[ts0_uuid];
+    auto* const ts0_details = ts_map[ts0_uuid].get();
     ASSERT_OK(ListRunningTabletIds(ts0_details, kDefaultTimeout, &tablet_ids));
     ASSERT_EQ(1, tablet_ids.size());
   }
@@ -98,7 +98,7 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
     // Find a non-leader tablet and restart it.
     const TServerDetails* non_leader = nullptr;
     for (const auto& ts_map_entry : ts_map) {
-      const TServerDetails* ts_details = ts_map_entry.second;
+      const TServerDetails* ts_details = ts_map_entry.second.get();
       if (ts_details->uuid() != leader->uuid()) {
         non_leader = ts_details;
         break;

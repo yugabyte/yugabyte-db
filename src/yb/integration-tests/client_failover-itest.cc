@@ -78,14 +78,15 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
       missing_replica_index = i;
     } else {
       replica_indexes.insert(i);
-      TServerDetails* ts = ts_map_[cluster_->tablet_server(i)->uuid()];
+      TServerDetails* ts = ts_map_[cluster_->tablet_server(i)->uuid()].get();
       active_ts_map[ts->uuid()] = ts;
-      ASSERT_OK(WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()], tablet_id,
+      ASSERT_OK(WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
+                                       tablet_id,
                                        kTimeout));
     }
   }
   int leader_index = *replica_indexes.begin();
-  TServerDetails* leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()];
+  TServerDetails* leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()].get();
   for (auto retries_left = kNumberOfRetries; ;) {
     TServerDetails *current_leader = nullptr;
     ASSERT_OK(itest::FindTabletLeader(active_ts_map, tablet_id, kTimeout, &current_leader));
@@ -166,7 +167,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
     for (auto index : replica_indexes) {
       auto new_leader_uuid = cluster_->tablet_server(index)->uuid();
       if (new_leader_uuid != old_leader->uuid()) {
-        desired_leader = ts_map_[new_leader_uuid];
+        desired_leader = ts_map_[new_leader_uuid].get();
         break;
       }
     }
@@ -185,7 +186,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                             kTimeout,
                                             itest::CommittedEntryType::CONFIG));
 
-  TServerDetails* to_add = ts_map_[cluster_->tablet_server(missing_replica_index)->uuid()];
+  TServerDetails* to_add = ts_map_[cluster_->tablet_server(missing_replica_index)->uuid()].get();
   ASSERT_OK(AddServer(leader, tablet_id, to_add, consensus::RaftPeerPB::PRE_VOTER,
                       boost::none, kTimeout));
   HostPort hp;
@@ -194,7 +195,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
 
   const string& new_ts_uuid = cluster_->tablet_server(missing_replica_index)->uuid();
   InsertOrDie(&replica_indexes, missing_replica_index);
-  InsertOrDie(&active_ts_map, new_ts_uuid, ts_map_[new_ts_uuid]);
+  InsertOrDie(&active_ts_map, new_ts_uuid, ts_map_[new_ts_uuid].get());
 
   // Wait for remote bootstrap to complete. Then elect the new node.
   ASSERT_OK(WaitForServersToAgree(kTimeout,
@@ -203,7 +204,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                   ++expected_index,
                                   &expected_index));
   leader_index = missing_replica_index;
-  leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()];
+  leader = ts_map_[cluster_->tablet_server(leader_index)->uuid()].get();
   ASSERT_OK(itest::StartElection(leader, tablet_id, kTimeout));
   ASSERT_OK(WaitUntilCommittedOpIdIndexGrow(&expected_index, leader, tablet_id, kTimeout));
 

@@ -131,7 +131,6 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
 
   itest::TabletServerMap ts_map;
   ASSERT_OK(CreateTabletServerMap(master_proxy.get(), client_messenger_, &ts_map));
-  ValueDeleter deleter(&ts_map);
 
   // Collect the tablet peers so we get direct access to consensus.
   vector<scoped_refptr<TabletPeer> > tablet_peers;
@@ -152,9 +151,10 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
 
   // Loop and cause elections and term changes from different servers.
   // TSTabletManager should acknowledge the role changes via tablet reports.
+  unsigned int seed = SeedRandom();
   for (int i = 0; i < FLAGS_num_election_test_loops; i++) {
     SCOPED_TRACE(Substitute("Iter: $0", i));
-    int new_leader_idx = rand() % 2;
+    int new_leader_idx = rand_r(&seed) % 2;
     LOG(INFO) << "Electing peer " << new_leader_idx << "...";
     consensus::Consensus* con = CHECK_NOTNULL(tablet_peers[new_leader_idx]->consensus());
     ASSERT_OK(con->EmulateElection());

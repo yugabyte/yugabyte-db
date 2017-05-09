@@ -75,6 +75,7 @@ using consensus::ReplicateMsg;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
+using itest::TabletServerMapUnowned;
 using itest::RemoveServer;
 using itest::StartElection;
 using itest::WaitUntilLeader;
@@ -352,7 +353,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
   // then unpausing the majority and asserting that elections and writes succeed.
   // If fails, throws a gtest assertion.
   // Note: This test assumes all tablet servers listed in tablet_servers are voters.
-  void AssertMajorityRequiredForElectionsAndWrites(const TabletServerMap& tablet_servers,
+  void AssertMajorityRequiredForElectionsAndWrites(const TabletServerMapUnowned& tablet_servers,
                                                    const string& leader_uuid);
 
   // Return the replicas of the specified 'tablet_id', as seen by the Master.
@@ -756,8 +757,7 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
@@ -779,7 +779,7 @@ void RaftConsensusITest::TestAddRemoveServer(RaftPeerPB::MemberType member_type)
   // Kill the master, so we can change the config without interference.
   cluster_->master()->Shutdown();
 
-  TabletServerMap active_tablet_servers = tablet_servers_;
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
 
   // Do majority correctness check for 3 servers.
   NO_FATALS(AssertMajorityRequiredForElectionsAndWrites(active_tablet_servers, leader_uuid));
@@ -877,8 +877,7 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
@@ -895,7 +894,7 @@ void RaftConsensusITest::TestRemoveTserverFailsWhenServerInTransition(
   cluster_->master()->Shutdown();
 
   // Now remove server 2 from the configuration.
-  TabletServerMap active_tablet_servers = tablet_servers_;
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
   LOG(INFO) << "Removing tserver with uuid " << tserver->uuid();
   ASSERT_OK(RemoveServer(initial_leader, tablet_id_, tserver, boost::none,
                          MonoDelta::FromSeconds(10)));
@@ -942,8 +941,7 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::Membe
     master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
     NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-    vector<TServerDetails*> tservers;
-    AppendValuesFromMap(tablet_servers_, &tservers);
+    vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
     ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
     // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
@@ -960,7 +958,7 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(RaftPeerPB::Membe
     cluster_->master()->Shutdown();
 
     // Now remove server 2 from the configuration.
-    TabletServerMap active_tablet_servers = tablet_servers_;
+    auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
     LOG(INFO) << "Removing tserver with uuid " << tserver->uuid();
     ASSERT_OK(RemoveServer(initial_leader, tablet_id_, tserver, boost::none,
                            MonoDelta::FromSeconds(10)));
@@ -1014,7 +1012,7 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
   NO_FATALS(CauseFollowerToFallBehindLogGC(&leader_uuid, &orig_term, &follower_uuid));
 
   // Wait for remaining majority to agree.
-  TabletServerMap active_tablet_servers = tablet_servers_;
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
   ASSERT_EQ(3, active_tablet_servers.size());
   ASSERT_EQ(1, active_tablet_servers.erase(follower_uuid));
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30), active_tablet_servers, tablet_id_,
@@ -1029,7 +1027,7 @@ TEST_F(RaftConsensusITest, TestFollowerFallsBehindLeaderGC) {
     // abandoned replica, and wait until it has incremented a couple of times.
     SleepFor(MonoDelta::FromSeconds(5));
     OpId op_id;
-    TServerDetails* leader = tablet_servers_[leader_uuid];
+    TServerDetails* leader = tablet_servers_[leader_uuid].get();
     ASSERT_OK(GetLastOpIdForReplica(tablet_id_, leader, consensus::RECEIVED_OPID,
                                     MonoDelta::FromSeconds(10), &op_id));
     ASSERT_EQ(orig_term, op_id.term())
@@ -1335,8 +1333,8 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElectionOneReplica) {
 }
 
 void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const AtomicBool* finish) {
-  vector<TServerDetails*> servers;
-  AppendValuesFromMap(tablet_servers_, &servers);
+  vector<TServerDetails*> servers = TServerDetailsVector(tablet_servers_);
+
   CHECK_LT(replica_idx, servers.size());
   TServerDetails* ts = servers[replica_idx];
 
@@ -1432,8 +1430,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   // Kill all the servers but one.
   TServerDetails *replica_ts;
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(3, tservers.size());
 
   // Elect server 2 as leader and wait for log index 1 to propagate to all servers.
@@ -1636,8 +1633,7 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
 
   // Start with no leader.
   Status s = GetReplicaStatusAndCheckIfLeader(tservers[0], tablet_id_, MonoDelta::FromSeconds(10));
@@ -1664,7 +1660,7 @@ TEST_F(RaftConsensusITest, TestLeaderStepDown) {
 }
 
 void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
-    const TabletServerMap& tablet_servers, const string& leader_uuid) {
+    const TabletServerMapUnowned& tablet_servers, const string& leader_uuid) {
 
   TServerDetails* initial_leader = FindOrDie(tablet_servers, leader_uuid);
 
@@ -1681,7 +1677,7 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
     int num_to_pause = config_size - minority_to_retain;
     LOG(INFO) << "Pausing " << num_to_pause << " tablet servers in config of size " << config_size;
     vector<string> paused_uuids;
-    for (const TabletServerMap::value_type& entry : tablet_servers) {
+    for (const auto& entry : tablet_servers) {
       if (paused_uuids.size() == num_to_pause) {
         continue;
       }
@@ -1805,14 +1801,13 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
   TServerDetails* leader_tserver = tservers[0];
 
-  TabletServerMap original_followers = tablet_servers_;
+  auto original_followers = CreateTabletServerMapUnowned(tablet_servers_);
   ASSERT_EQ(1, original_followers.erase(leader_tserver->uuid()));
 
   const MonoDelta timeout = MonoDelta::FromSeconds(10);
@@ -1861,8 +1856,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
@@ -1873,7 +1867,7 @@ TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
   ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
   int64_t cur_log_index = 1;
 
-  TabletServerMap active_tablet_servers = tablet_servers_;
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
 
   TServerDetails* follower_ts = tservers[2];
 
@@ -1948,8 +1942,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
@@ -1966,7 +1959,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   cluster_->master()->Shutdown();
 
   // Now remove server 4 from the configuration.
-  TabletServerMap active_tablet_servers = tablet_servers_;
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
   LOG(INFO) << "Removing tserver with uuid " << final_leader->uuid();
   ASSERT_OK(RemoveServer(initial_leader, tablet_id_, final_leader, boost::none,
                          MonoDelta::FromSeconds(10)));
@@ -1993,7 +1986,8 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
     ASSERT_OK(replica_ts->Pause());
   }
 
-  active_tablet_servers = tablet_servers_;  // Reset to the unpaused servers.
+  // Reset to the unpaused servers.
+  active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
   for (int i = 1; i <= 3; i++) {
     ASSERT_EQ(1, active_tablet_servers.erase(tservers[i]->uuid()));
   }
@@ -2036,7 +2030,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   LOG(INFO) << "Resuming remaining nodes...";
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[2]->uuid())->Resume());
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[3]->uuid())->Resume());
-  active_tablet_servers = tablet_servers_;
+  active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
 
   // Do one last operation on the new leader: an insert.
   ASSERT_OK(WriteSimpleTestRow(final_leader, tablet_id_, RowOperationsPB::INSERT,
@@ -2079,8 +2073,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
   // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
@@ -2090,7 +2083,7 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
   ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
 
-  TabletServerMap active_tablet_servers = tablet_servers_;
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
 
   // Start a write workload.
   LOG(INFO) << "Starting write workload...";
@@ -2182,7 +2175,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   string tablet_id = tablet_replicas_.begin()->first;
 
   // Determine the list of tablet servers currently in the config.
-  TabletServerMap active_tablet_servers;
+  TabletServerMapUnowned active_tablet_servers;
   for (itest::TabletReplicaMap::const_iterator iter = tablet_replicas_.find(tablet_id);
        iter != tablet_replicas_.end(); ++iter) {
     InsertOrDie(&active_tablet_servers, iter->second->uuid(), iter->second);
@@ -2214,7 +2207,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   expected_index += 2; // Adding a new peer generates two ChangeConfig requests.
 
   // Change the config.
-  TServerDetails* tserver_to_add = tablet_servers_[uuid_to_add];
+  TServerDetails* tserver_to_add = tablet_servers_[uuid_to_add].get();
   LOG(INFO) << "Adding tserver with uuid " << tserver_to_add->uuid();
   ASSERT_OK(AddServer(leader_ts, tablet_id_, tserver_to_add, RaftPeerPB::PRE_VOTER, boost::none,
                       timeout));
@@ -2232,7 +2225,7 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   // Change the config again.
   LOG(INFO) << "Removing tserver with uuid " << tserver_to_add->uuid();
   ASSERT_OK(RemoveServer(leader_ts, tablet_id_, tserver_to_add, boost::none, timeout));
-  active_tablet_servers = tablet_servers_;
+  active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
   ASSERT_EQ(1, active_tablet_servers.erase(tserver_to_add->uuid()));
   ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id_, expected_index));
 
@@ -2269,8 +2262,7 @@ TEST_F(RaftConsensusITest, TestEarlyCommitDespiteMemoryPressure) {
 
   // Elect server 2 as leader, then kill it and server 1, leaving behind
   // server 0 as the sole follower.
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(3, tservers.size());
   ASSERT_OK(StartElection(tservers[2], tablet_id_, MonoDelta::FromSeconds(10)));
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
@@ -2345,12 +2337,11 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
     num_rows_to_write = 150000;
   }
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
-  TabletServerMap active_tablet_servers;
-  TabletServerMap::const_iterator iter = tablet_replicas_.find(tablet_id_);
+  itest::TabletServerMapUnowned active_tablet_servers;
+  auto iter = tablet_replicas_.find(tablet_id_);
   TServerDetails* leader = iter->second;
   TServerDetails* follower = (++iter)->second;
   InsertOrDie(&active_tablet_servers, leader->uuid(), leader);
@@ -2564,7 +2555,7 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
   MonoDelta timeout = MonoDelta::FromSeconds(30);
-  TabletServerMap active_tablet_servers = tablet_servers_;
+  auto active_tablet_servers = CreateTabletServerMapUnowned(tablet_servers_);
   ASSERT_EQ(3, active_tablet_servers.size());
 
   string leader_uuid;
@@ -2573,8 +2564,10 @@ TEST_F(RaftConsensusITest, TestEvictAbandonedFollowers) {
   NO_FATALS(CauseFollowerToFallBehindLogGC(&leader_uuid, &orig_term, &follower_uuid));
 
   // Wait for the abandoned follower to be evicted.
-  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(2, tablet_servers_[leader_uuid],
-                                                tablet_id_, timeout));
+  ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(2,
+                                                tablet_servers_[leader_uuid].get(),
+                                                tablet_id_,
+                                                timeout));
   ASSERT_EQ(1, active_tablet_servers.erase(follower_uuid));
   ASSERT_OK(WaitForServersToAgree(timeout, active_tablet_servers, tablet_id_, 2));
 }
@@ -2614,7 +2607,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   MonoDelta timeout = MonoDelta::FromSeconds(30);
 
   int kLeaderIndex = 0;
-  TServerDetails* leader_ts = tablet_servers_[cluster_->tablet_server(kLeaderIndex)->uuid()];
+  TServerDetails* leader_ts = tablet_servers_[cluster_->tablet_server(kLeaderIndex)->uuid()].get();
 
   // Prevent followers from accepting UpdateConsensus requests from the leader,
   // even though they will vote. This will allow us to get the distributed
@@ -2633,9 +2626,11 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
   // Now attempt to do a config change. It should be rejected because there
   // have not been any ops (notably the initial NO_OP) from the leader's term
   // that have been committed yet.
-  Status s = itest::RemoveServer(leader_ts, tablet_id_,
-                                 tablet_servers_[cluster_->tablet_server(1)->uuid()],
-                                 boost::none, timeout);
+  Status s = itest::RemoveServer(leader_ts,
+                                 tablet_id_,
+                                 tablet_servers_[cluster_->tablet_server(1)->uuid()].get(),
+                                 boost::none,
+                                 timeout);
   ASSERT_TRUE(!s.ok()) << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "Leader is not ready for Config Change");
 }
@@ -2650,8 +2645,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   NO_FATALS(BuildAndStart(ts_flags, master_flags));
 
-  vector<TServerDetails*> tservers;
-  AppendValuesFromMap(tablet_servers_, &tservers);
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(3, tservers.size());
 
   // Shutdown the other servers so they don't get chatty.

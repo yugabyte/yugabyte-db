@@ -56,7 +56,7 @@ class ExternalMiniClusterITestBase : public YBTest {
       cluster_->Shutdown();
     }
     YBTest::TearDown();
-    STLDeleteValues(&ts_map_);
+    ts_map_.clear();
   }
 
  protected:
@@ -67,7 +67,7 @@ class ExternalMiniClusterITestBase : public YBTest {
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
   std::shared_ptr<client::YBClient> client_;
-  std::unordered_map<std::string, itest::TServerDetails*> ts_map_;
+  itest::TabletServerMap ts_map_;
 };
 
 void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& extra_ts_flags,

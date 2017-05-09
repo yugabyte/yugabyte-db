@@ -120,7 +120,9 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
 
 string DeleteTableTest::GetLeaderUUID(const string& ts_uuid, const string& tablet_id) {
   ConsensusStatePB cstate;
-  CHECK_OK(itest::GetConsensusState(ts_map_[ts_uuid], tablet_id, CONSENSUS_CONFIG_COMMITTED,
+  CHECK_OK(itest::GetConsensusState(ts_map_[ts_uuid].get(),
+                                    tablet_id,
+                                    CONSENSUS_CONFIG_COMMITTED,
                                     MonoDelta::FromSeconds(10), &cstate));
   return cstate.leader_uuid();
 }
@@ -197,8 +199,9 @@ void DeleteTableTest::WaitForAllTSToCrash() {
 }
 
 void DeleteTableTest::WaitUntilTabletRunning(int index, const std::string& tablet_id) {
-  ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(index)->uuid()],
-                                          tablet_id, MonoDelta::FromSeconds(30)));
+  ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(index)->uuid()].get(),
+                                          tablet_id,
+                                          MonoDelta::FromSeconds(30)));
 }
 
 void DeleteTableTest::DeleteTable(const YBTableName& table_name) {
@@ -304,7 +307,7 @@ TEST_F(DeleteTableTest, TestDeleteTableDestUuidValidation) {
   ASSERT_EQ(1, tablets.size());
   const string& tablet_id = tablets[0];
 
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
 
   tserver::DeleteTabletRequestPB req;
   tserver::DeleteTabletResponsePB resp;
@@ -339,7 +342,7 @@ TEST_F(DeleteTableTest, TestAtomicDeleteTablet) {
   const string& tablet_id = tablets[0];
 
   const int kTsIndex = 0;
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()];
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // The committed config starts off with an opid_index of -1, so choose something lower.
   boost::optional<int64_t> opid_index(-2);
@@ -464,8 +467,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
 
   // Add our TS 0 to the config and wait for it to crash.
   string leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
-  TServerDetails* leader = DCHECK_NOTNULL(ts_map_[leader_uuid]);
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()];
+  TServerDetails* leader = DCHECK_NOTNULL(ts_map_[leader_uuid].get());
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
   ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(kTsIndex));
 
@@ -539,8 +542,8 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
 
   // Add our TS 0 to the config and wait for the leader to crash.
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
-  TServerDetails* leader = ts_map_[leader_uuid];
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
+  TServerDetails* leader = ts_map_[leader_uuid].get();
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
   ASSERT_OK(itest::AddServer(leader, tablet_id, ts, RaftPeerPB::PRE_VOTER, boost::none, timeout));
   ASSERT_OK(cluster_->WaitForTSToCrash(leader_index));
 
@@ -568,7 +571,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   // transition_in_progress_ has been cleared and we'll get error
   // "State transition of tablet XXX already in progress: remote bootstrapping tablet".
   leader_uuid = GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id);
-  leader = ts_map_[leader_uuid];
+  leader = ts_map_[leader_uuid].get();
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, leader, tablet_id, timeout));
 
   ClusterVerifier cluster_verifier(cluster_.get());
@@ -627,7 +630,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   // Elect a leader and run some data through the cluster.
   int leader_index = 1;
   string leader_uuid = cluster_->tablet_server(leader_index)->uuid();
-  ASSERT_OK(itest::StartElection(ts_map_[leader_uuid], tablet_id, timeout));
+  ASSERT_OK(itest::StartElection(ts_map_[leader_uuid].get(), tablet_id, timeout));
   workload.Start();
   while (workload.rows_inserted() < 100) {
     SleepFor(MonoDelta::FromMilliseconds(10));
@@ -646,7 +649,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   cluster_->tablet_server(1)->Shutdown();
   cluster_->tablet_server(2)->Shutdown();
   NO_FATALS(WaitUntilTabletRunning(kTsIndex, tablet_id));
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()];
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
   ASSERT_OK(itest::StartElection(ts, tablet_id, timeout));
   for (int i = 0; i < 6000; i++) {
     Status s = inspect_->ReadConsensusMetadataOnTS(kTsIndex, tablet_id, &cmeta_pb);
@@ -668,7 +671,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   // Restart the other dudes and re-elect the same leader.
   ASSERT_OK(cluster_->tablet_server(1)->Restart());
   ASSERT_OK(cluster_->tablet_server(2)->Restart());
-  TServerDetails* leader = ts_map_[leader_uuid];
+  TServerDetails* leader = ts_map_[leader_uuid].get();
   NO_FATALS(WaitUntilTabletRunning(1, tablet_id));
   NO_FATALS(WaitUntilTabletRunning(2, tablet_id));
   ASSERT_OK(itest::StartElection(leader, tablet_id, timeout));
@@ -731,7 +734,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingTransaction) {
   NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
 
   const int kTsIndex = 0;  // We'll test with the first TS.
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()];
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // Create the table.
   TestWorkload workload(cluster_.get());
@@ -745,14 +748,14 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingTransaction) {
 
   // Wait until all replicas are up and running.
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()],
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 
   // Elect TS 1 as leader.
   const int kLeaderIndex = 1;
   const string kLeaderUuid = cluster_->tablet_server(kLeaderIndex)->uuid();
-  TServerDetails* leader = ts_map_[kLeaderUuid];
+  TServerDetails* leader = ts_map_[kLeaderUuid].get();
   ASSERT_OK(itest::StartElection(leader, tablet_id, timeout));
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, 1));
 
@@ -794,7 +797,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   NO_FATALS(StartCluster(ts_flags, master_flags));
 
   const int kFollowerIndex = 0;
-  TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()];
+  TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   // Create the table.
   TestWorkload workload(cluster_.get());
@@ -807,14 +810,14 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
 
   // Wait until all replicas are up and running.
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()],
+    ASSERT_OK(itest::WaitUntilTabletRunning(ts_map_[cluster_->tablet_server(i)->uuid()].get(),
                                             tablet_id, timeout));
   }
 
   // Elect TS 1 as leader.
   const int kLeaderIndex = 1;
   const string kLeaderUuid = cluster_->tablet_server(kLeaderIndex)->uuid();
-  TServerDetails* leader_ts = ts_map_[kLeaderUuid];
+  TServerDetails* leader_ts = ts_map_[kLeaderUuid].get();
   ASSERT_OK(itest::StartElection(leader_ts, tablet_id, timeout));
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, 1));
 
@@ -892,13 +895,13 @@ TEST_F(DeleteTableTest, TestFDsNotLeakedOnTabletTombstone) {
 
   // Figure out the tablet id of the created tablet.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
-  ASSERT_OK(WaitForNumTabletsOnTS(ts_map_.begin()->second, 1, timeout, &tablets));
+  ASSERT_OK(WaitForNumTabletsOnTS(ts_map_.begin()->second.get(), 1, timeout, &tablets));
   const string& tablet_id = tablets[0].tablet_status().tablet_id();
 
   // Tombstone the tablet and then ensure that lsof does not list any
   // tablet-related paths.
   ExternalTabletServer* ets = cluster_->tablet_server(0);
-  ASSERT_OK(itest::DeleteTablet(ts_map_[ets->uuid()],
+  ASSERT_OK(itest::DeleteTablet(ts_map_[ets->uuid()].get(),
                                 tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
   ASSERT_EQ(0, PrintOpenTabletFiles(ets->pid(), tablet_id));
 
@@ -1010,7 +1013,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   ASSERT_OK(inspect_->WaitForReplicaCount(6));
 
   // Set up the proxies so we can easily send DeleteTablet() RPCs.
-  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()];
+  TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
 
   // Ensure the tablet server is reporting 2 tablets.
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
