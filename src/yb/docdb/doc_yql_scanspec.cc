@@ -11,7 +11,7 @@ DocYQLScanSpec::DocYQLScanSpec(const Schema& schema, const DocKey& doc_key)
       schema_(schema),
       hash_code_(0),
       hashed_components_(nullptr),
-      doc_key_(&doc_key),
+      doc_key_(doc_key),
       start_doc_key_(DocKey()),
       lower_doc_key_(DocKey()),
       upper_doc_key_(DocKey()),
@@ -28,7 +28,7 @@ DocYQLScanSpec::DocYQLScanSpec(
       schema_(schema),
       hash_code_(hash_code),
       hashed_components_(&hashed_components),
-      doc_key_(nullptr),
+      doc_key_(),
       start_doc_key_(start_doc_key),
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)),
@@ -58,10 +58,10 @@ DocKey DocYQLScanSpec::bound_key(const bool lower_bound) const {
 }
 
 Status DocYQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
-  // If a full doc key is specify, that is the exactly doc to scan. Otherwise, compute the
+  // If a full doc key is specified, that is the exactly doc to scan. Otherwise, compute the
   // lower/upper bound doc keys to scan from the range.
-  if (doc_key_ != nullptr) {
-    *key = *doc_key_;
+  if (!doc_key_.empty()) {
+    *key = doc_key_;
     return Status::OK();
   }
 

@@ -29,7 +29,10 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(const YQLReadRequestPB& request
                                                  const HybridTime& hybrid_time,
                                                  const Schema& schema,
                                                  const bool include_static_columns,
+                                                 const Schema& static_projection,
                                                  std::unique_ptr<common::YQLScanSpec>* spec,
+                                                 std::unique_ptr<common::YQLScanSpec>*
+                                                 static_row_spec,
                                                  HybridTime* req_hybrid_time) const {
   // There should be no static columns in system tables so we are not handling it.
   if (include_static_columns) {

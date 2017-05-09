@@ -25,7 +25,10 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
                                                    const HybridTime& hybrid_time,
                                                    const Schema& schema,
                                                    const bool include_static_columns,
+                                                   const Schema& static_projection,
                                                    std::unique_ptr<common::YQLScanSpec>* spec,
+                                                   std::unique_ptr<common::YQLScanSpec>*
+                                                   static_row_spec,
                                                    HybridTime* req_hybrid_time)
                                                    const {
   // Populate dockey from YQL key columns.
@@ -44,6 +47,15 @@ CHECKED_STATUS YQLRocksDBStorage::BuildYQLScanSpec(const YQLReadRequestPB& reque
     KeyBytes start_key_bytes(request.paging_state().next_row_key());
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
     *req_hybrid_time = start_sub_doc_key.hybrid_time();
+
+    // If we start the scan with a specific primary key, the normal scan spec we return below will
+    // not include the static columns if any for the start key. We need to return a separate scan
+    // spec to fetch those static columns.
+    const DocKey& start_doc_key = start_sub_doc_key.doc_key();
+    if (include_static_columns && !start_doc_key.range_group().empty()) {
+      const DocKey hashed_doc_key(start_doc_key.hash(), start_doc_key.hashed_group());
+      static_row_spec->reset(new DocYQLScanSpec(static_projection, hashed_doc_key));
+    }
   }
 
   // Construct the scan spec basing on the WHERE condition.

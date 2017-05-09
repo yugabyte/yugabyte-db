@@ -22,7 +22,9 @@ class YQLRocksDBStorage : public common::YQLStorageIf {
                                   const HybridTime& hybrid_time,
                                   const Schema& schema,
                                   bool include_static_columns,
+                                  const Schema& static_projection,
                                   std::unique_ptr<common::YQLScanSpec>* spec,
+                                  std::unique_ptr<common::YQLScanSpec>* static_row_spec,
                                   HybridTime* req_hybrid_time) const override;
  private:
   rocksdb::DB *const rocksdb_;

@@ -763,10 +763,11 @@ Status YQLReadOperation::Execute(
   const bool read_distinct_columns = request_.distinct();
 
   std::unique_ptr<common::YQLRowwiseIteratorIf> iter;
-  std::unique_ptr<common::YQLScanSpec> spec;
+  std::unique_ptr<common::YQLScanSpec> spec, static_row_spec;
   HybridTime req_hybrid_time;
   RETURN_NOT_OK(yql_storage.BuildYQLScanSpec(request_, hybrid_time, schema, read_static_columns,
-                                             &spec, &req_hybrid_time));
+                                             static_projection, &spec, &static_row_spec,
+                                             &req_hybrid_time));
   RETURN_NOT_OK(yql_storage.GetIterator(rowblock->schema(), schema, req_hybrid_time, &iter));
   RETURN_NOT_OK(iter->Init(*spec));
   if (FLAGS_trace_docdb_calls) {
@@ -775,6 +776,20 @@ Status YQLReadOperation::Execute(
   YQLValueMap static_row, non_static_row;
   YQLValueMap& selected_row = read_distinct_columns ? static_row : non_static_row;
 
+  // In case when we are continuing a select with a paging state, the static columns for the next
+  // row to fetch are not included in the first iterator and we need to fetch them with a separate
+  // spec and iterator before beginning the normal fetch below.
+  if (static_row_spec != nullptr) {
+    std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
+    RETURN_NOT_OK(yql_storage.GetIterator(static_projection, schema, req_hybrid_time,
+                                          &static_row_iter));
+    RETURN_NOT_OK(static_row_iter->Init(*static_row_spec));
+    if (static_row_iter->HasNext()) {
+      RETURN_NOT_OK(static_row_iter->NextRow(static_projection, &static_row));
+    }
+  }
+
+  // Begin the normal fetch.
   while (rowblock->row_count() < row_count_limit && iter->HasNext()) {
 
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is

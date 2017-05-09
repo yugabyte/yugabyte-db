@@ -199,5 +199,94 @@ TEST_F(YbSqlStaticColumn, TestSelect) {
   }
 }
 
+
+TEST_F(YbSqlStaticColumn, TestPagingSelect) {
+  // Init the simulated cluster.
+  NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  YbSqlProcessor *processor = GetSqlProcessor();
+
+  LOG(INFO) << "Running TestSelect";
+
+  // Create test table.
+  CHECK_VALID_STMT("CREATE TABLE t (h int, r int, s int static, c int, PRIMARY KEY ((h), r));");
+
+  // Insert 6 rows with 2 different hash keys.
+  CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (1, 1, 1, 11);");
+  CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (1, 2, 2, 12);");
+  CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (1, 3, 3, 13);");
+
+  CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (2, 1, 4, 21);");
+  CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (2, 2, 5, 22);");
+  CHECK_VALID_STMT("INSERT INTO t (h, r, s, c) VALUES (2, 3, 6, 23);");
+
+  // Test seleting all rows and columns. Ensure the static column is not missed across pages.
+  {
+    StatementParameters params;
+    params.set_page_size(1);
+    string rows;
+    do {
+      CHECK_OK(processor->Run("SELECT * FROM t;", params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      rows.append(row_block->ToString());
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    CHECK_EQ(rows,
+             "{ { int32:2, int32:1, int32:6, int32:21 } }"
+             "{ { int32:2, int32:2, int32:6, int32:22 } }"
+             "{ { int32:2, int32:3, int32:6, int32:23 } }"
+             "{ { int32:1, int32:1, int32:3, int32:11 } }"
+             "{ { int32:1, int32:2, int32:3, int32:12 } }"
+             "{ { int32:1, int32:3, int32:3, int32:13 } }"
+             "{  }");
+  }
+
+  // Test seleting all rows for the non-primary key columns using page-size 2. Ensure the static
+  // column is not missed across pages also.
+  {
+    StatementParameters params;
+    params.set_page_size(2);
+    string rows;
+    do {
+      CHECK_OK(processor->Run("SELECT s, c FROM t;", params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      rows.append(row_block->ToString());
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    CHECK_EQ(rows,
+             "{ { int32:6, int32:21 }, { int32:6, int32:22 } }"
+             "{ { int32:6, int32:23 }, { int32:3, int32:11 } }"
+             "{ { int32:3, int32:12 }, { int32:3, int32:13 } }"
+             "{  }");
+  }
+
+  // Test seleting all distinct static columns with page-size 1.
+  {
+    StatementParameters params;
+    params.set_page_size(1);
+    string rows;
+    do {
+      CHECK_OK(processor->Run("SELECT DISTINCT s FROM t;", params));
+      std::shared_ptr<YQLRowBlock> row_block = processor->row_block();
+      rows.append(row_block->ToString());
+      if (processor->rows_result()->paging_state().empty()) {
+        break;
+      }
+      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+    } while (true);
+    CHECK_EQ(rows,
+             "{ { int32:6 } }"
+             "{ { int32:3 } }"
+             "{  }");
+  }
+}
+
 } // namespace sql
 } // namespace yb

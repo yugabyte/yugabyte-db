@@ -53,8 +53,8 @@ class DocYQLScanSpec : public common::YQLScanSpec {
   const uint32_t hash_code_;
   const std::vector<PrimitiveValue>* hashed_components_;
 
-  // Specific doc key to scan. The doc key is owned by the caller of YQLScanSpec.
-  const DocKey* doc_key_;
+  // Specific doc key to scan if not empty.
+  const DocKey doc_key_;
 
   // Starting doc key when requested by the client.
   const DocKey start_doc_key_;
