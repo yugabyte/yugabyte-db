@@ -100,7 +100,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 										ALLOCSET_DEFAULT_MINSIZE,
 										ALLOCSET_DEFAULT_INITSIZE,
 										ALLOCSET_DEFAULT_MAXSIZE);
-	data->include_xids = true;
+	data->include_xids = false;
 	data->include_timestamp = false;
 	data->include_schemas = true;
 	data->include_types = true;
