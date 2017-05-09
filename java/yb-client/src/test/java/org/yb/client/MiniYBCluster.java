@@ -147,6 +147,8 @@ public class MiniYBCluster implements AutoCloseable {
         .defaultAdminOperationTimeoutMs(defaultTimeoutMs)
         .defaultOperationTimeoutMs(defaultTimeoutMs)
         .build();
+
+    syncClient.waitForMasterLeader(defaultTimeoutMs);
   }
 
   /**
