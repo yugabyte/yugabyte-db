@@ -243,6 +243,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
                             const std::string& data_root_dir,
                             const std::string& wal_root_dir);
 
+  bool IsTabletInTransition(const std::string& tablet_id) const;
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
 

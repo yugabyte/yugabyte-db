@@ -131,8 +131,24 @@ class TabletServerTestBase : public YBTest {
   CHECKED_STATUS WaitForTabletRunning(const char *tablet_id) {
     scoped_refptr<tablet::TabletPeer> tablet_peer;
     RETURN_NOT_OK(mini_server_->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+
     // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
-    return tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60));
+    RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60)));
+
+    // Wait to ensure there are no pending transitions for the tablet.
+    const MonoDelta timeout(MonoDelta::FromSeconds(10));
+    const MonoTime start(MonoTime::Now(MonoTime::FINE));
+    while (mini_server_->server()->tablet_manager()->IsTabletInTransition(tablet_id)) {
+      MonoTime now(MonoTime::Now(MonoTime::FINE));
+      MonoDelta elapsed(now.GetDeltaSince(start));
+      if (elapsed.MoreThan(timeout)) {
+        return STATUS(TimedOut, strings::Substitute(
+            "State transitions are still pending after waiting for $0 for tablet $1",
+            elapsed.ToString(), tablet_id));
+      }
+      SleepFor(MonoDelta::FromMilliseconds(100));
+    }
+    return Status::OK();
   }
 
   void UpdateTestRowRemote(int tid,

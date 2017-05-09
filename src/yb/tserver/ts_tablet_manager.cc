@@ -674,6 +674,11 @@ Status TSTabletManager::StartTabletStateTransitionUnlocked(
   return Status::OK();
 }
 
+bool TSTabletManager::IsTabletInTransition(const std::string& tablet_id) const {
+  std::lock_guard<rw_spinlock> lock(lock_);
+  return ContainsKey(transition_in_progress_, tablet_id);
+}
+
 Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
                                        scoped_refptr<TabletMetadata>* metadata) {
   LOG(INFO) << "Loading metadata for tablet " << tablet_id;
