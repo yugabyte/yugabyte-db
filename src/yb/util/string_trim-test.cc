@@ -29,7 +29,7 @@ TEST(StringTrimTest, TestApplyEagerLineContinuation) {
 }
 
 TEST(StringTrimTest, TestTrimLeadingSpaces) {
-  ASSERT_EQ(
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
 This is my
 
