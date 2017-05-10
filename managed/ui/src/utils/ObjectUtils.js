@@ -102,23 +102,3 @@ export function normalizeToPositiveInt(value) {
 export function sortVersionStrings(arr) {
   return arr.sort((a,b) => semver.valid(a) && semver.valid(b) ? semver.lt(a,b) : a < b);
 }
-
-
-export function getObjectState(dataObject)
-{
-  if (dataObject.data && (isValidArray(dataObject.data) || !isEmptyObject(dataObject.data))) {
-    return "success";
-  } else {
-    if (dataObject.status === "init") {
-      return "init";
-    } else if (dataObject.status === "success") {
-      return "empty";
-    } else if (dataObject.status === "error") {
-      return "error";
-    } else if (dataObject.status === "loading") {
-      return "loading";
-    }
-  }
-}
-
-

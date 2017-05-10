@@ -12,7 +12,7 @@ import { GET_REGION_LIST, GET_PROVIDER_LIST,
         FETCH_CLOUD_METADATA, GET_REGION_LIST_RESPONSE, GET_INSTANCE_TYPE_LIST_RESPONSE, GET_SUPPORTED_REGION_DATA_RESPONSE,
         LIST_ACCESS_KEYS_RESPONSE } from '../actions/cloud';
 
-import { setInitialState, setSuccessState, setFailureState, setLoadingState, setResponseState }  from './common';
+import { setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }  from '../utils/PromiseUtils';
 import _ from 'lodash';
 
 const INITIAL_STATE = {
@@ -136,7 +136,7 @@ export default function(state = INITIAL_STATE, action) {
     case CREATE_DOCKER_PROVIDER:
       return setLoadingState(state, "dockerBootstrap", {});
     case CREATE_DOCKER_PROVIDER_RESPONSE:
-      return setResponseState(state, "dockerBootstrap", action);
+      return setPromiseResponse(state, "dockerBootstrap", action);
     case FETCH_CLOUD_METADATA:
       return {...state, fetchMetadata: true};
     default:
