@@ -46,7 +46,7 @@ export default class AZSelectorTable extends Component {
     var newPlacementInfo = universeConfigTemplate.placementInfo;
     newPlacementInfo.isCustom = true;
     var newRegionList = [];
-    cloud.regions.forEach(function(regionItem){
+    cloud.regions.data.forEach(function(regionItem){
       var newAzList = [];
       var zoneFoundInRegion = false;
       regionItem.zones.forEach(function(zoneItem){
@@ -154,7 +154,7 @@ export default class AZSelectorTable extends Component {
     var self = this;
     var azListForSelectedRegions = [];
     if (isValidObject(universeConfigTemplate.userIntent) && isValidArray(universeConfigTemplate.userIntent.regionList)) {
-       azListForSelectedRegions = regions.filter(
+       azListForSelectedRegions = regions.data.filter(
         region => universeConfigTemplate.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }

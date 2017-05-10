@@ -4,15 +4,14 @@ import { reduxForm, formValueSelector } from 'redux-form';
 import { connect } from 'react-redux';
 import {  fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
-import { getInstanceTypeList, getInstanceTypeListSuccess, getInstanceTypeListFailure, getRegionList,
-  getRegionListSuccess, getRegionListFailure } from 'actions/cloud';
-import { createUniverse, createUniverseSuccess, createUniverseFailure,
-  editUniverse, editUniverseSuccess, editUniverseFailure,
-  fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog,
-  configureUniverseTemplate, configureUniverseTemplateSuccess, configureUniverseTemplateFailure,
-  configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
-  checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
-  fetchUniverseInfoFailure } from 'actions/universe';
+import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse, listAccessKeys, listAccessKeysResponse  } from 'actions/cloud';
+import {createUniverse, createUniverseSuccess, createUniverseFailure,
+        editUniverse, editUniverseSuccess, editUniverseFailure,
+        fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog,
+        configureUniverseTemplate, configureUniverseTemplateSuccess, configureUniverseTemplateFailure,
+        configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
+        checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
+        fetchUniverseInfoFailure } from 'actions/universe';
 import { isDefinedNotNull, isValidArray } from 'utils/ObjectUtils';
 
 //For any field errors upon submission (i.e. not instant check)
@@ -97,21 +96,19 @@ const mapDispatchToProps = (dispatch) => {
 
     getInstanceTypeListItems: (provider) => {
       dispatch(getInstanceTypeList(provider)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(getInstanceTypeListFailure(response.payload));
-        } else {
-          dispatch(getInstanceTypeListSuccess(response.payload));
-        }
+        dispatch(getInstanceTypeListResponse(response.payload));
       });
+    },
+
+    getAccessKeys: (provider) => {
+      dispatch(listAccessKeys(provider)).then((response) => {
+        dispatch(listAccessKeysResponse(response.payload));
+      })
     },
 
     getRegionListItems: (provider, isMultiAZ) => {
       dispatch(getRegionList(provider, isMultiAZ)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(getRegionListFailure(response.payload));
-        } else {
-          dispatch(getRegionListSuccess(response.payload));
-        }
+        dispatch(getRegionListResponse(response.payload));
       });
     },
 

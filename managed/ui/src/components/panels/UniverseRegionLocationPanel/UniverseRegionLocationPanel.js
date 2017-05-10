@@ -10,7 +10,7 @@ export default class UniverseRegionLocationPanel extends Component {
   render() {
     const { cloud, universe: {universeList} } = this.props;
 
-    var completeRegionList = cloud.supportedRegionList;
+    var completeRegionList = cloud.supportedRegionList.data;
     var universeListByRegions = {};
     universeList.forEach(function(universeItem){
       if (isValidArray(universeItem.regions)) {
