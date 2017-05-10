@@ -10,8 +10,8 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'nos
 -- By default don't write in chunks
 CREATE TABLE x ();
 DROP TABLE x;
-SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'include-xids', 'f');
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', 'f', 'write-in-chunks', 't');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'include-xids', '0');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'write-in-chunks', '1');
 
 -- By default don't write xids
 CREATE TABLE gimmexid (id integer PRIMARY KEY);

@@ -12,14 +12,14 @@ ERROR:  option "nosuchopt" = "42" is unknown
 -- By default don't write in chunks
 CREATE TABLE x ();
 DROP TABLE x;
-SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'include-xids', 'f');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'include-xids', '0');
      data      
 ---------------
  {"change":[]}
  {"change":[]}
 (2 rows)
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', 'f', 'write-in-chunks', 't');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'write-in-chunks', '1');
     data     
 -------------
  {"change":[
