@@ -156,25 +156,25 @@ Status YBScanner::Data::CanBeRetried(const bool isNewScan,
   //
   // If the server returned an error code, it depends:
   //
-  //   - SCANNER_EXPIRED    : The scan can be retried at the same tablet server.
+  //   - SCANNER_EXPIRED           : The scan can be retried at the same tablet server.
   //
-  //   - TABLET_NOT_RUNNING : The scan can be retried at a different tablet server, subject
-  //                          to the client's specified selection criteria.
+  //   - TABLET_NOT_RUNNING        : The scan can be retried at a different tablet server, subject
+  //                                 to the client's specified selection criteria.
   //
-  //   - TABLET_NOT_FOUND   : The scan can be retried at a different tablet server, subject
-  //                          to the client's specified selection criteria.
-  //                          The metadata for this tablet should be refreshed.
+  //   - TABLET_NOT_FOUND          : The scan can be retried at a different tablet server, subject
+  //                                 to the client's specified selection criteria.
+  //                                 The metadata for this tablet should be refreshed.
   //
-  //   - NOT_THE_LEADER     : The scan must be retried at the leader, because this tablet server
-  //                          is no longer the leader.
-  //                          The metadata for this tablet should be refreshed.
+  //   - NOT_THE_LEADER            : The scan must be retried at the leader, because this tablet
+  //                                 server is no longer the leader.
+  //                                 The metadata for this tablet should be refreshed.
   //
-  //   - THE_LEADER_IS_NOT_READY: The scan must be retried at the same tablet server, because
-  //                          this tablet server is the leader, but it's not ready to serve
-  //                          up-to-date reads yet.
+  //   - LEADER_NOT_READY_TO SERVE : The scan must be retried at the same tablet server, because
+  //                                 this tablet server is the leader, but it's not ready to serve
+  //                                 up-to-date reads yet.
   //
-  //   - Any other error    : Fatal. This indicates an unexpected error while processing the scan
-  //                          request.
+  //   - Any other error           : Fatal. This indicates an unexpected error while processing the
+  //                                 scan request.
   if (rpc_status.ok() && !server_status.ok()) {
     UpdateLastError(server_status);
 
