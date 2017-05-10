@@ -420,13 +420,7 @@ export default class UniverseForm extends Component {
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
-    var isRFReadOnly = false;
-    var isProviderReadOnly = false;
-    if (universe.currentUniverse) {
-      isRFReadOnly = true;
-      isProviderReadOnly = true;
-    }
-
+    var isFieldReadOnly = universe.currentUniverse ? true : false;
     if (isValidArray(Object.keys(self.state.deviceInfo))) {
       if (self.state.volumeType === 'EBS') {
         let iopsField = <span/>;
@@ -477,9 +471,9 @@ export default class UniverseForm extends Component {
           <h4>Cloud Configuration</h4>
           <div className="form-right-aligned-labels">
             <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
-                   onValueChanged={this.universeNameChanged} isReadOnly={isDefinedNotNull(universe.currentUniverse)} />
+                   isReadOnly={isFieldReadOnly} />
             <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
-                   options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isProviderReadOnly}
+                   options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly}
             />
             <Field name="regionList" component={YBMultiSelectWithLabel}
                     label="Regions" options={universeRegionList}
@@ -530,19 +524,19 @@ export default class UniverseForm extends Component {
             <div className="form-right-aligned-labels">
               <Field name="replicationFactor" type="text" component={YBRadioButtonBarWithLabel} options={[1, 3, 5, 7]}
                      label="Replication Factor" initialValue={this.state.replicationFactor}
-                     onSelect={this.replicationFactorChanged} isReadOnly={isRFReadOnly}/>
+                     onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>
             </div>
           </Col>
           <Col sm={5} md={4}>
             <div className="form-right-aligned-labels">
               <Field name="ybSoftwareVersion" type="select" component={YBSelectWithLabel} defaultValue={this.state.ybSoftwareVersion}
-                     options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged}/>
+                     options={softwareVersionOptions} label="YugaByte Version" onInputChanged={this.softwareVersionChanged} readOnlySelect={isFieldReadOnly}/>
             </div>
           </Col>
           <Col lg={4}>
             <div className="form-right-aligned-labels">
               <Field name="accessKeyCode" type="select" component={YBSelectWithLabel} label="Access Key"
-                     isReadOnly={true} defaultValue={this.state.accessKeyCode} options={accessKeyOptions} />
+                     defaultValue={this.state.accessKeyCode} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
             </div>
           </Col>
        </Row>
