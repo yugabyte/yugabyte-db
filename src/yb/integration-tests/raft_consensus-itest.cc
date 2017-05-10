@@ -1804,7 +1804,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
-  // Elect server 0 as leader and wait for log index 1 to propagate to all servers.
+  LOG(INFO) << "Elect server 0 as leader and wait for log index 1 to propagate to all servers.";
   TServerDetails* leader_tserver = tservers[0];
 
   auto original_followers = CreateTabletServerMapUnowned(tablet_servers_);
@@ -1815,34 +1815,35 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
   ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
 
-  // Shut down servers 1 and 2, so that server 1 can't replicate anything.
+  LOG(INFO) << "Shut down servers 1 and 2, so that server 1 can't replicate anything.";
   cluster_->tablet_server_by_uuid(tservers[1]->uuid())->Shutdown();
   cluster_->tablet_server_by_uuid(tservers[2]->uuid())->Shutdown();
 
-  // Now try to replicate a ChangeConfig operation. This should get stuck and time out
-  // because the server can't replicate any operations.
+  LOG(INFO) << "Now try to replicate a ChangeConfig operation. This should get stuck and time out";
+  LOG(INFO) << "because the server can't replicate any operations.";
   TabletServerErrorPB::Code error_code;
   Status s = RemoveServer(leader_tserver, tablet_id_, tservers[1],
                           -1, MonoDelta::FromSeconds(1),
                           &error_code);
   ASSERT_TRUE(s.IsTimedOut());
 
-  // Pause the leader, and restart the other servers.
+  LOG(INFO) << "Pause the leader, and restart the other servers.";
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[0]->uuid())->Pause());
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[1]->uuid())->Restart());
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[2]->uuid())->Restart());
 
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 1));
 
-  // Elect one of the other servers.
+  LOG(INFO) << "Elect one of the other servers.";
   ASSERT_OK(StartElection(tservers[1], tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 1));
 
-  // Resume the original leader. Its change-config operation will now be aborted
-  // since it was never replicated to the majority, and the new leader will have
-  // replaced the operation.
+  LOG(INFO) << "Resume the original leader. Its change-config operation will now be aborted "
+               "since it was never replicated to the majority, and the new leader will have "
+               "replaced the operation.";
   ASSERT_OK(cluster_->tablet_server_by_uuid(tservers[0]->uuid())->Resume());
 
-  // Insert some data and verify that it propagates to all servers.
+  LOG(INFO) << "Insert some data and verify that it propagates to all servers.";
   NO_FATALS(InsertTestRowsRemoteThread(0, 10, 1, vector<CountDownLatch*>()));
   ASSERT_ALL_REPLICAS_AGREE(10);
 }
