@@ -4,7 +4,6 @@ import { connect } from 'react-redux';
 import {CustomerProfile} from '../profile';
 import { reduxForm } from 'redux-form';
 import {updateProfile, updateProfileSuccess, updateProfileFailure} from '../../actions/customers';
-import {isValidObject} from '../../utils/ObjectUtils';
 import { SubmissionError } from 'redux-form'
 
 //Client side validation

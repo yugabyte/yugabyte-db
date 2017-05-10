@@ -19,6 +19,7 @@
     "babel-preset-react": "^6.1.18",
     "css-loader": "^0.23.1",
     "custom-react-scripts": "https://github.com/appjudo/custom-react-scripts.git#0b8fc74",
+    "enumify": "^1.0.4",
     "file-loader": "^0.9.0",
     "moment": "^2.16.0",
     "moment-precise-range-plugin": "^1.2.1",
