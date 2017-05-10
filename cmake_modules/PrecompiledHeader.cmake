@@ -93,14 +93,10 @@ function(add_precompiled_header _target _input)
 
   get_filename_component(_name ${_input} NAME)
   set(_pch_header "${CMAKE_CURRENT_SOURCE_DIR}/${_input}")
-  set(_pch_binary_dir "${CMAKE_CURRENT_BINARY_DIR}/${_target}_pch")
+  set(_pch_binary_dir "${CMAKE_CURRENT_BINARY_DIR}/${_target}_precompiled")
   set(_pchfile "${_pch_binary_dir}/${_input}")
-  set(_outdir "${_pch_binary_dir}/${_name}.gch")
-  add_custom_command(
-    OUTPUT "${_outdir}"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${_outdir}"
-    COMMENT "Creating ${_outdir} for precompiled header")
-  set(_output_cxx "${_outdir}/.c++")
+  file(MAKE_DIRECTORY ${_pch_binary_dir})
+  set(_output_cxx "${_pch_binary_dir}/${_name}.gch")
 
   set(_pch_flags_file "${_pch_binary_dir}/compile_flags.rsp")
   export_all_flags("${_pch_flags_file}")
@@ -117,7 +113,7 @@ function(add_precompiled_header _target _input)
             -x c++-header
             -o "${_output_cxx}"
             "${_pch_header}"
-    DEPENDS "${_pch_header}" "${_pch_flags_file}" "${_outdir}"
+    DEPENDS "${_pch_header}" "${_pch_flags_file}"
     IMPLICIT_DEPENDS CXX "${_pch_header}"
     COMMENT "Precompiling ${_name} for ${_target} (C++)")
 

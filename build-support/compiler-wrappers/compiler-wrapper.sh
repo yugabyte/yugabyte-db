@@ -143,7 +143,7 @@ should_skip_error_checking_by_input_file_pattern() {
 # We currently assume a specific location of the precompiled header file (used in the RocksDB
 # codebase). If we add more precompiled header files, we will need to change related error handling
 # here.
-PCH_NAME=rocksdb_pch/precompiled_header.h.gch
+PCH_NAME=rocksdb_precompiled/precompiled_header.h.gch
 
 . "${0%/*}/../common-build-env.sh"
 # The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type. Also sets
