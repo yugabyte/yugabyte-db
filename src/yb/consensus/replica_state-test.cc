@@ -14,7 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#include "yb/consensus/raft_consensus_state.h"
+#include "yb/consensus/replica_state.h"
 
 #include <vector>
 

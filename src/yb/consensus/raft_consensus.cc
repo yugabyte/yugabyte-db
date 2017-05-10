@@ -31,7 +31,7 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/raft_consensus_state.h"
+#include "yb/consensus/replica_state.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"

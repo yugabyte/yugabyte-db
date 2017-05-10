@@ -20,7 +20,7 @@
 
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/raft_consensus_state.h"
+#include "yb/consensus/replica_state.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strcat.h"

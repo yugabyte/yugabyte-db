@@ -104,7 +104,7 @@ set(CONSENSUS_SRCS
   peer_manager.cc
   quorum_util.cc
   raft_consensus.cc
-  raft_consensus_state.cc
+  replica_state.cc
 )
 
 add_library(consensus ${CONSENSUS_SRCS})
@@ -135,7 +135,7 @@ ADD_YB_TEST(log_index-test)
 ADD_YB_TEST(mt-log-test)
 ADD_YB_TEST(quorum_util-test)
 ADD_YB_TEST(raft_consensus_quorum-test)
-ADD_YB_TEST(raft_consensus_state-test)
+ADD_YB_TEST(replica_state-test)
 ADD_YB_TEST(raft_consensus-test)
 
 #Tools

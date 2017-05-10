@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_CONSENSUS_RAFT_CONSENSUS_STATE_H
-#define YB_CONSENSUS_RAFT_CONSENSUS_STATE_H
+#ifndef YB_CONSENSUS_REPLICA_STATE_H
+#define YB_CONSENSUS_REPLICA_STATE_H
 
 #include <map>
 #include <mutex>
@@ -388,4 +388,4 @@ class ReplicaState {
 }  // namespace consensus
 }  // namespace yb
 
-#endif // YB_CONSENSUS_RAFT_CONSENSUS_STATE_H_
+#endif // YB_CONSENSUS_REPLICA_STATE_H_
