@@ -23,7 +23,7 @@ class DockerProviderConfiguration extends Component {
 
   deleteProviderConfig() {
     const { configuredProviders } = this.props;
-    let dockerProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
+    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE)
     this.props.deleteProviderConfig(dockerProvider.uuid);
   }
 
@@ -41,14 +41,14 @@ class DockerProviderConfiguration extends Component {
   render() {
     const { handleSubmit, submitting, dockerBootstrap: { loading, error },
             configuredProviders, configuredRegions, universeList } = this.props;
-    let dockerProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
-    let dockerRegions = configuredRegions.filter(
+    let dockerProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE)
+    let dockerRegions = configuredRegions.data.filter(
       (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
     );
 
     if (isValidObject(dockerProvider)) {
       let universeExistsForProvider = false;
-      if (isValidArray(configuredProviders) && isValidArray(universeList)){
+      if (isValidArray(configuredProviders.data) && isValidArray(universeList)){
         universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === dockerProvider.uuid));
       }
       let deleteButtonDisabled = submitting || universeExistsForProvider;

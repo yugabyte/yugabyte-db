@@ -100,15 +100,13 @@ class AWSProviderConfiguration extends Component {
     const { handleSubmit, submitting, cloudBootstrap: { loading, type, error },
       configuredProviders, configuredRegions, accessKeys, universeList } = this.props;
     var universeExistsForProvider = false;
-    if (isValidArray(configuredProviders) && isValidArray(universeList)){
-      universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === configuredProviders[0].uuid));
+    var awsProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
+    if (isValidArray(configuredProviders.data) && isValidArray(universeList)){
+      universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === awsProvider.uuid));
     }
-
-    var awsProvider = configuredProviders.find((provider) => provider.code === PROVIDER_TYPE)
     var providerConfig;
-
     if (isValidObject(awsProvider)) {
-      var awsRegions = configuredRegions.filter(
+      var awsRegions = configuredRegions.data.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
 

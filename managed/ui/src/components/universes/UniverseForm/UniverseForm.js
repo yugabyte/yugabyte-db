@@ -82,7 +82,7 @@ export default class UniverseForm extends Component {
       accessKeyCode: currentState.accessKeyCode
     };
     if (isDefinedNotNull(currentState.instanceTypeSelected) && isValidArray(currentState.regionList)) {
-      this.props.cloud.providers.forEach(function (providerItem, idx) {
+      this.props.cloud.providers.data.forEach(function (providerItem, idx) {
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
           universeTaskParams.userIntent.providerType = providerItem.code;
         }
@@ -157,6 +157,7 @@ export default class UniverseForm extends Component {
       this.setState({regionList: [], providerSelected: providerUUID, deviceInfo: {}});
       this.props.getRegionListItems(providerUUID, this.state.azCheckState);
       this.props.getInstanceTypeListItems(providerUUID);
+      this.props.getAccessKeys(providerUUID);
     }
   }
 
@@ -166,7 +167,7 @@ export default class UniverseForm extends Component {
 
   instanceTypeChanged(instanceTypeValue) {
     this.setState({instanceTypeSelected: instanceTypeValue});
-    let instanceTypeSelected = this.props.cloud.instanceTypes.find(function(item){
+    let instanceTypeSelected = this.props.cloud.instanceTypes.data.find(function(item){
       return item.instanceTypeCode ===  instanceTypeValue;
     });
     let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
@@ -265,10 +266,10 @@ export default class UniverseForm extends Component {
   componentWillReceiveProps(nextProps) {
     var self = this;
     const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
-    if (nextProps.cloud.instanceTypes !== this.props.cloud.instanceTypes
-        && isValidArray(nextProps.cloud.instanceTypes) && !isValidArray(Object.keys(this.state.deviceInfo))
+    if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
+        && isValidArray(nextProps.cloud.instanceTypes.data) && !isValidArray(Object.keys(this.state.deviceInfo))
         && isValidObject(this.state.instanceTypeSelected)) {
-      let instanceTypeSelected = nextProps.cloud.instanceTypes.find(function(item){
+      let instanceTypeSelected = nextProps.cloud.instanceTypes.data.find(function(item){
         return item.instanceTypeCode ===  self.state.instanceTypeSelected;
       });
       if (isValidObject(instanceTypeSelected) && isValidArray(Object.keys(instanceTypeSelected))) {
@@ -329,8 +330,8 @@ export default class UniverseForm extends Component {
     const { visible, handleSubmit, title, universe, softwareVersions, cloud, accessKeys } = this.props;
     var universeProviderList = [];
     var currentProviderCode = "";
-    if (isValidArray(cloud.providers)) {
-      universeProviderList = cloud.providers.map(function(providerItem, idx) {
+    if (isValidArray(cloud.providers.data)) {
+      universeProviderList = cloud.providers.data.map(function(providerItem, idx) {
         if (providerItem.uuid === self.state.providerSelected) {
           currentProviderCode = providerItem.code;
         }
@@ -345,13 +346,13 @@ export default class UniverseForm extends Component {
       return <option key={ebsType} value={ebsType}>{ebsType}</option>
     });
 
-    var universeRegionList = cloud.regions && cloud.regions.map(function (regionItem, idx) {
+    var universeRegionList = cloud.regions.data && cloud.regions.data.map(function (regionItem, idx) {
       return {value: regionItem.uuid, label: regionItem.name};
     });
 
     var universeInstanceTypeList = <option/>;
     if (currentProviderCode === "aws") {
-      var optGroups = this.props.cloud.instanceTypes.reduce(function(groups, it) {
+      var optGroups = this.props.cloud.instanceTypes.data.reduce(function(groups, it) {
         var prefix = it.instanceTypeCode.substr(0, it.instanceTypeCode.indexOf("."));
         groups[prefix] ? groups[prefix].push(it.instanceTypeCode): groups[prefix] = [it.instanceTypeCode];
         return groups;
@@ -373,7 +374,7 @@ export default class UniverseForm extends Component {
       }
     } else {
       universeInstanceTypeList =
-        cloud.instanceTypes && cloud.instanceTypes.map(function (instanceTypeItem, idx) {
+        cloud.instanceTypes.data && cloud.instanceTypes.data.map(function (instanceTypeItem, idx) {
           return <option key={instanceTypeItem.instanceTypeCode}
                          value={instanceTypeItem.instanceTypeCode}>
             {instanceTypeItem.instanceTypeCode}
