@@ -88,7 +88,7 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 }
 
 /* Initialize this plugin */
-void
+static void
 pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is_init)
 {
 	ListCell	*option;
@@ -234,7 +234,7 @@ pg_decode_shutdown(LogicalDecodingContext *ctx)
 }
 
 /* BEGIN callback */
-void
+static void
 pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
@@ -287,7 +287,7 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 }
 
 /* COMMIT callback */
-void
+static void
 pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 					 XLogRecPtr commit_lsn)
 {
@@ -641,7 +641,7 @@ identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple
 }
 
 /* Callback for individual changed tuples */
-void
+static void
 pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				 Relation relation, ReorderBufferChange *change)
 {
