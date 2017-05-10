@@ -82,15 +82,15 @@ ALTER TABLE table_without_pk REPLICA IDENTITY DEFAULT;
 ALTER TABLE table_with_unique REPLICA IDENTITY FULL;
 DELETE FROM table_with_unique WHERE b = 1;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
                                                                                                                data                                                                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
                  {                                                                                                                                                                                                               +
                          "kind": "delete",                                                                                                                                                                                       +
                          "schema": "public",                                                                                                                                                                                     +
@@ -100,11 +100,11 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                                  "keytypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                            +
                                  "keyvalues": [1, 1, 2, 3, 3.540, 876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"]+
                          }                                                                                                                                                                                                       +
-                 }
+                 }                                                                                                                                                                                                               +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
                  {                                                                                                                                                                                                               +
                          "kind": "delete",                                                                                                                                                                                       +
                          "schema": "public",                                                                                                                                                                                     +
@@ -114,19 +114,19 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                                  "keytypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                            +
                                  "keyvalues": [2, 4, 5, 6, 3.540, 876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"]+
                          }                                                                                                                                                                                                       +
-                 }
+                 }                                                                                                                                                                                                               +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
                  {                                                                                                                                                                                                               +
                          "kind": "delete",                                                                                                                                                                                       +
                          "schema": "public",                                                                                                                                                                                     +
@@ -136,19 +136,19 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                                  "keytypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                            +
                                  "keyvalues": [1, 1, 2, 3, 3.540, 876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"]+
                          }                                                                                                                                                                                                       +
-                 }
+                 }                                                                                                                                                                                                               +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
                  {                                                                                                                                                                                                               +
                          "kind": "delete",                                                                                                                                                                                       +
                          "schema": "public",                                                                                                                                                                                     +
@@ -158,14 +158,14 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                                  "keytypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                            +
                                  "keyvalues": [1, 1, 2, 3, 3.540, 876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"]+
                          }                                                                                                                                                                                                       +
-                 }
+                 }                                                                                                                                                                                                               +
          ]                                                                                                                                                                                                                       +
  }
  {                                                                                                                                                                                                                               +
-         "change": [
+         "change": [                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                       +
  }
-(24 rows)
+(10 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

@@ -121,19 +121,16 @@ The output in the first terminal is:
 
 ```
 {
-	"xid": 34225,
 	"change": [
 	]
 }
 {
-	"xid": 34226,
 	"change": [
 	]
 }
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
 CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, associated LSN 0/126E5F70
 {
-	"xid": 34227,
 	"change": [
 		{
 			"kind": "insert",
@@ -241,7 +238,6 @@ COMMIT
 psql:/tmp/example2.sql:17: WARNING:  table "table_without_pk" without primary key or replica identity is nothing
 CONTEXTO:  slot "test_slot", output plugin "wal2json", in the change callback, associated LSN 0/12713E40
 {
-	"xid": 34232,
 	"change": [
 		{
 			"kind": "insert",

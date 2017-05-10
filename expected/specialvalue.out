@@ -17,15 +17,15 @@ INSERT INTO xpto (b, c, d) VALUES('f', 'test2', 'nan');
 INSERT INTO xpto (b, c, d) VALUES(NULL, 'null', '-inf');
 INSERT INTO xpto (b, c, d) VALUES(TRUE, E'valid: '' " \\ / \b \f \n \r \t \u207F \u967F invalid: \\g \\k end', 123.456);
 COMMIT;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
                                                            data                                                           
 --------------------------------------------------------------------------------------------------------------------------
  {                                                                                                                       +
-         "change": [
+         "change": [                                                                                                     +
          ]                                                                                                               +
  }
  {                                                                                                                       +
-         "change": [
+         "change": [                                                                                                     +
                  {                                                                                                       +
                          "kind": "insert",                                                                               +
                          "schema": "public",                                                                             +
@@ -33,7 +33,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                          "columnnames": ["a", "b", "c", "d"],                                                            +
                          "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
                          "columnvalues": [1, true, "test1", null]                                                        +
-                 }
+                 }                                                                                                       +
                  ,{                                                                                                      +
                          "kind": "insert",                                                                               +
                          "schema": "public",                                                                             +
@@ -41,7 +41,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                          "columnnames": ["a", "b", "c", "d"],                                                            +
                          "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
                          "columnvalues": [2, false, "test2", null]                                                       +
-                 }
+                 }                                                                                                       +
                  ,{                                                                                                      +
                          "kind": "insert",                                                                               +
                          "schema": "public",                                                                             +
@@ -49,7 +49,7 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                          "columnnames": ["a", "b", "c", "d"],                                                            +
                          "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
                          "columnvalues": [3, null, "null", null]                                                         +
-                 }
+                 }                                                                                                       +
                  ,{                                                                                                      +
                          "kind": "insert",                                                                               +
                          "schema": "public",                                                                             +
@@ -57,10 +57,10 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                          "columnnames": ["a", "b", "c", "d"],                                                            +
                          "columntypes": ["int4", "bool", "varchar", "float4"],                                           +
                          "columnvalues": [4, true, "valid: ' \" \\ \/ \b \f \n \r \t ⁿ 陿 invalid: \\g \\k end", 123.456]+
-                 }
+                 }                                                                                                       +
          ]                                                                                                               +
  }
-(8 rows)
+(2 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

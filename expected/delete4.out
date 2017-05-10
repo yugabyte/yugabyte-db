@@ -35,15 +35,15 @@ ALTER TABLE table_with_unique REPLICA IDENTITY USING INDEX table_with_unique_g_n
 DELETE FROM table_with_unique WHERE b = 1;
 DELETE FROM table_with_unique WHERE n = true;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
                               data                               
 -----------------------------------------------------------------
  {                                                              +
-         "change": [
+         "change": [                                            +
          ]                                                      +
  }
  {                                                              +
-         "change": [
+         "change": [                                            +
                  {                                              +
                          "kind": "delete",                      +
                          "schema": "public",                    +
@@ -53,11 +53,11 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                                  "keytypes": ["float8", "bool"],+
                                  "keyvalues": [1.23, false]     +
                          }                                      +
-                 }
+                 }                                              +
          ]                                                      +
  }
  {                                                              +
-         "change": [
+         "change": [                                            +
                  {                                              +
                          "kind": "delete",                      +
                          "schema": "public",                    +
@@ -67,14 +67,14 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'inc
                                  "keytypes": ["float8", "bool"],+
                                  "keyvalues": [4.56, true]      +
                          }                                      +
-                 }
+                 }                                              +
          ]                                                      +
  }
  {                                                              +
-         "change": [
+         "change": [                                            +
          ]                                                      +
  }
-(10 rows)
+(4 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

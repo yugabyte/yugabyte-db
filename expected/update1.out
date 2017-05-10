@@ -78,17 +78,17 @@ UPDATE table_with_pk SET f = -f WHERE b = 1;
 UPDATE table_with_pk SET b = -b WHERE b = 1;
 -- UPDATE: unique
 UPDATE table_with_unique SET n = false WHERE b = 1;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
 WARNING:  table "table_with_unique" without primary key or replica identity is nothing
                                                                                                               data                                                                                                              
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
          ]                                                                                                                                                                                                                     +
  }
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
                  {                                                                                                                                                                                                             +
                          "kind": "update",                                                                                                                                                                                     +
                          "schema": "public",                                                                                                                                                                                   +
@@ -101,11 +101,11 @@ WARNING:  table "table_with_unique" without primary key or replica identity is n
                                  "keytypes": ["int2", "int4", "int8"],                                                                                                                                                         +
                                  "keyvalues": [1, 2, 3]                                                                                                                                                                        +
                          }                                                                                                                                                                                                     +
-                 }
+                 }                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                     +
  }
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
                  {                                                                                                                                                                                                             +
                          "kind": "update",                                                                                                                                                                                     +
                          "schema": "public",                                                                                                                                                                                   +
@@ -118,14 +118,14 @@ WARNING:  table "table_with_unique" without primary key or replica identity is n
                                  "keytypes": ["int2", "int4", "int8"],                                                                                                                                                         +
                                  "keyvalues": [1, 2, 3]                                                                                                                                                                        +
                          }                                                                                                                                                                                                     +
-                 }
+                 }                                                                                                                                                                                                             +
          ]                                                                                                                                                                                                                     +
  }
  {                                                                                                                                                                                                                             +
-         "change": [
+         "change": [                                                                                                                                                                                                           +
          ]                                                                                                                                                                                                                     +
  }
-(10 rows)
+(4 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 

@@ -80,49 +80,49 @@ ALTER TABLE table_without_pk REPLICA IDENTITY DEFAULT;
 ALTER TABLE table_with_unique REPLICA IDENTITY NOTHING;
 UPDATE table_with_unique SET f = -f WHERE b = 1;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'pretty-print', '1');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1');
 WARNING:  table "table_with_pk" without primary key or replica identity is nothing
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
 WARNING:  table "table_with_unique" without primary key or replica identity is nothing
         data         
 ---------------------
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
  {                  +
-         "change": [
+         "change": [+
          ]          +
  }
-(18 rows)
+(9 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 
