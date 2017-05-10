@@ -134,7 +134,7 @@ ExternalMiniCluster::~ExternalMiniCluster() {
 Status ExternalMiniCluster::DeduceBinRoot(std::string* ret) {
   string exe;
   RETURN_NOT_OK(Env::Default()->GetExecutablePath(&exe));
-  *ret = DirName(exe);
+  *ret = DirName(exe) + "/../bin";
   return Status::OK();
 }
 

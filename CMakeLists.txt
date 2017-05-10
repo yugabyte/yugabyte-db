@@ -270,8 +270,8 @@ set(YB_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 message("YB_SRC_DIR: ${YB_SRC_DIR}")
 set(YB_THIRDPARTY_DIR "${YB_SRC_DIR}/thirdparty")
 
-set(YB_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-message("YB_BUILD_DIR: ${YB_BUILD_DIR}")
+set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
+message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")
 
 DETECT_NUMBER_OF_PROCESSORS()
 
@@ -918,7 +918,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
 file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 
 # where to put generated binaries
-set(EXECUTABLE_OUTPUT_PATH "${CMAKE_CURRENT_BINARY_DIR}/bin")
+set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
@@ -1063,6 +1063,32 @@ endfunction()
 # Testing
 ############################################################
 
+# Compose ctest prefix and test binary name based on test filename and directory
+# REL_TEST_NAME is the name of the test (see ADD_YB_TEST function).
+# CTEST_PREFIX_RV - ctest prefix will be put to variable with name ${CTEST_PREFIX_RV}.
+# TEST_BINARY_NAME_RV - test binary name will be put to variable with name ${TEST_BINARY_NAME_RV}.
+function(GET_TEST_PREFIX_AND_BINARY_NAME CTEST_PREFIX_RV TEST_BINARY_NAME_RV REL_TEST_NAME)
+  set(DIR ${CMAKE_CURRENT_LIST_DIR})
+  while (true)
+    get_filename_component(DIR_NAME ${DIR} NAME_WE)
+    # We want to use parent directory name as a prefix if test is located in "test" or "tests"
+    # directory, so tests from 'src/sql/test' will be compiled into 'tests-sql' rather than
+    # 'tests-test'.
+    if (NOT "${DIR_NAME}" MATCHES "^test|tests$")
+      set(${CTEST_PREFIX_RV} "${DIR_NAME}" PARENT_SCOPE)
+      break()
+    endif()
+    get_filename_component(DIR ${DIR} DIRECTORY)
+    if (${DIR} STREQUAL ${YB_SRC_DIR})
+      # If we have tests in 'src/test' or 'src/tests' - use following prefix:
+      set(${CTEST_PREFIX_RV} "other" PARENT_SCOPE)
+      break()
+    endif()
+  endwhile()
+  get_filename_component(FILE_NAME ${REL_TEST_NAME} NAME_WE)
+  set(${TEST_BINARY_NAME_RV} "${FILE_NAME}" PARENT_SCOPE)
+endfunction()
+
 # Add a new test case, with or without an executable that should be built.
 #
 # REL_TEST_NAME is the name of the test. It may be a single component
@@ -1075,30 +1101,34 @@ function(ADD_YB_TEST REL_TEST_NAME)
   if(NO_TESTS)
     return()
   endif()
-  get_filename_component(TEST_NAME ${REL_TEST_NAME} NAME_WE)
+  GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
+  SET(TEST_BINARY_DIR "${YB_BUILD_ROOT}/tests-${CTEST_PREFIX}")
 
   if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${REL_TEST_NAME}.cc)
     # This test has a corresponding .cc file, set it up as an executable.
-    set(TEST_PATH "${EXECUTABLE_OUTPUT_PATH}/${TEST_NAME}")
-    add_executable(${TEST_NAME} "${REL_TEST_NAME}.cc")
-    target_link_libraries(${TEST_NAME} ${YB_TEST_LINK_LIBS})
-    ADD_COMMON_YB_TEST_DEPENDENCIES(${TEST_NAME})
+    set(TEST_PATH "${TEST_BINARY_DIR}/${TEST_BINARY_NAME}")
+    add_executable(${TEST_BINARY_NAME} "${REL_TEST_NAME}.cc")
+    set_target_properties(${TEST_BINARY_NAME}
+      PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${TEST_BINARY_DIR}")
+    target_link_libraries(${TEST_BINARY_NAME} ${YB_TEST_LINK_LIBS})
+    ADD_COMMON_YB_TEST_DEPENDENCIES(${REL_TEST_NAME})
   else()
     # No executable, just invoke the test (probably a script) directly.
     get_filename_component(TEST_NAME_WITH_EXT ${REL_TEST_NAME} NAME)
-    set(TEST_PATH "${EXECUTABLE_OUTPUT_PATH}/${TEST_NAME_WITH_EXT}")
+    set(TEST_PATH "${TEST_BINARY_DIR}/${TEST_NAME_WITH_EXT}")
 
     # Ideally this would run only when the test is built, not when cmake runs,
     # but add_test() doesn't yield a target (if it did, that target could depend
     # on an add_custom_command() that copies the test file into place).
     execute_process(COMMAND ln -sf ${CMAKE_CURRENT_SOURCE_DIR}/${REL_TEST_NAME}
-      ${EXECUTABLE_OUTPUT_PATH})
+      ${TEST_BINARY_DIR}/)
     # Note: we're not calling ADD_COMMON_YB_TEST_DEPENDENCIES here because add_test() does not
     # produce a target. run-with-timeout might not get build if we're just trying to build/run
     # one test.
   endif()
 
-  add_test(${TEST_NAME}
+  add_test("${CTEST_PREFIX}_${TEST_BINARY_NAME}"
     ${BUILD_SUPPORT_DIR}/run-test.sh ${TEST_PATH})
   if(ARGN)
     set_tests_properties(${TEST_NAME} PROPERTIES ${ARGN})
@@ -1110,9 +1140,9 @@ function(ADD_YB_TEST_DEPENDENCIES REL_TEST_NAME)
   if(NO_TESTS)
     return()
   endif()
-  get_filename_component(TEST_NAME ${REL_TEST_NAME} NAME_WE)
+  GET_TEST_PREFIX_AND_BINARY_NAME(CTEST_PREFIX TEST_BINARY_NAME ${REL_TEST_NAME})
 
-  add_dependencies(${TEST_NAME} ${ARGN})
+  add_dependencies(${TEST_BINARY_NAME} ${ARGN})
 endfunction()
 
 # Adds dependencies common to all tests, both main YB tests added using ADD_YB_TESTS,

@@ -49,7 +49,7 @@ class AdminCliTest : public tserver::TabletServerIntegrationTestBase {
 string AdminCliTest::GetAdminToolPath() const {
   string exe;
   CHECK_OK(Env::Default()->GetExecutablePath(&exe));
-  string binroot = DirName(exe);
+  string binroot = DirName(exe) + "/../bin";
   string tool_path = JoinPathSegments(binroot, kAdminToolName);
   CHECK(Env::Default()->FileExists(tool_path)) << "yb-admin tool not found at " << tool_path;
   return tool_path;

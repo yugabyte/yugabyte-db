@@ -23,13 +23,11 @@ NON_GTEST_TESTS_RE=$( regex_from_list "
 # There gtest suites have internal dependencies between tests, so those tests can't be run
 # separately.
 TEST_BINARIES_TO_RUN_AT_ONCE_RE=$( regex_from_list "
-  bin/thread_local_test
+  tests-rocksdb/thread_local_test
 ")
 
-VALID_TEST_BINARY_DIRS=(
-  bin
-)
-VALID_TEST_BINARY_DIRS_RE=$( regex_from_list "${VALID_TEST_BINARY_DIRS[@]}" )
+VALID_TEST_BINARY_DIRS_PREFIX="tests"
+VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"
 
 # gdb command to print a backtrace from a core dump. Taken from:
 # http://www.commandlinefu.com/commands/view/6004/print-stack-trace-of-a-core-file-without-needing-to-enter-gdb-interactively
@@ -72,8 +70,8 @@ validate_relative_test_binary_path() {
   fi
   local rel_test_binary_dirname=${rel_test_binary%/*}
   if [[ ! $rel_test_binary_dirname =~ $VALID_TEST_BINARY_DIRS_RE ]]; then
-    fatal "Expected the directory name a test binary is contained in to be one of the following: " \
-          "$VALID_TEST_BINARY_DIRS. Relative test binary path: $rel_test_binary" >&2
+    fatal "Expected the directory name a test binary is contained in to match regexp: " \
+          "$VALID_TEST_BINARY_DIRS_RE. Relative test binary path: $rel_test_binary" >&2
   fi
 }
 
@@ -1046,28 +1044,15 @@ did_test_succeed() {
 
 find_test_binary() {
   expect_num_args 1 "$@"
-  local test_target_name=$1
-  local binary_name=$test_target_name
+  local binary_name=$1
   expect_vars_to_be_set BUILD_ROOT
-  local dirs_tried=""
-  local rel_dir
-  local candidates_tried=""
-  for rel_dir in "${VALID_TEST_BINARY_DIRS[@]}"; do
-    local binary_dir=$BUILD_ROOT/$rel_dir
-    local candidate=$binary_dir/
-
-    candidate+=$binary_name
-
-    if [[ -f "$candidate" ]]; then
-      echo "$candidate"
-      return
-    fi
-    if [[ -n $candidates_tried ]]; then
-      candidates_tried+=", "
-    fi
-    candidates_tried+=$candidate
-  done
-  fatal "Could not find binary for test target $test_target_name: $candidates_tried"
+  result=$(find $BUILD_ROOT/$VALID_TEST_BINARY_DIRS_PREFIX-* -name $binary_name -print -quit)
+  if [[ -f $result ]]; then
+    echo $result
+    return
+  else
+    fatal "Could not find test binary '$binary_name' inside $BUILD_ROOT"
+  fi
 }
 
 show_disk_usage() {

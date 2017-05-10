@@ -96,7 +96,8 @@ setup_vars_for_cxx_test() {
     fatal "Only one C++ test name can be specified (found '$cxx_test_name' and '$1')."
   fi
   cxx_test_name=$1
-  make_targets+=( "$cxx_test_name" )
+  test_binary_name=${cxx_test_name#*_}
+  make_targets+=( $test_binary_name )
   build_java=false
 
   # This is necessary to avoid failures if we are just building one test.
@@ -485,7 +486,7 @@ if [[ -n $cxx_test_name ]]; then
         repeat_unit_test_extra_args+=( --verbose )
       fi
       set -x +u
-      "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$cxx_test_name" \
+      "$YB_SRC_ROOT"/bin/repeat_unit_test.sh "$build_type" "$test_binary_name" \
          --num-iter "$num_test_repetitions" "${repeat_unit_test_extra_args[@]}"
       set -u
     )

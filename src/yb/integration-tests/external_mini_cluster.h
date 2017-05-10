@@ -103,8 +103,8 @@ struct ExternalMiniClusterOptions {
   bool bind_to_unique_loopback_addresses = true;
 
   // The path where the yb daemons should be run from.
-  // Default: "", which uses the same path as the currently running executable.
-  // This works for unit tests, since they all end up in build/latest/bin.
+  // Default: "../bin", which points to the path where non-test executables are located.
+  // This works for unit tests, since they all end up in build/latest/test-<subproject_name>.
   std::string daemon_bin_path;
 
   // Extra flags for tablet servers and masters respectively.
