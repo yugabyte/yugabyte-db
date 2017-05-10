@@ -7,25 +7,20 @@ import { PROVIDER_TYPES, getProviderEndpoint } from './common';
 
 // Get Region List
 export const GET_REGION_LIST = 'GET_REGION_LIST';
-export const GET_REGION_LIST_SUCCESS = 'GET_REGION_LIST_SUCCESS';
-export const GET_REGION_LIST_FAILURE = 'GET_REGION_LIST_FAILURE';
+export const GET_REGION_LIST_RESPONSE = 'GET_REGION_LIST_RESPONSE';
 
 // Get Provider List
 export const GET_PROVIDER_LIST = 'GET_PROVIDER_LIST';
-export const GET_PROVIDER_LIST_SUCCESS = 'GET_PROVIDER_LIST_SUCCESS';
-export const GET_PROVIDER_LIST_FAILURE = 'GET_PROVIDER_LIST_FAILURE';
 export const GET_PROVIDER_LIST_RESPONSE = 'GET_PROVIDER_LIST_RESPONSE';
 
 // Get Instance Type List
 export const GET_INSTANCE_TYPE_LIST = 'GET_INSTANCE_TYPE_LIST';
-export const GET_INSTANCE_TYPE_LIST_SUCCESS = 'GET_INSTANCE_TYPE_LIST_SUCCESS';
-export const GET_INSTANCE_TYPE_LIST_FAILURE = 'GET_INSTANCE_TYPE_LIST_FAILURE';
+export const GET_INSTANCE_TYPE_LIST_RESPONSE = 'GET_INSTANCE_TYPE_LIST_RESPONSE';
 
 export const RESET_PROVIDER_LIST = 'RESET_PROVIDER_LIST';
 
 export const GET_SUPPORTED_REGION_DATA = 'GET_SUPPORTED_REGION_DATA';
-export const GET_SUPPORTED_REGION_DATA_SUCCESS = 'GET_SUPPORTED_REGION_DATA_SUCCESS';
-export const GET_SUPPORTED_REGION_DATA_FAILURE = 'GET_SUPPORTED_REGION_DATA_FAILURE';
+export const GET_SUPPORTED_REGION_DATA_RESPONSE = 'GET_SUPPORTED_REGION_DATA_RESPONSE';
 
 export const CREATE_PROVIDER = 'CREATE_PROVIDER';
 export const CREATE_PROVIDER_SUCCESS = 'CREATE_PROVIDER_SUCCESS';
@@ -53,8 +48,7 @@ export const DELETE_PROVIDER_FAILURE = 'DELETE_PROVIDER_FAILURE';
 export const RESET_PROVIDER_BOOTSTRAP = 'RESET_PROVIDER_BOOTSTRAP';
 
 export const LIST_ACCESS_KEYS = 'LIST_ACCESS_KEYS';
-export const LIST_ACCESS_KEYS_SUCCESS = 'LIST_ACCESS_KEYS_SUCCESS';
-export const LIST_ACCESS_KEYS_FAILURE = 'LIST_ACCESS_KEYS_FAILURE';
+export const LIST_ACCESS_KEYS_RESPONSE = 'LIST_ACCESS_KEYS_RESPONSE';
 
 export const GET_EBS_TYPE_LIST = 'GET_EBS_TYPES';
 export const GET_EBS_TYPE_LIST_RESPONSE = 'GET_EBS_TYPES_RESPONSE';
@@ -80,21 +74,6 @@ export function getProviderListResponse(responsePayload) {
   }
 }
 
-export function getProviderListSuccess(providerList) {
-
-  return {
-    type: GET_PROVIDER_LIST_SUCCESS,
-    payload: providerList.data
-  };
-}
-
-export function getProviderListFailure(error) {
-  return {
-    type: GET_PROVIDER_LIST_FAILURE,
-    payload: error
-  };
-}
-
 export function getRegionList(providerUUID, isMultiAz) {
   var cUUID = localStorage.getItem("customer_id");
   const request =
@@ -105,18 +84,11 @@ export function getRegionList(providerUUID, isMultiAz) {
   };
 }
 
-export function getRegionListSuccess(regionList) {
+export function getRegionListResponse(responsePayload) {
   return {
-    type: GET_REGION_LIST_SUCCESS,
-    payload: regionList
-  };
-}
-
-export function getRegionListFailure(error) {
-  return {
-    type: GET_REGION_LIST_FAILURE,
-    payload: error
-  };
+    type: GET_REGION_LIST_RESPONSE,
+    payload: responsePayload
+  }
 }
 
 export function getInstanceTypeList(providerUUID) {
@@ -128,18 +100,11 @@ export function getInstanceTypeList(providerUUID) {
   };
 }
 
-export function getInstanceTypeListSuccess(instanceTypeList) {
+export function getInstanceTypeListResponse(responsePayload) {
   return {
-    type: GET_INSTANCE_TYPE_LIST_SUCCESS,
-    payload: instanceTypeList
-  };
-}
-
-export function getInstanceTypeListFailure(error) {
-  return {
-    type: GET_INSTANCE_TYPE_LIST_FAILURE,
-    payload: error
-  };
+    type: GET_INSTANCE_TYPE_LIST_RESPONSE,
+    payload: responsePayload
+  }
 }
 
 export function getSupportedRegionData() {
@@ -151,17 +116,10 @@ export function getSupportedRegionData() {
   }
 }
 
-export function getSupportedRegionDataSuccess(regionData) {
+export function getSupportedRegionDataResponse(responsePayload) {
   return {
-    type: GET_SUPPORTED_REGION_DATA_SUCCESS,
-    payload: regionData
-  }
-}
-
-export function getSupportedRegionDataFailure(error) {
-  return {
-    type: GET_SUPPORTED_REGION_DATA_FAILURE,
-    payload: error
+    type: GET_SUPPORTED_REGION_DATA_RESPONSE,
+    payload: responsePayload
   }
 }
 
@@ -327,17 +285,10 @@ export function listAccessKeys(providerUUID) {
   };
 }
 
-export function listAccessKeysSuccess(result) {
+export function listAccessKeysResponse(response) {
   return {
-    type: LIST_ACCESS_KEYS_SUCCESS,
-    payload: result
-  };
-}
-
-export function listAccessKeysFailure(error) {
-  return {
-    type: LIST_ACCESS_KEYS_FAILURE,
-    payload: error
+    type: LIST_ACCESS_KEYS_RESPONSE,
+    payload: response
   }
 }
 

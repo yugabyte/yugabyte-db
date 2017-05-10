@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import {YBLoadingIcon} from '../../common/indicators';
-import { isValidObject, isValidArray, isValidNumber } from 'utils/ObjectUtils';
+import { isValidObject, isValidArray, isValidNumber, getObjectState } from 'utils/ObjectUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseFormContainer, UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
@@ -70,8 +70,8 @@ class UniverseDisplayItem extends Component {
 export default class UniverseDisplayPanel extends Component {
   render() {
     var self = this;
-    const { universe: {universeList, loading, showModal, visibleModal}, cloud} = this.props;
-    if (isValidArray(cloud.providers)) {
+    const { universe: {universeList, showModal, visibleModal}, cloud :{providers}} = this.props;
+    if (getObjectState(providers) === "success") {
       var universeDisplayList = universeList.map(function(universeItem, idx){
         return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>
       });
@@ -88,7 +88,7 @@ export default class UniverseDisplayPanel extends Component {
           </Row>
         </div>
       )
-    } else if (!loading.universeList && cloud.status !== "storage" && cloud.status !== "init") {
+    } else if (getObjectState(providers) === "empty") {
       return (
         <div className="get-started-config">
           <span>Welcome to the <div className="yb-data-name">YugaByte Admin Console.</div></span>
