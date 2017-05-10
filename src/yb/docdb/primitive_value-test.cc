@@ -191,15 +191,15 @@ TEST(PrimitiveValueTest, TestCorruption) {
 TEST(PrimitiveValueTest, TestVarintStorage) {
   // Verify varint occupies the appropriate amount of bytes.
   KeyBytes key_bytes;
-  key_bytes.AppendColumnId(ColumnId(127));
+  key_bytes.AppendColumnId(ColumnId(63));
   ASSERT_EQ(1, key_bytes.AsSlice().size());
 
-  // 2 bytes for > 127 (total 3 = 1 + 2)
-  key_bytes.AppendColumnId(ColumnId(128));
+  // 2 bytes for > 63 (total 3 = 1 + 2)
+  key_bytes.AppendColumnId(ColumnId(64));
   ASSERT_EQ(3, key_bytes.AsSlice().size());
 
   key_bytes.Clear();
-  key_bytes.AppendColumnId(ColumnId(std::numeric_limits<int32_t>::max()));
+  key_bytes.AppendColumnId(ColumnId(std::numeric_limits<ColumnIdRep>::max()));
   ASSERT_EQ(5, key_bytes.AsSlice().size());
 }
 

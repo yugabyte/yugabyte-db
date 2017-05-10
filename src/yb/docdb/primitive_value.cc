@@ -14,6 +14,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"
+#include "yb/util/fast_varint.h"
 
 using std::string;
 using strings::Substitute;
@@ -21,6 +22,8 @@ using yb::YQLValuePB;
 using yb::util::Decimal;
 using yb::util::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
+using yb::util::FastAppendSignedVarIntToStr;
+using yb::util::FastDecodeVarInt;
 
 // We're listing all non-primitive value types at the end of switch statement instead of using a
 // default clause so that we can ensure that we're handling all possible primitive value types
@@ -421,21 +424,16 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
 
     case ValueType::kColumnId: FALLTHROUGH_INTENDED;
     case ValueType::kSystemColumnId: {
-      // Decode varint.
-      yb::util::VarInt column_id_varint;
-      size_t num_bytes_varint = 0;
+      // Decode varint
+      int num_bytes_in_encoded_varint = 0;  // TODO: switch to size_t;
+      {
+        int64_t column_id_as_int64 = 0;
+        RETURN_NOT_OK(FastDecodeVarInt(slice->data(), slice->size(), &column_id_as_int64 ,
+                                       &num_bytes_in_encoded_varint));
+        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64 , &column_id_val_));
+      }
 
-      // Need to use a non-rocksdb slice for varint.
-      Slice slice_temp(slice->data(), slice->size());
-      RETURN_NOT_OK(column_id_varint.DecodeFromComparable(
-          slice_temp, &num_bytes_varint, /* is_signed */ false));
-
-      // Convert to column id.
-      int64_t column_id = 0;
-      RETURN_NOT_OK(column_id_varint.ToInt64(&column_id));
-      RETURN_NOT_OK(ColumnId::FromInt64(column_id, &column_id_val_));
-
-      slice->remove_prefix(num_bytes_varint);
+      slice->remove_prefix(num_bytes_in_encoded_varint);
       type_ = value_type;
       return Status::OK();
     }

@@ -174,17 +174,6 @@ std::string ToShortDebugStr(rocksdb::Slice slice) {
   return yb::FormatRocksDBSliceAsStr(slice, kShortDebugStringLength);
 }
 
-CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice& key, const MonoDelta& ttl,
-                             const HybridTime& read_hybrid_time, bool* has_expired) {
-  *has_expired = false;
-  if (!ttl.Equals(Value::kMaxTtl)) {
-    DocHybridTime ht;
-    RETURN_NOT_OK(ht.DecodeFromEnd(RocksDBToYBSlice(key)));
-    RETURN_NOT_OK(HasExpiredTTL(ht.hybrid_time(), ttl, read_hybrid_time, has_expired));
-  }
-  return Status::OK();
-}
-
 CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
                              const HybridTime& read_hybrid_time, bool* has_expired) {
   *has_expired = false;

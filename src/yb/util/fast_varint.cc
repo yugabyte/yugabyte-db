@@ -149,13 +149,17 @@ void FastEncodeSignedVarInt(int64_t v, uint8_t *dest, size_t *size) {
   }
 }
 
-std::string FastEncodeSignedVarIntToStr(int64_t v) {
-  string s;
+void FastAppendSignedVarIntToStr(int64_t v, std::string* dest) {
   char buf[kMaxSignedVarIntBufferSize];
   size_t len = 0;
   FastEncodeSignedVarInt(v, to_uchar_ptr(buf), &len);
   DCHECK_LE(len, 10);
-  s.append(buf, len);
+  dest->append(buf, len);
+}
+
+std::string FastEncodeSignedVarIntToStr(int64_t v) {
+  string s;
+  FastAppendSignedVarIntToStr(v, &s);
   return s;
 }
 
@@ -171,7 +175,7 @@ Status FastDecodeVarInt(const uint8_t* src, int src_size, int64_t* v, int* decod
   int n_bytes;
   uint8_t first_byte = static_cast<uint8_t>(src[0]);
   if (first_byte & 0x80) {
-    sign = 1;
+    sign = 2;
 
     n_bytes = kVarIntSizeTable.varint_size[first_byte];
     if (src_size < n_bytes) {

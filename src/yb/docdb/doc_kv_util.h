@@ -17,7 +17,7 @@
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
-#include "yb/util/varint.h"
+#include "yb/util/fast_varint.h"
 
 namespace yb {
 namespace docdb {
@@ -80,9 +80,7 @@ inline void AppendUInt16ToKey(uint16_t val, std::string* dest) {
 }
 
 inline void AppendColumnIdToKey(ColumnId val, std::string* dest) {
-  std::string encoded_varint = yb::util::VarInt(
-      static_cast<int64_t>(val)).EncodeToComparable(/* is_signed */ false);
-  dest->append(encoded_varint);
+  yb::util::FastAppendSignedVarIntToStr(val.rep(), dest);
 }
 
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given
@@ -153,11 +151,6 @@ std::string ToShortDebugStr(rocksdb::Slice slice);
 inline std::string ToShortDebugStr(const std::string& raw_str) {
   return ToShortDebugStr(rocksdb::Slice(raw_str));
 }
-
-// Determines whether or not the TTL for a key has expired, given the ttl for the key and the
-// hybrid_time we're reading at. The result is stored in has_expired.
-CHECKED_STATUS HasExpiredTTL(const rocksdb::Slice& key, const MonoDelta& ttl,
-                             const HybridTime& read_hybrid_time, bool* has_expired);
 
 // Determines whether or not the TTL for a key has expired, given the ttl for the key, its hybrid
 // time and the hybrid_time we're reading at. The result is stored in has_expired.

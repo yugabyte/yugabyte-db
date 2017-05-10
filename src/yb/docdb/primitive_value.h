@@ -28,8 +28,8 @@ namespace docdb {
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
 
-enum class SystemColumnIds : int32_t {
-  kLivenessColumn = 0 // Stores the TTL for the row.
+enum class SystemColumnIds : ColumnIdRep {
+  kLivenessColumn = 0  // Stores the TTL for YQL rows inserted using an INSERT statement.
 };
 
 enum class SortOrder : int8_t {
@@ -231,11 +231,6 @@ class PrimitiveValue {
   const std::string& GetString() const {
     DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
     return str_val_;
-  }
-
-  void SwapStringValue(std::string *other) {
-    DCHECK(ValueType::kString == type_ || ValueType::kStringDescending == type_);
-    str_val_.swap(*other);
   }
 
   int64_t GetInt64() const {

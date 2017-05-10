@@ -70,6 +70,7 @@ struct ColumnId {
   operator const ColumnIdRep() const { return t; }
   operator const strings::internal::SubstituteArg() const { return t; }
   operator const AlphaNum() const { return t; }
+  ColumnIdRep rep() const { return t; }
 
   bool operator==(const ColumnId& rhs) const { return t == rhs.t; }
   bool operator!=(const ColumnId& rhs) const { return t != rhs.t; }
