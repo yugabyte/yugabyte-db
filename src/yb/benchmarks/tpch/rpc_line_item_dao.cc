@@ -108,6 +108,9 @@ void RpcLineItemDAO::Init() {
            .add_master_server_addr(master_address_)
            .default_rpc_timeout(timeout_)
            .Build(&client_));
+
+  CHECK_OK(client_->CreateNamespaceIfNotExists(table_name_.namespace_name()));
+
   Status s = client_->OpenTable(table_name_, &client_table_);
   if (s.IsNotFound()) {
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());

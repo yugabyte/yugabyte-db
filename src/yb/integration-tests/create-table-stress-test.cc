@@ -59,6 +59,8 @@ DECLARE_int32(tserver_unresponsive_timeout_ms);
 
 DEFINE_int32(num_test_tablets, 60, "Number of tablets for stress test");
 
+using std::string;
+using std::vector;
 using std::thread;
 using std::unique_ptr;
 using strings::Substitute;
@@ -135,6 +137,7 @@ void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int nu
     split_rows.push_back(row);
   }
 
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
@@ -150,7 +153,7 @@ TEST_F(CreateTableStressTest, CreateAndDeleteBigTable) {
     LOG(INFO) << "Skipping slow test";
     return;
   }
-  YBTableName table_name("test_table");
+  YBTableName table_name("my_keyspace", "test_table");
   ASSERT_NO_FATAL_FAILURE(CreateBigTable(table_name, FLAGS_num_test_tablets));
   master::GetTableLocationsResponsePB resp;
   ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
@@ -186,7 +189,7 @@ TEST_F(CreateTableStressTest, RestartMasterDuringCreation) {
     return;
   }
 
-  YBTableName table_name("test_table");
+  YBTableName table_name("my_keyspace", "test_table");
   ASSERT_NO_FATAL_FAILURE(CreateBigTable(table_name, FLAGS_num_test_tablets));
 
   for (int i = 0; i < 3; i++) {
@@ -214,7 +217,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
     return;
   }
 
-  YBTableName table_name("test_table");
+  YBTableName table_name("my_keyspace", "test_table");
   LOG(INFO) << CURRENT_TEST_NAME() << ": Step 1. Creating big table "
             << table_name.ToString() << " ...";
   LOG_TIMING(INFO, "creating big table") {
@@ -346,16 +349,20 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
       SleepFor(MonoDelta::FromMilliseconds(1));
     }
     });
+
   for (int num_tables_created = 0; num_tables_created < 20;) {
-    YBTableName table_name(Substitute("test-$0", num_tables_created));
+    YBTableName table_name("my_keyspace", Substitute("test-$0", num_tables_created));
     LOG(INFO) << "Creating table " << table_name.ToString();
-    unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-    Status s = table_creator->table_name(table_name)
-        .schema(&schema_)
-        .set_range_partition_columns({ "key" })
-        .num_replicas(3)
-        .wait(false)
-        .Create();
+    Status s = client_->CreateNamespaceIfNotExists(table_name.namespace_name());
+    if (s.ok()) {
+      unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+      s = table_creator->table_name(table_name)
+          .schema(&schema_)
+          .set_range_partition_columns({ "key" })
+          .num_replicas(3)
+          .wait(false)
+          .Create();
+    }
     if (s.IsServiceUnavailable()) {
       // The master was busy reloading its metadata. Try again.
       //

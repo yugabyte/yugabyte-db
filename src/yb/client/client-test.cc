@@ -59,6 +59,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/tostring.h"
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(log_inject_latency);
@@ -128,6 +129,9 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
                      .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
                      .Build(&client_));
 
+    // Create a keyspace;
+    ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
+
     ASSERT_NO_FATAL_FAILURE(CreateTable(kTableName, 1, GenerateSplitRows(), &client_table_));
     ASSERT_NO_FATAL_FAILURE(CreateTable(kTable2Name, 1, vector<const YBPartialRow*>(),
                                         &client_table2_));
@@ -159,6 +163,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
 
  protected:
 
+  static const string kKeyspaceName;
   static const YBTableName kTableName;
   static const YBTableName kTable2Name;
   static const int32_t kNoBound;
@@ -367,10 +372,13 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
 
   // Creates a table with 'num_replicas', split into tablets based on 'split_rows'
   // (or single tablet if 'split_rows' is empty).
-  void CreateTable(const YBTableName& table_name,
+  void CreateTable(const YBTableName& table_name_orig,
                    int num_replicas,
                    const vector<const YBPartialRow*>& split_rows,
                    shared_ptr<YBTable>* table) {
+    // The implementation allows table name without a keyspace.
+    YBTableName table_name(table_name_orig.has_namespace() ?
+        table_name_orig.namespace_name() : kKeyspaceName, table_name_orig.table_name());
 
     bool added_replicas = false;
     // Add more tablet servers to satisfy all replicas, if necessary.
@@ -452,8 +460,10 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
   shared_ptr<YBTable> client_table2_;
 };
 
-const YBTableName ClientTest::kTableName("client-testtb");
-const YBTableName ClientTest::kTable2Name("client-testtb2");
+
+const string ClientTest::kKeyspaceName("my_keyspace");
+const YBTableName ClientTest::kTableName(kKeyspaceName, "client-testtb");
+const YBTableName ClientTest::kTable2Name(kKeyspaceName, "client-testtb2");
 const int32_t ClientTest::kNoBound = kint32max;
 
 TEST_F(ClientTest, TestListTables) {
@@ -463,12 +473,12 @@ TEST_F(ClientTest, TestListTables) {
     return n1.ToString() < n2.ToString();
   });
   ASSERT_EQ(2 + cluster_->leader_mini_master()->NumSystemTables(), tables.size());
-  ASSERT_EQ(kTableName, tables[0]);
-  ASSERT_EQ(kTable2Name, tables[1]);
+  ASSERT_EQ(kTableName, tables[0]) << "Tables:" << util::ToString(tables);
+  ASSERT_EQ(kTable2Name, tables[1]) << "Tables:" << util::ToString(tables);
   tables.clear();
   ASSERT_OK(client_->ListTables(&tables, "testtb2"));
   ASSERT_EQ(1, tables.size());
-  ASSERT_EQ(kTable2Name, tables[0]);
+  ASSERT_EQ(kTable2Name, tables[0]) << "Tables:" << util::ToString(tables);
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
@@ -484,7 +494,7 @@ TEST_F(ClientTest, TestListTabletServers) {
 
 TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
-  Status s = client_->OpenTable(YBTableName("xxx-does-not-exist"), &t);
+  Status s = client_->OpenTable(YBTableName(kKeyspaceName, "xxx-does-not-exist"), &t);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "Not found: The table does not exist");
 }
@@ -496,7 +506,7 @@ TEST_F(ClientTest, TestMasterDown) {
   cluster_->mini_master()->Shutdown();
   shared_ptr<YBTable> t;
   client_->data_->default_admin_operation_timeout_ = MonoDelta::FromSeconds(1);
-  Status s = client_->OpenTable(YBTableName("other-tablet"), &t);
+  Status s = client_->OpenTable(YBTableName(kKeyspaceName, "other-tablet"), &t);
   ASSERT_TRUE(s.IsNetworkError());
 }
 
@@ -1932,7 +1942,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   }
 
   {
-    const YBTableName kRenamedTableName("RenamedTable");
+    const YBTableName kRenamedTableName(kKeyspaceName, "RenamedTable");
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
@@ -1940,9 +1950,10 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
     ASSERT_EQ(3, tablet_peer->tablet()->metadata()->schema_version());
     ASSERT_EQ(kRenamedTableName.table_name(), tablet_peer->tablet()->metadata()->table_name());
 
-    CatalogManager *catalog_manager = cluster_->mini_master()->master()->catalog_manager();
-    ASSERT_TRUE(catalog_manager->TableNameExists(kRenamedTableName.table_name()));
-    ASSERT_FALSE(catalog_manager->TableNameExists(kTableName.table_name()));
+    vector<YBTableName> tables;
+    ASSERT_OK(client_->ListTables(&tables));
+    ASSERT_TRUE(::util::gtl::contains(tables.begin(), tables.end(), kRenamedTableName));
+    ASSERT_FALSE(::util::gtl::contains(tables.begin(), tables.end(), kTableName));
   }
 }
 
@@ -1960,8 +1971,9 @@ TEST_F(ClientTest, TestDeleteTable) {
   // NOTE that it returns when the operation is completed on the master side
   string tablet_id = GetFirstTabletId(client_table_.get());
   ASSERT_OK(client_->DeleteTable(kTableName));
-  CatalogManager *catalog_manager = cluster_->mini_master()->master()->catalog_manager();
-  ASSERT_FALSE(catalog_manager->TableNameExists(kTableName.table_name()));
+  vector<YBTableName> tables;
+  ASSERT_OK(client_->ListTables(&tables));
+  ASSERT_FALSE(::util::gtl::contains(tables.begin(), tables.end(), kTableName));
 
   // Wait until the table is removed from the TS
   int wait_time = 1000;
@@ -1996,7 +2008,7 @@ TEST_F(ClientTest, TestGetTableSchema) {
   ASSERT_TRUE(schema_.Equals(schema));
 
   // Verify that a get schema request for a missing table throws not found
-  Status s = client_->GetTableSchema(YBTableName("MissingTableName"), &schema);
+  Status s = client_->GetTableSchema(YBTableName(kKeyspaceName, "MissingTableName"), &schema);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "The table does not exist");
 }
@@ -2557,7 +2569,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   ASSERT_OK(split2->SetInt32("key", 2));
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName("foobar"))
+  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
       .schema(&schema_)
       .split_rows({ split1, split2 })
       .num_replicas(3)
@@ -2575,7 +2587,7 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
   ASSERT_OK(split2->SetInt32("key", 2));
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  Status s = table_creator->table_name(YBTableName("foobar"))
+  Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
       .schema(&schema_)
       .split_rows({ split1, split2 })
       .num_replicas(3)

@@ -76,6 +76,15 @@ void CreateTabletForTesting(MiniMaster* mini_master,
                             const Schema& schema,
                             string *tablet_id) {
   {
+    CreateNamespaceRequestPB req;
+    CreateNamespaceResponsePB resp;
+    req.set_name(table_name.resolved_namespace_name());
+
+    const Status s = mini_master->master()->catalog_manager()->CreateNamespace(
+        &req, &resp,  /* rpc::RpcContext* */ nullptr);
+    ASSERT_TRUE(s.ok() || s.IsAlreadyPresent()) << " status=" << s.ToString();
+  }
+  {
     CreateTableRequestPB req;
     CreateTableResponsePB resp;
 
@@ -84,7 +93,8 @@ void CreateTabletForTesting(MiniMaster* mini_master,
 
     req.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
     ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
-    ASSERT_OK(mini_master->master()->catalog_manager()->CreateTable(&req, &resp, NULL));
+    ASSERT_OK(mini_master->master()->catalog_manager()->CreateTable(
+        &req, &resp, /* rpc::RpcContext* */ nullptr));
   }
 
   int wait_time = 1000;

@@ -68,7 +68,7 @@ class SqlEnv {
   virtual std::string CurrentKeyspace() const {
     return (current_call_ != nullptr) ?
         current_cql_call()->GetSqlSession()->current_keyspace() :
-        current_keyspace_ != nullptr ? *current_keyspace_ : yb::master::kDefaultNamespaceName;
+        current_keyspace_ != nullptr ? *current_keyspace_ : kUndefinedKeyspace;
   }
 
   // Reset all env states or variables before executing the next statement.

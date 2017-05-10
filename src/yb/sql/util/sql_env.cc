@@ -12,6 +12,7 @@
 namespace yb {
 namespace sql {
 
+using std::string;
 using std::shared_ptr;
 using std::weak_ptr;
 
@@ -183,22 +184,29 @@ void SqlEnv::Reset() {
   current_write_op_ = nullptr;
 }
 
-CHECKED_STATUS SqlEnv::DeleteKeyspace(const std::string& keyspace_name) {
+Status SqlEnv::DeleteKeyspace(const string& keyspace_name) {
   RETURN_NOT_OK(client_->DeleteNamespace(keyspace_name));
 
   // Reset the current keyspace name if it's dropped.
   if (CurrentKeyspace() == keyspace_name) {
     if (current_call_ != nullptr) {
-      current_cql_call()->GetSqlSession()->reset_current_keyspace();
+      current_cql_call()->GetSqlSession()->set_current_keyspace(kUndefinedKeyspace);
     } else {
-      current_keyspace_.reset(new string(yb::master::kDefaultNamespaceName));
+      current_keyspace_.reset(new string(kUndefinedKeyspace));
     }
   }
 
   return Status::OK();
 }
 
-CHECKED_STATUS SqlEnv::UseKeyspace(const std::string& keyspace_name) {
+Status SqlEnv::UseKeyspace(const string& keyspace_name) {
+  // Default keyspace is not allowed for using.
+  // The default keyspace is an internal keyspace, which is used by master::CatalogManager only.
+  // If the user provides correct name of the default keyspace the use-request must be rejected.
+  if (keyspace_name == yb::master::kDefaultNamespaceName) {
+    return STATUS(InvalidArgument, "Cannot use default keyspace");
+  }
+
   // Check if a keyspace with the specified name exists.
   bool exists = false;
   RETURN_NOT_OK(client_->NamespaceExists(keyspace_name, &exists));

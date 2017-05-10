@@ -59,6 +59,7 @@ enum class ErrorCode : int64_t {
   INVALID_DATATYPE = -212,
   SYSTEM_NAMESPACE_READONLY = -213,
   INVALID_FUNCTION_CALL = -214,
+  NO_NAMESPACE_USED = -215,
 
   //------------------------------------------------------------------------------------------------
   // Execution errors [-300, x).

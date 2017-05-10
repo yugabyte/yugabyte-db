@@ -101,7 +101,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     : // Set the default value depending on whether slow tests are allowed
     kNumInsertClients(DefaultFlag(FLAGS_concurrent_inserts, 3, 10)),
     kNumInsertsPerClient(DefaultFlag(FLAGS_inserts_per_client, 500, 50000)),
-    kNumRows(kNumInsertClients * kNumInsertsPerClient),
+    kNumRows(kNumInsertClients*kNumInsertsPerClient),
     kFlushEveryN(DefaultFlag(FLAGS_rows_per_batch, 125, 5000)),
     random_(SeedRandom()),
     sessions_(kNumInsertClients),
@@ -134,6 +134,9 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_GE(kNumInsertClients, 0);
     ASSERT_GE(kNumInsertsPerClient, 0);
     NO_FATALS(InitCluster());
+
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
              .table_type(YBTableType::YQL_TABLE_TYPE)
@@ -271,7 +274,7 @@ void ReportAllDone(int id, int numids) {
 
 } // anonymous namespace
 
-const YBTableName FullStackInsertScanTest::kTableName("full-stack-mrs-test-tbl");
+const YBTableName FullStackInsertScanTest::kTableName("my_keyspace", "full-stack-mrs-test-tbl");
 
 TEST_F(FullStackInsertScanTest, MRSOnlyStressTest) {
   FLAGS_enable_maintenance_manager = false;

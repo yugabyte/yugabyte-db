@@ -205,7 +205,7 @@ Status RedisServiceImpl::SetUpYBClient(string yb_tier_master_addresses) {
     client_builder.set_metric_entity(server_->metric_entity());
     RETURN_NOT_OK(client_builder.Build(&client_));
 
-    const YBTableName table_name(kRedisTableName);
+    const YBTableName table_name(kRedisKeyspaceName, kRedisTableName);
     RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
     yb_client_initialized_.store(true);
   }

@@ -7,12 +7,14 @@
 #define EXEC_INVALID_STMT_WITH_ERROR(sql_stmt, expected_error, expected_error_msg)                 \
 do {                                                                                               \
   Status s = processor->Run(sql_stmt);                                                             \
-  EXPECT_FALSE(s.ok());                                                                            \
-  if (!std::string(expected_error).empty()) {                                                      \
-    EXPECT_FALSE(s.ToString().find(expected_error) == string::npos);                               \
+  EXPECT_FALSE(s.ok()) << s.ToString();                                                            \
+  const auto expected_error_copy = (expected_error);                                               \
+  const auto expected_error_msg_copy = (expected_error_msg);                                       \
+  if (!std::string(expected_error_copy).empty()) {                                                 \
+    EXPECT_FALSE(s.ToString().find(expected_error_copy) == string::npos) << s.ToString();          \
   }                                                                                                \
-  if (!std::string(expected_error_msg).empty()) {                                                  \
-    EXPECT_FALSE(s.ToString().find(expected_error_msg) == string::npos);                           \
+  if (!std::string(expected_error_msg_copy).empty()) {                                             \
+    EXPECT_FALSE(s.ToString().find(expected_error_msg_copy) == string::npos) << s.ToString();      \
   }                                                                                                \
 } while (false)
 
@@ -300,7 +302,7 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
   const string table3 = "table3(id int, primary key(id));";
   const string test_any_table4 = "test.subname.table4(id int, primary key(id));";
 
-  // No keyspace.
+  // No keyspace - using current keyspace (kDefaultKeyspaceName here).
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(table1);
   EXEC_VALID_STMT(CreateTableStmt(table1));
 
@@ -351,7 +353,6 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
   // Table3 can be created in other (keyspace2) keyspace.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(table3);
   EXEC_VALID_STMT(CreateTableStmt(table3));
-
 }
 
 TEST_F(YbSqlKeyspace, TestCreateSystemTable) {

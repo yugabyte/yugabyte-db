@@ -183,6 +183,10 @@ void Executor::ExecPTNodeAsync(const PTCreateTable *tnode, StatementExecutedCall
   YBTableName table_name = tnode->yb_table_name();
 
   if (!table_name.has_namespace()) {
+    if (exec_context_->CurrentKeyspace().empty()) {
+      CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+    }
+
     table_name.set_namespace_name(exec_context_->CurrentKeyspace());
   }
 
@@ -287,6 +291,10 @@ void Executor::ExecPTNodeAsync(const PTDropStmt *tnode, StatementExecutedCallbac
       YBTableName table_name = tnode->yb_table_name();
 
       if (!table_name.has_namespace()) {
+        if (exec_context_->CurrentKeyspace().empty()) {
+          CB_RETURN(cb, exec_context_->Error(tnode->name_loc(), ErrorCode::NO_NAMESPACE_USED));
+        }
+
         table_name.set_namespace_name(exec_context_->CurrentKeyspace());
       }
       // Drop the table.
@@ -967,7 +975,7 @@ void Executor::ExecPTNodeAsync(const PTCreateKeyspace *tnode, StatementExecutedC
 
 void Executor::ExecPTNodeAsync(const PTUseKeyspace *tnode, StatementExecutedCallback cb) {
   DCHECK_NOTNULL(exec_context_.get());
-  Status exec_status = exec_context_->UseKeyspace(tnode->name());
+  const Status exec_status = exec_context_->UseKeyspace(tnode->name());
 
   if (!exec_status.ok()) {
     ErrorCode error_code = ErrorCode::EXEC_ERROR;

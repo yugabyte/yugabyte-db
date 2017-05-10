@@ -139,7 +139,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
   string ts_root = cluster_->GetTabletServerFsRoot(0);
 
   // Add a tablet, make sure it reports itself.
-  CreateTabletForTesting(cluster_->mini_master(), YBTableName("fake-table"),
+  CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table"),
       schema_, &tablet_id_1);
 
   TabletLocationsPB locs;
@@ -148,7 +148,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
   LOG(INFO) << "Tablet successfully reported on " << locs.replicas(0).ts_info().permanent_uuid();
 
   // Add another tablet, make sure it is reported via incremental.
-  CreateTabletForTesting(cluster_->mini_master(), YBTableName("fake-table2"),
+  CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table2"),
       schema_, &tablet_id_2);
   ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 

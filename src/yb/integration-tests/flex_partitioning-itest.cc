@@ -59,7 +59,7 @@ using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
-static const YBTableName kTableName("test-table");
+static const YBTableName kTableName("my_keyspace", "test-table");
 static const int kNumRows = 1000;
 
 class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> {
@@ -110,6 +110,7 @@ class FlexPartitioningITest : public YBMiniClusterTestBase<ExternalMiniCluster> 
     YBSchema schema;
     ASSERT_OK(b.Build(&schema));
 
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     table_creator->table_name(kTableName)
         .schema(&schema)

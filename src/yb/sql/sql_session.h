@@ -18,6 +18,8 @@
 namespace yb {
 namespace sql {
 
+static const char* const kUndefinedKeyspace = ""; // Must be empty string.
+
 class SqlSession {
  public:
   // Public types.
@@ -25,7 +27,7 @@ class SqlSession {
   typedef std::shared_ptr<const SqlSession> SharedPtrConst;
 
   // Constructors.
-  SqlSession() : current_keyspace_(yb::master::kDefaultNamespaceName) { }
+  SqlSession() : current_keyspace_(kUndefinedKeyspace) { }
   virtual ~SqlSession() { }
 
   // Access functions for current keyspace. It can be accessed by mutiple calls in parallel so
@@ -37,9 +39,6 @@ class SqlSession {
   void set_current_keyspace(const std::string& keyspace) {
     boost::lock_guard<boost::shared_mutex> l(current_keyspace_mutex_);
     current_keyspace_ = keyspace;
-  }
-  void reset_current_keyspace() {
-    set_current_keyspace(yb::master::kDefaultNamespaceName);
   }
 
  private:

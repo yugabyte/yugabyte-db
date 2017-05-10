@@ -2109,12 +2109,6 @@ NamespaceName CatalogManager::GetNamespaceName(const NamespaceId& id) const {
   return ns == nullptr ? NamespaceName() : ns->name();
 }
 
-bool CatalogManager::TableNameExists(const NamespaceId& namespace_id,
-                                     const TableName& table_name) const {
-  boost::shared_lock<LockType> l(lock_);
-  return table_names_map_.find({namespace_id, table_name}) != table_names_map_.end();
-}
-
 bool CatalogManager::IsSystemTable(const TableInfo& table) const {
   return table.IsSupportedSystemTable(sys_tables_handler_.supported_system_tables());
 }

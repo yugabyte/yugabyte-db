@@ -84,6 +84,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
 
   void CreateTable() {
     ASSERT_NO_FATAL_FAILURE(InitCluster());
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
              .schema(&schema_)
@@ -156,7 +157,8 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   shared_ptr<YBClient> client_;
 };
 
-const YBTableName UpdateScanDeltaCompactionTest::kTableName("update-scan-delta-compact-tbl");
+const YBTableName UpdateScanDeltaCompactionTest::kTableName(
+    "my_keyspace", "update-scan-delta-compact-tbl");
 const int kSessionBatchSize = 1000;
 
 TEST_F(UpdateScanDeltaCompactionTest, TestAll) {

@@ -28,7 +28,7 @@ using std::vector;
 using std::shared_ptr;
 using std::unique_ptr;
 
-static const client::YBTableName kTableName("yql_client_test_table");
+static const client::YBTableName kTableName("my_keyspace", "yql_client_test_table");
 
 class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -52,6 +52,8 @@ class YqlDmlBase: public YBMiniClusterTestBase<MiniCluster> {
         .Build(&client_));
 
     // Create test table
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+
     YBSchemaBuilder b;
     YBSchema schema;
     addColumns(&b);

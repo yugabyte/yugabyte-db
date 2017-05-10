@@ -53,7 +53,7 @@ class RpcLineItemDAOTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
 
-    YBTableName kTableName("tpch1");
+    const YBTableName kTableName("my_keyspace", "tpch1");
 
     // Create the table and Connect to it.
     string master_address(cluster_->mini_master()->bound_rpc_addr_str());

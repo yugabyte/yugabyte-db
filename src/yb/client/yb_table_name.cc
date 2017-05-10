@@ -19,11 +19,6 @@ void YBTableName::SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const 
   id->mutable_namespace_()->set_name(resolved_namespace_name());
 }
 
-const string& YBTableName::default_namespace() {
-  static const string defalt_namespace_name(master::kDefaultNamespaceName);
-  return defalt_namespace_name;
-}
-
 bool YBTableName::IsSystemNamespace(const std::string& namespace_name) {
   return (namespace_name == master::kSystemNamespaceName            ||
           namespace_name == master::kSystemAuthNamespaceName        ||

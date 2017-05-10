@@ -412,6 +412,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   // Create a table with a single tablet, with 'num_replicas'.
   void CreateTable() {
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     // The tests here make extensive use of server schemas, but we need
     // a client schema to create the table.
     client::YBSchema client_schema(YBSchemaFromSchema(schema_));

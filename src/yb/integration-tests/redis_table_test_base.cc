@@ -31,7 +31,7 @@ using redisserver::ParseSet;
 using redisserver::ParseGet;
 
 YBTableName RedisTableTestBase::table_name() {
-  return YBTableName(kRedisTableName);
+  return YBTableName(kRedisKeyspaceName, kRedisTableName);
 }
 
 void RedisTableTestBase::CreateTable() {

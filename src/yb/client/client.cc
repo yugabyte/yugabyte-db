@@ -355,6 +355,13 @@ Status YBClient::CreateNamespace(const std::string& namespace_name) {
   return Status::OK();
 }
 
+Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name) {
+  bool namespace_exists = false;
+  RETURN_NOT_OK(NamespaceExists(namespace_name, &namespace_exists));
+  return namespace_exists ? Status::OK()
+                          : CreateNamespace(namespace_name);
+}
+
 Status YBClient::DeleteNamespace(const std::string& namespace_name) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());

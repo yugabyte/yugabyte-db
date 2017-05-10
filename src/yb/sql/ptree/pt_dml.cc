@@ -43,6 +43,10 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
   YBTableName name = table_name();
 
   if (!name.has_namespace()) {
+    if (sem_context->CurrentKeyspace().empty()) {
+      return sem_context->Error(table_loc(), ErrorCode::NO_NAMESPACE_USED);
+    }
+
     name.set_namespace_name(sem_context->CurrentKeyspace());
   }
 

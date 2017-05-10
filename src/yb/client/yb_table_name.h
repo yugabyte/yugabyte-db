@@ -26,11 +26,6 @@ DECLARE_bool(yb_system_namespace_readonly);
 // The class is used to store a table name, which can include namespace name as a suffix.
 class YB_EXPORT YBTableName {
  public:
-  enum NamespaceId {
-    UNKNOWN_NAMESPACE, // The namespace MUST be set later.
-    DEFAULT_NAMESPACE  // Use Master default namespace.
-  };
-
   // Empty (undefined) name.
   YBTableName() {}
 
@@ -43,15 +38,8 @@ class YB_EXPORT YBTableName {
   }
 
   // Simple table name (no namespace provided at the moment of construction).
-  // There are 2 different cases:
-  // - Default namespace must be used (set NamespaceId = DEFAULT_NAMESPACE - by default).
-  // - Namespace will be set later (set NamespaceId = UNKNOWN_NAMESPACE).
-  //   In this case the namespace has not been set yet and it MUST be set later.
-  explicit YBTableName(const std::string& table_name, NamespaceId ns = DEFAULT_NAMESPACE) {
-    if (ns == DEFAULT_NAMESPACE) {
-      set_namespace_name(YBTableName::default_namespace());
-    }
-
+  // In this case the namespace has not been set yet and it MUST be set later.
+  explicit YBTableName(const std::string& table_name) {
     set_table_name(table_name);
   }
 
@@ -109,8 +97,6 @@ class YB_EXPORT YBTableName {
 
   // ProtoBuf helpers.
   void SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const;
-
-  static const std::string& default_namespace();
 
   static bool IsSystemNamespace(const std::string& namespace_name);
 

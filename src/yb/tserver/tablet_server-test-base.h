@@ -490,8 +490,8 @@ class TabletServerTestBase : public YBTest {
   void* shared_region_;
 };
 
-const client::YBTableName TabletServerTestBase::kTableName("TestTable");
-const char* TabletServerTestBase::kTabletId = "TestTablet";
+const client::YBTableName TabletServerTestBase::kTableName("my_keyspace", "test-table");
+const char* TabletServerTestBase::kTabletId = "test-tablet";
 
 } // namespace tserver
 } // namespace yb

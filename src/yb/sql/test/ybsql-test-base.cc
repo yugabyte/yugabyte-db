@@ -7,6 +7,7 @@
 namespace yb {
 namespace sql {
 
+using std::string;
 using std::vector;
 using std::shared_ptr;
 using client::YBClient;
@@ -14,6 +15,7 @@ using client::YBSession;
 using client::YBClientBuilder;
 
 //--------------------------------------------------------------------------------------------------
+const string YbSqlTestBase::kDefaultKeyspaceName("my_keyspace");
 
 YbSqlTestBase::YbSqlTestBase() {
   sql_envs_.reserve(1);
@@ -33,6 +35,7 @@ void YbSqlTestBase::CreateSimulatedCluster() {
   builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
   ASSERT_OK(builder.Build(&client_));
   table_cache_ = std::make_shared<client::YBTableCache>(client_);
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -61,6 +64,11 @@ SqlEnv *YbSqlTestBase::GetSqlEnv(int session_id) {
 }
 
 //--------------------------------------------------------------------------------------------------
+static void CallUseKeyspace(const YbSqlProcessor::UniPtr& processor, const string& keyspace_name) {
+  // Workaround: it's implemented as a separate function just because ASSERT_OK can
+  // call 'return void;' what can be incompatible with another return type.
+  ASSERT_OK(processor->UseKeyspace(keyspace_name));
+}
 
 YbSqlProcessor *YbSqlTestBase::GetSqlProcessor() {
   if (client_ == nullptr) {
@@ -77,6 +85,7 @@ YbSqlProcessor *YbSqlTestBase::GetSqlProcessor() {
   const int size = sql_processors_.size();
   sql_processors_.reserve(std::max<int>(size * 2, size + 10));
   sql_processors_.emplace_back(new YbSqlProcessor(messenger, client_, table_cache_));
+  CallUseKeyspace(sql_processors_.back(), kDefaultKeyspaceName);
   return sql_processors_.back().get();
 }
 

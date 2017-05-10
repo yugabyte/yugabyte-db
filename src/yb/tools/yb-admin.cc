@@ -1052,7 +1052,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     if (argc < 3) {
       UsageAndExit(argv[0]);
     }
-    const YBTableName table_name(argv[2]); // Default namespace.
+    const YBTableName table_name("my_keyspace", argv[2]);
     int max = -1;
     if (argc > 3) {
       max = std::stoi(argv[3]);
@@ -1078,7 +1078,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     if (argc < 3) {
       UsageAndExit(argv[0]);
     }
-    const YBTableName table_name(argv[2]); // Default namespace.
+    const YBTableName table_name("my_keyspace", argv[2]);
     Status s = client.DeleteTable(table_name);
     if (!s.ok()) {
       std::cerr << "Unable to delete table " << table_name.ToString()
@@ -1149,7 +1149,7 @@ static int ClusterAdminCliMain(int argc, char** argv) {
     if (argc != 3) {
       UsageAndExit(argv[0]);
     }
-    const YBTableName table_name(argv[2]); // Default namespace.
+    const YBTableName table_name("my_keyspace", argv[2]);
     Status s = client.ListLeaderCounts(table_name);
     if (!s.ok()) {
       std::cerr << "Unable to get leader counts: " << s.ToString() << std::endl;

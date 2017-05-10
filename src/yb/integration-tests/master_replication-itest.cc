@@ -46,8 +46,9 @@ using client::YBTableCreator;
 using client::YBTableName;
 using std::shared_ptr;
 
-const YBTableName kTableName1("testMasterReplication-1");
-const YBTableName kTableName2("testMasterReplication-2");
+const std::string kKeyspaceName("my_keyspace");
+const YBTableName kTableName1(kKeyspaceName, "testMasterReplication-1");
+const YBTableName kTableName2(kKeyspaceName, "testMasterReplication-2");
 
 const int kNumTabletServerReplicas = 3;
 
@@ -99,9 +100,10 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
         builder.add_master_server_addr(cluster_->mini_master(i)->bound_rpc_addr_str());
       }
     }
-    return builder.Build(out);
-  }
 
+    RETURN_NOT_OK(builder.Build(out));
+    return (*out)->CreateNamespaceIfNotExists(kKeyspaceName);
+  }
 
   Status CreateTable(const shared_ptr<YBClient>& client,
                      const YBTableName& table_name) {
@@ -117,10 +119,12 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
         .Create();
   }
 
-  void VerifyTableExists(const YBTableName& table_name) {
+  void VerifyTableExists(const shared_ptr<YBClient>& client,
+                         const YBTableName& table_name) {
     LOG(INFO) << "Verifying that " << table_name.ToString() << " exists on leader..";
-    ASSERT_TRUE(cluster_->leader_mini_master()->master()
-                ->catalog_manager()->TableNameExists(table_name.table_name()));
+    vector<YBTableName> tables;
+    ASSERT_OK(client->ListTables(&tables));
+    ASSERT_TRUE(::util::gtl::contains(tables.begin(), tables.end(), table_name));
   }
 
   void VerifyMasterRestart() {
@@ -179,7 +183,7 @@ TEST_F(MasterReplicationTest, TestSysTablesReplication) {
 
   // Repeat the same for the second table.
   ASSERT_OK(CreateTable(client, kTableName2));
-  ASSERT_NO_FATAL_FAILURE(VerifyTableExists(kTableName2));
+  ASSERT_NO_FATAL_FAILURE(VerifyTableExists(client, kTableName2));
 }
 
 // When all masters are down, test that we can timeout the connection

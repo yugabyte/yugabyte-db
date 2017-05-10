@@ -53,7 +53,7 @@ using std::pair;
 using std::vector;
 using strings::SubstituteAndAppend;
 
-static const YBTableName kTableName("test-table");
+static const YBTableName kTableName("my_keyspace", "test-table");
 static const int kMaxColumns = 30;
 
 class AlterTableRandomized : public YBTest {
@@ -225,6 +225,7 @@ struct MirrorTable {
       : client_(std::move(client)) {}
 
   Status Create() {
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     YBSchema schema;
     YBSchemaBuilder b;
     b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
@@ -292,8 +293,8 @@ struct MirrorTable {
   }
 
   void AddAColumn(const string& name) {
-    int32_t default_value = rand();
-    bool nullable = rand() % 2 == 1;
+    int32_t default_value = random();
+    bool nullable = random() % 2 == 1;
 
     // Add to the real table.
     gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));

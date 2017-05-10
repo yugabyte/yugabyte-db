@@ -43,20 +43,21 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_Del
 
 namespace yb {
 
-static const YBTableName kTableName("test-table");
+static const YBTableName kTableName("my_keyspace", "test-table");
 
 class CreateTableITest : public ExternalMiniClusterITestBase {
  public:
   Status CreateTableWithPlacement(
       const master::ReplicationInfoPB& replication_info, const string& table_suffix,
       const YBTableType table_type = YBTableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
     if (table_type != YBTableType::REDIS_TABLE_TYPE) {
       table_creator->schema(&client_schema);
     }
-    return table_creator->table_name(
-            YBTableName(Substitute("$0:$1", kTableName.table_name(), table_suffix)))
+    return table_creator->table_name(YBTableName(kTableName.namespace_name(),
+            Substitute("$0:$1", kTableName.table_name(), table_suffix)))
         .replication_info(replication_info)
         .table_type(table_type)
         .wait(true)
@@ -157,6 +158,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   // Try to create a single-tablet table.
   // This won't succeed because we can't create enough replicas to get
   // a quorum.
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
@@ -224,6 +226,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
   NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)

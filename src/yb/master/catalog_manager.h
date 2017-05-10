@@ -705,13 +705,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
 
-  // Return true if the specified table name exists
-  // NOTE: This should only be used by tests
-  bool TableNameExists(const NamespaceId& namespace_id, const TableName& table_name) const;
-
-  bool TableNameExists(const TableName& table_name) const
-      { return TableNameExists(kDefaultNamespaceId, table_name); }
-
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
 

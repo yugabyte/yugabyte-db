@@ -68,7 +68,7 @@ using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 using tserver::TSTabletManager;
 
-static const YBTableName kTableName("test-table");
+static const YBTableName kTableName("my_keyspace", "test-table");
 static const int kNumReplicas = 2;
 
 class TsTabletManagerITest : public YBTest {
@@ -116,6 +116,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   // Run a few more iters in slow-test mode.
   OverrideFlagForSlowTests("num_election_test_loops", "10");
 
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
   // Create the table.
   std::shared_ptr<YBTable> table;
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());

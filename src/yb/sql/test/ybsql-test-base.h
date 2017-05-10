@@ -118,6 +118,10 @@ class YbSqlProcessor : public SqlProcessor {
 
   std::string CurrentKeyspace() const { return sql_env_->CurrentKeyspace(); }
 
+  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
+    return sql_env_->UseKeyspace(keyspace_name);
+  }
+
  private:
   // Execute result.
   ExecutedResult::SharedPtr result_;
@@ -188,6 +192,8 @@ class YbSqlTestBase : public YBTest {
 
   // SQL Processor.
   std::vector<YbSqlProcessor::UniPtr> sql_processors_;
+
+  static const std::string kDefaultKeyspaceName;
 };
 
 }  // namespace sql

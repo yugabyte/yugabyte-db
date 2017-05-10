@@ -61,6 +61,7 @@ TEST_F(YbSqlStaticColumn, TestCreateTable) {
   master::CatalogManager *catalog_manager = master->catalog_manager();
   master::GetTableSchemaRequestPB request_pb;
   master::GetTableSchemaResponsePB response_pb;
+  request_pb.mutable_table()->mutable_namespace_()->set_name(kDefaultKeyspaceName);
   request_pb.mutable_table()->set_table_name("static_table");
 
   // Verify the static column.

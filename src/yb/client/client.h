@@ -244,6 +244,10 @@ class YB_EXPORT YBClient : public std::enable_shared_from_this<YBClient> {
   // Create a new namespace with the given name.
   CHECKED_STATUS CreateNamespace(const std::string& namespace_name);
 
+  // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
+  // created. So, it prevents error 'namespace already exists'.
+  CHECKED_STATUS CreateNamespaceIfNotExists(const std::string& namespace_name);
+
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name);
 

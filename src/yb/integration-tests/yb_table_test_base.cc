@@ -25,7 +25,7 @@ using strings::Substitute;
 
 namespace integration_tests {
 
-const YBTableName YBTableTestBase::kDefaultTableName("kv-table-test");
+const YBTableName YBTableTestBase::kDefaultTableName("my_keyspace", "kv-table-test");
 
 int YBTableTestBase::num_masters() {
   return kDefaultNumMasters;
@@ -135,6 +135,7 @@ void YBTableTestBase::OpenTable() {
 
 void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client,
                                        YBTableName table_name) {
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
   ASSERT_OK(NewTableCreator()->table_name(table_name)
                 .table_type(YBTableType::REDIS_TABLE_TYPE)
                 .Create());
@@ -142,6 +143,8 @@ void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client,
 
 void YBTableTestBase::CreateTable() {
   if (!table_exists_) {
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name().namespace_name()));
+
     YBSchemaBuilder b;
     b.AddColumn("k")->Type(BINARY)->NotNull()->PrimaryKey();
     b.AddColumn("v")->Type(BINARY)->NotNull();

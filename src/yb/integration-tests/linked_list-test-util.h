@@ -429,6 +429,8 @@ std::vector<int64_t> LinkedListTester::GenerateSplitInts() {
 }
 
 Status LinkedListTester::CreateLinkedListTable() {
+  RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name_.namespace_name()));
+
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   RETURN_NOT_OK_PREPEND(table_creator->table_name(table_name_)
                         .schema(&schema_)

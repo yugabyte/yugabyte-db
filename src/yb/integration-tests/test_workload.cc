@@ -47,7 +47,7 @@ using client::YBTableName;
 using client::YBUpdate;
 using std::shared_ptr;
 
-const YBTableName TestWorkload::kDefaultTableName("test-workload");
+const YBTableName TestWorkload::kDefaultTableName("my_keyspace", "test-workload");
 
 TestWorkload::TestWorkload(ExternalMiniCluster* cluster)
   : cluster_(cluster),
@@ -162,8 +162,9 @@ void TestWorkload::WriteThread() {
 
 void TestWorkload::Setup(YBTableType table_type) {
   CHECK_OK(cluster_->CreateClient(&client_builder_, &client_));
+  CHECK_OK(client_->CreateNamespaceIfNotExists(table_name_.namespace_name()));
 
-  bool table_exists;
+  bool table_exists = false;
 
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.

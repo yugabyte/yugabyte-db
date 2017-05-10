@@ -388,7 +388,7 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   int n_iters = AllowSlowTests() ? 20 : 1;
   for (int i = 0; i < n_iters; i++) {
     TestWorkload workload(cluster_.get());
-    workload.set_table_name(YBTableName(Substitute("table-$0", i)));
+    workload.set_table_name(YBTableName("my_keyspace", Substitute("table-$0", i)));
 
     // We'll delete the table underneath the writers, so we expcted
     // a NotFound error during the writes.
@@ -991,6 +991,8 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   // Create a table with 2 tablets. We delete the first tablet without
   // injecting any faults, then we delete the second tablet while exercising
   // several fault injection points.
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      TestWorkload::kDefaultTableName.namespace_name()));
   const int kNumTablets = 2;
   vector<const YBPartialRow*> split_rows;
   Schema schema(GetSimpleTestSchema());

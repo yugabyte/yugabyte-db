@@ -117,7 +117,7 @@ class PTQualifiedName : public PTName {
     // We support only names with 1 or 2 sub-names.
     // See Analyze() implementation.
     return (ptnames_.size() >= 2 ? client::YBTableName(first_name().c_str(), last_name().c_str())
-        : client::YBTableName(last_name().c_str(), client::YBTableName::UNKNOWN_NAMESPACE));
+        : client::YBTableName(last_name().c_str()));
   }
 
  private:

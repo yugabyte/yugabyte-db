@@ -239,12 +239,14 @@ class AllTypesItest : public YBTest {
       split_rows_.push_back(*row);
     }
 
-    RETURN_NOT_OK(table_creator->table_name(YBTableName("all-types-table"))
+    const YBTableName table_name("my_keyspace", "all-types-table");
+    RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
+    RETURN_NOT_OK(table_creator->table_name(table_name)
                   .schema(&schema_)
                   .split_rows(split_rows)
                   .num_replicas(kNumTabletServers)
                   .Create());
-    return client_->OpenTable(YBTableName("all-types-table"), &table_);
+    return client_->OpenTable(table_name, &table_);
   }
 
   Status GenerateRow(YBSession* session, int split_idx, int row_idx) {
