@@ -101,11 +101,12 @@ class AWSProviderConfiguration extends Component {
       configuredProviders, configuredRegions, accessKeys, universeList } = this.props;
     var universeExistsForProvider = false;
     var awsProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
-    if (isValidArray(configuredProviders.data) && isValidArray(universeList)){
-      universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === awsProvider.uuid));
-    }
     var providerConfig;
     if (isValidObject(awsProvider)) {
+      if (isValidArray(configuredProviders.data) && isValidArray(universeList)){
+        universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === awsProvider.uuid));
+      }
+
       var awsRegions = configuredRegions.data.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );

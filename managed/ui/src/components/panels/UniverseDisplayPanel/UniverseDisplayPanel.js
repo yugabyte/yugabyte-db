@@ -4,7 +4,8 @@ import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import {YBLoadingIcon} from '../../common/indicators';
-import { isValidObject, isValidArray, isValidNumber, getObjectState } from 'utils/ObjectUtils';
+import { isValidObject, isValidNumber } from 'utils/ObjectUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseFormContainer, UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
@@ -32,7 +33,7 @@ class UniverseDisplayItem extends Component {
     if (!isValidObject(universe)) {
       return <span/>;
     }
-    
+
     var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>
     var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>
     var costPerMonth = <span>n/a</span>;
@@ -71,7 +72,7 @@ export default class UniverseDisplayPanel extends Component {
   render() {
     var self = this;
     const { universe: {universeList, showModal, visibleModal}, cloud :{providers}} = this.props;
-    if (getObjectState(providers) === "success") {
+    if (getPromiseState(providers).isSuccess()) {
       var universeDisplayList = universeList.map(function(universeItem, idx){
         return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>
       });
@@ -88,7 +89,7 @@ export default class UniverseDisplayPanel extends Component {
           </Row>
         </div>
       )
-    } else if (getObjectState(providers) === "empty") {
+    } else if (getPromiseState(providers).isEmpty()) {
       return (
         <div className="get-started-config">
           <span>Welcome to the <div className="yb-data-name">YugaByte Admin Console.</div></span>
