@@ -3,6 +3,7 @@ package org.yb.cql;
 
 import java.nio.ByteBuffer;
 import java.util.UUID;
+import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.util.Date;
 import java.util.HashMap;
@@ -627,13 +628,14 @@ public class TestBindVariable extends TestBase {
                          "c11 uuid, " +
                          "c12 timeuuid, " +
                          "c13 blob," +
+                         "c14 decimal, " +
                          "primary key (c1));";
     session.execute(create_stmt);
 
     // Insert data of all supported datatypes with bind by position.
     String insert_stmt = "INSERT INTO test_bind " +
-                         "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                         "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     LOG.info("EXECUTING");
@@ -646,7 +648,8 @@ public class TestBindVariable extends TestBase {
                     InetAddress.getByName("1.2.3.4"),
                     UUID.fromString("11111111-2222-3333-4444-555555555555"),
                     UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"),
-                    makeByteBuffer(133143986176L)); // `0000001f00000000` to check zero-bytes
+                    makeByteBuffer(133143986176L), // `0000001f00000000` to check zero-bytes
+                    new BigDecimal("12.34"));
     LOG.info("EXECUTED");
 
     {
@@ -670,6 +673,7 @@ public class TestBindVariable extends TestBase {
       assertEquals(UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"), row.getUUID("c12"));
       assertEquals(makeBlobString(makeByteBuffer(133143986176L)),
                    makeBlobString(row.getBytes("c13")));
+      assertEquals(0, row.getDecimal("c14").compareTo(new BigDecimal("12.34")));
     }
 
     // Update data of all supported datatypes with bind by position.
@@ -685,7 +689,8 @@ public class TestBindVariable extends TestBase {
                          "c10 = ?, " +
                          "c11 = ?, " +
                          "c12 = ?, " +
-                         "c13 = ? " +
+                         "c13 = ?, " +
+                         "c14 = ? " +
                          "WHERE c1 = ?;";
     session.execute(update_stmt,
                     new HashMap<String, Object>() {{
@@ -702,6 +707,7 @@ public class TestBindVariable extends TestBase {
                       put("c11", UUID.fromString("22222222-2222-3333-4444-555555555555"));
                       put("c12", UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"));
                       put("c13", makeByteBuffer(9223372036854775807L)); // max long
+                      put("c14", new BigDecimal(100.0));
                     }});
 
     {
@@ -725,6 +731,7 @@ public class TestBindVariable extends TestBase {
       assertEquals(UUID.fromString("f58ba3dc-3422-11e7-a919-92ebcb67fe33"), row.getUUID("c12"));
       assertEquals(makeBlobString(makeByteBuffer(9223372036854775807L)),
                    makeBlobString(row.getBytes("c13")));
+      assertEquals(0, row.getDecimal("c14").compareTo(new BigDecimal("100.0")));
     }
 
     LOG.info("End test");
@@ -1076,13 +1083,14 @@ public class TestBindVariable extends TestBase {
                          "c9 timestamp, " +
                          "c10 inet, " +
                          "c11 uuid, " +
-                         "c12 blob);";
+                         "c12 blob, " +
+                         "c13 decimal);";
     session.execute(create_stmt);
 
     // Insert data of all supported datatypes with bind by position.
     String insert_stmt = "INSERT INTO test_bind " +
-                         "(k, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12) " +
-                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                         "(k, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     // For CQL <-> Java datatype mapping, see
     // http://docs.datastax.com/en/drivers/java/3.1/com/datastax/driver/core/TypeCodec.html
     LOG.info("EXECUTING");
@@ -1090,6 +1098,7 @@ public class TestBindVariable extends TestBase {
                     new Integer(1),
                     null, null, null, null,
                     null, null,
+                    null,
                     null,
                     null,
                     null,
@@ -1117,6 +1126,7 @@ public class TestBindVariable extends TestBase {
       assertTrue(row.isNull("c10"));
       assertTrue(row.isNull("c11"));
       assertTrue(row.isNull("c12"));
+      assertTrue(row.isNull("c13"));
     }
 
     LOG.info("End test");

@@ -266,6 +266,28 @@ Status Executor::EvalDecimalExpr(const PTExpr::SharedPtr& expr, EvalDecimalValue
       }
       break;
 
+    case ExprOperator::kBindVar: {
+      if (params_ == nullptr) {
+        return STATUS(RuntimeError, "no bind variable supplied");
+      }
+      const PTBindVar *var = static_cast<const PTBindVar*>(e);
+      YQLValueWithPB value;
+      RETURN_NOT_OK(GetBindVariable(var, &value));
+      if (value.IsNull()) {
+        result->set_null();
+      } else {
+        const string& decimal_value = value.decimal_value();
+        util::Decimal decimal;
+        RETURN_NOT_OK(decimal.DecodeFromSerializedBigDecimal(
+            Slice(decimal_value.data(), decimal_value.length())));
+        const auto decimal_str = decimal.ToString();
+        result->value_ =  MCString::MakeShared(exec_context_->PTempMem(),
+                                               decimal_str.c_str(),
+                                               decimal_str.length());
+      }
+      break;
+    }
+
     default:
       LOG(FATAL) << "Operator not supported";
   }
