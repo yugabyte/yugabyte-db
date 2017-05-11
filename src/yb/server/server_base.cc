@@ -121,9 +121,7 @@ RpcServerBase::~RpcServerBase() {
 }
 
 Sockaddr RpcServerBase::first_rpc_address() const {
-  vector<Sockaddr> addrs;
-  WARN_NOT_OK(rpc_server_->GetBoundAddresses(&addrs),
-              "Couldn't get bound RPC address");
+  const auto& addrs = rpc_server_->GetBoundAddresses();
   CHECK(!addrs.empty()) << "Not bound";
   return addrs[0];
 }
@@ -184,9 +182,7 @@ void RpcServerBase::GetStatusPB(ServerStatusPB* status) const {
 
   // RPC ports
   {
-    vector<Sockaddr> addrs;
-    CHECK_OK(rpc_server_->GetBoundAddresses(&addrs));
-    for (const Sockaddr& addr : addrs) {
+    for (const Sockaddr& addr : rpc_server_->GetBoundAddresses()) {
       HostPortPB* pb = status->add_bound_rpc_addresses();
       pb->set_host(addr.host());
       pb->set_port(addr.port());
@@ -369,8 +365,7 @@ void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
 }
 
 Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg) const {
-  vector<Sockaddr> addrs;
-  RETURN_NOT_OK(CHECK_NOTNULL(rpc_server())->GetBoundAddresses(&addrs));
+  vector<Sockaddr> addrs = CHECK_NOTNULL(rpc_server())->GetBoundAddresses();
   RETURN_NOT_OK_PREPEND(
       AddHostPortPBs(addrs, reg->mutable_rpc_addresses()),
       "Failed to add RPC addresses to registration");

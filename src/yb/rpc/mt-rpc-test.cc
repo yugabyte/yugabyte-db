@@ -169,10 +169,8 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   bld.set_metric_entity(metric_entity_);
   CHECK_OK(bld.Build(&server_messenger_));
 
-  shared_ptr<AcceptorPool> pool;
-  ASSERT_OK(server_messenger_->AddAcceptorPool(Sockaddr(), &pool));
-  ASSERT_OK(pool->Start(kMaxConcurrency));
-  Sockaddr server_addr = pool->bind_address();
+  Sockaddr server_addr;
+  ASSERT_OK(server_messenger_->AcceptOnAddress(Sockaddr(), &server_addr));
 
   gscoped_ptr<ServiceIf> service(new GenericCalculatorService());
   service_name_ = service->service_name();

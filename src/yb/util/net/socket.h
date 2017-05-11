@@ -36,6 +36,8 @@ class Socket {
   // Create a new invalid Socket object.
   Socket();
 
+  Socket(Socket&& rhs) noexcept : fd_(rhs.fd_) { rhs.Release(); }
+
   // Start managing a socket.
   explicit Socket(int fd);
 
@@ -150,4 +152,4 @@ class Socket {
 
 } // namespace yb
 
-#endif
+#endif // YB_UTIL_NET_SOCKET_H

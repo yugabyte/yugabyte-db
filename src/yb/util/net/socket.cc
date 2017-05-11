@@ -77,7 +77,10 @@ int Socket::Release() {
 }
 
 Socket::~Socket() {
-  ignore_result(Close());
+  auto status = Close();
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to close socket: " << status.ToString();
+  }
 }
 
 Status Socket::Close() {
@@ -87,10 +90,11 @@ Status Socket::Close() {
   fd_ = -1;
   if (::close(fd) < 0) {
     err = errno;
-    return STATUS(NetworkError, std::string("close error: ") +
-                                ErrnoToString(err), Slice(), err);
+    return STATUS(NetworkError,
+                  strings::Substitute("Close error: $0", ErrnoToString(err)),
+                  Slice(),
+                  err);
   }
-  fd = -1;
   return Status::OK();
 }
 

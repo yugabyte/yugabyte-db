@@ -59,15 +59,6 @@
 #include "yb/util/status.h"
 #include "yb/util/net/socket.h"
 
-// When compiling on Mac OS X, use 'kqueue' instead of the default, 'select', for the event loop.
-// Otherwise we run into problems because 'select' can't handle connections when more than 1024
-// file descriptors are open by the process.
-#if defined(__APPLE__)
-static const int kDefaultLibEvFlags = ev::KQUEUE;
-#else
-static const int kDefaultLibEvFlags = ev::AUTO;
-#endif
-
 using std::string;
 using std::shared_ptr;
 
@@ -312,6 +303,7 @@ ConnectionPtr ReactorThread::AssignOutboundCall(const OutboundCallPtr& call) {
 //
 void ReactorThread::TimerHandler(ev::timer &watcher, int revents) {
   DCHECK(IsCurrentThread());
+
   if (EV_ERROR & revents) {
     LOG(WARNING) << "Reactor " << name() << " got an error in "
       "the timer handler.";

@@ -24,7 +24,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/acceptor_pool.h"
+#include "yb/rpc/acceptor.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
@@ -34,7 +34,6 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-using yb::rpc::AcceptorPool;
 using yb::rpc::Messenger;
 using yb::rpc::ServiceIf;
 using std::shared_ptr;
@@ -46,10 +45,6 @@ DEFINE_string(rpc_bind_addresses, "0.0.0.0",
               "Comma-separated list of addresses to bind to for RPC connections. "
               "Currently, ephemeral ports (i.e. port 0) are not allowed.");
 TAG_FLAG(rpc_bind_addresses, stable);
-
-DEFINE_int32(rpc_num_acceptors_per_address, 1,
-             "Number of RPC acceptor threads for each bound address");
-TAG_FLAG(rpc_num_acceptors_per_address, advanced);
 
 DEFINE_bool(rpc_server_allow_ephemeral_ports, false,
             "Allow binding to ephemeral ports. This can cause problems, so currently "
@@ -63,7 +58,6 @@ namespace yb {
 
 RpcServerOptions::RpcServerOptions()
   : rpc_bind_addresses(FLAGS_rpc_bind_addresses),
-    num_acceptors_per_address(FLAGS_rpc_num_acceptors_per_address),
     default_port(0),
     queue_limit(FLAGS_rpc_queue_limit),
     workers_limit(FLAGS_rpc_workers_limit) {
@@ -123,17 +117,10 @@ Status RpcServer::RegisterService(size_t queue_limit, gscoped_ptr<rpc::ServiceIf
 Status RpcServer::Bind() {
   CHECK_EQ(server_state_, INITIALIZED);
 
-  // Create the Acceptor pools (one per bind address)
-  vector<shared_ptr<AcceptorPool> > new_acceptor_pools;
-  // Create the AcceptorPool for each bind address.
-  for (const Sockaddr& bind_addr : rpc_bind_addresses_) {
-    shared_ptr<rpc::AcceptorPool> pool;
-    RETURN_NOT_OK(messenger_->AddAcceptorPool(
-                    bind_addr,
-                    &pool));
-    new_acceptor_pools.push_back(pool);
+  rpc_bound_addresses_.resize(rpc_bind_addresses_.size());
+  for (size_t i = 0; i != rpc_bind_addresses_.size(); ++i) {
+    RETURN_NOT_OK(messenger_->AcceptOnAddress(rpc_bind_addresses_[i], &rpc_bound_addresses_[i]));
   }
-  acceptor_pools_.swap(new_acceptor_pools);
 
   server_state_ = BOUND;
   return Status::OK();
@@ -146,14 +133,8 @@ Status RpcServer::Start() {
   CHECK_EQ(server_state_, BOUND);
   server_state_ = STARTED;
 
-  for (const shared_ptr<AcceptorPool>& pool : acceptor_pools_) {
-    RETURN_NOT_OK(pool->Start(options_.num_acceptors_per_address));
-  }
-
-  vector<Sockaddr> bound_addrs;
-  RETURN_NOT_OK(GetBoundAddresses(&bound_addrs));
   string bound_addrs_str;
-  for (const Sockaddr& bind_addr : bound_addrs) {
+  for (const Sockaddr& bind_addr : rpc_bound_addresses_) {
     if (!bound_addrs_str.empty()) bound_addrs_str += ", ";
     bound_addrs_str += bind_addr.ToString();
   }
@@ -164,26 +145,11 @@ Status RpcServer::Start() {
 
 void RpcServer::Shutdown() {
   thread_pool_->Shutdown();
-  for (const shared_ptr<AcceptorPool>& pool : acceptor_pools_) {
-    pool->Shutdown();
-  }
-  acceptor_pools_.clear();
 
   if (messenger_) {
+    messenger_->ShutdownAcceptor();
     WARN_NOT_OK(messenger_->UnregisterAllServices(), "Unable to unregister our services");
   }
-}
-
-Status RpcServer::GetBoundAddresses(vector<Sockaddr>* addresses) const {
-  CHECK(server_state_ == BOUND ||
-        server_state_ == STARTED) << "bad state: " << server_state_;
-  for (const shared_ptr<AcceptorPool>& pool : acceptor_pools_) {
-    Sockaddr bound_addr;
-    RETURN_NOT_OK_PREPEND(pool->GetBoundAddress(&bound_addr),
-                          "Unable to get bound address from AcceptorPool");
-    addresses->push_back(bound_addr);
-  }
-  return Status::OK();
 }
 
 const rpc::ServicePool* RpcServer::service_pool(const string& service_name) const {

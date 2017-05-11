@@ -46,7 +46,7 @@ class ThreadPool;
 
 namespace rpc {
 
-class AcceptorPool;
+class Acceptor;
 class DumpRunningRpcsRequestPB;
 class DumpRunningRpcsResponsePB;
 class InboundCall;
@@ -55,19 +55,6 @@ class OutboundCall;
 class Reactor;
 class ReactorThread;
 class RpcService;
-
-struct AcceptorPoolInfo {
- public:
-  explicit AcceptorPoolInfo(Sockaddr bind_address)
-      : bind_address_(std::move(bind_address)) {}
-
-  Sockaddr bind_address() const {
-    return bind_address_;
-  }
-
- private:
-  Sockaddr bind_address_;
-};
 
 // Used to construct a Messenger.
 class MessengerBuilder {
@@ -111,9 +98,9 @@ class MessengerBuilder {
 };
 
 // A Messenger is a container for the reactor threads which run event loops
-// for the RPC services. If the process is a server, a Messenger can also have
-// one or more attached AcceptorPools which accept RPC connections. In this case,
-// calls received over the connection are enqueued into the messenger's service_queue
+// for the RPC services.
+// If the process is a server, a Messenger will also have an Acceptor.
+// In this case, calls received over the connection are enqueued into the messenger's service_queue
 // for processing by a ServicePool.
 //
 // Users do not typically interact with the Messenger directly except to create
@@ -125,7 +112,6 @@ class Messenger {
   friend class MessengerBuilder;
   friend class Proxy;
   friend class Reactor;
-  typedef std::vector<std::shared_ptr<AcceptorPool> > acceptor_vec_t;
   typedef std::unordered_map<std::string, scoped_refptr<RpcService> > RpcServicesMap;
 
   static const uint64_t UNKNOWN_CALL_ID = 0;
@@ -137,17 +123,9 @@ class Messenger {
   // from MessengerBuilder::Build will automatically call this method.
   void Shutdown();
 
-  // Add a new acceptor pool listening to the given accept address.
-  // You can create any number of acceptor pools you want, including none.
-  //
-  // The created pool is returned in *pool. The Messenger also retains
-  // a reference to the pool, so the caller may safely drop this reference
-  // and the pool will remain live.
-  //
-  // NOTE: the returned pool is not initially started. You must call
-  // pool->Start(...) to begin accepting connections.
-  CHECKED_STATUS AddAcceptorPool(const Sockaddr &accept_addr,
-                         std::shared_ptr<AcceptorPool>* pool);
+  // Accept connections on given address.
+  CHECKED_STATUS AcceptOnAddress(const Sockaddr& accept_addr, Sockaddr* bound_addr = nullptr);
+  void ShutdownAcceptor();
 
   // Register a new RpcService to handle inbound requests.
   CHECKED_STATUS RegisterService(const std::string& service_name,
@@ -230,13 +208,7 @@ class Messenger {
   // Protects closing_, acceptor_pools_, rpc_services_.
   mutable percpu_rwlock lock_;
 
-  bool closing_;
-
-  // Pools which are listening on behalf of this messenger.
-  // Note that the user may have called Shutdown() on one of these
-  // pools, so even though we retain the reference, it may no longer
-  // be listening.
-  acceptor_vec_t acceptor_pools_;
+  bool closing_ = false;
 
   // RPC services that handle inbound requests.
   RpcServicesMap rpc_services_;
@@ -251,6 +223,9 @@ class Messenger {
 
   const scoped_refptr<MetricEntity> metric_entity_;
   const scoped_refptr<Histogram> outgoing_queue_time_;
+
+  // Acceptor which is listening on behalf of this messenger.
+  std::unique_ptr<Acceptor> acceptor_;
 
   // The ownership of the Messenger object is somewhat subtle. The pointer graph
   // looks like this:
@@ -296,8 +271,8 @@ class Messenger {
   std::shared_ptr<Messenger> retain_self_;
 
   // Id that will be assigned to the next task that is scheduled on the reactor.
-  std::atomic<uint64_t> next_task_id_;
-  std::atomic<uint64_t> num_connections_accepted_;
+  std::atomic<uint64_t> next_task_id_ = {0};
+  std::atomic<uint64_t> num_connections_accepted_ = {0};
 
   std::mutex mutex_scheduled_tasks_;
 

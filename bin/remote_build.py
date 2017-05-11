@@ -23,9 +23,13 @@ def check_output_lines(args):
 def parse_name_status(lines):
     files = []
     for line in lines:
-        if len(line) == 0 or line[0] == 'D':
+        tokens = [x.strip() for x in line.split('\t')]
+        if len(tokens) == 0 or tokens[0] == 'D' or tokens[0] == '':
             continue
-        name = line[1:].strip()
+        if tokens[0].startswith('R'):
+            name = tokens[2]
+        else:
+            name = tokens[1]
         files.append(name)
     return files
 

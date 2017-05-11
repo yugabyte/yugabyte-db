@@ -37,7 +37,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/acceptor_pool.h"
+#include "yb/rpc/acceptor.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -142,6 +142,7 @@ void Messenger::Shutdown() {
   ThreadRestrictions::ScopedAllowWait allow_wait;
 
   decltype(reactors_) reactors;
+  std::unique_ptr<Acceptor> acceptor;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
     if (closing_) {
@@ -153,10 +154,7 @@ void Messenger::Shutdown() {
     DCHECK(rpc_services_.empty()) << "Unregister RPC services before shutting down Messenger";
     rpc_services_.clear();
 
-    for (const shared_ptr<AcceptorPool> &acceptor_pool : acceptor_pools_) {
-      acceptor_pool->Shutdown();
-    }
-    acceptor_pools_.clear();
+    acceptor.swap(acceptor_);
 
     // Need to shut down negotiation pool before the reactors, since the
     // reactors close the Connection sockets, and may race against the negotiation
@@ -164,6 +162,10 @@ void Messenger::Shutdown() {
     negotiation_pool_->Shutdown();
 
     reactors = reactors_;
+  }
+
+  if (acceptor) {
+    acceptor->Shutdown();
   }
 
   for (auto* reactor : reactors) {
@@ -174,20 +176,35 @@ void Messenger::Shutdown() {
   }
 }
 
-Status Messenger::AddAcceptorPool(const Sockaddr &accept_addr,
-                                  shared_ptr<AcceptorPool>* pool) {
+Status Messenger::AcceptOnAddress(const Sockaddr &accept_addr, Sockaddr* bound_addr) {
   Socket sock;
   RETURN_NOT_OK(sock.Init(0));
   RETURN_NOT_OK(sock.SetReuseAddr(true));
   RETURN_NOT_OK(sock.Bind(accept_addr));
-  Sockaddr remote;
-  RETURN_NOT_OK(sock.GetSocketAddress(&remote));
-  shared_ptr<AcceptorPool> acceptor_pool(new AcceptorPool(this, &sock, remote));
+  if (bound_addr) {
+    RETURN_NOT_OK(sock.GetSocketAddress(bound_addr));
+  }
+  Acceptor* acceptor;
+  {
+    std::lock_guard<percpu_rwlock> guard(lock_);
+    if (!acceptor_) {
+      acceptor_.reset(new Acceptor(this));
+      RETURN_NOT_OK(acceptor_->Start());
+    }
+    acceptor = acceptor_.get();
+  }
+  return acceptor->Add(std::move(sock));
+}
 
-  std::lock_guard<percpu_rwlock> guard(lock_);
-  acceptor_pools_.push_back(acceptor_pool);
-  *pool = acceptor_pool;
-  return Status::OK();
+void Messenger::ShutdownAcceptor() {
+  std::unique_ptr<Acceptor> acceptor;
+  {
+    std::lock_guard<percpu_rwlock> guard(lock_);
+    acceptor.swap(acceptor_);
+  }
+  if (acceptor) {
+    acceptor->Shutdown();
+  }
 }
 
 // Register a new RpcService to handle inbound requests.
@@ -255,11 +272,8 @@ void Messenger::RegisterInboundSocket(Socket *new_socket, const Sockaddr &remote
 Messenger::Messenger(const MessengerBuilder &bld)
   : name_(bld.name_),
     connection_type_(bld.connection_type_),
-    closing_(false),
     metric_entity_(bld.metric_entity_),
-    retain_self_(this),
-    next_task_id_(0),
-    num_connections_accepted_(0) {
+    retain_self_(this) {
   for (int i = 0; i < bld.num_reactors_; i++) {
     reactors_.push_back(new Reactor(retain_self_, i, bld));
   }

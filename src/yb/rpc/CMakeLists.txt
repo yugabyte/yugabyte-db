@@ -41,7 +41,7 @@ ADD_EXPORTABLE_LIBRARY(rpc_introspection_proto
 
 ### RPC library
 set(YRPC_SRCS
-    acceptor_pool.cc
+  acceptor.cc
     auth_store.cc
     blocking_ops.cc
     connection.cc

@@ -22,7 +22,7 @@
 #include <memory>
 #include <string>
 
-#include "yb/rpc/acceptor_pool.h"
+#include "yb/rpc/acceptor.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/reactor.h"
@@ -406,10 +406,7 @@ class RpcTestBase : public YBTest {
   template<class ServiceClass>
   void DoStartTestServer(Sockaddr *server_addr) {
     server_messenger_ = CreateMessenger("TestServer", n_server_reactor_threads_);
-    std::shared_ptr<AcceptorPool> pool;
-    ASSERT_OK(server_messenger_->AddAcceptorPool(Sockaddr(), &pool));
-    ASSERT_OK(pool->Start(2));
-    *server_addr = pool->bind_address();
+    ASSERT_OK(server_messenger_->AcceptOnAddress(Sockaddr(), server_addr));
 
     constexpr size_t kQueueLength = 50;
     thread_pool_.reset(new ThreadPool("rpc-test", kQueueLength, n_worker_threads_));

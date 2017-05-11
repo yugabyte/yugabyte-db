@@ -43,6 +43,15 @@
 namespace yb {
 namespace rpc {
 
+// When compiling on Mac OS X, use 'kqueue' instead of the default, 'select', for the event loop.
+// Otherwise we run into problems because 'select' can't handle connections when more than 1024
+// file descriptors are open by the process.
+#if defined(__APPLE__)
+constexpr unsigned int kDefaultLibEvFlags = ev::KQUEUE;
+#else
+constexpr unsigned int kDefaultLibEvFlags = ev::AUTO;
+#endif
+
 typedef std::list<ConnectionPtr> conn_list_t;
 
 class DumpRunningRpcsRequestPB;
