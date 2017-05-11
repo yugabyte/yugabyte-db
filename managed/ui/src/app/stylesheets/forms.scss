@@ -19,3 +19,19 @@ form a {
     }
   }
 }
+
+.dark-form {
+  padding-bottom: 10%;
+
+  .dark-form-heading {
+    color: #fff;
+    padding-bottom: 4px;
+
+    span {
+      display: inline-block;
+      position: relative;
+      top: 10px;
+      left: 10px;
+    }
+  }
+}

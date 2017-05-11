@@ -7,8 +7,6 @@ import { Field } from 'redux-form';
 import { YBInputField } from '../fields';
 import YBLogo from '../../YBLogo/YBLogo';
 
-import './LoginForm.scss';
-
 class LoginForm extends Component {
   constructor(props) {
     super(props);
@@ -35,8 +33,8 @@ class LoginForm extends Component {
     const { handleSubmit, submitting } = this.props;
     return (
       <div className="container full-height dark-background flex-vertical-middle">
-        <div className="col-sm-5 login-form">
-          <PageHeader bsClass="login-heading">
+        <div className="col-sm-5 dark-form">
+          <PageHeader bsClass="dark-form-heading">
             <YBLogo />
             <span>Admin Console</span>
           </PageHeader>

@@ -30,8 +30,8 @@ class RegisterForm extends Component {
     const { handleSubmit, submitting } = this.props;
     return (
       <div className="container full-height dark-background flex-vertical-middle">
-        <div className="col-sm-6">
-          <PageHeader bsClass="login-heading">
+        <div className="col-sm-6 dark-form">
+          <PageHeader bsClass="dark-form-heading">
             <YBLogo />
             <span>Admin Console Registration</span>
           </PageHeader>
