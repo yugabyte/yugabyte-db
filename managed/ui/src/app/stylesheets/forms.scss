@@ -35,3 +35,33 @@ form a {
     }
   }
 }
+
+.yb-field-group {
+  padding-bottom: 10px;
+}
+
+.form-right-aligned-labels {
+  display: table;
+
+  .form-group {
+    display: table-row;
+  }
+
+  .form-item-label {
+    display: table-cell;
+    text-align: right;
+    white-space: nowrap;
+    padding: 8px 10px 0 0;
+    vertical-align: top;
+
+    * {
+      display: inline;
+    }
+  }
+
+  .yb-field-group {
+    display: table-cell;
+    width: 100%;
+    padding-bottom: 6px;
+  }
+}
