@@ -1,20 +1,20 @@
-.quantity {
+.yb-resource-count {
   display: inline-block;
   text-align: center;
 
-  .quantity-size {
+  .yb-resource-count-size {
     font-size: 20px;
     font-weight: 600;
     margin-bottom: -4px;
   }
 
-  .quantity-unit {
+  .yb-resource-count-unit {
     font-size: 12px;
     font-weight: 400;
     padding-left: 5px;
   }
 
-  .quantity-kind {
+  .yb-resource-count-kind {
     font-size: 12px;
     font-weight: 400;
   }
