@@ -114,14 +114,14 @@ class CQLInboundCall : public InboundCall {
   bool TryResume();
 
  protected:
-  scoped_refptr<Connection> get_connection() const override;
+  ConnectionPtr get_connection() const override;
 
  private:
   void NotifyTransferFinished() override;
   void NotifyTransferAborted(const Status& status) override;
 
   // The connection on which this inbound call arrived.
-  scoped_refptr<CQLConnection> conn_;
+  boost::intrusive_ptr<CQLConnection> conn_;
   util::RefCntBuffer response_msg_buf_;
 
   Callback<void(void)>* resume_from_ = nullptr;

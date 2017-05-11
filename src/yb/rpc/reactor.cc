@@ -116,6 +116,7 @@ Connection* MakeNewConnection(ConnectionType connection_type,
       LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(connection_type);
   }
 }
+
 } // anonymous namespace
 
 ReactorThread::ReactorThread(Reactor *reactor, const MessengerBuilder &bld)
@@ -125,6 +126,8 @@ ReactorThread::ReactorThread(Reactor *reactor, const MessengerBuilder &bld)
     reactor_(reactor),
     connection_keepalive_time_(bld.connection_keepalive_time_),
     coarse_timer_granularity_(bld.coarse_timer_granularity_) {
+  process_outbound_queue_task_ =
+      MakeFunctorReactorTask(std::bind(&ReactorThread::ProcessOutboundQueue, this));
 }
 
 Status ReactorThread::Init() {
@@ -163,7 +166,7 @@ void ReactorThread::ShutdownInternal() {
   VLOG(1) << name() << ": tearing down outbound TCP connections...";
   for (auto c = client_conns_.begin(); c != client_conns_.end();
        c = client_conns_.begin()) {
-    const scoped_refptr<Connection>& conn = (*c).second;
+    const ConnectionPtr& conn = (*c).second;
     VLOG(1) << name() << ": shutting down " << conn->ToString();
     conn->Shutdown(service_unavailable);
     client_conns_.erase(c);
@@ -171,7 +174,7 @@ void ReactorThread::ShutdownInternal() {
 
   // Tear down any inbound TCP connections.
   VLOG(1) << name() << ": tearing down inbound TCP connections...";
-  for (const scoped_refptr<Connection>& conn : server_conns_) {
+  for (const ConnectionPtr& conn : server_conns_) {
     VLOG(1) << name() << ": shutting down " << conn->ToString();
     conn->Shutdown(service_unavailable);
   }
@@ -187,9 +190,16 @@ void ReactorThread::ShutdownInternal() {
   }
   scheduled_tasks_.clear();
 
-  for (const auto &task : async_handler_tasks_) {
-    task->Abort(aborted);
+  {
+    std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
+    closing_ = true;
+    outbound_queue_.swap(processing_outbound_queue_);
   }
+
+  for (auto& call : processing_outbound_queue_) {
+    call->TransferAborted(aborted);
+  }
+  processing_outbound_queue_.clear();
 }
 
 ReactorTask::ReactorTask() {
@@ -207,7 +217,7 @@ Status ReactorThread::GetMetrics(ReactorMetrics *metrics) {
 
 Status ReactorThread::QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event) {
   DCHECK(IsCurrentThread());
-  for (const scoped_refptr<Connection>& conn : server_conns_) {
+  for (const ConnectionPtr& conn : server_conns_) {
     conn->QueueOutboundData(server_event);
   }
   return Status::OK();
@@ -216,7 +226,7 @@ Status ReactorThread::QueueEventOnAllConnections(scoped_refptr<ServerEvent> serv
 Status ReactorThread::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                       DumpRunningRpcsResponsePB* resp) {
   DCHECK(IsCurrentThread());
-  for (const scoped_refptr<Connection>& conn : server_conns_) {
+  for (const ConnectionPtr& conn : server_conns_) {
     RETURN_NOT_OK(conn->DumpPB(req, resp->add_inbound_connections()));
   }
   for (const conn_map_t::value_type& entry : client_conns_) {
@@ -251,7 +261,7 @@ void ReactorThread::AsyncHandler(ev::async &watcher, int revents) {
   }
 }
 
-void ReactorThread::RegisterConnection(const scoped_refptr<Connection>& conn) {
+void ReactorThread::RegisterConnection(const ConnectionPtr& conn) {
   DCHECK(IsCurrentThread());
 
   // Set a limit on how long the server will negotiate with a new client.
@@ -266,9 +276,9 @@ void ReactorThread::RegisterConnection(const scoped_refptr<Connection>& conn) {
   server_conns_.push_back(conn);
 }
 
-void ReactorThread::AssignOutboundCall(const OutboundCallPtr& call) {
+ConnectionPtr ReactorThread::AssignOutboundCall(const OutboundCallPtr& call) {
   DCHECK(IsCurrentThread());
-  scoped_refptr<Connection> conn;
+  ConnectionPtr conn;
 
   // TODO: Move call deadline timeout computation into OutboundCall constructor.
   const MonoDelta &timeout = call->controller()->timeout();
@@ -283,13 +293,14 @@ void ReactorThread::AssignOutboundCall(const OutboundCallPtr& call) {
     deadline.AddDelta(timeout);
   }
 
-  Status s = FindOrStartConnection(call->conn_id(), &conn, deadline);
+  Status s = FindOrStartConnection(call->conn_id(), deadline, &conn);
   if (PREDICT_FALSE(!s.ok())) {
     call->SetFailed(s);
-    return;
+    return ConnectionPtr();
   }
 
   conn->QueueOutboundCall(call);
+  return conn;
 }
 
 //
@@ -324,7 +335,7 @@ void ReactorThread::ScanIdleConnections() {
   auto c_end = server_conns_.end();
   uint64_t timed_out = 0;
   for (; c != c_end; ) {
-    const scoped_refptr<Connection>& conn = *c;
+    const ConnectionPtr& conn = *c;
     if (!conn->Idle()) {
       VLOG(3) << "Connection " << conn->ToString() << " not idle";
       ++c; // TODO: clean up this loop
@@ -383,8 +394,8 @@ void ReactorThread::RunThread() {
 }
 
 Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
-                                            scoped_refptr<Connection>* conn,
-                                            const MonoTime &deadline) {
+                                            const MonoTime &deadline,
+                                            ConnectionPtr* conn) {
   DCHECK(IsCurrentThread());
   conn_map_t::const_iterator c = client_conns_.find(conn_id);
   if (c != client_conns_.end()) {
@@ -426,7 +437,7 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
   return Status::OK();
 }
 
-Status ReactorThread::StartConnectionNegotiation(const scoped_refptr<Connection>& conn,
+Status ReactorThread::StartConnectionNegotiation(const ConnectionPtr& conn,
     const MonoTime &deadline) {
   DCHECK(IsCurrentThread());
 
@@ -438,7 +449,7 @@ Status ReactorThread::StartConnectionNegotiation(const scoped_refptr<Connection>
   return Status::OK();
 }
 
-void ReactorThread::CompleteConnectionNegotiation(const scoped_refptr<Connection>& conn,
+void ReactorThread::CompleteConnectionNegotiation(const ConnectionPtr& conn,
       const Status &status) {
   DCHECK(IsCurrentThread());
   if (PREDICT_FALSE(!status.ok())) {
@@ -528,6 +539,56 @@ void ReactorThread::DestroyConnection(Connection *conn,
       ++it;
     }
   }
+}
+
+void ReactorThread::ProcessOutboundQueue() {
+  {
+    std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
+    outbound_queue_.swap(processing_outbound_queue_);
+  }
+  if (processing_outbound_queue_.empty()) {
+    return;
+  }
+  processing_connections_.reserve(processing_outbound_queue_.size());
+  for (auto& call : processing_outbound_queue_) {
+    auto conn = AssignOutboundCall(call);
+    processing_connections_.push_back(std::move(conn));
+  }
+  processing_outbound_queue_.clear();
+  std::sort(processing_connections_.begin(), processing_connections_.end());
+  auto new_end = std::unique(processing_connections_.begin(), processing_connections_.end());
+  processing_connections_.erase(new_end, processing_connections_.end());
+  for (auto& conn : processing_connections_) {
+    if (conn) {
+      conn->OutboundQueued();
+    }
+  }
+  processing_connections_.clear();
+}
+
+void ReactorThread::QueueOutboundCall(OutboundCallPtr call) {
+  DVLOG(3) << "Queueing outbound call "
+           << call->ToString() << " to remote " << call->conn_id().remote().ToString();
+
+  bool was_empty = false;
+  bool closing = false;
+  {
+    std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
+    if (!closing_) {
+      was_empty = outbound_queue_.empty();
+      outbound_queue_.push_back(call);
+    } else {
+      closing = true;
+    }
+  }
+  if (closing) {
+    call->TransferAborted(ShutdownError(true));
+    return;
+  }
+  if (was_empty) {
+    reactor_->ScheduleReactorTask(process_outbound_queue_task_);
+  }
+  TRACE_TO(call->trace(), "Scheduled.");
 }
 
 DelayedTask::DelayedTask(std::function<void(const Status&)> func, MonoDelta when, int64_t id,
@@ -685,7 +746,7 @@ Status Reactor::RunOnReactorThread(std::function<Status()>&& f) {
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
   return RunOnReactorThread(
-      std::bind(&ReactorThread::DumpRunningRpcs, &thread_, boost::ref(req), resp));
+      std::bind(&ReactorThread::DumpRunningRpcs, &thread_, std::ref(req), resp));
 }
 
 class QueueServerEventTask : public ReactorTask {
@@ -709,7 +770,7 @@ class QueueServerEventTask : public ReactorTask {
 
 class RegisterConnectionTask : public ReactorTask {
  public:
-  explicit RegisterConnectionTask(const scoped_refptr<Connection>& conn) :
+  explicit RegisterConnectionTask(const ConnectionPtr& conn) :
     conn_(conn)
   {}
 
@@ -724,7 +785,7 @@ class RegisterConnectionTask : public ReactorTask {
   }
 
  private:
-  scoped_refptr<Connection> conn_;
+  ConnectionPtr conn_;
 };
 
 void Reactor::QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event) {
@@ -733,38 +794,13 @@ void Reactor::QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Sockaddr &remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote.ToString();
-  scoped_refptr<Connection> conn;
+  ConnectionPtr conn;
   conn.reset(MakeNewConnection(connection_type_,
                                &thread_,
                                remote,
                                socket->Release(),
                                Connection::SERVER));
   ScheduleReactorTask(std::make_shared<RegisterConnectionTask>(conn));
-}
-
-// Task which runs in the reactor thread to assign an outbound call
-// to a connection.
-class AssignOutboundCallTask : public ReactorTask {
- public:
-  explicit AssignOutboundCallTask(OutboundCallPtr call)
-      : call_(std::move(call)) {}
-
-  void Run(ReactorThread *reactor) override {
-    reactor->AssignOutboundCall(call_);
-  }
-
-  void Abort(const Status &status) override {
-    call_->SetFailed(status);
-  }
-
- private:
-  OutboundCallPtr call_;
-};
-
-void Reactor::QueueOutboundCall(const OutboundCallPtr &call) {
-  DVLOG(3) << name_ << ": queueing outbound call "
-           << call->ToString() << " to remote " << call->conn_id().remote().ToString();
-  ScheduleReactorTask(std::make_shared<AssignOutboundCallTask>(call));
 }
 
 void Reactor::ScheduleReactorTask(std::shared_ptr<ReactorTask> task) {

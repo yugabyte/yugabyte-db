@@ -22,6 +22,7 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -31,8 +32,6 @@ namespace yb {
 namespace rpc {
 
 class ErrorStatusPB;
-class OutboundCall;
-typedef scoped_refptr<OutboundCall> OutboundCallPtr;
 
 // Controller for managing properties of a single RPC call, on the client side.
 //

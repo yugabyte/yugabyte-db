@@ -20,16 +20,13 @@
 #include <memory>
 
 #include "yb/gutil/gscoped_ptr.h"
+#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
 class Sockaddr;
 
 namespace consensus {
 class ConsensusServiceProxy;
-}
-
-namespace rpc {
-class Messenger;
 }
 
 namespace server {

@@ -116,7 +116,7 @@ class YBInboundCall : public InboundCall {
   // call response will be ignored anyway.
   virtual MonoTime GetClientDeadline() const override;
  protected:
-  scoped_refptr<Connection> get_connection() const override;
+  ConnectionPtr get_connection() const override;
 
  private:
   void NotifyTransferFinished() override;
@@ -129,8 +129,7 @@ class YBInboundCall : public InboundCall {
   util::RefCntBuffer response_buf_;
 
   // The connection on which this inbound call arrived.
-  scoped_refptr<YBConnection> conn_;
-
+  boost::intrusive_ptr<YBConnection> conn_;
 };
 
 } // namespace rpc

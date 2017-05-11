@@ -27,6 +27,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -42,12 +43,6 @@ class ConsensusStatePB;
 class RaftConfigPB;
 class RaftPeerPB;
 } // namespace consensus
-
-namespace rpc {
-class ErrorStatusPB;
-class Messenger;
-class RpcController;
-} // namespace rpc
 
 namespace tablet {
 class TabletMetadata;

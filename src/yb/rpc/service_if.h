@@ -21,6 +21,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
 
@@ -35,9 +36,6 @@ namespace yb {
 class Histogram;
 
 namespace rpc {
-
-class InboundCall;
-typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 struct RpcMethodMetrics {
   RpcMethodMetrics();

@@ -160,7 +160,7 @@ class Messenger {
 
   // Queue a call for transmission. This will pick the appropriate reactor,
   // and enqueue a task on that reactor to assign and send the call.
-  void QueueOutboundCall(const OutboundCallPtr& call);
+  void QueueOutboundCall(OutboundCallPtr call);
 
   // Enqueue a call for processing on the server.
   void QueueInboundCall(InboundCallPtr call);

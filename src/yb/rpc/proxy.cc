@@ -82,14 +82,17 @@ void Proxy::AsyncRequest(const string& method,
                          const ResponseCallback& callback) const {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
   is_started_.store(true, std::memory_order_release);
-  RemoteMethod remote_method(service_name_, method);
   uint8_t idx = num_calls_.fetch_add(1) % FLAGS_num_connections_to_server;
   auto indexed_conn_id = conn_id_;
   indexed_conn_id.set_idx(idx);
-  OutboundCall* call =
-      new OutboundCall(
-          indexed_conn_id, remote_method, outbound_call_metrics_, response, controller, callback);
-  controller->call_.reset(call);
+
+  controller->call_ = new OutboundCall(indexed_conn_id,
+                                       RemoteMethod(service_name_, method),
+                                       outbound_call_metrics_,
+                                       response,
+                                       controller,
+                                       std::move(callback));
+  auto call = controller->call_.get();
   Status s = call->SetRequestParam(req);
   if (PREDICT_FALSE(!s.ok())) {
     // Failed to serialize request: likely the request is missing a required

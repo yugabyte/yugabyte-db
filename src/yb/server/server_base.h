@@ -43,12 +43,6 @@ class Sockaddr;
 class Thread;
 class Webserver;
 
-namespace rpc {
-class Messenger;
-class ServiceIf;
-class ServicePoolOpts;
-} // namespace rpc
-
 namespace server {
 class Clock;
 

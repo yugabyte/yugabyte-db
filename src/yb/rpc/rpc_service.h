@@ -17,14 +17,10 @@
 #ifndef YB_RPC_RPC_SERVICE_H
 #define YB_RPC_RPC_SERVICE_H
 
-#include "yb/gutil/ref_counted.h"
-#include "yb/util/status.h"
+#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
 namespace rpc {
-
-class InboundCall;
-typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 class RpcService : public RefCountedThreadSafe<RpcService> {
  public:

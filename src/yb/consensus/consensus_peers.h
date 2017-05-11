@@ -41,11 +41,6 @@ namespace log {
 class Log;
 }
 
-namespace rpc {
-class Messenger;
-class RpcController;
-}
-
 namespace consensus {
 class ConsensusServiceProxy;
 class OpId;

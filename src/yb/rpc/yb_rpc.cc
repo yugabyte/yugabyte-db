@@ -276,7 +276,7 @@ void YBInboundCall::QueueResponseToConnection() {
   conn_->QueueOutboundData(InboundCallPtr(this));
 }
 
-scoped_refptr<Connection> YBInboundCall::get_connection() const {
+ConnectionPtr YBInboundCall::get_connection() const {
   return conn_;
 }
 

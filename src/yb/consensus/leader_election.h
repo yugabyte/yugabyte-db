@@ -39,11 +39,6 @@ namespace metadata {
 class RaftPeerPB;
 }
 
-namespace rpc {
-class Messenger;
-class RpcController;
-}
-
 namespace consensus {
 class PeerProxy;
 class PeerProxyFactory;

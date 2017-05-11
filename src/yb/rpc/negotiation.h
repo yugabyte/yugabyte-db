@@ -18,19 +18,19 @@
 #define YB_RPC_NEGOTIATION_H
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/monotime.h"
 
 namespace yb {
 namespace rpc {
 
-class Connection;
 class YBConnection;
 class RedisConnection;
 class CQLConnection;
 
 class Negotiation {
  public:
-  static void RunNegotiation(const scoped_refptr<Connection>& conn,
+  static void RunNegotiation(const ConnectionPtr& conn,
                              const MonoTime& deadline);
   static void YBNegotiation(const scoped_refptr<YBConnection>& conn,
                             const MonoTime& deadline);

@@ -31,6 +31,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_types.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/sasl_client.h"
@@ -282,8 +283,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   std::shared_ptr<ReactorTask> process_response_queue_task_;
 };
-
-typedef scoped_refptr<Connection> ConnectionPtr;
 
 #define RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status) \
   if (PREDICT_FALSE(!status.ok())) {                            \

@@ -44,7 +44,6 @@ set(YRPC_SRCS
     acceptor_pool.cc
     auth_store.cc
     blocking_ops.cc
-    outbound_call.cc
     connection.cc
     constants.cc
     cql_rpc.cc
@@ -52,6 +51,7 @@ set(YRPC_SRCS
     inbound_call.cc
     messenger.cc
     negotiation.cc
+    outbound_call.cc
     outbound_data.cc
     proxy.cc
     reactor.cc

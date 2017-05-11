@@ -47,10 +47,6 @@ namespace server {
 class Clock;
 }
 
-namespace rpc {
-class Messenger;
-}
-
 namespace consensus {
 class ConsensusMetadata;
 class Peer;

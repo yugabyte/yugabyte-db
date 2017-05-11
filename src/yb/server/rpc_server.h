@@ -23,17 +23,12 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
 namespace yb {
-
-namespace rpc {
-class AcceptorPool;
-class Messenger;
-class ServiceIf;
-} // namespace rpc
 
 struct RpcServerOptions {
   RpcServerOptions();

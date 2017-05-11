@@ -39,10 +39,6 @@ class HostPort;
 class ReplicaState;
 class ThreadPool;
 
-namespace rpc {
-class Messenger;
-}
-
 namespace consensus {
 
 // Class that coordinates access to the replica state (independently of Role).

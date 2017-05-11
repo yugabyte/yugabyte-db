@@ -19,11 +19,9 @@
 
 #include <memory>
 
-namespace yb {
+#include "yb/rpc/rpc_fwd.h"
 
-namespace rpc {
-class Messenger;
-} // namespace rpc
+namespace yb {
 
 class Webserver;
 

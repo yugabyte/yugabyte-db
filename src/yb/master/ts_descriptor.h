@@ -36,10 +36,6 @@ namespace consensus {
 class ConsensusServiceProxy;
 }
 
-namespace rpc {
-class Messenger;
-}
-
 namespace tserver {
 class TabletServerAdminServiceProxy;
 }

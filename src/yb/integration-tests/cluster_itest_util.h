@@ -62,10 +62,6 @@ namespace consensus {
 class OpId;
 }
 
-namespace rpc {
-class Messenger;
-}
-
 namespace tserver {
 class ListTabletsResponsePB_StatusAndSchemaPB;
 class TabletServerErrorPB;

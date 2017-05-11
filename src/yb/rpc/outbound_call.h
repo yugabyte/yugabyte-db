@@ -24,6 +24,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
@@ -326,8 +327,6 @@ class OutboundCall : public OutboundData {
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };
-
-typedef scoped_refptr<OutboundCall> OutboundCallPtr;
 
 // A response to a call, on the client side.
 // Upon receiving a response, this is allocated in the reactor thread and filled

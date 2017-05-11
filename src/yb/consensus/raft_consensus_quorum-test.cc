@@ -56,9 +56,6 @@ using std::shared_ptr;
 
 namespace yb {
 
-namespace rpc {
-class RpcContext;
-}
 namespace consensus {
 
 using log::Log;

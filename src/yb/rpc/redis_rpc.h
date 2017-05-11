@@ -163,14 +163,14 @@ class RedisInboundCall : public InboundCall {
   RedisClientCommand& GetClientCommand();
 
  protected:
-  scoped_refptr<Connection> get_connection() const override;
+  ConnectionPtr get_connection() const override;
 
  private:
   void NotifyTransferFinished() override;
   void NotifyTransferAborted(const Status& status) override;
 
   // The connection on which this inbound call arrived.
-  scoped_refptr<RedisConnection> conn_;
+  boost::intrusive_ptr<RedisConnection> conn_;
   util::RefCntBuffer response_msg_buf_;
 };
 

@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/intrusive_ptr.hpp>
+
 #include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -27,6 +29,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_types.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/remote_method.h"
@@ -55,7 +58,6 @@ class Trace;
 
 namespace rpc {
 
-class Connection;
 class DumpRunningRpcsRequestPB;
 class RpcCallInProgressPB;
 class ServicePool;
@@ -66,10 +68,6 @@ struct InboundCallTiming {
   MonoTime time_handled;    // Time the call handler was kicked off.
   MonoTime time_completed;  // Time the call handler completed.
 };
-
-class InboundCall;
-
-typedef scoped_refptr<InboundCall> InboundCallPtr;
 
 // Inbound call on server
 class InboundCall : public OutboundData {
@@ -129,7 +127,7 @@ class InboundCall : public OutboundData {
 
   const Sockaddr& remote_address() const;
 
-  const scoped_refptr<Connection> connection() const;
+  ConnectionPtr connection() const;
 
   Trace* trace();
 
@@ -166,7 +164,7 @@ class InboundCall : public OutboundData {
                bool is_success);
 
   // Returns a ptr to the Connection for use.
-  virtual scoped_refptr<Connection> get_connection() const = 0;
+  virtual ConnectionPtr get_connection() const = 0;
 
   // Queues the response to the Connection implementation.
   virtual void QueueResponseToConnection() = 0;

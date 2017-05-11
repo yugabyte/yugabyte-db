@@ -43,7 +43,7 @@
 namespace yb {
 namespace rpc {
 
-typedef std::list<scoped_refptr<Connection> > conn_list_t;
+typedef std::list<ConnectionPtr> conn_list_t;
 
 class DumpRunningRpcsRequestPB;
 class DumpRunningRpcsResponsePB;
@@ -164,7 +164,7 @@ class ReactorThread {
   friend class RedisConnection;
 
   // Client-side connection map.
-  typedef std::unordered_map<const ConnectionId, scoped_refptr<Connection>,
+  typedef std::unordered_map<const ConnectionId, ConnectionPtr,
                              ConnectionIdHash, ConnectionIdEqual> conn_map_t;
 
   ReactorThread(Reactor *reactor, const MessengerBuilder &bld);
@@ -210,13 +210,16 @@ class ReactorThread {
   // Begin the process of connection negotiation.
   // Must be called from the reactor thread.
   // Deadline specifies latest time negotiation may complete before timeout.
-  CHECKED_STATUS StartConnectionNegotiation(const scoped_refptr<Connection>& conn,
-                                    const MonoTime& deadline);
+  CHECKED_STATUS StartConnectionNegotiation(const ConnectionPtr& conn,
+                                            const MonoTime& deadline);
 
   // Transition back from negotiating to processing requests.
   // Must be called from the reactor thread.
-  void CompleteConnectionNegotiation(const scoped_refptr<Connection>& conn,
-      const Status& status);
+  void CompleteConnectionNegotiation(const ConnectionPtr& conn, const Status& status);
+
+  // Queue a new call to be sent. If the reactor is already shut down, marks
+  // the call as failed.
+  void QueueOutboundCall(OutboundCallPtr call);
 
   // Collect metrics.
   // Must be called from the reactor thread.
@@ -241,9 +244,9 @@ class ReactorThread {
   // May return a bad Status if the connect() call fails.
   // The resulting connection object is managed internally by the reactor thread.
   // Deadline specifies latest time allowed for initializing the connection.
-  CHECKED_STATUS FindOrStartConnection(const ConnectionId& conn_id,
-                               scoped_refptr<Connection>* conn,
-                               const MonoTime& deadline);
+  CHECKED_STATUS FindOrStartConnection(const ConnectionId &conn_id,
+                                       const MonoTime &deadline,
+                                       ConnectionPtr* conn);
 
   // Shut down the given connection, removing it from the connection tracking
   // structures of this reactor.
@@ -266,14 +269,16 @@ class ReactorThread {
 
   // Assign a new outbound call to the appropriate connection object.
   // If this fails, the call is marked failed and completed.
-  void AssignOutboundCall(const OutboundCallPtr &call);
+  ConnectionPtr AssignOutboundCall(const OutboundCallPtr &call);
 
   // Register a new connection.
-  void RegisterConnection(const scoped_refptr<Connection>& conn);
+  void RegisterConnection(const ConnectionPtr& conn);
 
   // Actually perform shutdown of the thread, tearing down any connections,
   // etc. This is called from within the thread.
   void ShutdownInternal();
+
+  void ProcessOutboundQueue();
 
   scoped_refptr<yb::Thread> thread_;
 
@@ -313,6 +318,13 @@ class ReactorThread {
 
   // Scan for idle connections on this granularity.
   const MonoDelta coarse_timer_granularity_;
+
+  simple_spinlock outbound_queue_lock_;
+  bool closing_ = false;
+  std::vector<OutboundCallPtr> outbound_queue_;
+  std::vector<OutboundCallPtr> processing_outbound_queue_;
+  std::vector<ConnectionPtr> processing_connections_;
+  std::shared_ptr<ReactorTask> process_outbound_queue_task_;
 };
 
 // A Reactor manages a ReactorThread
@@ -347,7 +359,9 @@ class Reactor {
 
   // Queue a new call to be sent. If the reactor is already shut down, marks
   // the call as failed.
-  void QueueOutboundCall(const OutboundCallPtr &call);
+  void QueueOutboundCall(OutboundCallPtr call) {
+    thread_.QueueOutboundCall(std::move(call));
+  }
 
   // Schedule the given task's Run() method to be called on the
   // reactor thread.

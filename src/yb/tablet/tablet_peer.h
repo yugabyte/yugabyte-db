@@ -28,6 +28,7 @@
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_order_verifier.h"
 #include "yb/tablet/transactions/transaction_tracker.h"
@@ -40,10 +41,6 @@ namespace yb {
 
 namespace log {
 class LogAnchorRegistry;
-}
-
-namespace rpc {
-class Messenger;
 }
 
 namespace tserver {

@@ -236,7 +236,7 @@ static Status DoCQLNegotiation(Connection* conn,
   return Status::OK();
 }
 
-void Negotiation::RunNegotiation(const scoped_refptr<Connection>& conn,
+void Negotiation::RunNegotiation(const ConnectionPtr& conn,
                                  const MonoTime& deadline) {
   conn->RunNegotiation(deadline);
 }

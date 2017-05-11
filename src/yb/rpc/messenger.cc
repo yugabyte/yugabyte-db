@@ -227,9 +227,9 @@ Status Messenger::UnregisterService(const string& service_name) {
   }
 }
 
-void Messenger::QueueOutboundCall(const OutboundCallPtr& call) {
+void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   Reactor *reactor = RemoteToReactor(call->conn_id().remote(), call->conn_id().idx());
-  reactor->QueueOutboundCall(call);
+  reactor->QueueOutboundCall(std::move(call));
 }
 
 void Messenger::QueueInboundCall(InboundCallPtr call) {

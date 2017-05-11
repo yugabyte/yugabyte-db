@@ -209,7 +209,7 @@ MonoTime CQLInboundCall::GetClientDeadline() const {
   return MonoTime::Max();
 }
 
-scoped_refptr<Connection> CQLInboundCall::get_connection() const {
+ConnectionPtr CQLInboundCall::get_connection() const {
   return conn_;
 }
 

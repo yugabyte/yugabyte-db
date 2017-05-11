@@ -59,10 +59,6 @@ class ThreadPool;
 template<class T>
 class AtomicGauge;
 
-namespace rpc {
-class RpcContext;
-}  // namespace rpc
-
 namespace master {
 
 class CatalogManagerBgTasks;

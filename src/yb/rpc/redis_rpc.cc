@@ -361,7 +361,7 @@ void RedisInboundCall::QueueResponseToConnection() {
   conn_->QueueOutboundData(InboundCallPtr(this));
 }
 
-scoped_refptr<Connection> RedisInboundCall::get_connection() const {
+ConnectionPtr RedisInboundCall::get_connection() const {
   return conn_;
 }
 

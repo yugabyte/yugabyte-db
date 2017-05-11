@@ -54,10 +54,6 @@ namespace master {
 class MasterServiceProxy;
 }  // namespace master
 
-namespace rpc {
-class Messenger;
-}  // namespace rpc
-
 namespace server {
 class ServerStatusPB;
 }  // namespace server

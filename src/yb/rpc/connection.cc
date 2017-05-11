@@ -229,7 +229,6 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   sending_outbound_datas_.resize(sending_.size());
   sending_outbound_datas_.back() = call;
   call->SetQueued();
-  OutboundQueued();
 }
 
 void Connection::set_user_credentials(const UserCredentials& user_credentials) {

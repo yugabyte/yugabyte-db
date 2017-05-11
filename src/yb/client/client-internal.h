@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "yb/client/client.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -40,11 +41,6 @@ class CreateTableRequestPB;
 class GetLeaderMasterRpc;
 class MasterServiceProxy;
 } // namespace master
-
-namespace rpc {
-class Messenger;
-class RpcController;
-} // namespace rpc
 
 namespace client {
 

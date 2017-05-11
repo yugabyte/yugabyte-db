@@ -141,7 +141,7 @@ const Sockaddr& InboundCall::remote_address() const {
   return get_connection()->remote();
 }
 
-const scoped_refptr<Connection> InboundCall::connection() const {
+ConnectionPtr InboundCall::connection() const {
   return get_connection();
 }
 

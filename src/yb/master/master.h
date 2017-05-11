@@ -43,11 +43,6 @@ struct RpcServerOptions;
 class ServerEntryPB;
 class ThreadPool;
 
-namespace rpc {
-class Messenger;
-class ServicePool;
-}
-
 using yb::consensus::RaftConfigPB;
 
 namespace master {

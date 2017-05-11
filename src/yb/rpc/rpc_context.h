@@ -38,8 +38,6 @@ class Trace;
 
 namespace rpc {
 
-class InboundCall;
-typedef scoped_refptr<InboundCall> InboundCallPtr;
 class UserCredentials;
 
 #define PANIC_RPC(rpc_context, message) \
