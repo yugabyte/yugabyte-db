@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import { FormattedNumber } from 'react-intl';
 import { isValidNumber } from 'utils/ObjectUtils';
-import './stylesheets/YBLabel.scss'
 
 export default class YBFormattedNumber extends Component {
   render() {
