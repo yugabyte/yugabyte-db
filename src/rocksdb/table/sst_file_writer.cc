@@ -118,14 +118,16 @@ Status SstFileWriter::Open(const std::string& file_path) {
     compression_type = *(r->ioptions.compression_per_level.rbegin());
   }
 
-  std::vector<std::unique_ptr<IntTblPropCollectorFactory>>
-      int_tbl_prop_collector_factories;
+  IntTblPropCollectorFactories int_tbl_prop_collector_factories;
   int_tbl_prop_collector_factories.emplace_back(
       new SstFileWriterPropertiesCollectorFactory(1 /* version */));
 
-  TableBuilderOptions table_builder_options(
-      r->ioptions, r->internal_comparator, &int_tbl_prop_collector_factories,
-      compression_type, r->ioptions.compression_opts, false);
+  TableBuilderOptions table_builder_options(r->ioptions,
+                                            r->internal_comparator,
+                                            int_tbl_prop_collector_factories,
+                                            compression_type,
+                                            r->ioptions.compression_opts,
+                                            false);
   r->base_file_writer.reset(
       new WritableFileWriter(std::move(base_sst_file), r->env_options));
   if (is_split_sst) {

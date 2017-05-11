@@ -4,6 +4,9 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
 // This file defines a collection of statistics collectors.
+#ifndef ROCKSDB_DB_TABLE_PROPERTIES_COLLECTOR_H
+#define ROCKSDB_DB_TABLE_PROPERTIES_COLLECTOR_H
+
 #pragma once
 
 #include "rocksdb/table_properties.h"
@@ -47,6 +50,8 @@ class IntTblPropCollectorFactory {
   // The name of the properties collector can be used for debugging purpose.
   virtual const char* Name() const = 0;
 };
+
+typedef std::vector<std::unique_ptr<IntTblPropCollectorFactory>> IntTblPropCollectorFactories;
 
 // Collecting the statistics for internal keys. Visible only by internal
 // rocksdb modules.
@@ -133,3 +138,5 @@ class UserKeyTablePropertiesCollectorFactory
 };
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_TABLE_PROPERTIES_COLLECTOR_H

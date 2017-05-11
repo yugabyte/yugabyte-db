@@ -43,7 +43,7 @@ void LogBuffer::AddLogToBuffer(
   if (p < limit) {
     va_list backup_ap;
     va_copy(backup_ap, ap);
-    auto n = vsnprintf(p, limit - p, format, backup_ap);
+    auto n = vsnprintf(p, limit - p + 1, format, backup_ap);
 #ifndef OS_WIN
     // MS reports -1 when the buffer is too short
     assert(n >= 0);
@@ -68,7 +68,7 @@ void LogBuffer::AddLogToBuffer(
 
 void LogBuffer::FlushBufferToLog() {
   for (BufferedLog* log : logs_) {
-    LogWithContext(log->file_, log->line_, log_level_, info_log_, log->message);
+    LogWithContext(log->file_, log->line_, log_level_, info_log_, "%s", log->message);
   }
   logs_.clear();
 }

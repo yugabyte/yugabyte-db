@@ -16,13 +16,14 @@
 // non-const method, all threads accessing the same Slice must use
 // external synchronization.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_SLICE_H_
-#define STORAGE_ROCKSDB_INCLUDE_SLICE_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_SLICE_H
+#define ROCKSDB_INCLUDE_ROCKSDB_SLICE_H
 
 #include <assert.h>
-#include <cstdio>
 #include <stddef.h>
 #include <string.h>
+
+#include <cstdio>
 #include <string>
 
 namespace rocksdb {
@@ -37,11 +38,11 @@ class Slice {
 
   // Create a slice that refers to the contents of "s"
   /* implicit */
-  Slice(const std::string& s) : data_(s.data()), size_(s.size()) { }
+  Slice(const std::string& s) : data_(s.data()), size_(s.size()) { } // NOLINT
 
   // Create a slice that refers to s[0,strlen(s)-1]
   /* implicit */
-  Slice(const char* s) : data_(s), size_(strlen(s)) { }
+  Slice(const char* s) : data_(s), size_(strlen(s)) { } // NOLINT
 
   // Create a single slice from SliceParts using buf as storage.
   // buf must exist as long as the returned Slice exists.
@@ -49,6 +50,9 @@ class Slice {
 
   // Return a pointer to the beginning of the referenced data
   const char* data() const { return data_; }
+
+  // Return a pointer to the end of the referenced data.
+  const char* end() const { return data_ + size_; }
 
   // Return the length (in bytes) of the referenced data
   size_t size() const { return size_; }
@@ -109,7 +113,7 @@ class Slice {
   // Compare two slices and returns the first byte where they differ
   size_t difference_offset(const Slice& b) const;
 
- // private: make these public for rocksdbjni access
+  // private: make these public for rocksdbjni access
   const char* data_;
   size_t size_;
 
@@ -157,4 +161,4 @@ inline size_t Slice::difference_offset(const Slice& b) const {
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_SLICE_H_
+#endif // ROCKSDB_INCLUDE_ROCKSDB_SLICE_H

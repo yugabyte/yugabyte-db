@@ -307,6 +307,7 @@ SstFileMetaData::BoundaryValues ConvertBoundaryValues(const FileMetaData::Bounda
   SstFileMetaData::BoundaryValues result;
   result.key = source.key.user_key().ToString();
   result.seqno = source.seqno;
+  result.user_values = source.user_values;
   return result;
 }
 
@@ -2466,7 +2467,7 @@ Status VersionSet::Recover(
     std::string scratch;
     while (reader.ReadRecord(&record, &scratch) && s.ok()) {
       VersionEdit edit;
-      s = edit.DecodeFrom(record);
+      s = edit.DecodeFrom(db_options_->boundary_extractor.get(), record);
       if (!s.ok()) {
         break;
       }
@@ -2680,7 +2681,9 @@ Status VersionSet::Recover(
 }
 
 Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
-                                      const std::string& dbname, Env* env) {
+                                      const std::string& dbname,
+                                      BoundaryValuesExtractor* extractor,
+                                      Env* env) {
   // these are just for performance reasons, not correcntes,
   // so we're fine using the defaults
   EnvOptions soptions;
@@ -2718,7 +2721,7 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
   std::string scratch;
   while (reader.ReadRecord(&record, &scratch) && s.ok()) {
     VersionEdit edit;
-    s = edit.DecodeFrom(record);
+    s = edit.DecodeFrom(extractor, record);
     if (!s.ok()) {
       break;
     }
@@ -2875,7 +2878,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
     std::string scratch;
     while (reader.ReadRecord(&record, &scratch) && s.ok()) {
       VersionEdit edit;
-      s = edit.DecodeFrom(record);
+      s = edit.DecodeFrom(db_options_->boundary_extractor.get(), record);
       if (!s.ok()) {
         break;
       }

@@ -16,6 +16,7 @@
 #include "rocksdb/slice.h"
 
 #include "rocksdb/db/version_edit.pb.h"
+#include "rocksdb/metadata.h"
 
 namespace rocksdb {
 
@@ -39,6 +40,31 @@ FileMetaData::FileMetaData()
   largest.seqno = 0;
 }
 
+void FileMetaData::UpdateBoundaries(InternalKey key, const FileBoundaryValuesBase& source) {
+  largest.key = std::move(key);
+  if (smallest.key.empty()) {
+    smallest.key = largest.key;
+  }
+  UpdateBoundariesExceptKey(source, UpdateBoundariesType::ALL);
+}
+
+void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source,
+                                             UpdateBoundariesType type) {
+  if (type != UpdateBoundariesType::LARGEST) {
+    smallest.seqno = std::min(smallest.seqno, source.seqno);
+    for (const auto& user_value : source.user_values) {
+      UpdateUserValue(&smallest.user_values, user_value, UpdateUserValueType::SMALLEST);
+    }
+  }
+  if (type != UpdateBoundariesType::SMALLEST) {
+    largest.seqno = std::max(largest.seqno, source.seqno);
+    for (const auto& user_value : source.user_values) {
+      UpdateUserValue(&largest.user_values, user_value, UpdateUserValueType::LARGEST);
+    }
+  }
+}
+
+
 void VersionEdit::Clear() {
   comparator_.reset();
   max_level_ = 0;
@@ -58,9 +84,18 @@ void EncodeBoundaryValues(const FileBoundaryValues<InternalKey>& values, Boundar
   auto key = values.key.Encode();
   out->set_key(key.data(), key.size());
   out->set_seqno(values.seqno);
+
+  for (const auto& user_value : values.user_values) {
+    auto* value = out->add_user_values();
+    value->set_tag(user_value->Tag());
+    auto encoded_user_value = user_value->Encode();
+    value->set_data(encoded_user_value.data(), encoded_user_value.size());
+  }
 }
 
-Status DecodeBoundaryValues(const BoundaryValuesPB& values, FileBoundaryValues<InternalKey>* out) {
+Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
+                            const BoundaryValuesPB& values,
+                            FileBoundaryValues<InternalKey>* out) {
   if (!values.has_key()) {
     return Status::Corruption("key missing");
   }
@@ -69,6 +104,18 @@ Status DecodeBoundaryValues(const BoundaryValuesPB& values, FileBoundaryValues<I
   }
   out->key = InternalKey::DecodeFrom(values.key());
   out->seqno = values.seqno();
+  if (extractor != nullptr) {
+    for (const auto &user_value : values.user_values()) {
+      UserBoundaryValuePtr decoded;
+      auto status = extractor->Decode(user_value.tag(), user_value.data(), &decoded);
+      if (!status.ok()) {
+        return status;
+      }
+      if (decoded) {
+        out->user_values.push_back(std::move(decoded));
+      }
+    }
+  }
   return Status();
 }
 
@@ -144,7 +191,7 @@ bool VersionEdit::EncodeTo(VersionEditPB* dst) const {
   return true;
 }
 
-Status VersionEdit::DecodeFrom(const Slice& src) {
+Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& src) {
   Clear();
   VersionEditPB pb;
   if (!pb.ParseFromArray(src.data(), static_cast<int>(src.size()))) {
@@ -185,11 +232,11 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
                              source.has_path_id() ? source.path_id() : 0,
                              source.total_file_size(),
                              source.base_file_size());
-    auto status = DecodeBoundaryValues(source.smallest(), &meta.smallest);
+    auto status = DecodeBoundaryValues(extractor, source.smallest(), &meta.smallest);
     if (!status.ok()) {
       return status;
     }
-    status = DecodeBoundaryValues(source.largest(), &meta.largest);
+    status = DecodeBoundaryValues(extractor, source.largest(), &meta.largest);
     if (!status.ok()) {
       return status;
     }

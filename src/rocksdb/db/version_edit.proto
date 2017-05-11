@@ -8,9 +8,17 @@ message DeletedFilePB {
   optional uint64 file_number = 2;
 }
 
+message UserBoundaryValuePB {
+  // When we merge boundary values from different sources tag is used to find corresponding values.
+  // After that we compare those values and preserve smallest/largest of them.
+  optional uint32 tag = 1;
+  optional bytes data = 2;
+}
+
 message BoundaryValuesPB {
   optional bytes key = 1;
   optional uint64 seqno = 2;
+  repeated UserBoundaryValuePB user_values = 3;
 }
 
 message NewFilePB {

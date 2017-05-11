@@ -36,14 +36,14 @@ namespace rocksdb {
 
 class TableFactory;
 
-TableBuilder* NewTableBuilder(
-    const ImmutableCFOptions& ioptions,
-    const InternalKeyComparator& internal_comparator,
-    const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-        int_tbl_prop_collector_factories,
-    uint32_t column_family_id, WritableFileWriter* file,
-    const CompressionType compression_type,
-    const CompressionOptions& compression_opts, const bool skip_filters) {
+TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
+                              const InternalKeyComparator& internal_comparator,
+                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+                              uint32_t column_family_id,
+                              WritableFileWriter* file,
+                              const CompressionType compression_type,
+                              const CompressionOptions& compression_opts,
+                              const bool skip_filters) {
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
                           int_tbl_prop_collector_factories, compression_type,
@@ -51,14 +51,15 @@ TableBuilder* NewTableBuilder(
       column_family_id, file);
 }
 
-TableBuilder* NewTableBuilder(
-    const ImmutableCFOptions& ioptions,
-    const InternalKeyComparator& internal_comparator,
-    const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-        int_tbl_prop_collector_factories,
-    uint32_t column_family_id, WritableFileWriter* metadata_file, WritableFileWriter* data_file,
-    const CompressionType compression_type,
-    const CompressionOptions& compression_opts, const bool skip_filters) {
+TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
+                              const InternalKeyComparator& internal_comparator,
+                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+                              uint32_t column_family_id,
+                              WritableFileWriter* metadata_file,
+                              WritableFileWriter* data_file,
+                              const CompressionType compression_type,
+                              const CompressionOptions& compression_opts,
+                              const bool skip_filters) {
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
           int_tbl_prop_collector_factories, compression_type,
@@ -81,19 +82,25 @@ namespace {
   }
 } // anonymous namespace
 
-Status BuildTable(
-    const std::string& dbname, Env* env, const ImmutableCFOptions& ioptions,
-    const EnvOptions& env_options, TableCache* table_cache,
-    InternalIterator* iter, FileMetaData* meta,
-    const InternalKeyComparator& internal_comparator,
-    const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-        int_tbl_prop_collector_factories,
-    uint32_t column_family_id, std::vector<SequenceNumber> snapshots,
-    SequenceNumber earliest_write_conflict_snapshot,
-    const CompressionType compression,
-    const CompressionOptions& compression_opts, bool paranoid_file_checks,
-    InternalStats* internal_stats, const Env::IOPriority io_priority,
-    TableProperties* table_properties) {
+Status BuildTable(const std::string& dbname,
+                  Env* env,
+                  const ImmutableCFOptions& ioptions,
+                  const EnvOptions& env_options,
+                  TableCache* table_cache,
+                  InternalIterator* iter,
+                  FileMetaData* meta,
+                  const InternalKeyComparator& internal_comparator,
+                  const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+                  uint32_t column_family_id,
+                  std::vector<SequenceNumber> snapshots,
+                  SequenceNumber earliest_write_conflict_snapshot,
+                  const CompressionType compression,
+                  const CompressionOptions& compression_opts,
+                  bool paranoid_file_checks,
+                  InternalStats* internal_stats,
+                  BoundaryValuesExtractor* boundary_values_extractor,
+                  const Env::IOPriority io_priority,
+                  TableProperties* table_properties) {
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
   Status s;
@@ -137,7 +144,12 @@ Status BuildTable(
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
       builder->Add(key, value);
-      meta->UpdateBoundaries(key, c_iter.ikey().sequence);
+      auto boundaries = MakeFileBoundaryValues(boundary_values_extractor, key, value);
+      if (const Status* status = yb::status(boundaries)) {
+        return *status;
+      }
+      auto& boundary_values = *yb::value(&boundaries);
+      meta->UpdateBoundaries(std::move(boundary_values.key), boundary_values);
 
       // TODO(noetzli): Update stats after flush, too.
       if (io_priority == Env::IO_HIGH &&

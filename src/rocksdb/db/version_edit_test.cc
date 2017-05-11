@@ -8,20 +8,31 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/version_edit.h"
-#include "util/sync_point.h"
+
 #include "util/testharness.h"
+#include "util/testutil.h"
 
 namespace rocksdb {
 
-static void TestEncodeDecode(const VersionEdit& edit) {
+namespace {
+
+void TestEncodeDecode(const VersionEdit &edit) {
+  auto extractor = test::MakeBoundaryValuesExtractor();
   std::string encoded, encoded2;
   edit.EncodeTo(&encoded);
   VersionEdit parsed;
-  Status s = parsed.DecodeFrom(encoded);
+  Status s = parsed.DecodeFrom(extractor.get(), encoded);
   ASSERT_TRUE(s.ok()) << s.ToString();
+
+  auto str = edit.DebugString();
+  auto str2 = parsed.DebugString();
+  ASSERT_EQ(str, str2);
+
   parsed.EncodeTo(&encoded2);
   ASSERT_EQ(encoded, encoded2);
 }
+
+} // namespace
 
 class VersionEditTest : public testing::Test {};
 
@@ -32,10 +43,14 @@ TEST_F(VersionEditTest, EncodeDecode) {
   VersionEdit edit;
   for (int i = 0; i < 4; i++) {
     TestEncodeDecode(edit);
+    auto smallest = MakeFileBoundaryValues("foo", kBig + 500 + i, kTypeValue);
+    auto largest = MakeFileBoundaryValues("zoo", kBig + 600 + i, kTypeDeletion);
+    smallest.user_values.push_back(test::MakeIntBoundaryValue(33));
+    largest.user_values.push_back(test::MakeStringBoundaryValue("Hello"));
     edit.AddFile(3,
                  FileDescriptor(kBig + 300 + i, kBig32Bit + 400 + i, 0, 0),
-                 MakeFileBoundaryValues("foo", kBig + 500 + i, kTypeValue),
-                 MakeFileBoundaryValues("zoo", kBig + 600 + i, kTypeDeletion),
+                 smallest,
+                 largest,
                  false);
     edit.DeleteFile(4, kBig + 700 + i);
   }
@@ -75,10 +90,11 @@ TEST_F(VersionEditTest, EncodeDecodeNewFile4) {
   edit.SetLastSequence(kBig + 1000);
   TestEncodeDecode(edit);
 
+  auto extractor = test::MakeBoundaryValuesExtractor();
   std::string encoded, encoded2;
   edit.EncodeTo(&encoded);
   VersionEdit parsed;
-  Status s = parsed.DecodeFrom(encoded);
+  Status s = parsed.DecodeFrom(extractor.get(), encoded);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto& new_files = parsed.GetNewFiles();
   ASSERT_TRUE(new_files[0].second.marked_for_compaction);
@@ -113,8 +129,9 @@ TEST_F(VersionEditTest, ForwardCompatibleNewFile4) {
 
   edit.EncodeTo(&encoded);
 
+  auto extractor = test::MakeBoundaryValuesExtractor();
   VersionEdit parsed;
-  Status s = parsed.DecodeFrom(encoded);
+  Status s = parsed.DecodeFrom(extractor.get(), encoded);
   ASSERT_TRUE(s.ok()) << s.ToString();
   auto& new_files = parsed.GetNewFiles();
   ASSERT_TRUE(new_files[0].second.marked_for_compaction);
@@ -142,8 +159,9 @@ TEST_F(VersionEditTest, NewFile4NotSupportedField) {
 
   edit.EncodeTo(&encoded);
 
+  auto extractor = test::MakeBoundaryValuesExtractor();
   VersionEdit parsed;
-  Status s = parsed.DecodeFrom(encoded);
+  Status s = parsed.DecodeFrom(extractor.get(), encoded);
   ASSERT_OK(s);
 }
 

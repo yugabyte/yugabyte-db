@@ -510,8 +510,7 @@ struct BlockBasedTableBuilder::Rep {
   Rep(const ImmutableCFOptions& _ioptions,
       const BlockBasedTableOptions& table_opt,
       const InternalKeyComparator& icomparator,
-      const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-          int_tbl_prop_collector_factories,
+      const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
       uint32_t column_family_id,
       WritableFileWriter* metadata_file,
       WritableFileWriter* data_file,
@@ -543,7 +542,7 @@ struct BlockBasedTableBuilder::Rep {
     } else {
       data_writer = metadata_writer;
     }
-    for (auto& collector_factories : *int_tbl_prop_collector_factories) {
+    for (auto& collector_factories : int_tbl_prop_collector_factories) {
       table_properties_collectors.emplace_back(
           collector_factories->CreateIntTblPropCollector(column_family_id));
     }
@@ -560,9 +559,9 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
     const ImmutableCFOptions& ioptions,
     const BlockBasedTableOptions& table_options,
     const InternalKeyComparator& internal_comparator,
-    const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-        int_tbl_prop_collector_factories,
-    uint32_t column_family_id, WritableFileWriter* metadata_file,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* metadata_file,
     WritableFileWriter* data_file,
     const CompressionType compression_type,
     const CompressionOptions& compression_opts,

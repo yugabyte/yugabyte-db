@@ -7,6 +7,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef ROCKSDB_UTIL_TESTUTIL_H
+#define ROCKSDB_UTIL_TESTUTIL_H
+
 #pragma once
 #include <algorithm>
 #include <deque>
@@ -650,5 +653,24 @@ TableFactory* RandomTableFactory(Random* rnd, int pre_defined = -1);
 
 std::string RandomName(Random* rnd, const size_t len);
 
+std::shared_ptr<BoundaryValuesExtractor> MakeBoundaryValuesExtractor();
+UserBoundaryValuePtr MakeIntBoundaryValue(int64_t value);
+UserBoundaryValuePtr MakeStringBoundaryValue(std::string value);
+int64_t GetBoundaryInt(const UserBoundaryValues& values);
+std::string GetBoundaryString(const UserBoundaryValues& values);
+
+struct BoundaryTestValues {
+  void Feed(Slice key);
+  void Check(const FileBoundaryValues<InternalKey>& smallest,
+             const FileBoundaryValues<InternalKey>& largest);
+
+  int64_t min_int = std::numeric_limits<int64_t>::max();
+  int64_t max_int = std::numeric_limits<int64_t>::min();
+  std::string min_string;
+  std::string max_string;
+};
+
 }  // namespace test
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_TESTUTIL_H

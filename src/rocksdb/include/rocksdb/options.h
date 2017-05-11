@@ -6,8 +6,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_OPTIONS_H_
-#define STORAGE_ROCKSDB_INCLUDE_OPTIONS_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_OPTIONS_H
+#define ROCKSDB_INCLUDE_ROCKSDB_OPTIONS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -27,6 +27,7 @@
 
 namespace rocksdb {
 
+class BoundaryValuesExtractor;
 class Cache;
 class CompactionFilter;
 class CompactionFilterFactory;
@@ -1276,6 +1277,10 @@ struct DBOptions {
   // sequence number at flush), and we'll get an assertion error at bootstrap as we try to apply
   // Raft log records indexes / sequence numbers lower than last_sequence.
   bool set_last_seq_based_on_sstable_metadata;
+
+  // Boundary extractor is used to retrieve user defined values for record.
+  // Also it decodes those values during load of metafile.
+  std::shared_ptr<BoundaryValuesExtractor> boundary_extractor;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)
@@ -1535,4 +1540,4 @@ struct CompactRangeOptions {
 };
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_OPTIONS_H_
+#endif // ROCKSDB_INCLUDE_ROCKSDB_OPTIONS_H

@@ -699,8 +699,16 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
     sub_compact->builder->Add(key, value);
-    sub_compact->current_output()->meta.UpdateBoundaries(
-        key, c_iter->ikey().sequence);
+    auto boundaries = MakeFileBoundaryValues(db_options_.boundary_extractor.get(),
+                                             key,
+                                             value);
+    if (const Status* s = yb::status(boundaries)) {
+      status = *s;
+      break;
+    }
+    auto& boundary_values = *yb::value(&boundaries);
+    sub_compact->current_output()->meta.UpdateBoundaries(std::move(boundary_values.key),
+                                                         boundary_values);
     sub_compact->num_output_records++;
 
     // Close output file if it is big enough
@@ -997,8 +1005,8 @@ Status CompactionJob::OpenCompactionOutputFile(
   // Update sequence number boundaries for out.
   for (size_t level_idx = 0; level_idx < compact_->compaction->num_input_levels(); level_idx++) {
     for (FileMetaData *fmd : *compact_->compaction->inputs(level_idx) ) {
-      out.meta.UpdateSeqNoBoundaries(fmd->smallest.seqno);
-      out.meta.UpdateSeqNoBoundaries(fmd->largest.seqno);
+      out.meta.UpdateBoundariesExceptKey(fmd->smallest, UpdateBoundariesType::SMALLEST);
+      out.meta.UpdateBoundariesExceptKey(fmd->largest, UpdateBoundariesType::LARGEST);
     }
   }
   out.finished = false;

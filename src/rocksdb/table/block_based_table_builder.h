@@ -40,8 +40,7 @@ class BlockBasedTableBuilder : public TableBuilder {
       const ImmutableCFOptions& ioptions,
       const BlockBasedTableOptions& table_options,
       const InternalKeyComparator& internal_comparator,
-      const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-          int_tbl_prop_collector_factories,
+      const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
       uint32_t column_family_id, WritableFileWriter* metadata_file,
       WritableFileWriter* data_file,
       const CompressionType compression_type,

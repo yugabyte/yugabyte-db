@@ -606,7 +606,9 @@ class VersionSet {
   // Reads a manifest file and returns a list of column families in
   // column_families.
   static Status ListColumnFamilies(std::vector<std::string>* column_families,
-                                   const std::string& dbname, Env* env);
+                                   const std::string& dbname,
+                                   BoundaryValuesExtractor* extractor,
+                                   Env* env);
 
 #ifndef ROCKSDB_LITE
   // Try to reduce the number of levels. This call is valid when

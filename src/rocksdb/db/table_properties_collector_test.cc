@@ -39,8 +39,7 @@ static const uint32_t kTestColumnFamilyId = 66;
 
 void MakeBuilder(const Options& options, const ImmutableCFOptions& ioptions,
                  const InternalKeyComparator& internal_comparator,
-                 const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-                     int_tbl_prop_collector_factories,
+                 const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
                  std::unique_ptr<WritableFileWriter>* writable,
                  std::unique_ptr<TableBuilder>* builder) {
   unique_ptr<WritableFile> wf(new test::StringSink);
@@ -211,7 +210,7 @@ class FlushBlockEveryThreePolicy : public FlushBlockPolicy {
 
 class FlushBlockEveryThreePolicyFactory : public FlushBlockPolicyFactory {
  public:
-  explicit FlushBlockEveryThreePolicyFactory() {}
+  FlushBlockEveryThreePolicyFactory() {}
 
   const char* Name() const override {
     return "FlushBlockEveryThreePolicyFactory";
@@ -248,16 +247,19 @@ void TestCustomizedTablePropertiesCollector(
   std::unique_ptr<TableBuilder> builder;
   std::unique_ptr<WritableFileWriter> writer;
   const ImmutableCFOptions ioptions(options);
-  std::vector<std::unique_ptr<IntTblPropCollectorFactory>>
-      int_tbl_prop_collector_factories;
+  IntTblPropCollectorFactories int_tbl_prop_collector_factories;
   if (test_int_tbl_prop_collector) {
     int_tbl_prop_collector_factories.emplace_back(
         new RegularKeysStartWithAFactory(backward_mode));
   } else {
     GetIntTblPropCollectorFactory(options, &int_tbl_prop_collector_factories);
   }
-  MakeBuilder(options, ioptions, internal_comparator,
-              &int_tbl_prop_collector_factories, &writer, &builder);
+  MakeBuilder(options,
+              ioptions,
+              internal_comparator,
+              int_tbl_prop_collector_factories,
+              &writer,
+              &builder);
 
   SequenceNumber seqNum = 0U;
   for (const auto& kv : kvs) {
@@ -374,8 +376,7 @@ void TestInternalKeyPropertiesCollector(
   Options options;
   test::PlainInternalKeyComparator pikc(options.comparator);
 
-  std::vector<std::unique_ptr<IntTblPropCollectorFactory>>
-      int_tbl_prop_collector_factories;
+  IntTblPropCollectorFactories int_tbl_prop_collector_factories;
   options.table_factory = table_factory;
   if (sanitized) {
     options.table_properties_collector_factories.emplace_back(
@@ -398,8 +399,12 @@ void TestInternalKeyPropertiesCollector(
   const ImmutableCFOptions ioptions(options);
 
   for (int iter = 0; iter < 2; ++iter) {
-    MakeBuilder(options, ioptions, pikc, &int_tbl_prop_collector_factories,
-                &writable, &builder);
+    MakeBuilder(options,
+                ioptions,
+                pikc,
+                int_tbl_prop_collector_factories,
+                &writable,
+                &builder);
     for (const auto& k : keys) {
       builder->Add(k.Encode(), "val");
     }

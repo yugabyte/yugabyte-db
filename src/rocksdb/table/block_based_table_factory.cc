@@ -77,8 +77,11 @@ TableBuilder* BlockBasedTableFactory::NewTableBuilder(
   auto table_builder = new BlockBasedTableBuilder(
       table_builder_options.ioptions, table_options_,
       table_builder_options.internal_comparator,
-      table_builder_options.int_tbl_prop_collector_factories, column_family_id,
-      base_file, data_file, table_builder_options.compression_type,
+      *table_builder_options.int_tbl_prop_collector_factories,
+      column_family_id,
+      base_file,
+      data_file,
+      table_builder_options.compression_type,
       table_builder_options.compression_opts,
       table_builder_options.skip_filters);
 

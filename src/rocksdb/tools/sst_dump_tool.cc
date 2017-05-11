@@ -207,8 +207,12 @@ int SstFileReader::ShowAllCompressionSizes(size_t block_size) {
        i = (i == kLZ4HCCompression) ? kZSTDNotFinalCompression
                                     : CompressionType(i + 1)) {
     CompressionOptions compress_opt;
-    TableBuilderOptions tb_opts(imoptions, ikc, &block_based_table_factories, i,
-                                compress_opt, false);
+    TableBuilderOptions tb_opts(imoptions,
+                                ikc,
+                                block_based_table_factories,
+                                i,
+                                compress_opt,
+                                false);
     uint64_t file_size = CalculateCompressedTableSize(tb_opts, block_size);
     fprintf(stdout, "Compression: %s", compress_type.find(i)->second);
     fprintf(stdout, " Size: %" PRIu64 "\n", file_size);

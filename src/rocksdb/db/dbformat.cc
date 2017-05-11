@@ -14,6 +14,9 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+
+#include "yb/util/logging.h"
+
 #include "port/port.h"
 #include "util/coding.h"
 #include "util/perf_context_imp.h"
@@ -57,6 +60,26 @@ std::string InternalKey::DebugString(const std::string& rep, bool hex) {
   } else {
     result = "(bad)";
     result.append(EscapeString(rep));
+  }
+  return result;
+}
+
+yb::Result<FileBoundaryValues<InternalKey>> MakeFileBoundaryValues(
+    BoundaryValuesExtractor* extractor,
+    const Slice& key,
+    const Slice& value) {
+  ParsedInternalKey parsed = { Slice(), 0, kTypeDeletion };
+  ParseInternalKey(key, &parsed);
+
+  FileBoundaryValues<InternalKey> result;
+  result.key = InternalKey::DecodeFrom(key);
+  result.seqno = parsed.sequence;
+
+  if (extractor) {
+    auto status = extractor->Extract(parsed.user_key, value, &result.user_values);
+    if (!status.ok()) {
+      return status;
+    }
   }
   return result;
 }

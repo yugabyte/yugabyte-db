@@ -13,7 +13,11 @@
 #pragma once
 
 #include <stdio.h>
+
 #include <string>
+
+#include "yb/util/result.h"
+
 #include "rocksdb/comparator.h"
 #include "rocksdb/db.h"
 #include "rocksdb/filter_policy.h"
@@ -175,7 +179,8 @@ class InternalKey {
   }
 
   Slice user_key() const { return ExtractUserKey(rep_); }
-  size_t size() { return rep_.size(); }
+  size_t size() const { return rep_.size(); }
+  bool empty() const { return rep_.empty(); }
 
   void SetFrom(const ParsedInternalKey& p) {
     rep_.clear();
@@ -194,6 +199,19 @@ class InternalKey {
       : rep_(slice.data(), slice.size()) {
   }
 };
+
+class BoundaryValuesExtractor {
+ public:
+  virtual Status Decode(UserBoundaryTag tag, Slice data, UserBoundaryValuePtr* value) = 0;
+  virtual Status Extract(Slice user_key, Slice value, UserBoundaryValues* values) = 0;
+ protected:
+  ~BoundaryValuesExtractor() {}
+};
+
+yb::Result<FileBoundaryValues<InternalKey>> MakeFileBoundaryValues(
+    BoundaryValuesExtractor* extractor,
+    const Slice& key,
+    const Slice& value);
 
 // Create FileBoundaryValues from specified user_key, seqno, value_type.
 inline FileBoundaryValues<InternalKey> MakeFileBoundaryValues(

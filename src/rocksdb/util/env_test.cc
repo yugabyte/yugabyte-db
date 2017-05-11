@@ -483,7 +483,7 @@ bool ioctl_support__FS_IOC_GETVERSION(const std::string& dir) {
   do {
     fd = open(file.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0644);
   } while (fd < 0 && errno == EINTR);
-  long int version;
+  int version;
   bool ok = (fd >= 0 && ioctl(fd, FS_IOC_GETVERSION, &version) >= 0);
 
   close(fd);
@@ -502,7 +502,7 @@ bool ioctl_support__FS_IOC_GETVERSION(const std::string& dir) {
 
 class IoctlFriendlyTmpdir {
  public:
-  explicit IoctlFriendlyTmpdir() {
+  IoctlFriendlyTmpdir() {
     char dir_buf[100];
     std::list<std::string> candidate_dir_list = {"/var/tmp", "/tmp"};
 
@@ -569,14 +569,14 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
   // Get Unique ID
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
   size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
-  ASSERT_TRUE(id_size > 0);
+  ASSERT_GT(id_size, 0);
   std::string unique_id1(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id1));
 
   // Get Unique ID again
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
   id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
-  ASSERT_TRUE(id_size > 0);
+  ASSERT_GT(id_size, 0);
   std::string unique_id2(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id2));
 
@@ -584,7 +584,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
   env_->SleepForMicroseconds(1000000);
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
   id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
-  ASSERT_TRUE(id_size > 0);
+  ASSERT_GT(id_size, 0);
   std::string unique_id3(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id3));
 
@@ -654,17 +654,18 @@ TEST_F(EnvPosixTest, AllocateTest) {
   wfile.reset();
 
   stat(fname.c_str(), &f_stat);
-  ASSERT_EQ((unsigned int)data.size(), f_stat.st_size);
+  ASSERT_EQ(data.size(), static_cast<size_t>(f_stat.st_size));
   // verify that preallocated blocks were deallocated on file close
   // Because the FS might give us more blocks, we add a full page to the size
   // and expect the number of blocks to be less or equal to that.
-  ASSERT_GE((f_stat.st_size + kPageSize + kBlockSize - 1) / kBlockSize, (unsigned int)f_stat.st_blocks);
+  ASSERT_GE((f_stat.st_size + kPageSize + kBlockSize - 1) / kBlockSize,
+            static_cast<size_t>(f_stat.st_blocks));
 }
 #endif  // ROCKSDB_FALLOCATE_PRESENT
 
 // Returns true if any of the strings in ss are the prefix of another string.
 bool HasPrefix(const std::unordered_set<std::string>& ss) {
-  for (const std::string& s: ss) {
+  for (const std::string& s : ss) {
     if (s.empty()) {
       return true;
     }
@@ -695,21 +696,21 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDConcurrent) {
 
   // Collect and check whether the IDs are unique.
   std::unordered_set<std::string> ids;
-  for (const std::string fname: fnames) {
+  for (const std::string fname : fnames) {
     unique_ptr<RandomAccessFile> file;
     std::string unique_id;
     ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
     size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
-    ASSERT_TRUE(id_size > 0);
+    ASSERT_GT(id_size, 0);
     unique_id = std::string(temp_id, id_size);
     ASSERT_TRUE(IsUniqueIDValid(unique_id));
 
-    ASSERT_TRUE(ids.count(unique_id) == 0);
+    ASSERT_EQ(ids.count(unique_id), 0);
     ids.insert(unique_id);
   }
 
   // Delete the files
-  for (const std::string fname: fnames) {
+  for (const std::string fname : fnames) {
     ASSERT_OK(env_->DeleteFile(fname));
   }
 
@@ -738,12 +739,12 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDDeletes) {
       unique_ptr<RandomAccessFile> file;
       ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
       size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
-      ASSERT_TRUE(id_size > 0);
+      ASSERT_GT(id_size, 0);
       unique_id = std::string(temp_id, id_size);
     }
 
     ASSERT_TRUE(IsUniqueIDValid(unique_id));
-    ASSERT_TRUE(ids.count(unique_id) == 0);
+    ASSERT_EQ(ids.count(unique_id), 0);
     ids.insert(unique_id);
 
     // Delete the file
@@ -876,6 +877,13 @@ TEST_F(EnvPosixTest, LogBufferTest) {
   ASSERT_EQ(10, test_logger.char_x_count);
 }
 
+struct BufferedLogRecord {
+  const char* file;
+  int line;
+  struct timeval now_tv;  // Timestamp of the log
+  char message[1];        // Beginning of log message
+};
+
 class TestLogger2 : public Logger {
  public:
   explicit TestLogger2(size_t max_log_size) : max_log_size_(max_log_size) {}
@@ -887,10 +895,9 @@ class TestLogger2 : public Logger {
       va_list backup_ap;
       va_copy(backup_ap, ap);
       int n = vsnprintf(new_format, sizeof(new_format) - 1, format, backup_ap);
-      // 48 bytes for extra information + bytes allocated
-      ASSERT_TRUE(
-          n <= 48 + static_cast<int>(max_log_size_ - sizeof(struct timeval)));
-      ASSERT_TRUE(n > static_cast<int>(max_log_size_ - sizeof(struct timeval)));
+      // We allocate max_log_size memory per record.
+      // Begin of block is taken by header, and 1 byte is taken by zero terminator.
+      ASSERT_EQ(static_cast<int>(max_log_size_ - LogBuffer::HeaderSize() - 1), n);
       va_end(backup_ap);
     }
   }

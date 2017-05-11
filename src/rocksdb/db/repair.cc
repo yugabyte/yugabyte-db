@@ -147,8 +147,7 @@ class Repairer {
   std::string const dbname_;
   Env* const env_;
   const InternalKeyComparator icmp_;
-  std::vector<std::unique_ptr<IntTblPropCollectorFactory>>
-      int_tbl_prop_collector_factories_;
+  IntTblPropCollectorFactories int_tbl_prop_collector_factories_;
   const Options options_;
   const ImmutableCFOptions ioptions_;
   std::shared_ptr<Cache> raw_table_cache_;
@@ -291,12 +290,23 @@ class Repairer {
       ro.total_order_seek = true;
       Arena arena;
       ScopedArenaIterator iter(mem->NewIterator(ro, &arena));
-      status = BuildTable(
-          dbname_, env_, ioptions_, env_options_, table_cache_, iter.get(),
-          &meta, icmp_, &int_tbl_prop_collector_factories_,
-          TablePropertiesCollectorFactory::Context::kUnknownColumnFamily, {},
-          kMaxSequenceNumber, kNoCompression, CompressionOptions(), false,
-          nullptr);
+      status = BuildTable(dbname_,
+                          env_,
+                          ioptions_,
+                          env_options_,
+                          table_cache_,
+                          iter.get(),
+                          &meta,
+                          icmp_,
+                          int_tbl_prop_collector_factories_,
+                          TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
+                          {},
+                          kMaxSequenceNumber,
+                          kNoCompression,
+                          CompressionOptions(),
+                          /* paranoid_file_checks */ false,
+                          /* internal_stats */ nullptr,
+                          options_.boundary_extractor.get());
     }
     delete mem->Unref();
     delete cf_mems_default;

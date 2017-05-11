@@ -268,12 +268,14 @@ class TableConstructor: public Constructor {
     soptions.use_mmap_reads = ioptions.allow_mmap_reads;
     file_writer_.reset(test::GetWritableFileWriter(new test::StringSink()));
     unique_ptr<TableBuilder> builder;
-    std::vector<std::unique_ptr<IntTblPropCollectorFactory>>
-        int_tbl_prop_collector_factories;
+    IntTblPropCollectorFactories int_tbl_prop_collector_factories;
     builder.reset(ioptions.table_factory->NewTableBuilder(
-        TableBuilderOptions(ioptions, internal_comparator,
-                            &int_tbl_prop_collector_factories,
-                            options.compression, CompressionOptions(), false),
+        TableBuilderOptions(ioptions,
+                            internal_comparator,
+                            int_tbl_prop_collector_factories,
+                            options.compression,
+                            CompressionOptions(),
+                            /* skip_filters */ false),
         TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
         file_writer_.get()));
 
@@ -1919,11 +1921,14 @@ TEST_F(PlainTableTest, BasicPlainTableProperties) {
   Options options;
   const ImmutableCFOptions ioptions(options);
   InternalKeyComparator ikc(options.comparator);
-  std::vector<std::unique_ptr<IntTblPropCollectorFactory>>
-      int_tbl_prop_collector_factories;
+  IntTblPropCollectorFactories int_tbl_prop_collector_factories;
   std::unique_ptr<TableBuilder> builder(factory.NewTableBuilder(
-      TableBuilderOptions(ioptions, ikc, &int_tbl_prop_collector_factories,
-                          kNoCompression, CompressionOptions(), false),
+      TableBuilderOptions(ioptions,
+                          ikc,
+                          int_tbl_prop_collector_factories,
+                          kNoCompression,
+                          CompressionOptions(),
+                          /* skip_filters */ false),
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
       file_writer.get()));
 

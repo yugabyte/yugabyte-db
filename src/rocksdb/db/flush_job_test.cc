@@ -7,6 +7,8 @@
 #include <map>
 #include <string>
 
+#include <boost/functional/hash.hpp>
+
 #include "db/flush_job.h"
 #include "db/column_family.h"
 #include "db/version_set.h"
@@ -38,6 +40,7 @@ class FlushJobTest : public testing::Test {
     EXPECT_OK(env_->CreateDirIfMissing(dbname_));
     db_options_.db_paths.emplace_back(dbname_,
                                       std::numeric_limits<uint64_t>::max());
+    db_options_.boundary_extractor = test::MakeBoundaryValuesExtractor();
     // TODO(icanadi) Remove this once we mock out VersionSet
     NewDB();
     std::vector<ColumnFamilyDescriptor> column_families;
@@ -113,12 +116,16 @@ TEST_F(FlushJobTest, NonEmpty) {
   //   largest_key    = "9999"
   //   smallest_seqno = 1
   //   smallest_seqno = 9999
+
+  test::BoundaryTestValues values;
+
   for (int i = 1; i < 10000; ++i) {
     std::string key(ToString((i + 1000) % 10000));
     std::string value("value" + key);
     new_mem->Add(SequenceNumber(i), kTypeValue, key, value);
     InternalKey internal_key(key, SequenceNumber(i), kTypeValue);
     inserted_keys.insert({internal_key.Encode().ToString(), value});
+    values.Feed(key);
   }
 
   autovector<MemTable*> to_delete;
@@ -141,6 +148,7 @@ TEST_F(FlushJobTest, NonEmpty) {
   ASSERT_EQ(ToString(9999), fd.largest.key.user_key().ToString());
   ASSERT_EQ(1, fd.smallest.seqno);
   ASSERT_EQ(9999, fd.largest.seqno);
+  values.Check(fd.smallest, fd.largest);
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();
 }

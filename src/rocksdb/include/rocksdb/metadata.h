@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include "rocksdb/types.h"
 
 namespace rocksdb {
@@ -53,11 +55,60 @@ struct LevelMetaData {
   const std::vector<SstFileMetaData> files;
 };
 
-template<class KeyType>
-struct FileBoundaryValues {
-  KeyType key;                          // Boundary key in the file.
-  SequenceNumber seqno;                 // Boundary sequence number in file.
+typedef uint32_t UserBoundaryTag;
+
+class UserBoundaryValue {
+ public:
+  virtual UserBoundaryTag Tag() = 0;
+  virtual Slice Encode() = 0;
+  virtual int CompareTo(const UserBoundaryValue& rhs) = 0;
+ protected:
+  ~UserBoundaryValue() {}
 };
+
+typedef std::shared_ptr<UserBoundaryValue> UserBoundaryValuePtr;
+typedef boost::container::small_vector_base<UserBoundaryValuePtr> UserBoundaryValues;
+
+struct FileBoundaryValuesBase {
+  SequenceNumber seqno; // Boundary sequence number in file.
+  // We expect that there will be just a few user values, so use small_vector for it.
+  boost::container::small_vector<UserBoundaryValuePtr, 10> user_values;
+};
+
+template<class KeyType>
+struct FileBoundaryValues : FileBoundaryValuesBase {
+  KeyType key; // Boundary key in the file.
+};
+
+inline UserBoundaryValuePtr UserValueWithTag(const UserBoundaryValues& values,
+                                             UserBoundaryTag tag) {
+  for (const auto& value : values) {
+    if (value->Tag() == tag)
+      return value;
+  }
+  return UserBoundaryValuePtr();
+}
+
+enum class UpdateUserValueType {
+  SMALLEST = 1,
+  LARGEST = -1,
+};
+
+inline void UpdateUserValue(UserBoundaryValues* values,
+                            const UserBoundaryValuePtr& new_value,
+                            UpdateUserValueType type) {
+  int compare_sign = static_cast<int>(type);
+  auto tag = new_value->Tag();
+  for (auto& value : *values) {
+    if (value->Tag() == tag) {
+      if (value->CompareTo(*new_value) * compare_sign > 0) {
+        value = new_value;
+      }
+      return;
+    }
+  }
+  values->push_back(new_value);
+}
 
 // The metadata that describes a SST fileset.
 struct SstFileMetaData {

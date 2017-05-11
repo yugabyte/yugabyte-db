@@ -77,6 +77,7 @@ class CompactionJobTest : public testing::Test {
         shutting_down_(false),
         mock_table_factory_(new mock::MockTableFactory()) {
     EXPECT_OK(env_->CreateDirIfMissing(dbname_));
+    db_options_.boundary_extractor = test::MakeBoundaryValuesExtractor();
     db_options_.db_paths.emplace_back(dbname_,
                                       std::numeric_limits<uint64_t>::max());
   }
@@ -102,12 +103,15 @@ class CompactionJobTest : public testing::Test {
     InternalKey smallest_key, largest_key;
     SequenceNumber smallest_seqno = kMaxSequenceNumber;
     SequenceNumber largest_seqno = 0;
+    test::BoundaryTestValues user_values;
     for (auto kv : contents) {
       ParsedInternalKey key;
       std::string skey;
       std::string value;
       std::tie(skey, value) = kv;
       ParseInternalKey(skey, &key);
+
+      user_values.Feed(key.user_key);
 
       smallest_seqno = std::min(smallest_seqno, key.sequence);
       largest_seqno = std::max(largest_seqno, key.sequence);
@@ -134,8 +138,12 @@ class CompactionJobTest : public testing::Test {
     FileMetaData::BoundaryValues smallest_values, largest_values;
     smallest_values.key = smallest_key;
     smallest_values.seqno = smallest_seqno;
+    smallest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.min_int));
+    smallest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.min_string));
     largest_values.key = largest_key;
     largest_values.seqno = largest_seqno;
+    largest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.max_int));
+    largest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.max_string));
     edit.AddFile(level,
                  FileDescriptor(file_number, 0, 10, 10),
                  smallest_values,
@@ -368,6 +376,17 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   ASSERT_EQ(3, level0_files[0]->smallest.seqno);
   ASSERT_EQ(2, level0_files[1]->largest.seqno);
   ASSERT_EQ(1, level0_files[1]->smallest.seqno);
+  auto min_int = std::min(test::GetBoundaryInt(level0_files[0]->smallest.user_values),
+                          test::GetBoundaryInt(level0_files[1]->smallest.user_values));
+  auto max_int = std::max(test::GetBoundaryInt(level0_files[0]->largest.user_values),
+                          test::GetBoundaryInt(level0_files[1]->largest.user_values));
+  ASSERT_LE(min_int, max_int);
+
+  auto min_string = std::min(test::GetBoundaryString(level0_files[0]->smallest.user_values),
+                             test::GetBoundaryString(level0_files[1]->smallest.user_values));
+  auto max_string = std::max(test::GetBoundaryString(level0_files[0]->largest.user_values),
+                             test::GetBoundaryString(level0_files[1]->largest.user_values));
+  ASSERT_LE(min_string, max_string);
 
   RunCompaction({level0_files}, expected_results);
 
@@ -377,6 +396,10 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   ASSERT_EQ(1, level1_files.size());
   ASSERT_EQ(4, level1_files[0]->largest.seqno);
   ASSERT_EQ(0, level1_files[0]->smallest.seqno);  // kv's seq number gets zeroed out.
+  ASSERT_EQ(min_int, test::GetBoundaryInt(level1_files[0]->smallest.user_values));
+  ASSERT_EQ(max_int, test::GetBoundaryInt(level1_files[0]->largest.user_values));
+  ASSERT_EQ(min_string, test::GetBoundaryString(level1_files[0]->smallest.user_values));
+  ASSERT_EQ(max_string, test::GetBoundaryString(level1_files[0]->largest.user_values));
 }
 
 

@@ -1456,14 +1456,25 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
       std::vector<SequenceNumber> snapshot_seqs =
           snapshots_.GetAll(&earliest_write_conflict_snapshot);
 
-      s = BuildTable(
-          dbname_, env_, *cfd->ioptions(), env_options_, cfd->table_cache(),
-          iter.get(), &meta, cfd->internal_comparator(),
-          cfd->int_tbl_prop_collector_factories(), cfd->GetID(), snapshot_seqs,
-          earliest_write_conflict_snapshot,
-          GetCompressionFlush(*cfd->ioptions()),
-          cfd->ioptions()->compression_opts, paranoid_file_checks,
-          cfd->internal_stats(), Env::IO_HIGH, &info.table_properties);
+      s = BuildTable(dbname_,
+                     env_,
+                     *cfd->ioptions(),
+                     env_options_,
+                     cfd->table_cache(),
+                     iter.get(),
+                     &meta,
+                     cfd->internal_comparator(),
+                     cfd->int_tbl_prop_collector_factories(),
+                     cfd->GetID(),
+                     snapshot_seqs,
+                     earliest_write_conflict_snapshot,
+                     GetCompressionFlush(*cfd->ioptions()),
+                     cfd->ioptions()->compression_opts,
+                     paranoid_file_checks,
+                     cfd->internal_stats(),
+                     db_options_.boundary_extractor.get(),
+                     Env::IO_HIGH,
+                     &info.table_properties);
       LogFlush(db_options_.info_log);
       RLOG(InfoLogLevel::DEBUG_LEVEL, db_options_.info_log,
           "[%s] [WriteLevel0TableForRecovery]"
@@ -5710,7 +5721,10 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
 Status DB::ListColumnFamilies(const DBOptions& db_options,
                               const std::string& name,
                               std::vector<std::string>* column_families) {
-  return VersionSet::ListColumnFamilies(column_families, name, db_options.env);
+  return VersionSet::ListColumnFamilies(column_families,
+                                        name,
+                                        db_options.boundary_extractor.get(),
+                                        db_options.env);
 }
 
 Snapshot::~Snapshot() {

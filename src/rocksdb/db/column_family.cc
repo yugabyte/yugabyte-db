@@ -88,8 +88,7 @@ const Comparator* ColumnFamilyHandleImpl::user_comparator() const {
 
 void GetIntTblPropCollectorFactory(
     const ColumnFamilyOptions& cf_options,
-    std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
-        int_tbl_prop_collector_factories) {
+    IntTblPropCollectorFactories* int_tbl_prop_collector_factories) {
   auto& collector_factories = cf_options.table_properties_collector_factories;
   for (size_t i = 0; i < cf_options.table_properties_collector_factories.size();
        ++i) {

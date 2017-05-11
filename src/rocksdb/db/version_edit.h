@@ -77,6 +77,12 @@ struct FileDescriptor {
   uint64_t GetBaseFileSize() const { return base_file_size; }
 };
 
+enum class UpdateBoundariesType {
+  ALL,
+  SMALLEST,
+  LARGEST,
+};
+
 struct FileMetaData {
   typedef FileBoundaryValues<InternalKey> BoundaryValues;
 
@@ -111,18 +117,10 @@ struct FileMetaData {
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
-  void UpdateBoundaries(const Slice& key, SequenceNumber seqno) {
-    if (smallest.key.size() == 0) {
-      smallest.key = InternalKey::DecodeFrom(key);
-    }
-    largest.key = InternalKey::DecodeFrom(key);
-    UpdateSeqNoBoundaries(seqno);
-  }
+  void UpdateBoundaries(InternalKey key, const FileBoundaryValuesBase& source);
 
-  void UpdateSeqNoBoundaries(SequenceNumber seqno) {
-    smallest.seqno = std::min(smallest.seqno, seqno);
-    largest.seqno = std::max(largest.seqno, seqno);
-  }
+  // Update all boundaries except key.
+  void UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source, UpdateBoundariesType type);
 };
 
 // A compressed copy of file meta data that just contain
@@ -251,7 +249,7 @@ class VersionEdit {
 
   // return true on success.
   bool EncodeTo(std::string* dst) const;
-  Status DecodeFrom(const Slice& src);
+  Status DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& src);
 
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 

@@ -3,13 +3,17 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
+#ifndef ROCKSDB_UTIL_LOG_BUFFER_H
+#define ROCKSDB_UTIL_LOG_BUFFER_H
+
 #pragma once
+
+#include <ctime>
 
 #include "rocksdb/env.h"
 #include "util/arena.h"
 #include "util/autovector.h"
 #include "port/sys_time.h"
-#include <ctime>
 
 #define LOG_TO_BUFFER(...) LogToBufferWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
 
@@ -38,6 +42,9 @@ class LogBuffer {
   // Flush all buffered log to the info log.
   void FlushBufferToLog();
 
+  static constexpr size_t HeaderSize() {
+    return offsetof(BufferedLog, message);
+  }
  private:
   // One log entry with its timestamp
   struct BufferedLog {
@@ -72,3 +79,5 @@ extern void LogToBufferWithContext(
     ...);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_LOG_BUFFER_H

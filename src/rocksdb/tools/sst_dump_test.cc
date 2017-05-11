@@ -66,9 +66,12 @@ void createSST(const std::string& base_file_name,
     data_file_writer.reset(new WritableFileWriter(std::move(data_file), EnvOptions()));
   }
   tb.reset(opts.table_factory->NewTableBuilder(
-      TableBuilderOptions(imoptions, ikc, &int_tbl_prop_collector_factories,
-                          CompressionType::kNoCompression, CompressionOptions(),
-                          false),
+      TableBuilderOptions(imoptions,
+                          ikc,
+                          int_tbl_prop_collector_factories,
+                          CompressionType::kNoCompression,
+                          CompressionOptions(),
+                          /* skip_filters */ false),
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
       base_file_writer.get(), data_file_writer.get()));
 
