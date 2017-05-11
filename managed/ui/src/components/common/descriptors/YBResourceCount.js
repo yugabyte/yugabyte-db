@@ -32,12 +32,12 @@ export default class YBResourceCount extends Component {
       kind;
 
     return (
-      <div className="quantity">
-        <div className="quantity-size">
+      <div className="yb-resource-count">
+        <div className="yb-resource-count-size">
           {size}
-          {displayUnit && <span className="quantity-unit">{displayUnit}</span>}
+          {displayUnit && <span className="yb-resource-count-unit">{displayUnit}</span>}
         </div>
-        <div className="quantity-kind">{displayKind}</div>
+        <div className="yb-resource-count-kind">{displayKind}</div>
       </div>
     );
   }
