@@ -2,12 +2,11 @@
 
 import { connect } from 'react-redux';
 import {OnPremConfigJSON} from '../../config';
-import {setOnPremConfigData} from '../../../actions/config';
+import {setOnPremConfigData} from '../../../actions/cloud';
 
 const mapStateToProps = (state) => {
   return {
-    cloud: state.cloud,
-    config: state.config
+    cloud: state.cloud
   };
 };
 

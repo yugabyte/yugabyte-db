@@ -17,25 +17,29 @@ export const GET_PROVIDER_LIST_RESPONSE = 'GET_PROVIDER_LIST_RESPONSE';
 export const GET_INSTANCE_TYPE_LIST = 'GET_INSTANCE_TYPE_LIST';
 export const GET_INSTANCE_TYPE_LIST_RESPONSE = 'GET_INSTANCE_TYPE_LIST_RESPONSE';
 
+// Create Instance Type
+export const CREATE_INSTANCE_TYPE = 'CREATE_INSTANCE_TYPE';
+export const CREATE_INSTANCE_TYPE_RESPONSE = 'CREATE_INSTANCE_TYPE_RESPONSE';
+
 export const RESET_PROVIDER_LIST = 'RESET_PROVIDER_LIST';
 
 export const GET_SUPPORTED_REGION_DATA = 'GET_SUPPORTED_REGION_DATA';
 export const GET_SUPPORTED_REGION_DATA_RESPONSE = 'GET_SUPPORTED_REGION_DATA_RESPONSE';
 
 export const CREATE_PROVIDER = 'CREATE_PROVIDER';
-export const CREATE_PROVIDER_SUCCESS = 'CREATE_PROVIDER_SUCCESS';
-export const CREATE_PROVIDER_FAILURE = 'CREATE_PROVIDER_FAILURE';
-
-export const CREATE_ONPREM_PROVIDER = 'CREATE_ONPREM_PROVIDER';
-export const CREATE_ONPREM_PROVIDER_RESPONSE = 'CREATE_ONPREM_PROVIDER_RESPONSE';
+export const CREATE_PROVIDER_RESPONSE = 'CREATE_PROVIDER_RESPONSE';
 
 export const CREATE_REGION = 'CREATE_REGION';
-export const CREATE_REGION_SUCCESS = 'CREATE_REGION_SUCCESS';
-export const CREATE_REGION_FAILURE = 'CREATE_REGION_FAILURE';
+export const CREATE_REGION_RESPONSE = 'CREATE_REGION_RESPONSE';
+
+export const CREATE_ZONE = 'CREATE_AVAILABILITY_ZONE';
+export const CREATE_ZONE_RESPONSE = 'CREATE_AVAILABILITY_ZONE_RESPONSE';
+
+export const CREATE_NODE_INSTANCE = 'CREATE_NODE_INSTANCE';
+export const CREATE_NODE_INSTANCE_RESPONSE = 'CREATE_NODE_INSTANCE_RESPONSE';
 
 export const CREATE_ACCESS_KEY = 'CREATE_ACCESS_KEY';
-export const CREATE_ACCESS_KEY_SUCCESS = 'CREATE_ACCESS_KEY_SUCCESS';
-export const CREATE_ACCESS_KEY_FAILURE = 'CREATE_ACCESS_KEY_FAILURE';
+export const CREATE_ACCESS_KEY_RESPONSE = 'CREATE_ACCESS_KEY_RESPONSE';
 
 export const INITIALIZE_PROVIDER = 'INITIALIZE_PROVIDER';
 export const INITIALIZE_PROVIDER_SUCCESS = 'INITIALIZE_PROVIDER_SUCCESS';
@@ -58,6 +62,8 @@ export const CREATE_DOCKER_PROVIDER_RESPONSE = 'CREATE_DOCKER_PROVIDER_RESPONSE'
 
 export const FETCH_CLOUD_METADATA = 'FETCH_CLOUD_METADATA';
 
+export const SET_ON_PREM_CONFIG_DATA = 'SET_ON_PREM_CONFIG_DATA';
+
 export function getProviderList() {
   const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
@@ -75,9 +81,8 @@ export function getProviderListResponse(responsePayload) {
 }
 
 export function getRegionList(providerUUID, isMultiAz) {
-  var cUUID = localStorage.getItem("customer_id");
-  const request =
-    axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}/regions?multiAZ=${isMultiAz}`);
+  const baseUrl = getProviderEndpoint(providerUUID);
+  const request = axios.get(`${baseUrl}/regions?multiAZ=${isMultiAz}`);
   return {
     type: GET_REGION_LIST,
     payload: request
@@ -92,8 +97,8 @@ export function getRegionListResponse(responsePayload) {
 }
 
 export function getInstanceTypeList(providerUUID) {
-  var cUUID = localStorage.getItem("customer_id");
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}/instance_types`);
+  const url = getProviderEndpoint(providerUUID) + '/instance_types';
+  const request = axios.get(url);
   return {
     type: GET_INSTANCE_TYPE_LIST,
     payload: request
@@ -103,6 +108,33 @@ export function getInstanceTypeList(providerUUID) {
 export function getInstanceTypeListResponse(responsePayload) {
   return {
     type: GET_INSTANCE_TYPE_LIST_RESPONSE,
+    payload: responsePayload
+  }
+}
+
+export function createInstanceType(providerCode, providerUUID, instanceTypeInfo) {
+  const formValues = {
+    'idKey': {
+      'providerCode': providerCode,
+      'instanceTypeCode': instanceTypeInfo.instanceTypeCode
+    },
+    'numCores': instanceTypeInfo.numCores,
+    'memSizeGB': instanceTypeInfo.memSizeGB,
+    'instanceTypeDetails': {
+      'volumeDetailsList': instanceTypeInfo.volumeDetailsList
+    }
+  };
+  const url = getProviderEndpoint(providerUUID) + '/instance_types';
+  const request = axios.post(url, formValues);
+  return {
+    type: CREATE_INSTANCE_TYPE,
+    payload: request
+  }
+}
+
+export function createInstanceTypeResponse(responsePayload) {
+  return {
+    type: CREATE_INSTANCE_TYPE_RESPONSE,
     payload: responsePayload
   }
 }
@@ -130,13 +162,13 @@ export function resetProviderList() {
 }
 
 export function createProvider(type, name, config) {
-  var customerUUID = localStorage.getItem("customer_id");
-  var provider = PROVIDER_TYPES.find( (providerType) => providerType.code === type );
-  var formValues = {
+  const customerUUID = localStorage.getItem("customer_id");
+  const provider = PROVIDER_TYPES.find( (providerType) => providerType.code === type );
+  const formValues = {
     'code': provider.code,
     'name': name,
     'config': config
-  }
+  };
 
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers`, formValues);
   return {
@@ -145,39 +177,16 @@ export function createProvider(type, name, config) {
   };
 }
 
-export function createProviderSuccess(result) {
+export function createProviderResponse(result) {
   return {
-    type: CREATE_PROVIDER_SUCCESS,
-    payload: result
-  };
-}
-
-export function createProviderFailure(error) {
-  return {
-    type: CREATE_PROVIDER_FAILURE,
-    payload: error
-  }
-}
-
-export function createOnPremProvider(config) {
-  var customerUUID = localStorage.getItem("customer_id");
-  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers/onprem`, config);
-  return {
-    type: CREATE_ONPREM_PROVIDER,
-    payload: request
-  };
-}
-
-export function createOnPremProviderResponse(result) {
-  return {
-    type: CREATE_ONPREM_PROVIDER_RESPONSE,
+    type: CREATE_PROVIDER_RESPONSE,
     payload: result
   };
 }
 
 export function createRegion(providerUUID, regionCode, hostVPCId) {
-  var formValues = { "code": regionCode, "hostVPCId": hostVPCId };
-  var url = getProviderEndpoint(providerUUID) + '/regions';
+  const formValues = { "code": regionCode, "hostVPCId": hostVPCId, "name": regionCode };
+  const url = getProviderEndpoint(providerUUID) + '/regions';
   const request = axios.post(url, formValues);
   return {
     type: CREATE_REGION,
@@ -185,23 +194,55 @@ export function createRegion(providerUUID, regionCode, hostVPCId) {
   };
 }
 
-export function createRegionSuccess(result) {
+export function createRegionResponse(result) {
   return {
-    type: CREATE_REGION_SUCCESS,
+    type: CREATE_REGION_RESPONSE,
     payload: result
   };
 }
 
-export function createRegionFailure(error) {
+export function createZone(providerUUID, regionUUID, zoneCode) {
+  const formValues = { "code": zoneCode, "name": zoneCode };
+  const url = getProviderEndpoint(providerUUID) + '/regions/' + regionUUID + '/zones';
+  const request = axios.post(url, formValues);
   return {
-    type: CREATE_REGION_FAILURE,
-    payload: error
+    type: CREATE_ZONE,
+    payload: request
   }
 }
 
-export function createAccessKey(providerUUID, regionUUID, keyCode) {
-  var formValues = { keyCode: keyCode, regionUUID:  regionUUID}
-  var url = getProviderEndpoint(providerUUID) + '/access_keys';
+export function createZoneResponse(result) {
+  return {
+    type: CREATE_ZONE_RESPONSE,
+    payload: result
+  };
+}
+
+export function createNodeInstance(zoneUUID, nodeInfo) {
+  const customerUUID = localStorage.getItem("customer_id");
+  const request =
+    axios.post(`${ROOT_URL}/customers/${customerUUID}/zones/${zoneUUID}/nodes`, nodeInfo);
+  return {
+    type: CREATE_NODE_INSTANCE,
+    payload: request
+  }
+}
+
+export function createNodeInstanceResponse(result) {
+  return {
+    type: CREATE_NODE_INSTANCE_RESPONSE,
+    payload: result
+  }
+}
+
+export function createAccessKey(providerUUID, regionUUID, keyInfo) {
+  const formValues = {
+    keyCode: keyInfo.code,
+    regionUUID: regionUUID,
+    keyType: "PRIVATE",
+    keyContent: keyInfo.privateKeyContent
+  };
+  const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.post(url, formValues);
   return {
     type: CREATE_ACCESS_KEY,
@@ -209,18 +250,11 @@ export function createAccessKey(providerUUID, regionUUID, keyCode) {
   };
 }
 
-export function createAccessKeySuccess(result) {
+export function createAccessKeyResponse(result) {
   return {
-    type: CREATE_ACCESS_KEY_SUCCESS,
+    type: CREATE_ACCESS_KEY_RESPONSE,
     payload: result
   };
-}
-
-export function createAccessKeyFailure(error) {
-  return {
-    type: CREATE_ACCESS_KEY_FAILURE,
-    payload: error
-  }
 }
 
 export function initializeProvider(providerUUID) {
@@ -277,7 +311,7 @@ export function resetProviderBootstrap() {
 }
 
 export function listAccessKeys(providerUUID) {
-  var url = getProviderEndpoint(providerUUID) + '/access_keys';
+  const url = getProviderEndpoint(providerUUID) + '/access_keys';
   const request = axios.get(url);
   return {
     type: LIST_ACCESS_KEYS,
@@ -327,4 +361,11 @@ export function fetchCloudMetadata() {
   return {
     type: FETCH_CLOUD_METADATA
   }
+}
+
+export function setOnPremConfigData(configData) {
+  return {
+    type: SET_ON_PREM_CONFIG_DATA,
+    payload: configData
+  };
 }

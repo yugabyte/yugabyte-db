@@ -3,13 +3,11 @@
 import { connect } from 'react-redux';
 import { AWSProviderConfiguration } from '../../config';
 import { reduxForm, reset } from 'redux-form';
-import { createProvider, createProviderSuccess, createProviderFailure,
-  createRegion, createRegionSuccess, createRegionFailure,
-  createAccessKey, createAccessKeySuccess, createAccessKeyFailure,
-  initializeProvider, initializeProviderSuccess, initializeProviderFailure,
-  deleteProvider, deleteProviderSuccess, deleteProviderFailure,
+import { createProvider, createProviderResponse, createRegion, createRegionResponse,
+  createAccessKey, createAccessKeyResponse, initializeProvider, initializeProviderSuccess,
+  initializeProviderFailure, deleteProvider, deleteProviderSuccess, deleteProviderFailure,
   resetProviderBootstrap, fetchCloudMetadata } from '../../../actions/cloud';
-import {openDialog, closeDialog} from '../../../actions/universe';
+import { openDialog, closeDialog } from '../../../actions/universe';
 
 function validate(values) {
   var errors = {};
@@ -40,30 +38,20 @@ const mapDispatchToProps = (dispatch) => {
   return {
     createProvider: (type, name, config) => {
       dispatch(createProvider(type, name, config)).then((response) => {
-        if(response.payload.status !== 200) {
-          dispatch(createProviderFailure(response.payload));
-        } else {
-          dispatch(createProviderSuccess(response.payload));
-        }
+        dispatch(createProviderResponse(response.payload));
       });
     },
+
     createRegion: (providerUUID, regionCode, hostVPCId) => {
       dispatch(createRegion(providerUUID, regionCode, hostVPCId)).then((response) => {
-        if(response.payload.status !== 200) {
-          dispatch(createRegionFailure(response.payload));
-        } else {
-          dispatch(createRegionSuccess(response.payload));
-        }
-
+        dispatch(createRegionResponse(response.payload));
       });
     },
+
     createAccessKey: (providerUUID, regionUUID, accessKeyCode) => {
-      dispatch(createAccessKey(providerUUID, regionUUID, accessKeyCode)).then((response) => {
-        if(response.payload.status !== 200) {
-          dispatch(createAccessKeyFailure(response.payload));
-        } else {
-          dispatch(createAccessKeySuccess(response.payload));
-        }
+      const keyInfo = {'code': accessKeyCode};
+      dispatch(createAccessKey(providerUUID, regionUUID, keyInfo)).then((response) => {
+        dispatch(createAccessKeyResponse(response.payload));
       });
     },
 
@@ -85,7 +73,7 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(deleteProviderSuccess(response.payload));
           dispatch(reset('awsConfigForm'));
         }
-      })
+      });
     },
 
     resetProviderBootstrap: () => {

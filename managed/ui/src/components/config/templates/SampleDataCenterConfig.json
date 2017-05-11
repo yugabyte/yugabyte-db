@@ -1,41 +1,43 @@
 {
-  "identification": {
+  "provider": {
     "name": "My DC"
   },
-  "description": {
-    "instanceTypes": [{
-      "code": "type.large",
-      "volumeDetailsList": [{
-        "volumeSizeGB": 100,
-        "volumeType": "SSD",
-        "mountPath": "/mnt/d0"
-      },{
-        "volumeSizeGB": 100,
-        "volumeType": "SSD",
-        "mountPath": "/mnt/d1"
-      }]
-    }],
-    "regions": [{
-      "code": "region1",
-      "zones": [{
-        "code": "region1-a",
-        "nodes": [{
-          "ip": "10.20.30.40",
-          "instanceTypeCode": "type.large"
-        }]
-      },{
-        "code": "region1-b",
-        "nodes": [{
-          "ip": "10.20.30.41",
-          "instanceTypeCode": "type.large"
-        }]
-      },{
-        "code": "region1-c",
-        "nodes": [{
-          "ip": "10.20.30.42",
-          "instanceTypeCode": "type.large"
-        }]
-      }]
+  "instanceTypes": [{
+    "instanceTypeCode": "type.large",
+    "numCores": 4,
+    "memSizeGB": 16,
+    "volumeDetailsList": [{
+      "volumeSizeGB": 100,
+      "volumeType": "SSD",
+      "mountPath": "/mnt/d0"
+    },{
+      "volumeSizeGB": 100,
+      "volumeType": "SSD",
+      "mountPath": "/mnt/d1"
     }]
+  }],
+  "regions": [{
+    "code": "region1",
+    "zones": ["region1-a", "region1-b", "region1-c"]
+  }],
+  "nodes": [{
+    "ip": "10.20.30.40",
+    "region": "region1",
+    "zone": "region1-a",
+    "instanceType": "type.large"
+  },{
+    "ip": "10.20.30.41",
+    "region": "region1",
+    "zone": "region1-b",
+    "instanceType": "type.large"
+  },{
+    "ip": "10.20.30.42",
+    "region": "region1",
+    "zone": "region1-c",
+    "instanceType": "type.large"
+  }],
+  "key": {
+    "code": "my-key",
+    "privateKeyContent": "-----BEGIN RSA PRIVATE KEY-----\nxxxxxxxxxx\n-----END RSA PRIVATE KEY-----"
   }
 }

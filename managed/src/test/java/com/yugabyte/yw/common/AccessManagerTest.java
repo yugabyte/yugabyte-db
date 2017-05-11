@@ -20,6 +20,10 @@ import play.libs.Json;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -53,8 +57,11 @@ import static org.mockito.Mockito.when;
   ArgumentCaptor<ArrayList> command;
   ArgumentCaptor<HashMap> cloudCredentials;
 
-  static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
-  static String TMP_KEYS_PATH = TMP_STORAGE_PATH + "/keys";
+  final static String TMP_STORAGE_PATH = "/tmp/yugaware_tests";
+  final static String TMP_KEYS_PATH = TMP_STORAGE_PATH + "/keys";
+  final static String TEST_KEY_CODE = "test-key";
+  final static String TEST_KEY_PEM = TEST_KEY_CODE + ".pem";
+  final static String PEM_PERMISSIONS = "r--------";
 
   @Before
   public void beforeTest() {
@@ -74,11 +81,11 @@ import static org.mockito.Mockito.when;
   private JsonNode uploadKeyCommand(UUID regionUUID, boolean mimicError) {
     if (mimicError) {
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
-          new File("foo"), "test-key", AccessManager.KeyType.PRIVATE));
+          new File("foo"), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE));
     } else {
       String tmpFile = createTempFile("SOME DATA");
       return Json.toJson(accessManager.uploadKeyFile(regionUUID,
-          new File(tmpFile), "test-key", AccessManager.KeyType.PRIVATE));
+          new File(tmpFile), TEST_KEY_CODE, AccessManager.KeyType.PRIVATE));
     }
   }
 
@@ -249,7 +256,7 @@ import static org.mockito.Mockito.when;
   }
 
   @Test
-  public void testManageUploadKeyFile() {
+  public void testManageUploadKeyFile() throws IOException {
     JsonNode result = uploadKeyCommand(defaultRegion.uuid, false);
     JsonNode idKey = result.get("idKey");
     assertNotNull(idKey);
@@ -257,7 +264,12 @@ import static org.mockito.Mockito.when;
         UUID.fromString(idKey.get("providerUUID").asText()),
         idKey.get("keyCode").asText());
     assertNotNull(accessKey);
-    assertEquals("test-key.pem", accessKey.getKeyInfo().privateKey);
+    String expectedPath = String.join("/", TMP_KEYS_PATH, idKey.get("providerUUID").asText(),
+        TEST_KEY_PEM);
+    assertEquals(expectedPath, accessKey.getKeyInfo().privateKey);
+    Path keyFile = Paths.get(expectedPath);
+    String permissions = PosixFilePermissions.toString(Files.getPosixFilePermissions(keyFile));
+    assertEquals(PEM_PERMISSIONS, permissions);
   }
 
   @Test
@@ -274,12 +286,12 @@ import static org.mockito.Mockito.when;
   public void testManageUploadKeyDuplicateKeyCode() {
     AccessKey.KeyInfo keyInfo =  new AccessKey.KeyInfo();
     keyInfo.privateKey = TMP_KEYS_PATH + "/private.key";
-    AccessKey.create(defaultProvider.uuid, "test-key", keyInfo);
+    AccessKey.create(defaultProvider.uuid, TEST_KEY_CODE, keyInfo);
     try {
       uploadKeyCommand(defaultRegion.uuid, false);
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(),
-          equalTo("Duplicate Access KeyCode: test-key")));
+          equalTo("Duplicate Access KeyCode: " + TEST_KEY_CODE)));
     }
   }
 
@@ -287,13 +299,13 @@ import static org.mockito.Mockito.when;
   public void testManageUploadKeyExistingKeyFile() throws IOException {
     String providerKeysPath = "keys/"  + defaultProvider.uuid;
     new File(TMP_KEYS_PATH, providerKeysPath).mkdirs();
-    createTempFile(providerKeysPath + "/test-key.pem", "PRIVATE_KEY_FILE");
+    createTempFile(providerKeysPath + "/" + TEST_KEY_PEM, "PRIVATE_KEY_FILE");
 
     try {
       uploadKeyCommand(defaultRegion.uuid, false);
     } catch (RuntimeException re) {
       assertThat(re.getMessage(), allOf(notNullValue(),
-          equalTo("File test-key.pem already exists.")));
+          equalTo("File " + TEST_KEY_PEM + " already exists.")));
     }
   }
 

@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.forms;
 
-import java.util.UUID;
-
 import play.data.validation.Constraints;
 
 /**

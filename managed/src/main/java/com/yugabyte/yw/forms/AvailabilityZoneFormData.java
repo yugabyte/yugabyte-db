@@ -16,7 +16,5 @@ public class AvailabilityZoneFormData {
   @Constraints.MinLength(5)
   public String name;
 
-  @Constraints.Required()
-  @Constraints.MinLength(5)
   public String subnet;
 }

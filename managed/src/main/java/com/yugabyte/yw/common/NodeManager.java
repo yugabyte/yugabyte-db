@@ -82,8 +82,7 @@ public class NodeManager extends DevopsBase {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         Universe.get(params.universeUUID).getUniverseDetails().userIntent;
 
-    // TODO: [ENG-1242] we shouldn't be using our keypair,
-    // until we fix our VPC to support VPN
+    // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
     if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase("yugabyte-default")) {
       AccessKey accessKey = AccessKey.get(params.getProvider().uuid, userIntent.accessKeyCode);
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
@@ -97,8 +96,8 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--private_key_file");
         subCommand.add(keyInfo.privateKey);
 
-        // We only need to include keyPair name for setup server call.
-        if (params instanceof AnsibleSetupServer.Params) {
+        // We only need to include keyPair name for setup server call and if this is aws.
+        if (params instanceof AnsibleSetupServer.Params && params.cloud.equals(Common.CloudType.aws)) {
           subCommand.add("--key_pair_name");
           subCommand.add(userIntent.accessKeyCode);
           // Also we will add the security group name
@@ -113,7 +112,7 @@ public class NodeManager extends DevopsBase {
 
   private List<String> getDeviceArgs(NodeTaskParams params) {
     List<String> args = new ArrayList<>();
-    if (params.deviceInfo.numVolumes != null) {
+    if (params.deviceInfo.numVolumes != null && !params.getProvider().code.equals("onprem")) {
       args.add("--num_volumes");
       args.add(Integer.toString(params.deviceInfo.numVolumes));
     } else if (params.deviceInfo.mountPoints != null)  {

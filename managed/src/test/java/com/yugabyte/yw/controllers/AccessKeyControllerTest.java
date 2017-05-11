@@ -92,7 +92,8 @@ public class AccessKeyControllerTest extends WithApplication {
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, defaultCustomer.createAuthToken());
   }
 
-  private Result createAccessKey(UUID providerUUID, String keyCode, boolean uploadFile) {
+  private Result createAccessKey(UUID providerUUID, String keyCode, boolean uploadFile,
+                                 boolean useRawString) {
     String uri = "/api/customers/" + defaultCustomer.uuid +
         "/providers/" + providerUUID + "/access_keys";
 
@@ -103,7 +104,7 @@ public class AccessKeyControllerTest extends WithApplication {
         bodyData.add(new Http.MultipartFormData.DataPart("regionUUID", defaultRegion.uuid.toString()));
         bodyData.add(new Http.MultipartFormData.DataPart("keyType", "PRIVATE"));
         String tmpFile = createTempFile("PRIVATE KEY DATA");
-        Source<ByteString, ?> keyFile =  FileIO.fromFile(new File(tmpFile));
+        Source<ByteString, ?> keyFile = FileIO.fromFile(new File(tmpFile));
         bodyData.add(new Http.MultipartFormData.FilePart("keyFile", "test.pem",
             "application/octet-stream", keyFile));
       }
@@ -117,6 +118,10 @@ public class AccessKeyControllerTest extends WithApplication {
       if (keyCode != null) {
         bodyJson.put("keyCode", keyCode);
         bodyJson.put("regionUUID", defaultRegion.uuid.toString());
+      }
+      if(useRawString) {
+        bodyJson.put("keyType", AccessManager.KeyType.PRIVATE.toString());
+        bodyJson.put("keyContent", "PRIVATE KEY DATA");
       }
       return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri,
           defaultCustomer.createAuthToken(), bodyJson);
@@ -186,13 +191,13 @@ public class AccessKeyControllerTest extends WithApplication {
 
   @Test
   public void testCreateAccessKeyWithInvalidProviderUUID() {
-    Result result = createAccessKey(UUID.randomUUID(), "foo", false);
+    Result result = createAccessKey(UUID.randomUUID(), "foo", false, false);
     assertBadRequest(result, "Invalid Provider/Region UUID");
   }
 
   @Test
   public void testCreateAccessKeyWithInvalidParams() {
-    Result result = createAccessKey(defaultProvider.uuid, null, false);
+    Result result = createAccessKey(defaultProvider.uuid, null, false, false);
     JsonNode node = Json.parse(contentAsString(result));
     assertErrorNodeValue(node, "keyCode", "This field is required");
     assertErrorNodeValue(node, "regionUUID", "This field is required");
@@ -201,7 +206,7 @@ public class AccessKeyControllerTest extends WithApplication {
   @Test
   public void testCreateAccessKeyWithDifferentProviderUUID() {
     Provider gceProvider = ModelFactory.gceProvider(ModelFactory.testCustomer("foo@bar.com"));
-    Result result = createAccessKey(gceProvider.uuid, "key-code", false);
+    Result result = createAccessKey(gceProvider.uuid, "key-code", false, false);
     assertBadRequest(result, "Invalid Provider/Region UUID");
   }
 
@@ -209,7 +214,7 @@ public class AccessKeyControllerTest extends WithApplication {
   public void testCreateAccessKeyInDifferentRegion() {
     AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code", new AccessKey.KeyInfo());
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code")).thenReturn(accessKey);
-    Result result = createAccessKey(defaultProvider.uuid, "key-code", false);
+    Result result = createAccessKey(defaultProvider.uuid, "key-code", false, false);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json.get("idKey"), "keyCode", "key-code");
@@ -220,7 +225,7 @@ public class AccessKeyControllerTest extends WithApplication {
   public void testCreateAccessKeyWithoutKeyFile() {
     AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1")).thenReturn(accessKey);
-    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false);
+    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, false);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     assertValue(json.get("idKey"), "keyCode", "key-code-1");
@@ -236,7 +241,31 @@ public class AccessKeyControllerTest extends WithApplication {
     ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
     when(mockAccessManager.uploadKeyFile(eq(defaultRegion.uuid), any(File.class),
         eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE))).thenReturn(accessKey);
-    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", true);
+    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", true, false);
+    Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
+        updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE));
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertNotNull(json);
+    try {
+      List<String> lines = Files.readAllLines(updatedFile.getValue().toPath());
+      assertEquals(1, lines.size());
+      assertThat(lines.get(0), allOf(notNullValue(), equalTo("PRIVATE KEY DATA")));
+    } catch (IOException e) {
+      assertNull(e.getMessage());
+    }
+  }
+
+  @Test
+  public void testCreateAccessKeyWithKeyString() {
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.publicKey = "/path/to/public.key";
+    keyInfo.privateKey = "/path/to/private.key";
+    AccessKey accessKey = AccessKey.create(defaultProvider.uuid, "key-code-1", keyInfo);
+    ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
+    when(mockAccessManager.uploadKeyFile(eq(defaultRegion.uuid), any(File.class),
+        eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE))).thenReturn(accessKey);
+    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, true);
     Mockito.verify(mockAccessManager, times(1)).uploadKeyFile(eq(defaultRegion.uuid),
         updatedFile.capture(), eq("key-code-1"), eq(AccessManager.KeyType.PRIVATE));
     JsonNode json = Json.parse(contentAsString(result));
@@ -255,7 +284,7 @@ public class AccessKeyControllerTest extends WithApplication {
   public void testCreateAccessKeyWithException() {
     when(mockAccessManager.addKey(defaultRegion.uuid, "key-code-1"))
         .thenThrow(new RuntimeException("Something went wrong!!"));
-    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false);
+    Result result = createAccessKey(defaultProvider.uuid, "key-code-1", false, false);
     assertErrorResponse(result, "Unable to create access key: key-code-1");
   }
 

@@ -335,7 +335,7 @@ class YBRegionDataList extends Component {
 export default class OnPremConfigWizard extends Component {
 
   componentWillMount() {
-    this.props.initialize(this.props.config.onPremJsonFormData);
+    this.props.initialize(this.props.cloud.onPremJsonFormData);
   }
 
   /*
