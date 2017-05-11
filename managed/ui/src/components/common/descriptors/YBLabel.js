@@ -2,8 +2,6 @@
 
 import React, { Component } from 'react';
 
-import './stylesheets/YBLabel.scss'
-
 export default class YBLabel extends Component {
   render() {
     const { label, meta: { touched, error, invalid }, onLabelClick } = this.props;
