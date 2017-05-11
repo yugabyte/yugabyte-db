@@ -139,7 +139,7 @@ public class Region extends Model {
       = " select r.uuid, r.code, r.name"
       + "   from region r join provider p on p.uuid = r.provider_uuid "
       + "   left outer join availability_zone zone on zone.region_uuid = r.uuid "
-      + "  where p.uuid = :p_uuid and p.customer_uuid = :c_uuid and r.yb_image is not null"
+      + "  where p.uuid = :p_uuid and p.customer_uuid = :c_uuid"
       + "  group by r.uuid "
       + " having count(zone.uuid) >= " + minZoneCount;
 

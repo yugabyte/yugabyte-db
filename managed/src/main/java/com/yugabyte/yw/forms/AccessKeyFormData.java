@@ -15,4 +15,6 @@ public class AccessKeyFormData {
     public UUID regionUUID;
 
     public AccessManager.KeyType keyType;
+
+    public String keyContent;
 }

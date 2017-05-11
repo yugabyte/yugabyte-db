@@ -25,7 +25,6 @@ POST    /api/customers/:cUUID/providers               com.yugabyte.yw.controller
 DELETE  /api/customers/:cUUID/providers/:pUUID        com.yugabyte.yw.controllers.CloudProviderController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/bootstrap  com.yugabyte.yw.controllers.CloudProviderController.bootstrap(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/cleanup  com.yugabyte.yw.controllers.CloudProviderController.cleanup(cUUID: java.util.UUID, pUUID: java.util.UUID)
-POST    /api/customers/:cUUID/providers/onprem        com.yugabyte.yw.controllers.CloudProviderController.setupOnPrem(cUUID: java.util.UUID)
 GET     /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /api/customers/:cUUID/providers/:pUUID/regions                 com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID/providers/:pUUID/regions/:rUUID          com.yugabyte.yw.controllers.RegionController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
@@ -37,7 +36,6 @@ GET     /api/customers/:cUUID/providers/:pUUID/instance_types          com.yugab
 POST    /api/customers/:cUUID/providers/:pUUID/instance_types          com.yugabyte.yw.controllers.InstanceTypeController.create(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /api/customers/:cUUID/providers/:pUUID/instance_types/:code    com.yugabyte.yw.controllers.InstanceTypeController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, code: java.lang.String)
 POST    /api/customers/:cUUID/providers/setup_docker        com.yugabyte.yw.controllers.CloudProviderController.setupDocker(cUUID: java.util.UUID)
-
 
 # Customer profile API
 GET     /api/customers/:cUUID                         com.yugabyte.yw.controllers.CustomerController.index(cUUID: java.util.UUID)
@@ -85,7 +83,6 @@ GET    /api/customers/:cUUID/nodes/:nodeUUID/list                      com.yugab
 GET    /api/customers/:cUUID/zones/:azUUID/nodes/list                  com.yugabyte.yw.controllers.NodeInstanceController.listByZone(cUUID: java.util.UUID, azUUID: java.util.UUID)
 POST   /api/customers/:cUUID/zones/:azUUID/nodes                       com.yugabyte.yw.controllers.NodeInstanceController.create(cUUID: java.util.UUID, azUUID: java.util.UUID)
 
-
 # Metadata API
 GET    /api/metadata/column_types                     com.yugabyte.yw.controllers.TablesController.getColumnTypes()
 GET    /api/metadata/ebs_types                        com.yugabyte.yw.controllers.InstanceTypeController.getEBSTypes()
@@ -98,7 +95,6 @@ GET    /api/metadata/ebs_types                        com.yugabyte.yw.controller
 
 # Returns the list of masters for a given instance.
 GET     /metamaster/universe/:universeUUID            com.yugabyte.yw.controllers.MetaMasterController.get(universeUUID: java.util.UUID)
-
 
 ###################################################################################################
 #

@@ -5,7 +5,8 @@ import { ROOT_URL } from '../config';
 export const PROVIDER_TYPES = [
   { code: "aws", name: "Amazon" },
   { code: "docker", name: "Docker Localhost" },
-  { code: "gcp", name: "Google" }
+  { code: "gcp", name: "Google" },
+  { code: "onprem", name: "On Premises"}
 ]
 
 export function getProviderEndpoint(providerUUID) {

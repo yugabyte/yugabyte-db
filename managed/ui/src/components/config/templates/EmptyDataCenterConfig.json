@@ -1,25 +1,31 @@
 {
-  "identification": {
+  "provider": {
     "name": ""
   },
-  "description": {
-    "instanceTypes": [{
-      "code": "",
-      "volumeDetailsList": [{
-        "volumeSizeGB": 0,
-        "volumeType": "",
-        "mountPath": ""
-      }]
-    }],
-    "regions": [{
-      "code": "",
-      "zones": [{
-        "code": "",
-        "nodes": [{
-          "ip": "",
-          "instanceTypeCode": ""
-        }]
-      }]
+  "instanceTypes": [{
+    "instanceTypeCode": "",
+    "numCores": 0,
+    "memSizeGB": 0,
+    "volumeDetailsList": [{
+      "volumeSizeGB": 0,
+      "volumeType": "",
+      "mountPath": ""
     }]
+  }],
+  "regions": [{
+    "code": "",
+    "zones": [{
+      "code": ""
+    }]
+  }],
+  "nodes": [{
+    "ip": "",
+    "region": "",
+    "zone": "",
+    "instanceType": ""
+  }],
+  "key": {
+    "code": "",
+    "privateKeyContent": ""
   }
 }

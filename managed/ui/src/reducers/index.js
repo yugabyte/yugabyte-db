@@ -7,7 +7,6 @@ import UniverseReducer from './reducer_universe';
 import GraphReducer from './reducer_graph';
 import TasksReducer from './reducer_tasks';
 import TablesReducer from './reducer_tables';
-import ConfigReducer from './reducer_config';
 import { reducer as formReducer } from 'redux-form';
 
 const rootReducer = combineReducers({
@@ -17,8 +16,7 @@ const rootReducer = combineReducers({
   form: formReducer,
   graph: GraphReducer,
   tasks: TasksReducer,
-  tables: TablesReducer,
-  config: ConfigReducer
+  tables: TablesReducer
 });
 
 export default rootReducer;
