@@ -172,10 +172,16 @@ export default class UniverseForm extends Component {
     });
     let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
     let volumeDetail = volumesList[0];
+    let mountPoints = null;
+    if (instanceTypeSelected.providerCode === "onprem") {
+      mountPoints = instanceTypeSelected.instanceTypeDetails.volumeDetailsList.map(function(item) {
+        return item.mountPath;
+      }).join(",");
+    }
     let deviceInfo = {
       volumeSize: volumeDetail.volumeSizeGB,
       numVolumes: volumesList.length,
-      mountPoints: null,
+      mountPoints: mountPoints,
       ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
       diskIops: null
     };
@@ -275,10 +281,16 @@ export default class UniverseForm extends Component {
       if (isValidObject(instanceTypeSelected) && isValidArray(Object.keys(instanceTypeSelected))) {
         let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
         let volumeDetail = volumesList[0];
+        let mountPoints = null;
+        if (instanceTypeSelected.providerCode === "onprem") {
+          mountPoints = instanceTypeSelected.instanceTypeDetails.volumeDetailsList.map(function(item) {
+            return item.mountPath;
+          }).join(",");
+        }
         let deviceInfo = {
           volumeSize: volumeDetail.volumeSizeGB,
           numVolumes: volumesList.length,
-          mountPoints: null,
+          mountPoints: mountPoints,
           ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
           diskIops: null,
         };
@@ -454,10 +466,19 @@ export default class UniverseForm extends Component {
                    onInputChanged={self.ebsTypeChanged}/>
           </span>;
       } else if (self.state.volumeType === 'SSD') {
+        let mountPointsDetail = <span />;
+        if (self.state.deviceInfo.mountPoints != null) {
+          mountPointsDetail =
+            <span>
+              <label className="form-item-label">Mount Points</label>
+              {self.state.deviceInfo.mountPoints}
+            </span>;
+        }
         deviceDetail =
           <span className="volume-info">
             {self.state.deviceInfo.numVolumes} &times;&nbsp;
-            {volumeTypeFormat(self.state.deviceInfo.volumeSize)} {self.state.volumeType}
+            {volumeTypeFormat(self.state.deviceInfo.volumeSize)} {self.state.volumeType} &nbsp;
+            {mountPointsDetail}
           </span>;
       }
     }

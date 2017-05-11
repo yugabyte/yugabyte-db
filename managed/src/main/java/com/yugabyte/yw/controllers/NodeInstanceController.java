@@ -8,7 +8,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 
 import com.yugabyte.yw.common.ApiResponse;
@@ -19,7 +18,6 @@ import com.yugabyte.yw.models.NodeInstance;
 
 import play.data.Form;
 import play.data.FormFactory;
-import play.libs.Json;
 import play.mvc.Result;
 
 public class NodeInstanceController extends AuthenticatedController {

@@ -42,7 +42,7 @@ public class AvailabilityZone extends Model {
   public Boolean isActive() { return active; }
   public void setActiveFlag(Boolean active) { this.active = active; }
 
-  @Column(length = 50, nullable = false)
+  @Column(length = 50)
   public String subnet;
 
   /**

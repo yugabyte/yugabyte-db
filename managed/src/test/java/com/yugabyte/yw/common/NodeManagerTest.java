@@ -254,7 +254,7 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     if (params.deviceInfo != null) {
       DeviceInfo deviceInfo = params.deviceInfo;
-      if (deviceInfo.numVolumes != null) {
+      if (deviceInfo.numVolumes != null && !params.cloud.equals(Common.CloudType.onprem)) {
         expectedCommand.add("--num_volumes");
         expectedCommand.add(Integer.toString(deviceInfo.numVolumes));
       } else if (deviceInfo.mountPoints != null) {
@@ -328,9 +328,13 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Provision, params));
       List<String> accessKeyCommand = ImmutableList.of("--vars_file", "/path/to/vault_file",
           "--vault_password_file", "/path/to/vault_password", "--private_key_file",
-          "/path/to/private.key", "--key_pair_name", userIntent.accessKeyCode,
-          "--security_group", "yb-" +  t.region.code + "-sg");
+          "/path/to/private.key");
       expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, accessKeyCommand);
+      if (params.cloud.equals(Common.CloudType.aws)) {
+        List<String> awsAccessKeyCommands = ImmutableList.of("--key_pair_name",
+            userIntent.accessKeyCode, "--security_group", "yb-" +  t.region.code + "-sg");
+        expectedCommand.addAll(expectedCommand.size() - accessKeyIndexOffset, awsAccessKeyCommands);
+      }
 
       nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
       verify(shellProcessHandler, times(1)).run(expectedCommand, t.region.provider.getConfig());

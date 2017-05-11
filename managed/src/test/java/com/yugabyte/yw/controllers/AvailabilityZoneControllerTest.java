@@ -103,7 +103,6 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
         Json.newObject(), BAD_REQUEST);
     assertErrorNodeValue(json, "code", "This field is required");
     assertErrorNodeValue(json, "name", "This field is required");
-    assertErrorNodeValue(json, "subnet", "This field is required");
   }
 
   @Test

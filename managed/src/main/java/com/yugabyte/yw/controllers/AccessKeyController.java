@@ -18,112 +18,125 @@ import play.mvc.Http;
 import play.mvc.Result;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
 public class AccessKeyController extends AuthenticatedController {
-    @Inject
-    FormFactory formFactory;
+  @Inject
+  FormFactory formFactory;
 
-    @Inject
-    AccessManager accessManager;
+  @Inject
+  AccessManager accessManager;
 
-    public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AccessKeyController.class);
 
-    public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
-        String validationError = validateUUIDs(customerUUID, providerUUID);
-        if (validationError != null) {
-            return ApiResponse.error(BAD_REQUEST, validationError);
-        }
-
-        AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-        if (accessKey == null) {
-            return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
-        }
-        return ApiResponse.success(accessKey);
+  public Result index(UUID customerUUID, UUID providerUUID, String keyCode) {
+    String validationError = validateUUIDs(customerUUID, providerUUID);
+    if (validationError != null) {
+      return ApiResponse.error(BAD_REQUEST, validationError);
     }
 
-    public Result list(UUID customerUUID, UUID providerUUID) {
-        String validationError = validateUUIDs(customerUUID, providerUUID);
-        if (validationError != null) {
-            return ApiResponse.error(BAD_REQUEST, validationError);
-        }
+    AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
+    if (accessKey == null) {
+      return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
+    }
+    return ApiResponse.success(accessKey);
+  }
 
-        List<AccessKey> accessKeys;
-        try {
-            accessKeys = AccessKey.getAll(providerUUID);
-        } catch (Exception e) {
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-        }
-        return ApiResponse.success(accessKeys);
+  public Result list(UUID customerUUID, UUID providerUUID) {
+    String validationError = validateUUIDs(customerUUID, providerUUID);
+    if (validationError != null) {
+      return ApiResponse.error(BAD_REQUEST, validationError);
     }
 
+    List<AccessKey> accessKeys;
+    try {
+      accessKeys = AccessKey.getAll(providerUUID);
+    } catch (Exception e) {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+    return ApiResponse.success(accessKeys);
+  }
 
-    public Result create(UUID customerUUID, UUID providerUUID) {
-      Form<AccessKeyFormData> formData = formFactory.form(AccessKeyFormData.class).bindFromRequest();
-      if (formData.hasErrors()) {
-        return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+  public Result create(UUID customerUUID, UUID providerUUID) {
+    Form<AccessKeyFormData> formData = formFactory.form(AccessKeyFormData.class).bindFromRequest();
+    if (formData.hasErrors()) {
+      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
+    }
+
+    UUID regionUUID = formData.get().regionUUID;
+    Region region = Region.get(customerUUID, providerUUID, regionUUID);
+    if (region == null) {
+      return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID");
+    }
+
+    String keyCode = formData.get().keyCode;
+    String keyContent = formData.get().keyContent;
+    AccessManager.KeyType keyType = formData.get().keyType;
+
+    AccessKey accessKey;
+    // Check if a public/private key was uploaded as part of the request
+    Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
+    try {
+      if (multiPartBody != null) {
+        Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
+        File uploadedFile = (File) filePart.getFile();
+        if (keyType == null || uploadedFile == null) {
+          return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
+        }
+        accessKey = accessManager.uploadKeyFile(region.uuid, uploadedFile, keyCode, keyType);
+      } else if (keyContent != null && !keyContent.isEmpty()) {
+        if (keyType == null) {
+          return ApiResponse.error(BAD_REQUEST, "keyType params required.");
+        }
+        // Create temp file and fill with content
+        Path tempFile = Files.createTempFile(keyCode, keyType.getExtension());
+        Files.write(tempFile, keyContent.getBytes());
+
+        // Upload temp file to create the access key and return success/failure
+        accessKey = accessManager.uploadKeyFile(regionUUID, tempFile.toFile(), keyCode, keyType);
+      } else {
+        accessKey = accessManager.addKey(region.uuid, keyCode);
       }
+    } catch(RuntimeException | IOException e) {
+      LOG.error(e.getMessage());
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
+    }
+    return ApiResponse.success(accessKey);
+  }
 
-      UUID regionUUID = formData.get().regionUUID;
-      Region region = Region.get(customerUUID, providerUUID, regionUUID);
-      if (region == null) {
-        return ApiResponse.error(BAD_REQUEST, "Invalid Provider/Region UUID");
-      }
-
-      String keyCode = formData.get().keyCode;
-      AccessManager.KeyType keyType = formData.get().keyType;
-
-      AccessKey accessKey;
-      // Check if a public/private key was uploaded as part of the request
-      Http.MultipartFormData multiPartBody = request().body().asMultipartFormData();
-      try {
-        if (multiPartBody != null) {
-          Http.MultipartFormData.FilePart filePart = multiPartBody.getFile("keyFile");
-          File uploadedFile = (File) filePart.getFile();
-          if (keyType == null || uploadedFile == null) {
-            return ApiResponse.error(BAD_REQUEST, "keyType and keyFile params required.");
-          }
-          accessKey = accessManager.uploadKeyFile(region.uuid, uploadedFile, keyCode, keyType);
-        } else {
-          accessKey = accessManager.addKey(region.uuid, keyCode);
-        }
-      } catch(RuntimeException re) {
-        LOG.error(re.getMessage());
-        return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to create access key: " + keyCode);
-      }
-      return ApiResponse.success(accessKey);
+  public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
+    String validationError = validateUUIDs(customerUUID, providerUUID);
+    if (validationError != null) {
+      return ApiResponse.error(BAD_REQUEST, validationError);
     }
 
-    public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
-        String validationError = validateUUIDs(customerUUID, providerUUID);
-        if (validationError != null) {
-            return ApiResponse.error(BAD_REQUEST, validationError);
-        }
-
-        AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
-        if (accessKey == null) {
-            return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
-        }
-
-        if (accessKey.delete()) {
-            return ApiResponse.success("Deleted KeyCode: " + keyCode);
-        } else {
-            return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete KeyCode: " + keyCode);
-        }
+    AccessKey accessKey = AccessKey.get(providerUUID, keyCode);
+    if (accessKey == null) {
+      return ApiResponse.error(BAD_REQUEST, "KeyCode not found: " + keyCode);
     }
 
-    private String validateUUIDs(UUID customerUUID, UUID providerUUID) {
-        Customer customer = Customer.get(customerUUID);
-        if (customer == null) {
-            return "Invalid Customer UUID: " + customerUUID;
-        }
-        Provider provider = Provider.find.where()
-            .eq("customer_uuid", customerUUID)
-            .idEq(providerUUID).findUnique();
-        if (provider == null) {
-            return "Invalid Provider UUID: " + providerUUID;
-        }
-        return null;
+    if (accessKey.delete()) {
+      return ApiResponse.success("Deleted KeyCode: " + keyCode);
+    } else {
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Unable to delete KeyCode: " + keyCode);
     }
+  }
+
+  private String validateUUIDs(UUID customerUUID, UUID providerUUID) {
+    Customer customer = Customer.get(customerUUID);
+    if (customer == null) {
+      return "Invalid Customer UUID: " + customerUUID;
+    }
+    Provider provider = Provider.find.where()
+        .eq("customer_uuid", customerUUID)
+        .idEq(providerUUID).findUnique();
+    if (provider == null) {
+      return "Invalid Provider UUID: " + providerUUID;
+    }
+    return null;
+  }
 }

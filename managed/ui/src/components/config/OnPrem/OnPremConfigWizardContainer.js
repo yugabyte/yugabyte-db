@@ -3,13 +3,12 @@
 import { connect } from 'react-redux';
 import {OnPremConfigWizard} from '../../config';
 import { reduxForm, formValueSelector  } from 'redux-form';
-import {setOnPremConfigData} from '../../../actions/config';
+import {setOnPremConfigData} from '../../../actions/cloud';
 
 const mapStateToProps = (state) => {
   const selector = formValueSelector('OnPremProviderConfigForm');
   return {
     cloud: state.cloud,
-    config: state.config,
     formValues: selector(state, 'regions')
   };
 }

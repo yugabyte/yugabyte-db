@@ -20,7 +20,7 @@ class AWSProviderConfiguration extends Component {
       bootstrapSteps: [
         {type: "provider", name: "Create Provider", state: "Initializing"},
         {type: "region", name: "Create Region and Zones", state: "Initializing"},
-        {type: "access-key", name: "Create Access Key", state: "Initializing"},
+        {type: "accessKey", name: "Create Access Key", state: "Initializing"},
         {type: "initialize", name: "Create Instance Types", state: "Initializing"}
       ]
     }
@@ -75,7 +75,7 @@ class AWSProviderConfiguration extends Component {
           this.props.createAccessKey(this.state.providerUUID, response.uuid, accessKeyCode);
           this.setState({regionUUID: response.uuid})
           break;
-        case "access-key":
+        case "accessKey":
           // TODO: change this, currently AWS initializer seems to be blocking get api.
           this.setState({bootstrapSteps: bootstrapSteps});
           this.props.initializeProvider(this.state.providerUUID);

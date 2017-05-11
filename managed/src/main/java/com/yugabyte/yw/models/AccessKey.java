@@ -49,8 +49,7 @@ public class AccessKey extends Model {
     return accessKey;
   }
 
-  private static final Find<AccessKeyId, AccessKey> find =
-      new Find<AccessKeyId, AccessKey>() {};
+  private static final Find<AccessKeyId, AccessKey> find = new Find<AccessKeyId, AccessKey>() {};
 
   public static AccessKey get(AccessKeyId accessKeyId) {
     return find.byId(accessKeyId);
