@@ -48,7 +48,7 @@ export default class RegionMap extends Component {
       ' contributors, &copy; <a href="https://carto.com/attributions">CARTO</a>';
     let regionMap =
       <Map bounds={bounds} center={[-1, 0]} zoom={1}
-           zoomControl={false} className="region-map-container" minZoom={1} maxZoom={5}
+           zoomControl={false} className="yb-region-map" minZoom={1} maxZoom={5}
            touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false} draggable={false}>
          <TileLayer
             attribution={attribution}
@@ -78,7 +78,7 @@ export default class RegionMap extends Component {
               {regionMap}
             </Col>
           </Row>
-          <Row className="map-labels">{regionLabels}</Row>
+          <Row className="yb-map-labels">{regionLabels}</Row>
         </span>
       );
     }

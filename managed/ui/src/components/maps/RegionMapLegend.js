@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import {ListGroup, ListGroupItem, Checkbox} from 'react-bootstrap';
 import { isNonEmptyArray, isEmptyArray } from 'utils/ObjectUtils';
-import './stylesheets/RegionMapLegend.css'
+import './stylesheets/RegionMapLegend.scss'
 import SelectList from 'react-widgets/lib/SelectList';
 import _ from 'lodash';
 
@@ -24,7 +24,7 @@ export default class RegionMapLegend extends Component{
       return <span />;
     }
     return (
-      <div className="region-map-legend-container">
+      <div className="yb-region-map-legend">
         <h4>Cloud Providers</h4>
         <div>
           <span>Select

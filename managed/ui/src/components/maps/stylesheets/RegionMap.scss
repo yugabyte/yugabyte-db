@@ -1,21 +1,21 @@
 /* Copyright (c) YugaByte, Inc. */
 
-.region-map-container {
-    width: 100%;
-    min-height: 30vw;
-    border-color: #d3d3d3;
-    border-style: solid;
-    border-width: 2px 1px;
-}
+.yb-region-map {
+  width: 100%;
+  min-height: 30vw;
+  border-color: #d3d3d3;
+  border-style: solid;
+  border-width: 2px 1px;
 
-.map-labels {
-  .region {
-    min-height: 100px;
-    padding-top: 12px;
-    line-height: 1.3;
+  .yb-map-labels {
+    .region {
+      min-height: 100px;
+      padding-top: 12px;
+      line-height: 1.3;
 
-    .region-name {
-      font-weight: 600;
+      .region-name {
+        font-weight: 600;
+      }
     }
   }
 }
