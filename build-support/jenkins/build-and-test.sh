@@ -325,20 +325,20 @@ if [[ $BUILD_JAVA == "1" ]]; then
   fi
   pushd "$YB_SRC_ROOT/java"
 
-  TSAN_OPTIONS+=" suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
-  TSAN_OPTIONS+=" history_size=7"
-  export TSAN_OPTIONS
+  set_asan_tsan_options
 
-  if ! build_yb_java_code_with_retries \
-      --fail-never \
-      -DbinDir="$BUILD_ROOT"/bin \
-      -Dsurefire.rerunFailingTestsCount=3 \
-      -Dfailsafe.rerunFailingTestsCount=3 \
-      clean verify 2>&1
-  then
+  java_build_cmd_line=( --fail-never -DbinDir="$BUILD_ROOT"/bin )
+  if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" \
+                                            -DskipTests clean install 2>&1; then
     EXIT_STATUS=1
-    FAILURES+=$'Java build/test failed\n'
+    FAILURES+=$'Java build failed\n'
   fi
+  log "Finished building Java code (see timing information above)"
+  if ! time build_yb_java_code_with_retries "${java_build_cmd_line[@]}" verify 2>&1; then
+    EXIT_STATUS=1
+    FAILURES+=$'Java tests failed\n'
+  fi
+  log "Finished running Java tests (see timing information above)"
   popd
 fi
 

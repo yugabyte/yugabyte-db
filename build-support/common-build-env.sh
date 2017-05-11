@@ -586,10 +586,9 @@ build_yb_java_code_filter_save_output() {
       egrep -v '^Generating .*[.]html[.][.][.]$' | \
       tee "$java_build_output_path"; then
     set +x # stop printing commands
-    # We are testing for mvn build failure with grep
-    #   since we run mvn with '--fail-never' which always returns success
-    #   '--fail-at-end' is another possibility but that skips dependent modules
-    #   so most tests are often not run -- therefore we resort to grep
+    # We are testing for mvn build failure with grep, since we run mvn with '--fail-never' which
+    # always returns success. '--fail-at-end' could have been another possibility, but that mode
+    # skips dependent modules so most tests are often not run. Therefore, we resort to grep.
     egrep "BUILD SUCCESS" "$java_build_output_path" &>/dev/null
     local mvn_exit_code=$?
     set -e
@@ -623,7 +622,7 @@ build_yb_java_code_with_retries() {
     fi
 
     if grep "Could not transfer artifact" "$java_build_output_path" >/dev/null; then
-      echo "Java build attempt $attempt failed due to temporary connectivity issues, re-trying."
+      log "Java build attempt $attempt failed due to temporary connectivity issues, re-trying."
     else
       return 1
     fi

@@ -30,7 +30,7 @@
   <name>YB commandline interface</name>
 
   <properties>
-    <spring.shell.version>1.2.0.M1</spring.shell.version>
+    <spring.shell.version>1.2.0.RELEASE</spring.shell.version>
     <jar.mainclass>org.yb.ybcli.YBCli</jar.mainclass>
   </properties>
 
@@ -74,21 +74,6 @@
       <version>${spring.shell.version}</version>
     </dependency>
   </dependencies>
-
-  <repositories>
-    <repository>
-      <id>spring-milestones</id>
-      <name>Spring Milestones</name>
-      <url>https://repo.spring.io/libs-milestone</url>
-      <snapshots>
-        <enabled>false</enabled>
-      </snapshots>
-    </repository>
-    <repository>
-      <id>spring-release</id>
-      <url>http://repo.spring.io/libs-release/</url>
-    </repository>
-  </repositories>
 
   <build>
     <plugins>
