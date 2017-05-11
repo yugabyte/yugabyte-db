@@ -131,7 +131,8 @@ class TabletServerTestBase : public YBTest {
   CHECKED_STATUS WaitForTabletRunning(const char *tablet_id) {
     scoped_refptr<tablet::TabletPeer> tablet_peer;
     RETURN_NOT_OK(mini_server_->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
-    return tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10));
+    // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
+    return tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60));
   }
 
   void UpdateTestRowRemote(int tid,
