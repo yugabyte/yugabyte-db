@@ -178,14 +178,16 @@ export default class UniverseForm extends Component {
         return item.mountPath;
       }).join(",");
     }
-    let deviceInfo = {
-      volumeSize: volumeDetail.volumeSizeGB,
-      numVolumes: volumesList.length,
-      mountPoints: mountPoints,
-      ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
-      diskIops: null
-    };
-    this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
+    if (volumeDetail) {
+      let deviceInfo = {
+        volumeSize: volumeDetail.volumeSizeGB,
+        numVolumes: volumesList.length,
+        mountPoints: mountPoints,
+        ebsType: volumeDetail.volumeType === "EBS" ? "GP2" : null,
+        diskIops: null
+      };
+      this.setState({deviceInfo: deviceInfo, volumeType: volumeDetail.volumeType});
+    }
   }
 
   numNodesChanged(value) {
