@@ -17,10 +17,6 @@ export const GET_PROVIDER_LIST_RESPONSE = 'GET_PROVIDER_LIST_RESPONSE';
 export const GET_INSTANCE_TYPE_LIST = 'GET_INSTANCE_TYPE_LIST';
 export const GET_INSTANCE_TYPE_LIST_RESPONSE = 'GET_INSTANCE_TYPE_LIST_RESPONSE';
 
-// Create Instance Type
-export const CREATE_INSTANCE_TYPE = 'CREATE_INSTANCE_TYPE';
-export const CREATE_INSTANCE_TYPE_RESPONSE = 'CREATE_INSTANCE_TYPE_RESPONSE';
-
 export const RESET_PROVIDER_LIST = 'RESET_PROVIDER_LIST';
 
 export const GET_SUPPORTED_REGION_DATA = 'GET_SUPPORTED_REGION_DATA';
@@ -28,6 +24,9 @@ export const GET_SUPPORTED_REGION_DATA_RESPONSE = 'GET_SUPPORTED_REGION_DATA_RES
 
 export const CREATE_PROVIDER = 'CREATE_PROVIDER';
 export const CREATE_PROVIDER_RESPONSE = 'CREATE_PROVIDER_RESPONSE';
+
+export const CREATE_INSTANCE_TYPE = 'CREATE_INSTANCE_TYPE';
+export const CREATE_INSTANCE_TYPE_RESPONSE = 'CREATE_INSTANCE_TYPE_RESPONSE';
 
 export const CREATE_REGION = 'CREATE_REGION';
 export const CREATE_REGION_RESPONSE = 'CREATE_REGION_RESPONSE';
@@ -140,7 +139,7 @@ export function createInstanceTypeResponse(responsePayload) {
 }
 
 export function getSupportedRegionData() {
-  var cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/regions`);
   return {
     type: GET_SUPPORTED_REGION_DATA,

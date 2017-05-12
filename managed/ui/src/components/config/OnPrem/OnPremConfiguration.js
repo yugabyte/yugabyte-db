@@ -7,6 +7,8 @@ import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
 import { isValidObject } from '../../../utils/ObjectUtils';
 
+const PROVIDER_TYPE = "onprem";
+
 export default class OnPremConfiguration extends Component {
 
   constructor(props) {
@@ -39,11 +41,11 @@ export default class OnPremConfiguration extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const { cloudBootstrap: { loading, response, error, type }} = nextProps;
+    const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
     let bootstrapSteps = this.state.bootstrapSteps;
     let currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
-      if (loading) {
+      if (promiseState.isLoading()) {
         bootstrapSteps[currentStepIndex].status = "Running";
       } else {
         bootstrapSteps[currentStepIndex].status = error ? "Error" : "Success";
@@ -69,7 +71,7 @@ export default class OnPremConfiguration extends Component {
             numAccessKeysConfigured: 0
           });
           bootstrapSteps[currentStepIndex + 1].status = "Running";
-          this.props.createOnPremInstanceTypes(response.uuid, config);
+          this.props.createOnPremInstanceTypes(PROVIDER_TYPE, response.uuid, config);
           break;
         case "instanceType":
           // Launch configuration of regions
@@ -140,7 +142,7 @@ export default class OnPremConfiguration extends Component {
 
   submitJson() {
     if (this.state.isJsonEntry) {
-      this.props.createOnPremProvider(JSON.parse(this.state.configJsonVal));
+      this.props.createOnPremProvider(PROVIDER_TYPE, JSON.parse(this.state.configJsonVal));
     }
   }
 

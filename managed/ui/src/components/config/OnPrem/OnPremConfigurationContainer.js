@@ -3,10 +3,9 @@
 import { connect } from 'react-redux';
 import { OnPremConfiguration } from '../../config';
 import { createProvider, createProviderResponse, createInstanceType, createInstanceTypeResponse,
-  createRegion, createRegionResponse, createZone,
-  createZoneResponse, createNodeInstance, createNodeInstanceResponse, createAccessKey,
-  createAccessKeyResponse, resetProviderBootstrap, fetchCloudMetadata }
-  from '../../../actions/cloud';
+  createRegion, createRegionResponse, createZone, createZoneResponse, createNodeInstance,
+  createNodeInstanceResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
+  fetchCloudMetadata } from '../../../actions/cloud';
 import { isProperObject, isValidArray } from '../../../utils/ObjectUtils';
 
 const mapStateToProps = (state) => {
@@ -35,18 +34,18 @@ const mapDispatchToProps = (dispatch) => {
       }
     },
 
-    createOnPremInstanceTypes: (providerUUID, config) => {
+    createOnPremInstanceTypes: (providerType, providerUUID, config) => {
       if (isProperObject(config) && isValidArray(config.instanceTypes)) {
         config.instanceTypes.forEach((type) => {
-          dispatch(createInstanceType("onprem", providerUUID, type)).then((response) => {
+          dispatch(createInstanceType(providerType, providerUUID, type)).then((response) => {
             dispatch(createInstanceTypeResponse(response.payload));
           })
         })
       }
     },
 
-    createOnPremProvider: (config) => {
-      dispatch(createProvider("onprem", config.provider.name, null)).then((response) => {
+    createOnPremProvider: (providerType, config) => {
+      dispatch(createProvider(providerType, config.provider.name, null)).then((response) => {
         dispatch(createProviderResponse(response.payload));
       });
     },

@@ -33,7 +33,7 @@ const INITIAL_STATE = {
   selectedProvider: null,
   error: null,
   accessKeys: {},
-  bootstrap: {},
+  bootstrap: setInitialState({}),
   dockerBootstrap: {},
   status : 'init',
   fetchMetadata: false
@@ -79,69 +79,69 @@ export default function(state = INITIAL_STATE, action) {
       return setSuccessState(state, "supportedRegionList", _.sortBy(action.payload.data, "name"));
 
     case CREATE_PROVIDER:
-      return { ...state, bootstrap: {type: 'provider', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "provider", response: null});
     case CREATE_PROVIDER_RESPONSE:
       if (action.payload.status === 200) {
-        return { ...state, bootstrap: {type: 'provider', response: action.payload.data, loading: false}};
+        return setSuccessState(state, "bootstrap", {type: "provider", response: action.payload.data});
       }
-      return { ...state, bootstrap: {type: 'provider', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "provider"});
 
     case CREATE_INSTANCE_TYPE:
-      return { ...state, bootstrap: {type: 'instanceType', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "instanceType", response: null});
     case CREATE_INSTANCE_TYPE_RESPONSE:
       if (action.payload.status === 200) {
-        return { ...state, bootstrap: {type: 'instanceType', response: action.payload.data, loading: false}};
+        return setSuccessState(state, "bootstrap", {type: "instanceType", response: action.payload.data});
       }
-      return { ...state, bootstrap: {type: 'instanceType', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "instanceType"});
 
     case CREATE_REGION:
-      return { ...state, bootstrap: {type: 'region', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "region", response: null});
     case CREATE_REGION_RESPONSE:
       if (action.payload.status === 200) {
-        return { ...state, bootstrap: {type: 'region', response: action.payload.data, loading: false}};
+        return setSuccessState(state, "bootstrap", {type: "region", response: action.payload.data});
       }
-      return { ...state, bootstrap: {type: 'region', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "region"});
 
     case CREATE_ZONE:
-      return { ...state, bootstrap: {type: 'zone', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "zone", response: null});
     case CREATE_ZONE_RESPONSE:
       if (action.payload.status === 200) {
-        return { ...state, bootstrap: {type: 'zone', response: action.payload.data, loading: false}};
+        return setSuccessState(state, "bootstrap", {type: "zone", response: action.payload.data});
       }
-      return { ...state, bootstrap: {type: 'zone', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "zone"});
 
     case CREATE_NODE_INSTANCE:
-      return { ...state, bootstrap: {type: 'node', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "node", response: null});
     case CREATE_NODE_INSTANCE_RESPONSE:
       if (action.payload.status === 200) {
-        return { ...state, bootstrap: {type: 'node', response: action.payload.data, loading: false}};
+        return setSuccessState(state, "bootstrap", {type: "node", response: action.payload.data});
       }
-      return { ...state, bootstrap: {type: 'node', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "node"});
 
     case CREATE_ACCESS_KEY:
-      return { ...state, bootstrap: {type: 'accessKey', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "accessKey", response: null});
     case CREATE_ACCESS_KEY_RESPONSE:
       if (action.payload.status === 200) {
-        return { ...state, bootstrap: {type: 'accessKey', response: action.payload.data, loading: false}};
+        return setSuccessState(state, "bootstrap", {type: "accessKey", response: action.payload.data});
       }
-      return { ...state, bootstrap: {type: 'accessKey', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "accessKey"});
 
     case INITIALIZE_PROVIDER:
-      return { ...state, bootstrap: {type: 'initialize', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "initialize", response: null});
     case INITIALIZE_PROVIDER_SUCCESS:
-      return { ...state, bootstrap: {type: 'initialize', response: action.payload.data, loading: false}};
+      return setSuccessState(state, "bootstrap", {type: "initialize", response: action.payload.data});
     case INITIALIZE_PROVIDER_FAILURE:
-      return { ...state, bootstrap: {type: 'initialize', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "initialize"});
 
     case DELETE_PROVIDER:
-      return { ...state, bootstrap: {type: 'cleanup', response: null, loading: true}};
+      return setLoadingState(state, "bootstrap", {type: "cleanup", response: null});
     case DELETE_PROVIDER_SUCCESS:
-      return { ...state, bootstrap: {type: 'cleanup', response: action.payload.data, loading: false}};
+      return setSuccessState(state, "bootstrap", {type: "cleanup", response: action.payload.data});
     case DELETE_PROVIDER_FAILURE:
-      return { ...state, bootstrap: {type: 'cleanup', error: action.payload.data.error, loading: false}};
+      return setFailureState(state, "bootstrap", action.payload.data.error, {type: "cleanup"});
 
     case RESET_PROVIDER_BOOTSTRAP:
-      return { ...state, bootstrap: {}};
+      return { ...state, bootstrap: setInitialState({})};
 
     case LIST_ACCESS_KEYS:
       return setLoadingState(state, "accessKeys", []);
