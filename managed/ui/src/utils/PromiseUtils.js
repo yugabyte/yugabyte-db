@@ -19,24 +19,23 @@ function setPromiseState(state, object, promiseState, data = null, error = null)
   });
 }
 
-export function setSuccessState(state, object, data) {
-  return setPromiseState(state, object, PromiseState.SUCCESS, data);
+export function setInitialState(initValue) {
+  return { data: initValue, promiseState: PromiseState.INIT, error: null };
 }
 
 export function setLoadingState(state, object, data = null) {
   return setPromiseState(state, object, PromiseState.LOADING, data);
 }
 
+export function setSuccessState(state, object, data) {
+  return setPromiseState(state, object, PromiseState.SUCCESS, data);
+}
+
 export function setFailureState(state, object, error, data = null) {
   return setPromiseState(state, object, PromiseState.ERROR, data, error);
 }
 
-export function setInitialState(initValue) {
-  return { data: initValue, promiseState: PromiseState.INIT, error: null };
-}
-
-export function getPromiseState(dataObject)
-{
+export function getPromiseState(dataObject) {
   if (dataObject.data && (isValidArray(dataObject.data) || !isEmptyObject(dataObject.data))) {
     return PromiseState.SUCCESS;
   } else if (isDefinedNotNull(dataObject.promiseState) && dataObject.promiseState.isSuccess()) {
