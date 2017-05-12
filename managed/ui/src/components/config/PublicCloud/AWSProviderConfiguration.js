@@ -23,7 +23,7 @@ class AWSProviderConfiguration extends Component {
         {type: "accessKey", name: "Create Access Key", state: "Initializing"},
         {type: "initialize", name: "Create Instance Types", state: "Initializing"}
       ]
-    }
+    };
   }
 
   componentWillUnmount() {
@@ -34,18 +34,18 @@ class AWSProviderConfiguration extends Component {
     const awsProviderConfig = {
       'AWS_ACCESS_KEY_ID': formValues.accessKey,
       'AWS_SECRET_ACCESS_KEY': formValues.secretKey
-    }
+    };
     this.props.createProvider(PROVIDER_TYPE, formValues.accountName, awsProviderConfig);
   }
   deleteProviderConfig(provider) {
     this.props.deleteProviderConfig(provider.uuid);
   }
   componentWillReceiveProps(nextProps) {
-    const { cloudBootstrap: { loading, response, error, type }} = nextProps;
+    const { cloudBootstrap: {data: { response, type }, error, promiseState}} = nextProps;
     const { bootstrapSteps } = this.state;
-    var currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
+    const currentStepIndex = bootstrapSteps.findIndex( (step) => step.type === type );
     if (currentStepIndex !== -1) {
-      if (loading) {
+      if (promiseState.isLoading()) {
         bootstrapSteps[currentStepIndex].state = "Running"
       } else {
         bootstrapSteps[currentStepIndex].state = error ? "Error" : "Success";
@@ -61,7 +61,7 @@ class AWSProviderConfiguration extends Component {
 
       switch (type) {
         case "provider":
-          this.setState({providerUUID: response.uuid, accountName: response.name})
+          this.setState({providerUUID: response.uuid, accountName: response.name});
           const { hostInfo } = this.props;
           if (isValidObject(hostInfo) && hostInfo["error"] === undefined) {
             this.props.createRegion(response.uuid, hostInfo["region"], hostInfo["vpc-id"]);
@@ -71,9 +71,9 @@ class AWSProviderConfiguration extends Component {
           }
           break;
         case "region":
-          var accessKeyCode = "yb-" + this.state.accountName.toLowerCase() + "-key"
+          const accessKeyCode = "yb-" + this.state.accountName.toLowerCase() + "-key";
           this.props.createAccessKey(this.state.providerUUID, response.uuid, accessKeyCode);
-          this.setState({regionUUID: response.uuid})
+          this.setState({regionUUID: response.uuid});
           break;
         case "accessKey":
           // TODO: change this, currently AWS initializer seems to be blocking get api.
@@ -97,28 +97,29 @@ class AWSProviderConfiguration extends Component {
   }
 
   render() {
-    const { handleSubmit, submitting, cloudBootstrap: { loading, type, error },
+    const { handleSubmit, submitting, cloudBootstrap: { data: { type }, promiseState, error },
       configuredProviders, configuredRegions, accessKeys, universeList } = this.props;
-    var universeExistsForProvider = false;
-    var awsProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
-    var providerConfig;
+    const awsProvider = configuredProviders.data.find((provider) => provider.code === PROVIDER_TYPE);
+    let universeExistsForProvider = false;
+    let providerConfig;
     if (isValidObject(awsProvider)) {
       if (isValidArray(configuredProviders.data) && isValidArray(universeList)){
         universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === awsProvider.uuid));
       }
 
-      var awsRegions = configuredRegions.data.filter(
+      const awsRegions = configuredRegions.data.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
 
-      var accessKeyList = "Not Configured";
+      let accessKeyList = "Not Configured";
       if (isValidObject(accessKeys) && isValidArray(accessKeys.data)) {
         accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(", ")
       }
-      var providerInfo = [
+
+      const providerInfo = [
         {name: "Account Name", data: awsProvider.name },
         {name: "Key Pair", data: accessKeyList},
-      ]
+      ];
 
       let deleteButtonDisabled = submitting || universeExistsForProvider;
       let deleteButtonClassName = "btn btn-default delete-aws-btn";
@@ -149,12 +150,12 @@ class AWSProviderConfiguration extends Component {
           <RegionMap title="All Supported Regions" regions={awsRegions} type="Root" showLabels={true}/>
         </div>
     } else {
-      var bootstrapSteps = <span />;
+      let bootstrapSteps = <span />;
       // We don't have bootstrap steps for cleanup.
       if (type && type !== "cleanup") {
-        var progressDetailsMap = this.state.bootstrapSteps.map( (step) => {
+        const progressDetailsMap = this.state.bootstrapSteps.map( (step) => {
           return { name: step.name, type: step.state }
-        })
+        });
         bootstrapSteps =
           <div className="aws-config-progress">
             <h5>Bootstrap Steps:</h5>
@@ -182,7 +183,7 @@ class AWSProviderConfiguration extends Component {
           </Row>
           <div className="form-action-button-container">
             <YBButton btnText={"Save"} btnClass={"btn btn-default save-btn"}
-                      disabled={submitting || loading } btnType="submit"/>
+                      disabled={submitting || promiseState.isLoading() } btnType="submit"/>
           </div>
         </form>;
     }
