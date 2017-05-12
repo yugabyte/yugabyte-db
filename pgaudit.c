@@ -1972,7 +1972,11 @@ _PG_init(void)
     object_access_hook = pgaudit_object_access_hook;
 
     /* Log that the extension has completed initialization */
+#ifndef EXEC_BACKEND
     ereport(LOG, (errmsg("pgaudit extension initialized")));
+#else
+    ereport(DEBUG1, (errmsg("pgaudit extension initialized")));
+#endif /* EXEC_BACKEND */
 
     inited = true;
 }
