@@ -397,9 +397,12 @@ ColumnFamilyData::ColumnFamilyData(
     }
 
     if (column_family_set_->NumberOfColumnFamilies() < 10) {
-      RLOG(InfoLogLevel::INFO_LEVEL, ioptions_.info_log,
+      RLOG(InfoLogLevel::DEBUG_LEVEL, ioptions_.info_log,
           "--------------- Options for column family [%s]:\n", name.c_str());
-      options_.DumpCFOptions(ioptions_.info_log);
+      if (ioptions_.info_log != nullptr &&
+          ioptions_.info_log->GetInfoLogLevel() <= InfoLogLevel::DEBUG_LEVEL) {
+        options_.DumpCFOptions(ioptions_.info_log);
+      }
     } else {
       RLOG(InfoLogLevel::INFO_LEVEL, ioptions_.info_log,
           "\t(skipping printing options)\n");
