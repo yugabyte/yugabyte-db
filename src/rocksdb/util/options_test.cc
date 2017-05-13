@@ -12,10 +12,11 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
+#include <inttypes.h>
+
 #include <cctype>
 #include <cstring>
 #include <unordered_map>
-#include <inttypes.h>
 
 #include "rocksdb/cache.h"
 #include "rocksdb/convenience.h"
@@ -1636,6 +1637,8 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
        sizeof(std::vector<std::shared_ptr<EventListener>>)},
       {offsetof(struct DBOptions, row_cache), sizeof(std::shared_ptr<Cache>)},
       {offsetof(struct DBOptions, wal_filter), sizeof(const WalFilter*)},
+      {offsetof(struct DBOptions, boundary_extractor),
+       sizeof(std::shared_ptr<BoundaryValuesExtractor>)},
   };
 
   char* options_ptr = new char[16 + sizeof(DBOptions)];
