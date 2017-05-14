@@ -103,6 +103,12 @@ void Increment(const Comparator* cmp, std::string* key) {
   }
 }
 
+void SetFixedSizeFilterPolicy(BlockBasedTableOptions* table_options) {
+  table_options->filter_policy.reset(NewFixedSizeFilterPolicy(
+      rocksdb::FilterPolicy::kDefaultFixedSizeFilterBits,
+      rocksdb::FilterPolicy::kDefaultFixedSizeFilterErrorRate, nullptr));
+}
+
 }  // namespace
 
 // Helper class for tests to unify the interface between
@@ -1024,16 +1030,32 @@ TEST_F(BlockBasedTableTest, FilterPolicyNameProperties) {
   c.Add("a1", "val1");
   std::vector<std::string> keys;
   stl_wrappers::KVMap kvmap;
-  BlockBasedTableOptions table_options;
-  table_options.filter_policy.reset(NewBloomFilterPolicy(10));
-  Options options;
-  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
 
-  const ImmutableCFOptions ioptions(options);
-  c.Finish(options, ioptions, table_options,
-           GetPlainInternalComparator(options.comparator), &keys, &kvmap);
-  auto& props = *c.GetTableReader()->GetTableProperties();
-  ASSERT_EQ("rocksdb.BuiltinBloomFilter", props.filter_policy_name);
+  BlockBasedTableOptions table_options;
+  for (int i = 0; i < 2; i++) {
+    switch (i) {
+      case 0:
+        table_options.filter_policy.reset(NewBloomFilterPolicy(10));
+        break;
+      default:
+        SetFixedSizeFilterPolicy(&table_options);
+    }
+    Options options;
+    options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+    const ImmutableCFOptions ioptions(options);
+    c.Finish(options, ioptions, table_options,
+        GetPlainInternalComparator(options.comparator), &keys, &kvmap);
+    auto& props = *c.GetTableReader()->GetTableProperties();
+    switch (i) {
+      case 0:
+        ASSERT_EQ("rocksdb.BuiltinBloomFilter", props.filter_policy_name);
+        break;
+      default:
+        ASSERT_EQ("rocksdb.FixedSizeBloomFilter", props.filter_policy_name);
+        break;
+    }
+  }
 }
 
 //
@@ -1161,7 +1183,7 @@ TEST_F(BlockBasedTableTest, PrefetchTest) {
 
 TEST_F(BlockBasedTableTest, TotalOrderSeekOnHashIndex) {
   BlockBasedTableOptions table_options;
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 5; ++i) {
     Options options;
     // Make each key/value an individual block
     table_options.block_size = 64;
@@ -1185,6 +1207,12 @@ TEST_F(BlockBasedTableTest, TotalOrderSeekOnHashIndex) {
       options.prefix_extractor.reset(NewFixedPrefixTransform(4));
       break;
     case 3:
+      // Hash search index with fixed size filter policy
+      table_options.index_type = BlockBasedTableOptions::kHashSearch;
+      SetFixedSizeFilterPolicy(&table_options);
+      options.table_factory.reset(new BlockBasedTableFactory(table_options));
+      options.prefix_extractor.reset(NewFixedPrefixTransform(4));
+      break;
     default:
       // Hash search index with filter policy
       table_options.index_type = BlockBasedTableOptions::kHashSearch;
@@ -1245,36 +1273,45 @@ TEST_F(BlockBasedTableTest, TotalOrderSeekOnHashIndex) {
 
 TEST_F(BlockBasedTableTest, NoopTransformSeek) {
   BlockBasedTableOptions table_options;
-  table_options.filter_policy.reset(NewBloomFilterPolicy(10));
+  for (int it = 0; it < 2; it++) {
+    switch (it) {
+      case 0:
+        table_options.filter_policy.reset(NewBloomFilterPolicy(10));
+        break;
+      default:
+        SetFixedSizeFilterPolicy(&table_options);
+        break;
+    }
 
-  Options options;
-  options.comparator = BytewiseComparator();
-  options.table_factory.reset(new BlockBasedTableFactory(table_options));
-  options.prefix_extractor.reset(NewNoopTransform());
+    Options options;
+    options.comparator = BytewiseComparator();
+    options.table_factory.reset(new BlockBasedTableFactory(table_options));
+    options.prefix_extractor.reset(NewNoopTransform());
 
-  TableConstructor c(options.comparator);
-  // To tickle the PrefixMayMatch bug it is important that the
-  // user-key is a single byte so that the index key exactly matches
-  // the user-key.
-  InternalKey key("a", 1, kTypeValue);
-  c.Add(key.Encode().ToString(), "b");
-  std::vector<std::string> keys;
-  stl_wrappers::KVMap kvmap;
-  const ImmutableCFOptions ioptions(options);
-  const InternalKeyComparator internal_comparator(options.comparator);
-  c.Finish(options, ioptions, table_options, internal_comparator, &keys,
-           &kvmap);
+    TableConstructor c(options.comparator);
+    // To tickle the PrefixMayMatch bug it is important that the
+    // user-key is a single byte so that the index key exactly matches
+    // the user-key.
+    InternalKey key("a", 1, kTypeValue);
+    c.Add(key.Encode().ToString(), "b");
+    std::vector<std::string> keys;
+    stl_wrappers::KVMap kvmap;
+    const ImmutableCFOptions ioptions(options);
+    const InternalKeyComparator internal_comparator(options.comparator);
+    c.Finish(options, ioptions, table_options, internal_comparator, &keys,
+        &kvmap);
 
-  auto* reader = c.GetTableReader();
-  for (int i = 0; i < 2; ++i) {
-    ReadOptions ro;
-    ro.total_order_seek = (i == 0);
-    std::unique_ptr<InternalIterator> iter(reader->NewIterator(ro));
+    auto* reader = c.GetTableReader();
+    for (int i = 0; i < 2; ++i) {
+      ReadOptions ro;
+      ro.total_order_seek = (i == 0);
+      std::unique_ptr<InternalIterator> iter(reader->NewIterator(ro));
 
-    iter->Seek(key.Encode());
-    ASSERT_OK(iter->status());
-    ASSERT_TRUE(iter->Valid());
-    ASSERT_EQ("a", ExtractUserKey(iter->key()).ToString());
+      iter->Seek(key.Encode());
+      ASSERT_OK(iter->status());
+      ASSERT_TRUE(iter->Valid());
+      ASSERT_EQ("a", ExtractUserKey(iter->key()).ToString());
+    }
   }
 }
 
@@ -1409,7 +1446,7 @@ TEST_F(BlockBasedTableTest, IndexSizeStat) {
   uint64_t last_index_size = 0;
 
   // we need to use random keys since the pure human readable texts
-  // may be well compressed, resulting insignifcant change of index
+  // may be well compressed, resulting insignificant change of index
   // block size.
   Random rnd(test::RandomSeed());
   std::vector<std::string> keys;
@@ -1437,7 +1474,7 @@ TEST_F(BlockBasedTableTest, IndexSizeStat) {
     const ImmutableCFOptions ioptions(options);
     c.Finish(options, ioptions, table_options,
              GetPlainInternalComparator(options.comparator), &ks, &kvmap);
-    auto index_size = c.GetTableReader()->GetTableProperties()->index_size;
+    auto index_size = c.GetTableReader()->GetTableProperties()->data_index_size;
     ASSERT_GT(index_size, last_index_size);
     last_index_size = index_size;
   }
@@ -1711,7 +1748,8 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   TableConstructor c3(BytewiseComparator());
   std::string user_key = "k01";
   InternalKey internal_key(user_key, 0, kTypeValue);
-  c3.Add(internal_key.Encode().ToString(), "hello");
+  const std::string encoded_key = internal_key.Encode().ToString();
+  c3.Add(encoded_key, "hello");
   ImmutableCFOptions ioptions3(options);
   // Generate table without filter policy
   c3.Finish(options, ioptions3, table_options,
@@ -1728,7 +1766,7 @@ TEST_F(BlockBasedTableTest, FilterBlockInBlockCache) {
   GetContext get_context(options.comparator, nullptr, nullptr, nullptr,
                          GetContext::kNotFound, user_key, &value, nullptr,
                          nullptr, nullptr);
-  ASSERT_OK(reader->Get(ReadOptions(), user_key, &get_context));
+  ASSERT_OK(reader->Get(ReadOptions(), encoded_key, &get_context));
   ASSERT_EQ(value, "hello");
   BlockCachePropertiesSnapshot props(options.statistics.get());
   props.AssertFilterBlockStat(0, 0);
@@ -1780,7 +1818,7 @@ TEST_F(BlockBasedTableTest, InvalidOptions) {
 
 TEST_F(BlockBasedTableTest, BlockReadCountTest) {
   // bloom_filter_type = 0 -- block-based filter
-  // bloom_filter_type = 0 -- full filter
+  // bloom_filter_type = 1 -- full filter
   for (int bloom_filter_type = 0; bloom_filter_type < 2; ++bloom_filter_type) {
     for (int index_and_filter_in_cache = 0; index_and_filter_in_cache < 2;
          ++index_and_filter_in_cache) {
@@ -1954,7 +1992,7 @@ TEST_F(PlainTableTest, BasicPlainTableProperties) {
   std::unique_ptr<TableProperties> props_guard(props);
   ASSERT_OK(s);
 
-  ASSERT_EQ(0ul, props->index_size);
+  ASSERT_EQ(0ul, props->data_index_size);
   ASSERT_EQ(0ul, props->filter_size);
   ASSERT_EQ(16ul * 26, props->raw_key_size);
   ASSERT_EQ(28ul * 26, props->raw_value_size);
@@ -2399,6 +2437,10 @@ class TestPrefixExtractor : public rocksdb::SliceTransform {
 }  // namespace
 
 TEST_F(PrefixTest, PrefixAndWholeKeyTest) {
+  rocksdb::BlockBasedTableOptions bbto;
+  bbto.block_size = 262144;
+  bbto.whole_key_filtering = true;
+
   rocksdb::Options options;
   options.compaction_style = rocksdb::kCompactionStyleUniversal;
   options.num_levels = 20;
@@ -2406,32 +2448,38 @@ TEST_F(PrefixTest, PrefixAndWholeKeyTest) {
   options.optimize_filters_for_hits = false;
   options.target_file_size_base = 268435456;
   options.prefix_extractor = std::make_shared<TestPrefixExtractor>();
-  rocksdb::BlockBasedTableOptions bbto;
-  bbto.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
-  bbto.block_size = 262144;
 
-  bbto.whole_key_filtering = true;
-
-  const std::string kDBPath = test::TmpDir() + "/prefix_test";
-  options.table_factory.reset(NewBlockBasedTableFactory(bbto));
-  DestroyDB(kDBPath, options);
-  rocksdb::DB* db;
-  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
-
-  // Create a bunch of keys with 10 filters.
-  for (int i = 0; i < 10; i++) {
-    std::string prefix = "[" + std::to_string(i) + "]";
-    for (int j = 0; j < 10; j++) {
-      std::string key = prefix + std::to_string(j);
-      db->Put(rocksdb::WriteOptions(), key, "1");
+  for (int it = 0; it < 2; it++) {
+    switch (it) {
+      case 0:
+        bbto.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
+        break;
+      default:
+        SetFixedSizeFilterPolicy(&bbto);
+        break;
     }
-  }
 
-  // Trigger compaction.
-  db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
-  delete db;
-  // In the second round, turn whole_key_filtering off and expect
-  // rocksdb still works.
+    const std::string kDBPath = test::TmpDir() + "/prefix_test";
+    options.table_factory.reset(NewBlockBasedTableFactory(bbto));
+    DestroyDB(kDBPath, options);
+    rocksdb::DB* db;
+    ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+    // Create a bunch of keys with 10 filters.
+    for (int i = 0; i < 10; i++) {
+      std::string prefix = "[" + std::to_string(i) + "]";
+      for (int j = 0; j < 10; j++) {
+        std::string key = prefix + std::to_string(j);
+        db->Put(rocksdb::WriteOptions(), key, "1");
+      }
+    }
+
+    // Trigger compaction.
+    db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    delete db;
+    // In the second round, turn whole_key_filtering off and expect
+    // rocksdb still works.
+  }
 }
 
 }  // namespace rocksdb

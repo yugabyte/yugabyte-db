@@ -16,7 +16,7 @@ namespace rocksdb {
 
 class TestFilterBitsBuilder : public FilterBitsBuilder {
  public:
-  explicit TestFilterBitsBuilder() {}
+  TestFilterBitsBuilder() {}
 
   // Add Key to filter
   void AddKey(const Slice& key) override {
@@ -34,6 +34,8 @@ class TestFilterBitsBuilder : public FilterBitsBuilder {
     buf->reset(const_data);
     return Slice(data, len);
   }
+
+  virtual bool IsFull() const override { return false; }
 
  private:
   std::vector<uint32_t> hash_entries_;
@@ -91,6 +93,8 @@ class TestHashFilter : public FilterPolicy {
       const override {
     return new TestFilterBitsReader(contents);
   }
+
+  FilterType GetFilterType() const override { return kFullFilter; }
 };
 
 class PluginFullFilterBlockTest : public testing::Test {

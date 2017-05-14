@@ -6,12 +6,14 @@
 #include <ostream>
 #include <vector>
 
+#include "rocksdb/env.h"
 #include "rocksdb/filter_policy.h"
 #include "rocksdb/slice.h"
 
 #include "yb/common/encoded_key.h"
 #include "yb/common/schema.h"
 #include "yb/docdb/primitive_value.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace docdb {
@@ -40,6 +42,11 @@ using DocKeyHash = uint16_t;
 //     1. Each range component consists of a type byte (ValueType) followed by the encoded
 //        representation of the respective type (see PrimitiveValue's key encoding).
 //     2. ValueType::kGroupEnd terminates the sequence.
+enum class DocKeyPart {
+  WHOLE_DOC_KEY,
+  HASHED_PART_ONLY
+};
+
 class DocKey {
  public:
   // Constructs an empty document key with no hash component.
@@ -81,7 +88,9 @@ class DocKey {
 
   // Decodes a document key from the given RocksDB key.
   // slice (in/out) - a slice corresponding to a RocksDB key. Any consumed bytes are removed.
-  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice);
+  // part_to_decode specifies which part of key to decode.
+  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
+      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
@@ -100,6 +109,8 @@ class DocKey {
   bool operator !=(const DocKey& other) const {
     return !(*this == other);
   }
+
+  bool HashedComponentsEqual(const DocKey& other) const;
 
   int CompareTo(const DocKey& other) const;
 
@@ -401,12 +412,19 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
 std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice);
 
+// This filter policy only takes into account hashed components of keys for filtering.
 class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
- public:
-  // Use the full file bloom filter and 10 bits, by default.
-  DocDbAwareFilterPolicy() { builtin_policy_.reset(rocksdb::NewBloomFilterPolicy(10, false)); }
+  class HashedComponentsExtractor : public KeyTransformer {
+    virtual rocksdb::Slice Transform(const rocksdb::Slice& key) const override;
+  };
 
-  const char* Name() const override { return "DocDbAwareFilterPolicy"; }
+ public:
+  explicit DocDbAwareFilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger) {
+    builtin_policy_.reset(rocksdb::NewFixedSizeFilterPolicy(
+        filter_block_size_bits, rocksdb::FilterPolicy::kDefaultFixedSizeFilterErrorRate, logger));
+  }
+
+  const char* Name() const override { return "DocKeyHashedComponentsFilter"; }
 
   void CreateFilter(const rocksdb::Slice* keys, int n, std::string* dst) const override;
 
@@ -416,10 +434,13 @@ class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
 
   rocksdb::FilterBitsReader* GetFilterBitsReader(const rocksdb::Slice& contents) const override;
 
- private:
-  static int32_t GetEncodedDocKeyPrefixSize(const rocksdb::Slice& slice);
+  FilterType GetFilterType() const override;
 
+  const KeyTransformer* GetKeyTransformer() const override { return &hashed_components_extractor_; }
+
+ private:
   std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
+  const HashedComponentsExtractor hashed_components_extractor_;
 };
 
 }  // namespace docdb

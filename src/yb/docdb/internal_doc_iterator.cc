@@ -8,7 +8,6 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 
@@ -26,11 +25,12 @@ namespace docdb {
 
 InternalDocIterator::InternalDocIterator(rocksdb::DB* rocksdb,
                                          DocWriteBatchCache* doc_write_batch_cache,
+                                         BloomFilterMode bloom_filter_mode,
                                          int* num_rocksdb_seeks)
     : doc_write_batch_cache_(doc_write_batch_cache),
       subdoc_exists_(Trilean::kUnknown),
       num_rocksdb_seeks_(num_rocksdb_seeks) {
-  iter_ = CreateRocksDBIterator(rocksdb);
+  iter_ = CreateRocksDBIterator(rocksdb, bloom_filter_mode);
 }
 
 Status InternalDocIterator::SeekToDocument(const KeyBytes& encoded_doc_key) {

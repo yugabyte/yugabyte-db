@@ -85,6 +85,7 @@ set(ROCKSDB_SRCS
     table/cuckoo_table_reader.cc
     table/flush_block_policy.cc
     table/format.cc
+    table/fixed_size_filter_block.cc
     table/full_filter_block.cc
     table/get_context.cc
     table/iterator.cc
@@ -275,6 +276,7 @@ ADD_YB_TEST(table/block_based_filter_block_test)
 ADD_YB_TEST(table/block_hash_index_test)
 ADD_YB_TEST(table/block_test)
 ADD_YB_TEST(table/full_filter_block_test)
+ADD_YB_TEST(table/fixed_size_filter_block_test)
 ADD_YB_TEST(table/merger_test)
 ADD_YB_TEST(table/table_test)
 ADD_YB_TEST(tools/ldb_cmd_test)
@@ -317,6 +319,7 @@ ADD_YB_TEST(db/compaction_job_stats_test)
 ADD_YB_TEST(db/corruption_test)
 ADD_YB_TEST(db/cuckoo_table_db_test)
 ADD_YB_TEST(db/db_block_cache_test)
+ADD_YB_TEST(db/db_bloom_filter_test)
 ADD_YB_TEST(db/db_compaction_filter_test)
 ADD_YB_TEST(db/db_compaction_test)
 ADD_YB_TEST(db/db_dynamic_level_test)

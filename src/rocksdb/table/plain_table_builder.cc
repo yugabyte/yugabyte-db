@@ -94,7 +94,9 @@ PlainTableBuilder::PlainTableBuilder(
   // for plain table, we put all the data in a big chuck.
   properties_.num_data_blocks = 1;
   // Fill it later if store_index_in_file_ == true
-  properties_.index_size = 0;
+  properties_.data_index_size = 0;
+  properties_.filter_index_size = 0;
+  properties_.num_filter_blocks = 0;
   properties_.filter_size = 0;
   // To support roll-back to previous version, now still use version 0 for
   // plain encoding.
@@ -203,6 +205,7 @@ Status PlainTableBuilder::Finish() {
     auto finish_result = bloom_block_.Finish();
 
     properties_.filter_size = finish_result.size();
+    properties_.num_filter_blocks = 1;
     auto s = WriteBlock(finish_result, file_, &offset_, &bloom_block_handle);
 
     if (!s.ok()) {
@@ -212,7 +215,7 @@ Status PlainTableBuilder::Finish() {
     BlockHandle index_block_handle;
     finish_result = index_builder_->Finish();
 
-    properties_.index_size = finish_result.size();
+    properties_.data_index_size = finish_result.size();
     s = WriteBlock(finish_result, file_, &offset_, &index_block_handle);
 
     if (!s.ok()) {

@@ -41,7 +41,7 @@ DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 100 * 1024 * 1024,
 DEFINE_int64(db_block_size_bytes, 32 * 1024,
              "Size of RocksDB block (in bytes).");
 
-DEFINE_bool(use_docdb_aware_bloom_filter, false,
+DEFINE_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 DEFINE_int32(max_nexts_to_avoid_seek, 8,
              "The number of next calls to try before doing resorting to do a rocksdb seek.");
@@ -237,11 +237,13 @@ void PerformRocksDBSeek(
       seek_count);
 }
 
-unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb, bool use_bloom_on_scan) {
+unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(rocksdb::DB* rocksdb,
+    BloomFilterMode bloom_filter_mode) {
   // TODO: avoid instantiating ReadOptions every time. Pre-create it once and use for all iterators.
   //       We'll need some sort of a stateful wrapper class around RocksDB for that.
   rocksdb::ReadOptions read_opts;
-  read_opts.use_bloom_on_scan = FLAGS_use_docdb_aware_bloom_filter && use_bloom_on_scan;
+  read_opts.use_bloom_on_scan = FLAGS_use_docdb_aware_bloom_filter &&
+      bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER;
   return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
 }
 
@@ -265,7 +267,8 @@ void InitRocksDBOptions(
 
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
-    table_options.filter_policy.reset(new DocDbAwareFilterPolicy());
+    table_options.filter_policy.reset(new DocDbAwareFilterPolicy(
+        table_options.filter_block_size * 8, options->info_log.get()));
   }
 
   options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));

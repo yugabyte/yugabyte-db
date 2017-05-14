@@ -737,6 +737,8 @@ DBOptions* DBOptions::IncreaseParallelism(int total_threads) {
 
 #endif  // !ROCKSDB_LITE
 
+const ReadOptions ReadOptions::kDefault;
+
 ReadOptions::ReadOptions()
     : verify_checksums(true),
       fill_cache(true),

@@ -104,7 +104,7 @@ void DocKey::ClearRangeComponents() {
   range_group_.clear();
 }
 
-yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
+yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice, DocKeyPart part_to_decode) {
   Clear();
 
   if (slice->empty()) {
@@ -137,10 +137,20 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice) {
     hash_present_ = false;
   }
 
-  RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, &range_group_),
-      "Error when decoding range components of a document key");
-
-  return Status::OK();
+  switch (part_to_decode) {
+    case DocKeyPart::WHOLE_DOC_KEY:
+      RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, &range_group_),
+          "Error when decoding range components of a document key");
+      return Status::OK();
+    case DocKeyPart::HASHED_PART_ONLY:
+      return Status::OK();
+  }
+  auto part_to_decode_printable =
+      static_cast<std::underlying_type_t<DocKeyPart>>(part_to_decode);
+  LOG(FATAL) << "Corrupted part_to_decode parameter: " << part_to_decode_printable;
+  // TODO: should we abort process here to avoid data corruption, since we have memory corruption?
+  return STATUS_SUBSTITUTE(Corruption, "Corrupted part_to_decode parameter: $0",
+      part_to_decode_printable);
 }
 
 yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
@@ -169,10 +179,13 @@ string DocKey::ToString() const {
 }
 
 bool DocKey::operator ==(const DocKey& other) const {
+  return HashedComponentsEqual(other) && range_group_ == other.range_group_;
+}
+
+bool DocKey::HashedComponentsEqual(const DocKey& other) const {
   return hash_present_ == other.hash_present_ &&
-         // Only compare hashes and hashed groups if the hash presence flag is set.
-         (!hash_present_ || (hash_ == other.hash_ && hashed_group_ == other.hashed_group_)) &&
-         range_group_ == other.range_group_;
+      // Only compare hashes and hashed groups if the hash presence flag is set.
+      (!hash_present_ || (hash_ == other.hash_ && hashed_group_ == other.hashed_group_));
 }
 
 int DocKey::CompareTo(const DocKey& other) const {
@@ -435,93 +448,54 @@ KeyBytes SubDocKey::AdvanceOutOfDocKeyPrefix() const {
 // DocDbAwareFilterPolicy
 // ------------------------------------------------------------------------------------------------
 
-class CustomFilterBitsBuilder : public rocksdb::FilterBitsBuilder {
- public:
-  CustomFilterBitsBuilder() : policy_(new DocDbAwareFilterPolicy()) {}
+namespace {
 
-  void AddKey(const rocksdb::Slice& key) override {
-    // Copying the data in.
-    string_keys_.push_back(std::string(key.data(), key.size()));
-  }
+int32_t GetEncodedDocKeyPrefixSize(const rocksdb::Slice& slice, DocKeyPart doc_key_part) {
+  // Copy the slice.
+  rocksdb::Slice copy(slice);
+  // Decode the slice as a DocKey.
+  docdb::DocKey encoded_key;
+  // TODO: don't check, but return errors somehow?
+  CHECK_OK(encoded_key.DecodeFrom(&copy, doc_key_part));
+  // Return the size of beginning of the initial slice which
+  // represents required part (whole or hashed components only) of encoded DocKey only.
+  return slice.size() - copy.size();
+  // TODO: this can be optimized to get the size without additional memory allocation and actual
+  // decoding, but need to test if such optimization will give any noticeable performance
+  // improvement.
+}
 
-  rocksdb::Slice Finish(std::unique_ptr<const char[]>* buf) override {
-    CHECK_LE(string_keys_.size(), std::numeric_limits<int>::max());
-    // Generate the required Slice[] input.
-    const int num_input_slices = string_keys_.size();
-    std::unique_ptr<rocksdb::Slice[]> raw_slices(new rocksdb::Slice[num_input_slices]);
-    for (int i = 0; i < num_input_slices; ++i) {
-      raw_slices[i] = rocksdb::Slice(string_keys_[i]);
-    }
-    // Create the actual filter using the Slice[] data and a new unique_ptr for safeguarding the
-    // destination memory.
-    std::string dst;
-    policy_->CreateFilter(raw_slices.get(), num_input_slices, &dst);
-    // Clear the current memory.
-    string_keys_.clear();
-    raw_slices.reset();
-    // Go over the filter data and set out params.
-    int32_t output_size = dst.size();
-    std::unique_ptr<char[]> char_buf(new char[output_size]);
-    std::copy(dst.begin(), dst.end(), char_buf.get());
-    buf->reset(char_buf.release());
-    return rocksdb::Slice(buf->get(), output_size);
-  }
+} // namespace
 
- private:
-  std::vector<std::string> string_keys_;
-  std::unique_ptr<DocDbAwareFilterPolicy> policy_;
-};
-
-class CustomFilterBitsReader : public rocksdb::FilterBitsReader {
- public:
-  explicit CustomFilterBitsReader(const rocksdb::Slice& contents)
-      : filter_(contents), policy_(new DocDbAwareFilterPolicy()) {}
-
-  bool MayMatch(const rocksdb::Slice& entry) override {
-    return policy_->KeyMayMatch(entry, filter_);
-  }
-
- private:
-  rocksdb::Slice filter_;
-  std::unique_ptr<DocDbAwareFilterPolicy> policy_;
-};
+rocksdb::Slice DocDbAwareFilterPolicy::HashedComponentsExtractor::Transform(
+    const rocksdb::Slice& key) const {
+  int32_t size = GetEncodedDocKeyPrefixSize(key, DocKeyPart::HASHED_PART_ONLY);
+  return rocksdb::Slice(key.data(), size);
+}
 
 void DocDbAwareFilterPolicy::CreateFilter(
     const rocksdb::Slice* keys, int n, std::string* dst) const {
   CHECK_GT(n, 0);
-  std::unique_ptr<rocksdb::Slice[]> decoded_keys(new rocksdb::Slice[n]);
-  for (int i = 0; i < n; ++i) {
-    int32_t offset = GetEncodedDocKeyPrefixSize(keys[i]);
-    decoded_keys[i] = rocksdb::Slice(keys[i].data(), offset);
-  }
-  return builtin_policy_->CreateFilter(decoded_keys.get(), n, dst);
+  return builtin_policy_->CreateFilter(keys, n, dst);
 }
 
 bool DocDbAwareFilterPolicy::KeyMayMatch(
     const rocksdb::Slice& key, const rocksdb::Slice& filter) const {
-  int32_t offset = GetEncodedDocKeyPrefixSize(key);
-  return builtin_policy_->KeyMayMatch(rocksdb::Slice(key.data(), offset), filter);
-}
-
-int32_t DocDbAwareFilterPolicy::GetEncodedDocKeyPrefixSize(const rocksdb::Slice& slice) {
-  // Copy the slice.
-  rocksdb::Slice copy(slice);
-  // Decode the slice as a SubDocKey.
-  docdb::DocKey encoded_key;
-  // TODO: don't check, but return errors somehow?
-  CHECK_OK(encoded_key.DecodeFrom(&copy));
-  // Return the offset in the initial slice that represents the encoded DocKey only.
-  return slice.size() - copy.size();
+  return builtin_policy_->KeyMayMatch(key, filter);
 }
 
 rocksdb::FilterBitsBuilder* DocDbAwareFilterPolicy::GetFilterBitsBuilder() const {
-  return new CustomFilterBitsBuilder();
+  return builtin_policy_->GetFilterBitsBuilder();
 }
 
 rocksdb::FilterBitsReader* DocDbAwareFilterPolicy::GetFilterBitsReader(
     const rocksdb::Slice& contents) const {
-  return new CustomFilterBitsReader(contents);
+  return builtin_policy_->GetFilterBitsReader(contents);
+}
+rocksdb::FilterPolicy::FilterType DocDbAwareFilterPolicy::GetFilterType() const {
+  return builtin_policy_->GetFilterType();
 }
 
 }  // namespace docdb
+
 }  // namespace yb

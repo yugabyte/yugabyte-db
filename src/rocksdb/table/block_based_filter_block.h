@@ -28,7 +28,7 @@ namespace rocksdb {
 
 
 // A BlockBasedFilterBlockBuilder is used to construct all of the filters for a
-// particular Table.  It generates a single string which is stored as
+// particular Table. It generates a single string which is stored as
 // a special block in the Table.
 //
 // The sequence of calls to BlockBasedFilterBlockBuilder must match the regexp:
@@ -38,10 +38,10 @@ class BlockBasedFilterBlockBuilder : public FilterBlockBuilder {
   BlockBasedFilterBlockBuilder(const SliceTransform* prefix_extractor,
       const BlockBasedTableOptions& table_opt);
 
-  virtual bool IsBlockBased() override { return true; }
   virtual void StartBlock(uint64_t block_offset) override;
   virtual void Add(const Slice& key) override;
   virtual Slice Finish() override;
+  virtual bool ShouldFlush() const override { return false; }
 
  private:
   void AddKey(const Slice& key);
@@ -79,7 +79,6 @@ class BlockBasedFilterBlockReader : public FilterBlockReader {
                               const BlockBasedTableOptions& table_opt,
                               bool whole_key_filtering,
                               BlockContents&& contents);
-  virtual bool IsBlockBased() override { return true; }
   virtual bool KeyMayMatch(const Slice& key,
                            uint64_t block_offset = kNotValid) override;
   virtual bool PrefixMayMatch(const Slice& prefix,

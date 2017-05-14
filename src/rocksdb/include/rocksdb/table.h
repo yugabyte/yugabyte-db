@@ -64,6 +64,7 @@ struct BlockBasedTableOptions {
   // Indicating if we'd put index/filter blocks to the block cache.
   // If not specified, each "table reader" object will pre-load index/filter
   // block during table initialization.
+  // Note: Fixed-size bloom filter data blocks are never pre-loaded.
   bool cache_index_and_filter_blocks = false;
 
   // The index type that will be used for this table.
@@ -103,11 +104,16 @@ struct BlockBasedTableOptions {
   // If NULL, rocksdb will not use a compressed block cache.
   std::shared_ptr<Cache> block_cache_compressed = nullptr;
 
-  // Approximate size of user data packed per block.  Note that the
+  // Approximate size of user data packed per block, in bytes. Note that the
   // block size specified here corresponds to uncompressed data.  The
   // actual size of the unit read from disk may be smaller if
   // compression is enabled.  This parameter can be changed dynamically.
+  // It is preferred to set large block size as it reduces the memory requirement
+  // for indexing.
   size_t block_size = 4 * 1024;
+
+  // Size of each filter block, in bytes. Only applicable for fixed size filter block.
+  size_t filter_block_size = 64 * 1024;
 
   // This is used to close a block before it reaches the configured
   // 'block_size'. If the percentage of free space in the current block is less

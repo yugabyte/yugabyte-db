@@ -41,6 +41,18 @@
 #define RERROR(...) ErrorWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
 #define RFATAL(...) FatalWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
 
+#ifdef NDEBUG
+// TODO: it should also fail in release under tests: https://yugabyte.atlassian.net/browse/ENG-1453.
+// Idea is to fail in both release and debug builds under tests, but don't fail in production.
+// This is useful when some secondary functionality is broken and we don't want to fail the whole
+// server, we can just turn that functionality off. But under tests and in debug mode we need to
+// fail to be able to catch bugs quickly. One of examples of such functionality is bloom filters.
+#define FAIL_IF_NOT_PRODUCTION() do {} while (false)
+#else
+#define FAIL_IF_NOT_PRODUCTION() assert(false)
+#endif
+
+
 namespace rocksdb {
 
 class FileLock;

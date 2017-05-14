@@ -39,6 +39,7 @@ using yb::util::ApplyEagerLineContinuation;
 using rocksdb::WriteOptions;
 
 DECLARE_bool(use_docdb_aware_bloom_filter);
+DECLARE_int32(max_nexts_to_avoid_seek);
 
 namespace yb {
 namespace docdb {
@@ -225,10 +226,19 @@ class DocDBTest : public DocDBTestBase {
   // history.
   void CheckExpectedLatestDBState();
 
-  void CheckBloom(const int expected_counter_val) {
+  // Checks bloom filter useful counter increment to be in range [1;expected_max_increment].
+  // Updates total_useful.
+  void CheckBloom(const int expected_max_increment, int* total_useful) {
     if (FLAGS_use_docdb_aware_bloom_filter) {
-      ASSERT_EQ(
-          options().statistics->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL), expected_counter_val);
+      const auto total_useful_updated =
+          options().statistics->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL);
+      if (expected_max_increment > 0) {
+        ASSERT_GT(total_useful_updated, *total_useful);
+        ASSERT_LE(total_useful_updated, *total_useful + expected_max_increment);
+        *total_useful = total_useful_updated;
+      } else {
+        ASSERT_EQ(*total_useful, total_useful_updated);
+      }
     }
   }
 
@@ -1234,18 +1244,20 @@ TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {
 }
 
 TEST_F(DocDBTest, BloomFilterTest) {
+  // Turn off "next instead of seek" optimization, because this test rely on DocDB to do seeks.
+  FLAGS_max_nexts_to_avoid_seek = 0;
   // Write batch and flush options.
   DocWriteBatch dwb(rocksdb());
   FlushRocksDB();
 
-  DocKey key1(PrimitiveValues("key1"));
-  DocKey key2(PrimitiveValues("key2"));
-  DocKey key3(PrimitiveValues("key3"));
+  DocKey key1(0, PrimitiveValues("key1"), PrimitiveValues());
+  DocKey key2(0, PrimitiveValues("key2"), PrimitiveValues());
+  DocKey key3(0, PrimitiveValues("key3"), PrimitiveValues());
   HybridTime ht;
 
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
-  int total_bloom_usage = 0;
+  int total_bloom_useful = 0;
 
   // The following code will set 2/3 keys at a time and flush those 2 writes in a new file. That
   // way we can control and know exactly when the bloom filter is useful.
@@ -1277,20 +1289,21 @@ TEST_F(DocDBTest, BloomFilterTest) {
         rocksdb(), SubDocKey(key), &doc_from_rocksdb, &subdoc_found_in_rocksdb));
   };
 
-  // Bloom usage starts at the default 0.
-  NO_FATALS(CheckBloom(total_bloom_usage));
+  NO_FATALS(CheckBloom(0, &total_bloom_useful));
   NO_FATALS(get_doc(key1));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
-  NO_FATALS(CheckBloom(total_bloom_usage));
+  NO_FATALS(CheckBloom(0, &total_bloom_useful));
 
   NO_FATALS(get_doc(key2));
   ASSERT_TRUE(!subdoc_found_in_rocksdb);
   // Bloom filter excluded this file.
-  NO_FATALS(CheckBloom(++total_bloom_usage));
+  // docdb::GetSubDocument sometimes seeks twice - first time on key2 and second time to advance
+  // out of it, because key2 was found.
+  NO_FATALS(CheckBloom(2, &total_bloom_useful));
 
   NO_FATALS(get_doc(key3));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
-  NO_FATALS(CheckBloom(total_bloom_usage));
+  NO_FATALS(CheckBloom(0, &total_bloom_useful));
 
   dwb.Clear();
   ASSERT_OK(ht.FromUint64(2000));
@@ -1299,11 +1312,11 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_OK(WriteToRocksDB(dwb, ht));
   FlushRocksDB();
   NO_FATALS(get_doc(key1));
-  NO_FATALS(CheckBloom(total_bloom_usage));
+  NO_FATALS(CheckBloom(0, &total_bloom_useful));
   NO_FATALS(get_doc(key2));
-  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(CheckBloom(2, &total_bloom_useful));
   NO_FATALS(get_doc(key3));
-  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(CheckBloom(2, &total_bloom_useful));
 
   dwb.Clear();
   ASSERT_OK(ht.FromUint64(3000));
@@ -1312,11 +1325,11 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_OK(WriteToRocksDB(dwb, ht));
   FlushRocksDB();
   NO_FATALS(get_doc(key1));
-  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(CheckBloom(2, &total_bloom_useful));
   NO_FATALS(get_doc(key2));
-  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(CheckBloom(2, &total_bloom_useful));
   NO_FATALS(get_doc(key3));
-  NO_FATALS(CheckBloom(++total_bloom_usage));
+  NO_FATALS(CheckBloom(2, &total_bloom_useful));
 }
 
 TEST_F(DocDBTest, SetPrimitiveWithInitMarker) {

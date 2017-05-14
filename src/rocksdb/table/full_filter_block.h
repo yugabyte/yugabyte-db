@@ -42,10 +42,10 @@ class FullFilterBlockBuilder : public FilterBlockBuilder {
   // directly. and be deleted here
   ~FullFilterBlockBuilder() {}
 
-  virtual bool IsBlockBased() override { return false; }
   virtual void StartBlock(uint64_t block_offset) override {}
   virtual void Add(const Slice& key) override;
   virtual Slice Finish() override;
+  virtual bool ShouldFlush() const override { return false; }
 
  private:
   // important: all of these might point to invalid addresses
@@ -85,7 +85,6 @@ class FullFilterBlockReader : public FilterBlockReader {
   // directly. and be deleted here
   ~FullFilterBlockReader() {}
 
-  virtual bool IsBlockBased() override { return false; }
   virtual bool KeyMayMatch(const Slice& key,
                            uint64_t block_offset = kNotValid) override;
   virtual bool PrefixMayMatch(const Slice& prefix,

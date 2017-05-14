@@ -74,8 +74,10 @@ CuckooTableBuilder::CuckooTableBuilder(
       closed_(false) {
   // Data is in a huge block.
   properties_.num_data_blocks = 1;
-  properties_.index_size = 0;
+  properties_.num_filter_blocks = 0;
+  properties_.data_index_size = 0;
   properties_.filter_size = 0;
+  properties_.filter_index_size = 0;
 }
 
 void CuckooTableBuilder::Add(const Slice& key, const Slice& value) {

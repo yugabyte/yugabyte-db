@@ -41,6 +41,8 @@ class TestHashFilter : public FilterPolicy {
     }
     return false;
   }
+
+  virtual FilterType GetFilterType() const override { return kBlockBasedFilter; }
 };
 
 class FilterBlockTest : public testing::Test {

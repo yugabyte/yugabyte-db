@@ -102,7 +102,7 @@ void InMemDocDbState::CaptureAt(rocksdb::DB* rocksdb, HybridTime hybrid_time) {
   // Clear the internal state.
   root_ = SubDocument();
 
-  auto rocksdb_iter = CreateRocksDBIterator(rocksdb);
+  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::DONT_USE_BLOOM_FILTER);
   rocksdb_iter->SeekToFirst();
   KeyBytes prev_key;
   while (rocksdb_iter->Valid()) {

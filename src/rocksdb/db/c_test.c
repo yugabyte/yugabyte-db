@@ -177,6 +177,9 @@ static void FilterDestroy(void* arg) { }
 static const char* FilterName(void* arg) {
   return "TestFilter";
 }
+static int FilterGetType(void* arg) {
+  return rocksdb_filterpolicy_filter_type_full_filter;
+}
 static char* FilterCreate(
     void* arg,
     const char* const* key_array, const size_t* key_length_array,
@@ -575,7 +578,7 @@ int main(int argc, char** argv) {
     rocksdb_filterpolicy_t* policy;
     if (run == 0) {
       policy = rocksdb_filterpolicy_create(
-          NULL, FilterDestroy, FilterCreate, FilterKeyMatch, NULL, FilterName);
+          NULL, FilterDestroy, FilterCreate, FilterKeyMatch, NULL, FilterName, FilterGetType);
     } else {
       policy = rocksdb_filterpolicy_create_bloom(10);
     }

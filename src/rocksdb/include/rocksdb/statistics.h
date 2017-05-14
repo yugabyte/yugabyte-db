@@ -53,6 +53,8 @@ enum Tickers : uint32_t {
   BLOCK_CACHE_BYTES_WRITE,
   // # of times bloom filter has avoided file reads.
   BLOOM_FILTER_USEFUL,
+  // # of times bloom filter has been checked.
+  BLOOM_FILTER_CHECKED,
 
   // # of memtable hits.
   MEMTABLE_HIT,
@@ -192,6 +194,7 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {BLOCK_CACHE_BYTES_READ, "rocksdb.block.cache.bytes.read"},
     {BLOCK_CACHE_BYTES_WRITE, "rocksdb.block.cache.bytes.write"},
     {BLOOM_FILTER_USEFUL, "rocksdb.bloom.filter.useful"},
+    {BLOOM_FILTER_CHECKED, "rocksdb.bloom.filter.checked"},
     {MEMTABLE_HIT, "rocksdb.memtable.hit"},
     {MEMTABLE_MISS, "rocksdb.memtable.miss"},
     {GET_HIT_L0, "rocksdb.l0.hit"},

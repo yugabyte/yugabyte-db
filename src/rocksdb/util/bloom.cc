@@ -7,11 +7,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <cstdlib>
+
 #include "rocksdb/filter_policy.h"
 
 #include "rocksdb/slice.h"
 #include "table/block_based_filter_block.h"
 #include "table/full_filter_block.h"
+#include "table/fixed_size_filter_block.h"
 #include "util/hash.h"
 #include "util/coding.h"
 
@@ -19,8 +22,31 @@ namespace rocksdb {
 
 class BlockBasedFilterBlockBuilder;
 class FullFilterBlockBuilder;
+class FixedSizeFilterBlockBuilder;
+typedef FilterPolicy::FilterType FilterType;
 
 namespace {
+static const double LOG2 = log(2);
+
+// Assuming single threaded access to this function.
+inline void AddHash(uint32_t h, char* data, uint32_t num_lines,
+    uint32_t total_bits, size_t num_probes) {
+  assert(num_lines > 0 && total_bits > 0);
+
+  const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
+  uint32_t b = (h % num_lines) * (CACHE_LINE_SIZE * 8);
+
+  for (uint32_t i = 0; i < num_probes; ++i) {
+    // Since CACHE_LINE_SIZE is defined as 2^n, this line will be optimized
+    // to a simple operation by compiler.
+    const uint32_t bitpos = b + (h % (CACHE_LINE_SIZE * 8));
+    assert(bitpos < total_bits);
+    data[bitpos / 8] |= (1 << (bitpos % 8));
+
+    h += delta;
+  }
+}
+
 class FullFilterBitsBuilder : public FilterBitsBuilder {
  public:
   explicit FullFilterBitsBuilder(const size_t bits_per_key,
@@ -42,10 +68,10 @@ class FullFilterBitsBuilder : public FilterBitsBuilder {
   // Create a filter that for hashes [0, n-1], the filter is allocated here
   // When creating filter, it is ensured that
   // total_bits = num_lines * CACHE_LINE_SIZE * 8
-  // dst len is >= 5, 1 for num_probes, 4 for num_lines
-  // Then total_bits = (len - 5) * 8, and cache_line_size could be calculated
+  // dst len is >= kMetaDataSize (5), 1 for num_probes, 4 for num_lines
+  // Then total_bits = (len - kMetaDataSize) * 8, and cache_line_size could be calculated
   // +----------------------------------------------------------------+
-  // |              filter data with length total_bits/8              |
+  // |              filter data with length total_bits / 8            |
   // +----------------------------------------------------------------+
   // |                                                                |
   // | ...                                                            |
@@ -61,18 +87,22 @@ class FullFilterBitsBuilder : public FilterBitsBuilder {
 
     if (total_bits != 0 && num_lines != 0) {
       for (auto h : hash_entries_) {
-        AddHash(h, data, num_lines, total_bits);
+        AddHash(h, data, num_lines, total_bits, num_probes_);
       }
     }
-    data[total_bits/8] = static_cast<char>(num_probes_);
-    EncodeFixed32(data + total_bits/8 + 1, static_cast<uint32_t>(num_lines));
+    data[total_bits / 8] = static_cast<char>(num_probes_);
+    EncodeFixed32(data + total_bits / 8 + 1, static_cast<uint32_t>(num_lines));
 
     const char* const_data = data;
     buf->reset(const_data);
     hash_entries_.clear();
 
-    return Slice(data, total_bits / 8 + 5);
+    return Slice(data, total_bits / 8 + kMetaDataSize);
   }
+
+  virtual bool IsFull() const override { return false; }
+
+  static constexpr size_t kMetaDataSize = 5; // in bytes
 
  private:
   size_t bits_per_key_;
@@ -85,10 +115,6 @@ class FullFilterBitsBuilder : public FilterBitsBuilder {
   // Reserve space for new filter
   char* ReserveSpace(const int num_entry, uint32_t* total_bits,
       uint32_t* num_lines);
-
-  // Assuming single threaded access to this function.
-  void AddHash(uint32_t h, char* data, uint32_t num_lines,
-      uint32_t total_bits);
 
   // No Copy allowed
   FullFilterBitsBuilder(const FullFilterBitsBuilder&);
@@ -125,41 +151,29 @@ char* FullFilterBitsBuilder::ReserveSpace(const int num_entry,
 
   // Reserve space for Filter
   uint32_t sz = *total_bits / 8;
-  sz += 5;  // 4 bytes for num_lines, 1 byte for num_probes
+  sz += kMetaDataSize;  // 4 bytes for num_lines, 1 byte for num_probes
 
   data = new char[sz];
   memset(data, 0, sz);
   return data;
 }
 
-inline void FullFilterBitsBuilder::AddHash(uint32_t h, char* data,
-    uint32_t num_lines, uint32_t total_bits) {
-  assert(num_lines > 0 && total_bits > 0);
-
-  const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
-  uint32_t b = (h % num_lines) * (CACHE_LINE_SIZE * 8);
-
-  for (uint32_t i = 0; i < num_probes_; ++i) {
-    // Since CACHE_LINE_SIZE is defined as 2^n, this line will be optimized
-    // to a simple operation by compiler.
-    const uint32_t bitpos = b + (h % (CACHE_LINE_SIZE * 8));
-    data[bitpos / 8] |= (1 << (bitpos % 8));
-
-    h += delta;
-  }
-}
 
 class FullFilterBitsReader : public FilterBitsReader {
  public:
-  explicit FullFilterBitsReader(const Slice& contents)
-      : data_(const_cast<char*>(contents.data())),
+  explicit FullFilterBitsReader(const Slice& contents, Logger* logger)
+      : logger_(logger),
+        data_(const_cast<char*>(contents.data())),
         data_len_(static_cast<uint32_t>(contents.size())),
         num_probes_(0),
         num_lines_(0) {
     assert(data_);
     GetFilterMeta(contents, &num_probes_, &num_lines_);
-    // Sanitize broken parameter
-    if (num_lines_ != 0 && (data_len_-5) % num_lines_ != 0) {
+    // Sanitize broken parameters
+    if (num_lines_ != 0 && data_len_ != num_lines_ * CACHE_LINE_SIZE +
+        FullFilterBitsBuilder::kMetaDataSize) {
+      RLOG(InfoLogLevel::ERROR_LEVEL, logger, "Bloom filter data is broken, won't be used.");
+      FAIL_IF_NOT_PRODUCTION();
       num_lines_ = 0;
       num_probes_ = 0;
     }
@@ -168,7 +182,7 @@ class FullFilterBitsReader : public FilterBitsReader {
   ~FullFilterBitsReader() {}
 
   bool MayMatch(const Slice& entry) override {
-    if (data_len_ <= 5) {   // remain same with original filter
+    if (data_len_ <= FullFilterBitsBuilder::kMetaDataSize) { // remain same with original filter
       return false;
     }
     // Other Error params, including a broken filter, regarded as match
@@ -179,6 +193,7 @@ class FullFilterBitsReader : public FilterBitsReader {
   }
 
  private:
+  Logger* logger_;
   // Filter meta data
   char* data_;
   uint32_t data_len_;
@@ -202,8 +217,8 @@ class FullFilterBitsReader : public FilterBitsReader {
   // num_lines: filter metadata, read before hand
   // Before calling this function, need to ensure the input meta data
   // is valid.
-  bool HashMayMatch(const uint32_t& hash, const Slice& filter,
-      const size_t& num_probes, const uint32_t& num_lines);
+  bool HashMayMatch(const uint32_t hash, const Slice& filter,
+      const size_t num_probes, const uint32_t num_lines);
 
   // No Copy allowed
   FullFilterBitsReader(const FullFilterBitsReader&);
@@ -213,27 +228,31 @@ class FullFilterBitsReader : public FilterBitsReader {
 void FullFilterBitsReader::GetFilterMeta(const Slice& filter,
     size_t* num_probes, uint32_t* num_lines) {
   uint32_t len = static_cast<uint32_t>(filter.size());
-  if (len <= 5) {
+  if (len <= FullFilterBitsBuilder::kMetaDataSize) {
     // filter is empty or broken
     *num_probes = 0;
     *num_lines = 0;
     return;
   }
 
-  *num_probes = filter.data()[len - 5];
+  *num_probes = filter.data()[len - FullFilterBitsBuilder::kMetaDataSize];
   *num_lines = DecodeFixed32(filter.data() + len - 4);
 }
 
-bool FullFilterBitsReader::HashMayMatch(const uint32_t& hash,
-    const Slice& filter, const size_t& num_probes,
-    const uint32_t& num_lines) {
+inline bool FullFilterBitsReader::HashMayMatch(const uint32_t hash, const Slice& filter,
+    const size_t num_probes, const uint32_t num_lines) {
   uint32_t len = static_cast<uint32_t>(filter.size());
-  if (len <= 5) return false;  // remain the same with original filter
+  if (len <= FullFilterBitsBuilder::kMetaDataSize)
+    return false; // Remain the same with original filter.
 
   // It is ensured the params are valid before calling it
   assert(num_probes != 0);
-  assert(num_lines != 0 && (len - 5) % num_lines == 0);
-  uint32_t cache_line_size = (len - 5) / num_lines;
+  assert(num_lines != 0 &&
+      (len - FullFilterBitsBuilder::kMetaDataSize) % num_lines == 0);
+  // cache_line_size is calculated here based on filter metadata instead of using CACHE_LINE_SIZE.
+  // The reason may be to support deserialization of filters which are already persisted in case we
+  // change CACHE_LINE_SIZE or if machine architecture is changed.
+  uint32_t cache_line_size = (len - FullFilterBitsBuilder::kMetaDataSize) / num_lines;
   const char* data = filter.data();
 
   uint32_t h = hash;
@@ -266,11 +285,15 @@ class BloomFilterPolicy : public FilterPolicy {
   ~BloomFilterPolicy() {
   }
 
+  FilterType GetFilterType() const override {
+    return use_block_based_builder_ ? FilterType::kBlockBasedFilter : FilterType::kFullFilter;
+  }
+
   const char* Name() const override {
     return "rocksdb.BuiltinBloomFilter";
   }
 
-  virtual void CreateFilter(const Slice* keys, int n,
+  void CreateFilter(const Slice* keys, int n,
                             std::string* dst) const override {
     // Compute bloom filter size (in both bits and bytes)
     size_t bits = n * bits_per_key_;
@@ -293,13 +316,13 @@ class BloomFilterPolicy : public FilterPolicy {
       const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
       for (size_t j = 0; j < num_probes_; j++) {
         const uint32_t bitpos = h % bits;
-        array[bitpos/8] |= (1 << (bitpos % 8));
+        array[bitpos / 8] |= (1 << (bitpos % 8));
         h += delta;
       }
     }
   }
 
-  virtual bool KeyMayMatch(const Slice& key,
+  bool KeyMayMatch(const Slice& key,
                            const Slice& bloom_filter) const override {
     const size_t len = bloom_filter.size();
     if (len < 2) return false;
@@ -320,7 +343,7 @@ class BloomFilterPolicy : public FilterPolicy {
     const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
     for (size_t j = 0; j < k; j++) {
       const uint32_t bitpos = h % bits;
-      if ((array[bitpos/8] & (1 << (bitpos % 8))) == 0) return false;
+      if ((array[bitpos / 8] & (1 << (bitpos % 8))) == 0) return false;
       h += delta;
     }
     return true;
@@ -334,9 +357,9 @@ class BloomFilterPolicy : public FilterPolicy {
     return new FullFilterBitsBuilder(bits_per_key_, num_probes_);
   }
 
-  virtual FilterBitsReader* GetFilterBitsReader(const Slice& contents)
+  FilterBitsReader* GetFilterBitsReader(const Slice& contents)
       const override {
-    return new FullFilterBitsReader(contents);
+    return new FullFilterBitsReader(contents, nullptr);
   }
 
   // If choose to use block based builder
@@ -357,11 +380,151 @@ class BloomFilterPolicy : public FilterPolicy {
   }
 };
 
+// A fixed size filter bits builder will build (with memory allocation)
+// and return a Bloom filter of given size and expected false positive rate.
+//
+// The fixed size Bloom filter has the following encoding:
+// For a given number of total bits M and the error rate p,
+// we will return a block of M + 40 bits, with 40 bits for metadata
+// and M bits for filter data.
+// For compliance with FullFilter, the metadata will be encoded
+// the same way as in FullFilter.
+//
+// For detailed proofs on the optimal number of keys and hash functions
+// please refer to https://en.wikipedia.org/wiki/Bloom_filter.
+//
+// The number of hash function given error rate p is -ln p / ln 2.
+// The maximum number of keys that can be inserted in a Bloom filter of m bits
+// so that one maintains the false positive error rate p is -m (ln 2)^2 / ln p.
+class FixedSizeFilterBitsBuilder : public FilterBitsBuilder {
+ public:
+  FixedSizeFilterBitsBuilder(const FixedSizeFilterBitsBuilder&) = delete;
+  void operator=(const FixedSizeFilterBitsBuilder&) = delete;
+
+  FixedSizeFilterBitsBuilder(uint32_t total_bits, double error_rate)
+      : total_bits_(total_bits),
+      error_rate_(error_rate) {
+    assert(error_rate > 0);
+    assert(total_bits > 0);
+    assert(total_bits % (CACHE_LINE_SIZE * 8) == 0);
+
+    const double minus_log_error_rate = -log(error_rate_);
+    assert(minus_log_error_rate > 0);
+    num_lines_ = total_bits_ / (CACHE_LINE_SIZE * 8);
+    num_probes_ = static_cast<size_t> (minus_log_error_rate / LOG2);
+    num_probes_ = std::max<size_t>(num_probes_, 1);
+    num_probes_ = std::min<size_t>(num_probes_, 255);
+    const double max_keys = total_bits_ * LOG2 * LOG2 / minus_log_error_rate;
+    assert(max_keys < std::numeric_limits<size_t>::max());
+    max_keys_ = static_cast<size_t> (max_keys);
+    keys_added_ = 0;
+
+    // TODO - add tests verifying that after inserting max_keys we will have required error rate
+
+    data_.reset(new char[FilterSize()]);
+    memset(data_.get(), 0, FilterSize());
+  }
+
+  virtual void AddKey(const Slice& key) override {
+    ++keys_added_;
+    uint32_t hash = BloomHash(key);
+    AddHash(hash, data_.get(), num_lines_, total_bits_, num_probes_);
+  }
+
+  virtual bool IsFull() const override { return keys_added_ >= max_keys_; }
+
+  virtual Slice Finish(std::unique_ptr<const char[]>* buf) override {
+    data_[total_bits_ / 8] = static_cast<char>(num_probes_);
+    EncodeFixed32(data_.get() + total_bits_ / 8 + 1, static_cast<uint32_t>(num_lines_));
+    buf->reset(data_.release());
+    return Slice(buf->get(), FilterSize());
+  }
+
+  // Serialization format is the same as for FullFilter.
+  static constexpr size_t kMetaDataSize = FullFilterBitsBuilder::kMetaDataSize;
+
+ private:
+
+  inline size_t FilterSize() { return total_bits_ / 8 + kMetaDataSize; }
+
+  std::unique_ptr<char[]> data_;
+  size_t max_keys_;
+  size_t keys_added_;
+  uint32_t total_bits_; // total number of bits used for filter (excluding metadata)
+  uint32_t num_lines_;
+  double error_rate_;
+  size_t num_probes_; // number of hash functions
+};
+
+class FixedSizeFilterBitsReader : public FullFilterBitsReader {
+ public:
+  FixedSizeFilterBitsReader(const FixedSizeFilterBitsReader&) = delete;
+  void operator=(const FixedSizeFilterBitsReader&) = delete;
+
+  explicit FixedSizeFilterBitsReader(const Slice& contents, Logger* logger)
+      : FullFilterBitsReader(contents, logger) {}
+};
+
+class FixedSizeFilterPolicy : public FilterPolicy {
+ public:
+  explicit FixedSizeFilterPolicy(uint32_t total_bits, double error_rate, Logger* logger)
+      : total_bits_(total_bits),
+        error_rate_(error_rate),
+        logger_(logger) {
+    assert(error_rate > 0);
+    num_probes_ = static_cast<size_t> (-log(error_rate) / LOG2);
+    num_lines_ = total_bits_ / 8 - FixedSizeFilterBitsBuilder::kMetaDataSize;
+    assert(num_probes_ > 0);
+    assert(num_lines_ > 0);
+  }
+
+  virtual FilterType GetFilterType() const override { return FilterType::kFixedSizeFilter; }
+
+  virtual const char* Name() const override {
+    return "rocksdb.FixedSizeBloomFilter";
+  }
+
+  // Not used in FixedSizeFilter. GetFilterBitsBuilder/Reader interface should be used.
+  virtual void CreateFilter(const Slice* keys, int n,
+                            std::string* dst) const override {
+    assert(!"FixedSizeFilterPolicy::CreateFilter is not supported");
+  }
+
+  virtual bool KeyMayMatch(const Slice& key, const Slice& filter) const override {
+    assert(!"FixedSizeFilterPolicy::KeyMayMatch is not supported");
+    return true;
+  }
+
+  virtual FilterBitsBuilder* GetFilterBitsBuilder() const override {
+    return new FixedSizeFilterBitsBuilder(total_bits_, error_rate_);
+  }
+
+  virtual FilterBitsReader* GetFilterBitsReader(const Slice& contents) const override {
+    return new FixedSizeFilterBitsReader(contents, logger_);
+  }
+
+
+ private:
+
+  uint32_t total_bits_;
+  double error_rate_;
+  size_t num_probes_;
+  uint32_t num_lines_;
+  Logger* logger_;
+};
+
 }  // namespace
 
 const FilterPolicy* NewBloomFilterPolicy(int bits_per_key,
                                          bool use_block_based_builder) {
   return new BloomFilterPolicy(bits_per_key, use_block_based_builder);
+  // TODO - replace by NewFixedSizeFilterPolicy and check tests.
+}
+
+const FilterPolicy* NewFixedSizeFilterPolicy(uint32_t total_bits,
+                                             double error_rate,
+                                             Logger* logger) {
+  return new FixedSizeFilterPolicy(total_bits, error_rate, logger);
 }
 
 }  // namespace rocksdb

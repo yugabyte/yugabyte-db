@@ -51,6 +51,8 @@ std::string TableProperties::ToString(
   // Basic Info
   AppendProperty(result, "# data blocks", num_data_blocks, prop_delim,
                  kv_delim);
+  AppendProperty(result, "# filter blocks", num_filter_blocks, prop_delim,
+      kv_delim);
   AppendProperty(result, "# entries", num_entries, prop_delim, kv_delim);
 
   AppendProperty(result, "raw key size", raw_key_size, prop_delim, kv_delim);
@@ -63,12 +65,12 @@ std::string TableProperties::ToString(
                  num_entries != 0 ? 1.0 * raw_value_size / num_entries : 0.0,
                  prop_delim, kv_delim);
 
-  AppendProperty(result, "data block size", data_size, prop_delim, kv_delim);
-  AppendProperty(result, "index block size", index_size, prop_delim, kv_delim);
-  AppendProperty(result, "filter block size", filter_size, prop_delim,
-                 kv_delim);
+  AppendProperty(result, "data blocks total size", data_size, prop_delim, kv_delim);
+  AppendProperty(result, "data index block size", data_index_size, prop_delim, kv_delim);
+  AppendProperty(result, "filter blocks total size", filter_size, prop_delim, kv_delim);
+  AppendProperty(result, "filter index block size", filter_index_size, prop_delim, kv_delim);
   AppendProperty(result, "(estimated) table size",
-                 data_size + index_size + filter_size, prop_delim, kv_delim);
+                 data_size + data_index_size + filter_size, prop_delim, kv_delim);
 
   AppendProperty(
       result, "filter policy name",
@@ -80,8 +82,9 @@ std::string TableProperties::ToString(
 
 void TableProperties::Add(const TableProperties& tp) {
   data_size += tp.data_size;
-  index_size += tp.index_size;
+  data_index_size += tp.data_index_size;
   filter_size += tp.filter_size;
+  filter_index_size += tp.filter_index_size;
   raw_key_size += tp.raw_key_size;
   raw_value_size += tp.raw_value_size;
   num_data_blocks += tp.num_data_blocks;
@@ -90,10 +93,12 @@ void TableProperties::Add(const TableProperties& tp) {
 
 const std::string TablePropertiesNames::kDataSize  =
     "rocksdb.data.size";
-const std::string TablePropertiesNames::kIndexSize =
-    "rocksdb.index.size";
+const std::string TablePropertiesNames::kDataIndexSize =
+    "rocksdb.data.index.size";
 const std::string TablePropertiesNames::kFilterSize =
     "rocksdb.filter.size";
+const std::string TablePropertiesNames::kFilterIndexSize =
+    "rocksdb.filter.index.size";
 const std::string TablePropertiesNames::kRawKeySize =
     "rocksdb.raw.key.size";
 const std::string TablePropertiesNames::kRawValueSize =
@@ -102,6 +107,8 @@ const std::string TablePropertiesNames::kNumDataBlocks =
     "rocksdb.num.data.blocks";
 const std::string TablePropertiesNames::kNumEntries =
     "rocksdb.num.entries";
+const std::string TablePropertiesNames::kNumFilterBlocks =
+    "rocksdb.num.filter.blocks";
 const std::string TablePropertiesNames::kFilterPolicy =
     "rocksdb.filter.policy";
 const std::string TablePropertiesNames::kFormatVersion =

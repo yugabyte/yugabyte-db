@@ -18,17 +18,17 @@
 
 #pragma once
 
-#include <memory>
 #include <stddef.h>
 #include <stdint.h>
+#include <memory>
 #include <string>
 #include <vector>
 #include "rocksdb/options.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/slice_transform.h"
 #include "rocksdb/table.h"
+#include "rocksdb/table/format.h"
 #include "util/hash.h"
-#include "format.h"
 
 namespace rocksdb {
 
@@ -45,13 +45,13 @@ class FilterPolicy;
 // BlockBased/Full FilterBlock would be called in the same way.
 class FilterBlockBuilder {
  public:
-  explicit FilterBlockBuilder() {}
+  FilterBlockBuilder() {}
   virtual ~FilterBlockBuilder() {}
 
-  virtual bool IsBlockBased() = 0;                    // If is blockbased filter
   virtual void StartBlock(uint64_t block_offset) = 0;  // Start new block filter
-  virtual void Add(const Slice& key) = 0;      // Add a key to current filter
+  virtual void Add(const Slice& key) = 0;           // Add a key to current filter
   virtual Slice Finish() = 0;                     // Generate Filter
+  virtual bool ShouldFlush() const = 0;  // flush policy for fixed size filter
 
  private:
   // No copying allowed
@@ -62,13 +62,12 @@ class FilterBlockBuilder {
 // A FilterBlockReader is used to parse filter from SST table.
 // KeyMayMatch and PrefixMayMatch would trigger filter checking
 //
-// BlockBased/Full FilterBlock would be called in the same way.
+// BlockBased/FullFilter/FixedSizeFilter Block would be called in the same way.
 class FilterBlockReader {
  public:
-  explicit FilterBlockReader() {}
+  FilterBlockReader() {}
   virtual ~FilterBlockReader() {}
 
-  virtual bool IsBlockBased() = 0;  // If is blockbased filter
   virtual bool KeyMayMatch(const Slice& key,
                            uint64_t block_offset = kNotValid) = 0;
   virtual bool PrefixMayMatch(const Slice& prefix,

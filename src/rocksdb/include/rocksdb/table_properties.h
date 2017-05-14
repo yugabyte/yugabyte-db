@@ -15,7 +15,7 @@ namespace rocksdb {
 // Other than basic table properties, each table may also have the user
 // collected properties.
 // The value of the user-collected properties are encoded as raw bytes --
-// users have to interprete these values by themselves.
+// users have to interpret these values by themselves.
 // Note: To do prefix seek/scan in `UserCollectedProperties`, you can do
 // something similar to:
 //
@@ -33,10 +33,12 @@ struct TableProperties {
  public:
   // the total size of all data blocks.
   uint64_t data_size = 0;
-  // the size of index block.
-  uint64_t index_size = 0;
+  // the size of data index block.
+  uint64_t data_index_size = 0;
   // the size of filter block.
   uint64_t filter_size = 0;
+  // the size of filter index block.
+  uint64_t filter_index_size = 0;
   // total raw key size
   uint64_t raw_key_size = 0;
   // total raw value size
@@ -45,6 +47,8 @@ struct TableProperties {
   uint64_t num_data_blocks = 0;
   // the number of entries in this table
   uint64_t num_entries = 0;
+  // the number of filter blocks
+  uint64_t num_filter_blocks = 0;
   // format version, reserved for backward compatibility
   uint64_t format_version = 0;
   // If 0, key is variable length. Otherwise number of bytes for each key.
@@ -71,12 +75,14 @@ struct TableProperties {
 // table properties' human-readable names in the property block.
 struct TablePropertiesNames {
   static const std::string kDataSize;
-  static const std::string kIndexSize;
+  static const std::string kDataIndexSize;
   static const std::string kFilterSize;
+  static const std::string kFilterIndexSize;
   static const std::string kRawKeySize;
   static const std::string kRawValueSize;
   static const std::string kNumDataBlocks;
   static const std::string kNumEntries;
+  static const std::string kNumFilterBlocks;
   static const std::string kFormatVersion;
   static const std::string kFixedKeyLen;
   static const std::string kFilterPolicy;

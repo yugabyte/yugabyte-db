@@ -8,8 +8,8 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#include <string>
 #include <stdint.h>
+#include <string>
 #include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 #include "rocksdb/options.h"
@@ -107,9 +107,9 @@ class Footer {
   void set_metaindex_handle(const BlockHandle& h) { metaindex_handle_ = h; }
 
   // The block handle for the index block of the table
-  const BlockHandle& index_handle() const { return index_handle_; }
+  const BlockHandle& index_handle() const { return data_index_handle_; }
 
-  void set_index_handle(const BlockHandle& h) { index_handle_ = h; }
+  void set_index_handle(const BlockHandle& h) { data_index_handle_ = h; }
 
   uint64_t table_magic_number() const { return table_magic_number_; }
 
@@ -159,7 +159,7 @@ class Footer {
   uint32_t version_;
   ChecksumType checksum_;
   BlockHandle metaindex_handle_;
-  BlockHandle index_handle_;
+  BlockHandle data_index_handle_;
   uint64_t table_magic_number_ = 0;
 };
 

@@ -9,6 +9,7 @@
 
 #include "rocksdb/slice_transform.h"
 
+#include "db/db_test_util.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/filter_policy.h"
@@ -89,12 +90,6 @@ class SliceTransformDBTest : public testing::Test {
 
   Options last_options_;
 };
-
-namespace {
-uint64_t TestGetTickerCount(const Options& options, Tickers ticker_type) {
-  return options.statistics->getTickerCount(ticker_type);
-}
-}  // namespace
 
 TEST_F(SliceTransformDBTest, CapPrefix) {
   last_options_.prefix_extractor.reset(NewCappedPrefixTransform(8));

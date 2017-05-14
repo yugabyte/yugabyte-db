@@ -216,7 +216,8 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
   const int num_subkeys = doc_path.num_subkeys();
   const bool is_deletion = value.primitive_value().value_type() == ValueType::kTombstone;
 
-  InternalDocIterator doc_iter(rocksdb_, &cache_, &num_rocksdb_seeks_);
+  InternalDocIterator doc_iter(rocksdb_, &cache_, BloomFilterMode::USE_BLOOM_FILTER,
+                               &num_rocksdb_seeks_);
 
   if (num_subkeys > 0 || is_deletion) {
     doc_iter.SetDocumentKey(encoded_doc_key);
@@ -471,7 +472,7 @@ yb::Status ScanSubDocument(rocksdb::DB *rocksdb,
     const KeyBytes &subdocument_key,
     DocVisitor *visitor,
     HybridTime scan_ht) {
-  auto rocksdb_iter = CreateRocksDBIterator(rocksdb);
+  auto rocksdb_iter = CreateRocksDBIterator(rocksdb, BloomFilterMode::USE_BLOOM_FILTER);
 
   // TODO: Use a SubDocKey API to build the proper seek key without assuming anything about the
   //       internal structure of SubDocKey here.
@@ -704,7 +705,7 @@ yb::Status GetSubDocument(rocksdb::DB *db,
     bool *doc_found,
     HybridTime scan_ht,
     MonoDelta table_ttl) {
-  auto iter = CreateRocksDBIterator(db);
+  auto iter = CreateRocksDBIterator(db, BloomFilterMode::USE_BLOOM_FILTER);
   iter->SeekToFirst();
   return GetSubDocument(iter.get(), subdocument_key, result, doc_found, scan_ht, table_ttl);
 }
@@ -718,7 +719,8 @@ yb::Status GetSubDocument(
     MonoDelta table_ttl,
     const vector<PrimitiveValue>* projection) {
   *doc_found = false;
-  DOCDB_DEBUG_LOG("GetSubDocument for key $0", subdocument_key.ToString());
+  DOCDB_DEBUG_LOG("GetSubDocument for key $0 @ $1", subdocument_key.ToString(),
+      scan_ht.ToDebugString());
   DocHybridTime max_deleted_ts(DocHybridTime::kMin);
 
   SubDocKey found_subdoc_key;

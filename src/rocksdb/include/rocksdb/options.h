@@ -1424,6 +1424,8 @@ struct ReadOptions {
   // key, then we include the file in the iterator merge. Otherwise, the files are ignored.
   bool use_bloom_on_scan = false;
 
+  static const ReadOptions kDefault;
+
   ReadOptions();
   ReadOptions(bool cksum, bool cache);
 };

@@ -65,7 +65,7 @@ DocRowwiseIterator::~DocRowwiseIterator() {
 Status DocRowwiseIterator::Init(ScanSpec *spec) {
   // TODO(bogdan): refactor this after we completely move away from the old ScanSpec. For now, just
   // default to not using bloom filters on scans for these codepaths.
-  db_iter_ = CreateRocksDBIterator(db_, false /* use_bloom_on_scan */);
+  db_iter_ = CreateRocksDBIterator(db_, BloomFilterMode::DONT_USE_BLOOM_FILTER);
 
   if (spec->lower_bound_key() != nullptr) {
     row_key_ = KuduToDocKey(*spec->lower_bound_key());
@@ -93,8 +93,11 @@ Status DocRowwiseIterator::Init(const common::YQLScanSpec& spec) {
   DocKey upper_doc_key;
   RETURN_NOT_OK(doc_spec.lower_bound(&lower_doc_key));
   RETURN_NOT_OK(doc_spec.upper_bound(&upper_doc_key));
-  const bool is_fixed_point_get = !lower_doc_key.empty() && upper_doc_key == lower_doc_key;
-  db_iter_ = CreateRocksDBIterator(db_, is_fixed_point_get /* use_bloom_on_scan */);
+  const bool is_fixed_point_get = !lower_doc_key.empty() &&
+      upper_doc_key.HashedComponentsEqual(lower_doc_key);
+  const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER :
+      BloomFilterMode::DONT_USE_BLOOM_FILTER;
+  db_iter_ = CreateRocksDBIterator(db_, mode);
 
   // Start scan with the lower bound doc key.
   row_key_ = std::move(lower_doc_key);

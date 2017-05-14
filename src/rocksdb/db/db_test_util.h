@@ -61,6 +61,10 @@
 
 namespace rocksdb {
 
+uint64_t TestGetTickerCount(const Options& options, Tickers ticker_type) {
+  return options.statistics->getTickerCount(ticker_type);
+}
+
 namespace anon {
 class AtomicCounter {
  public:

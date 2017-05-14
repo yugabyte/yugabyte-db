@@ -10,6 +10,7 @@
 
 #include "db/db_iter.h"
 #include "db/dbformat.h"
+#include "db/db_test_util.h"
 #include "rocksdb/comparator.h"
 #include "rocksdb/options.h"
 #include "rocksdb/perf_context.h"
@@ -23,11 +24,6 @@
 #include "utilities/merge_operators.h"
 
 namespace rocksdb {
-
-static uint64_t TestGetTickerCount(const Options& options,
-                                   Tickers ticker_type) {
-  return options.statistics->getTickerCount(ticker_type);
-}
 
 class TestIterator : public InternalIterator {
  public:

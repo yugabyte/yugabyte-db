@@ -40,8 +40,9 @@ void EventHelpers::LogAndNotifyTableFileCreation(
 
     // basic properties:
     jwriter << "data_size" << info.table_properties.data_size
-            << "index_size" << info.table_properties.index_size
+            << "data_index_size" << info.table_properties.data_index_size
             << "filter_size" << info.table_properties.filter_size
+            << "filter_index_size" << info.table_properties.filter_index_size
             << "raw_key_size" << info.table_properties.raw_key_size
             << "raw_average_key_size" << SafeDivide(
                 info.table_properties.raw_key_size,
@@ -52,6 +53,7 @@ void EventHelpers::LogAndNotifyTableFileCreation(
                info.table_properties.num_entries)
             << "num_data_blocks" << info.table_properties.num_data_blocks
             << "num_entries" << info.table_properties.num_entries
+            << "num_filter_blocks" << info.table_properties.num_filter_blocks
             << "filter_policy_name" <<
                 info.table_properties.filter_policy_name;
 

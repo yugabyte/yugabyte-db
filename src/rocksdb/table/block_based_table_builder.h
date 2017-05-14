@@ -93,14 +93,13 @@ class BlockBasedTableBuilder : public TableBuilder {
 
   bool ok() const { return status().ok(); }
   // Call block's Finish() method and then write the finalize block contents to
-  // file.
-  void WriteBlock(BlockBuilder* block, BlockHandle* handle,
+  // file. Returns number of bytes written to file.
+  size_t WriteBlock(BlockBuilder* block, BlockHandle* handle,
       FileWriterWithOffsetAndCachePrefix* writer_info);
-  // Directly write block content to the file.
-  void WriteBlock(const Slice& block_contents, BlockHandle* handle,
+  // Directly write block content to the file. Returns number of bytes written to file.
+  size_t WriteBlock(const Slice& block_contents, BlockHandle* handle,
       FileWriterWithOffsetAndCachePrefix* writer_info);
-  void WriteRawBlock(const Slice& data, CompressionType,
-      BlockHandle* handle,
+  size_t WriteRawBlock(const Slice& data, CompressionType, BlockHandle* handle,
       FileWriterWithOffsetAndCachePrefix* writer_info);
   Status InsertBlockInCache(const Slice& block_contents,
                             const CompressionType type,
@@ -112,11 +111,15 @@ class BlockBasedTableBuilder : public TableBuilder {
   class BlockBasedTablePropertiesCollector;
   Rep* rep_;
 
-  // Advanced operation: flush any buffered key/value pairs to file.
-  // Can be used to ensure that two adjacent entries never live in
-  // the same data block.  Most clients should not need to use this method.
-  // REQUIRES: Finish(), Abandon() have not been called
-  void FlushDataBlock();
+  // Flush the current data block into disk. next_block_first_key should be nullptr if this is the
+  // last block written to disk.
+  // REQUIRES: Finish(), Abandon() have not been called.
+  void FlushDataBlock(const Slice& next_block_first_key);
+
+  // Flush the current filter block into disk. next_block_first_key should be nullptr if this is the
+  // last block written to disk.
+  // REQUIRES: Finish(), Abandon() have not been called.
+  void FlushFilterBlock(const Slice& next_block_first_key);
 
   // Some compression libraries fail when the raw size is bigger than int. If
   // uncompressed size is bigger than kCompressionSizeLimit, don't compress it

@@ -7,6 +7,7 @@
 
 #include "rocksdb/db.h"
 
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/key_bytes.h"
@@ -42,6 +43,7 @@ class InternalDocIterator {
   // @param doc_write_batch_cache A utility that allows us to avoid redundant lookups.
   InternalDocIterator(rocksdb::DB* rocksdb,
                       DocWriteBatchCache* doc_write_batch_cache,
+                      BloomFilterMode bloom_filter_mode,
                       int* seek_counter = nullptr);
 
   // Positions this iterator at the root of a document identified by the given encoded document key.

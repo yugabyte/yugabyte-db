@@ -32,6 +32,7 @@ class InternalIterator : public Cleanable {
   // Position at the first key in the source that at or past target
   // The iterator is Valid() after this call iff the source contains
   // an entry that comes at or past target.
+  // target is encoded representation of InternalKey.
   virtual void Seek(const Slice& target) = 0;
 
   // Moves to the next entry in the source.  After this call, Valid() is

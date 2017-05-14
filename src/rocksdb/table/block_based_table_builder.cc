@@ -34,6 +34,7 @@
 #include "table/filter_block.h"
 #include "table/block_based_filter_block.h"
 #include "table/block_based_table_factory.h"
+#include "table/fixed_size_filter_block.h"
 #include "table/full_filter_block.h"
 #include "table/format.h"
 #include "table/meta_blocks.h"
@@ -54,6 +55,7 @@ extern const char kHashIndexPrefixesBlock[];
 extern const char kHashIndexPrefixesMetadataBlock[];
 
 typedef BlockBasedTableOptions::IndexType IndexType;
+typedef FilterPolicy::FilterType FilterType;
 
 // The interface for building index.
 // Instruction for adding a new concrete IndexBuilder:
@@ -159,7 +161,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
 // metadata for secondary hash index construction.
 // The metadata for hash index consists two parts:
 //  - a metablock that compactly contains a sequence of prefixes. All prefixes
-//    are stored consectively without any metadata (like, prefix sizes) being
+//    are stored consecutively without any metadata (like, prefix sizes) being
 //    stored, which is kept in the other metablock.
 //  - a metablock contains the metadata of the prefixes, including prefix size,
 //    restart index and number of block it spans. The format looks like:
@@ -292,20 +294,29 @@ IndexBuilder* CreateIndexBuilder(IndexType type, const Comparator* comparator,
   return nullptr;
 }
 
-// Create a index builder based on its type.
-FilterBlockBuilder* CreateFilterBlockBuilder(const ImmutableCFOptions& opt,
-    const BlockBasedTableOptions& table_opt) {
-  if (table_opt.filter_policy == nullptr) return nullptr;
+FilterType GetFilterType(const BlockBasedTableOptions& table_opt) {
+  std::shared_ptr<const FilterPolicy> policy(table_opt.filter_policy);
+  return policy != nullptr ? policy->GetFilterType() : FilterType::kNoFilter;
+}
 
-  FilterBitsBuilder* filter_bits_builder =
-      table_opt.filter_policy->GetFilterBitsBuilder();
-  if (filter_bits_builder == nullptr) {
-    return new BlockBasedFilterBlockBuilder(opt.prefix_extractor, table_opt);
-  } else {
-    return new FullFilterBlockBuilder(opt.prefix_extractor,
-                                      table_opt.whole_key_filtering,
-                                      filter_bits_builder);
+// Create a filter builder based on its type.
+FilterBlockBuilder* CreateFilterBlockBuilder(const ImmutableCFOptions& opt,
+    const BlockBasedTableOptions& table_opt, FilterType filter_type) {
+  switch (filter_type) {
+    case FilterType::kBlockBasedFilter:
+      return new BlockBasedFilterBlockBuilder(opt.prefix_extractor, table_opt);
+    case FilterType::kFixedSizeFilter:
+      return new FixedSizeFilterBlockBuilder(opt.prefix_extractor, table_opt);
+    case FilterType::kFullFilter:
+      return new FullFilterBlockBuilder(opt.prefix_extractor,
+                                        table_opt.whole_key_filtering,
+                                        table_opt.filter_policy->GetFilterBitsBuilder());
+    case FilterType::kNoFilter:
+      return nullptr;
   }
+  RLOG(InfoLogLevel::FATAL_LEVEL, opt.info_log, "Corrupted filter_type: %d", filter_type);
+  assert(false);
+  return nullptr;
 }
 
 bool GoodCompressionRatio(size_t compressed_size, size_t raw_size) {
@@ -487,20 +498,26 @@ struct BlockBasedTableBuilder::Rep {
   std::shared_ptr<FileWriterWithOffsetAndCachePrefix> metadata_writer;
   std::shared_ptr<FileWriterWithOffsetAndCachePrefix> data_writer;
   Status status;
-  BlockBuilder data_block;
+
+  FilterType filter_type;
+  std::unique_ptr<FilterBlockBuilder> filter_block_builder;
+  BlockBuilder data_block_builder;
 
   InternalKeySliceTransform internal_prefix_transform;
-  std::unique_ptr<IndexBuilder> index_builder;
+  const FilterPolicy::KeyTransformer* const filter_key_transformer;
+  std::unique_ptr<IndexBuilder> data_index_builder;
+  std::unique_ptr<IndexBuilder> filter_index_builder;
 
   std::string last_key;
+  std::string last_filter_key;
   const CompressionType compression_type;
   const CompressionOptions compression_opts;
   TableProperties props;
 
   bool closed = false;  // Either Finish() or Abandon() has been called.
-  std::unique_ptr<FilterBlockBuilder> filter_block;
 
-  BlockHandle pending_handle;  // Handle to add to index block
+  BlockHandle data_pending_handle;    // Handle to add to data index block
+  BlockHandle filter_pending_handle;  // Handle to add to filter index block
 
   std::string compressed_output;
   std::unique_ptr<FlushBlockPolicy> flush_block_policy;
@@ -520,20 +537,28 @@ struct BlockBasedTableBuilder::Rep {
       : ioptions(_ioptions),
         table_options(table_opt),
         internal_comparator(icomparator),
-        data_block(table_options.block_restart_interval,
+        filter_type(GetFilterType(table_options)),
+        filter_block_builder(skip_filters ? nullptr : CreateFilterBlockBuilder(
+            _ioptions, table_options, filter_type)),
+        data_block_builder(table_options.block_restart_interval,
                    table_options.use_delta_encoding),
         internal_prefix_transform(_ioptions.prefix_extractor),
-        index_builder(
+        filter_key_transformer(table_opt.filter_policy ?
+            table_opt.filter_policy->GetKeyTransformer() : nullptr),
+        data_index_builder(
             CreateIndexBuilder(table_options.index_type, &internal_comparator,
-                               &this->internal_prefix_transform,
+                               &internal_prefix_transform,
                                table_options.index_block_restart_interval)),
+        filter_index_builder(
+            // Prefix_extractor is not used by binary search index which we use for bloom filter
+            // blocks indexing.
+            CreateIndexBuilder(BlockBasedTableOptions::kBinarySearch, BytewiseComparator(),
+                nullptr /* prefix_extractor */, table_options.index_block_restart_interval)),
         compression_type(_compression_type),
         compression_opts(_compression_opts),
-        filter_block(skip_filters ? nullptr : CreateFilterBlockBuilder(
-                                                  _ioptions, table_options)),
         flush_block_policy(
             table_options.flush_block_policy_factory->NewFlushBlockPolicy(
-                table_options, data_block)) {
+                table_options, data_block_builder)) {
     metadata_writer = std::make_shared<FileWriterWithOffsetAndCachePrefix>();
     metadata_writer->writer = metadata_file;
     if (data_file != nullptr) {
@@ -581,8 +606,8 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
                  int_tbl_prop_collector_factories, column_family_id, metadata_file, data_file,
                  compression_type, compression_opts, skip_filters);
 
-  if (rep_->filter_block != nullptr) {
-    rep_->filter_block->StartBlock(0);
+  if (rep_->filter_block_builder != nullptr) {
+    rep_->filter_block_builder->StartBlock(0);
   }
   if (table_options.block_cache_compressed.get() != nullptr) {
     BlockBasedTable::GenerateCachePrefix(
@@ -602,73 +627,123 @@ BlockBasedTableBuilder::~BlockBasedTableBuilder() {
 }
 
 void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
-  Rep* r = rep_;
+  Rep* const r = rep_;
   assert(!r->closed);
   if (!ok()) return;
   if (r->props.num_entries > 0) {
     assert(r->internal_comparator.Compare(key, Slice(r->last_key)) > 0);
   }
 
-  auto should_flush = r->flush_block_policy->Update(key, value);
-  if (should_flush) {
-    assert(!r->data_block.empty());
-    FlushDataBlock();
+  const auto should_flush_data = r->flush_block_policy->Update(key, value);
+  if (should_flush_data) {
+    assert(!r->data_block_builder.empty());
+    FlushDataBlock(key);
+  }
 
-    // Add item to index block.
-    // We do not emit the index entry for a block until we have seen the
-    // first key for the next data block.  This allows us to use shorter
-    // keys in the index block.  For example, consider a block boundary
-    // between the keys "the quick brown fox" and "the who".  We can use
-    // "the r" as the key for the index block entry since it is >= all
-    // entries in the first block and < all entries in subsequent
-    // blocks.
-    if (ok()) {
-      r->index_builder->AddIndexEntry(&r->last_key, &key, r->pending_handle);
+  if (r->filter_block_builder != nullptr) {
+    const Slice user_key = ExtractUserKey(key);
+    const Slice filter_key = r->filter_key_transformer ?
+        r->filter_key_transformer->Transform(user_key) : user_key;
+    if (r->props.num_entries == 0 ||
+        BytewiseComparator()->Compare(r->last_filter_key, filter_key) != 0) {
+      // No need to insert duplicate keys into Bloom filter.
+      if (r->filter_block_builder->ShouldFlush()) {
+        FlushFilterBlock(key);
+      }
+      r->filter_block_builder->Add(filter_key);
+      r->last_filter_key.assign(filter_key.data(), filter_key.size());
     }
   }
 
-  if (r->filter_block != nullptr) {
-    r->filter_block->Add(ExtractUserKey(key));
-  }
-
   r->last_key.assign(key.data(), key.size());
-  r->data_block.Add(key, value);
+  r->data_block_builder.Add(key, value);
   r->props.num_entries++;
   r->props.raw_key_size += key.size();
   r->props.raw_value_size += value.size();
 
-  r->index_builder->OnKeyAdded(key);
+  r->data_index_builder->OnKeyAdded(key);
+
   NotifyCollectTableCollectorsOnAdd(key, value, r->data_writer->offset,
-                                    r->table_properties_collectors,
-                                    r->ioptions.info_log);
+      r->table_properties_collectors,
+      r->ioptions.info_log);
 }
 
-void BlockBasedTableBuilder::FlushDataBlock() {
-  Rep* r = rep_;
+void BlockBasedTableBuilder::FlushDataBlock(const Slice& next_block_first_key) {
+  Rep* const r = rep_;
   assert(!r->closed);
   if (!ok()) return;
-  if (r->data_block.empty()) return;
-  WriteBlock(&r->data_block, &r->pending_handle, r->data_writer.get());
-  if (ok() && !r->table_options.skip_table_builder_flush) {
+  size_t data_block_size = 0;
+
+  if (!r->data_block_builder.empty()) {
+    data_block_size = WriteBlock(&r->data_block_builder, &r->data_pending_handle,
+        r->data_writer.get());
+  }
+  if (!ok()) return;
+
+  if (!r->table_options.skip_table_builder_flush) {
     r->status = r->data_writer->writer->Flush();
   }
-  if (r->filter_block != nullptr) {
-    r->filter_block->StartBlock(r->data_writer->offset);
+  if (!ok()) return;
+
+  if (r->filter_block_builder != nullptr && r->filter_type == FilterType::kBlockBasedFilter) {
+    // For FilterType::kBlockBasedFilter separate block of bloom filter is written per data block.
+    r->filter_block_builder->StartBlock(r->data_writer->offset);
   }
-  r->props.data_size = r->data_writer->offset;
+
+  r->props.data_size += data_block_size;
   ++r->props.num_data_blocks;
+  // Add item to index block.
+  // We do not emit the index entry for a block until we have seen the
+  // first key for the next data block.  This allows us to use shorter
+  // keys in the index block.  For example, consider a block boundary
+  // between the keys "the quick brown fox" and "the who".  We can use
+  // "the r" as the key for the index block entry since it is >= all
+  // entries in the first block and < all entries in subsequent
+  // blocks.
+  r->data_index_builder->AddIndexEntry(&r->last_key,
+      next_block_first_key.empty() ? nullptr : &next_block_first_key,
+      r->data_pending_handle);
 }
 
-void BlockBasedTableBuilder::WriteBlock(BlockBuilder* block,
-                                        BlockHandle* handle,
-                                        FileWriterWithOffsetAndCachePrefix* writer_info) {
-  WriteBlock(block->Finish(), handle, writer_info);
+void BlockBasedTableBuilder::FlushFilterBlock(const Slice& next_block_first_key) {
+  Rep* const r = rep_;
+  assert(!r->closed);
+  assert(r->filter_block_builder != nullptr);
+  if (!ok()) return;
+
+  const size_t filter_block_size = WriteRawBlock(r->filter_block_builder->Finish(), kNoCompression,
+      &r->filter_pending_handle, r->metadata_writer.get());
+  if (!ok()) return;
+
+  if (!r->table_options.skip_table_builder_flush) {
+    r->status = r->metadata_writer->writer->Flush();
+  }
+  if (!ok()) return;
+
+  r->props.filter_size += filter_block_size;
+  ++r->props.num_filter_blocks;
+
+  const bool is_last_flush = next_block_first_key.empty();
+  if (!is_last_flush) {
+    r->filter_block_builder->StartBlock(0);
+  }
+
+  // See explanation in BlockBasedTableBuilder::FlushDataBlock.
+  r->filter_index_builder->AddIndexEntry(&r->last_filter_key,
+      is_last_flush ? nullptr : &next_block_first_key,  r->filter_pending_handle);
+}
+
+size_t BlockBasedTableBuilder::WriteBlock(BlockBuilder* block,
+                                          BlockHandle* handle,
+                                          FileWriterWithOffsetAndCachePrefix* writer_info) {
+  size_t block_size = WriteBlock(block->Finish(), handle, writer_info);
   block->Reset();
+  return block_size;
 }
 
-void BlockBasedTableBuilder::WriteBlock(const Slice& raw_block_contents,
-                                        BlockHandle* handle,
-                                        FileWriterWithOffsetAndCachePrefix* writer_info) {
+size_t BlockBasedTableBuilder::WriteBlock(const Slice& raw_block_contents,
+                                          BlockHandle* handle,
+                                          FileWriterWithOffsetAndCachePrefix* writer_info) {
   // File format contains a sequence of blocks where each block has:
   //    block_data: uint8[n]
   //    type: uint8
@@ -687,16 +762,18 @@ void BlockBasedTableBuilder::WriteBlock(const Slice& raw_block_contents,
     type = kNoCompression;
     block_contents = raw_block_contents;
   }
-  WriteRawBlock(block_contents, type, handle, writer_info);
+  size_t block_size = WriteRawBlock(block_contents, type, handle, writer_info);
   r->compressed_output.clear();
+  return block_size;
 }
 
-void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
-                                           CompressionType type,
-                                           BlockHandle* handle,
-                                           FileWriterWithOffsetAndCachePrefix* writer_info) {
+size_t BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
+                                             CompressionType type,
+                                             BlockHandle* handle,
+                                             FileWriterWithOffsetAndCachePrefix* writer_info) {
   Rep* r = rep_;
   StopWatch sw(r->ioptions.env, r->ioptions.statistics, WRITE_RAW_BLOCK_MICROS);
+  const auto start_offset = writer_info->offset;
   handle->set_offset(writer_info->offset);
   handle->set_size(block_contents.size());
   r->status = writer_info->writer->Append(block_contents);
@@ -738,6 +815,7 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
       writer_info->offset += block_contents.size() + kBlockTrailerSize;
     }
   }
+  return writer_info->offset - start_offset;
 }
 
 Status BlockBasedTableBuilder::status() const {
@@ -791,29 +869,19 @@ Status BlockBasedTableBuilder::InsertBlockInCache(const Slice& block_contents,
 
 Status BlockBasedTableBuilder::Finish() {
   Rep* r = rep_;
-  bool empty_data_block = r->data_block.empty();
-  FlushDataBlock();
+  Slice end_slice;
+  if (!r->data_block_builder.empty()) {
+    FlushDataBlock(end_slice);  // no more data block
+  }
+  if (r->filter_block_builder != nullptr) {
+    FlushFilterBlock(end_slice);  // no more filter block
+  }
   assert(!r->closed);
   r->closed = true;
 
-  BlockHandle filter_block_handle, metaindex_block_handle, index_block_handle;
-  // Write filter block
-  if (ok() && r->filter_block != nullptr) {
-    auto filter_contents = r->filter_block->Finish();
-    r->props.filter_size = filter_contents.size();
-    WriteRawBlock(filter_contents, kNoCompression, &filter_block_handle, r->metadata_writer.get());
-  }
-
-  // To make sure properties block is able to keep the accurate size of index
-  // block, we will finish writing all index entries here and flush them
-  // to storage after metaindex block is written.
-  if (ok() && !empty_data_block) {
-    r->index_builder->AddIndexEntry(
-        &r->last_key, nullptr /* no next data block */, r->pending_handle);
-  }
-
+  BlockHandle meta_index_block_handle, data_index_block_handle;
   IndexBuilder::IndexBlocks index_blocks;
-  auto s = r->index_builder->Finish(&index_blocks);
+  auto s = r->data_index_builder->Finish(&index_blocks);
   if (!s.ok()) {
     return s;
   }
@@ -832,17 +900,44 @@ Status BlockBasedTableBuilder::Finish() {
   }
 
   if (ok()) {
-    if (r->filter_block != nullptr) {
-      // Add mapping from "<filter_block_prefix>.Name" to location
-      // of filter data.
+    if (r->filter_block_builder != nullptr) {
+      // Add mapping from "<filter_block_prefix>.Name" to location of either filter block or
+      // filter index (for fixed-size bloom filter). We only need filter index for fixed-size bloom
+      // filter, which is stored as separate blocks in SST file. Filters of other types are stored
+      // as single block in SST file, so we just need an offset to that block instead of index.
       std::string key;
-      if (r->filter_block->IsBlockBased()) {
-        key = BlockBasedTable::kFilterBlockPrefix;
-      } else {
-        key = BlockBasedTable::kFullFilterBlockPrefix;
+      switch (r->filter_type) {
+        case FilterType::kFullFilter:
+          key = BlockBasedTable::kFullFilterBlockPrefix;
+          break;
+        case FilterType::kBlockBasedFilter:
+          key = BlockBasedTable::kFilterBlockPrefix;
+          break;
+        case FilterType::kFixedSizeFilter:
+          key = BlockBasedTable::kFixedSizeFilterBlockPrefix;
+          break;
+        case FilterType::kNoFilter:
+          RLOG(InfoLogLevel::FATAL_LEVEL, r->ioptions.info_log,
+              "r->filter_block_builder should be null for FilterType::kNoFilter");
+          assert(false);
       }
       key.append(r->table_options.filter_policy->Name());
-      meta_index_builder.Add(key, filter_block_handle);
+      if (r->filter_type == FilterType::kFixedSizeFilter) {
+        // Flush the fixed-size bloom filter index and add its offset under the corresponding
+        // key to meta index.
+        IndexBuilder::IndexBlocks filter_index_blocks;
+        s = r->filter_index_builder->Finish(&filter_index_blocks);
+        if (!s.ok()) {
+          return s;
+        }
+        BlockHandle filter_index_block_handle;
+        WriteBlock(filter_index_blocks.index_block_contents, &filter_index_block_handle,
+            r->metadata_writer.get());
+        meta_index_builder.Add(key, filter_index_block_handle);
+        r->props.filter_index_size = r->filter_index_builder->EstimatedSize() + kBlockTrailerSize;
+      } else {
+        meta_index_builder.Add(key, r->filter_pending_handle);
+      }
     }
 
     // Write properties block.
@@ -850,16 +945,16 @@ Status BlockBasedTableBuilder::Finish() {
       PropertyBlockBuilder property_block_builder;
       r->props.filter_policy_name = r->table_options.filter_policy != nullptr ?
           r->table_options.filter_policy->Name() : "";
-      r->props.index_size =
-          r->index_builder->EstimatedSize() + kBlockTrailerSize;
+      r->props.data_index_size =
+          r->data_index_builder->EstimatedSize() + kBlockTrailerSize;
 
       // Add basic properties
       property_block_builder.AddTableProperty(r->props);
 
       // Add use collected properties
       NotifyCollectTableCollectorsOnFinish(r->table_properties_collectors,
-                                           r->ioptions.info_log,
-                                           &property_block_builder);
+          r->ioptions.info_log,
+          &property_block_builder);
 
       BlockHandle properties_block_handle;
       WriteRawBlock(
@@ -877,8 +972,9 @@ Status BlockBasedTableBuilder::Finish() {
   if (ok()) {
     // flush the meta index block
     WriteRawBlock(meta_index_builder.Finish(), kNoCompression,
-                  &metaindex_block_handle, r->metadata_writer.get());
-    WriteBlock(index_blocks.index_block_contents, &index_block_handle, r->metadata_writer.get());
+        &meta_index_block_handle, r->metadata_writer.get());
+    WriteBlock(index_blocks.index_block_contents, &data_index_block_handle,
+        r->metadata_writer.get());
   }
 
   // Write footer
@@ -893,12 +989,12 @@ Status BlockBasedTableBuilder::Finish() {
     bool legacy = (r->table_options.format_version == 0);
     // this is guaranteed by BlockBasedTableBuilder's constructor
     assert(r->table_options.checksum == kCRC32c ||
-           r->table_options.format_version != 0);
+        r->table_options.format_version != 0);
     Footer footer(legacy ? kLegacyBlockBasedTableMagicNumber
-                         : kBlockBasedTableMagicNumber,
-                  r->table_options.format_version);
-    footer.set_metaindex_handle(metaindex_block_handle);
-    footer.set_index_handle(index_block_handle);
+            : kBlockBasedTableMagicNumber,
+        r->table_options.format_version);
+    footer.set_metaindex_handle(meta_index_block_handle);
+    footer.set_index_handle(data_index_block_handle);
     footer.set_checksum(r->table_options.checksum);
     std::string footer_encoding;
     footer.EncodeTo(&footer_encoding);
@@ -952,4 +1048,5 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
 
 const char BlockBasedTable::kFilterBlockPrefix[] = "filter.";
 const char BlockBasedTable::kFullFilterBlockPrefix[] = "fullfilter.";
+const char BlockBasedTable::kFixedSizeFilterBlockPrefix[] = "fixedsizefilter.";
 }  // namespace rocksdb

@@ -50,8 +50,17 @@ void PerformRocksDBSeek(
     PerformRocksDBSeek((iter), (key), __FILE__, __LINE__); \
   } while (0)
 
+enum class BloomFilterMode {
+  USE_BLOOM_FILTER,
+  DONT_USE_BLOOM_FILTER,
+};
+
+// It is only allowed to use bloom filters on scans within the same hashed components of the key,
+// because BloomFilterAwareIterator relies on it and ignores SST file completely if there are no
+// keys with the same hashed components as key specified for seek operation.
+// Note: bloom_filter_mode should be specified explicitly to avoid using it incorrectly by default.
 std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
-    rocksdb::DB* rocksdb, bool use_bloom_on_scan = true);
+    rocksdb::DB* rocksdb, BloomFilterMode bloom_filter_mode);
 
 // Initialize the RocksDB 'options' object for tablet identified by 'tablet_id'. The
 // 'statistics' object provided by the caller will be used by RocksDB to maintain

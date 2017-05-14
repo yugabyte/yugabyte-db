@@ -12,11 +12,6 @@
 
 namespace rocksdb {
 
-static uint64_t TestGetTickerCount(const Options& options,
-                                   Tickers ticker_type) {
-  return options.statistics->getTickerCount(ticker_type);
-}
-
 class DBBlockCacheTest : public DBTestBase {
  private:
   size_t miss_count_ = 0;

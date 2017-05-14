@@ -326,49 +326,47 @@ TEST(DocKeyTest, TestNumSharedPrefixComponents) {
                 PrimitiveValue("some_more"))));
 }
 
-std::string EncodeSimpleSubDocKeyFromSlice(const rocksdb::Slice& input) {
-  DocKey dk(DocKey(PrimitiveValues(std::string(input.data()))));
-  return SubDocKey(dk, HybridTime::FromMicros(12345L)).Encode().AsStringRef();
+std::string EncodeSubDocKey(const std::string& hash_key,
+    const std::string& range_key, const std::string& sub_key, uint64_t time) {
+  DocKey dk(DocKey(0, PrimitiveValues(hash_key), PrimitiveValues(range_key)));
+  return SubDocKey(dk, PrimitiveValue(sub_key),
+      HybridTime::FromMicros(time)).Encode().AsStringRef();
 }
 
-TEST(DocKeyTest, TestKeyMatchingThroughFilter) {
-  DocDbAwareFilterPolicy policy;
-  int test_size = 3;
-  // Hold onto the memory of these encoded SubDocKeys.
-  std::string strings[] = {EncodeSimpleSubDocKeyFromSlice("foo"),
-                           EncodeSimpleSubDocKeyFromSlice("bar"),
-                           EncodeSimpleSubDocKeyFromSlice("test")};
+std::string EncodeSimpleSubDocKey(const std::string& hash_key) {
+  return EncodeSubDocKey(hash_key, "range_key", "sub_key", 12345L);
+}
 
-  // Create slices off of the encoded strings, as CreateFilter expects an array of slices.
-  std::unique_ptr<rocksdb::Slice[]> data(new rocksdb::Slice[test_size]);
-  for (int i = 0; i < test_size; ++i) {
-    data[i] = strings[i];
+std::string EncodeSimpleSubDocKeyWithDifferentNonHashPart(const std::string& hash_key) {
+  return EncodeSubDocKey(hash_key, "another_range_key", "another_sub_key", 55555L);
+}
+
+TEST(DocKeyTest, TestKeyMatching) {
+  DocDbAwareFilterPolicy policy(rocksdb::FilterPolicy::kDefaultFixedSizeFilterBits, nullptr);
+  std::string keys[] = { "foo", "bar", "test" };
+  std::string absent_key = "fake";
+
+  std::unique_ptr<FilterBitsBuilder> builder(policy.GetFilterBitsBuilder());
+  ASSERT_NE(builder, nullptr);
+  // Policy supports GetFilterBitsBuilder/Reader interface (see description in filter_policy.h) -
+  // lets test it.
+  for (const auto& key : keys) {
+    builder->AddKey(policy.GetKeyTransformer()->Transform(EncodeSimpleSubDocKey(key)));
   }
-  // Create the filter and save the output in a local string.
-  std::string dst;
-  policy.CreateFilter(data.get(), test_size, &dst);
-
-  rocksdb::Slice filter(dst);
-  ASSERT_TRUE(policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("foo"), filter));
-  ASSERT_TRUE(policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("bar"), filter));
-  ASSERT_TRUE(policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("test"), filter));
-  ASSERT_TRUE(!policy.KeyMayMatch(EncodeSimpleSubDocKeyFromSlice("fake"), filter));
-}
-
-TEST(DocKeyTest, TestKeyMatchingThroughNewInterface) {
-  DocDbAwareFilterPolicy policy;
-  std::shared_ptr<FilterBitsBuilder> builder(policy.GetFilterBitsBuilder());
-  builder->AddKey(EncodeSimpleSubDocKeyFromSlice("foo"));
-  builder->AddKey(EncodeSimpleSubDocKeyFromSlice("bar"));
-  builder->AddKey(EncodeSimpleSubDocKeyFromSlice("test"));
   std::unique_ptr<const char[]> buf;
   rocksdb::Slice filter = builder->Finish(&buf);
 
   std::unique_ptr<FilterBitsReader> reader(policy.GetFilterBitsReader(filter));
-  ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("foo")));
-  ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("bar")));
-  ASSERT_TRUE(reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("test")));
-  ASSERT_TRUE(!reader->MayMatch(EncodeSimpleSubDocKeyFromSlice("fake")));
+
+  auto may_match = [&](const std::string& sub_doc_key_str) {
+    return reader->MayMatch(policy.GetKeyTransformer()->Transform(sub_doc_key_str));
+  };
+
+  for (const auto &key : keys) {
+    ASSERT_TRUE(may_match(EncodeSimpleSubDocKey(key))) << "Key: " << key;
+    ASSERT_TRUE(may_match(EncodeSimpleSubDocKeyWithDifferentNonHashPart(key))) << "Key: " << key;
+  }
+  ASSERT_FALSE(may_match(EncodeSimpleSubDocKey(absent_key))) << "Key: " << absent_key;
 }
 
 TEST(DocKeyTest, TestWriteId) {

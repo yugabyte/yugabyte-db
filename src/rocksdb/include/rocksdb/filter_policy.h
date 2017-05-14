@@ -17,11 +17,13 @@
 // Most people will want to use the builtin bloom filter support (see
 // NewBloomFilterPolicy() below).
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_FILTER_POLICY_H_
-#define STORAGE_ROCKSDB_INCLUDE_FILTER_POLICY_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_FILTER_POLICY_H
+#define ROCKSDB_INCLUDE_ROCKSDB_FILTER_POLICY_H
 
 #include <string>
 #include <memory>
+
+#include "rocksdb/env.h"
 
 namespace rocksdb {
 
@@ -41,6 +43,9 @@ class FilterBitsBuilder {
   // The return value of this function would be the filter bits,
   // The ownership of actual data is set to buf
   virtual Slice Finish(std::unique_ptr<const char[]>* buf) = 0;
+
+  // Checks whether bits builder is full and we should start a new bloom filter block.
+  virtual bool IsFull() const = 0;
 };
 
 // A class that checks if a key can be in filter
@@ -62,11 +67,11 @@ class FilterBitsReader {
 // There are two sets of interface in FilterPolicy
 // Set 1: CreateFilter, KeyMayMatch: used for blockbased filter
 // Set 2: GetFilterBitsBuilder, GetFilterBitsReader, they are used for
-// full filter.
-// Set 1 MUST be implemented correctly, Set 2 is optional
+// full filter and fixed-size filter.
+// Either Set 1 or Set 2 MUST be implemented correctly.
 // RocksDB would first try using functions in Set 2. if they return nullptr,
 // it would use Set 1 instead.
-// You can choose filter type in NewBloomFilterPolicy
+// You can choose filter type in NewBloomFilterPolicy.
 class FilterPolicy {
  public:
   virtual ~FilterPolicy();
@@ -93,18 +98,63 @@ class FilterPolicy {
   // list, but it should aim to return false with a high probability.
   virtual bool KeyMayMatch(const Slice& key, const Slice& filter) const = 0;
 
-  // Get the FilterBitsBuilder, which is ONLY used for full filter block
-  // It contains interface to take individual key, then generate filter
+  // Get the FilterBitsBuilder, which is used for full filter block and fixed size filter block.
+  // It contains interface to take individual key, then generate filter.
   virtual FilterBitsBuilder* GetFilterBitsBuilder() const {
     return nullptr;
   }
 
-  // Get the FilterBitsReader, which is ONLY used for full filter block
-  // It contains interface to tell if key can be in filter
-  // The input slice should NOT be deleted by FilterPolicy
+  // Get the FilterBitsReader, which is used for full filter block and fixed size filter block.
+  // It contains interface to tell if key can be in filter.
+  // The input slice should NOT be deleted by FilterPolicy.
   virtual FilterBitsReader* GetFilterBitsReader(const Slice& contents) const {
     return nullptr;
   }
+
+  // Filter type that will be used for this table.
+  enum FilterType {
+    // No filter is used.
+    kNoFilter,
+
+    // One monolithic full filter per SSTable, with keys buffering while building.
+    kFullFilter,
+
+    // Block based filter, with one filter block corresponding to each data block.
+    kBlockBasedFilter,
+
+    // Fixed size filter without key buffering.
+    kFixedSizeFilter
+  };
+
+  // Returns filter type to be used based on this policy.
+  virtual FilterType GetFilterType() const = 0;
+
+  class KeyTransformer {
+   public:
+    virtual ~KeyTransformer() {}
+
+    // Transform a key.
+    virtual Slice Transform(const Slice& key) const = 0;
+  };
+
+  // Filter policy can optionally return key transformer to be used before writing key to filter or
+  // testing key against filter and building/reading filter index based on keys (used for fixed-size
+  // bloom filter). This method is used by BlockBasedTable(Reader)/BlockBasedTableBuilder.
+  // Requires: order of keys defined by BytewiseComparator shouldn't be broken by key transformer.
+  //
+  // Actually we can use ColumnFamilyOptions::prefix_extractor instead and switch off whole key
+  // filtering by setting BlockBasedTableOptions::whole_key_filtering to false. But we want
+  // key transformation algorithm to be part of filter policy, so we can:
+  // 1) detect which key transformation to use based on policy serialized into filter meta block.
+  // 2) support multiple filter policies with their own key transformations.
+  //
+  // Note: in case prefix_extractor is also set, it is applied after key transformer. But for
+  // block-based filter prefix_extractor should also be applicable to user key, because
+  // block filter containing required key prefix is retrieved from data index based on user key.
+  virtual const KeyTransformer* GetKeyTransformer() const { return nullptr; }
+
+  static constexpr size_t kDefaultFixedSizeFilterBits = 65536;
+  static constexpr double kDefaultFixedSizeFilterErrorRate = 0.01;
 };
 
 // Return a new filter policy that uses a bloom filter with approximately
@@ -127,6 +177,20 @@ class FilterPolicy {
 // trailing spaces in keys.
 extern const FilterPolicy* NewBloomFilterPolicy(int bits_per_key,
     bool use_block_based_builder = true);
-}
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_FILTER_POLICY_H_
+// Return a new filter policy that uses a bloom filter divided into fixed-size blocks with
+// specified parameters:
+//
+// total_bits: purely size of bloom filter itself in each filter block, also each filter block has
+// some metadata added.
+// error_rate: expected false positive error rate to calculate maximum number of keys to store in
+// each filter block. This is used to determine whether a filter block is full.
+//
+// Callers must delete the result after any database that is using the filter policy has been
+// closed.
+extern const FilterPolicy* NewFixedSizeFilterPolicy(uint32_t total_bits,
+                                                    double error_rate,
+                                                    Logger* logger);
+}  // namespace rocksdb
+
+#endif  // ROCKSDB_INCLUDE_ROCKSDB_FILTER_POLICY_H

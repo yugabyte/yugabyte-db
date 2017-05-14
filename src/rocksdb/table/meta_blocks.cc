@@ -63,9 +63,11 @@ void PropertyBlockBuilder::AddTableProperty(const TableProperties& props) {
   Add(TablePropertiesNames::kRawKeySize, props.raw_key_size);
   Add(TablePropertiesNames::kRawValueSize, props.raw_value_size);
   Add(TablePropertiesNames::kDataSize, props.data_size);
-  Add(TablePropertiesNames::kIndexSize, props.index_size);
+  Add(TablePropertiesNames::kDataIndexSize, props.data_index_size);
+  Add(TablePropertiesNames::kFilterIndexSize, props.filter_index_size);
   Add(TablePropertiesNames::kNumEntries, props.num_entries);
   Add(TablePropertiesNames::kNumDataBlocks, props.num_data_blocks);
+  Add(TablePropertiesNames::kNumFilterBlocks, props.num_filter_blocks);
   Add(TablePropertiesNames::kFilterSize, props.filter_size);
   Add(TablePropertiesNames::kFormatVersion, props.format_version);
   Add(TablePropertiesNames::kFixedKeyLen, props.fixed_key_len);
@@ -160,18 +162,16 @@ Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
   // All pre-defined properties of type uint64_t
   std::unordered_map<std::string, uint64_t*> predefined_uint64_properties = {
       {TablePropertiesNames::kDataSize, &new_table_properties->data_size},
-      {TablePropertiesNames::kIndexSize, &new_table_properties->index_size},
+      {TablePropertiesNames::kDataIndexSize, &new_table_properties->data_index_size},
       {TablePropertiesNames::kFilterSize, &new_table_properties->filter_size},
+      {TablePropertiesNames::kFilterIndexSize, &new_table_properties->filter_index_size},
       {TablePropertiesNames::kRawKeySize, &new_table_properties->raw_key_size},
-      {TablePropertiesNames::kRawValueSize,
-       &new_table_properties->raw_value_size},
-      {TablePropertiesNames::kNumDataBlocks,
-       &new_table_properties->num_data_blocks},
+      {TablePropertiesNames::kRawValueSize, &new_table_properties->raw_value_size},
+      {TablePropertiesNames::kNumDataBlocks, &new_table_properties->num_data_blocks},
       {TablePropertiesNames::kNumEntries, &new_table_properties->num_entries},
-      {TablePropertiesNames::kFormatVersion,
-       &new_table_properties->format_version},
-      {TablePropertiesNames::kFixedKeyLen,
-       &new_table_properties->fixed_key_len}, };
+      {TablePropertiesNames::kNumFilterBlocks, &new_table_properties->num_filter_blocks},
+      {TablePropertiesNames::kFormatVersion, &new_table_properties->format_version},
+      {TablePropertiesNames::kFixedKeyLen, &new_table_properties->fixed_key_len}, };
 
   std::string last_key;
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
