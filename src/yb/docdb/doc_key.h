@@ -414,10 +414,6 @@ std::string BestEffortDocDBKeyToStr(const rocksdb::Slice &slice);
 
 // This filter policy only takes into account hashed components of keys for filtering.
 class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
-  class HashedComponentsExtractor : public KeyTransformer {
-    virtual rocksdb::Slice Transform(const rocksdb::Slice& key) const override;
-  };
-
  public:
   explicit DocDbAwareFilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger) {
     builtin_policy_.reset(rocksdb::NewFixedSizeFilterPolicy(
@@ -436,11 +432,10 @@ class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
 
   FilterType GetFilterType() const override;
 
-  const KeyTransformer* GetKeyTransformer() const override { return &hashed_components_extractor_; }
+  const KeyTransformer* GetKeyTransformer() const override;
 
  private:
   std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
-  const HashedComponentsExtractor hashed_components_extractor_;
 };
 
 }  // namespace docdb

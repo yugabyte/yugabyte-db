@@ -131,9 +131,6 @@
                         <reuseForks>false</reuseForks>
                         <redirectTestOutputToFile>true</redirectTestOutputToFile>
                         <argLine>${testArgLine}</argLine>
-                        <excludes>
-                            <exclude>**/*.java</exclude>
-                        </excludes>
                         <systemPropertyVariables>
                           <!-- Explicitly specify the YB binary directory since yb-cql tests use
                                TestUtils in yb-client in a JAR (e.g.

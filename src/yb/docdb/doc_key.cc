@@ -465,13 +465,25 @@ int32_t GetEncodedDocKeyPrefixSize(const rocksdb::Slice& slice, DocKeyPart doc_k
   // improvement.
 }
 
+class HashedComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
+ public:
+  HashedComponentsExtractor() {}
+  HashedComponentsExtractor(const HashedComponentsExtractor&) = delete;
+  HashedComponentsExtractor& operator=(const HashedComponentsExtractor&) = delete;
+
+  static HashedComponentsExtractor& GetInstance() {
+    static HashedComponentsExtractor instance;
+    return instance;
+  }
+
+  virtual rocksdb::Slice Transform(const rocksdb::Slice& key) const override {
+    int32_t size = GetEncodedDocKeyPrefixSize(key, DocKeyPart::HASHED_PART_ONLY);
+    return rocksdb::Slice(key.data(), size);
+  };
+};
+
 } // namespace
 
-rocksdb::Slice DocDbAwareFilterPolicy::HashedComponentsExtractor::Transform(
-    const rocksdb::Slice& key) const {
-  int32_t size = GetEncodedDocKeyPrefixSize(key, DocKeyPart::HASHED_PART_ONLY);
-  return rocksdb::Slice(key.data(), size);
-}
 
 void DocDbAwareFilterPolicy::CreateFilter(
     const rocksdb::Slice* keys, int n, std::string* dst) const {
@@ -495,6 +507,9 @@ rocksdb::FilterBitsReader* DocDbAwareFilterPolicy::GetFilterBitsReader(
 rocksdb::FilterPolicy::FilterType DocDbAwareFilterPolicy::GetFilterType() const {
   return builtin_policy_->GetFilterType();
 }
+
+const rocksdb::FilterPolicy::KeyTransformer* DocDbAwareFilterPolicy::GetKeyTransformer() const {
+  return &HashedComponentsExtractor::GetInstance(); }
 
 }  // namespace docdb
 
