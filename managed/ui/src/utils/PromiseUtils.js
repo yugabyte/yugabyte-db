@@ -51,7 +51,7 @@ export function setPromiseResponse(state, object, response) {
   if (status !== 200 || isDefinedNotNull(data.error)) {
     _.merge(objectState, { data: null, error: data.error, promiseState: PromiseState.ERROR });
   } else {
-    _.merge(objectState, { data: data, error: null, status: PromiseState.ERROR });
+    _.merge(objectState, {data: data, error: null, promiseState: PromiseState.SUCCESS});
   }
   return Object.assign({}, state, { [object]: objectState });
 }
