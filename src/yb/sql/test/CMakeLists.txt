@@ -23,4 +23,11 @@ ADD_YB_TEST(ybsql-semanalyzer-test)
 ADD_YB_TEST(ybsql-statement-test)
 ADD_YB_TEST(ybsql-keyspace-test)
 ADD_YB_TEST(ybsql-static-column-test)
-ADD_YB_TEST(ybcmd)
+
+# Due to some reasons ybcmd is implemented as a gtest, although it is really a tool and not
+# intended to be run as a test. So, we put it in usual binary directory and don't add as a test.
+# TODO: https://yugabyte.atlassian.net/browse/ENG-1498: Refactor ybcmd - make it tool instead of
+# test.
+add_executable(ybcmd ybcmd.cc)
+target_link_libraries(ybcmd ${YB_TEST_LINK_LIBS})
+ADD_COMMON_YB_TEST_DEPENDENCIES(ybcmd)
