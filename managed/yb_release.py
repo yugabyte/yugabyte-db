@@ -10,7 +10,7 @@ import tarfile
 
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
-    generate_checksum, latest_release, download_release, docker_push_to_replicated
+    generate_checksum, latest_release, download_release, docker_push_to_registry
 from ybops.utils.release import get_package_info, S3_RELEASE_BUCKET, \
     _extract_components_from_package_name
 from ybops.common.exceptions import YBOpsRuntimeError
@@ -93,8 +93,8 @@ try:
 
             if args.publish:
                 log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
-                docker_push_to_replicated("yugaware", "1.0-SNAPSHOT", args.tag)
-                docker_push_to_replicated("yugaware-ui", "latest", args.tag)
+                docker_push_to_registry("yugaware", "1.0-SNAPSHOT", args.tag)
+                docker_push_to_registry("yugaware-ui", "latest", args.tag)
 
         except YBOpsRuntimeError as ye:
             log_message(logging.ERROR, ye)
