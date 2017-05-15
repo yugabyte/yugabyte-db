@@ -534,8 +534,6 @@ master_binary="$build_root/bin/yb-master"
 ensure_binary_exists "$master_binary"
 tserver_binary="$build_root/bin/yb-tserver"
 ensure_binary_exists "$tserver_binary"
-ybcmd_binary="$build_root/bin/ybcmd"
-ensure_binary_exists "$ybcmd_binary"
 
 yql_root="$yugabyte_root/yql"
 
