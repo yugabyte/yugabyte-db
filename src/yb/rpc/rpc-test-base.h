@@ -61,6 +61,8 @@ using yb::rpc_test::WhoAmIRequestPB;
 using yb::rpc_test::WhoAmIResponsePB;
 using yb::rpc_test::PingRequestPB;
 using yb::rpc_test::PingResponsePB;
+using yb::rpc_test::DisconnectRequestPB;
+using yb::rpc_test::DisconnectResponsePB;
 using yb::rpc_test_diff_package::ReqDiffPackagePB;
 using yb::rpc_test_diff_package::RespDiffPackagePB;
 
@@ -239,6 +241,13 @@ class CalculatorService : public CalculatorServiceIf {
                     RpcContext* context) override {
     auto now = MonoTime::Now(MonoTime::FINE);
     resp->set_time(now.ToUint64());
+    context->RespondSuccess();
+  }
+
+  void Disconnect(const DisconnectRequestPB* peq,
+                  DisconnectResponsePB* resp,
+                  RpcContext* context) override {
+    context->CloseConnection();
     context->RespondSuccess();
   }
 

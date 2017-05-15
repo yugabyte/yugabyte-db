@@ -17,9 +17,9 @@
 
 #include "yb/rpc/rpc_controller.h"
 
-#include <algorithm>
-#include <glog/logging.h>
 #include <mutex>
+
+#include <glog/logging.h>
 
 #include "yb/rpc/outbound_call.h"
 
@@ -31,6 +31,15 @@ RpcController::RpcController() {
 
 RpcController::~RpcController() {
   DVLOG(4) << "RpcController " << this << " destroyed";
+}
+
+RpcController::RpcController(RpcController&& rhs) noexcept {
+  Swap(&rhs);
+}
+
+void RpcController::operator=(RpcController&& rhs) noexcept {
+  Reset();
+  Swap(&rhs);
 }
 
 void RpcController::Swap(RpcController* other) {

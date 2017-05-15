@@ -31,7 +31,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_types.h"
-#include "yb/rpc/outbound_data.h"
+#include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/thread_pool.h"
@@ -70,7 +70,7 @@ struct InboundCallTiming {
 };
 
 // Inbound call on server
-class InboundCall : public OutboundData {
+class InboundCall : public RpcCall {
  public:
   InboundCall();
   virtual ~InboundCall();

@@ -289,15 +289,11 @@ void YBInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
   }
 }
 
-void YBInboundCall::NotifyTransferFinished() {
+void YBInboundCall::NotifyTransferred(const Status& status) {
   // Remove the call from the map.
   InboundCallPtr call_from_map = EraseKeyReturnValuePtr(
       &conn_->calls_being_handled_, call_id());
   DCHECK_EQ(call_from_map.get(), this);
-}
-
-void YBInboundCall::NotifyTransferAborted(const Status& status) {
-  NotifyTransferFinished();
 }
 
 } // namespace rpc

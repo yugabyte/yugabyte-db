@@ -134,24 +134,20 @@ OutboundCall::~OutboundCall() {
   }
 }
 
-void OutboundCall::NotifyTransferFinished() {
+void OutboundCall::NotifyTransferred(const Status& status) {
   // TODO: would be better to cancel the transfer while it is still on the queue if we
   // timed out before the transfer started, but there is still a race in the case of
   // a partial send that we have to handle here
   if (IsFinished()) {
     DCHECK(IsTimedOut());
   } else {
-    SetSent();
-  }
-}
-
-void OutboundCall::NotifyTransferAborted(const Status& status) {
-  VLOG(1) << "Connection torn down before " << ToString()
-          << " could send its call: " << status.ToString();
-  if (IsFinished()) {
-    DCHECK(IsTimedOut());
-  } else {
-    SetFailed(status);
+    if (status.ok()) {
+      SetSent();
+    } else {
+      VLOG(1) << "Connection torn down before " << ToString()
+              << " could send its call: " << status.ToString();
+      SetFailed(status);
+    }
   }
 }
 

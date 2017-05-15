@@ -102,6 +102,10 @@ message PingResponsePB {
                             // Used with MonoTime::FromUint64/ToUint64.
 }
 
+message DisconnectRequestPB {}
+
+message DisconnectResponsePB {}
+
 service CalculatorService {
   rpc Add(AddRequestPB) returns(AddResponsePB);
   rpc Sleep(SleepRequestPB) returns(SleepResponsePB);
@@ -111,4 +115,5 @@ service CalculatorService {
     returns(yb.rpc_test_diff_package.RespDiffPackagePB);
   rpc Panic(PanicRequestPB) returns (PanicResponsePB);
   rpc Ping(PingRequestPB) returns (PingResponsePB);
+  rpc Disconnect(DisconnectRequestPB) returns (DisconnectResponsePB);
 }

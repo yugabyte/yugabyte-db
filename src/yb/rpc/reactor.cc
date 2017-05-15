@@ -188,7 +188,7 @@ void ReactorThread::ShutdownInternal() {
   }
 
   for (auto& call : processing_outbound_queue_) {
-    call->TransferAborted(aborted);
+    call->Transferred(aborted);
   }
   processing_outbound_queue_.clear();
 }
@@ -574,7 +574,7 @@ void ReactorThread::QueueOutboundCall(OutboundCallPtr call) {
     }
   }
   if (closing) {
-    call->TransferAborted(ShutdownError(true));
+    call->Transferred(ShutdownError(true));
     return;
   }
   if (was_empty) {

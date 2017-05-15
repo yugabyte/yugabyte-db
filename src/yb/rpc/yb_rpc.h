@@ -119,8 +119,7 @@ class YBInboundCall : public InboundCall {
   ConnectionPtr get_connection() const override;
 
  private:
-  void NotifyTransferFinished() override;
-  void NotifyTransferAborted(const Status& status) override;
+  void NotifyTransferred(const Status& status) override;
 
   // The header of the incoming call. Set by ParseFrom()
   RequestHeader header_;

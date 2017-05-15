@@ -1577,11 +1577,10 @@ std::string CQLServerEvent::ToString() const {
   return event_response_->ToString();
 }
 
-void CQLServerEvent::NotifyTransferFinished() {
-}
-
-void CQLServerEvent::NotifyTransferAborted(const Status& status) {
-  LOG(WARNING) << "CQLServerEvent transfer aborted: " << status.ToString();
+void CQLServerEvent::Transferred(const Status& status) {
+  if (!status.ok()) {
+    LOG(WARNING) << "Transfer of CQL server event failed: " << status.ToString();
+  }
 }
 
 }  // namespace cqlserver

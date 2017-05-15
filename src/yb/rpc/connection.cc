@@ -127,7 +127,7 @@ void Connection::ClearSending(const Status& status) {
   // Clear any outbound transfers.
   for (auto& call : sending_outbound_datas_) {
     if (call) {
-      call->TransferAborted(status);
+      call->Transferred(status);
     }
   }
   sending_outbound_datas_.clear();
@@ -162,7 +162,7 @@ void Connection::Shutdown(const Status& status) {
     outbound_data_being_processed_.swap(outbound_data_to_process_);
   }
   for (auto& call : outbound_data_being_processed_) {
-    call->TransferAborted(status);
+    call->Transferred(status);
   }
   outbound_data_being_processed_.clear();
 
@@ -382,7 +382,7 @@ Status Connection::DoWrite() {
           OutboundCallPtr outbound_call(down_cast<OutboundCall*>(call.get()));
           CallSent(std::move(outbound_call));
         }
-        call->TransferFinished();
+        call->Transferred(Status::OK());
       }
     }
   }

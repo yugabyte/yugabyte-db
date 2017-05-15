@@ -226,11 +226,10 @@ bool CQLInboundCall::TryResume() {
   return true;
 }
 
-void CQLInboundCall::NotifyTransferFinished() {
-  conn_->FinishedHandlingACall();
-}
-
-void CQLInboundCall::NotifyTransferAborted(const Status& status) {
+void CQLInboundCall::NotifyTransferred(const Status& status) {
+  if (status.ok()) {
+    conn_->FinishedHandlingACall();
+  }
 }
 
 } // namespace rpc

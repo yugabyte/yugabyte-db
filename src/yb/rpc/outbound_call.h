@@ -28,7 +28,7 @@
 #include "yb/rpc/constants.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
-#include "yb/rpc/outbound_data.h"
+#include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/transfer.h"
@@ -174,7 +174,7 @@ struct OutboundCallMetrics {
 // then passed to the reactor thread to send on the wire. It's typically
 // kept using a shared_ptr because a call may terminate in any number
 // of different threads, making it tricky to enforce single ownership.
-class OutboundCall : public OutboundData {
+class OutboundCall : public RpcCall {
  public:
   OutboundCall(const ConnectionId& conn_id, const RemoteMethod& remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
@@ -269,8 +269,7 @@ class OutboundCall : public OutboundData {
 
   static std::string StateName(State state);
 
-  void NotifyTransferFinished() override;
-  void NotifyTransferAborted(const Status& status) override;
+  void NotifyTransferred(const Status& status) override;
 
   void set_state(State new_state);
   State state() const;

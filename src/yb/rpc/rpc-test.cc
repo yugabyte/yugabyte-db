@@ -17,9 +17,11 @@
 
 #include "yb/rpc/rpc-test-base.h"
 
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include <boost/ptr_container/ptr_vector.hpp>
@@ -514,6 +516,79 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   controller.Reset();
   controller.set_timeout(MonoDelta::FromMilliseconds(1000));
   ASSERT_OK(p.SyncRequest("Sleep", req, &resp, &controller));
+}
+
+struct DisconnectShare {
+  Proxy proxy;
+  size_t left;
+  std::mutex mutex;
+  std::condition_variable cond;
+  std::unordered_map<std::string, size_t> counts;
+};
+
+class DisconnectTask {
+ public:
+  explicit DisconnectTask(DisconnectShare* share) : share_(share) {
+  }
+
+  void Launch() {
+    controller_.set_timeout(MonoDelta::FromSeconds(1));
+    share_->proxy.AsyncRequest("Disconnect",
+                               DisconnectRequestPB(),
+                               &response_,
+                               &controller_,
+                               [this]() { this->Done(); });
+  }
+ private:
+  void Done() {
+    bool notify;
+    {
+      std::lock_guard<std::mutex> lock(share_->mutex);
+      ++share_->counts[controller_.status().ToString()];
+      notify = 0 == --share_->left;
+    }
+    if (notify)
+      share_->cond.notify_one();
+  }
+
+  DisconnectShare* share_;
+  DisconnectResponsePB response_;
+  RpcController controller_;
+};
+
+TEST_F(TestRpc, TestDisconnect) {
+  // Set up server.
+  Sockaddr server_addr;
+  StartTestServerWithGeneratedCode(&server_addr);
+
+  // Set up client.
+  shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+
+  constexpr size_t kRequests = 10000;
+  DisconnectShare share = {
+      { client_messenger, server_addr, CalculatorService::static_service_name() },
+      kRequests
+  };
+
+  std::vector<DisconnectTask> tasks;
+  for (size_t i = 0; i != kRequests; ++i) {
+    tasks.emplace_back(&share);
+  }
+  for (size_t i = 0; i != kRequests; ++i) {
+    tasks[i].Launch();
+  }
+  {
+    std::unique_lock<std::mutex> lock(share.mutex);
+    share.cond.wait(lock, [&share]() { return !share.left; });
+  }
+
+  size_t total = 0;
+  for (const auto& pair : share.counts) {
+    ASSERT_NE(pair.first, "OK");
+    total += pair.second;
+    LOG(INFO) << pair.first << ": " << pair.second;
+  }
+  ASSERT_EQ(kRequests, total);
 }
 
 } // namespace rpc

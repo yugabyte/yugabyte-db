@@ -47,6 +47,9 @@ class RpcController {
   RpcController();
   ~RpcController();
 
+  RpcController(RpcController&& rhs) noexcept;
+  void operator=(RpcController&& rhs) noexcept;
+
   // Swap the state of the controller (including ownership of sidecars, buffers,
   // etc) with another one.
   void Swap(RpcController* other);

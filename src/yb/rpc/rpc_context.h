@@ -174,6 +174,8 @@ class RpcContext {
   void Panic(const char* filepath, int line_number, const std::string& message)
     __attribute__((noreturn));
 
+  // Closes connection that received this request.
+  void CloseConnection();
  private:
   InboundCallPtr call_;
   const std::shared_ptr<const google::protobuf::Message> request_pb_;

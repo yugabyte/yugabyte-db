@@ -854,8 +854,7 @@ class CQLServerEvent : public rpc::ServerEvent {
   void Serialize(std::deque<util::RefCntBuffer>* output) const override;
   std::string ToString() const override;
  private:
-  void NotifyTransferFinished() override;
-  void NotifyTransferAborted(const Status& status) override;
+  void Transferred(const Status& status) override;
 
   std::unique_ptr<EventResponse> event_response_;
   // Need to keep the serialized response around since we return a reference to it via Slice in

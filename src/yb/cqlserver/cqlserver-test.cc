@@ -203,5 +203,20 @@ TEST_F(TestCQLService, InvalidRequest) {
                     "\x00\x00\x00\x0a" "\x00\x17" "Request length too long"));
 }
 
+TEST_F(TestCQLService, TestCQLServerEventConst) {
+  std::unique_ptr<SchemaChangeEventResponse> response(
+      new SchemaChangeEventResponse("", "", "", "", {}));
+  constexpr size_t kSize = sizeof(CQLServerEvent);
+  CQLServerEvent* event = new CQLServerEvent(std::move(response));
+  yb::rpc::OutboundDataPtr data(event);
+  void* ptr = event;
+  char buffer[kSize];
+  memcpy(buffer, ptr, kSize);
+  data->Transferred(Status::OK());
+  ASSERT_EQ(0, memcmp(buffer, ptr, kSize));
+  data->Transferred(STATUS(NetworkError, "Dummy"));
+  ASSERT_EQ(0, memcmp(buffer, ptr, kSize));
+}
+
 }  // namespace cqlserver
 }  // namespace yb

@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "yb/rpc/outbound_data.h"
+#include "yb/rpc/rpc_call.h"
 #include "yb/util/slice.h"
 
 namespace yb {

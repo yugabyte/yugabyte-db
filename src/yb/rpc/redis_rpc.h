@@ -166,8 +166,7 @@ class RedisInboundCall : public InboundCall {
   ConnectionPtr get_connection() const override;
 
  private:
-  void NotifyTransferFinished() override;
-  void NotifyTransferAborted(const Status& status) override;
+  void NotifyTransferred(const Status& status) override;
 
   // The connection on which this inbound call arrived.
   boost::intrusive_ptr<RedisConnection> conn_;

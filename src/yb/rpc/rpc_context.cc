@@ -20,8 +20,9 @@
 #include <ostream>
 #include <sstream>
 
-#include "yb/rpc/outbound_call.h"
+#include "yb/rpc/connection.h"
 #include "yb/rpc/inbound_call.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/service_if.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
@@ -208,6 +209,10 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 
 #undef MY_ERROR
 #undef MY_FATAL
+}
+
+void RpcContext::CloseConnection() {
+  shutdown(call_->connection()->socket()->GetFd(), SHUT_RD | SHUT_WR);
 }
 
 }  // namespace rpc

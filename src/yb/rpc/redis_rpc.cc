@@ -369,12 +369,8 @@ void RedisInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
   output->push_back(response_msg_buf_);
 }
 
-void RedisInboundCall::NotifyTransferFinished() {
+void RedisInboundCall::NotifyTransferred(const Status& status) {
   conn_->FinishedHandlingACall();
-}
-
-void RedisInboundCall::NotifyTransferAborted(const Status& status) {
-  NotifyTransferFinished();
 }
 
 } // namespace rpc

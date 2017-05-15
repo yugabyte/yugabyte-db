@@ -41,7 +41,7 @@ ADD_EXPORTABLE_LIBRARY(rpc_introspection_proto
 
 ### RPC library
 set(YRPC_SRCS
-  acceptor.cc
+    acceptor.cc
     auth_store.cc
     blocking_ops.cc
     connection.cc
@@ -52,7 +52,7 @@ set(YRPC_SRCS
     messenger.cc
     negotiation.cc
     outbound_call.cc
-    outbound_data.cc
+    rpc_call.cc
     proxy.cc
     reactor.cc
     redis_encoding.cc
