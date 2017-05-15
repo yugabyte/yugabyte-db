@@ -17,7 +17,8 @@ class YQLEmptyVTable : public YQLVirtualTable {
   explicit YQLEmptyVTable(const TableName& table_name,
                           const Master* const master,
                           const Schema& schema);
-  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const;
+  CHECKED_STATUS RetrieveData(const YQLReadRequestPB& request,
+                              std::unique_ptr<YQLRowBlock>* vtable) const;
 };
 
 }  // namespace master

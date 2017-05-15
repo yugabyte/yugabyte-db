@@ -12,18 +12,16 @@ YQLKeyspacesVTable::YQLKeyspacesVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemSchemaKeyspacesTableName, master, CreateSchema()) {
 }
 
-Status YQLKeyspacesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
+Status YQLKeyspacesVTable::RetrieveData(const YQLReadRequestPB& request,
+                                        std::unique_ptr<YQLRowBlock>* vtable) const {
+  using namespace util;
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<NamespaceInfo> > namespaces;
   master_->catalog_manager()->GetAllNamespaces(&namespaces);
   for (scoped_refptr<NamespaceInfo> ns : namespaces) {
     YQLRow& row = (*vtable)->Extend();
-    YQLValuePB keyspace_name;
-    YQLValuePB durable_writes;
-    YQLValue::set_string_value(ns->name(), &keyspace_name);
-    YQLValue::set_bool_value(true, &durable_writes);
-    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, &row));
-    RETURN_NOT_OK(SetColumnValue(kDurableWrites, durable_writes, &row));
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, GetStringValue(ns->name()), &row));
+    RETURN_NOT_OK(SetColumnValue(kDurableWrites, GetBoolValue(true), &row));
   }
 
   return Status::OK();

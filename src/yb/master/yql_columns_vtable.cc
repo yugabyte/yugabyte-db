@@ -11,36 +11,28 @@ YQLColumnsVTable::YQLColumnsVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemSchemaColumnsTableName, master, CreateSchema()) {
 }
 
-namespace {
-  YQLValuePB GetStringValue(const std::string& strval) {
-    YQLValuePB value_pb;
-    YQLValue::set_string_value(strval, &value_pb);
-    return value_pb;
-  }
-
-  YQLValuePB GetIntValue(const int32_t intval) {
-    YQLValuePB value_pb;
-    YQLValue::set_int32_value(intval, &value_pb);
-    return value_pb;
-  }
-} // anonymous namespace
-
 Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
                                                    const YQLValuePB& keyspace_name,
                                                    const YQLValuePB& table_name,
                                                    const size_t col_idx,
                                                    YQLRow* const row) const {
+  using namespace util;
   RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, row));
   RETURN_NOT_OK(SetColumnValue(kTableName, table_name, row));
-  RETURN_NOT_OK(SetColumnValue(kColumnName, GetStringValue(schema.column(col_idx).name()), row));
+  RETURN_NOT_OK(SetColumnValue(kColumnName, GetStringValue(schema.column(col_idx).name()),
+                               row));
   RETURN_NOT_OK(SetColumnValue(kClusteringOrder,
-                               GetStringValue(schema.column(col_idx).sorting_type_string()), row));
+                               GetStringValue(schema.column(col_idx).sorting_type_string()),
+                               row));
   RETURN_NOT_OK(SetColumnValue(kType,
-                               GetStringValue(schema.column(col_idx).type().ToString()), row));
+                               GetStringValue(schema.column(col_idx).type().ToString()),
+                               row));
   return Status::OK();
 }
 
-Status YQLColumnsVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
+Status YQLColumnsVTable::RetrieveData(const YQLReadRequestPB& request,
+                                      std::unique_ptr<YQLRowBlock>* vtable) const {
+  using namespace util;
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);

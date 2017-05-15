@@ -45,6 +45,7 @@ set(MASTER_SRCS
   yql_indexes_vtable.cc
   yql_keyspaces_vtable.cc
   yql_peers_vtable.cc
+  yql_local_vtable.cc
   yql_tables_vtable.cc
   yql_triggers_vtable.cc
   yql_types_vtable.cc

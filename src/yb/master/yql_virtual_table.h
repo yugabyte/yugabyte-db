@@ -7,6 +7,7 @@
 #include "yb/common/yql_rowblock.h"
 #include "yb/common/yql_storage_interface.h"
 #include "yb/master/master.h"
+#include "yb/master/util/yql_vtable_helpers.h"
 
 namespace yb {
 namespace master {
@@ -20,9 +21,11 @@ class YQLVirtualTable : public common::YQLStorageIf {
 
   // Retrieves all the data for the yql virtual table in form of a YQLRowBlock. This data is then
   // used by the iterator.
-  virtual CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const = 0;
+  virtual CHECKED_STATUS RetrieveData(const YQLReadRequestPB& request,
+                                      std::unique_ptr<YQLRowBlock>* vtable) const = 0;
 
-  CHECKED_STATUS GetIterator(const Schema& projection,
+  CHECKED_STATUS GetIterator(const YQLReadRequestPB& request,
+                             const Schema& projection,
                              const Schema& schema,
                              HybridTime req_hybrid_time,
                              std::unique_ptr<common::YQLRowwiseIteratorIf>* iter) const override;

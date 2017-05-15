@@ -555,122 +555,6 @@ CHECKED_STATUS Executor::WhereOpToPB(YQLConditionPB *condition, const ColumnOp& 
   return PTExprToPB(col_op.expr(), expr_pb);
 }
 
-namespace {
-  CHECKED_STATUS SetStringValue(const string& value,
-                                const Schema& schema,
-                                const string& col_name,
-                                YQLRow* row) {
-    const int col_idx = schema.find_column(col_name);
-    if (col_idx == Schema::kColumnNotFound) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
-    }
-
-    YQLValuePB value_pb;
-    YQLValue::set_string_value(value, &value_pb);
-    *(row->mutable_column(col_idx)) = value_pb;
-    return Status::OK();
-  }
-
-  CHECKED_STATUS SetInetValue(const InetAddress& value,
-                              const Schema& schema,
-                              const string& col_name,
-                              YQLRow* row) {
-    const int col_idx = schema.find_column(col_name);
-    if (col_idx == Schema::kColumnNotFound) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
-    }
-
-    YQLValuePB value_pb;
-    YQLValue::set_inetaddress_value(value, &value_pb);
-    *(row->mutable_column(col_idx)) = value_pb;
-    return Status::OK();
-  }
-
-  CHECKED_STATUS SetIntValue(const int32_t value,
-                             const Schema& schema,
-                             const string& col_name,
-                             YQLRow* row) {
-    const int col_idx = schema.find_column(col_name);
-    if (col_idx == Schema::kColumnNotFound) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
-    }
-
-    YQLValuePB value_pb;
-    YQLValue::set_int32_value(value, &value_pb);
-    *(row->mutable_column(col_idx)) = value_pb;
-    return Status::OK();
-  }
-
-  CHECKED_STATUS SetUuidValue(const string& value,
-                              const Schema& schema,
-                              const string col_name,
-                              YQLRow* row) {
-    const int col_idx = schema.find_column(col_name);
-    if (col_idx == Schema::kColumnNotFound) {
-      return STATUS_SUBSTITUTE(InvalidArgument, "Couldn't find column '$0' in schema", col_name);
-    }
-
-    YQLValuePB value_pb;
-    Uuid uuid;
-    CHECK_OK(uuid.FromString(value));
-    YQLValue::set_uuid_value(uuid, &value_pb);
-    *(row->mutable_column(col_idx)) = value_pb;
-    return Status::OK();
-  }
-
-  CHECKED_STATUS HandleSystemLocal(const shared_ptr<client::YBTable>& table,
-                                   const ExecContext* exec_context,
-                                   ExecutedResult::SharedPtr* result) {
-    // Retrieve the current address of the node.
-    InetAddress rpc_addr;
-    InetAddress broadcast_addr;
-    rpc::CQLRpcServerEnv* cql_rpcserver_env = exec_context->sql_env()->cql_rpcserver_env();
-    if (cql_rpcserver_env != nullptr) {
-      RETURN_NOT_OK(rpc_addr.FromString(cql_rpcserver_env->rpc_address()));
-      RETURN_NOT_OK(broadcast_addr.FromString(cql_rpcserver_env->broadcast_address()));
-    } else {
-      // cql_rpcserver_env might be null since this codepath might be invoked without a cql proxy
-      // running (ex: unit tests, ybcmd).
-      RETURN_NOT_OK(rpc_addr.FromString("127.0.0.1"));
-      RETURN_NOT_OK(broadcast_addr.FromString("127.0.0.1"));
-    }
-
-    // Now populate the row for system.local.
-    const Schema& schema = table->InternalSchema();
-    YQLRowBlock row_block(schema);
-    YQLRow& row = row_block.Extend();
-    RETURN_NOT_OK(SetStringValue("local", schema, master::kSystemLocalKeyColumn, &row));
-    RETURN_NOT_OK(SetStringValue("COMPLETED", schema, master::kSystemLocalBootstrappedColumn,
-                                 &row));
-    RETURN_NOT_OK(SetInetValue(broadcast_addr, schema, master::kSystemLocalBroadcastAddressColumn,
-                               &row));
-    RETURN_NOT_OK(SetStringValue("local cluster", schema, master::kSystemLocalClusterNameColumn,
-                                 &row));
-    RETURN_NOT_OK(SetStringValue("3.4.2", schema, master::kSystemLocalCQLVersionColumn, &row));
-    RETURN_NOT_OK(SetStringValue("", schema, master::kSystemLocalDataCenterColumn, &row));
-    RETURN_NOT_OK(SetIntValue(0, schema, master::kSystemLocalGossipGenerationColumn, &row));
-    RETURN_NOT_OK(SetInetValue(broadcast_addr, schema, master::kSystemLocalListenAddressColumn,
-                               &row));
-    RETURN_NOT_OK(SetStringValue("4", schema, master::kSystemLocalNativeProtocolVersionColumn,
-                                 &row));
-    RETURN_NOT_OK(SetStringValue("org.apache.cassandra.dht.Murmur3Partitioner", schema,
-                                 master::kSystemLocalPartitionerColumn, &row));
-    RETURN_NOT_OK(SetStringValue("rack", schema, master::kSystemLocalRackColumn, &row));
-    RETURN_NOT_OK(SetStringValue("3.9-SNAPSHOT", schema, master::kSystemLocalReleaseVersionColumn,
-                                 &row));
-    RETURN_NOT_OK(SetInetValue(rpc_addr, schema, master::kSystemLocalRpcAddressColumn, &row));
-    RETURN_NOT_OK(SetUuidValue("00000000-0000-0000-0000-000000000000", schema,
-                               master::kSystemLocalSchemaVersionColumn, &row));
-    RETURN_NOT_OK(SetStringValue("20.1.0", schema, master::kSystemLocalThriftVersionColumn, &row));
-
-    // Serialize the row and return result.
-    faststring buffer;
-    row_block.Serialize(YQL_CLIENT_CQL, &buffer);
-    result->reset(new RowsResult(table.get(), buffer.ToString()));
-    return Status::OK();
-  }
-} // anonymous namespace.
-
 //--------------------------------------------------------------------------------------------------
 
 void Executor::ExecPTNodeAsync(
@@ -683,15 +567,6 @@ void Executor::ExecPTNodeAsync(
     CB_RETURN(cb,
               tnode->is_system() ? Status::OK() :
               exec_context_->Error(tnode->loc(), ErrorCode::TABLE_NOT_FOUND));
-  }
-
-  if (table->name().namespace_name() == master::kSystemNamespaceName &&
-      table->name().table_name() == master::kSystemLocalTableName) {
-    // We can return the information for system.local directly here.
-    ExecutedResult::SharedPtr result;
-    CB_RETURN_NOT_OK(cb, HandleSystemLocal(table, exec_context_.get(), &result));
-    cb.Run(Status::OK(), result);
-    return;
   }
 
   // If there are rows buffered in current_result, use the paging state in it. Otherwise, use the

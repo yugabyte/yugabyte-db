@@ -775,7 +775,8 @@ Status YQLReadOperation::Execute(
   RETURN_NOT_OK(yql_storage.BuildYQLScanSpec(request_, hybrid_time, schema, read_static_columns,
                                              static_projection, &spec, &static_row_spec,
                                              &req_hybrid_time));
-  RETURN_NOT_OK(yql_storage.GetIterator(rowblock->schema(), schema, req_hybrid_time, &iter));
+  RETURN_NOT_OK(yql_storage.GetIterator(request_, rowblock->schema(), schema, req_hybrid_time,
+                                        &iter));
   RETURN_NOT_OK(iter->Init(*spec));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
@@ -788,7 +789,7 @@ Status YQLReadOperation::Execute(
   // spec and iterator before beginning the normal fetch below.
   if (static_row_spec != nullptr) {
     std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
-    RETURN_NOT_OK(yql_storage.GetIterator(static_projection, schema, req_hybrid_time,
+    RETURN_NOT_OK(yql_storage.GetIterator(request_, static_projection, schema, req_hybrid_time,
                                           &static_row_iter));
     RETURN_NOT_OK(static_row_iter->Init(*static_row_spec));
     if (static_row_iter->HasNext()) {

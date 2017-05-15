@@ -21,10 +21,11 @@ import static org.junit.Assert.assertNotNull;
 
 public class TestSystemTables extends BaseCQLTest {
 
-  private void verifyPeersTable(ResultSet rs) throws Exception {
+  private void verifyPeersTable(List<Row> rows) throws Exception {
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
-    assertEquals(contactPoints.size(), rs.all().size());
-    for (Row row : rs.all()) {
+    // One of the contact points will be missing, since that is the node we connected to.
+    assertEquals(contactPoints.size() - 1, rows.size());
+    for (Row row : rows) {
       boolean found = false;
       for (InetSocketAddress addr : contactPoints) {
         if (addr.getAddress().equals(row.getInet("peer")) &&
@@ -56,20 +57,10 @@ public class TestSystemTables extends BaseCQLTest {
     // Pick only 1 contact point since all will have same IP.
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
     assertEquals(NUM_TABLET_SERVERS, contactPoints.size());
-    InetAddress contactPoint = contactPoints.get(0).getAddress();
 
     ResultSet rs = session.execute("SELECT * FROM system.peers;");
-    verifyPeersTable(rs);
-
-    // Try with where clause.
-    rs = session.execute(String.format("SELECT * FROM system.peers WHERE peer = '%s'",
-      contactPoint.getHostAddress()));
     List <Row> rows = rs.all();
-    assertEquals(1, rows.size());
-    Row row = rows.get(0);
-    assertEquals(contactPoint, row.getInet("peer"));
-    assertEquals(contactPoint, row.getInet("rpc_address"));
-    assertEquals(contactPoint, row.getInet("preferred_ip"));
+    verifyPeersTable(rows);
 
     rs = session.execute("SELECT * FROM system.peers WHERE peer = '181.123.12.1'");
     assertEquals(0, rs.all().size());
@@ -92,7 +83,10 @@ public class TestSystemTables extends BaseCQLTest {
         Thread.sleep(1000);
       }
     }
-    assertEquals(NUM_TABLET_SERVERS - 1, rs.all().size());
+
+    // -2 since the node we are connected to won't be in the peers table and we killed one node
+    // above.
+    assertEquals(NUM_TABLET_SERVERS - 2, rs.all().size());
 
     // Start the tserver back up and wait for NUM_TABLET_SERVERS + 1 (since master never forgets
     // tservers).
@@ -143,6 +137,37 @@ public class TestSystemTables extends BaseCQLTest {
     checkContactPoints("rpc_address", row);
     assertEquals("20.1.0", row.getString("thrift_version"));
     assertTrue(row.isNull("tokens"));
+
+    // Verify where clauses and projections work.
+    results = session.execute("SELECT tokens, partitioner, key FROM system.local;").all();
+    assertEquals(1, results.size());
+    row = results.get(0);
+    assertEquals("local", row.getString("key"));
+    assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
+    assertTrue(row.isNull("tokens"));
+    assertFalse(row.getColumnDefinitions().contains("cluster_name"));
+    assertFalse(row.getColumnDefinitions().contains("bootstrapped"));
+    assertFalse(row.getColumnDefinitions().contains("broadcast_address"));
+    assertFalse(row.getColumnDefinitions().contains("cql_version"));
+    assertFalse(row.getColumnDefinitions().contains("data_center"));
+    assertFalse(row.getColumnDefinitions().contains("gossip_generation"));
+    assertFalse(row.getColumnDefinitions().contains("host_id"));
+    assertFalse(row.getColumnDefinitions().contains("listen_address"));
+    assertFalse(row.getColumnDefinitions().contains("native_protocol_version"));
+    assertFalse(row.getColumnDefinitions().contains("rack"));
+    assertFalse(row.getColumnDefinitions().contains("release_version"));
+    assertFalse(row.getColumnDefinitions().contains("rpc_address"));
+    assertFalse(row.getColumnDefinitions().contains("schema_version"));
+    assertFalse(row.getColumnDefinitions().contains("thrift_version"));
+    assertFalse(row.getColumnDefinitions().contains("truncated_at"));
+
+    results = session.execute("SELECT * FROM system.local WHERE key = 'randomkey';").all();
+    assertEquals(0, results.size());
+
+    results = session.execute("SELECT partitioner FROM system.local WHERE key = 'local';").all();
+    assertEquals(1, results.size());
+    row = results.get(0);
+    assertEquals("org.apache.cassandra.dht.Murmur3Partitioner", row.getString("partitioner"));
   }
 
   @Test

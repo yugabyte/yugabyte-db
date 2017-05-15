@@ -15,7 +15,9 @@ class YQLRocksDBStorage : public common::YQLStorageIf {
 
  public:
   explicit YQLRocksDBStorage(rocksdb::DB *rocksdb);
-  CHECKED_STATUS GetIterator(const Schema& projection, const Schema& schema,
+  CHECKED_STATUS GetIterator(const YQLReadRequestPB& request,
+                             const Schema& projection,
+                             const Schema& schema,
                              HybridTime req_hybrid_time,
                              std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const override;
   CHECKED_STATUS BuildYQLScanSpec(const YQLReadRequestPB& request,

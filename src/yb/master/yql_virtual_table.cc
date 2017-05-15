@@ -14,13 +14,14 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
       schema_(schema) {
 }
 
-CHECKED_STATUS YQLVirtualTable::GetIterator(const Schema& projection,
+CHECKED_STATUS YQLVirtualTable::GetIterator(const YQLReadRequestPB& request,
+                                            const Schema& projection,
                                             const Schema& schema,
                                             HybridTime req_hybrid_time,
                                             std::unique_ptr<common::YQLRowwiseIteratorIf>* iter)
                                             const {
   std::unique_ptr<YQLRowBlock> vtable;
-  RETURN_NOT_OK(RetrieveData(&vtable));
+  RETURN_NOT_OK(RetrieveData(request, &vtable));
   iter->reset(new YQLVTableIterator(std::move(vtable)));
   return Status::OK();
 }

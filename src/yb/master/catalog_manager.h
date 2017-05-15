@@ -827,8 +827,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   CHECKED_STATUS PrepareSystemTables();
 
-  CHECKED_STATUS PrepareSystemLocalTable();
-
   template <class T>
   CHECKED_STATUS PrepareSystemTableTemplate(const TableName& table_name,
                                             const NamespaceName& namespace_name,
@@ -839,9 +837,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                     const NamespaceId& namespace_id,
                                     const Schema& schema,
                                     YQLVirtualTable* vtable);
-
-  // system.local schema.
-  CHECKED_STATUS CreateSystemLocalSchema(Schema* schema);
 
   CHECKED_STATUS PrepareNamespace(const NamespaceName& name, const NamespaceId& id);
 

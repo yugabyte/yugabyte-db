@@ -80,6 +80,7 @@
 #include "yb/master/yql_columns_vtable.h"
 #include "yb/master/yql_empty_vtable.h"
 #include "yb/master/yql_keyspaces_vtable.h"
+#include "yb/master/yql_local_vtable.h"
 #include "yb/master/yql_peers_vtable.h"
 #include "yb/master/yql_tables_vtable.h"
 #include "yb/master/yql_aggregates_vtable.h"
@@ -752,38 +753,12 @@ Status CatalogManager::PrepareSystemNamespace() {
   return PrepareNamespace(kSystemSchemaNamespaceName, kSystemSchemaNamespaceId);
 }
 
-Status CatalogManager::CreateSystemLocalSchema(Schema* schema) {
-  // system.local table
-  SchemaBuilder builder;
-  RETURN_NOT_OK(builder.AddKeyColumn(kSystemLocalKeyColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalBootstrappedColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalBroadcastAddressColumn, DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalClusterNameColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalCQLVersionColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalDataCenterColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalGossipGenerationColumn, DataType::INT32));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalHostIdColumn, DataType::UUID));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalListenAddressColumn, DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalNativeProtocolVersionColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalPartitionerColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalRackColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalReleaseVersionColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalRpcAddressColumn, DataType::INET));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalSchemaVersionColumn, DataType::UUID));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalThriftVersionColumn, DataType::STRING));
-  RETURN_NOT_OK(builder.AddColumn(kSystemLocalTokesnColumn,
-                                  YQLType(DataType::SET, { YQLType(DataType::STRING) })));
-  RETURN_NOT_OK(builder.AddColumn(
-      kSystemLocalTruncatedAtColumn,
-      YQLType(DataType::MAP, { YQLType(DataType::UUID), YQLType(DataType::BINARY) })));
-  *schema = builder.Build();
-  return Status::OK();
-}
-
 Status CatalogManager::PrepareSystemTables() {
   // Create the required system tables here.
   RETURN_NOT_OK((PrepareSystemTableTemplate<PeersVTable>(
       kSystemPeersTableName, kSystemNamespaceName, kSystemNamespaceId)));
+  RETURN_NOT_OK((PrepareSystemTableTemplate<LocalVTable>(
+      kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLKeyspacesVTable>(
       kSystemSchemaKeyspacesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTablesVTable>(
@@ -805,7 +780,7 @@ Status CatalogManager::PrepareSystemTables() {
   RETURN_NOT_OK((PrepareSystemTableTemplate<YQLTypesVTable>(
       kSystemSchemaTypesTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId)));
 
-  return PrepareSystemLocalTable();
+  return Status::OK();
 }
 
 template <class T>
@@ -814,17 +789,6 @@ Status CatalogManager::PrepareSystemTableTemplate(const TableName& table_name,
                                                   const NamespaceId& namespace_id) {
   YQLVirtualTable* vtable = new T(master_);
   return PrepareSystemTable(table_name, namespace_name, namespace_id, vtable->schema(), vtable);
-}
-
-Status CatalogManager::PrepareSystemLocalTable() {
-  Schema schema;
-  RETURN_NOT_OK(CreateSystemLocalSchema(&schema));
-  // Note that the system.local table is special in the sense that it only has metadata in the
-  // master. This table is supposed to contain just a single row consisting of information about
-  // the node that the CQL client is connected to. As a result, currently we just short-circuit
-  // this call in the CQL proxy.
-  return PrepareSystemTable(kSystemLocalTableName, kSystemNamespaceName, kSystemNamespaceId,
-                            schema, nullptr);
 }
 
 Status CatalogManager::PrepareSystemTable(const TableName& table_name,

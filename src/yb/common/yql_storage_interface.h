@@ -15,7 +15,9 @@ class YQLStorageIf {
  public:
   virtual ~YQLStorageIf() {}
 
-  virtual CHECKED_STATUS GetIterator(const Schema& projection, const Schema& schema,
+  virtual CHECKED_STATUS GetIterator(const YQLReadRequestPB& request,
+                                     const Schema& projection,
+                                     const Schema& schema,
                                      HybridTime req_hybrid_time,
                                      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
   virtual CHECKED_STATUS BuildYQLScanSpec(const YQLReadRequestPB& request,

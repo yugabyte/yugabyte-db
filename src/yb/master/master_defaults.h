@@ -35,6 +35,8 @@ static const char* const kSystemSchemaViewsTableName = "views";
 static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 
+static const char* const kDefaultSchemaVersion = "00000000-0000-0000-0000-000000000000";
+
 // Needs to be updated each time we add a new system namespace.
 static constexpr int kNumSystemNamespaces = 2;
 
@@ -44,28 +46,6 @@ static constexpr int kNumSystemTables = 11;
 
 constexpr uint16_t kMasterDefaultPort = 7051;
 constexpr uint16_t kMasterDefaultWebPort = 8051;
-
-//--------------------------------------------------------------------------------------------------
-// Column names for system.local
-static const char* const kSystemLocalKeyColumn = "key";
-static const char* const kSystemLocalBootstrappedColumn = "bootstrapped";
-static const char* const kSystemLocalBroadcastAddressColumn = "broadcast_address";
-static const char* const kSystemLocalClusterNameColumn = "cluster_name";
-static const char* const kSystemLocalCQLVersionColumn = "cql_version";
-static const char* const kSystemLocalDataCenterColumn = "data_center";
-static const char* const kSystemLocalGossipGenerationColumn = "gossip_generation";
-static const char* const kSystemLocalHostIdColumn = "host_id";
-static const char* const kSystemLocalListenAddressColumn = "listen_address";
-static const char* const kSystemLocalNativeProtocolVersionColumn = "native_protocol_version";
-static const char* const kSystemLocalPartitionerColumn = "partitioner";
-static const char* const kSystemLocalRackColumn = "rack";
-static const char* const kSystemLocalReleaseVersionColumn = "release_version";
-static const char* const kSystemLocalRpcAddressColumn = "rpc_address";
-static const char* const kSystemLocalSchemaVersionColumn = "schema_version";
-static const char* const kSystemLocalThriftVersionColumn = "thrift_version";
-static const char* const kSystemLocalTokesnColumn = "tokens";
-static const char* const kSystemLocalTruncatedAtColumn = "truncated_at";
-//--------------------------------------------------------------------------------------------------
 
 } // namespace master
 } // namespace yb

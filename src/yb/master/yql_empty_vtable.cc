@@ -12,7 +12,8 @@ YQLEmptyVTable::YQLEmptyVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, master, schema) {
 }
 
-Status YQLEmptyVTable::RetrieveData(std::unique_ptr<YQLRowBlock> *vtable) const {
+Status YQLEmptyVTable::RetrieveData(const YQLReadRequestPB& request,
+                                    std::unique_ptr<YQLRowBlock>* vtable) const {
   // Empty rowblock.
   vtable->reset(new YQLRowBlock(schema_));
   return Status::OK();

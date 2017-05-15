@@ -13,7 +13,9 @@ YQLRocksDBStorage::YQLRocksDBStorage(rocksdb::DB *rocksdb)
 
 }
 
-CHECKED_STATUS YQLRocksDBStorage::GetIterator(const Schema& projection, const Schema& schema,
+CHECKED_STATUS YQLRocksDBStorage::GetIterator(const YQLReadRequestPB& request,
+                                              const Schema& projection,
+                                              const Schema& schema,
                                               HybridTime req_hybrid_time,
                                               std::unique_ptr<common::YQLRowwiseIteratorIf> *iter)
                                               const {

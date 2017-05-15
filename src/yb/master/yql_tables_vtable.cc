@@ -11,7 +11,9 @@ YQLTablesVTable::YQLTablesVTable(const Master* const master)
     : YQLVirtualTable(master::kSystemSchemaTablesTableName, master, CreateSchema()) {
 }
 
-Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const {
+Status YQLTablesVTable::RetrieveData(const YQLReadRequestPB& request,
+                                     std::unique_ptr<YQLRowBlock>* vtable) const {
+  using namespace util;
   vtable->reset(new YQLRowBlock(schema_));
   std::vector<scoped_refptr<TableInfo> > tables;
   master_->catalog_manager()->GetAllTables(&tables, true);
@@ -24,12 +26,8 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
 
     // Create appropriate row for the table;
     YQLRow& row = (*vtable)->Extend();
-    YQLValuePB keyspace_name;
-    YQLValuePB table_name;
-    YQLValue::set_string_value(nsInfo->name(), &keyspace_name);
-    YQLValue::set_string_value(table->name(), &table_name);
-    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, keyspace_name, &row));
-    RETURN_NOT_OK(SetColumnValue(kTableName, table_name, &row));
+    RETURN_NOT_OK(SetColumnValue(kKeyspaceName, GetStringValue(nsInfo->name()), &row));
+    RETURN_NOT_OK(SetColumnValue(kTableName, GetStringValue(table->name()), &row));
 
     // Create appropriate flags entry.
     YQLValuePB flags_set;
@@ -40,12 +38,10 @@ Status YQLTablesVTable::RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const
     RETURN_NOT_OK(SetColumnValue(kFlags, flags_set, &row));
 
     // Create appropriate table uuid entry.
-    YQLValuePB uuid_pb;
     Uuid uuid;
     // Note: table id is in host byte order.
     RETURN_NOT_OK(uuid.FromHexString(table->id()));
-    YQLValue::set_uuid_value(uuid, &uuid_pb);
-    RETURN_NOT_OK(SetColumnValue(kId, uuid_pb, &row));
+    RETURN_NOT_OK(SetColumnValue(kId, GetUuidValue(uuid), &row));
   }
 
   return Status::OK();

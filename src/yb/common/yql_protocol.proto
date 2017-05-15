@@ -236,6 +236,10 @@ message YQLReadRequestPB {
   // Return paging state when "limit" number of rows are returned? In case when "limit" is the
   // page size, this is set for YQLResponsePB to return the paging state for the next fetch.
   optional bool return_paging_state = 11 [default = false];
+
+  // The remote endpoint sending this request. This is filled in by the server and should not be
+  // set.
+  optional HostPortPB remote_endpoint = 13;
 }
 
 //------------------------------ Response (for both read and write) -----------------------------

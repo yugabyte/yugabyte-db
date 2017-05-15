@@ -13,7 +13,8 @@ namespace master {
 class YQLColumnsVTable : public YQLVirtualTable {
  public:
   explicit YQLColumnsVTable(const Master* const master);
-  CHECKED_STATUS RetrieveData(std::unique_ptr<YQLRowBlock>* vtable) const;
+  CHECKED_STATUS RetrieveData(const YQLReadRequestPB& request,
+                              std::unique_ptr<YQLRowBlock>* vtable) const;
  protected:
   Schema CreateSchema() const;
  private:
