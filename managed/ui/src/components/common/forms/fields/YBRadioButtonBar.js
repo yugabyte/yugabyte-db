@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import {isValidArray, isProperObject} from '../../../../utils/ObjectUtils';
+import { isObject } from 'lodash';
+import { isValidArray } from '../../../../utils/ObjectUtils';
 import YBRadioButton from './YBRadioButton';
 import { YBLabel } from '../../descriptors';
 
@@ -32,7 +33,7 @@ export default class YBRadioButtonBar extends Component {
       var value, display;
       if (isValidArray(option)) {
         [value, display] = option;
-      } else if (isProperObject(option)) {
+      } else if (isObject(option)) {
         value = option.value;
         display = option.display;
       } else {

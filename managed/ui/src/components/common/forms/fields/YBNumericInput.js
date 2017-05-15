@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import NumericInput from 'react-numeric-input';
-import { isValidFunction } from 'utils/ObjectUtils';
+import { isFunction } from 'lodash';
 import { YBLabel } from 'components/common/descriptors';
 
 // TODO: Rename to YBNumericInput after changing prior YBNumericInput references.
@@ -32,7 +32,7 @@ export class YBUnControlledNumericInput extends Component {
 
     function onChange(value) {
       input.onChange(value);
-      if (isValidFunction(onInputChanged)) {
+      if (isFunction(onInputChanged)) {
         onInputChanged(value);
       }
     }

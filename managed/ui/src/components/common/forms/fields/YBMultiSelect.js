@@ -1,11 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import { isFunction } from 'lodash';
 import Select from 'react-select';
 import 'react-select/dist/react-select.css';
 
 import { YBLabel } from 'components/common/descriptors';
-import { isValidArray, isValidFunction } from 'utils/ObjectUtils';
+import { isValidArray } from 'utils/ObjectUtils';
 
 // TODO: Rename to YBMultiSelect after changing prior YBMultiSelect references.
 // TODO: Make default export after checking all corresponding imports.
@@ -25,7 +26,7 @@ export class YBNewMultiSelect extends Component {
       newSelection = [];
     }
 
-    if (isValidArray(newSelection) && isValidFunction(this.props.input.onChange)) {
+    if (isValidArray(newSelection) && isFunction(this.props.input.onChange)) {
       this.props.input.onChange(newSelection);
     }
   }
@@ -36,7 +37,7 @@ export class YBNewMultiSelect extends Component {
 
     function onChange(val) {
       val = multi ? val: val.slice(-1);
-      if (isValidFunction(self.props.input.onChange)) {
+      if (isFunction(self.props.input.onChange)) {
         self.props.input.onChange(val);
       }
       selectValChanged(val);
