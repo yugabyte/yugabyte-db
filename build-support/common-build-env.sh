@@ -582,8 +582,8 @@ build_yb_java_code_filter_save_output() {
   fi
   set +e -x  # do not fail on grep failure; print the command to stderr.
   if mvn "$@" --batch-mode 2>&1 | \
-      egrep -v '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' | \
-      egrep -v '^Generating .*[.]html[.][.][.]$' | \
+      egrep -v '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' --line-buffered | \
+      egrep -v '^Generating .*[.]html[.][.][.]$' --line-buffered | \
       tee "$java_build_output_path"; then
     set +x # stop printing commands
     # We are testing for mvn build failure with grep, since we run mvn with '--fail-never' which

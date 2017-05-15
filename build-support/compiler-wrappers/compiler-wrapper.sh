@@ -140,11 +140,6 @@ should_skip_error_checking_by_input_file_pattern() {
   return 0
 }
 
-# We currently assume a specific location of the precompiled header file (used in the RocksDB
-# codebase). If we add more precompiled header files, we will need to change related error handling
-# here.
-PCH_NAME=rocksdb_precompiled/precompiled_header.h.gch
-
 . "${0%/*}/../common-build-env.sh"
 # The above script ensures that YB_COMPILER_TYPE is set and is valid for the OS type. Also sets
 # YB_SRC_ROOT.
@@ -169,6 +164,7 @@ set -u
 output_file=""
 input_files=()
 library_files=()
+compiling_pch=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -183,6 +179,9 @@ while [[ $# -gt 0 ]]; do
       if [[ ! $1 =~ ^[-] ]]; then
         input_files+=( "$1" )
       fi
+    ;;
+    c++-header)
+      compiling_pch=true
     ;;
     *)
     ;;
@@ -209,7 +208,7 @@ esac
 
 using_ccache=false
 # We use ccache if it is available and YB_NO_CCACHE is not set.
-if which ccache >/dev/null && [[ -z ${YB_NO_CCACHE:-} ]]; then
+if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; then
   using_ccache=true
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="pch_defines,time_macros"
@@ -222,6 +221,9 @@ else
     fi
     if [[ -n ${YB_NO_CCACHE:-} ]]; then
       log "YB_NO_CCACHE is set"
+    fi
+    if "$compiling_pch"; then
+      log "Not using ccache for precompiled headers."
     fi
   fi
 fi
@@ -317,8 +319,8 @@ fi
 
 # Deal with failures when trying to use precompiled headers. Our current approach is to delete the
 # precompiled header.
-if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/null || \
-   grep "$PCH_NAME: not used because " "$stderr_path" >/dev/null || \
+if grep ".h.gch: created by a different GCC executable" "$stderr_path" >/dev/null || \
+   grep ".h.gch: not used because " "$stderr_path" >/dev/null || \
    grep "fatal error: malformed or corrupted AST file:" "$stderr_path" >/dev/null || \
    grep "new operators was enabled in PCH file but is currently disabled" "$stderr_path" \
      >/dev/null || \
@@ -327,7 +329,32 @@ if grep "$PCH_NAME: created by a different GCC executable" "$stderr_path" >/dev/
    grep " has been modified since the precompiled header " "$stderr_path" >/dev/null || \
    grep "PCH file built from a different branch " "$stderr_path" >/dev/null
 then
-  PCH_PATH=$PWD/$PCH_NAME
+  # Extract path to generated file from error message.
+  # Example: "note: please rebuild precompiled header 'PCH_PATH'"
+  PCH_PATH=$( grep rebuild "$stderr_path" | awk '{ print $NF }' ) || echo -n
+  if [[ -z $PCH_PATH ]]; then
+    echo -e "${RED_COLOR}Failed to obtain PCH_PATH from $stderr_path${NO_COLOR}"
+    # Fallback to a specific location of the precompiled header file (used in the RocksDB codebase).
+    # If we add more precompiled header files, we will need to change related error handling here.
+    PCH_NAME=rocksdb_precompiled/precompiled_header.h.gch
+    PCH_PATH=$PWD/$PCH_NAME
+  else
+    # Strip quotes
+    PCH_PATH=${PCH_PATH:1:-1}
+  fi
+  # Dump stats for debugging
+  stat -x "$PCH_PATH"
+
+  # Extract source for precompiled header.
+  # Example: "fatal error: file 'SOURCE_FILE' has been modified since the precompiled header
+  # 'PCH_PATH' was built"
+  SOURCE_FILE=$( grep "fatal error" "$stderr_path" | awk '{ print $4 }' )
+  if [[ -n ${SOURCE_FILE} ]]; then
+    SOURCE_FILE=${SOURCE_FILE:1:-1}
+    # Dump stats for debugging
+    stat -x ${SOURCE_FILE}
+  fi
+
   echo -e "${RED_COLOR}Removing '$PCH_PATH' so that further builds have a chance to" \
           "succeed.${NO_COLOR}"
   ( rm -rf "$PCH_PATH" )
