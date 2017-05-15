@@ -3,8 +3,9 @@
 import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
+import { isFinite } from 'lodash';
 import {YBLoadingIcon} from '../../common/indicators';
-import { isValidObject, isValidNumber } from 'utils/ObjectUtils';
+import { isValidObject } from 'utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseFormContainer, UniverseStatusContainer } from 'components/universes';
@@ -37,7 +38,7 @@ class UniverseDisplayItem extends Component {
     var replicationFactor = <span>{`${universe.universeDetails.userIntent.replicationFactor}`}</span>
     var numNodes = <span>{universe.universeDetails.userIntent.numNodes}</span>
     var costPerMonth = <span>n/a</span>;
-    if (isValidNumber(universe.pricePerHour)) {
+    if (isFinite(universe.pricePerHour)) {
       costPerMonth = <YBCost value={universe.pricePerHour} multiplier={"month"}/>
     }
     return (

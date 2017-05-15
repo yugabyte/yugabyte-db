@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { isValidFunction } from 'utils/ObjectUtils';
+import { isFunction } from 'lodash';
 import { YBLabel } from 'components/common/descriptors';
 
 // TODO: Rename to YBSelect after changing prior YBSelect references.
@@ -24,7 +24,7 @@ export class YBUnControlledSelect extends Component {
 
     function onChange(event) {
       input.onChange(event.target.value);
-      if (isValidFunction(onInputChanged)) {
+      if (isFunction(onInputChanged)) {
         onInputChanged(event.target.value);
       }
     }

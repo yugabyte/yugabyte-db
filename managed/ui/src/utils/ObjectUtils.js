@@ -6,28 +6,21 @@ var semver = require('semver');
 export function isDefinedNotNull(obj) {
   return (typeof obj !== "undefined" && obj !== null);
 }
-// TODO: Deprecated. Change all references to use isDefinedNotNull instead.
-export var isValidObject = isDefinedNotNull;
 
-export function isValidArray(arr) {
-  return (isDefinedNotNull(arr) && arr.length && arr.length > 0 && Array.isArray(arr));
+export function isEmptyArray(arr) {
+  return _.isArray(arr) && arr.length === 0;
+}
+
+export function isNonEmptyArray(arr) {
+  return _.isArray(arr) && arr.length > 0;
 }
 
 export function isEmptyObject(obj) {
-  return !isProperObject(obj) || Object.keys(obj).length === 0
+  return _.isObject(obj) && Object.keys(obj).length === 0;
 }
 
-export function isValidFunction(func) {
-  return (typeof func === "function");
-}
-
-export function isValidNumber(n) {
-  return typeof n === 'number' && isFinite(n);
-}
-
-// TODO: Rename to isValidObject after changing previous isValidObject references to isDefinedNotNull.
-export function isProperObject(obj) {
-  return (typeof obj === "object" && obj !== null);
+export function isNonEmptyObject(obj) {
+  return _.isObject(obj) && Object.keys(obj).length > 0;
 }
 
 export function removeNullProperties(obj) {
@@ -38,13 +31,7 @@ export function removeNullProperties(obj) {
   }
 }
 
-export function trimString(string) {
-  return string && string.trim()
-}
-
-export function convertSpaceToDash(string) {
-  return string && string.replace(/\s+/g, '-');
-}
+// TODO: Move functions below to ArrayUtils.js?
 
 export function sortByLengthOfArrayProperty(array, propertyName) {
   function arrayLengthComparator(item) {
@@ -72,6 +59,8 @@ export function sortedGroupCounts(array) {
   });
 }
 
+// TODO: Move these functions to Universe and UserIntent model/class files.
+
 export function areIntentsEqual(userIntent1, userIntent2) {
   return (_.isEqual(userIntent1.numNodes,userIntent2.numNodes)
           && _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort())
@@ -95,10 +84,31 @@ export function areUniverseConfigsEqual(config1, config2) {
   return dataObjectsEqual && userIntentsEqual;
 }
 
+// TODO: Move this function to NumberUtils.js?
+
 export function normalizeToPositiveInt(value) {
   return parseInt(Math.abs(value), 10) || 0;
+}
+
+// TODO: Move the functions below to StringUtils.js?
+
+export function trimString(string) {
+  return string && string.trim()
+}
+
+export function convertSpaceToDash(string) {
+  return string && string.replace(/\s+/g, '-');
 }
 
 export function sortVersionStrings(arr) {
   return arr.sort((a,b) => semver.valid(a) && semver.valid(b) ? semver.lt(a,b) : a < b);
 }
+
+// FIXME: Deprecated. Change all references to use isNonEmptyArray instead.
+export var isValidArray = isNonEmptyArray;
+
+// FIXME: isValidObject has never properly checked the object type.
+// FIXME: We have renamed isValidObject to isDefinedNotNull, and
+// FIXME: this alias is only kept here for backward compatibility
+// FIXME: and should be removed after changing all existing uses.
+export var isValidObject = isDefinedNotNull;

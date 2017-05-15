@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { FormControl } from 'react-bootstrap';
-import { isValidFunction } from 'utils/ObjectUtils';
+import { isFunction } from 'lodash';
 import { YBLabel } from 'components/common/descriptors';
 
 // TODO: Make default export after checking all corresponding imports.
@@ -16,7 +16,7 @@ export class YBTextInput extends Component {
     const { input, type, className, placeHolder, onValueChanged, isReadOnly } = this.props;
 
     function onChange(event) {
-      if (isValidFunction(onValueChanged)) {
+      if (isFunction(onValueChanged)) {
         onValueChanged(event.target.value);
       }
       self.props.input.onChange(event.target.value);
