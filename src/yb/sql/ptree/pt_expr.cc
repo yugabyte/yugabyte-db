@@ -525,6 +525,16 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
   return Status::OK();
 }
 
+CHECKED_STATUS PTRef::CheckLhsExpr(SemContext *sem_context) {
+  // If where_state is null, we are processing the IF clause. In that case, disallow reference to
+  // primary key columns.
+  if (sem_context->where_state() == nullptr && desc_->is_primary()) {
+    return sem_context->Error(loc(), "Primary key column reference is not allowed in if expression",
+                              ErrorCode::CQL_STATEMENT_INVALID);
+  }
+  return Status::OK();
+}
+
 void PTRef::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }

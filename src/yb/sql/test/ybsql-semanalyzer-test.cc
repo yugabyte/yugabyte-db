@@ -134,6 +134,27 @@ TEST_F(YbSqlTestAnalyzer, TestWhereClauseAnalyzer) {
   CHECK_OK(processor->Run("DROP TABLE t;"));
 }
 
+TEST_F(YbSqlTestAnalyzer, TestIfClauseAnalyzer) {
+  CreateSimulatedCluster();
+  YbSqlProcessor *processor = GetSqlProcessor();
+  CHECK_OK(processor->Run("CREATE TABLE t (h1 int, r1 int, c1 int, "
+                          "PRIMARY KEY ((h1), r1));"));
+
+  SqlEnv *sql_env = CreateSqlEnv();
+
+  ParseTree::UniPtr parse_tree;
+  // Valid case: if not exists or if <col> = xxx.
+  ANALYZE_VALID_STMT(sql_env, "UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF NOT EXISTS or c1 = 0",
+                     &parse_tree);
+
+  // Invalid cases: primary key columns not allowed in if clause.
+  ANALYZE_INVALID_STMT(sql_env, "UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF h1 = 1",
+                     &parse_tree);
+  ANALYZE_INVALID_STMT(sql_env, "UPDATE t SET c1 = 1 WHERE h1 = 1 AND r1 = 1 IF r1 = 1",
+                     &parse_tree);
+  CHECK_OK(processor->Run("DROP TABLE t;"));
+}
+
 TEST_F(YbSqlTestAnalyzer, TestBindVariableAnalyzer) {
   CreateSimulatedCluster();
   YbSqlProcessor *processor = GetSqlProcessor();

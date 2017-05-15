@@ -843,6 +843,9 @@ class PTRef : public PTOperator0 {
     return TreeNodeOpcode::kPTRef;
   }
 
+  // Analyze LHS expression.
+  virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+
  private:
   PTQualifiedName::SharedPtr name_;
 

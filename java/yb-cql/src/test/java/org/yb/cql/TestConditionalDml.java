@@ -269,4 +269,26 @@ public class TestConditionalDml extends TestBase {
 
     LOG.info("TEST SIMPLE UPDATE - End");
   }
+
+  @Test
+  public void testPrimaryKeyColumnInIfClause() throws Exception {
+    LOG.info("TEST PRIMARY KEY COLUMN IN IF CLAUSE - Start");
+
+    // Setup table
+    SetupTable("t", 0 /* num_rows */);
+
+    // Invalid cases: primary key columns not allowed in if clause.
+    RunInvalidStmt("UPDATE t SET v1 = 4, v2 = 'd' " +
+                   "WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
+                   "IF h1 = 1;");
+    RunInvalidStmt("UPDATE t SET v1 = 4, v2 = 'd' " +
+                   "WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
+                   "IF r1 = 1;");
+    RunInvalidStmt("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
+                   "IF h1 = 1;");
+    RunInvalidStmt("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
+                   "IF r1 = 1;");
+
+    LOG.info("TEST PRIMARY KEY COLUMN IN IF CLAUSE - End");
+  }
 }
