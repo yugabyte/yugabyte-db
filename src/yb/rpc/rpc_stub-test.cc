@@ -561,9 +561,9 @@ TEST_F(RpcStubTest, TestRpcPerformance) {
   const MonoDelta kMaxLimit = MonoDelta::FromMilliseconds(15 * kTimeMultiplier);
   const MonoDelta kReplyAverageLimit = MonoDelta::FromMilliseconds(10 * kTimeMultiplier);
   const MonoDelta kHandleAverageLimit = MonoDelta::FromMilliseconds(5 * kTimeMultiplier);
-  ASSERT_LE(max_processing, kMaxLimit);
-  ASSERT_LE(reply_average, kReplyAverageLimit);
-  ASSERT_LE(handle_average, kHandleAverageLimit);
+  ASSERT_PERF_LE(max_processing, kMaxLimit);
+  ASSERT_PERF_LE(reply_average, kReplyAverageLimit);
+  ASSERT_PERF_LE(handle_average, kHandleAverageLimit);
 }
 
 } // namespace rpc

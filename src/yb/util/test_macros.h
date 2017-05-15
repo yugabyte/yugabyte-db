@@ -66,6 +66,12 @@
     } \
   } while (0)
 
+#ifdef THREAD_SANITIZER
+#define ASSERT_PERF_LE(lhs, rhs) do { (void)lhs; (void)rhs; } while(0)
+#else
+#define ASSERT_PERF_LE(lhs, rhs) ASSERT_LE(lhs, rhs)
+#endif
+
 #define ASSERT_STR_CONTAINS(str, substr) do { \
   std::string _s = (str); \
   if (_s.find((substr)) == std::string::npos) { \
