@@ -1,6 +1,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
+#define ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
 
 #pragma once
 
@@ -124,7 +126,7 @@ class TtlIterator : public Iterator {
     // TODO: handle timestamp corruption like in general iterator semantics
     assert(DBWithTTLImpl::SanityCheckTimestamp(iter_->value()).ok());
     Slice trimmed_value = iter_->value();
-    trimmed_value.size_ -= DBWithTTLImpl::kTSLength;
+    trimmed_value.remove_suffix(DBWithTTLImpl::kTSLength);
     return trimmed_value;
   }
 
@@ -169,9 +171,7 @@ class TtlCompactionFilter : public CompactionFilter {
       return true;
     }
     if (*value_changed) {
-      new_val->append(
-          old_val.data() + old_val.size() - DBWithTTLImpl::kTSLength,
-          DBWithTTLImpl::kTSLength);
+      new_val->append(old_val.cend() - DBWithTTLImpl::kTSLength, DBWithTTLImpl::kTSLength);
     }
     return false;
   }
@@ -229,8 +229,8 @@ class TtlMergeOperator : public MergeOperator {
                          const std::deque<std::string>& operands,
                          std::string* new_value, Logger* logger) const
       override {
-    const uint32_t ts_len = DBWithTTLImpl::kTSLength;
-    if (existing_value && existing_value->size() < ts_len) {
+    constexpr uint32_t kTsLen = DBWithTTLImpl::kTSLength;
+    if (existing_value && existing_value->size() < kTsLen) {
       RLOG(InfoLogLevel::ERROR_LEVEL, logger,
           "Error: Could not remove timestamp from existing value.");
       return false;
@@ -239,19 +239,19 @@ class TtlMergeOperator : public MergeOperator {
     // Extract time-stamp from each operand to be passed to user_merge_op_
     std::deque<std::string> operands_without_ts;
     for (const auto& operand : operands) {
-      if (operand.size() < ts_len) {
+      if (operand.size() < kTsLen) {
         RLOG(InfoLogLevel::ERROR_LEVEL, logger,
             "Error: Could not remove timestamp from operand value.");
         return false;
       }
-      operands_without_ts.push_back(operand.substr(0, operand.size() - ts_len));
+      operands_without_ts.push_back(operand.substr(0, operand.size() - kTsLen));
     }
 
     // Apply the user merge operator (store result in *new_value)
     bool good = true;
     if (existing_value) {
       Slice existing_value_without_ts(existing_value->data(),
-                                      existing_value->size() - ts_len);
+                                      existing_value->size() - kTsLen);
       good = user_merge_op_->FullMerge(key, &existing_value_without_ts,
                                        operands_without_ts, new_value, logger);
     } else {
@@ -272,9 +272,9 @@ class TtlMergeOperator : public MergeOperator {
           "to the new value.");
       return false;
     } else {
-      char ts_string[ts_len];
-      EncodeFixed32(ts_string, (int32_t)curtime);
-      new_value->append(ts_string, ts_len);
+      char ts_string[kTsLen];
+      EncodeFixed32(ts_string, static_cast<uint32_t>(curtime));
+      new_value->append(ts_string, kTsLen);
       return true;
     }
   }
@@ -283,18 +283,18 @@ class TtlMergeOperator : public MergeOperator {
                                  const std::deque<Slice>& operand_list,
                                  std::string* new_value, Logger* logger) const
       override {
-    const uint32_t ts_len = DBWithTTLImpl::kTSLength;
+    constexpr uint32_t kTsLen = DBWithTTLImpl::kTSLength;
     std::deque<Slice> operands_without_ts;
 
     for (const auto& operand : operand_list) {
-      if (operand.size() < ts_len) {
+      if (operand.size() < kTsLen) {
         RLOG(InfoLogLevel::ERROR_LEVEL, logger,
             "Error: Could not remove timestamp from value.");
         return false;
       }
 
       operands_without_ts.push_back(
-          Slice(operand.data(), operand.size() - ts_len));
+          Slice(operand.data(), operand.size() - kTsLen));
     }
 
     // Apply the user partial-merge operator (store result in *new_value)
@@ -312,9 +312,9 @@ class TtlMergeOperator : public MergeOperator {
           "to the new value.");
       return false;
     } else {
-      char ts_string[ts_len];
-      EncodeFixed32(ts_string, (int32_t)curtime);
-      new_value->append(ts_string, ts_len);
+      char ts_string[kTsLen];
+      EncodeFixed32(ts_string, static_cast<uint32_t>(curtime));
+      new_value->append(ts_string, kTsLen);
       return true;
     }
   }
@@ -325,5 +325,7 @@ class TtlMergeOperator : public MergeOperator {
   std::shared_ptr<MergeOperator> user_merge_op_;
   Env* env_;
 };
-}
+} // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif // ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H

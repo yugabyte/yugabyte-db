@@ -24,7 +24,7 @@ void InitRocksDBWriteOptions(rocksdb::WriteOptions* write_options) {
 
 std::string FormatRocksDBSliceAsStr(const rocksdb::Slice& rocksdb_slice,
                                     const size_t max_length) {
-  return FormatBytesAsStr(rocksdb_slice.data(),
+  return FormatBytesAsStr(rocksdb_slice.cdata(),
                           rocksdb_slice.size(),
                           QuotesType::kDoubleQuotes,
                           max_length);

@@ -207,7 +207,7 @@ Status WaitUntilCommittedOpIdIndexGrow(int64_t* opid_index,
 
 // Returns:
 // Status::OK() if the replica is alive and leader of the consensus configuration.
-// Status::NotFound() if the replica is not part of the consensus configuration or is dead.
+// STATUS(NotFound, "") if the replica is not part of the consensus configuration or is dead.
 // Status::IllegalState() if the replica is live but not the leader.
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const TabletId& tablet_id,

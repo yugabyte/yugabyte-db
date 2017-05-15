@@ -337,7 +337,7 @@ class ColumnFamilyTest : public testing::Test {
     // function 10 times to avoid the error failing the test
     for (int retries = 0; retries < 10; ++retries) {
       wal_files.clear();
-      s = db_->GetSortedWalFiles(wal_files);
+      s = db_->GetSortedWalFiles(&wal_files);
       if (s.ok()) {
         break;
       }

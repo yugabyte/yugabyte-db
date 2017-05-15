@@ -63,7 +63,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
   if (target_level < 1) {
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "PromoteL0 FAILED. Invalid target level %d\n", target_level);
-    return Status::InvalidArgument("Invalid target level");
+    return STATUS(InvalidArgument, "Invalid target level");
   }
 
   Status status;
@@ -78,7 +78,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "PromoteL0 FAILED. Target level %d does not exist\n", target_level);
       job_context.Clean();
-      return Status::InvalidArgument("Target level does not exist");
+      return STATUS(InvalidArgument, "Target level does not exist");
     }
 
     // Sort L0 files by range.
@@ -98,7 +98,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
             "PromoteL0 FAILED. File %" PRIu64 " being compacted\n",
             f->fd.GetNumber());
         job_context.Clean();
-        return Status::InvalidArgument("PromoteL0 called during L0 compaction");
+        return STATUS(InvalidArgument, "PromoteL0 called during L0 compaction");
       }
 
       if (i == 0) continue;
@@ -109,7 +109,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
             " have overlapping ranges\n",
             prev_f->fd.GetNumber(), f->fd.GetNumber());
         job_context.Clean();
-        return Status::InvalidArgument("L0 has overlapping files");
+        return STATUS(InvalidArgument, "L0 has overlapping files");
       }
     }
 
@@ -119,7 +119,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
         RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
             "PromoteL0 FAILED. Level %d not empty\n", level);
         job_context.Clean();
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "All levels up to target_level "
             "must be empty");
       }

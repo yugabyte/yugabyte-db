@@ -6,6 +6,9 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_UTIL_IO_POSIX_H
+#define ROCKSDB_UTIL_IO_POSIX_H
+
 #pragma once
 #include <unistd.h>
 #include "rocksdb/env.h"
@@ -23,7 +26,7 @@
 namespace rocksdb {
 
 static Status IOError(const std::string& context, int err_number) {
-  return Status::IOError(context, strerror(err_number));
+  return STATUS(IOError, context, strerror(err_number));
 }
 
 class PosixSequentialFile : public SequentialFile {
@@ -172,3 +175,5 @@ class PosixDirectory : public Directory {
 };
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_IO_POSIX_H

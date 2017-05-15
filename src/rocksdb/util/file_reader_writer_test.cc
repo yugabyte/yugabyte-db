@@ -17,7 +17,7 @@ const uint32_t kMb = 1 << 20;
 TEST_F(WritableFileWriterTest, RangeSync) {
   class FakeWF : public WritableFile {
    public:
-    explicit FakeWF() : size_(0), last_synced_(0) {}
+    FakeWF() : size_(0), last_synced_(0) {}
     ~FakeWF() {}
 
     Status Append(const Slice& data) override {
@@ -88,18 +88,18 @@ TEST_F(WritableFileWriterTest, RangeSync) {
 TEST_F(WritableFileWriterTest, AppendStatusReturn) {
   class FakeWF : public WritableFile {
    public:
-    explicit FakeWF() : use_os_buffer_(true), io_error_(false) {}
+    FakeWF() : use_os_buffer_(true), io_error_(false) {}
 
     bool UseOSBuffer() const override { return use_os_buffer_; }
     Status Append(const Slice& data) override {
       if (io_error_) {
-        return Status::IOError("Fake IO error");
+        return STATUS(IOError, "Fake IO error");
       }
       return Status::OK();
     }
     Status PositionedAppend(const Slice& data, uint64_t) override {
       if (io_error_) {
-        return Status::IOError("Fake IO error");
+        return STATUS(IOError, "Fake IO error");
       }
       return Status::OK();
     }

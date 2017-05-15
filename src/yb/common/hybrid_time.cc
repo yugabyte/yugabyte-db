@@ -31,7 +31,7 @@ const HybridTime HybridTime::kInitialHybridTime(kInitialHybridTimeValue);
 const HybridTime HybridTime::kInvalidHybridTime(kInvalidHybridTimeValue);
 
 bool HybridTime::DecodeFrom(Slice *input) {
-  return GetMemcmpableVarint64(input, &v);
+  return GetMemcmpableVarint64(input, &v).ok();
 }
 
 void HybridTime::EncodeTo(faststring *dst) const {

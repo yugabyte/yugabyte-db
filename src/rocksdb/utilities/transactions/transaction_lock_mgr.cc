@@ -224,7 +224,7 @@ Status TransactionLockMgr::TryLock(const TransactionImpl* txn,
     snprintf(msg, sizeof(msg), "Column family id not found: %" PRIu32,
              column_family_id);
 
-    return Status::InvalidArgument(msg);
+    return STATUS(InvalidArgument, msg);
   }
 
   // Need to lock the mutex for the stripe that this key hashes to
@@ -340,14 +340,14 @@ Status TransactionLockMgr::AcquireLocked(LockMap* lock_map,
         lock_info.expiration_time = txn_lock_info.expiration_time;
         // lock_cnt does not change
       } else {
-        result = Status::TimedOut(Status::SubCode::kLockTimeout);
+        result = STATUS(TimedOut, yb::TimeoutError::kLockTimeout);
       }
     }
   } else {  // Lock not held.
     // Check lock limit
     if (max_num_locks_ > 0 &&
         lock_map->lock_cnt.load(std::memory_order_acquire) >= max_num_locks_) {
-      result = Status::Busy(Status::SubCode::kLockLimit);
+      result = STATUS(Busy, yb::TimeoutError::kLockLimit);
     } else {
       // acquire lock
       stripe->keys.insert({key, txn_lock_info});

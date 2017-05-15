@@ -8,6 +8,8 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 // Simple hash function used for internal data structures
+#ifndef ROCKSDB_UTIL_HASH_H
+#define ROCKSDB_UTIL_HASH_H
 
 #pragma once
 #include <stddef.h>
@@ -15,7 +17,11 @@
 
 namespace rocksdb {
 
-extern uint32_t Hash(const char* data, size_t n, uint32_t seed);
+uint32_t Hash(const char* data, size_t n, uint32_t seed);
+
+inline uint32_t Hash(const uint8_t* data, size_t n, uint32_t seed) {
+  return Hash(reinterpret_cast<const char*>(data), n, seed);
+}
 
 inline uint32_t BloomHash(const Slice& key) {
   return Hash(key.data(), key.size(), 0xbc9f1d34);
@@ -26,3 +32,5 @@ inline uint32_t GetSliceHash(const Slice& s) {
 }
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_HASH_H

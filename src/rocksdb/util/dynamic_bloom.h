@@ -2,21 +2,21 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
+#ifndef ROCKSDB_UTIL_DYNAMIC_BLOOM_H
+#define ROCKSDB_UTIL_DYNAMIC_BLOOM_H
 
 #pragma once
 
+#include <atomic>
+#include <memory>
 #include <string>
 
 #include "rocksdb/slice.h"
 
 #include "port/port.h"
 
-#include <atomic>
-#include <memory>
-
 namespace rocksdb {
 
-class Slice;
 class Allocator;
 class Logger;
 
@@ -188,4 +188,6 @@ inline void DynamicBloom::AddHash(uint32_t h, const OrFunc& or_func) {
   }
 }
 
-}  // rocksdb
+} // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_DYNAMIC_BLOOM_H

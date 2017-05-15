@@ -53,7 +53,7 @@ Status CompactedDBImpl::Get(const ReadOptions& options,
   if (get_context.State() == GetContext::kFound) {
     return Status::OK();
   }
-  return Status::NotFound();
+  return STATUS(NotFound, "");
 }
 
 std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
@@ -70,7 +70,7 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
       reader_list.push_back(f.fd.table_reader);
     }
   }
-  std::vector<Status> statuses(keys.size(), Status::NotFound());
+  std::vector<Status> statuses(keys.size(), STATUS(NotFound, ""));
   values->resize(keys.size());
   int idx = 0;
   for (auto* r : reader_list) {
@@ -108,16 +108,16 @@ Status CompactedDBImpl::Init(const Options& options) {
   user_comparator_ = cfd_->user_comparator();
   auto* vstorage = version_->storage_info();
   if (vstorage->num_non_empty_levels() == 0) {
-    return Status::NotSupported("no file exists");
+    return STATUS(NotSupported, "no file exists");
   }
   const LevelFilesBrief& l0 = vstorage->LevelFilesBrief(0);
   // L0 should not have files
   if (l0.num_files > 1) {
-    return Status::NotSupported("L0 contain more than 1 file");
+    return STATUS(NotSupported, "L0 contain more than 1 file");
   }
   if (l0.num_files == 1) {
     if (vstorage->num_non_empty_levels() > 1) {
-      return Status::NotSupported("Both L0 and other level contain files");
+      return STATUS(NotSupported, "Both L0 and other level contain files");
     }
     files_ = l0;
     return Status::OK();
@@ -125,7 +125,7 @@ Status CompactedDBImpl::Init(const Options& options) {
 
   for (int i = 1; i < vstorage->num_non_empty_levels() - 1; ++i) {
     if (vstorage->LevelFilesBrief(i).num_files > 0) {
-      return Status::NotSupported("Other levels also contain files");
+      return STATUS(NotSupported, "Other levels also contain files");
     }
   }
 
@@ -134,7 +134,7 @@ Status CompactedDBImpl::Init(const Options& options) {
     files_ = vstorage->LevelFilesBrief(level);
     return Status::OK();
   }
-  return Status::NotSupported("no file exists");
+  return STATUS(NotSupported, "no file exists");
 }
 
 Status CompactedDBImpl::Open(const Options& options,
@@ -142,10 +142,10 @@ Status CompactedDBImpl::Open(const Options& options,
   *dbptr = nullptr;
 
   if (options.max_open_files != -1) {
-    return Status::InvalidArgument("require max_open_files = -1");
+    return STATUS(InvalidArgument, "require max_open_files = -1");
   }
   if (options.merge_operator.get() != nullptr) {
-    return Status::InvalidArgument("merge operator is not supported");
+    return STATUS(InvalidArgument, "merge operator is not supported");
   }
   DBOptions db_options(options);
   std::unique_ptr<CompactedDBImpl> db(new CompactedDBImpl(db_options, dbname));

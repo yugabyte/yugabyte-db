@@ -28,16 +28,16 @@ Status ReadableWriteBatch::GetEntryFromDataOffset(size_t data_offset,
                                                   Slice* blob) const {
   if (type == nullptr || Key == nullptr || value == nullptr ||
       blob == nullptr) {
-    return Status::InvalidArgument("Output parameters cannot be null");
+    return STATUS(InvalidArgument, "Output parameters cannot be null");
   }
 
   if (data_offset == GetDataSize()) {
     // reached end of batch.
-    return Status::NotFound();
+    return STATUS(NotFound, "");
   }
 
   if (data_offset > GetDataSize()) {
-    return Status::InvalidArgument("data offset exceed write batch size");
+    return STATUS(InvalidArgument, "data offset exceed write batch size");
   }
   Slice input = Slice(rep_.data() + data_offset, rep_.size() - data_offset);
   char tag;
@@ -66,7 +66,7 @@ Status ReadableWriteBatch::GetEntryFromDataOffset(size_t data_offset,
       *type = kLogDataRecord;
       break;
     default:
-      return Status::Corruption("unknown WriteBatch tag");
+      return STATUS(Corruption, "unknown WriteBatch tag");
   }
   return Status::OK();
 }
@@ -200,7 +200,7 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
       }
       default: {
         result = WriteBatchWithIndexInternal::Result::kError;
-        (*s) = Status::Corruption("Unexpected entry in WriteBatchWithIndex:",
+        (*s) = STATUS(Corruption, "Unexpected entry in WriteBatchWithIndex:",
                                   ToString(entry.type));
         break;
       }
@@ -233,7 +233,7 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
           auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
           merge_operator = cfh->cfd()->ioptions()->merge_operator;
         } else {
-          *s = Status::InvalidArgument("Must provide a column_family");
+          *s = STATUS(InvalidArgument, "Must provide a column_family");
           result = WriteBatchWithIndexInternal::Result::kError;
           return result;
         }
@@ -251,7 +251,7 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
         }
       } else {  // nothing to merge
         if (result == WriteBatchWithIndexInternal::Result::kFound) {  // PUT
-          value->assign(entry_value->data(), entry_value->size());
+          value->assign(entry_value->cdata(), entry_value->size());
         }
       }
     }

@@ -2,15 +2,18 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_FLUSH_BLOCK_POLICY_H
+#define ROCKSDB_INCLUDE_ROCKSDB_FLUSH_BLOCK_POLICY_H
 
 #pragma once
 
 #include <string>
+
+#include "rocksdb/slice.h"
 #include "rocksdb/table.h"
 
 namespace rocksdb {
 
-class Slice;
 class BlockBuilder;
 struct Options;
 
@@ -57,4 +60,6 @@ class FlushBlockBySizePolicyFactory : public FlushBlockPolicyFactory {
       const BlockBuilder& data_block_builder) const override;
 };
 
-}  // rocksdb
+}  // namespace rocksdb
+
+#endif // ROCKSDB_INCLUDE_ROCKSDB_FLUSH_BLOCK_POLICY_H

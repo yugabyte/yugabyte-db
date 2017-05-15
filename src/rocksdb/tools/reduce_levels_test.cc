@@ -17,7 +17,7 @@
 namespace rocksdb {
 
 class ReduceLevelTest : public testing::Test {
-public:
+ public:
   ReduceLevelTest() {
     dbname_ = test::TmpDir() + "/db_reduce_levels_test";
     DestroyDB(dbname_, Options());
@@ -44,7 +44,7 @@ public:
 
   Status Flush() {
     if (db_ == nullptr) {
-      return Status::InvalidArgument("DB not opened.");
+      return STATUS(InvalidArgument, "DB not opened.");
     }
     DBImpl* db_impl = reinterpret_cast<DBImpl*>(db_);
     return db_impl->TEST_FlushMemTable();
@@ -73,7 +73,7 @@ public:
     return atoi(property.c_str());
   }
 
-private:
+ private:
   std::string dbname_;
   DB* db_;
 };
@@ -199,7 +199,7 @@ TEST_F(ReduceLevelTest, All_Levels) {
   CloseDB();
 }
 
-}
+} // namespace rocksdb
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

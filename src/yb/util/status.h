@@ -14,7 +14,13 @@
 #define YB_UTIL_STATUS_H_
 
 #include <stdint.h>
+
+#include <memory>
 #include <string>
+
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
 
 #ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
@@ -101,240 +107,74 @@
 
 namespace yb {
 
+#define YB_STATUS_CODES \
+    ((Ok, 0, "OK")) \
+    ((NotFound, 1, "Not found")) \
+    ((Corruption, 2, "Corruption")) \
+    ((NotSupported, 3, "Not implemented")) \
+    ((InvalidArgument, 4, "Invalid argument")) \
+    ((IOError, 5, "IO error")) \
+    ((AlreadyPresent, 6, "Already present")) \
+    ((RuntimeError, 7, "Runtime error")) \
+    ((NetworkError, 8, "Network error")) \
+    ((IllegalState, 9, "Illegal state")) \
+    ((NotAuthorized, 10, "Not authorized")) \
+    ((Aborted, 11, "Aborted")) \
+    ((RemoteError, 12, "Remote error")) \
+    ((ServiceUnavailable, 13, "Service unavailable")) \
+    ((TimedOut, 14, "Timed out")) \
+    ((Uninitialized, 15, "Uninitialized")) \
+    ((ConfigurationError, 16, "Configuration error")) \
+    ((Incomplete, 17, "Incomplete")) \
+    ((EndOfFile, 18, "End of file")) \
+    ((InvalidCommand, 19, "Invalid command")) \
+    ((SqlError, 20, "SQL error")) \
+    ((InternalError, 21, "Internal error")) \
+    ((ShutdownInProgress, 22, "Shutdown in progress")) \
+    ((MergeInProgress, 23, "Merge in progress")) \
+    ((Busy, 24, "Resource busy")) \
+    ((Expired, 25, "Operation expired")) \
+    ((TryAgain, 26, "Operation failed. Try again.")) \
+    /**/
+
+#define YB_STATUS_CODE_DECLARE(name, value, message) \
+    BOOST_PP_CAT(k, name) = value,
+
+#define YB_STATUS_CODE_IS_FUNC(name, value, message) \
+    bool BOOST_PP_CAT(Is, name)() const { \
+      return code() == BOOST_PP_CAT(k, name); \
+    } \
+    /**/
+
+#define YB_STATUS_FORWARD_MACRO(r, data, tuple) data tuple
+
+enum class TimeoutError {
+  kMutexTimeout = 1,
+  kLockTimeout = 2,
+  kLockLimit = 3,
+};
+
 class YB_EXPORT Status {
  public:
-  Status() {}
-
   // Create a success status.
-  ~Status() { delete[] state_; }
+  Status() {}
 
   // Copy the specified status.
   Status(const Status& s);
   void operator=(const Status& s);
 
-#if __cplusplus >= 201103L
   // Move the specified status.
   Status(Status&& s);
   void operator=(Status&& s);
-#endif
 
   // Return a success status.
   static Status OK() { return Status(); }
 
-  // Return error status of an appropriate type.
-  static Status NotFound(const char* file_name,
-                         int line_number,
-                         const Slice& msg,
-                         const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kNotFound, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status Corruption(const char* file_name,
-                           int line_number,
-                           const Slice& msg,
-                           const Slice& msg2 = Slice(),
-                           int16_t posix_code = -1) {
-    return Status(kCorruption, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status NotSupported(const char* file_name,
-                             int line_number,
-                             const Slice& msg,
-                             const Slice& msg2 = Slice(),
-                             int16_t posix_code = -1) {
-    return Status(kNotSupported, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status InvalidArgument(const char* file_name,
-                                int line_number,
-                                const Slice& msg,
-                                const Slice& msg2 = Slice(),
-                                int16_t posix_code = -1) {
-    return Status(kInvalidArgument, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status IOError(const char* file_name,
-                        int line_number,
-                        const Slice& msg,
-                        const Slice& msg2 = Slice(),
-                        int16_t posix_code = -1) {
-    return Status(kIOError, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status AlreadyPresent(const char* file_name,
-                               int line_number,
-                               const Slice& msg,
-                               const Slice& msg2 = Slice(),
-                               int16_t posix_code = -1) {
-    return Status(kAlreadyPresent, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status RuntimeError(const char* file_name,
-                             int line_number,
-                             const Slice& msg,
-                             const Slice& msg2 = Slice(),
-                             int16_t posix_code = -1) {
-    return Status(kRuntimeError, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status NetworkError(const char* file_name,
-                             int line_number,
-                             const Slice& msg,
-                             const Slice& msg2 = Slice(),
-                             int16_t posix_code = -1) {
-    return Status(kNetworkError, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status IllegalState(const char* file_name,
-                             int line_number,
-                             const Slice& msg,
-                             const Slice& msg2 = Slice(),
-                             int16_t posix_code = -1) {
-    return Status(kIllegalState, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status NotAuthorized(const char* file_name,
-                              int line_number,
-                              const Slice& msg,
-                              const Slice& msg2 = Slice(),
-                              int16_t posix_code = -1) {
-    return Status(kNotAuthorized, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status Aborted(const char* file_name,
-                        int line_number,
-                        const Slice& msg,
-                        const Slice& msg2 = Slice(),
-                        int16_t posix_code = -1) {
-    return Status(kAborted, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status RemoteError(const char* file_name,
-                            int line_number,
-                            const Slice& msg,
-                            const Slice& msg2 = Slice(),
-                            int16_t posix_code = -1) {
-    return Status(kRemoteError, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status ServiceUnavailable(const char* file_name,
-                                   int line_number,
-                                   const Slice& msg,
-                                   const Slice& msg2 = Slice(),
-                                   int16_t posix_code = -1) {
-    return Status(kServiceUnavailable, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status TimedOut(const char* file_name,
-                         int line_number,
-                         const Slice& msg,
-                         const Slice& msg2 = Slice(),
-                         int16_t posix_code = -1) {
-    return Status(kTimedOut, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status Uninitialized(const char* file_name,
-                              int line_number,
-                              const Slice& msg,
-                              const Slice& msg2 = Slice(),
-                              int16_t posix_code = -1) {
-    return Status(kUninitialized, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status ConfigurationError(const char* file_name,
-                                   int line_number,
-                                   const Slice& msg,
-                                   const Slice& msg2 = Slice(),
-                                   int16_t posix_code = -1) {
-    return Status(kConfigurationError, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status Incomplete(const char* file_name,
-                           int line_number,
-                           const Slice& msg,
-                           const Slice& msg2 = Slice(),
-                           int16_t posix_code = -1) {
-    return Status(kIncomplete, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status EndOfFile(const char* file_name,
-                          int line_number,
-                          const Slice& msg,
-                          const Slice& msg2 = Slice(),
-                          int16_t posix_code = -1) {
-    return Status(kEndOfFile, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status InvalidCommand(const char* file_name,
-                                int line_number,
-                                const Slice& msg,
-                                const Slice& msg2 = Slice(),
-                                int16_t posix_code = -1) {
-    return Status(kInvalidCommand, msg, msg2, posix_code, file_name, line_number);
-  }
-  static Status SqlError(const char* file_name,
-                         int line_number,
-                         const Slice& msg,
-                         const Slice& msg2,
-                         int64_t error_code) {
-    return Status(kSqlError, msg, msg2, error_code, file_name, line_number);
-  }
-  static Status InternalError(const char* file_name,
-                              int line_number,
-                              const Slice& msg,
-                              const Slice& msg2 = Slice(),
-                              int16_t posix_code = -1) {
-    return Status(kInternalError, msg, msg2, posix_code, file_name, line_number);
-  }
+  // Returns true if the status indicates success.
+  bool ok() const { return state_ == nullptr; }
 
-  // Returns true iff the status indicates success.
-  bool ok() const { return (state_ == nullptr); }
-
-  // Returns true iff the status indicates a NotFound error.
-  bool IsNotFound() const { return code() == kNotFound; }
-
-  // Returns true iff the status indicates a Corruption error.
-  bool IsCorruption() const { return code() == kCorruption; }
-
-  // Returns true iff the status indicates a NotSupported error.
-  bool IsNotSupported() const { return code() == kNotSupported; }
-
-  // Returns true iff the status indicates an IOError.
-  bool IsIOError() const { return code() == kIOError; }
-
-  // Returns true iff the status indicates an InvalidArgument error
-  bool IsInvalidArgument() const { return code() == kInvalidArgument; }
-
-  // Returns true iff the status indicates an AlreadyPresent error
-  bool IsAlreadyPresent() const { return code() == kAlreadyPresent; }
-
-  // Returns true iff the status indicates a RuntimeError.
-  bool IsRuntimeError() const { return code() == kRuntimeError; }
-
-  // Returns true iff the status indicates a NetworkError.
-  bool IsNetworkError() const { return code() == kNetworkError; }
-
-  // Returns true iff the status indicates a IllegalState.
-  bool IsIllegalState() const { return code() == kIllegalState; }
-
-  // Returns true iff the status indicates a NotAuthorized.
-  bool IsNotAuthorized() const { return code() == kNotAuthorized; }
-
-  // Returns true iff the status indicates Aborted.
-  bool IsAborted() const { return code() == kAborted; }
-
-  // Returns true iff the status indicates RemoteError.
-  bool IsRemoteError() const { return code() == kRemoteError; }
-
-  // Returns true iff the status indicates ServiceUnavailable.
-  bool IsServiceUnavailable() const { return code() == kServiceUnavailable; }
-
-  // Returns true iff the status indicates TimedOut.
-  bool IsTimedOut() const { return code() == kTimedOut; }
-
-  // Returns true iff the status indicates Uninitialized.
-  bool IsUninitialized() const { return code() == kUninitialized; }
-
-  // Returns true iff the status indicates Configuration error.
-  bool IsConfigurationError() const { return code() == kConfigurationError; }
-
-  // Returns true iff the status indicates Incomplete.
-  bool IsIncomplete() const { return code() == kIncomplete; }
-
-  // Returns true iff the status indicates end of file.
-  bool IsEndOfFile() const { return code() == kEndOfFile; }
-
-  // Returns true iff the status indicates an InvalidCommand error.
-  bool IsInvalidCommand() const { return code() == kInvalidCommand; }
-
-  // Returns true iff the status indicates a SQL error.
-  bool IsSqlError() const { return code() == kSqlError; }
-
-  // Returns true iff the status indicates an internal error.
-  bool IsInternalError() const { return code() == kInternalError; }
+  // Declares set of Is* functions
+  BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_CODE_IS_FUNC, YB_STATUS_CODES)
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -374,109 +214,94 @@ class YB_EXPORT Status {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
- private:
-  // OK status has a NULL state_.  Otherwise, state_ is a new[] array
-  // of the following form:
-  //    state_[0..3] == length of message
-  //    state_[4]    == code
-  //    state_[5..12] == posix_code / error_code
-  //    state_[13..]  == message
-  const char* state_ = nullptr;
-
-  static constexpr size_t kMsgLengthPos = 0;
-  static constexpr size_t kCodePos      = 4;
-  static constexpr size_t kErrorCodePos = 5;
-  static constexpr size_t kMsgPos       = 13;
-
-  // This must always be a pointer to a constant string. The status object does not own this string.
-  const char* file_name_ = nullptr;
-  int line_number_ = 0;
-
   enum Code {
-    kOk = 0,
-    kNotFound = 1,
-    kCorruption = 2,
-    kNotSupported = 3,
-    kInvalidArgument = 4,
-    kIOError = 5,
-    kAlreadyPresent = 6,
-    kRuntimeError = 7,
-    kNetworkError = 8,
-    kIllegalState = 9,
-    kNotAuthorized = 10,
-    kAborted = 11,
-    kRemoteError = 12,
-    kServiceUnavailable = 13,
-    kTimedOut = 14,
-    kUninitialized = 15,
-    kConfigurationError = 16,
-    kIncomplete = 17,
-    kEndOfFile = 18,
-    kInvalidCommand = 19,
-    kSqlError = 20,
-    kInternalError = 21,
+    BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_CODE_DECLARE, YB_STATUS_CODES)
 
     // NOTE: Remember to duplicate these constants into wire_protocol.proto and
     // and to add StatusTo/FromPB ser/deser cases in wire_protocol.cc !
     //
     // TODO: Move error codes into an error_code.proto or something similar.
   };
-  COMPILE_ASSERT(sizeof(Code) == 4, code_enum_size_is_part_of_abi);
-
-  Code code() const {
-    return (state_ == NULL) ? kOk : static_cast<Code>(state_[4]);
-  }
-
-  int64_t GetErrorCode() const;
 
   Status(Code code,
-         const Slice& msg,
-         const Slice& msg2,
-         int64_t error_code,
          const char* file_name,
-         int line_number);
-  static const char* CopyState(const char* s);
+         int line_number,
+         const Slice& msg,
+         const Slice& msg2 = Slice(),
+         int64_t error_code = -1);
+
+  Status(Code code,
+         const char* file_name,
+         int line_number,
+         TimeoutError error_code);
+
+  Code code() const {
+    return (state_ == nullptr) ? kOk : static_cast<Code>(state_->code);
+  }
+ private:
+  struct FreeDeleter {
+    void operator()(void* ptr) const {
+      free(ptr);
+    }
+  };
+
+  struct State {
+    uint32_t message_len;
+    uint8_t code;
+    int64_t error_code;
+    char message[1];
+  } __attribute__ ((packed));
+
+  typedef std::unique_ptr<State, FreeDeleter> StatePtr;
+
+  StatePtr state_;
+  static constexpr size_t kHeaderSize = offsetof(State, message);
+
+  // This must always be a pointer to a constant string. The status object does not own this string.
+  const char* file_name_ = nullptr;
+  int line_number_ = 0;
+
+  static_assert(sizeof(Code) == 4, "Code enum size is part of abi");
+
+  int64_t GetErrorCode() const { return state_ ? state_->error_code : 0; }
+  StatePtr CopyState() const;
 };
 
 inline Status::Status(const Status& s)
-    : file_name_(s.file_name_),
+    : state_(s.CopyState()),
+      file_name_(s.file_name_),
       line_number_(s.line_number_) {
-  state_ = (s.state_ == NULL) ? NULL : CopyState(s.state_);
 }
 
 inline void Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {
-    delete[] state_;
-    state_ = (s.state_ == NULL) ? NULL : CopyState(s.state_);
+    state_ = s.CopyState();
   }
 }
 
-#if __cplusplus >= 201103L
 inline Status::Status(Status&& s)
-    : state_(s.state_),
+    : state_(std::move(s.state_)),
       file_name_(s.file_name_),
       line_number_(s.line_number_)  {
-  s.state_ = nullptr;
 }
 
 inline void Status::operator=(Status&& s) {
-  if (state_ != s.state_) {
-    delete[] state_;
-    state_ = s.state_;
-    s.state_ = nullptr;
-  }
+  state_ = std::move(s.state_);
   file_name_ = s.file_name_;
   line_number_ = s.line_number_;
 }
-#endif
 
 }  // namespace yb
 
-#define STATUS(status_type, ...) (Status::status_type(__FILE__, __LINE__, __VA_ARGS__))
+#define STATUS(status_type, ...) \
+    (Status(Status::BOOST_PP_CAT(k, status_type), __FILE__, __LINE__, __VA_ARGS__))
 #define STATUS_SUBSTITUTE(status_type, ...) \
-    (Status::status_type(__FILE__, __LINE__, strings::Substitute(__VA_ARGS__)))
+    (Status(Status::BOOST_PP_CAT(k, status_type), \
+            __FILE__, \
+            __LINE__, \
+            strings::Substitute(__VA_ARGS__)))
 
 // Utility macros to perform the appropriate check. If the check fails,
 // returns the specified (error) Status, with the given message.

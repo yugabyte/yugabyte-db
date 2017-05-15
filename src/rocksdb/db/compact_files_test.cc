@@ -147,7 +147,7 @@ TEST_F(CompactFilesTest, ObsoleteFiles) {
 
   // verify all compaction input files are deleted
   for (auto fname : l0_files) {
-    ASSERT_EQ(Status::NotFound(), env_->FileExists(fname));
+    ASSERT_TRUE(env_->FileExists(fname).IsNotFound());
   }
   delete db;
 }

@@ -6,10 +6,12 @@
 // - use boost mutexes instead of port mutexes
 
 #include <string.h>
-#include <glog/logging.h>
+
 #include <map>
 #include <string>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
@@ -127,12 +129,12 @@ class FileState : public RefCountedThreadSafe<FileState> {
   const string& filename() const { return filename_; }
 
   size_t memory_footprint() const {
-    size_t size = yb_malloc_usable_size(this);
+    size_t size = malloc_usable_size(this);
     if (blocks_.capacity() > 0) {
-      size += yb_malloc_usable_size(blocks_.data());
+      size += malloc_usable_size(blocks_.data());
     }
     for (uint8_t* block : blocks_) {
-      size += yb_malloc_usable_size(block);
+      size += malloc_usable_size(block);
     }
     size += filename_.capacity();
     return size;
@@ -226,7 +228,7 @@ class RandomAccessFileImpl : public RandomAccessFile {
   size_t memory_footprint() const override {
     // The FileState is actually shared between multiple files, but the double
     // counting doesn't matter much since MemEnv is only used in tests.
-    return yb_malloc_usable_size(this) + file_->memory_footprint();
+    return malloc_usable_size(this) + file_->memory_footprint();
   }
 
  private:
@@ -296,10 +298,8 @@ class RWFileImpl : public RWFile {
       return STATUS(NotSupported, "In-memory RW file does not support random writing");
     } else if (offset > file_size) {
       // Fill in the space between with zeroes.
-      uint8_t zeroes[offset - file_size];
-      memset(zeroes, 0, sizeof(zeroes));
-      Slice s(zeroes, sizeof(zeroes));
-      RETURN_NOT_OK(file_->Append(s));
+      std::string zeroes(offset - file_size, '\0');
+      RETURN_NOT_OK(file_->Append(zeroes));
     }
     return file_->Append(data);
   }

@@ -24,10 +24,9 @@
 #include <memory>
 
 #include "rocksdb/env.h"
+#include "rocksdb/slice.h"
 
 namespace rocksdb {
-
-class Slice;
 
 // A class that takes a bunch of keys, then generates filter
 class FilterBitsBuilder {

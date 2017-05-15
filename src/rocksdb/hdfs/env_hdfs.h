@@ -3,12 +3,16 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
+#ifndef ROCKSDB_HDFS_ENV_HDFS_H
+#define ROCKSDB_HDFS_ENV_HDFS_H
 
 #pragma once
-#include <algorithm>
 #include <stdio.h>
 #include <time.h>
+
+#include <algorithm>
 #include <iostream>
+
 #include "port/sys_time.h"
 #include "rocksdb/env.h"
 #include "rocksdb/status.h"
@@ -26,13 +30,13 @@ class HdfsUsageException : public std::exception { };
 // recoverable.  The intention is for the message to be printed (with
 // nothing else) and the process terminate.
 class HdfsFatalException : public std::exception {
-public:
+ public:
   explicit HdfsFatalException(const std::string& s) : what_(s) { }
   virtual ~HdfsFatalException() throw() { }
   virtual const char* what() const throw() {
     return what_.c_str();
   }
-private:
+ private:
   const std::string what_;
 };
 
@@ -42,7 +46,6 @@ private:
 // default posix environment.
 //
 class HdfsEnv : public Env {
-
  public:
   explicit HdfsEnv(const std::string& fsname) : fsname_(fsname) {
     posixEnv = Env::Default();
@@ -90,7 +93,7 @@ class HdfsEnv : public Env {
   virtual Status RenameFile(const std::string& src, const std::string& target);
 
   virtual Status LinkFile(const std::string& src, const std::string& target) {
-    return Status::NotSupported(); // not supported
+    return STATUS(NotSupported, ""); // not supported
   }
 
   virtual Status LockFile(const std::string& fname, FileLock** lock);
@@ -100,8 +103,11 @@ class HdfsEnv : public Env {
   virtual Status NewLogger(const std::string& fname,
                            std::shared_ptr<Logger>* result);
 
-  virtual void Schedule(void (*function)(void* arg), void* arg,
-                        Priority pri = LOW, void* tag = nullptr, void (*unschedFunction)(void* arg) = 0) {
+  virtual void Schedule(void (*function)(void* arg),
+                        void* arg,
+                        Priority pri = LOW,
+                        void* tag = nullptr,
+                        void (*unschedFunction)(void* arg) = 0) {
     posixEnv->Schedule(function, arg, pri, tag, unschedFunction);
   }
 
@@ -215,17 +221,18 @@ class HdfsEnv : public Env {
     return fs;
   }
 
-  void split(const std::string &s, char delim,
-             std::vector<std::string> &elems) {
+  void split(const std::string &s,
+             char delim,
+             std::vector<std::string> *elems) {
     elems.clear();
     size_t prev = 0;
     size_t pos = s.find(delim);
     while (pos != std::string::npos) {
-      elems.push_back(s.substr(prev, pos));
+      elems->push_back(s.substr(prev, pos));
       prev = pos + 1;
       pos = s.find(delim, prev);
     }
-    elems.push_back(s.substr(prev, s.size()));
+    elems->push_back(s.substr(prev, s.size()));
   }
 };
 
@@ -364,6 +371,8 @@ class HdfsEnv : public Env {
     return 0;
   }
 };
-}
+} // namespace rocksdb
 
 #endif // USE_HDFS
+
+#endif // ROCKSDB_HDFS_ENV_HDFS_H

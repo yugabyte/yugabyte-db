@@ -199,7 +199,7 @@ class Repairer {
       }
     }
     if (!found_file) {
-      return Status::Corruption(dbname_, "repair found no files");
+      return STATUS(Corruption, dbname_, "repair found no files");
     }
     return Status::OK();
   }
@@ -266,7 +266,7 @@ class Repairer {
     while (reader.ReadRecord(&record, &scratch)) {
       if (record.size() < 12) {
         reporter.Corruption(
-            record.size(), Status::Corruption("log record too small"));
+            record.size(), STATUS(Corruption, "log record too small"));
         continue;
       }
       WriteBatchInternal::SetContents(&batch, record);

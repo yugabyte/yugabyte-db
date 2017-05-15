@@ -337,7 +337,7 @@ Slice CompressBlock(const Slice& raw,
   // supported in this platform and (2) the compression rate is "good enough".
   switch (*type) {
     case kSnappyCompression:
-      if (Snappy_Compress(compression_options, raw.data(), raw.size(),
+      if (Snappy_Compress(compression_options, raw.cdata(), raw.size(),
                           compressed_output) &&
           GoodCompressionRatio(compressed_output->size(), raw.size())) {
         return *compressed_output;
@@ -347,7 +347,7 @@ Slice CompressBlock(const Slice& raw,
       if (Zlib_Compress(
               compression_options,
               GetCompressFormatForVersion(kZlibCompression, format_version),
-              raw.data(), raw.size(), compressed_output) &&
+              raw.cdata(), raw.size(), compressed_output) &&
           GoodCompressionRatio(compressed_output->size(), raw.size())) {
         return *compressed_output;
       }
@@ -356,7 +356,7 @@ Slice CompressBlock(const Slice& raw,
       if (BZip2_Compress(
               compression_options,
               GetCompressFormatForVersion(kBZip2Compression, format_version),
-              raw.data(), raw.size(), compressed_output) &&
+              raw.cdata(), raw.size(), compressed_output) &&
           GoodCompressionRatio(compressed_output->size(), raw.size())) {
         return *compressed_output;
       }
@@ -365,7 +365,7 @@ Slice CompressBlock(const Slice& raw,
       if (LZ4_Compress(
               compression_options,
               GetCompressFormatForVersion(kLZ4Compression, format_version),
-              raw.data(), raw.size(), compressed_output) &&
+              raw.cdata(), raw.size(), compressed_output) &&
           GoodCompressionRatio(compressed_output->size(), raw.size())) {
         return *compressed_output;
       }
@@ -374,13 +374,13 @@ Slice CompressBlock(const Slice& raw,
       if (LZ4HC_Compress(
               compression_options,
               GetCompressFormatForVersion(kLZ4HCCompression, format_version),
-              raw.data(), raw.size(), compressed_output) &&
+              raw.cdata(), raw.size(), compressed_output) &&
           GoodCompressionRatio(compressed_output->size(), raw.size())) {
         return *compressed_output;
       }
       break;     // fall back to no compression.
     case kZSTDNotFinalCompression:
-      if (ZSTD_Compress(compression_options, raw.data(), raw.size(),
+      if (ZSTD_Compress(compression_options, raw.cdata(), raw.size(),
                         compressed_output) &&
           GoodCompressionRatio(compressed_output->size(), raw.size())) {
         return *compressed_output;
@@ -651,11 +651,11 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
         FlushFilterBlock(key);
       }
       r->filter_block_builder->Add(filter_key);
-      r->last_filter_key.assign(filter_key.data(), filter_key.size());
+      r->last_filter_key.assign(filter_key.cdata(), filter_key.size());
     }
   }
 
-  r->last_key.assign(key.data(), key.size());
+  r->last_key.assign(key.cdata(), key.size());
   r->data_block_builder.Add(key, value);
   r->props.num_entries++;
   r->props.raw_key_size += key.size();

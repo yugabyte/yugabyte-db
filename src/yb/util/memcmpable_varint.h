@@ -42,10 +42,7 @@ void PutMemcmpableVarint64(faststring *dst, uint64_t value);
 
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
-bool GetMemcmpableVarint64(Slice *input, uint64_t *value);
-
-// Parses a value from the beginning of a Slice and advance the slice past the parsed value.
-CHECKED_STATUS GetMemcmpableVarint64(rocksdb::Slice *input, uint64_t *value);
+CHECKED_STATUS GetMemcmpableVarint64(Slice *input, uint64_t *value);
 
 } // namespace yb
 

@@ -33,7 +33,7 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValu
     }
     ValueType current_value_type = static_cast<ValueType>(*slice->data());
     if (current_value_type == ValueType::kGroupEnd) {
-      slice->ConsumeByte();
+      slice->consume_byte();
       return Status::OK();
     }
     if (PREDICT_FALSE(!IsPrimitiveValueType(current_value_type))) {
@@ -284,7 +284,7 @@ Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_ti
   // The reason the following is not handled as a Status is that the logic above (loop + emptiness
   // check) should guarantee this is the only possible case left.
   DCHECK_EQ(ValueType::kHybridTime, DecodeValueType(*slice));
-  slice->ConsumeByte();
+  slice->consume_byte();
 
   RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &doc_ht_));
 

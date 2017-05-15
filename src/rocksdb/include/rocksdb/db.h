@@ -606,7 +606,7 @@ class DB {
   virtual Status SetOptions(
       ColumnFamilyHandle* /*column_family*/,
       const std::unordered_map<std::string, std::string>& /*new_options*/) {
-    return Status::NotSupported("Not implemented");
+    return STATUS(NotSupported, "Not implemented");
   }
   virtual Status SetOptions(
       const std::unordered_map<std::string, std::string>& new_options) {
@@ -743,7 +743,7 @@ class DB {
                               bool flush_memtable = true) = 0;
 
   // Retrieve the sorted list of all wal files with earliest file first
-  virtual Status GetSortedWalFiles(VectorLogPtr& files) = 0;
+  virtual Status GetSortedWalFiles(VectorLogPtr* files) = 0;
 
   // Sets iter to an iterator that is positioned at a write-batch containing
   // seq_number. If the sequence number is non existent, it returns an iterator
@@ -771,7 +771,7 @@ class DB {
       std::vector<LiveFileMetaData>* /*metadata*/) {}
 
   // Obtains the meta data of the specified column family of the DB.
-  // Status::NotFound() will be returned if the current DB does not have
+  // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.
   //
   // If cf_name is not specified, then the metadata of the default
@@ -817,7 +817,7 @@ class DB {
   // Sets the globally unique ID created at database creation time by invoking
   // Env::GenerateUniqueId(), in identity. Returns Status::OK if identity could
   // be set properly
-  virtual Status GetDbIdentity(std::string& identity) const = 0;
+  virtual Status GetDbIdentity(std::string* identity) const = 0;
 
   // Returns default column family handle
   virtual ColumnFamilyHandle* DefaultColumnFamily() const = 0;

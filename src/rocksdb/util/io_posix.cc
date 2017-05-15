@@ -85,7 +85,7 @@ Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
 }
 
 Status PosixSequentialFile::Skip(uint64_t n) {
-  if (fseek(file_, static_cast<long int>(n), SEEK_CUR)) {
+  if (fseek(file_, static_cast<long>(n), SEEK_CUR)) { // NOLINT
     return IOError(filename_, errno);
   }
   return Status::OK();
@@ -117,7 +117,7 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
     return 0;
   }
 
-  long version = 0;
+  int version = 0;
   result = ioctl(fd, FS_IOC_GETVERSION, &version);
   if (result == -1) {
     return 0;
@@ -131,7 +131,7 @@ static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
   assert(rid >= id);
   return static_cast<size_t>(rid - id);
 }
-}
+} // namespace
 #endif
 
 /*
@@ -315,7 +315,7 @@ Status PosixMmapFile::MapNewRegion() {
       alloc_status = posix_fallocate(fd_, file_offset_, map_size_);
     }
     if (alloc_status != 0) {
-      return Status::IOError("Error allocating space to file : " + filename_ +
+      return STATUS(IOError, "Error allocating space to file : " + filename_ +
                              "Error : " + strerror(alloc_status));
     }
   }
@@ -324,7 +324,7 @@ Status PosixMmapFile::MapNewRegion() {
   void* ptr = mmap(nullptr, map_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_,
                    file_offset_);
   if (ptr == MAP_FAILED) {
-    return Status::IOError("MMap failed on " + filename_);
+    return STATUS(IOError, "MMap failed on " + filename_);
   }
   TEST_KILL_RANDOM("PosixMmapFile::Append:2", rocksdb_kill_odds);
 
@@ -334,7 +334,7 @@ Status PosixMmapFile::MapNewRegion() {
   last_sync_ = base_;
   return Status::OK();
 #else
-  return Status::NotSupported("This platform doesn't support fallocate()");
+  return STATUS(NotSupported, "This platform doesn't support fallocate()");
 #endif
 }
 
@@ -380,7 +380,7 @@ PosixMmapFile::~PosixMmapFile() {
 }
 
 Status PosixMmapFile::Append(const Slice& data) {
-  const char* src = data.data();
+  const char* src = data.cdata();
   size_t left = data.size();
   while (left > 0) {
     assert(base_ <= dst_);
@@ -518,7 +518,7 @@ PosixWritableFile::~PosixWritableFile() {
 }
 
 Status PosixWritableFile::Append(const Slice& data) {
-  const char* src = data.data();
+  const char* src = data.cdata();
   size_t left = data.size();
   while (left != 0) {
     ssize_t done = write(fd_, src, left);

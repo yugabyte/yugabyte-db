@@ -110,7 +110,7 @@ Status GeoDBImpl::GetById(const Slice& id, GeoObject* object) {
   }
   if (quadkey.size() == 0) {
     delete iter;
-    return Status::NotFound(key2);
+    return STATUS(NotFound, key2);
   }
 
   //
@@ -121,7 +121,7 @@ Status GeoDBImpl::GetById(const Slice& id, GeoObject* object) {
   assert(iter->Valid());
   if (!iter->Valid() || !iter->status().ok()) {
     delete iter;
-    return Status::NotFound();
+    return STATUS(NotFound, "");
   }
 
   // split the key into p + quadkey + id + lat + lon
@@ -354,7 +354,8 @@ Status GeoDBImpl::searchQuadIds(const GeoPosition& position,
 
   // how many level of details to look for
   int numberOfTilesAtMaxDepth = static_cast<int>(std::floor((bottomRight.x - topLeft.x) / 256));
-  int zoomLevelsToRise = static_cast<int>(std::floor(std::log(numberOfTilesAtMaxDepth) / std::log(2)));
+  int zoomLevelsToRise = static_cast<int>(
+      std::floor(std::log(numberOfTilesAtMaxDepth) / std::log(2)));
   zoomLevelsToRise++;
   int levels = std::max(0, Detail - zoomLevelsToRise);
 

@@ -24,9 +24,9 @@
 
 namespace yb {
 
-int64_t yb_malloc_usable_size(const void* obj) {
+size_t malloc_usable_size(const void* obj) {
 #if defined(__linux__)
-  return malloc_usable_size(const_cast<void*>(obj));
+  return ::malloc_usable_size(const_cast<void*>(obj));
 #else
   return malloc_size(obj);
 #endif // defined(__linux__)

@@ -25,12 +25,12 @@ Status MergeHelper::TimedFullMerge(const Slice& key, const Slice* value,
                                    Statistics* statistics, Env* env,
                                    Logger* logger, std::string* result) {
   if (operands.size() == 0) {
-    result->assign(value->data(), value->size());
+    result->assign(value->cdata(), value->size());
     return Status::OK();
   }
 
   if (merge_operator == nullptr) {
-    return Status::NotSupported("Provide a merge_operator when opening DB");
+    return STATUS(NotSupported, "Provide a merge_operator when opening DB");
   }
 
   // Setup to time the merge
@@ -45,7 +45,7 @@ Status MergeHelper::TimedFullMerge(const Slice& key, const Slice* value,
 
   if (!success) {
     RecordTick(statistics, NUMBER_MERGE_FAILURES);
-    return Status::Corruption("Error: Could not perform merge.");
+    return STATUS(Corruption, "Error: Could not perform merge.");
   }
 
   return Status::OK();
@@ -92,7 +92,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // stop at corrupted key
       if (assert_valid_internal_key_) {
         assert(!"Corrupted internal key not expected.");
-        return Status::Corruption("Corrupted internal key not expected.");
+        return STATUS(Corruption, "Corrupted internal key not expected.");
       }
       break;
     } else if (first_key) {
@@ -116,7 +116,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
         // deletions are not supported.
         assert(false);
         // release build doesn't have asserts, so we return error status
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             " Merges operands can only be used with puts and deletions, single "
             "deletions are not supported.");
       }
@@ -244,7 +244,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
     // TODO(noetzli) The docblock of MergeUntil suggests that a successful
     // partial merge returns Status::OK(). Should we change the status code
     // after a successful partial merge?
-    s = Status::MergeInProgress();
+    s = STATUS(MergeInProgress, "");
     if (operands_.size() >= 2 &&
         operands_.size() >= min_partial_merge_operands_) {
       bool merge_success = false;

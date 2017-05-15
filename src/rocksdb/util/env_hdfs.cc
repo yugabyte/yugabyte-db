@@ -11,12 +11,14 @@
 #ifndef ROCKSDB_HDFS_FILE_C
 #define ROCKSDB_HDFS_FILE_C
 
-#include <algorithm>
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
+
+#include <algorithm>
 #include <iostream>
 #include <sstream>
+
 #include "rocksdb/status.h"
 #include "util/string_util.h"
 
@@ -36,7 +38,7 @@ namespace {
 
 // Log error message
 static Status IOError(const std::string& context, int err_number) {
-  return Status::IOError(context, strerror(err_number));
+  return STATUS(IOError, context, strerror(err_number));
 }
 
 // assume that there is one global logger for now. It is not thread-safe,
@@ -123,8 +125,11 @@ class HdfsReadableFile : virtual public SequentialFile,
     Status s;
     Log(InfoLogLevel::DEBUG_LEVEL, mylog,
         "[hdfs] HdfsReadableFile preading %s\n", filename_.c_str());
-    ssize_t bytes_read = hdfsPread(fileSys_, hfile_, offset,
-                                   (void*)scratch, (tSize)n);
+    ssize_t bytes_read = hdfsPread(fileSys_,
+                                   hfile_,
+                                   offset,
+                                   static_cast<void*>(scratch),
+                                   static_cast<tSize>(n));
     Log(InfoLogLevel::DEBUG_LEVEL, mylog,
         "[hdfs] HdfsReadableFile pread %s\n", filename_.c_str());
     *result = Slice(scratch, (bytes_read < 0) ? 0 : bytes_read);
@@ -330,7 +335,7 @@ class HdfsLogger : public Logger {
                     t.tm_min,
                     t.tm_sec,
                     static_cast<int>(now_tv.tv_usec),
-                    static_cast<long long unsigned int>(thread_id));
+                    static_cast<uint64_t>(thread_id));
 
       // Print the message
       if (p < limit) {
@@ -451,11 +456,11 @@ Status HdfsEnv::FileExists(const std::string& fname) {
     case HDFS_EXISTS:
       return Status::OK();
     case HDFS_DOESNT_EXIST:
-      return Status::NotFound();
+      return STATUS(NotFound, "");
     default:  // anything else should be an error
       Log(InfoLogLevel::FATAL_LEVEL,
           mylog, "FileExists hdfsExists call failed");
-      return Status::IOError("hdfsExists call failed with error " +
+      return STATUS(IOError, "hdfsExists call failed with error " +
                              ToString(value) + " on path " + fname + ".\n");
   }
 }
@@ -504,14 +509,14 @@ Status HdfsEnv::DeleteFile(const std::string& fname) {
     return Status::OK();
   }
   return IOError(fname, errno);
-};
+}
 
 Status HdfsEnv::CreateDir(const std::string& name) {
   if (hdfsCreateDirectory(fileSys_, name.c_str()) == 0) {
     return Status::OK();
   }
   return IOError(name, errno);
-};
+}
 
 Status HdfsEnv::CreateDirIfMissing(const std::string& name) {
   const int value = hdfsExists(fileSys_, name.c_str());
@@ -527,11 +532,11 @@ Status HdfsEnv::CreateDirIfMissing(const std::string& name) {
       throw HdfsFatalException("hdfsExists call failed with error " +
                                ToString(value) + ".\n");
   }
-};
+}
 
 Status HdfsEnv::DeleteDir(const std::string& name) {
   return DeleteFile(name);
-};
+}
 
 Status HdfsEnv::GetFileSize(const std::string& fname, uint64_t* size) {
   *size = 0L;
@@ -553,7 +558,6 @@ Status HdfsEnv::GetFileModificationTime(const std::string& fname,
     return Status::OK();
   }
   return IOError(fname, errno);
-
 }
 
 // The rename is not atomic. HDFS does not allow a renaming if the
@@ -607,15 +611,15 @@ Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname) {
 
 // dummy placeholders used when HDFS is not available
 namespace rocksdb {
- Status HdfsEnv::NewSequentialFile(const std::string& fname,
-                                   unique_ptr<SequentialFile>* result,
-                                   const EnvOptions& options) {
-   return Status::NotSupported("Not compiled with hdfs support");
- }
+  Status HdfsEnv::NewSequentialFile(const std::string& fname,
+                                    unique_ptr<SequentialFile>* result,
+                                    const EnvOptions& options) {
+    return STATUS(NotSupported, "Not compiled with hdfs support");
+  }
 
- Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname) {
-   return Status::NotSupported("Not compiled with hdfs support");
- }
-}
+  Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname) {
+    return STATUS(NotSupported, "Not compiled with hdfs support");
+  }
+} // namespace rocksdb
 
 #endif

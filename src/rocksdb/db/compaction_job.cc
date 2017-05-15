@@ -181,7 +181,7 @@ struct CompactionJob::CompactionState {
       }
     }
     // If there is no finished output, return an empty slice.
-    return Slice(nullptr, 0);
+    return Slice();
   }
 
   Slice LargestUserKey() {
@@ -193,7 +193,7 @@ struct CompactionJob::CompactionState {
       }
     }
     // If there is no finished output, return an empty slice.
-    return Slice(nullptr, 0);
+    return Slice();
   }
 };
 
@@ -741,7 +741,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
   if (status.ok() &&
       (shutting_down_->load(std::memory_order_acquire) || cfd->IsDropped())) {
-    status = Status::ShutdownInProgress(
+    status = STATUS(ShutdownInProgress,
         "Database shutdown or Column family drop during compaction");
   }
   if (status.ok() && sub_compact->builder != nullptr) {
@@ -899,7 +899,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     if (sfm->IsMaxAllowedSpaceReached()) {
       InstrumentedMutexLock l(db_mutex_);
       if (db_bg_error_->ok()) {
-        s = Status::IOError("Max allowed space was reached");
+        s = STATUS(IOError, "Max allowed space was reached");
         *db_bg_error_ = s;
         TEST_SYNC_POINT(
             "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached");
@@ -927,7 +927,7 @@ Status CompactionJob::InstallCompactionResults(
         "[%s] [JOB %d] Compaction %s aborted",
         compaction->column_family_data()->GetName().c_str(), job_id_,
         compaction->InputLevelSummary(&inputs_summary));
-    return Status::Corruption("Compaction input files inconsistent");
+    return STATUS(Corruption, "Compaction input files inconsistent");
   }
 
   {
@@ -1089,7 +1089,7 @@ void CopyPrefix(
     const Slice& src, size_t prefix_length, std::string* dst) {
   assert(prefix_length > 0);
   size_t length = src.size() > prefix_length ? prefix_length : src.size();
-  dst->assign(src.data(), length);
+  dst->assign(src.cdata(), length);
 }
 }  // namespace
 

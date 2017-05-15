@@ -12,11 +12,12 @@
 
 #include <memory>
 
+#include "rocksdb/slice.h"
+
 namespace rocksdb {
 
 class Iterator;
 struct ParsedInternalKey;
-class Slice;
 class Arena;
 struct ReadOptions;
 struct TableProperties;
@@ -97,7 +98,7 @@ class TableReader {
 
   // convert db file to a human readable form
   virtual Status DumpTable(WritableFile* out_file) {
-    return Status::NotSupported("DumpTable() not supported");
+    return STATUS(NotSupported, "DumpTable() not supported");
   }
 };
 

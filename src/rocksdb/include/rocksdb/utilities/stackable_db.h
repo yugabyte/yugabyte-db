@@ -1,6 +1,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_STACKABLE_DB_H
+#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_STACKABLE_DB_H
 
 #pragma once
 #include <string>
@@ -266,7 +268,7 @@ class StackableDB : public DB {
     return db_->GetLatestSequenceNumber();
   }
 
-  virtual Status GetSortedWalFiles(VectorLogPtr& files) override {
+  virtual Status GetSortedWalFiles(VectorLogPtr* files) override {
     return db_->GetSortedWalFiles(files);
   }
 
@@ -274,7 +276,7 @@ class StackableDB : public DB {
     return db_->DeleteFile(name);
   }
 
-  virtual Status GetDbIdentity(std::string& identity) const override {
+  virtual Status GetDbIdentity(std::string* identity) const override {
     return db_->GetDbIdentity(identity);
   }
 
@@ -314,3 +316,5 @@ class StackableDB : public DB {
 };
 
 } //  namespace rocksdb
+
+#endif // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_STACKABLE_DB_H

@@ -575,7 +575,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
     return s;
   }
   if (!BlockBasedTableSupportedVersion(footer.version())) {
-    return Status::Corruption(
+    return STATUS(Corruption,
         "Unknown Footer version. Maybe this file was created with newer "
         "version of RocksDB?");
   }
@@ -621,7 +621,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
           RLOG(InfoLogLevel::FATAL_LEVEL, rep->ioptions.info_log, "Invalid filter block prefix: %s",
               prefix);
           assert(false);
-          return Status::Corruption(std::string("Invalid filter block prefix: ") + prefix);
+          return STATUS(Corruption, "Invalid filter block prefix", prefix);
         }
         break;
       }
@@ -708,8 +708,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
           RLOG(InfoLogLevel::FATAL_LEVEL, rep->ioptions.info_log, "Corrupted bloom filter type: %d",
               rep->filter_type);
           assert(false);
-          return Status::Corruption("Corrupted bloom filter type: " +
-              NumberToString(rep->filter_type));
+          return STATUS_SUBSTITUTE(Corruption, "Corrupted bloom filter type: $0", rep->filter_type);
         }
       }
     } else {
@@ -739,8 +738,7 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
           RLOG(InfoLogLevel::FATAL_LEVEL, rep->ioptions.info_log, "Corrupted bloom filter type: %d",
               rep->filter_type);
           assert(false);
-          return Status::Corruption("Corrupted bloom filter type: " +
-              NumberToString(rep->filter_type));
+          return STATUS_SUBSTITUTE(Corruption, "Corrupted bloom filter type: $0", rep->filter_type);
         }
       }
     }
@@ -1174,10 +1172,10 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
 
   if (cache_handle == nullptr && no_io) {
     if (input_iter != nullptr) {
-      input_iter->SetStatus(Status::Incomplete("no blocking io"));
+      input_iter->SetStatus(STATUS(Incomplete, "no blocking io"));
       return input_iter;
     } else {
-      return NewErrorInternalIterator(Status::Incomplete("no blocking io"));
+      return NewErrorInternalIterator(STATUS(Incomplete, "no blocking io"));
     }
   }
 
@@ -1292,10 +1290,10 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(
     if (no_io) {
       // Could not read from block_cache and can't do IO
       if (input_iter != nullptr) {
-        input_iter->SetStatus(Status::Incomplete("no blocking io"));
+        input_iter->SetStatus(STATUS(Incomplete, "no blocking io"));
         return input_iter;
       } else {
-        return NewErrorInternalIterator(Status::Incomplete("no blocking io"));
+        return NewErrorInternalIterator(STATUS(Incomplete, "no blocking io"));
       }
     }
     std::unique_ptr<Block> block_value;
@@ -1561,7 +1559,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& intern
       for (biter.Seek(internal_key); biter.Valid(); biter.Next()) {
         ParsedInternalKey parsed_key;
         if (!ParseInternalKey(biter.key(), &parsed_key)) {
-          s = Status::Corruption(Slice());
+          s = STATUS(Corruption, Slice());
         }
 
         if (!get_context->SaveValue(parsed_key, biter.value())) {
@@ -1585,7 +1583,7 @@ Status BlockBasedTable::Prefetch(const Slice* const begin,
   auto& comparator = rep_->internal_comparator;
   // pre-condition
   if (begin && end && comparator.Compare(*begin, *end) > 0) {
-    return Status::InvalidArgument(*begin, *end);
+    return STATUS(InvalidArgument, *begin, *end);
   }
 
   BlockIter iiter;
@@ -1724,7 +1722,7 @@ Status BlockBasedTable::CreateDataBlockIndexReader(
     default: {
       std::string error_message =
           "Unrecognized index type: " + ToString(rep_->index_type);
-      return Status::InvalidArgument(error_message.c_str());
+      return STATUS(InvalidArgument, error_message.c_str());
     }
   }
 }

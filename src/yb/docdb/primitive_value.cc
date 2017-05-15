@@ -439,12 +439,9 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
     }
 
     case ValueType::kHybridTime: {
-      Slice yb_slice = RocksDBToYBSlice(*slice);
-
-      new(&hybrid_time_val_) DocHybridTime();
-      RETURN_NOT_OK(hybrid_time_val_.DecodeFrom(&yb_slice));
+      new (&hybrid_time_val_) DocHybridTime();
+      RETURN_NOT_OK(hybrid_time_val_.DecodeFrom(slice));
       type_ = ValueType::kHybridTime;
-      *slice = YBToRocksDBSlice(yb_slice);
       return Status::OK();
     }
 
@@ -483,7 +480,7 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       return Status::OK();
 
     case ValueType::kString:
-      new(&str_val_) string(slice.data(), slice.size());
+      new(&str_val_) string(slice.cdata(), slice.size());
       // Only set type to string after string field initialization succeeds.
       type_ = ValueType::kString;
       return Status::OK();

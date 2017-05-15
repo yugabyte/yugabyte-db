@@ -40,6 +40,7 @@
 namespace yb {
 
 class Status;
+struct SliceParts;
 
 class YB_EXPORT Slice {
  public:
@@ -84,6 +85,12 @@ class YB_EXPORT Slice {
   }
 #endif
 
+  // Create a single slice from SliceParts using buf as storage.
+  // buf must exist as long as the returned Slice exists.
+  Slice(const SliceParts& parts, std::string* buf);
+
+  const char* cdata() const { return reinterpret_cast<const char*>(data_); }
+
   // Return a pointer to the beginning of the referenced data
   const uint8_t* data() const { return data_; }
 
@@ -91,6 +98,8 @@ class YB_EXPORT Slice {
   uint8_t *mutable_data() { return const_cast<uint8_t *>(data_); }
 
   const uint8_t* end() const { return data_ + size_; }
+
+  const char* cend() const { return reinterpret_cast<const char*>(end()); }
 
   // Return the length (in bytes) of the referenced data
   size_t size() const { return size_; }
@@ -118,18 +127,38 @@ class YB_EXPORT Slice {
     size_ -= n;
   }
 
+  // Drop the last "n" bytes from this slice.
+  void remove_suffix(size_t n) {
+    assert(n <= size());
+    size_ -= n;
+  }
+
   // Truncate the slice to "n" bytes
   void truncate(size_t n) {
     assert(n <= size());
     size_ = n;
   }
 
+  char consume_byte() {
+    assert(size_ > 0);
+    char c = *data_;
+    ++data_;
+    --size_;
+    return c;
+  }
+
   // Checks that this slice has size() = 'expected_size' and returns
-  // Status::Corruption() otherwise.
+  // STATUS(Corruption, ) otherwise.
   Status check_size(size_t expected_size) const;
 
+  // Compare two slices and returns the offset of the first byte where they differ.
+  size_t difference_offset(const Slice& b) const;
+
   // Return a string that contains the copy of the referenced data.
-  std::string ToString() const;
+  std::string ToBuffer() const;
+
+  std::string ToString() const __attribute__ ((deprecated)) { return ToBuffer(); }
+  std::string ToString(bool hex) const __attribute__ ((deprecated));
 
   std::string ToDebugString(size_t max_len = 0) const;
 
@@ -143,6 +172,11 @@ class YB_EXPORT Slice {
   bool starts_with(const Slice& x) const {
     return ((size_ >= x.size_) &&
             (MemEqual(data_, x.data_, x.size_)));
+  }
+
+  bool ends_with(const Slice& x) const {
+    return ((size_ >= x.size_) &&
+            (MemEqual(data_ + size_ - x.size_, x.data_, x.size_)));
   }
 
   // Comparator struct, useful for ordered collections (like STL maps).
@@ -186,6 +220,15 @@ class YB_EXPORT Slice {
   // Intentionally copyable
 };
 
+struct SliceParts {
+  SliceParts(const Slice* _parts, int _num_parts) :
+      parts(_parts), num_parts(_num_parts) { }
+  SliceParts() : parts(nullptr), num_parts(0) {}
+
+  const Slice* parts;
+  int num_parts;
+};
+
 inline bool operator==(const Slice& x, const Slice& y) {
   return ((x.size() == y.size()) &&
           (Slice::MemEqual(x.data(), y.data(), x.size())));
@@ -207,6 +250,15 @@ inline int Slice::compare(const Slice& b) const {
     else if (size_ > b.size_) r = +1;
   }
   return r;
+}
+
+inline size_t Slice::difference_offset(const Slice& b) const {
+  size_t off = 0;
+  const size_t len = (size_ < b.size_) ? size_ : b.size_;
+  for (; off < len; off++) {
+    if (data_[off] != b.data_[off]) break;
+  }
+  return off;
 }
 
 // STL map whose keys are Slices.

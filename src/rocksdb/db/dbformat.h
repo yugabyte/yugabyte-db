@@ -196,7 +196,7 @@ class InternalKey {
   static std::string DebugString(const std::string& rep, bool hex = false);
  private:
   explicit InternalKey(const Slice& slice)
-      : rep_(slice.data(), slice.size()) {
+      : rep_(slice.ToBuffer()) {
   }
 };
 
@@ -367,7 +367,7 @@ class IterKey {
       key_ = buf_;
     } else {
       // Update key_ to point to external memory
-      key_ = key.data();
+      key_ = key.cdata();
     }
     key_size_ = size;
     return Slice(key_, key_size_);

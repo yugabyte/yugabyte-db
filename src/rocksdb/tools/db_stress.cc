@@ -67,14 +67,14 @@ using GFLAGS::ParseCommandLineFlags;
 using GFLAGS::RegisterFlagValidator;
 using GFLAGS::SetUsageMessage;
 
-static const long KB = 1024;
+static const int64_t KB = 1024;
 
 static bool ValidateUint32Range(const char* flagname, uint64_t value) {
   if (value > std::numeric_limits<uint32_t>::max()) {
     fprintf(stderr,
-            "Invalid value for --%s: %lu, overflow\n",
+            "Invalid value for --%s: %" PRIu64 ", overflow\n",
             flagname,
-            (unsigned long)value);
+            value);
     return false;
   }
   return true;
@@ -369,7 +369,7 @@ enum rocksdb::CompressionType StringToCompressionType(const char* ctype) {
     return rocksdb::kZSTDNotFinalCompression;
 
   fprintf(stdout, "Cannot parse compression type '%s'\n", ctype);
-  return rocksdb::kSnappyCompression; //default value
+  return rocksdb::kSnappyCompression; // default value
 }
 
 std::vector<std::string> SplitString(std::string src) {
@@ -470,7 +470,7 @@ static std::string StringToHex(const std::string& str) {
   std::string result = "0x";
   char buf[10];
   for (size_t i = 0; i < str.length(); i++) {
-    snprintf(buf, 10, "%02X", (unsigned char)str[i]);
+    snprintf(buf, sizeof(buf), "%02X", (unsigned char)str[i]);
     result += buf;
   }
   return result;
@@ -485,16 +485,16 @@ class Stats {
   uint64_t start_;
   uint64_t finish_;
   double  seconds_;
-  long done_;
-  long gets_;
-  long prefixes_;
-  long writes_;
-  long deletes_;
+  int64_t done_;
+  int64_t gets_;
+  int64_t prefixes_;
+  int64_t writes_;
+  int64_t deletes_;
   size_t single_deletes_;
-  long iterator_size_sums_;
-  long founds_;
-  long iterations_;
-  long errors_;
+  int64_t iterator_size_sums_;
+  int64_t founds_;
+  int64_t iterations_;
+  int64_t errors_;
   int next_report_;
   size_t bytes_;
   uint64_t last_op_finish_;
@@ -567,7 +567,7 @@ class Stats {
         else if (next_report_ < 100000) next_report_ += 10000;
         else if (next_report_ < 500000) next_report_ += 50000;
         else                            next_report_ += 100000;
-        fprintf(stdout, "... finished %ld ops%30s\r", done_, "");
+        fprintf(stdout, "... finished %" PRId64 " ops%30s\r", done_, "");
       }
     }
   }
@@ -611,24 +611,23 @@ class Stats {
     double elapsed = (finish_ - start_) * 1e-6;
     double bytes_mb = bytes_ / 1048576.0;
     double rate = bytes_mb / elapsed;
-    double throughput = (double)done_/elapsed;
+    int64_t throughput = static_cast<int64_t>(done_ / elapsed);
 
     fprintf(stdout, "%-12s: ", name);
-    fprintf(stdout, "%.3f micros/op %ld ops/sec\n",
-            seconds_ * 1e6 / done_, (long)throughput);
-    fprintf(stdout, "%-12s: Wrote %.2f MB (%.2f MB/sec) (%ld%% of %ld ops)\n",
-            "", bytes_mb, rate, (100*writes_)/done_, done_);
-    fprintf(stdout, "%-12s: Wrote %ld times\n", "", writes_);
-    fprintf(stdout, "%-12s: Deleted %ld times\n", "", deletes_);
+    fprintf(stdout, "%.3f micros/op %" PRId64 " ops/sec\n",
+            seconds_ * 1e6 / done_, throughput);
+    fprintf(stdout, "%-12s: Wrote %.2f MB (%.2f MB/sec) (%" PRId64 "%% of %" PRId64 " ops)\n",
+            "", bytes_mb, rate, (100 * writes_) / done_, done_);
+    fprintf(stdout, "%-12s: Wrote %" PRId64 " times\n", "", writes_);
+    fprintf(stdout, "%-12s: Deleted %" PRId64 " times\n", "", deletes_);
     fprintf(stdout, "%-12s: Single deleted %" ROCKSDB_PRIszt " times\n", "",
            single_deletes_);
-    fprintf(stdout, "%-12s: %ld read and %ld found the key\n", "",
+    fprintf(stdout, "%-12s: %" PRId64 " read and %" PRId64 " found the key\n", "",
             gets_, founds_);
-    fprintf(stdout, "%-12s: Prefix scanned %ld times\n", "", prefixes_);
-    fprintf(stdout, "%-12s: Iterator size sum is %ld\n", "",
-            iterator_size_sums_);
-    fprintf(stdout, "%-12s: Iterated %ld times\n", "", iterations_);
-    fprintf(stdout, "%-12s: Got errors %ld times\n", "", errors_);
+    fprintf(stdout, "%-12s: Prefix scanned %" PRId64 " times\n", "", prefixes_);
+    fprintf(stdout, "%-12s: Iterator size sum is %" PRId64 "\n", "", iterator_size_sums_);
+    fprintf(stdout, "%-12s: Iterated %" PRId64 " times\n", "", iterations_);
+    fprintf(stdout, "%-12s: Got errors %" PRId64 " times\n", "", errors_);
 
     if (FLAGS_histogram) {
       fprintf(stdout, "Microseconds per op:\n%s\n", hist_.ToString().c_str());
@@ -686,11 +685,11 @@ class SharedState {
       values_[i] = std::vector<uint32_t>(max_key_, SENTINEL);
     }
 
-    long num_locks = static_cast<long>(max_key_ >> log2_keys_per_lock_);
+    auto num_locks = max_key_ >> log2_keys_per_lock_;
     if (max_key_ & ((1 << log2_keys_per_lock_) - 1)) {
       num_locks++;
     }
-    fprintf(stdout, "Creating %ld locks\n", num_locks * FLAGS_column_families);
+    fprintf(stdout, "Creating %" PRId64 " locks\n", num_locks * FLAGS_column_families);
     key_locks_.resize(FLAGS_column_families);
 
     for (int i = 0; i < FLAGS_column_families; ++i) {
@@ -775,7 +774,7 @@ class SharedState {
 
   bool HasVerificationFailedYet() { return verification_failure_.load(); }
 
-  port::Mutex* GetMutexForKey(int cf, long key) {
+  port::Mutex* GetMutexForKey(int cf, size_t key) {
     return key_locks_[cf][key >> log2_keys_per_lock_].get();
   }
 
@@ -828,10 +827,10 @@ class SharedState {
   const int64_t max_key_;
   const uint32_t log2_keys_per_lock_;
   const int num_threads_;
-  long num_initialized_;
-  long num_populated_;
-  long vote_reopen_;
-  long num_done_;
+  int64_t num_initialized_;
+  int64_t num_populated_;
+  int64_t vote_reopen_;
+  int64_t num_done_;
   bool start_;
   bool start_verify_;
   bool should_stop_bg_thread_;
@@ -1526,9 +1525,9 @@ class StressTest {
       write_opts.sync = true;
     }
     write_opts.disableWAL = FLAGS_disable_wal;
-    const int prefixBound = (int)FLAGS_readpercent + (int)FLAGS_prefixpercent;
-    const int writeBound = prefixBound + (int)FLAGS_writepercent;
-    const int delBound = writeBound + (int)FLAGS_delpercent;
+    const int prefixBound = FLAGS_readpercent + FLAGS_prefixpercent;
+    const int writeBound = prefixBound + FLAGS_writepercent;
+    const int delBound = writeBound + FLAGS_delpercent;
 
     thread->stats.Start();
     for (uint64_t i = 0; i < FLAGS_ops_per_thread; i++) {
@@ -1543,8 +1542,7 @@ class StressTest {
           if (thread->shared->AllVotedReopen()) {
             thread->shared->GetStressTest()->Reopen();
             thread->shared->GetCondVar()->SignalAll();
-          }
-          else {
+          } else {
             thread->shared->GetCondVar()->Wait();
           }
           // Commenting this out as we don't want to reset stats on each open.
@@ -1599,7 +1597,7 @@ class StressTest {
         }
       }
 
-      long rand_key = thread->rand.Next() % max_key;
+      size_t rand_key = thread->rand.Next() % max_key;
       int rand_column_family = thread->rand.Next() % FLAGS_column_families;
       std::string keystr = Key(rand_key);
       Slice key = keystr;
@@ -1611,7 +1609,7 @@ class StressTest {
       auto column_family = column_families_[rand_column_family];
 
       int prob_op = thread->rand.Uniform(100);
-      if (prob_op >= 0 && prob_op < (int)FLAGS_readpercent) {
+      if (prob_op >= 0 && prob_op < FLAGS_readpercent) {
         // OPERATION read
         if (!FLAGS_test_batches_snapshots) {
           Status s = db_->Get(read_opts, column_family, key, &from_db);
@@ -1628,7 +1626,7 @@ class StressTest {
         } else {
           MultiGet(thread, read_opts, column_family, key, &from_db);
         }
-      } else if ((int)FLAGS_readpercent <= prob_op && prob_op < prefixBound) {
+      } else if (FLAGS_readpercent <= prob_op && prob_op < prefixBound) {
         // OPERATION prefix scan
         // keys are 8 bytes long, prefix size is FLAGS_prefix_size. There are
         // (8 - FLAGS_prefix_size) bytes besides the prefix. So there will
@@ -1786,7 +1784,7 @@ class StressTest {
           Status s = iter->status();
           if (iter->Valid()) {
             if (iter->key().compare(k) > 0) {
-              s = Status::NotFound(Slice());
+              s = STATUS(NotFound, Slice());
             } else if (iter->key().compare(k) == 0) {
               from_db = iter->value().ToString();
               iter->Next();
@@ -1797,7 +1795,7 @@ class StressTest {
           } else {
             // The iterator found no value for the key in question, so do not
             // move to the next item in the iterator
-            s = Status::NotFound(Slice());
+            s = STATUS(NotFound, Slice());
           }
           VerifyValue(static_cast<int>(cf), i, options, shared, from_db, s,
                       true);
@@ -1886,9 +1884,9 @@ class StressTest {
   static size_t GenerateValue(uint32_t rand, char *v, size_t max_sz) {
     size_t value_sz = ((rand % 3) + 1) * FLAGS_value_size_mult;
     assert(value_sz <= max_sz && value_sz >= sizeof(uint32_t));
-    *((uint32_t*)v) = rand;
+    memcpy(v, &rand, sizeof(rand));
     for (size_t i=sizeof(uint32_t); i < value_sz; i++) {
-      v[i] = (char)(rand ^ i);
+      v[i] = static_cast<char>(rand ^ i);
     }
     v[value_sz] = '\0';
     return value_sz; // the size of the value set.
@@ -1903,8 +1901,7 @@ class StressTest {
               FLAGS_clear_column_family_one_in);
     }
     fprintf(stdout, "Number of threads         : %d\n", FLAGS_threads);
-    fprintf(stdout, "Ops per thread            : %lu\n",
-            (unsigned long)FLAGS_ops_per_thread);
+    fprintf(stdout, "Ops per thread            : %" PRIu64 "\n", FLAGS_ops_per_thread);
     std::string ttl_state("unused");
     if (FLAGS_ttl > 0) {
       ttl_state = NumberToString(FLAGS_ttl);
@@ -1921,10 +1918,8 @@ class StressTest {
             FLAGS_db_write_buffer_size);
     fprintf(stdout, "Write-buffer-size         : %d\n",
             FLAGS_write_buffer_size);
-    fprintf(stdout, "Iterations                : %lu\n",
-            (unsigned long)FLAGS_num_iterations);
-    fprintf(stdout, "Max key                   : %lu\n",
-            (unsigned long)FLAGS_max_key);
+    fprintf(stdout, "Iterations                : %" PRIu64 "\n", FLAGS_num_iterations);
+    fprintf(stdout, "Max key                   : %" PRId64 "\n", FLAGS_max_key);
     fprintf(stdout, "Ratio #ops/#keys          : %f\n",
             (1.0 * FLAGS_ops_per_thread * FLAGS_threads) / FLAGS_max_key);
     fprintf(stdout, "Num times DB reopens      : %d\n", FLAGS_reopen);
@@ -2220,9 +2215,9 @@ int main(int argc, char** argv) {
   if ((unsigned)FLAGS_reopen >= FLAGS_ops_per_thread) {
       fprintf(stderr,
               "Error: #DB-reopens should be < ops_per_thread\n"
-              "Provided reopens = %d and ops_per_thread = %lu\n",
+              "Provided reopens = %d and ops_per_thread = %" PRIu64 "\n",
               FLAGS_reopen,
-              (unsigned long)FLAGS_ops_per_thread);
+              FLAGS_ops_per_thread);
       exit(1);
   }
 

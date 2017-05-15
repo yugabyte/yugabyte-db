@@ -236,7 +236,7 @@ class KeyConvertingIterator : public InternalIterator {
     assert(Valid());
     ParsedInternalKey parsed_key;
     if (!ParseInternalKey(iter_->key(), &parsed_key)) {
-      status_ = Status::Corruption("malformed internal key");
+      status_ = STATUS(Corruption, "malformed internal key");
       return Slice("corrupted key");
     }
     return parsed_key.user_key;
@@ -1178,7 +1178,7 @@ TEST_F(BlockBasedTableTest, PrefetchTest) {
   // invalid
   PrefetchRange(&c, &opt, &table_options, keys,
                 "k06", "k00", {}, {},
-                Status::InvalidArgument(Slice("k06 "), Slice("k07")));
+                STATUS(InvalidArgument, Slice("k06 "), Slice("k07")));
 }
 
 TEST_F(BlockBasedTableTest, TotalOrderSeekOnHashIndex) {

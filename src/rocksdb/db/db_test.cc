@@ -291,14 +291,14 @@ TEST_F(DBTest, CompactedDB) {
   Close();
   ASSERT_OK(ReadOnlyReopen(options));
   Status s = Put("new", "value");
-  ASSERT_EQ(s.ToString(),
+  ASSERT_EQ(s.ToString(false),
             "Not implemented: Not supported operation in read only mode.");
   ASSERT_EQ(DummyString(kFileSize / 2, '1'), Get("aaa"));
   Close();
   options.max_open_files = -1;
   ASSERT_OK(ReadOnlyReopen(options));
   s = Put("new", "value");
-  ASSERT_EQ(s.ToString(),
+  ASSERT_EQ(s.ToString(false),
             "Not implemented: Not supported in compacted db mode.");
   ASSERT_EQ(DummyString(kFileSize / 2, '1'), Get("aaa"));
   Close();
@@ -316,7 +316,7 @@ TEST_F(DBTest, CompactedDB) {
   ASSERT_OK(ReadOnlyReopen(options));
   // Fallback to read-only DB
   s = Put("new", "value");
-  ASSERT_EQ(s.ToString(),
+  ASSERT_EQ(s.ToString(false),
             "Not implemented: Not supported operation in read only mode.");
   Close();
 
@@ -334,7 +334,7 @@ TEST_F(DBTest, CompactedDB) {
   // CompactedDB
   ASSERT_OK(ReadOnlyReopen(options));
   s = Put("new", "value");
-  ASSERT_EQ(s.ToString(),
+  ASSERT_EQ(s.ToString(false),
             "Not implemented: Not supported in compacted db mode.");
   ASSERT_EQ("NOT_FOUND", Get("abc"));
   ASSERT_EQ(DummyString(kFileSize / 2, 'a'), Get("aaa"));
@@ -478,7 +478,7 @@ TEST_F(DBTest, LevelLimitReopen) {
   options.max_bytes_for_level_multiplier_additional.resize(1, 1);
   Status s = TryReopenWithColumnFamilies({"default", "pikachu"}, options);
   ASSERT_EQ(s.IsInvalidArgument(), true);
-  ASSERT_EQ(s.ToString(),
+  ASSERT_EQ(s.ToString(false),
             "Invalid argument: db has more levels than options.num_levels");
 
   options.num_levels = 10;
@@ -1948,12 +1948,12 @@ TEST_F(DBTest, ManifestRollOver) {
 TEST_F(DBTest, IdentityAcrossRestarts) {
   do {
     std::string id1;
-    ASSERT_OK(db_->GetDbIdentity(id1));
+    ASSERT_OK(db_->GetDbIdentity(&id1));
 
     Options options = CurrentOptions();
     Reopen(options);
     std::string id2;
-    ASSERT_OK(db_->GetDbIdentity(id2));
+    ASSERT_OK(db_->GetDbIdentity(&id2));
     // id1 should match id2 because identity was not regenerated
     ASSERT_EQ(id1.compare(id2), 0);
 
@@ -1961,7 +1961,7 @@ TEST_F(DBTest, IdentityAcrossRestarts) {
     ASSERT_OK(env_->DeleteFile(idfilename));
     Reopen(options);
     std::string id3;
-    ASSERT_OK(db_->GetDbIdentity(id3));
+    ASSERT_OK(db_->GetDbIdentity(&id3));
     // id1 should NOT match id3 because identity was regenerated
     ASSERT_NE(id1.compare(id3), 0);
   } while (ChangeCompactOptions());
@@ -4566,7 +4566,7 @@ class ModelDB: public DB {
   using DB::Get;
   virtual Status Get(const ReadOptions& options, ColumnFamilyHandle* cf,
                      const Slice& key, std::string* value) override {
-    return Status::NotSupported(key);
+    return STATUS(NotSupported, key);
   }
 
   using DB::MultiGet;
@@ -4576,7 +4576,7 @@ class ModelDB: public DB {
       const std::vector<Slice>& keys,
       std::vector<std::string>* values) override {
     std::vector<Status> s(keys.size(),
-                          Status::NotSupported("Not implemented."));
+                          STATUS(NotSupported, "Not implemented."));
     return s;
   }
 
@@ -4585,12 +4585,12 @@ class ModelDB: public DB {
   virtual Status AddFile(ColumnFamilyHandle* column_family,
                          const ExternalSstFileInfo* file_path,
                          bool move_file) override {
-    return Status::NotSupported("Not implemented.");
+    return STATUS(NotSupported, "Not implemented.");
   }
   virtual Status AddFile(ColumnFamilyHandle* column_family,
                          const std::string& file_path,
                          bool move_file) override {
-    return Status::NotSupported("Not implemented.");
+    return STATUS(NotSupported, "Not implemented.");
   }
 
   using DB::GetPropertiesOfAllTables;
@@ -4634,7 +4634,7 @@ class ModelDB: public DB {
       const ReadOptions& options,
       const std::vector<ColumnFamilyHandle*>& column_family,
       std::vector<Iterator*>* iterators) override {
-    return Status::NotSupported("Not supported yet");
+    return STATUS(NotSupported, "Not supported yet");
   }
   const Snapshot* GetSnapshot() override {
     ModelSnapshot* snapshot = new ModelSnapshot;
@@ -4694,7 +4694,7 @@ class ModelDB: public DB {
   virtual Status CompactRange(const CompactRangeOptions& options,
                               ColumnFamilyHandle* column_family,
                               const Slice* start, const Slice* end) override {
-    return Status::NotSupported("Not supported operation.");
+    return STATUS(NotSupported, "Not supported operation.");
   }
 
   using DB::CompactFiles;
@@ -4703,20 +4703,20 @@ class ModelDB: public DB {
       ColumnFamilyHandle* column_family,
       const std::vector<std::string>& input_file_names,
       const int output_level, const int output_path_id = -1) override {
-    return Status::NotSupported("Not supported operation.");
+    return STATUS(NotSupported, "Not supported operation.");
   }
 
   Status PauseBackgroundWork() override {
-    return Status::NotSupported("Not supported operation.");
+    return STATUS(NotSupported, "Not supported operation.");
   }
 
   Status ContinueBackgroundWork() override {
-    return Status::NotSupported("Not supported operation.");
+    return STATUS(NotSupported, "Not supported operation.");
   }
 
   Status EnableAutoCompaction(
       const std::vector<ColumnFamilyHandle*>& column_family_handles) override {
-    return Status::NotSupported("Not supported operation.");
+    return STATUS(NotSupported, "Not supported operation.");
   }
 
   using DB::NumberLevels;
@@ -4771,7 +4771,7 @@ class ModelDB: public DB {
     return Status::OK();
   }
 
-  Status GetSortedWalFiles(VectorLogPtr& files) override {
+  Status GetSortedWalFiles(VectorLogPtr* files) override {
     return Status::OK();
   }
 
@@ -4781,7 +4781,7 @@ class ModelDB: public DB {
       rocksdb::SequenceNumber, unique_ptr<rocksdb::TransactionLogIterator>*,
       const TransactionLogIterator::ReadOptions&
           read_options = TransactionLogIterator::ReadOptions()) override {
-    return Status::NotSupported("Not supported in Model DB");
+    return STATUS(NotSupported, "Not supported in Model DB");
   }
 
   virtual void GetColumnFamilyMetaData(
@@ -4789,7 +4789,7 @@ class ModelDB: public DB {
       ColumnFamilyMetaData* metadata) override {}
 #endif  // ROCKSDB_LITE
 
-  Status GetDbIdentity(std::string& identity) const override {
+  Status GetDbIdentity(std::string* identity) const override {
     return Status::OK();
   }
 
@@ -6966,7 +6966,7 @@ TEST_F(DBTest, DeleteObsoleteFilesPendingOutputs) {
   ASSERT_EQ(metadata.size(), 2U);
 
   // This file should have been deleted during last compaction
-  ASSERT_EQ(Status::NotFound(), env_->FileExists(dbname_ + file_on_L2));
+  ASSERT_TRUE(env_->FileExists(dbname_ + file_on_L2).IsNotFound());
   listener->VerifyMatchedCount(1);
 }
 #endif  // ROCKSDB_LITE
@@ -8726,7 +8726,7 @@ TEST_F(DBTest, AddExternalSstFileNoCopy) {
 
   s = db_->AddFile(&file1_info, true /* move file */);
   ASSERT_TRUE(s.ok()) << s.ToString();
-  ASSERT_EQ(Status::NotFound(), env_->FileExists(file1));
+  ASSERT_TRUE(env_->FileExists(file1).IsNotFound());
 
   s = db_->AddFile(&file2_info, false /* copy file */);
   ASSERT_TRUE(s.ok()) << s.ToString();

@@ -6,14 +6,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_COMPARATOR_H_
-#define STORAGE_ROCKSDB_INCLUDE_COMPARATOR_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_COMPARATOR_H
+#define ROCKSDB_INCLUDE_ROCKSDB_COMPARATOR_H
 
 #include <string>
 
-namespace rocksdb {
+#include "rocksdb/slice.h"
 
-class Slice;
+namespace rocksdb {
 
 // A Comparator object provides a total order across slices that are
 // used as keys in an sstable or a database.  A Comparator implementation
@@ -77,4 +77,4 @@ extern const Comparator* ReverseBytewiseComparator();
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_COMPARATOR_H_
+#endif // ROCKSDB_INCLUDE_ROCKSDB_COMPARATOR_H

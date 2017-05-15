@@ -47,7 +47,7 @@ Status RandomAccessFileReader::Read(uint64_t offset, size_t n, Slice* result,
 }
 
 Status WritableFileWriter::Append(const Slice& data) {
-  const char* src = data.data();
+  const char* src = data.cdata();
   size_t left = data.size();
   Status s;
   pending_sync_ = true;
@@ -226,7 +226,7 @@ Status WritableFileWriter::Sync(bool use_fsync) {
 
 Status WritableFileWriter::SyncWithoutFlush(bool use_fsync) {
   if (!writable_file_->IsSyncThreadSafe()) {
-    return Status::NotSupported(
+    return STATUS(NotSupported,
       "Can't WritableFileWriter::SyncWithoutFlush() because "
       "WritableFile::IsSyncThreadSafe() is false");
   }
@@ -391,9 +391,9 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
     }
   }
 
- ReadaheadRandomAccessFile(const ReadaheadRandomAccessFile&) = delete;
+  ReadaheadRandomAccessFile(const ReadaheadRandomAccessFile&) = delete;
 
- ReadaheadRandomAccessFile& operator=(const ReadaheadRandomAccessFile&) = delete;
+  ReadaheadRandomAccessFile& operator=(const ReadaheadRandomAccessFile&) = delete;
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const override {
@@ -434,7 +434,7 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
     memcpy(scratch + copied, readahead_result.data(), left_to_copy);
     *result = Slice(scratch, copied + left_to_copy);
 
-    if (readahead_result.data() == buffer_.get()) {
+    if (readahead_result.cdata() == buffer_.get()) {
       buffer_offset_ = offset + copied;
       buffer_len_ = readahead_result.size();
     } else {

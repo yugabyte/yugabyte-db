@@ -9,16 +9,20 @@
 //
 // Must not be included from any .h files to avoid polluting the namespace
 // with macros.
+#ifndef ROCKSDB_UTIL_LOGGING_H
+#define ROCKSDB_UTIL_LOGGING_H
 
 #pragma once
+
 #include <stdio.h>
 #include <stdint.h>
+
 #include <string>
+
 #include "port/port.h"
+#include "rocksdb/slice.h"
 
 namespace rocksdb {
-
-class Slice;
 
 // Append a human-readable time in micros.
 int AppendHumanMicros(uint64_t micros, char* output, int len,
@@ -54,3 +58,5 @@ extern std::string EscapeString(const Slice& value);
 extern bool ConsumeDecimalNumber(Slice* in, uint64_t* val);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_LOGGING_H

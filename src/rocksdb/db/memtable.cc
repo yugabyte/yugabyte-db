@@ -212,7 +212,7 @@ KeyHandle MemTableRep::Allocate(const size_t len, char** buf) {
 const char* EncodeKey(std::string* scratch, const Slice& target) {
   scratch->clear();
   PutVarint32(scratch, static_cast<uint32_t>(target.size()));
-  scratch->append(target.data(), target.size());
+  scratch->append(target.cdata(), target.size());
   return scratch->data();
 }
 
@@ -282,7 +282,7 @@ class MemTableIterator : public InternalIterator {
   Slice value() const override {
     assert(Valid());
     Slice key_slice = GetLengthPrefixedSlice(iter_->key());
-    return GetLengthPrefixedSlice(key_slice.data() + key_slice.size());
+    return GetLengthPrefixedSlice(key_slice.cdata() + key_slice.size());
   }
 
   Status status() const override { return Status::OK(); }
@@ -502,10 +502,10 @@ static bool SaveValue(void* arg, const char* entry) {
           if (!merge_success) {
             RecordTick(s->statistics, NUMBER_MERGE_FAILURES);
             *(s->status) =
-                Status::Corruption("Error: Could not perform merge.");
+                STATUS(Corruption, "Error: Could not perform merge.");
           }
         } else if (s->value != nullptr) {
-          s->value->assign(v.data(), v.size());
+          s->value->assign(v.cdata(), v.size());
         }
         if (s->inplace_update_support) {
           s->mem->GetLock(s->key->user_key())->ReadUnlock();
@@ -531,17 +531,17 @@ static bool SaveValue(void* arg, const char* entry) {
           if (!merge_success) {
             RecordTick(s->statistics, NUMBER_MERGE_FAILURES);
             *(s->status) =
-                Status::Corruption("Error: Could not perform merge.");
+                STATUS(Corruption, "Error: Could not perform merge.");
           }
         } else {
-          *(s->status) = Status::NotFound();
+          *(s->status) = STATUS(NotFound, "");
         }
         *(s->found_final_value) = true;
         return false;
       }
       case kTypeMerge: {
         if (!merge_operator) {
-          *(s->status) = Status::InvalidArgument(
+          *(s->status) = STATUS(InvalidArgument,
               "merge_operator is not properly initialized.");
           // Normally we continue the loop (return true) when we see a merge
           // operand.  But in case of an error, we should stop the loop
@@ -610,7 +610,7 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
 
   // No change to value, since we have not yet found a Put/Delete
   if (!found_final_value && merge_in_progress) {
-    *s = Status::MergeInProgress();
+    *s = STATUS(MergeInProgress, "");
   }
   PERF_COUNTER_ADD(get_from_memtable_count, 1);
   return found_final_value;
@@ -624,7 +624,7 @@ void MemTable::Update(SequenceNumber seq,
 
   std::unique_ptr<MemTableRep::Iterator> iter(
       table_->GetDynamicPrefixIterator());
-  iter->Seek(lkey.internal_key(), mem_key.data());
+  iter->Seek(lkey.internal_key(), mem_key.cdata());
 
   if (iter->Valid()) {
     // entry format is:
@@ -688,7 +688,7 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
 
   std::unique_ptr<MemTableRep::Iterator> iter(
       table_->GetDynamicPrefixIterator());
-  iter->Seek(lkey.internal_key(), memkey.data());
+  iter->Seek(lkey.internal_key(), memkey.cdata());
 
   if (iter->Valid()) {
     // entry format is:
@@ -715,7 +715,7 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
           Slice prev_value = GetLengthPrefixedSlice(key_ptr + key_length);
           uint32_t prev_size = static_cast<uint32_t>(prev_value.size());
 
-          char* prev_buffer = const_cast<char*>(prev_value.data());
+          char* prev_buffer = const_cast<char*>(prev_value.cdata());
           uint32_t new_prev_size = prev_size;
 
           std::string str_value;
@@ -767,7 +767,7 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   // The iterator only needs to be ordered within the same user key.
   std::unique_ptr<MemTableRep::Iterator> iter(
       table_->GetDynamicPrefixIterator());
-  iter->Seek(key.internal_key(), memkey.data());
+  iter->Seek(key.internal_key(), memkey.cdata());
 
   size_t num_successive_merges = 0;
 
@@ -797,7 +797,7 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
 void MemTableRep::Get(const LookupKey& k, void* callback_args,
                       bool (*callback_func)(void* arg, const char* entry)) {
   auto iter = GetDynamicPrefixIterator();
-  for (iter->Seek(k.internal_key(), k.memtable_key().data());
+  for (iter->Seek(k.internal_key(), k.memtable_key().cdata());
        iter->Valid() && callback_func(callback_args, iter->key());
        iter->Next()) {
   }

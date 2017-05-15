@@ -11,9 +11,10 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
+#include <inttypes.h>
+
 #include <algorithm>
 #include <condition_variable>
-#include <inttypes.h>
 #include <string>
 #include <vector>
 #include <mutex>
@@ -301,7 +302,7 @@ class ValueGetterFromDB : public ValueGetter {
     PutFixed64BigEndian(&encoded_id, id);
     status_ = db_->Get(ReadOptions(), cf_, encoded_id, &value_);
     if (status_.IsNotFound()) {
-      status_ = Status::Corruption("Index inconsistency");
+      status_ = STATUS(Corruption, "Index inconsistency");
       return false;
     }
 
@@ -329,7 +330,7 @@ class ValueGetterFromIterator : public ValueGetter {
     iterator_->Seek(encoded_id);
 
     if (!iterator_->Valid() || iterator_->key() != Slice(encoded_id)) {
-      status_ = Status::Corruption("Index inconsistency");
+      status_ = STATUS(Corruption, "Index inconsistency");
       return false;
     }
 
@@ -384,7 +385,7 @@ class SpatialIndexCursor : public Cursor {
             &id);
         if (!ok) {
           valid_ = false;
-          status_ = Status::Corruption("Spatial index corruption");
+          status_ = STATUS(Corruption, "Spatial index corruption");
           break;
         }
         primary_key_ids_.insert(id);
@@ -442,7 +443,7 @@ class SpatialIndexCursor : public Cursor {
       return false;
     }
     if (spatial_iterator->key().size() != 2 * sizeof(uint64_t)) {
-      status_ = Status::Corruption("Invalid spatial index key");
+      status_ = STATUS(Corruption, "Invalid spatial index key");
       valid_ = false;
       return false;
     }
@@ -465,7 +466,7 @@ class SpatialIndexCursor : public Cursor {
       current_feature_set_.Clear();
       if (!GetLengthPrefixedSlice(&data, &current_blob_) ||
           !current_feature_set_.Deserialize(data)) {
-        status_ = Status::Corruption("Primary key column family corruption");
+        status_ = STATUS(Corruption, "Primary key column family corruption");
         valid_ = false;
       }
     }
@@ -543,7 +544,7 @@ class SpatialDBImpl : public SpatialDB {
     WriteBatch batch;
 
     if (spatial_indexes.size() == 0) {
-      return Status::InvalidArgument("Spatial indexes can't be empty");
+      return STATUS(InvalidArgument, "Spatial indexes can't be empty");
     }
 
     const size_t kWriteOutEveryBytes = 1024 * 1024;  // 1MB
@@ -552,7 +553,7 @@ class SpatialDBImpl : public SpatialDB {
     for (const auto& si : spatial_indexes) {
       auto itr = name_to_index_.find(si);
       if (itr == name_to_index_.end()) {
-        return Status::InvalidArgument("Can't find index " + si);
+        return STATUS(InvalidArgument, "Can't find index " + si);
       }
       const auto& spatial_index = itr->second.index;
       if (!spatial_index.bbox.Intersects(bbox)) {
@@ -641,7 +642,7 @@ class SpatialDBImpl : public SpatialDB {
                         const std::string& spatial_index) override {
     auto itr = name_to_index_.find(spatial_index);
     if (itr == name_to_index_.end()) {
-      return new ErrorCursor(Status::InvalidArgument(
+      return new ErrorCursor(STATUS(InvalidArgument,
           "Spatial index " + spatial_index + " not found"));
     }
     const auto& si = itr->second.index;
@@ -775,7 +776,7 @@ class MetadataStorage {
     ok = ok && GetDouble(&encoded_index, &(dst->bbox.max_x));
     ok = ok && GetDouble(&encoded_index, &(dst->bbox.max_y));
     ok = ok && GetVarint32(&encoded_index, &(dst->tile_bits));
-    return ok ? Status::OK() : Status::Corruption("Index encoding corrupted");
+    return ok ? Status::OK() : STATUS(Corruption, "Index encoding corrupted");
   }
 
  private:
@@ -846,7 +847,7 @@ Status SpatialDB::Open(const SpatialDBOptions& options, const std::string& name,
   for (const auto& cf_name : existing_column_families) {
     Slice spatial_index;
     if (GetSpatialIndexName(cf_name, &spatial_index)) {
-      spatial_indexes.emplace_back(spatial_index.data(), spatial_index.size());
+      spatial_indexes.emplace_back(spatial_index.cdata(), spatial_index.size());
     }
   }
 
@@ -893,7 +894,7 @@ Status SpatialDB::Open(const SpatialDBOptions& options, const std::string& name,
     if (iter->Valid()) {
       uint64_t last_id = 0;
       if (!GetFixed64BigEndian(iter->key(), &last_id)) {
-        s = Status::Corruption("Invalid key in data column family");
+        s = STATUS(Corruption, "Invalid key in data column family");
       } else {
         next_id = last_id + 1;
       }

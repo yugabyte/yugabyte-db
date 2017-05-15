@@ -123,7 +123,7 @@ Status PlainTableReader::Open(const ImmutableCFOptions& ioptions,
                               double hash_table_ratio, size_t index_sparseness,
                               size_t huge_page_tlb_size, bool full_scan_mode) {
   if (file_size > PlainTableIndex::kMaxFileSize) {
-    return Status::NotSupported("File is too large for PlainTableReader!");
+    return STATUS(NotSupported, "File is too large for PlainTableReader!");
   }
 
   TableProperties* props = nullptr;
@@ -140,12 +140,12 @@ Status PlainTableReader::Open(const ImmutableCFOptions& ioptions,
 
   if (!full_scan_mode && prefix_extractor_in_file != user_props.end()) {
     if (!ioptions.prefix_extractor) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "Prefix extractor is missing when opening a PlainTable built "
           "using a prefix extractor");
     } else if (prefix_extractor_in_file->second.compare(
                    ioptions.prefix_extractor->Name()) != 0) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "Prefix extractor given doesn't match the one used to build "
           "PlainTable");
     }
@@ -192,7 +192,7 @@ InternalIterator* PlainTableReader::NewIterator(const ReadOptions& options,
                                                 bool skip_filters) {
   if (options.total_order_seek && !IsTotalOrderMode()) {
     return NewErrorInternalIterator(
-        Status::InvalidArgument("total_order_seek not supported"), arena);
+        STATUS(InvalidArgument, "total_order_seek not supported"), arena);
   }
   if (arena == nullptr) {
     return new PlainTableIterator(this, prefix_extractor_ != nullptr);
@@ -242,7 +242,7 @@ Status PlainTableReader::PopulateIndexRecordList(
     index_builder->AddKeyPrefix(GetPrefix(key), key_offset);
 
     if (!seekable && is_first_record) {
-      return Status::Corruption("Key for a prefix is not seekable");
+      return STATUS(Corruption, "Key for a prefix is not seekable");
     }
 
     is_first_record = false;
@@ -331,7 +331,7 @@ Status PlainTableReader::PopulateIndex(TableProperties* props,
   if ((ioptions_.prefix_extractor == nullptr) &&
       (hash_table_ratio != 0)) {
     // ioptions.prefix_extractor is requried for a hash-based look-up.
-    return Status::NotSupported(
+    return STATUS(NotSupported,
         "PlainTable requires a prefix extractor enable prefix hash mode.");
   }
 
@@ -434,7 +434,7 @@ Status PlainTableReader::GetOffset(PlainTableKeyDecoder* decoder,
   ParsedInternalKey mid_key;
   ParsedInternalKey parsed_target;
   if (!ParseInternalKey(target, &parsed_target)) {
-    return Status::Corruption(Slice());
+    return STATUS(Corruption, Slice());
   }
 
   // The key is between [low, high). Do a binary search between it.
@@ -511,7 +511,7 @@ Status PlainTableReader::Next(PlainTableKeyDecoder* decoder, uint32_t* offset,
   }
 
   if (*offset > file_info_.data_end_offset) {
-    return Status::Corruption("Offset is out of file size");
+    return STATUS(Corruption, "Offset is out of file size");
   }
 
   uint32_t bytes_read;
@@ -539,7 +539,7 @@ Status PlainTableReader::Get(const ReadOptions& ro, const Slice& target,
   if (IsTotalOrderMode()) {
     if (full_scan_mode_) {
       status_ =
-          Status::InvalidArgument("Get() is not allowed in full scan mode.");
+          STATUS(InvalidArgument, "Get() is not allowed in full scan mode.");
     }
     // Match whole user key for bloom filter check.
     if (!MatchBloom(GetSliceHash(GetUserKey(target)))) {
@@ -569,7 +569,7 @@ Status PlainTableReader::Get(const ReadOptions& ro, const Slice& target,
   ParsedInternalKey found_key;
   ParsedInternalKey parsed_target;
   if (!ParseInternalKey(target, &parsed_target)) {
-    return Status::Corruption(Slice());
+    return STATUS(Corruption, Slice());
   }
   Slice found_value;
   while (offset < file_info_.data_end_offset) {
@@ -628,7 +628,7 @@ void PlainTableIterator::SeekToFirst() {
 
 void PlainTableIterator::SeekToLast() {
   assert(false);
-  status_ = Status::NotSupported("SeekToLast() is not supported in PlainTable");
+  status_ = STATUS(NotSupported, "SeekToLast() is not supported in PlainTable");
 }
 
 void PlainTableIterator::Seek(const Slice& target) {
@@ -637,12 +637,12 @@ void PlainTableIterator::Seek(const Slice& target) {
   if (!use_prefix_seek_) {
     if (table_->full_scan_mode_) {
       status_ =
-          Status::InvalidArgument("Seek() is not allowed in full scan mode.");
+          STATUS(InvalidArgument, "Seek() is not allowed in full scan mode.");
       offset_ = next_offset_ = table_->file_info_.data_end_offset;
       return;
     } else if (table_->GetIndexSize() > 1) {
       assert(false);
-      status_ = Status::NotSupported(
+      status_ = STATUS(NotSupported,
           "PlainTable cannot issue non-prefix seek unless in total order "
           "mode.");
       offset_ = next_offset_ = table_->file_info_.data_end_offset;

@@ -59,8 +59,8 @@ static void DoRoundTripTest(uint64_t to_encode) {
 
   uint64_t decoded;
   Slice slice(buf);
-  bool success = GetMemcmpableVarint64(&slice, &decoded);
-  ASSERT_TRUE(success);
+  auto status = GetMemcmpableVarint64(&slice, &decoded);
+  ASSERT_OK(status);
   ASSERT_EQ(to_encode, decoded);
   ASSERT_TRUE(slice.empty());
 }
@@ -194,7 +194,7 @@ TEST_F(TestMemcmpableVarint, BenchmarkDecode) {
       Slice s(buf);
       while (!s.empty()) {
         uint64_t decoded;
-        CHECK(GetMemcmpableVarint64(&s, &decoded));
+        CHECK(GetMemcmpableVarint64(&s, &decoded).ok());
         sum_vals += decoded;
       }
     }

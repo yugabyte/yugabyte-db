@@ -53,7 +53,7 @@ class LogTest : public ::testing::TestWithParam<int> {
     bool force_eof_;
     size_t force_eof_position_;
     bool returned_partial_;
-    explicit StringSource(Slice& contents) :
+    explicit StringSource(Slice& contents) : // NOLINT
       contents_(contents),
       force_error_(false),
       force_error_position_(0),
@@ -72,7 +72,7 @@ class LogTest : public ::testing::TestWithParam<int> {
           contents_.remove_prefix(force_error_position_);
           force_error_ = false;
           returned_partial_ = true;
-          return Status::Corruption("read error");
+          return STATUS(Corruption, "read error");
         }
       }
 
@@ -103,7 +103,7 @@ class LogTest : public ::testing::TestWithParam<int> {
     Status Skip(uint64_t n) override {
       if (n > contents_.size()) {
         contents_.clear();
-        return Status::NotFound("in-memory file skipepd past end");
+        return STATUS(NotFound, "in-memory file skipepd past end");
       }
 
       contents_.remove_prefix(n);
@@ -120,7 +120,7 @@ class LogTest : public ::testing::TestWithParam<int> {
     ReportCollector() : dropped_bytes_(0) { }
     void Corruption(size_t bytes, const Status& status) override {
       dropped_bytes_ += bytes;
-      message_.append(status.ToString());
+      message_.append(status.ToString(false));
     }
   };
 

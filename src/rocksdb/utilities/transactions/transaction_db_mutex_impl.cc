@@ -84,7 +84,7 @@ Status TransactionDBMutexImpl::TryLockFor(int64_t timeout_time) {
 
   if (!locked) {
     // timeout acquiring mutex
-    return Status::TimedOut(Status::SubCode::kMutexTimeout);
+    return STATUS(TimedOut, yb::TimeoutError::kMutexTimeout);
   }
 
   return Status::OK();
@@ -119,7 +119,7 @@ Status TransactionDBCondVarImpl::WaitFor(
 
     // Check if the wait stopped due to timing out.
     if (cv_status == std::cv_status::timeout) {
-      s = Status::TimedOut(Status::SubCode::kMutexTimeout);
+      s = STATUS(TimedOut, yb::TimeoutError::kMutexTimeout);
     }
   }
 

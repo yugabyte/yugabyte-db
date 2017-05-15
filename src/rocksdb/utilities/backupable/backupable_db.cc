@@ -659,7 +659,7 @@ Status BackupEngineImpl::CreateNewBackup(
   // if we didn't flush before backup, we need to also get WAL files
   if (s.ok() && !flush_before_backup && options_.backup_log_files) {
     // returns file names prefixed with "/"
-    s = db->GetSortedWalFiles(live_wal_files);
+    s = db->GetSortedWalFiles(&live_wal_files);
   }
   if (!s.ok()) {
     db->EnableFileDeletions(false);
@@ -716,7 +716,7 @@ Status BackupEngineImpl::CreateNewBackup(
     bool ok = ParseFileName(live_files[i], &number, &type);
     if (!ok) {
       assert(false);
-      return Status::Corruption("Can't parse file name. This is very bad");
+      return STATUS(Corruption, "Can't parse file name. This is very bad");
     }
     // we should only get sst, manifest and current files here
     assert(type == kTableFile || type == kTableSBlockFile || type == kDescriptorFile ||
@@ -922,7 +922,7 @@ Status BackupEngineImpl::DeleteBackup(BackupID backup_id) {
   } else {
     auto corrupt = corrupt_backups_.find(backup_id);
     if (corrupt == corrupt_backups_.end()) {
-      return Status::NotFound("Backup not found");
+      return STATUS(NotFound, "Backup not found");
     }
     auto s = corrupt->second.second->Delete();
     if (!s.ok()) {
@@ -986,11 +986,11 @@ Status BackupEngineImpl::RestoreDBFromBackup(
   }
   auto backup_itr = backups_.find(backup_id);
   if (backup_itr == backups_.end()) {
-    return Status::NotFound("Backup not found");
+    return STATUS(NotFound, "Backup not found");
   }
   auto& backup = backup_itr->second;
   if (backup->Empty()) {
-    return Status::NotFound("Backup not found");
+    return STATUS(NotFound, "Backup not found");
   }
 
   RLOG(options_.info_log, "Restoring backup id %u\n", backup_id);
@@ -1058,7 +1058,7 @@ Status BackupEngineImpl::RestoreDBFromBackup(
     FileType type;
     bool ok = ParseFileName(dst, &number, &type);
     if (!ok) {
-      return Status::Corruption("Backup corrupted");
+      return STATUS(Corruption, "Backup corrupted");
     }
     // 3. Construct the final path
     // kLogFile lives in wal_dir and all the rest live in db_dir
@@ -1087,7 +1087,7 @@ Status BackupEngineImpl::RestoreDBFromBackup(
       s = item_status;
       break;
     } else if (item.checksum_value != result.checksum_value) {
-      s = Status::Corruption("Checksum check failed");
+      s = STATUS(Corruption, "Checksum check failed");
       break;
     }
   }
@@ -1105,12 +1105,12 @@ Status BackupEngineImpl::VerifyBackup(BackupID backup_id) {
 
   auto backup_itr = backups_.find(backup_id);
   if (backup_itr == backups_.end()) {
-    return Status::NotFound();
+    return STATUS(NotFound, "");
   }
 
   auto& backup = backup_itr->second;
   if (backup->Empty()) {
-    return Status::NotFound();
+    return STATUS(NotFound, "");
   }
 
   RLOG(options_.info_log, "Verifying backup id %u\n", backup_id);
@@ -1125,10 +1125,10 @@ Status BackupEngineImpl::VerifyBackup(BackupID backup_id) {
   for (const auto& file_info : backup->GetFiles()) {
     const auto abs_path = GetAbsolutePath(file_info->filename);
     if (curr_abs_path_to_size.find(abs_path) == curr_abs_path_to_size.end()) {
-      return Status::NotFound("File missing: " + abs_path);
+      return STATUS(NotFound, "File missing: " + abs_path);
     }
     if (file_info->size != curr_abs_path_to_size[abs_path]) {
-      return Status::Corruption("File corrupted: " + abs_path);
+      return STATUS(Corruption, "File corrupted: " + abs_path);
     }
   }
   return Status::OK();
@@ -1217,7 +1217,7 @@ Status BackupEngineImpl::CopyOrCreateFile(
   uint64_t processed_buffer_size = 0;
   do {
     if (stop_backup_.load(std::memory_order_acquire)) {
-      return Status::Incomplete("Backup stopped");
+      return STATUS(Incomplete, "Backup stopped");
     }
     if (!src.empty()) {
       size_t buffer_to_read = (copy_file_buffer_size_ < size_limit)
@@ -1283,7 +1283,7 @@ Status BackupEngineImpl::AddBackupFileWorkItem(
       return s;
     }
     if (size_bytes == port::kMaxUint64) {
-      return Status::NotFound("File missing: " + src_dir + fname);
+      return STATUS(NotFound, "File missing: " + src_dir + fname);
     }
     dst_relative =
         GetSharedFileWithChecksum(dst_relative, checksum_value, size_bytes);
@@ -1399,7 +1399,7 @@ Status BackupEngineImpl::CalculateChecksum(const std::string& src, Env* src_env,
 
   do {
     if (stop_backup_.load(std::memory_order_acquire)) {
-      return Status::Incomplete("Backup stopped");
+      return STATUS(Incomplete, "Backup stopped");
     }
     size_t buffer_to_read = (copy_file_buffer_size_ < size_limit) ?
       copy_file_buffer_size_ : size_limit;
@@ -1528,11 +1528,11 @@ Status BackupEngineImpl::BackupMeta::AddFile(
       itr->second->refs = 1;
     } else {
       // if this happens, something is seriously wrong
-      return Status::Corruption("In memory metadata insertion error");
+      return STATUS(Corruption, "In memory metadata insertion error");
     }
   } else {
     if (itr->second->checksum_value != file_info->checksum_value) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           "Checksum mismatch for existing backup file. Delete old backups and "
           "try again.");
     }
@@ -1589,18 +1589,18 @@ Status BackupEngineImpl::BackupMeta::LoadFromFile(
   s = backup_meta_reader->Read(max_backup_meta_file_size_, &data, buf.get());
 
   if (!s.ok() || data.size() == max_backup_meta_file_size_) {
-    return s.ok() ? Status::Corruption("File size too big") : s;
+    return s.ok() ? STATUS(Corruption, "File size too big") : s;
   }
   buf[data.size()] = 0;
 
   uint32_t num_files = 0;
   char *next;
-  timestamp_ = strtoull(data.data(), &next, 10);
-  data.remove_prefix(next - data.data() + 1); // +1 for '\n'
-  sequence_number_ = strtoull(data.data(), &next, 10);
-  data.remove_prefix(next - data.data() + 1); // +1 for '\n'
-  num_files = static_cast<uint32_t>(strtoul(data.data(), &next, 10));
-  data.remove_prefix(next - data.data() + 1); // +1 for '\n'
+  timestamp_ = strtoull(data.cdata(), &next, 10);
+  data.remove_prefix(next - data.cdata() + 1); // +1 for '\n'
+  sequence_number_ = strtoull(data.cdata(), &next, 10);
+  data.remove_prefix(next - data.cdata() + 1); // +1 for '\n'
+  num_files = static_cast<uint32_t>(strtoul(data.cdata(), &next, 10));
+  data.remove_prefix(next - data.cdata() + 1); // +1 for '\n'
 
   std::vector<std::shared_ptr<FileInfo>> files;
 
@@ -1619,26 +1619,25 @@ Status BackupEngineImpl::BackupMeta::LoadFromFile(
       try {
         size = abs_path_to_size.at(abs_path);
       } catch (std::out_of_range&) {
-        return Status::NotFound("Size missing for pathname: " + abs_path);
+        return STATUS(NotFound, "Size missing for pathname: " + abs_path);
       }
     }
 
     if (line.empty()) {
-      return Status::Corruption("File checksum is missing for " + filename +
+      return STATUS(Corruption, "File checksum is missing for " + filename +
                                 " in " + meta_filename_);
     }
 
     uint32_t checksum_value = 0;
     if (line.starts_with(checksum_prefix)) {
       line.remove_prefix(checksum_prefix.size());
-      checksum_value = static_cast<uint32_t>(
-          strtoul(line.data(), nullptr, 10));
+      checksum_value = static_cast<uint32_t>(strtoul(line.cdata(), nullptr, 10));
       if (line != rocksdb::ToString(checksum_value)) {
-        return Status::Corruption("Invalid checksum value for " + filename +
+        return STATUS(Corruption, "Invalid checksum value for " + filename +
                                   " in " + meta_filename_);
       }
     } else {
-      return Status::Corruption("Unknown checksum type for " + filename +
+      return STATUS(Corruption, "Unknown checksum type for " + filename +
                                 " in " + meta_filename_);
     }
 
@@ -1647,7 +1646,7 @@ Status BackupEngineImpl::BackupMeta::LoadFromFile(
 
   if (s.ok() && data.size() > 0) {
     // file has to be read completely. if not, we count it as corruption
-    s = Status::Corruption("Tailing data in backup meta file in " +
+    s = STATUS(Corruption, "Tailing data in backup meta file in " +
                            meta_filename_);
   }
 
@@ -1745,7 +1744,7 @@ class BackupEngineReadOnlyImpl : public BackupEngineReadOnly {
 Status BackupEngineReadOnly::Open(Env* env, const BackupableDBOptions& options,
                                   BackupEngineReadOnly** backup_engine_ptr) {
   if (options.destroy_old_data) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Can't destroy old data with ReadOnly BackupEngine");
   }
   std::unique_ptr<BackupEngineReadOnlyImpl> backup_engine(

@@ -54,7 +54,7 @@ Status CopyFile(Env* env, const std::string& source,
     }
     if (s.ok()) {
       if (slice.size() == 0) {
-        return Status::Corruption("file too small");
+        return STATUS(Corruption, "file too small");
       }
       s = dest_writer->Append(slice);
     }

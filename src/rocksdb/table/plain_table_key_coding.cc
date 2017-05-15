@@ -86,7 +86,7 @@ Status PlainTableKeyEncoder::AppendKey(const Slice& key,
                                        size_t* meta_bytes_buf_size) {
   ParsedInternalKey parsed_key;
   if (!ParseInternalKey(key, &parsed_key)) {
-    return Status::Corruption(Slice());
+    return STATUS(Corruption, Slice());
   }
 
   Slice key_to_write = key;  // Portion of internal key to write out.
@@ -221,9 +221,8 @@ bool PlainTableFileReader::ReadNonMmap(uint32_t file_offset, uint32_t len,
 inline bool PlainTableFileReader::ReadVarint32(uint32_t offset, uint32_t* out,
                                                uint32_t* bytes_read) {
   if (file_info_->is_mmap_mode) {
-    const char* start = file_info_->file_data.data() + offset;
-    const char* limit =
-        file_info_->file_data.data() + file_info_->data_end_offset;
+    const char* start = file_info_->file_data.cdata() + offset;
+    const char* limit = file_info_->file_data.cdata() + file_info_->data_end_offset;
     const char* key_ptr = GetVarint32Ptr(start, limit, out);
     assert(key_ptr != nullptr);
     *bytes_read = static_cast<uint32_t>(key_ptr - start);
@@ -244,8 +243,8 @@ bool PlainTableFileReader::ReadVarint32NonMmap(uint32_t offset, uint32_t* out,
   if (!Read(offset, bytes_to_read, &bytes)) {
     return false;
   }
-  start = bytes.data();
-  limit = bytes.data() + bytes.size();
+  start = bytes.cdata();
+  limit = bytes.cend();
 
   const char* key_ptr = GetVarint32Ptr(start, limit, out);
   *bytes_read =
@@ -261,7 +260,7 @@ Status PlainTableKeyDecoder::ReadInternalKey(
   if (!success) {
     return file_reader_.status();
   }
-  if (tmp_slice[user_key_size] == PlainTableFactory::kValueTypeSeqId0) {
+  if (tmp_slice.cdata()[user_key_size] == PlainTableFactory::kValueTypeSeqId0) {
     // Special encoding for the row with seqID=0
     parsed_key->user_key = Slice(tmp_slice.data(), user_key_size);
     parsed_key->sequence = 0;
@@ -275,7 +274,7 @@ Status PlainTableKeyDecoder::ReadInternalKey(
     }
     *internal_key_valid = true;
     if (!ParseInternalKey(*internal_key, parsed_key)) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           Slice("Incorrect value type found when reading the next key"));
     }
     *bytes_read += user_key_size + 8;
@@ -349,7 +348,7 @@ Status PlainTableKeyDecoder::NextPrefixEncodingKey(
       return s;
     }
     if (my_bytes_read == 0) {
-      return Status::Corruption("Unexpected EOF when reading size of the key");
+      return STATUS(Corruption, "Unexpected EOF when reading size of the key");
     }
     *bytes_read += my_bytes_read;
 
@@ -435,7 +434,7 @@ Status PlainTableKeyDecoder::NextPrefixEncodingKey(
         break;
       }
       default:
-        return Status::Corruption("Un-identified size flag.");
+        return STATUS(Corruption, "Un-identified size flag.");
     }
   } while (expect_suffix);  // Another round if suffix is expected.
   return Status::OK();
@@ -458,7 +457,7 @@ Status PlainTableKeyDecoder::NextKey(uint32_t start_offset,
       return file_reader_.status();
     }
     if (value_size_bytes == 0) {
-      return Status::Corruption(
+      return STATUS(Corruption,
           "Unexpected EOF when reading the next value's size.");
     }
     *bytes_read += value_size_bytes;

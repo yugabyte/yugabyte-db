@@ -6,6 +6,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_DB_DB_TEST_UTIL_H
+#define ROCKSDB_DB_DB_TEST_UTIL_H
 
 #pragma once
 #ifndef __STDC_FORMAT_MACROS
@@ -223,7 +225,7 @@ class SpecialEnv : public EnvWrapper {
           // Drop writes on the floor
           return Status::OK();
         } else if (env_->no_space_.load(std::memory_order_acquire)) {
-          return Status::IOError("No space left on device");
+          return STATUS(IOError, "No space left on device");
         } else {
           env_->bytes_written_ += data.size();
           return base_->Append(data);
@@ -262,7 +264,7 @@ class SpecialEnv : public EnvWrapper {
           : env_(env), base_(std::move(b)) {}
       Status Append(const Slice& data) override {
         if (env_->manifest_write_error_.load(std::memory_order_acquire)) {
-          return Status::IOError("simulated writer error");
+          return STATUS(IOError, "simulated writer error");
         } else {
           return base_->Append(data);
         }
@@ -273,7 +275,7 @@ class SpecialEnv : public EnvWrapper {
       Status Sync() override {
         ++env_->sync_counter_;
         if (env_->manifest_sync_error_.load(std::memory_order_acquire)) {
-          return Status::IOError("simulated sync error");
+          return STATUS(IOError, "simulated sync error");
         } else {
           return base_->Sync();
         }
@@ -294,7 +296,7 @@ class SpecialEnv : public EnvWrapper {
 #endif
         Status s;
         if (env_->log_write_error_.load(std::memory_order_acquire)) {
-          s = Status::IOError("simulated writer error");
+          s = STATUS(IOError, "simulated writer error");
         } else {
           int slowdown =
               env_->log_write_slowdown_.load(std::memory_order_acquire);
@@ -331,7 +333,7 @@ class SpecialEnv : public EnvWrapper {
         random_number = rnd_.Uniform(100);
       }
       if (random_number < non_writeable_rate_.load()) {
-        return Status::IOError("simulated random write error");
+        return STATUS(IOError, "simulated random write error");
       }
     }
 
@@ -339,7 +341,7 @@ class SpecialEnv : public EnvWrapper {
 
     if (non_writable_count_.load() > 0) {
       non_writable_count_--;
-      return Status::IOError("simulated write error");
+      return STATUS(IOError, "simulated write error");
     }
 
     Status s = target()->NewWritableFile(f, r, soptions);
@@ -763,3 +765,5 @@ class DBTestBase : public testing::Test {
 };
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_DB_TEST_UTIL_H

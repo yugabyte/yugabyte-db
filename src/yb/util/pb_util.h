@@ -74,7 +74,7 @@ bool SerializeToString(const MessageLite &msg, faststring *output);
 bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile);
 
 // Similar to MessageLite::ParseFromArray, with the difference that it returns
-// Status::Corruption() if the message could not be parsed.
+// Status::kCorruption if the message could not be parsed.
 Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length);
 
 // Load a protobuf from the given path.
@@ -290,7 +290,7 @@ class ReadablePBContainerFile {
 // Convenience functions for protobuf containers holding just one record.
 
 // Load a "containerized" protobuf from the given path.
-// If the file does not exist, returns Status::NotFound(). Otherwise, may
+// If the file does not exist, returns STATUS(NotFound, ""). Otherwise, may
 // return other Status error codes such as Status::IOError.
 Status ReadPBContainerFromPath(Env* env, const std::string& path,
                                google::protobuf::Message* msg);
@@ -306,4 +306,4 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
 
 } // namespace pb_util
 } // namespace yb
-#endif
+#endif // YB_UTIL_PB_UTIL_H

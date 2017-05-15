@@ -10,6 +10,7 @@
 #include "table/format.h"
 
 #include <inttypes.h>
+
 #include <string>
 
 #include "rocksdb/env.h"
@@ -50,7 +51,7 @@ Status BlockHandle::DecodeFrom(Slice* input) {
       GetVarint64(input, &size_)) {
     return Status::OK();
   } else {
-    return Status::Corruption("bad block handle");
+    return STATUS(Corruption, "bad block handle");
   }
 }
 
@@ -141,8 +142,7 @@ Status Footer::DecodeFrom(Slice* input) {
   assert(input != nullptr);
   assert(input->size() >= kMinEncodedLength);
 
-  const char *magic_ptr =
-      input->data() + input->size() - kMagicNumberLengthByte;
+  const char *magic_ptr = input->cend() - kMagicNumberLengthByte;
   const uint32_t magic_lo = DecodeFixed32(magic_ptr);
   const uint32_t magic_hi = DecodeFixed32(magic_ptr + 4);
   uint64_t magic = ((static_cast<uint64_t>(magic_hi) << 32) |
@@ -167,13 +167,13 @@ Status Footer::DecodeFrom(Slice* input) {
     // It consists of the checksum type, two block handles, padding,
     // a version number, and a magic number
     if (input->size() < kNewVersionsEncodedLength) {
-      return Status::Corruption("input is too short to be an sstable");
+      return STATUS(Corruption, "input is too short to be an sstable");
     } else {
       input->remove_prefix(input->size() - kNewVersionsEncodedLength);
     }
     uint32_t chksum;
     if (!GetVarint32(input, &chksum)) {
-      return Status::Corruption("bad checksum type");
+      return STATUS(Corruption, "bad checksum type");
     }
     checksum_ = static_cast<ChecksumType>(chksum);
   }
@@ -185,7 +185,7 @@ Status Footer::DecodeFrom(Slice* input) {
   if (result.ok()) {
     // We skip over any leftover data (just padding for now) in "input"
     const char* end = magic_ptr + kMagicNumberLengthByte;
-    *input = Slice(end, input->data() + input->size() - end);
+    *input = Slice(end, input->cend() - end);
   }
   return result;
 }
@@ -214,7 +214,7 @@ std::string Footer::ToString() const {
 Status ReadFooterFromFile(RandomAccessFileReader* file, uint64_t file_size,
                           Footer* footer, uint64_t enforce_table_magic_number) {
   if (file_size < Footer::kMinEncodedLength) {
-    return Status::Corruption("file is too short to be an sstable");
+    return STATUS(Corruption, "file is too short to be an sstable");
   }
 
   char footer_space[Footer::kMaxEncodedLength];
@@ -230,7 +230,7 @@ Status ReadFooterFromFile(RandomAccessFileReader* file, uint64_t file_size,
   // Check that we actually read the whole footer from the file. It may be
   // that size isn't correct.
   if (footer_input.size() < Footer::kMinEncodedLength) {
-    return Status::Corruption("file is too short to be an sstable");
+    return STATUS(Corruption, "file is too short to be an sstable");
   }
 
   s = footer->DecodeFrom(&footer_input);
@@ -239,7 +239,7 @@ Status ReadFooterFromFile(RandomAccessFileReader* file, uint64_t file_size,
   }
   if (enforce_table_magic_number != 0 &&
       enforce_table_magic_number != footer->table_magic_number()) {
-    return Status::Corruption("Bad table magic number");
+    return STATUS(Corruption, "Bad table magic number");
   }
   return Status::OK();
 }
@@ -268,11 +268,11 @@ Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
     return s;
   }
   if (contents->size() != n + kBlockTrailerSize) {
-    return Status::Corruption("truncated block read");
+    return STATUS(Corruption, "truncated block read");
   }
 
   // Check the crc of the type and the block contents
-  const char* data = contents->data();  // Pointer to where Read put the data
+  const char* data = contents->cdata();  // Pointer to where Read put the data
   if (options.verify_checksums) {
     PERF_TIMER_GUARD(block_checksum_time);
     uint32_t value = DecodeFixed32(data + n + 1);
@@ -286,10 +286,10 @@ Status ReadBlock(RandomAccessFileReader* file, const Footer& footer,
         actual = XXH32(data, static_cast<int>(n) + 1, 0);
         break;
       default:
-        s = Status::Corruption("unknown checksum type");
+        s = STATUS(Corruption, "unknown checksum type");
     }
     if (s.ok() && actual != value) {
-      s = Status::Corruption("block checksum mismatch");
+      s = STATUS(Corruption, "block checksum mismatch");
     }
     if (!s.ok()) {
       return s;
@@ -333,10 +333,10 @@ Status ReadBlockContents(RandomAccessFileReader* file, const Footer& footer,
   compression_type = static_cast<rocksdb::CompressionType>(slice.data()[n]);
 
   if (decompression_requested && compression_type != kNoCompression) {
-    return UncompressBlockContents(slice.data(), n, contents, footer.version());
+    return UncompressBlockContents(slice.cdata(), n, contents, footer.version());
   }
 
-  if (slice.data() != used_buf) {
+  if (slice.cdata() != used_buf) {
     *contents = BlockContents(Slice(slice.data(), n), false, compression_type);
     return status;
   }
@@ -369,11 +369,11 @@ Status UncompressBlockContents(const char* data, size_t n,
       static char snappy_corrupt_msg[] =
         "Snappy not supported or corrupted Snappy compressed block contents";
       if (!Snappy_GetUncompressedLength(data, n, &ulength)) {
-        return Status::Corruption(snappy_corrupt_msg);
+        return STATUS(Corruption, snappy_corrupt_msg);
       }
       ubuf = std::unique_ptr<char[]>(new char[ulength]);
       if (!Snappy_Uncompress(data, n, ubuf.get())) {
-        return Status::Corruption(snappy_corrupt_msg);
+        return STATUS(Corruption, snappy_corrupt_msg);
       }
       *contents = BlockContents(std::move(ubuf), ulength, true, kNoCompression);
       break;
@@ -385,7 +385,7 @@ Status UncompressBlockContents(const char* data, size_t n,
       if (!ubuf) {
         static char zlib_corrupt_msg[] =
           "Zlib not supported or corrupted Zlib compressed block contents";
-        return Status::Corruption(zlib_corrupt_msg);
+        return STATUS(Corruption, zlib_corrupt_msg);
       }
       *contents =
           BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
@@ -397,7 +397,7 @@ Status UncompressBlockContents(const char* data, size_t n,
       if (!ubuf) {
         static char bzip2_corrupt_msg[] =
           "Bzip2 not supported or corrupted Bzip2 compressed block contents";
-        return Status::Corruption(bzip2_corrupt_msg);
+        return STATUS(Corruption, bzip2_corrupt_msg);
       }
       *contents =
           BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
@@ -409,7 +409,7 @@ Status UncompressBlockContents(const char* data, size_t n,
       if (!ubuf) {
         static char lz4_corrupt_msg[] =
           "LZ4 not supported or corrupted LZ4 compressed block contents";
-        return Status::Corruption(lz4_corrupt_msg);
+        return STATUS(Corruption, lz4_corrupt_msg);
       }
       *contents =
           BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
@@ -421,7 +421,7 @@ Status UncompressBlockContents(const char* data, size_t n,
       if (!ubuf) {
         static char lz4hc_corrupt_msg[] =
           "LZ4HC not supported or corrupted LZ4HC compressed block contents";
-        return Status::Corruption(lz4hc_corrupt_msg);
+        return STATUS(Corruption, lz4hc_corrupt_msg);
       }
       *contents =
           BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
@@ -432,13 +432,13 @@ Status UncompressBlockContents(const char* data, size_t n,
       if (!ubuf) {
         static char zstd_corrupt_msg[] =
             "ZSTD not supported or corrupted ZSTD compressed block contents";
-        return Status::Corruption(zstd_corrupt_msg);
+        return STATUS(Corruption, zstd_corrupt_msg);
       }
       *contents =
           BlockContents(std::move(ubuf), decompress_size, true, kNoCompression);
       break;
     default:
-      return Status::Corruption("bad block type");
+      return STATUS(Corruption, "bad block type");
   }
   return Status::OK();
 }

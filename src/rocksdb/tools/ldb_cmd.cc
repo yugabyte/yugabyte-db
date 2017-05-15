@@ -1571,7 +1571,7 @@ void DumpWalFile(std::string wal_file, bool print_header, bool print_values,
       row.str("");
       if (record.size() < 12) {
         reporter.Corruption(record.size(),
-                            Status::Corruption("log record too small"));
+                            STATUS(Corruption, "log record too small"));
       } else {
         WriteBatchInternal::SetContents(&batch, record);
         row << WriteBatchInternal::Sequence(&batch) << ",";
@@ -2235,7 +2235,7 @@ void DBFileDumperCommand::DoCommand() {
   std::cout << "Write Ahead Log Files" << std::endl;
   std::cout << "==============================" << std::endl;
   rocksdb::VectorLogPtr wal_files;
-  s = db_->GetSortedWalFiles(wal_files);
+  s = db_->GetSortedWalFiles(&wal_files);
   if (!s.ok()) {
     std::cerr << "Error when getting WAL files" << std::endl;
   } else {

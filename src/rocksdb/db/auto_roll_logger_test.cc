@@ -3,6 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
+#include <sys/stat.h>
+#include <errno.h>
+
 #include <string>
 #include <thread>
 #include <vector>
@@ -11,15 +14,12 @@
 #include <fstream>
 #include <iterator>
 #include <algorithm>
+
 #include "db/auto_roll_logger.h"
 #include "port/port.h"
 #include "util/sync_point.h"
 #include "util/testharness.h"
 #include "rocksdb/db.h"
-#include <sys/stat.h>
-#include <errno.h>
-
-using namespace std;
 
 namespace rocksdb {
 
@@ -36,7 +36,7 @@ class AutoRollLoggerTest : public testing::Test {
 #else
     std::string deleteCmd = "rm -rf " + kTestDir;
 #endif
-    ASSERT_TRUE(system(deleteCmd.c_str()) == 0);
+    ASSERT_EQ(system(deleteCmd.c_str()), 0);
     Env::Default()->CreateDir(kTestDir);
   }
 
@@ -181,7 +181,7 @@ TEST_F(AutoRollLoggerTest, RollLogFileByTime) {
 
     InitTestDb();
     // -- Test the existence of file during the server restart.
-    ASSERT_EQ(Status::NotFound(), env->FileExists(kLogFile));
+    ASSERT_TRUE(env->FileExists(kLogFile).IsNotFound());
     AutoRollLogger logger(Env::Default(), kTestDir, "", log_size, time);
     ASSERT_OK(env->FileExists(kLogFile));
 
@@ -397,11 +397,11 @@ static std::vector<string> GetOldFileNames(const string& path) {
 
 // Return the number of lines where a given pattern was found in the file
 static size_t GetLinesCount(const string& fname, const string& pattern) {
-  stringstream ssbuf;
+  std::stringstream ssbuf;
   string line;
   size_t count = 0;
 
-  ifstream inFile(fname.c_str());
+  std::ifstream inFile(fname.c_str());
   ssbuf << inFile.rdbuf();
 
   while (getline(ssbuf, line)) {

@@ -2,12 +2,15 @@
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
+#ifndef ROCKSDB_DB_COMPACTED_DB_IMPL_H
+#define ROCKSDB_DB_COMPACTED_DB_IMPL_H
 
 #pragma once
 #ifndef ROCKSDB_LITE
-#include "db/db_impl.h"
 #include <vector>
 #include <string>
+
+#include "db/db_impl.h"
 
 namespace rocksdb {
 
@@ -35,46 +38,46 @@ class CompactedDBImpl : public DBImpl {
   virtual Status Put(const WriteOptions& options,
                      ColumnFamilyHandle* column_family, const Slice& key,
                      const Slice& value) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
   using DBImpl::Merge;
   virtual Status Merge(const WriteOptions& options,
                        ColumnFamilyHandle* column_family, const Slice& key,
                        const Slice& value) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
   using DBImpl::Delete;
   virtual Status Delete(const WriteOptions& options,
                         ColumnFamilyHandle* column_family,
                         const Slice& key) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
   virtual Status Write(const WriteOptions& options,
                        WriteBatch* updates) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
   using DBImpl::CompactRange;
   virtual Status CompactRange(const CompactRangeOptions& options,
                               ColumnFamilyHandle* column_family,
                               const Slice* begin, const Slice* end) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
 
   virtual Status DisableFileDeletions() override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
   virtual Status EnableFileDeletions(bool force) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
   virtual Status GetLiveFiles(std::vector<std::string>&,
                               uint64_t* manifest_file_size,
                               bool flush_memtable = true) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
   using DBImpl::Flush;
   virtual Status Flush(const FlushOptions& options,
                        ColumnFamilyHandle* column_family) override {
-    return Status::NotSupported("Not supported in compacted db mode.");
+    return STATUS(NotSupported, "Not supported in compacted db mode.");
   }
 
  private:
@@ -91,5 +94,7 @@ class CompactedDBImpl : public DBImpl {
   CompactedDBImpl(const CompactedDBImpl&);
   void operator=(const CompactedDBImpl&);
 };
-}
+} // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif // ROCKSDB_DB_COMPACTED_DB_IMPL_H

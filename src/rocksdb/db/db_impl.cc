@@ -983,12 +983,12 @@ Status DBImpl::Recover(
           return s;
         }
       } else {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             dbname_, "does not exist (create_if_missing is false)");
       }
     } else if (s.ok()) {
       if (db_options_.error_if_exists) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             dbname_, "exists (error_if_exists is true)");
       }
     } else {
@@ -1042,7 +1042,7 @@ Status DBImpl::Recover(
       FileType type;
       if (ParseFileName(filenames[i], &number, &type) && type == kLogFile) {
         if (is_new_db) {
-          return Status::Corruption(
+          return STATUS(Corruption,
               "While creating a new Db, wal_dir contains "
               "existing log file: ",
               filenames[i]);
@@ -1053,7 +1053,7 @@ Status DBImpl::Recover(
     }
 
     if (logs.size() > 0 && error_if_log_file_exist) {
-      return Status::Corruption(""
+      return STATUS(Corruption, ""
           "The db was opened in readonly mode with error_if_log_file_exist"
           "flag but a log file already exists");
     }
@@ -1210,7 +1210,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
         status.ok()) {
       if (record.size() < 12) {
         reporter.Corruption(record.size(),
-                            Status::Corruption("log record too small"));
+                            STATUS(Corruption, "log record too small"));
         continue;
       }
       WriteBatchInternal::SetContents(&batch, record);
@@ -1236,7 +1236,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
             continue_replay_log = false;
             continue;
           case WalFilter::WalProcessingOption::kCorruptedRecord: {
-            status = Status::Corruption("Corruption reported by Wal Filter ",
+            status = STATUS(Corruption, "Corruption reported by Wal Filter ",
                                         db_options_.wal_filter->Name());
             MaybeIgnoreError(&status);
             if (!status.ok()) {
@@ -1247,7 +1247,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
           }
           default: {
             assert(false);  // unhandled case
-            status = Status::NotSupported(
+            status = STATUS(NotSupported,
                 "Unknown WalProcessingOption returned"
                 " by Wal Filter ",
                 db_options_.wal_filter->Name());
@@ -1274,7 +1274,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
                 "Aborting recovery.",
                 log_number, db_options_.wal_recovery_mode,
                 db_options_.wal_filter->Name(), new_count, original_count);
-            status = Status::NotSupported(
+            status = STATUS(NotSupported,
                 "More than original # of records "
                 "returned by Wal Filter ",
                 db_options_.wal_filter->Name());
@@ -1580,7 +1580,7 @@ Status DBImpl::FlushMemTableToOutputFile(
         sfm->OnAddFile(TableBaseToDataFileName(file_path));
       }
       if (sfm->IsMaxAllowedSpaceReached() && bg_error_.ok()) {
-        bg_error_ = Status::IOError("Max allowed space was reached");
+        bg_error_ = STATUS(IOError, "Max allowed space was reached");
         TEST_SYNC_POINT(
             "DBImpl::FlushMemTableToOutputFile:MaxAllowedSpaceReached");
       }
@@ -1637,7 +1637,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
                             ColumnFamilyHandle* column_family,
                             const Slice* begin, const Slice* end) {
   if (options.target_path_id >= db_options_.db_paths.size()) {
-    return Status::InvalidArgument("Invalid target path ID");
+    return STATUS(InvalidArgument, "Invalid target path ID");
   }
 
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
@@ -1749,10 +1749,10 @@ Status DBImpl::CompactFiles(
     const int output_level, const int output_path_id) {
 #ifdef ROCKSDB_LITE
     // not supported in lite version
-  return Status::NotSupported("Not supported in ROCKSDB LITE");
+  return STATUS(NotSupported, "Not supported in ROCKSDB LITE");
 #else
   if (column_family == nullptr) {
-    return Status::InvalidArgument("ColumnFamilyHandle must be non-null.");
+    return STATUS(InvalidArgument, "ColumnFamilyHandle must be non-null.");
   }
 
   auto cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
@@ -1812,7 +1812,7 @@ Status DBImpl::CompactFilesImpl(
   mutex_.AssertHeld();
 
   if (shutting_down_.load(std::memory_order_acquire)) {
-    return Status::ShutdownInProgress();
+    return STATUS(ShutdownInProgress, "");
   }
 
   std::unordered_set<uint64_t> input_set;
@@ -1829,7 +1829,7 @@ Status DBImpl::CompactFilesImpl(
     if (db_options_.db_paths.size() == 1U) {
       output_path_id = 0;
     } else {
-      return Status::NotSupported(
+      return STATUS(NotSupported,
           "Automatic output path selection is not "
           "yet supported in CompactFiles()");
     }
@@ -1850,7 +1850,7 @@ Status DBImpl::CompactFilesImpl(
 
   for (auto inputs : input_files) {
     if (cfd->compaction_picker()->FilesInCompaction(inputs.files)) {
-      return Status::Aborted(
+      return STATUS(Aborted,
           "Some of the necessary compaction input "
           "files are already being compacted");
     }
@@ -1865,7 +1865,7 @@ Status DBImpl::CompactFilesImpl(
       compact_options, input_files, output_level, version->storage_info(),
       *cfd->GetLatestMutableCFOptions(), output_path_id));
   if (!c) {
-    return Status::Aborted("Another Level 0 compaction is running");
+    return STATUS(Aborted, "Another Level 0 compaction is running");
   }
   c->SetInputVersion(version);
   // deletion compaction currently not allowed in CompactFiles.
@@ -1967,7 +1967,7 @@ Status DBImpl::PauseBackgroundWork() {
 Status DBImpl::ContinueBackgroundWork() {
   InstrumentedMutexLock guard_lock(&mutex_);
   if (bg_work_paused_ == 0) {
-    return Status::InvalidArgument();
+    return STATUS(InvalidArgument, "");
   }
   assert(bg_work_paused_ > 0);
   assert(bg_compaction_paused_ > 0);
@@ -2039,14 +2039,14 @@ void DBImpl::NotifyOnCompactionCompleted(
 Status DBImpl::SetOptions(ColumnFamilyHandle* column_family,
     const std::unordered_map<std::string, std::string>& options_map) {
 #ifdef ROCKSDB_LITE
-  return Status::NotSupported("Not supported in ROCKSDB LITE");
+  return STATUS(NotSupported, "Not supported in ROCKSDB LITE");
 #else
   auto* cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   if (options_map.empty()) {
     RLOG(InfoLogLevel::WARN_LEVEL,
         db_options_.info_log, "SetOptions() on column family [%s], empty input",
         cfd->GetName().c_str());
-    return Status::InvalidArgument("empty input");
+    return STATUS(InvalidArgument, "empty input");
   }
 
   MutableCFOptions new_options;
@@ -2083,7 +2083,7 @@ Status DBImpl::SetOptions(ColumnFamilyHandle* column_family,
     new_options.Dump(db_options_.info_log.get());
     if (!persist_options_status.ok()) {
       if (db_options_.fail_if_options_file_error) {
-        s = Status::IOError(
+        s = STATUS(IOError,
             "SetOptions succeeded, but unable to persist options",
             persist_options_status.ToString());
       }
@@ -2124,7 +2124,7 @@ int DBImpl::FindMinimumEmptyLevelFitting(ColumnFamilyData* cfd,
 Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
   assert(level < cfd->NumberLevels());
   if (target_level >= cfd->NumberLevels()) {
-    return Status::InvalidArgument("Target level exceeds number of levels");
+    return STATUS(InvalidArgument, "Target level exceeds number of levels");
   }
 
   std::unique_ptr<SuperVersion> superversion_to_free;
@@ -2138,7 +2138,7 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
   if (refitting_level_) {
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "[ReFitLevel] another thread is refitting");
-    return Status::NotSupported("another thread is refitting");
+    return STATUS(NotSupported, "another thread is refitting");
   }
   refitting_level_ = true;
 
@@ -2152,13 +2152,13 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
   auto* vstorage = cfd->current()->storage_info();
   if (to_level > level) {
     if (level == 0) {
-      return Status::NotSupported(
+      return STATUS(NotSupported,
           "Cannot change from level 0 to other levels.");
     }
     // Check levels are empty for a trivial move
     for (int l = level + 1; l <= to_level; l++) {
       if (vstorage->NumLevelFiles(l) > 0) {
-        return Status::NotSupported(
+        return STATUS(NotSupported,
             "Levels between source and target are not empty for a move.");
       }
     }
@@ -2241,11 +2241,11 @@ Status DBImpl::SyncWAL() {
     for (auto it = logs_.begin();
          it != logs_.end() && it->number <= current_log_number; ++it) {
       if (!it->writer->file()->writable_file()->IsSyncThreadSafe()) {
-        return Status::NotSupported(
+        return STATUS(NotSupported,
           "SyncWAL() is not supported for this implementation of WAL file",
           db_options_.allow_mmap_writes
             ? "try setting Options::allow_mmap_writes to false"
-            : Slice());
+            : yb::Slice());
       }
     }
     for (auto it = logs_.begin();
@@ -2489,7 +2489,7 @@ Status DBImpl::WaitForFlushMemTable(ColumnFamilyData* cfd) {
   InstrumentedMutexLock l(&mutex_);
   while (cfd->imm()->NumNotFlushed() > 0 && bg_error_.ok()) {
     if (shutting_down_.load(std::memory_order_acquire)) {
-      return Status::ShutdownInProgress();
+      return STATUS(ShutdownInProgress, "");
     }
     bg_cv_.Wait();
   }
@@ -2666,7 +2666,7 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
 
   Status status = bg_error_;
   if (status.ok() && shutting_down_.load(std::memory_order_acquire)) {
-    status = Status::ShutdownInProgress();
+    status = STATUS(ShutdownInProgress, "");
   }
 
   if (!status.ok()) {
@@ -2880,7 +2880,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
   CompactionJobStats compaction_job_stats;
   Status status = bg_error_;
   if (status.ok() && shutting_down_.load(std::memory_order_acquire)) {
-    status = Status::ShutdownInProgress();
+    status = STATUS(ShutdownInProgress, "");
   }
 
   if (!status.ok()) {
@@ -3587,7 +3587,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   UserCollectedProperties::const_iterator external_sst_file_version_iter =
       user_collected_properties.find(ExternalSstFilePropertyNames::kVersion);
   if (external_sst_file_version_iter == user_collected_properties.end()) {
-    return Status::InvalidArgument("Generated table version not found");
+    return STATUS(InvalidArgument, "Generated table version not found");
   }
 
   file_info.is_split_sst = table_reader->IsSplitSst();
@@ -3612,7 +3612,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
     // version 1 imply that all sequence numbers in table equal 0
     file_info.sequence_number = 0;
   } else {
-    return Status::InvalidArgument("Generated table version is not supported");
+    return STATUS(InvalidArgument, "Generated table version is not supported");
   }
 
   // Get number of entries in table
@@ -3625,20 +3625,20 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   // Get first (smallest) key from file
   iter->SeekToFirst();
   if (!ParseInternalKey(iter->key(), &key)) {
-    return Status::Corruption("Generated table have corrupted keys");
+    return STATUS(Corruption, "Generated table have corrupted keys");
   }
   if (key.sequence != 0) {
-    return Status::Corruption("Generated table have non zero sequence number");
+    return STATUS(Corruption, "Generated table have non zero sequence number");
   }
   file_info.smallest_key = key.user_key.ToString();
 
   // Get last (largest) key from file
   iter->SeekToLast();
   if (!ParseInternalKey(iter->key(), &key)) {
-    return Status::Corruption("Generated table have corrupted keys");
+    return STATUS(Corruption, "Generated table have corrupted keys");
   }
   if (key.sequence != 0) {
-    return Status::Corruption("Generated table have non zero sequence number");
+    return STATUS(Corruption, "Generated table have non zero sequence number");
   }
   file_info.largest_key = key.user_key.ToString();
 
@@ -3683,10 +3683,10 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
   ColumnFamilyData* cfd = cfh->cfd();
 
   if (file_info->num_entries == 0) {
-    return Status::InvalidArgument("File contain no entries");
+    return STATUS(InvalidArgument, "File contain no entries");
   }
   if (file_info->version != 1) {
-    return Status::InvalidArgument("Generated table version is not supported");
+    return STATUS(InvalidArgument, "Generated table version is not supported");
   }
   // version 1 imply that file have only Put Operations with Sequence Number = 0
 
@@ -3698,12 +3698,12 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
                                  file_info->sequence_number,
                                  ValueType::kTypeValue);
   if (!meta.smallest.key.Valid() || !meta.largest.key.Valid()) {
-    return Status::Corruption("Generated table have corrupted keys");
+    return STATUS(Corruption, "Generated table have corrupted keys");
   }
   meta.smallest.seqno = file_info->sequence_number;
   meta.largest.seqno = file_info->sequence_number;
   if (meta.smallest.seqno != 0 || meta.largest.seqno != 0) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Non zero sequence numbers are not supported");
   }
 
@@ -3748,7 +3748,7 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
     if (!snapshots_.empty()) {
       // Check that no snapshots are being held
       status =
-          Status::NotSupported("Cannot add a file while holding snapshots");
+          STATUS(NotSupported, "Cannot add a file while holding snapshots");
     }
 
     if (status.ok()) {
@@ -3770,10 +3770,10 @@ Status DBImpl::AddFile(ColumnFamilyHandle* column_family,
           auto* vstorage = cfd->current()->storage_info();
           if (vstorage->InternalComparator()->user_comparator()->Compare(
                   seek_result.user_key, file_info->largest_key) <= 0) {
-            status = Status::NotSupported("Cannot add overlapping range");
+            status = STATUS(NotSupported, "Cannot add overlapping range");
           }
         } else {
-          status = Status::Corruption("DB have corrupted keys");
+          status = STATUS(Corruption, "DB have corrupted keys");
         }
       }
     }
@@ -3836,7 +3836,7 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
 
     if (versions_->GetColumnFamilySet()->GetColumnFamily(column_family_name) !=
         nullptr) {
-      return Status::InvalidArgument("Column family already exists");
+      return STATUS(InvalidArgument, "Column family already exists");
     }
     VersionEdit edit;
     edit.AddColumnFamily(column_family_name);
@@ -3893,7 +3893,7 @@ Status DBImpl::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
         reinterpret_cast<ColumnFamilyHandleImpl*>(*handle)->cfd());
     if (!persist_options_status.ok()) {
       if (db_options_.fail_if_options_file_error) {
-        s = Status::IOError(
+        s = STATUS(IOError,
             "ColumnFamily has been created, but unable to persist"
             "options in CreateColumnFamily()",
             persist_options_status.ToString().c_str());
@@ -3910,7 +3910,7 @@ Status DBImpl::DropColumnFamily(ColumnFamilyHandle* column_family) {
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
   if (cfd->GetID() == 0) {
-    return Status::InvalidArgument("Can't drop default column family");
+    return STATUS(InvalidArgument, "Can't drop default column family");
   }
 
   bool cf_support_snapshot = cfd->mem()->IsSnapshotSupported();
@@ -3924,7 +3924,7 @@ Status DBImpl::DropColumnFamily(ColumnFamilyHandle* column_family) {
   {
     InstrumentedMutexLock l(&mutex_);
     if (cfd->IsDropped()) {
-      s = Status::InvalidArgument("Column family already dropped!\n");
+      s = STATUS(InvalidArgument, "Column family already dropped!\n");
     }
     if (s.ok()) {
       // we drop column family from a single write thread
@@ -3968,7 +3968,7 @@ Status DBImpl::DropColumnFamily(ColumnFamilyHandle* column_family) {
 
     if (!options_persist_status.ok()) {
       if (db_options_.fail_if_options_file_error) {
-        s = Status::IOError(
+        s = STATUS(IOError,
             "ColumnFamily has been dropped, but unable to persist "
             "options in DropColumnFamily()",
             options_persist_status.ToString().c_str());
@@ -4006,7 +4006,7 @@ bool DBImpl::KeyMayExist(const ReadOptions& read_options,
 Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
                               ColumnFamilyHandle* column_family) {
   if (read_options.read_tier == kPersistedTier) {
-    return NewErrorIterator(Status::NotSupported(
+    return NewErrorIterator(STATUS(NotSupported,
         "ReadTier::kPersistedData is not yet supported in iterators."));
   }
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
@@ -4018,7 +4018,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
   if (read_options.managed) {
 #ifdef ROCKSDB_LITE
     // not supported in lite version
-    return NewErrorIterator(Status::InvalidArgument(
+    return NewErrorIterator(STATUS(InvalidArgument,
         "Managed Iterators not supported in RocksDBLite."));
 #else
     if ((read_options.tailing) || (read_options.snapshot != nullptr) ||
@@ -4026,7 +4026,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
       return new ManagedIterator(this, read_options, cfd);
     }
     // Managed iter not supported
-    return NewErrorIterator(Status::InvalidArgument(
+    return NewErrorIterator(STATUS(InvalidArgument,
         "Managed Iterators not supported without snapshots."));
 #endif
   } else if (read_options.tailing) {
@@ -4116,7 +4116,7 @@ Status DBImpl::NewIterators(
     const std::vector<ColumnFamilyHandle*>& column_families,
     std::vector<Iterator*>* iterators) {
   if (read_options.read_tier == kPersistedTier) {
-    return Status::NotSupported(
+    return STATUS(NotSupported,
         "ReadTier::kPersistedData is not yet supported in iterators.");
   }
   iterators->clear();
@@ -4126,12 +4126,12 @@ Status DBImpl::NewIterators(
              const_cast<ReadOptions*>(&read_options), is_snapshot_supported_);
   if (read_options.managed) {
 #ifdef ROCKSDB_LITE
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Managed interator not supported in RocksDB lite");
 #else
     if ((!read_options.tailing) && (read_options.snapshot == nullptr) &&
         (!is_snapshot_supported_)) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "Managed interator not supported without snapshots");
     }
     for (auto cfh : column_families) {
@@ -4142,7 +4142,7 @@ Status DBImpl::NewIterators(
 #endif
   } else if (read_options.tailing) {
 #ifdef ROCKSDB_LITE
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Tailing interator not supported in RocksDB lite");
 #else
     for (auto cfh : column_families) {
@@ -4226,7 +4226,7 @@ Status DBImpl::Merge(const WriteOptions& o, ColumnFamilyHandle* column_family,
                      const Slice& key, const Slice& val) {
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   if (!cfh->cfd()->ioptions()->merge_operator) {
-    return Status::NotSupported("Provide a merge_operator when opening DB");
+    return STATUS(NotSupported, "Provide a merge_operator when opening DB");
   } else {
     return DB::Merge(o, column_family, key, val);
   }
@@ -4259,10 +4259,10 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
                          WriteBatch* my_batch, WriteCallback* callback) {
 
   if (my_batch == nullptr) {
-    return Status::Corruption("Batch is nullptr!");
+    return STATUS(Corruption, "Batch is nullptr!");
   }
   if (write_options.timeout_hint_us != 0) {
-    return Status::InvalidArgument("timeout_hint_us is deprecated");
+    return STATUS(InvalidArgument, "timeout_hint_us is deprecated");
   }
 
   Status status;
@@ -4700,8 +4700,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   }
   PERF_TIMER_START(write_pre_and_post_process_time);
 
-  if (db_options_.paranoid_checks && !status.ok() && !w.CallbackFailed() &&
-      !status.IsBusy()) {
+  if (db_options_.paranoid_checks && !status.ok() && !w.CallbackFailed() && !status.IsBusy()) {
     mutex_.Lock();
     if (bg_error_.ok()) {
       bg_error_ = status;  // stop compaction & fail any further writes
@@ -5168,7 +5167,7 @@ Status DBImpl::GetUpdatesSince(
 
   RecordTick(stats_, GET_UPDATES_SINCE_CALLS);
   if (seq > versions_->LastSequence()) {
-    return Status::NotFound("Requested sequence not yet written in the db");
+    return STATUS(NotFound, "Requested sequence not yet written in the db");
   }
   return wal_manager_.GetUpdatesSince(seq, iter, read_options, versions_.get());
 }
@@ -5181,7 +5180,7 @@ Status DBImpl::DeleteFile(std::string name) {
       (type != kTableFile && type != kLogFile)) {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
         "DeleteFile %s failed.\n", name.c_str());
-    return Status::InvalidArgument("Invalid file name");
+    return STATUS(InvalidArgument, "Invalid file name");
   }
 
   Status status;
@@ -5191,7 +5190,7 @@ Status DBImpl::DeleteFile(std::string name) {
       RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
           "DeleteFile %s failed - not archived log.\n",
           name.c_str());
-      return Status::NotSupported("Delete only supported for archived logs");
+      return STATUS(NotSupported, "Delete only supported for archived logs");
     }
     status = env_->DeleteFile(db_options_.wal_dir + "/" + name.c_str());
     if (!status.ok()) {
@@ -5214,7 +5213,7 @@ Status DBImpl::DeleteFile(std::string name) {
       RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
           "DeleteFile %s failed. File not found\n", name.c_str());
       job_context.Clean();
-      return Status::InvalidArgument("File not found");
+      return STATUS(InvalidArgument, "File not found");
     }
     assert(level < cfd->NumberLevels());
 
@@ -5235,7 +5234,7 @@ Status DBImpl::DeleteFile(std::string name) {
         RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
             "DeleteFile %s FAILED. File not in last level\n", name.c_str());
         job_context.Clean();
-        return Status::InvalidArgument("File not in last level");
+        return STATUS(InvalidArgument, "File not in last level");
       }
     }
     // if level == 0, it has to be the oldest file
@@ -5245,7 +5244,7 @@ Status DBImpl::DeleteFile(std::string name) {
           "DeleteFile %s failed ---"
           " target file in level 0 must be the oldest.", name.c_str());
       job_context.Clean();
-      return Status::InvalidArgument("File in level 0, but not oldest");
+      return STATUS(InvalidArgument, "File in level 0, but not oldest");
     }
     edit.SetColumnFamily(cfd->GetID());
     edit.DeleteFile(level, number);
@@ -5410,11 +5409,11 @@ Status DBImpl::CheckConsistency() {
   if (corruption_messages.size() == 0) {
     return Status::OK();
   } else {
-    return Status::Corruption(corruption_messages);
+    return STATUS(Corruption, corruption_messages);
   }
 }
 
-Status DBImpl::GetDbIdentity(std::string& identity) const {
+Status DBImpl::GetDbIdentity(std::string* identity) const {
   std::string idfilename = IdentityFileName(dbname_);
   const EnvOptions soptions;
   unique_ptr<SequentialFileReader> id_file_reader;
@@ -5439,10 +5438,10 @@ Status DBImpl::GetDbIdentity(std::string& identity) const {
   if (!s.ok()) {
     return s;
   }
-  identity.assign(id.ToString());
+  identity->assign(id.cdata(), id.size());
   // If last character is '\n' remove it from identity
-  if (identity.size() > 0 && identity.back() == '\n') {
-    identity.pop_back();
+  if (!identity->empty() && identity->back() == '\n') {
+    identity->pop_back();
   }
   return s;
 }
@@ -5484,10 +5483,10 @@ Status DB::Merge(const WriteOptions& opt, ColumnFamilyHandle* column_family,
 Status DB::CreateColumnFamily(const ColumnFamilyOptions& cf_options,
                               const std::string& column_family_name,
                               ColumnFamilyHandle** handle) {
-  return Status::NotSupported("");
+  return STATUS(NotSupported, "");
 }
 Status DB::DropColumnFamily(ColumnFamilyHandle* column_family) {
-  return Status::NotSupported("");
+  return STATUS(NotSupported, "");
 }
 
 DB::~DB() { }
@@ -5528,7 +5527,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     if (db_options.db_paths.size() > 1) {
       if ((cfd.options.compaction_style != kCompactionStyleUniversal) &&
           (cfd.options.compaction_style != kCompactionStyleLevel)) {
-        return Status::NotSupported(
+        return STATUS(NotSupported,
             "More than one DB paths are only supported in "
             "universal and level compaction styles. ");
       }
@@ -5536,7 +5535,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   }
 
   if (db_options.db_paths.size() > 4) {
-    return Status::NotSupported(
+    return STATUS(NotSupported,
         "More than four DB paths are not supported yet. ");
   }
 
@@ -5614,7 +5613,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
               break;
             }
           } else {
-            s = Status::InvalidArgument("Column family not found: ", cf.name);
+            s = STATUS(InvalidArgument, "Column family not found: ", cf.name);
             break;
           }
         }
@@ -5639,7 +5638,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
         for (int i = 1; i < vstorage->num_levels(); ++i) {
           int num_files = vstorage->NumLevelFiles(i);
           if (num_files > 0) {
-            s = Status::InvalidArgument(
+            s = STATUS(InvalidArgument,
                 "Not all files are at level 0. Cannot "
                 "open with FIFO compaction style.");
             break;
@@ -5651,7 +5650,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
       }
       if (cfd->ioptions()->merge_operator != nullptr &&
           !cfd->mem()->IsMergeOperatorSupported()) {
-        s = Status::InvalidArgument(
+        s = STATUS(InvalidArgument,
             "The memtable of column family %s does not support merge operator "
             "its options.merge_operator is non-null", cfd->GetName().c_str());
       }
@@ -5698,7 +5697,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     LogFlush(impl->db_options_.info_log);
     if (!persist_options_status.ok()) {
       if (db_options.fail_if_options_file_error) {
-        s = Status::IOError(
+        s = STATUS(IOError,
             "DB::Open() failed --- Unable to persist Options file",
             persist_options_status.ToString());
       }

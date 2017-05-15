@@ -78,7 +78,7 @@ Status ColumnFamilyHandleImpl::GetDescriptor(ColumnFamilyDescriptor* desc) {
                                *cfd()->GetLatestMutableCFOptions()));
   return Status::OK();
 #else
-  return Status::NotSupported();
+  return STATUS(NotSupported, "");
 #endif  // !ROCKSDB_LITE
 }
 
@@ -106,7 +106,7 @@ Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
     for (size_t level = 0; level < cf_options.compression_per_level.size();
          ++level) {
       if (!CompressionTypeSupported(cf_options.compression_per_level[level])) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "Compression type " +
             CompressionTypeToString(cf_options.compression_per_level[level]) +
             " is not linked with the binary.");
@@ -114,7 +114,7 @@ Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
     }
   } else {
     if (!CompressionTypeSupported(cf_options.compression)) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "Compression type " +
           CompressionTypeToString(cf_options.compression) +
           " is not linked with the binary.");
@@ -125,17 +125,17 @@ Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
 
 Status CheckConcurrentWritesSupported(const ColumnFamilyOptions& cf_options) {
   if (cf_options.inplace_update_support) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "In-place memtable updates (inplace_update_support) is not compatible "
         "with concurrent writes (allow_concurrent_memtable_write)");
   }
   if (cf_options.filter_deletes) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Delete filtering (filter_deletes) is not compatible with concurrent "
         "memtable writes (allow_concurrent_memtable_writes)");
   }
   if (!cf_options.memtable_factory->IsInsertConcurrentlySupported()) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Memtable doesn't concurrent writes (allow_concurrent_memtable_write)");
   }
   return Status::OK();

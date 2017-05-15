@@ -53,11 +53,11 @@ class LevelIterator : public InternalIterator {
         false));
   }
   void SeekToLast() override {
-    status_ = Status::NotSupported("LevelIterator::SeekToLast()");
+    status_ = STATUS(NotSupported, "LevelIterator::SeekToLast()");
     valid_ = false;
   }
   void Prev() override {
-    status_ = Status::NotSupported("LevelIterator::Prev()");
+    status_ = STATUS(NotSupported, "LevelIterator::Prev()");
     valid_ = false;
   }
   bool Valid() const override {
@@ -477,7 +477,7 @@ Status ForwardIterator::GetProperty(std::string prop_name, std::string* prop) {
     *prop = ToString(sv_->version_number);
     return Status::OK();
   }
-  return Status::InvalidArgument();
+  return STATUS(InvalidArgument, "");
 }
 
 void ForwardIterator::RebuildIterators(bool refresh_sv) {

@@ -81,7 +81,7 @@ class MockTableIterator : public InternalIterator {
   }
 
   void Seek(const Slice& target) override {
-    std::string str_target(target.data(), target.size());
+    std::string str_target(target.cdata(), target.size());
     itr_ = table_.lower_bound(str_target);
   }
 

@@ -6,6 +6,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_BACKUPABLE_DB_H
+#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_BACKUPABLE_DB_H
 
 #pragma once
 #ifndef ROCKSDB_LITE
@@ -269,7 +271,7 @@ class BackupableDB : public StackableDB {
   // that is currently happening. It will return immediatelly, will
   // not wait for the backup to stop.
   // The backup will stop ASAP and the call to CreateNewBackup will
-  // return Status::Incomplete(). It will not clean up after itself, but
+  // return STATUS(Incomplete, ). It will not clean up after itself, but
   // the state will remain consistent. The state will be cleaned up
   // next time you create BackupableDB or RestoreBackupableDB.
   void StopBackup();
@@ -332,3 +334,5 @@ class RestoreBackupableDB {
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_BACKUPABLE_DB_H

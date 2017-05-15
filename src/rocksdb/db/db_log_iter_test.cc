@@ -33,15 +33,15 @@ class DBTestXactLogIterator : public DBTestBase {
 
 namespace {
 SequenceNumber ReadRecords(
-    std::unique_ptr<TransactionLogIterator>& iter,
-    int& count) {
-  count = 0;
+    const std::unique_ptr<TransactionLogIterator>& iter,
+    int* const count) {
+  *count = 0;
   SequenceNumber lastSequence = 0;
   BatchResult res;
   while (iter->Valid()) {
     res = iter->GetBatch();
     EXPECT_TRUE(res.sequence > lastSequence);
-    ++count;
+    ++*count;
     lastSequence = res.sequence;
     EXPECT_OK(iter->status());
     iter->Next();
@@ -51,9 +51,9 @@ SequenceNumber ReadRecords(
 
 void ExpectRecords(
     const int expected_no_records,
-    std::unique_ptr<TransactionLogIterator>& iter) {
+    const std::unique_ptr<TransactionLogIterator>& iter) {
   int num_records;
-  ReadRecords(iter, num_records);
+  ReadRecords(iter, &num_records);
   ASSERT_EQ(num_records, expected_no_records);
 }
 }  // namespace
@@ -183,7 +183,7 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorCorruptedLog) {
     dbfull()->Flush(FlushOptions());
     // Corrupt this log to create a gap
     rocksdb::VectorLogPtr wal_files;
-    ASSERT_OK(dbfull()->GetSortedWalFiles(wal_files));
+    ASSERT_OK(dbfull()->GetSortedWalFiles(&wal_files));
     const auto logfile_path = dbname_ + "/" + wal_files.front()->PathName();
     if (mem_env_) {
       mem_env_->Truncate(logfile_path, wal_files.front()->SizeFileBytes() / 2);
@@ -198,7 +198,7 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorCorruptedLog) {
     // than 1025 entries
     auto iter = OpenTransactionLogIter(0);
     int count;
-    SequenceNumber last_sequence_read = ReadRecords(iter, count);
+    SequenceNumber last_sequence_read = ReadRecords(iter, &count);
     ASSERT_LT(last_sequence_read, 1025U);
     // Try to read past the gap, should be able to seek to key1025
     auto iter2 = OpenTransactionLogIter(last_sequence_read + 1);

@@ -435,7 +435,7 @@ Status LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
         delete[] reinterpret_cast<char*>(e);
         *handle = nullptr;
       }
-      s = Status::Incomplete("Insert failed due to LRU cache being full.");
+      s = STATUS(Incomplete, "Insert failed due to LRU cache being full.");
     } else {
       // insert into the cache
       // note that the cache might get larger than its capacity if not enough

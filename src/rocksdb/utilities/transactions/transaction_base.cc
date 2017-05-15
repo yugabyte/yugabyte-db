@@ -96,7 +96,7 @@ Status TransactionBaseImpl::TryLock(ColumnFamilyHandle* column_family,
   str.reserve(key_size);
 
   for (int i = 0; i < key.num_parts; ++i) {
-    str.append(key.parts[i].data(), key.parts[i].size());
+    str.append(key.parts[i].cdata(), key.parts[i].size());
   }
 
   return TryLock(column_family, str, read_only, untracked);
@@ -164,7 +164,7 @@ Status TransactionBaseImpl::RollbackToSavePoint() {
     return s;
   } else {
     assert(write_batch_.RollbackToSavePoint().IsNotFound());
-    return Status::NotFound();
+    return STATUS(NotFound, "");
   }
 }
 

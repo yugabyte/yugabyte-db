@@ -506,7 +506,7 @@ class LevelFileIteratorState : public TwoLevelIteratorState {
   InternalIterator* NewSecondaryIterator(const Slice& meta_handle) override {
     if (meta_handle.size() != sizeof(FileDescriptor)) {
       return NewErrorInternalIterator(
-          Status::Corruption("FileReader invoked with unexpected value"));
+          STATUS(Corruption, "FileReader invoked with unexpected value"));
     } else {
       const FileDescriptor* fd =
           reinterpret_cast<const FileDescriptor*>(meta_handle.data());
@@ -934,10 +934,10 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
         return;
       case GetContext::kDeleted:
         // Use empty error message for speed
-        *status = Status::NotFound();
+        *status = STATUS(NotFound, "");
         return;
       case GetContext::kCorrupt:
-        *status = Status::Corruption("corrupted key for ", user_key);
+        *status = STATUS(Corruption, "corrupted key for ", user_key);
         return;
       case GetContext::kMerge:
         break;
@@ -947,7 +947,7 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
 
   if (GetContext::kMerge == get_context.State()) {
     if (!merge_operator_) {
-      *status =  Status::InvalidArgument(
+      *status =  STATUS(InvalidArgument,
           "merge_operator is not properly initialized.");
       return;
     }
@@ -959,14 +959,14 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
       *status = Status::OK();
     } else {
       RecordTick(db_statistics_, NUMBER_MERGE_FAILURES);
-      *status = Status::Corruption("could not perform end-of-key merge for ",
+      *status = STATUS(Corruption, "could not perform end-of-key merge for ",
                                    user_key);
     }
   } else {
     if (key_exists != nullptr) {
       *key_exists = false;
     }
-    *status = Status::NotFound(); // Use an empty error message for speed
+    *status = STATUS(NotFound, ""); // Use an empty error message for speed
   }
 }
 
@@ -2132,7 +2132,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       manifest_writers_.front()->cv.Signal();
     }
     // we steal this code to also inform about cf-drop
-    return Status::ShutdownInProgress();
+    return STATUS(ShutdownInProgress, "");
   }
 
   std::vector<VersionEdit*> batch_edits;
@@ -2235,7 +2235,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       for (auto& e : batch_edits) {
         std::string record;
         if (!e->EncodeTo(&record)) {
-          s = Status::Corruption(
+          s = STATUS(Corruption,
               "Unable to Encode VersionEdit:" + e->DebugString(true));
           break;
         }
@@ -2402,7 +2402,7 @@ Status VersionSet::Recover(
   }
   if (manifest_filename.empty() ||
       manifest_filename.back() != '\n') {
-    return Status::Corruption("CURRENT file does not end with newline");
+    return STATUS(Corruption, "CURRENT file does not end with newline");
   }
   // remove the trailing '\n'
   manifest_filename.resize(manifest_filename.size() - 1);
@@ -2410,7 +2410,7 @@ Status VersionSet::Recover(
   bool parse_ok =
       ParseFileName(manifest_filename, &manifest_file_number_, &type);
   if (!parse_ok || type != kDescriptorFile) {
-    return Status::Corruption("CURRENT file corrupted");
+    return STATUS(Corruption, "CURRENT file corrupted");
   }
 
   RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
@@ -2449,7 +2449,7 @@ Status VersionSet::Recover(
   // add default column family
   auto default_cf_iter = cf_name_to_options.find(kDefaultColumnFamilyName);
   if (default_cf_iter == cf_name_to_options.end()) {
-    return Status::InvalidArgument("Default column family not specified");
+    return STATUS(InvalidArgument, "Default column family not specified");
   }
   VersionEdit default_cf_edit;
   default_cf_edit.AddColumnFamily(kDefaultColumnFamilyName);
@@ -2492,7 +2492,7 @@ Status VersionSet::Recover(
 
       if (edit.column_family_name_) {
         if (cf_in_builders || cf_in_not_found) {
-          s = Status::Corruption(
+          s = STATUS(Corruption,
               "Manifest adding the same column family twice");
           break;
         }
@@ -2521,13 +2521,13 @@ Status VersionSet::Recover(
         } else if (cf_in_not_found) {
           column_families_not_found.erase(edit.column_family_);
         } else {
-          s = Status::Corruption(
+          s = STATUS(Corruption,
               "Manifest - dropping non-existing column family");
           break;
         }
       } else if (!cf_in_not_found) {
         if (!cf_in_builders) {
-          s = Status::Corruption(
+          s = STATUS(Corruption,
               "Manifest record referencing unknown column family");
           break;
         }
@@ -2536,7 +2536,7 @@ Status VersionSet::Recover(
         // this should never happen since cf_in_builders is true
         assert(cfd != nullptr);
         if (edit.max_level_ >= cfd->current()->storage_info()->num_levels()) {
-          s = Status::InvalidArgument(
+          s = STATUS(InvalidArgument,
               "db has more levels than options.num_levels");
           break;
         }
@@ -2562,7 +2562,7 @@ Status VersionSet::Recover(
         }
         if (edit.comparator_ &&
             *edit.comparator_ != cfd->user_comparator()->Name()) {
-          s = Status::InvalidArgument(
+          s = STATUS(InvalidArgument,
               cfd->user_comparator()->Name(),
               "does not match existing comparator " + *edit.comparator_);
           break;
@@ -2592,11 +2592,11 @@ Status VersionSet::Recover(
 
   if (s.ok()) {
     if (!have_next_file) {
-      s = Status::Corruption("no meta-nextfile entry in descriptor");
+      s = STATUS(Corruption, "no meta-nextfile entry in descriptor");
     } else if (!have_log_number) {
-      s = Status::Corruption("no meta-lognumber entry in descriptor");
+      s = STATUS(Corruption, "no meta-lognumber entry in descriptor");
     } else if (!have_last_sequence) {
-      s = Status::Corruption("no last-sequence-number entry in descriptor");
+      s = STATUS(Corruption, "no last-sequence-number entry in descriptor");
     }
 
     if (!have_prev_log_number) {
@@ -2617,7 +2617,7 @@ Status VersionSet::Recover(
       list_of_not_found += ", " + cf.second;
     }
     list_of_not_found = list_of_not_found.substr(2);
-    s = Status::InvalidArgument(
+    s = STATUS(InvalidArgument,
         "You have to open all column families. Column families not opened: " +
         list_of_not_found);
   }
@@ -2694,7 +2694,7 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
     return s;
   }
   if (current.empty() || current[current.size()-1] != '\n') {
-    return Status::Corruption("CURRENT file does not end with newline");
+    return STATUS(Corruption, "CURRENT file does not end with newline");
   }
   current.resize(current.size() - 1);
 
@@ -2728,14 +2728,14 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
     if (edit.column_family_name_) {
       if (column_family_names.find(edit.column_family_) !=
           column_family_names.end()) {
-        s = Status::Corruption("Manifest adding the same column family twice");
+        s = STATUS(Corruption, "Manifest adding the same column family twice");
         break;
       }
       column_family_names.emplace(edit.column_family_, *edit.column_family_name_);
     } else if (edit.is_column_family_drop_) {
       if (column_family_names.find(edit.column_family_) ==
           column_family_names.end()) {
-        s = Status::Corruption(
+        s = STATUS(Corruption,
             "Manifest - dropping non-existing column family");
         break;
       }
@@ -2759,7 +2759,7 @@ Status VersionSet::ReduceNumberOfLevels(const std::string& dbname,
                                         const EnvOptions& env_options,
                                         int new_levels) {
   if (new_levels <= 1) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Number of levels needs to be bigger than 1");
   }
 
@@ -2806,7 +2806,7 @@ Status VersionSet::ReduceNumberOfLevels(const std::string& dbname,
                  "[%d:%d],[%d:%d].\n",
                  first_nonempty_level, first_nonempty_level_filenum, i,
                  file_num);
-        return Status::InvalidArgument(msg);
+        return STATUS(InvalidArgument, msg);
       }
     }
   }
@@ -2902,7 +2902,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
 
       if (edit.column_family_name_) {
         if (cf_in_builders) {
-          s = Status::Corruption(
+          s = STATUS(Corruption,
               "Manifest adding the same column family twice");
           break;
         }
@@ -2911,7 +2911,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
             {edit.column_family_, new BaseReferencedVersionBuilder(cfd)});
       } else if (edit.is_column_family_drop_) {
         if (!cf_in_builders) {
-          s = Status::Corruption(
+          s = STATUS(Corruption,
               "Manifest - dropping non-existing column family");
           break;
         }
@@ -2926,7 +2926,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
         cfd = nullptr;
       } else {
         if (!cf_in_builders) {
-          s = Status::Corruption(
+          s = STATUS(Corruption,
               "Manifest record referencing unknown column family");
           break;
         }
@@ -2971,11 +2971,11 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
 
   if (s.ok()) {
     if (!have_next_file) {
-      s = Status::Corruption("no meta-nextfile entry in descriptor");
+      s = STATUS(Corruption, "no meta-nextfile entry in descriptor");
       printf("no meta-nextfile entry in descriptor");
     } else if (!have_last_sequence) {
       printf("no last-sequence-number entry in descriptor");
-      s = Status::Corruption("no last-sequence-number entry in descriptor");
+      s = STATUS(Corruption, "no last-sequence-number entry in descriptor");
     }
 
     if (!have_prev_log_number) {
@@ -3062,7 +3062,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
           cfd->internal_comparator().user_comparator()->Name());
       std::string record;
       if (!edit.EncodeTo(&record)) {
-        return Status::Corruption(
+        return STATUS(Corruption,
             "Unable to Encode VersionEdit:" + edit.DebugString(true));
       }
       Status s = log->AddRecord(record);
@@ -3085,7 +3085,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
       edit.SetLogNumber(cfd->GetLogNumber());
       std::string record;
       if (!edit.EncodeTo(&record)) {
-        return Status::Corruption(
+        return STATUS(Corruption,
             "Unable to Encode VersionEdit:" + edit.DebugString(true));
       }
       Status s = log->AddRecord(record);
@@ -3360,7 +3360,7 @@ Status VersionSet::GetMetadataForFile(uint64_t number, int* filelevel,
       }
     }
   }
-  return Status::NotFound("File not present in any level");
+  return STATUS(NotFound, "File not present in any level");
 }
 
 void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {

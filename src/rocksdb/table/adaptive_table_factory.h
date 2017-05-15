@@ -9,6 +9,7 @@
 
 #include <string>
 #include "rocksdb/options.h"
+#include "rocksdb/status.h"
 #include "rocksdb/table.h"
 
 namespace rocksdb {
@@ -16,7 +17,6 @@ namespace rocksdb {
 struct EnvOptions;
 
 using std::unique_ptr;
-class Status;
 class RandomAccessFile;
 class WritableFile;
 class Table;

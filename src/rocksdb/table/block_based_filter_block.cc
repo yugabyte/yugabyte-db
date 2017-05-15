@@ -92,7 +92,7 @@ void BlockBasedFilterBlockBuilder::Add(const Slice& key) {
 // Add key to filter if needed
 inline void BlockBasedFilterBlockBuilder::AddKey(const Slice& key) {
   start_.push_back(entries_.size());
-  entries_.append(key.data(), key.size());
+  entries_.append(key.cdata(), key.size());
 }
 
 // Add prefix to filter if needed
@@ -109,7 +109,7 @@ inline void BlockBasedFilterBlockBuilder::AddPrefix(const Slice& key) {
     start_.push_back(entries_.size());
     prev_prefix_start_ = entries_.size();
     prev_prefix_size_ = prefix.size();
-    entries_.append(prefix.data(), prefix.size());
+    entries_.append(prefix.cdata(), prefix.size());
   }
 }
 
@@ -176,7 +176,7 @@ BlockBasedFilterBlockReader::BlockBasedFilterBlockReader(
   base_lg_ = contents_.data[n - 1];
   uint32_t last_word = DecodeFixed32(contents_.data.data() + n - 5);
   if (last_word > n - 5) return;
-  data_ = contents_.data.data();
+  data_ = contents_.data.cdata();
   offset_ = data_ + last_word;
   num_ = (n - 5 - last_word) / 4;
 }

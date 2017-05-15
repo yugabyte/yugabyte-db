@@ -1,17 +1,9 @@
-//  Copyright (c) 2011-present, Facebook, Inc.  All rights reserved.
-//  This source code is licensed under the BSD-style license found in the
-//  LICENSE file in the root directory of this source tree. An additional grant
-//  of patent rights can be found in the PATENTS file in the same directory.
 //
-// Copyright (c) 2012 The LevelDB Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file. See the AUTHORS file for names of contributors.
-
-#include <algorithm>
+// Copyright (c) YugaByte, Inc.
+//
 #include "rocksdb/slice_transform.h"
-#include "rocksdb/slice.h"
+
 #include "util/string_util.h"
-#include <stdio.h>
 
 namespace rocksdb {
 
@@ -87,7 +79,7 @@ class CappedPrefixTransform : public SliceTransform {
 
 class NoopTransform : public SliceTransform {
  public:
-  explicit NoopTransform() { }
+  NoopTransform() { }
 
   const char* Name() const override { return "rocksdb.Noop"; }
 
@@ -102,28 +94,7 @@ class NoopTransform : public SliceTransform {
   }
 };
 
-}
-
-// Do not want to include the whole /port/port.h here for one define
-#ifdef OS_WIN
-#define snprintf _snprintf
-#endif
-
-// Return a string that contains the copy of the referenced data.
-std::string Slice::ToString(bool hex) const {
-  std::string result;  // RVO/NRVO/move
-  if (hex) {
-    char buf[10];
-    for (size_t i = 0; i < size_; i++) {
-      snprintf(buf, 10, "%02X", (unsigned char)data_[i]);
-      result += buf;
-    }
-    return result;
-  } else {
-    result.assign(data_, size_);
-    return result;
-  }
-}
+} // namespace
 
 const SliceTransform* NewFixedPrefixTransform(size_t prefix_len) {
   return new FixedPrefixTransform(prefix_len);
@@ -137,4 +108,4 @@ const SliceTransform* NewNoopTransform() {
   return new NoopTransform;
 }
 
-}  // namespace rocksdb
+} // namespace rocksdb

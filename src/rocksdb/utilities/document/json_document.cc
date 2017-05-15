@@ -531,8 +531,8 @@ JSONDocument* JSONDocument::Deserialize(const Slice& src) {
     assert(false);
   }
   input.remove_prefix(1);
-  auto value = fbson::FbsonDocument::createValue(input.data(),
-                static_cast<uint32_t>(input.size()));
+  auto value = fbson::FbsonDocument::createValue(input.cdata(),
+                                                 static_cast<uint32_t>(input.size()));
   if (value == nullptr) {
     return nullptr;
   }

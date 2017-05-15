@@ -11,19 +11,23 @@
 #define ROCKSDB_TABLE_TABLE_BUILDER_H
 
 #include <stdint.h>
+
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "yb/util/status.h"
+
 #include "db/table_properties_collector.h"
+
+#include "rocksdb/slice.h"
 #include "rocksdb/options.h"
 #include "rocksdb/table_properties.h"
+
 #include "util/file_reader_writer.h"
 #include "util/mutable_cf_options.h"
 
 namespace rocksdb {
-
-class Slice;
-class Status;
 
 struct TableReaderOptions {
   // @param skip_filters Disables loading/accessing the filter block

@@ -6,6 +6,8 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_TABLE_BLOCK_H
+#define ROCKSDB_TABLE_BLOCK_H
 
 #pragma once
 #include <stddef.h>
@@ -19,9 +21,8 @@
 #include "db/dbformat.h"
 #include "table/block_prefix_index.h"
 #include "table/block_hash_index.h"
+#include "table/format.h"
 #include "table/internal_iterator.h"
-
-#include "format.h"
 
 namespace rocksdb {
 
@@ -185,7 +186,7 @@ class BlockIter : public InternalIterator {
   // Return the offset in data_ just past the end of the current entry.
   inline uint32_t NextEntryOffset() const {
     // NOTE: We don't support files bigger than 2GB
-    return static_cast<uint32_t>((value_.data() + value_.size()) - data_);
+    return static_cast<uint32_t>((value_.cdata() + value_.size()) - data_);
   }
 
   uint32_t GetRestartPoint(uint32_t index) {
@@ -200,7 +201,7 @@ class BlockIter : public InternalIterator {
 
     // ParseNextKey() starts at the end of value_, so set value_ accordingly
     uint32_t offset = GetRestartPoint(index);
-    value_ = Slice(data_ + offset, 0);
+    value_ = Slice(data_ + offset, 0UL);
   }
 
   void CorruptionError();
@@ -223,3 +224,5 @@ class BlockIter : public InternalIterator {
 };
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_TABLE_BLOCK_H

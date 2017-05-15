@@ -68,7 +68,7 @@ class BaseDeltaIterator : public Iterator {
 
   void Next() override {
     if (!Valid()) {
-      status_ = Status::NotSupported("Next() on invalid iterator");
+      status_ = STATUS(NotSupported, "Next() on invalid iterator");
     }
 
     if (!forward_) {
@@ -103,7 +103,7 @@ class BaseDeltaIterator : public Iterator {
 
   void Prev() override {
     if (!Valid()) {
-      status_ = Status::NotSupported("Prev() on invalid iterator");
+      status_ = STATUS(NotSupported, "Prev() on invalid iterator");
     }
 
     if (forward_) {
@@ -496,7 +496,7 @@ void WriteBatchWithIndex::Rep::AddNewEntry(uint32_t column_family_id) {
       char tag = 0;
 
       // set offset of current entry for call to AddNewEntry()
-      last_entry_offset = input.data() - write_batch.Data().data();
+      last_entry_offset = input.cdata() - write_batch.Data().data();
 
       s = ReadRecordFromWriteBatch(&input, &tag, &column_family_id, &key,
                                    &value, &blob);
@@ -521,12 +521,12 @@ void WriteBatchWithIndex::Rep::AddNewEntry(uint32_t column_family_id) {
         case kTypeLogData:
           break;
         default:
-          return Status::Corruption("unknown WriteBatch tag");
+          return STATUS(Corruption, "unknown WriteBatch tag");
       }
     }
 
     if (s.ok() && found != write_batch.Count()) {
-      s = Status::Corruption("WriteBatch has wrong count");
+      s = STATUS(Corruption, "WriteBatch has wrong count");
     }
 
     return s;
@@ -647,10 +647,10 @@ Status WriteBatchWithIndex::GetFromBatch(ColumnFamilyHandle* column_family,
       break;
     case WriteBatchWithIndexInternal::Result::kDeleted:
     case WriteBatchWithIndexInternal::Result::kNotFound:
-      s = Status::NotFound();
+      s = STATUS(NotFound, "");
       break;
     case WriteBatchWithIndexInternal::Result::kMergeInProgress:
-      s = Status::MergeInProgress();
+      s = STATUS(MergeInProgress, "");
       break;
     default:
       assert(false);
@@ -687,7 +687,7 @@ Status WriteBatchWithIndex::GetFromBatchAndDB(DB* db,
     return s;
   }
   if (result == WriteBatchWithIndexInternal::Result::kDeleted) {
-    return Status::NotFound();
+    return STATUS(NotFound, "");
   }
   if (result == WriteBatchWithIndexInternal::Result::kError) {
     return s;
@@ -697,7 +697,7 @@ Status WriteBatchWithIndex::GetFromBatchAndDB(DB* db,
     // Since we've overwritten keys, we do not know what other operations are
     // in this batch for this key, so we cannot do a Merge to compute the
     // result.  Instead, we will simply return MergeInProgress.
-    return Status::MergeInProgress();
+    return STATUS(MergeInProgress, "");
   }
 
   assert(result == WriteBatchWithIndexInternal::Result::kMergeInProgress ||

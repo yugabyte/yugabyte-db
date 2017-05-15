@@ -140,7 +140,7 @@ Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
   Slice v = handle_value;
   BlockHandle handle;
   if (!handle.DecodeFrom(&v).ok()) {
-    return Status::InvalidArgument("Failed to decode properties block handle");
+    return STATUS(InvalidArgument, "Failed to decode properties block handle");
   }
 
   BlockContents block_contents;
@@ -253,7 +253,7 @@ Status ReadTableProperties(RandomAccessFileReader* file, uint64_t file_size,
     s = ReadProperties(meta_iter->value(), file, footer, env, info_log,
                        properties);
   } else {
-    s = Status::NotFound();
+    s = STATUS(NotFound, "");
   }
 
   return s;
@@ -268,7 +268,7 @@ Status FindMetaBlock(InternalIterator* meta_index_iter,
     Slice v = meta_index_iter->value();
     return block_handle->DecodeFrom(&v);
   } else {
-    return Status::Corruption("Cannot find the meta block", meta_block_name);
+    return STATUS(Corruption, "Cannot find the meta block", meta_block_name);
   }
 }
 

@@ -71,7 +71,7 @@ class RowSet {
   // The 'update_schema' is the client schema used to encode the 'update' RowChangeList.
   //
   // If the row does not exist in this rowset, returns
-  // Status::NotFound().
+  // STATUS(NotFound, "").
   virtual CHECKED_STATUS MutateRow(HybridTime hybrid_time,
                            const RowSetKeyProbe &probe,
                            const RowChangeList &update,
@@ -318,14 +318,14 @@ class DuplicatingRowSet : public RowSet {
  private:
   friend class Tablet;
 
-  DISALLOW_COPY_AND_ASSIGN(DuplicatingRowSet);
-
   RowSetVector old_rowsets_;
   RowSetVector new_rowsets_;
+
+  DISALLOW_COPY_AND_ASSIGN(DuplicatingRowSet);
 };
 
 
 } // namespace tablet
 } // namespace yb
 
-#endif
+#endif // YB_TABLET_ROWSET_H

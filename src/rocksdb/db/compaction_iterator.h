@@ -4,6 +4,9 @@
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
+#ifndef ROCKSDB_DB_COMPACTION_ITERATOR_H
+#define ROCKSDB_DB_COMPACTION_ITERATOR_H
+
 #pragma once
 
 #include <algorithm>
@@ -82,7 +85,7 @@ class CompactionIterator {
   // sequence numbers.
   // Employ a sequential search because the total number of
   // snapshots are typically small.
-  inline SequenceNumber findEarliestVisibleSnapshot(
+  inline SequenceNumber FindEarliestVisibleSnapshot(
       SequenceNumber in, SequenceNumber* prev_snapshot);
 
   InternalIterator* input_;
@@ -147,3 +150,5 @@ class CompactionIterator {
   CompactionIteratorStats iter_stats_;
 };
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_COMPACTION_ITERATOR_H

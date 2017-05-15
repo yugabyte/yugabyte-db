@@ -8,6 +8,9 @@
 //
 // A WriteBatchWithIndex with a binary searchable index built for all the keys
 // inserted.
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H
+#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H
+
 #pragma once
 
 #ifndef ROCKSDB_LITE
@@ -190,7 +193,7 @@ class WriteBatchWithIndex : public WriteBatchBase {
   // Calling RollbackToSavePoint invalidates any open iterators on this batch.
   //
   // Returns Status::OK() on success,
-  //         Status::NotFound() if no previous call to SetSavePoint(),
+  //         STATUS(NotFound, "") if no previous call to SetSavePoint(),
   //         or other Status on corruption.
   Status RollbackToSavePoint() override;
 
@@ -202,3 +205,5 @@ class WriteBatchWithIndex : public WriteBatchBase {
 }  // namespace rocksdb
 
 #endif  // !ROCKSDB_LITE
+
+#endif // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_WRITE_BATCH_WITH_INDEX_H

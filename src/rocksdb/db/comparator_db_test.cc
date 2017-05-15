@@ -61,8 +61,12 @@ class KVIter : public Iterator {
 void AssertItersEqual(Iterator* iter1, Iterator* iter2) {
   ASSERT_EQ(iter1->Valid(), iter2->Valid());
   if (iter1->Valid()) {
-    ASSERT_EQ(iter1->key().ToString(), iter2->key().ToString());
-    ASSERT_EQ(iter1->value().ToString(), iter2->value().ToString());
+    auto key1 = iter1->key().ToBuffer();
+    auto key2 = iter2->key().ToBuffer();
+    auto value1 = iter1->value().ToBuffer();
+    auto value2 = iter2->value().ToBuffer();
+    ASSERT_EQ(key1, key2);
+    ASSERT_EQ(value1, value2);
   }
 }
 

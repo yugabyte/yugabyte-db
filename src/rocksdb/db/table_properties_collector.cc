@@ -16,7 +16,7 @@ Status InternalKeyPropertiesCollector::InternalAdd(const Slice& key,
                                                    uint64_t file_size) {
   ParsedInternalKey ikey;
   if (!ParseInternalKey(key, &ikey)) {
-    return Status::InvalidArgument("Invalid internal key");
+    return STATUS(InvalidArgument, "Invalid internal key");
   }
 
   // Note: We count both, deletions and single deletions here.
@@ -72,7 +72,7 @@ Status UserKeyTablePropertiesCollector::InternalAdd(const Slice& key,
                                                     uint64_t file_size) {
   ParsedInternalKey ikey;
   if (!ParseInternalKey(key, &ikey)) {
-    return Status::InvalidArgument("Invalid internal key");
+    return STATUS(InvalidArgument, "Invalid internal key");
   }
 
   return collector_->AddUserKey(ikey.user_key, value, GetEntryType(ikey.type),

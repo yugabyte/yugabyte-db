@@ -152,7 +152,7 @@ Status SstFileWriter::Open(const std::string& file_path) {
 Status SstFileWriter::Add(const Slice& user_key, const Slice& value) {
   Rep* r = rep_;
   if (!r->builder) {
-    return Status::InvalidArgument("File is not opened");
+    return STATUS(InvalidArgument, "File is not opened");
   }
 
   if (r->file_info.num_entries == 0) {
@@ -161,7 +161,7 @@ Status SstFileWriter::Add(const Slice& user_key, const Slice& value) {
     if (r->internal_comparator.user_comparator()->Compare(
             user_key, r->file_info.largest_key) <= 0) {
       // Make sure that keys are added in order
-      return Status::InvalidArgument("Keys must be added in order");
+      return STATUS(InvalidArgument, "Keys must be added in order");
     }
   }
 
@@ -180,10 +180,10 @@ Status SstFileWriter::Add(const Slice& user_key, const Slice& value) {
 Status SstFileWriter::Finish(ExternalSstFileInfo* file_info) {
   Rep* r = rep_;
   if (!r->builder) {
-    return Status::InvalidArgument("File is not opened");
+    return STATUS(InvalidArgument, "File is not opened");
   }
   if (r->file_info.num_entries == 0) {
-    return Status::InvalidArgument("Cannot create sst file with no entries");
+    return STATUS(InvalidArgument, "Cannot create sst file with no entries");
   }
 
   Status s = r->builder->Finish();

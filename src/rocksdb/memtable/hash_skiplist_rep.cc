@@ -285,7 +285,7 @@ void HashSkipListRep::Get(const LookupKey& k, void* callback_args,
   auto bucket = GetBucket(transformed);
   if (bucket != nullptr) {
     Bucket::Iterator iter(bucket);
-    for (iter.Seek(k.memtable_key().data());
+    for (iter.Seek(k.memtable_key().cdata());
          iter.Valid() && callback_func(callback_args, iter.key());
          iter.Next()) {
     }

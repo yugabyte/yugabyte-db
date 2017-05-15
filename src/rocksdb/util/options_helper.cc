@@ -640,11 +640,11 @@ Status GetMutableOptionsFromStrings(
       } else if (ParseCompactionOptions(o.first, o.second, new_options)) {
       } else if (ParseMiscOptions(o.first, o.second, new_options)) {
       } else {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "unsupported dynamic option: " + o.first);
       }
     } catch (std::exception& e) {
-      return Status::InvalidArgument("error parsing " + o.first + ":" +
+      return STATUS(InvalidArgument, "error parsing " + o.first + ":" +
                                      std::string(e.what()));
     }
   }
@@ -662,11 +662,11 @@ Status StringToMap(const std::string& opts_str,
   while (pos < opts.size()) {
     size_t eq_pos = opts.find('=', pos);
     if (eq_pos == std::string::npos) {
-      return Status::InvalidArgument("Mismatched key value pair, '=' expected");
+      return STATUS(InvalidArgument, "Mismatched key value pair, '=' expected");
     }
     std::string key = trim(opts.substr(pos, eq_pos - pos));
     if (key.empty()) {
-      return Status::InvalidArgument("Empty key found");
+      return STATUS(InvalidArgument, "Empty key found");
     }
 
     // skip space after '=' and look for '{' for possible nested options
@@ -703,12 +703,12 @@ Status StringToMap(const std::string& opts_str,
           ++pos;
         }
         if (pos < opts.size() && opts[pos] != ';') {
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
               "Unexpected chars after nested options");
         }
         ++pos;
       } else {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "Mismatched curly braces for nested options");
       }
     } else {
@@ -760,7 +760,7 @@ Status ParseColumnFamilyOption(const std::string& name,
       Status table_opt_s = GetBlockBasedTableOptionsFromString(
           base_table_options, value, &table_opt);
       if (!table_opt_s.ok()) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "unable to parse the specified CF option " + name);
       }
       new_options->table_factory.reset(NewBlockBasedTableFactory(table_opt));
@@ -775,7 +775,7 @@ Status ParseColumnFamilyOption(const std::string& name,
       Status table_opt_s = GetPlainTableOptionsFromString(
           base_table_options, value, &table_opt);
       if (!table_opt_s.ok()) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "unable to parse the specified CF option " + name);
       }
       new_options->table_factory.reset(NewPlainTableFactory(table_opt));
@@ -784,7 +784,7 @@ Status ParseColumnFamilyOption(const std::string& name,
       Status mem_factory_s =
           GetMemTableRepFactoryFromString(value, &new_mem_factory);
       if (!mem_factory_s.ok()) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "unable to parse the specified CF option " + name);
       }
       new_options->memtable_factory.reset(new_mem_factory.release());
@@ -792,7 +792,7 @@ Status ParseColumnFamilyOption(const std::string& name,
       size_t start = 0;
       size_t end = value.find(':');
       if (end == std::string::npos) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "unable to parse the specified CF option " + name);
       }
       new_options->compression_opts.window_bits =
@@ -800,14 +800,14 @@ Status ParseColumnFamilyOption(const std::string& name,
       start = end + 1;
       end = value.find(':', start);
       if (end == std::string::npos) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "unable to parse the specified CF option " + name);
       }
       new_options->compression_opts.level =
           ParseInt(value.substr(start, end - start));
       start = end + 1;
       if (start >= value.size()) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "unable to parse the specified CF option " + name);
       }
       new_options->compression_opts.strategy =
@@ -818,7 +818,7 @@ Status ParseColumnFamilyOption(const std::string& name,
     } else {
       auto iter = cf_options_type_info.find(name);
       if (iter == cf_options_type_info.end()) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "Unable to parse the specified CF option " + name);
       }
       const auto& opt_info = iter->second;
@@ -830,18 +830,18 @@ Status ParseColumnFamilyOption(const std::string& name,
       switch (opt_info.verification) {
         case OptionVerificationType::kByName:
         case OptionVerificationType::kByNameAllowNull:
-          return Status::NotSupported(
+          return STATUS(NotSupported,
               "Deserializing the specified CF option " + name +
                   " is not supported");
         case OptionVerificationType::kDeprecated:
           return Status::OK();
         default:
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
               "Unable to parse the specified CF option " + name);
       }
     }
   } catch (const std::exception&) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "unable to parse the specified option " + name);
   }
   return Status::OK();
@@ -926,7 +926,7 @@ Status GetStringFromColumnFamilyOptions(std::string* opt_string,
     if (result) {
       opt_string->append(single_output);
     } else {
-      return Status::InvalidArgument("failed to serialize %s\n",
+      return STATUS(InvalidArgument, "failed to serialize %s\n",
                                      iter->first.c_str());
     }
     assert(result);
@@ -1000,7 +1000,7 @@ Status ParseDBOption(const std::string& name,
     } else {
       auto iter = db_options_type_info.find(name);
       if (iter == db_options_type_info.end()) {
-        return Status::InvalidArgument("Unrecognized option DBOptions:", name);
+        return STATUS(InvalidArgument, "Unrecognized option DBOptions:", name);
       }
       const auto& opt_info = iter->second;
       if (ParseOptionHelper(
@@ -1011,18 +1011,18 @@ Status ParseDBOption(const std::string& name,
       switch (opt_info.verification) {
         case OptionVerificationType::kByName:
         case OptionVerificationType::kByNameAllowNull:
-          return Status::NotSupported(
+          return STATUS(NotSupported,
               "Deserializing the specified DB option " + name +
                   " is not supported");
         case OptionVerificationType::kDeprecated:
           return Status::OK();
         default:
-          return Status::InvalidArgument(
+          return STATUS(InvalidArgument,
               "Unable to parse the specified DB option " + name);
       }
     }
   } catch (const std::exception&) {
-    return Status::InvalidArgument("Unable to parse DBOptions:", name);
+    return STATUS(InvalidArgument, "Unable to parse DBOptions:", name);
   }
   return Status::OK();
 }
@@ -1111,7 +1111,7 @@ Status GetBlockBasedTableOptionsFromMap(
            iter->second.verification !=
                OptionVerificationType::kByNameAllowNull &&
            iter->second.verification != OptionVerificationType::kDeprecated)) {
-        return Status::InvalidArgument("Can't parse BlockBasedTableOptions:",
+        return STATUS(InvalidArgument, "Can't parse BlockBasedTableOptions:",
                                        o.first + " " + error_message);
       }
     }
@@ -1151,7 +1151,7 @@ Status GetPlainTableOptionsFromMap(
            iter->second.verification !=
                OptionVerificationType::kByNameAllowNull &&
            iter->second.verification != OptionVerificationType::kDeprecated)) {
-        return Status::InvalidArgument("Can't parse PlainTableOptions:",
+        return STATUS(InvalidArgument, "Can't parse PlainTableOptions:",
                                         o.first + " " + error_message);
       }
     }
@@ -1178,7 +1178,7 @@ Status GetMemTableRepFactoryFromString(const std::string& opts_str,
   size_t len = opts_list.size();
 
   if (opts_list.size() <= 0 || opts_list.size() > 2) {
-    return Status::InvalidArgument("Can't parse memtable_factory option ",
+    return STATUS(InvalidArgument, "Can't parse memtable_factory option ",
                                      opts_str);
   }
 
@@ -1227,11 +1227,11 @@ Status GetMemTableRepFactoryFromString(const std::string& opts_str,
       size_t write_buffer_size = ParseSizeT(opts_list[1]);
       mem_factory = NewHashCuckooRepFactory(write_buffer_size);
     } else if (1 == len) {
-      return Status::InvalidArgument("Can't parse memtable_factory option ",
+      return STATUS(InvalidArgument, "Can't parse memtable_factory option ",
                                      opts_str);
     }
   } else {
-    return Status::InvalidArgument("Unrecognized memtable_factory option ",
+    return STATUS(InvalidArgument, "Unrecognized memtable_factory option ",
                                    opts_str);
   }
 
@@ -1360,7 +1360,7 @@ Status GetOptionsFromString(const Options& base_options,
     } else if (ParseColumnFamilyOption(
         o.first, o.second, &new_cf_options).ok()) {
     } else {
-      return Status::InvalidArgument("Can't parse option " + o.first);
+      return STATUS(InvalidArgument, "Can't parse option " + o.first);
     }
   }
   *new_options = Options(new_db_options, new_cf_options);

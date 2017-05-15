@@ -33,8 +33,10 @@
 
 #include "table/block_builder.h"
 
-#include <algorithm>
 #include <assert.h>
+
+#include <algorithm>
+
 #include "rocksdb/comparator.h"
 #include "db/dbformat.h"
 #include "util/coding.h"
@@ -115,12 +117,12 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
   PutVarint32(&buffer_, static_cast<uint32_t>(value.size()));
 
   // Add string delta to buffer_ followed by value
-  buffer_.append(key.data() + shared, non_shared);
-  buffer_.append(value.data(), value.size());
+  buffer_.append(key.cdata() + shared, non_shared);
+  buffer_.append(value.cdata(), value.size());
 
   // Update state
   last_key_.resize(shared);
-  last_key_.append(key.data() + shared, non_shared);
+  last_key_.append(key.cdata() + shared, non_shared);
   assert(Slice(last_key_) == key);
   counter_++;
 }

@@ -130,45 +130,45 @@ void BlockIter::SeekToLast() {
 void BlockIter::CorruptionError() {
   current_ = restarts_;
   restart_index_ = num_restarts_;
-  status_ = Status::Corruption("bad entry in block");
+  status_ = STATUS(Corruption, "bad entry in block");
   key_.Clear();
   value_.clear();
 }
 
 bool BlockIter::ParseNextKey() {
-    current_ = NextEntryOffset();
-    const char* p = data_ + current_;
-    const char* limit = data_ + restarts_;  // Restarts come right after data
-    if (p >= limit) {
-      // No more entries to return.  Mark as invalid.
-      current_ = restarts_;
-      restart_index_ = num_restarts_;
-      return false;
-    }
-
-    // Decode next entry
-    uint32_t shared, non_shared, value_length;
-    p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
-    if (p == nullptr || key_.Size() < shared) {
-      CorruptionError();
-      return false;
-    } else {
-      if (shared == 0) {
-        // If this key dont share any bytes with prev key then we dont need
-        // to decode it and can use it's address in the block directly.
-        key_.SetKey(Slice(p, non_shared), false /* copy */);
-      } else {
-        // This key share `shared` bytes with prev key, we need to decode it
-        key_.TrimAppend(shared, p, non_shared);
-      }
-      value_ = Slice(p + non_shared, value_length);
-      while (restart_index_ + 1 < num_restarts_ &&
-             GetRestartPoint(restart_index_ + 1) < current_) {
-        ++restart_index_;
-      }
-      return true;
-    }
+  current_ = NextEntryOffset();
+  const char* p = data_ + current_;
+  const char* limit = data_ + restarts_;  // Restarts come right after data
+  if (p >= limit) {
+    // No more entries to return.  Mark as invalid.
+    current_ = restarts_;
+    restart_index_ = num_restarts_;
+    return false;
   }
+
+  // Decode next entry
+  uint32_t shared, non_shared, value_length;
+  p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
+  if (p == nullptr || key_.Size() < shared) {
+    CorruptionError();
+    return false;
+  } else {
+    if (shared == 0) {
+      // If this key dont share any bytes with prev key then we dont need
+      // to decode it and can use it's address in the block directly.
+      key_.SetKey(Slice(p, non_shared), false /* copy */);
+    } else {
+      // This key share `shared` bytes with prev key, we need to decode it
+      key_.TrimAppend(shared, p, non_shared);
+    }
+    value_ = Slice(p + non_shared, value_length);
+    while (restart_index_ + 1 < num_restarts_ &&
+           GetRestartPoint(restart_index_ + 1) < current_) {
+      ++restart_index_;
+    }
+    return true;
+  }
+}
 
 // Binary search in restart array to find the first restart point
 // with a key >= target (TODO: this comment is inaccurate)
@@ -308,7 +308,7 @@ uint32_t Block::NumRestarts() const {
 
 Block::Block(BlockContents&& contents)
     : contents_(std::move(contents)),
-      data_(contents_.data.data()),
+      data_(contents_.data.cdata()),
       size_(contents_.data.size()) {
   if (size_ < sizeof(uint32_t)) {
     size_ = 0;  // Error marker
@@ -327,10 +327,10 @@ InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
                                      bool total_order_seek) {
   if (size_ < 2*sizeof(uint32_t)) {
     if (iter != nullptr) {
-      iter->SetStatus(Status::Corruption("bad block contents"));
+      iter->SetStatus(STATUS(Corruption, "bad block contents"));
       return iter;
     } else {
-      return NewErrorInternalIterator(Status::Corruption("bad block contents"));
+      return NewErrorInternalIterator(STATUS(Corruption, "bad block contents"));
     }
   }
   const uint32_t num_restarts = NumRestarts();

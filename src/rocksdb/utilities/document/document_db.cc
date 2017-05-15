@@ -579,7 +579,7 @@ class CursorWithFilterIndexed : public Cursor {
     assert(secondary_index_iter_->Valid());
     primary_index_iter_->Seek(index_key_.GetPrimaryKey());
     if (!primary_index_iter_->Valid()) {
-      status_ = Status::Corruption(
+      status_ = STATUS(Corruption,
           "Inconsistency between primary and secondary index");
       valid_ = false;
       return false;
@@ -588,7 +588,7 @@ class CursorWithFilterIndexed : public Cursor {
         JSONDocument::Deserialize(primary_index_iter_->value()));
     assert(current_json_document_->IsOwner());
     if (current_json_document_.get() == nullptr) {
-      status_ = Status::Corruption("JSON deserialization failed");
+      status_ = STATUS(Corruption, "JSON deserialization failed");
       valid_ = false;
       return false;
     }
@@ -598,7 +598,7 @@ class CursorWithFilterIndexed : public Cursor {
     if (secondary_index_iter_->Valid()) {
       index_key_ = IndexKey(secondary_index_iter_->key());
       if (!index_key_.ok()) {
-        status_ = Status::Corruption("Invalid index key");
+        status_ = STATUS(Corruption, "Invalid index key");
         valid_ = false;
       }
     }
@@ -647,7 +647,7 @@ class CursorFromIterator : public Cursor {
     if (Valid()) {
       current_json_document_.reset(JSONDocument::Deserialize(iter_->value()));
       if (current_json_document_.get() == nullptr) {
-        status_ = Status::Corruption("JSON deserialization failed");
+        status_ = STATUS(Corruption, "JSON deserialization failed");
       }
     }
   }
@@ -733,7 +733,7 @@ class DocumentDBImpl : public DocumentDB {
     auto index_obj =
         Index::CreateIndexFromDescription(*index.description, index.name);
     if (index_obj == nullptr) {
-      return Status::InvalidArgument("Failed parsing index description");
+      return STATUS(InvalidArgument, "Failed parsing index description");
     }
 
     ColumnFamilyHandle* cf_handle;
@@ -777,7 +777,7 @@ class DocumentDBImpl : public DocumentDB {
 
     auto index_iter = name_to_index_.find(name);
     if (index_iter == name_to_index_.end()) {
-      return Status::InvalidArgument("No such index");
+      return STATUS(InvalidArgument, "No such index");
     }
 
     Status s = DropColumnFamily(index_iter->second.column_family);
@@ -802,15 +802,15 @@ class DocumentDBImpl : public DocumentDB {
     WriteBatch batch;
 
     if (!document.IsObject()) {
-      return Status::InvalidArgument("Document not an object");
+      return STATUS(InvalidArgument, "Document not an object");
     }
     if (!document.Contains(kPrimaryKey)) {
-      return Status::InvalidArgument("No primary key");
+      return STATUS(InvalidArgument, "No primary key");
     }
     auto primary_key = document[kPrimaryKey];
     if (primary_key.IsNull() ||
         (!primary_key.IsString() && !primary_key.IsInt64())) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "Primary key format error");
     }
     std::string encoded_document;
@@ -830,7 +830,7 @@ class DocumentDBImpl : public DocumentDB {
     Status s = DocumentDB::Get(ReadOptions(), primary_key_column_family_,
                                primary_key_slice, &value);
     if (!s.IsNotFound()) {
-      return s.ok() ? Status::InvalidArgument("Duplicate primary key!") : s;
+      return s.ok() ? STATUS(InvalidArgument, "Duplicate primary key!") : s;
     }
 
     batch.Put(primary_key_column_family_, primary_key_slice, encoded_document);
@@ -857,15 +857,15 @@ class DocumentDBImpl : public DocumentDB {
     for (; cursor->status().ok() && cursor->Valid(); cursor->Next()) {
       const auto& document = cursor->document();
       if (!document.IsObject()) {
-        return Status::Corruption("Document corruption");
+        return STATUS(Corruption, "Document corruption");
       }
       if (!document.Contains(kPrimaryKey)) {
-        return Status::Corruption("Document corruption");
+        return STATUS(Corruption, "Document corruption");
       }
       auto primary_key = document[kPrimaryKey];
       if (primary_key.IsNull() ||
           (!primary_key.IsString() && !primary_key.IsInt64())) {
-        return Status::Corruption("Document corruption");
+        return STATUS(Corruption, "Document corruption");
       }
 
       // TODO(icanadi) Instead of doing this, just get primary key encoding from
@@ -903,14 +903,14 @@ class DocumentDBImpl : public DocumentDB {
         ConstructFilterCursor(read_options, nullptr, filter));
 
     if (!updates.IsObject()) {
-        return Status::Corruption("Bad update document format");
+        return STATUS(Corruption, "Bad update document format");
     }
     WriteBatch batch;
     for (; cursor->status().ok() && cursor->Valid(); cursor->Next()) {
       const auto& old_document = cursor->document();
       JSONDocument new_document(old_document);
       if (!new_document.IsObject()) {
-        return Status::Corruption("Document corruption");
+        return STATUS(Corruption, "Document corruption");
       }
       // TODO(icanadi) Make this nicer, something like class Filter
       for (const auto& update : updates.Items()) {
@@ -920,7 +920,7 @@ class DocumentDBImpl : public DocumentDB {
           assert(res);
           for (const auto& itr : update.second.Items()) {
             if (itr.first == kPrimaryKey) {
-              return Status::NotSupported("Please don't change primary key");
+              return STATUS(NotSupported, "Please don't change primary key");
             }
             res = builder.WriteKeyValue(itr.first, itr.second);
             assert(res);
@@ -946,13 +946,13 @@ class DocumentDBImpl : public DocumentDB {
           assert(new_document.IsOwner());
         } else {
           // TODO(icanadi) more commands
-          return Status::InvalidArgument("Can't understand update command");
+          return STATUS(InvalidArgument, "Can't understand update command");
         }
       }
 
       // TODO(icanadi) reuse some of this code
       if (!new_document.Contains(kPrimaryKey)) {
-        return Status::Corruption("Corrupted document -- primary key missing");
+        return STATUS(Corruption, "Corrupted document -- primary key missing");
       }
       auto primary_key = new_document[kPrimaryKey];
       if (primary_key.IsNull() ||
@@ -960,7 +960,7 @@ class DocumentDBImpl : public DocumentDB {
         // This will happen when document on storage doesn't have primary key,
         // since we don't support any update operations on primary key. That's
         // why this is corruption error
-        return Status::Corruption("Corrupted document -- primary key missing");
+        return STATUS(Corruption, "Corrupted document -- primary key missing");
       }
       std::string encoded_document;
       new_document.Serialize(&encoded_document);
@@ -1005,7 +1005,7 @@ class DocumentDBImpl : public DocumentDB {
 
     if (!query.IsArray()) {
       return new CursorError(
-          Status::InvalidArgument("Query has to be an array"));
+          STATUS(InvalidArgument, "Query has to be an array"));
     }
 
     // TODO(icanadi) support index "_id"
@@ -1015,7 +1015,7 @@ class DocumentDBImpl : public DocumentDB {
         // there can be only one key-value pair in each of array elements.
         // key is the command and value are the params
         delete cursor;
-        return new CursorError(Status::InvalidArgument("Invalid query"));
+        return new CursorError(STATUS(InvalidArgument, "Invalid query"));
       }
       const auto& command = *command_doc.Items().begin();
 
@@ -1024,7 +1024,7 @@ class DocumentDBImpl : public DocumentDB {
       } else {
         // only filter is supported for now
         delete cursor;
-        return new CursorError(Status::InvalidArgument("Invalid query"));
+        return new CursorError(STATUS(InvalidArgument, "Invalid query"));
       }
     }
 
@@ -1040,15 +1040,15 @@ class DocumentDBImpl : public DocumentDB {
   virtual Status Get(const ReadOptions& options,
                      ColumnFamilyHandle* column_family, const Slice& key,
                      std::string* value) override {
-    return Status::NotSupported("");
+    return STATUS(NotSupported, "");
   }
   virtual Status Get(const ReadOptions& options, const Slice& key,
                      std::string* value) override {
-    return Status::NotSupported("");
+    return STATUS(NotSupported, "");
   }
   virtual Status Write(const WriteOptions& options,
                        WriteBatch* updates) override {
-    return Status::NotSupported("");
+    return STATUS(NotSupported, "");
   }
   virtual Iterator* NewIterator(const ReadOptions& options,
                                 ColumnFamilyHandle* column_family) override {
@@ -1063,7 +1063,7 @@ class DocumentDBImpl : public DocumentDB {
                                 const JSONDocument& query) {
     std::unique_ptr<const Filter> filter(Filter::ParseFilter(query));
     if (filter.get() == nullptr) {
-      return new CursorError(Status::InvalidArgument("Invalid query"));
+      return new CursorError(STATUS(InvalidArgument, "Invalid query"));
     }
 
     IndexColumnFamily tmp_storage(nullptr, nullptr);
@@ -1080,7 +1080,7 @@ class DocumentDBImpl : public DocumentDB {
             index_column_family = &tmp_storage;
           } else {
             return new CursorError(
-                Status::InvalidArgument("Index does not exist"));
+                STATUS(InvalidArgument, "Index does not exist"));
           }
         }
       }

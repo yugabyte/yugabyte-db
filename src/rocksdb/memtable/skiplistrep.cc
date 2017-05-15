@@ -17,7 +17,7 @@ class SkipListRep : public MemTableRep {
   const size_t lookahead_;
 
   friend class LookaheadIterator;
-public:
+ public:
   explicit SkipListRep(const MemTableRep::KeyComparator& compare,
                        MemTableAllocator* allocator,
                        const SliceTransform* transform, const size_t lookahead)
@@ -55,7 +55,7 @@ public:
                                          const char* entry)) override {
     SkipListRep::Iterator iter(&skip_list_);
     Slice dummy_slice;
-    for (iter.Seek(dummy_slice, k.memtable_key().data());
+    for (iter.Seek(dummy_slice, k.memtable_key().cdata());
          iter.Valid() && callback_func(callback_args, iter.key());
          iter.Next()) {
     }
@@ -241,7 +241,7 @@ public:
     }
   }
 };
-}
+} // namespace
 
 MemTableRep* SkipListFactory::CreateMemTableRep(
     const MemTableRep::KeyComparator& compare, MemTableAllocator* allocator,

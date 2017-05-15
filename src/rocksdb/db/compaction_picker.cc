@@ -297,7 +297,7 @@ Status CompactionPicker::GetCompactionInputsFromFileNumbers(
     const VersionStorageInfo* vstorage,
     const CompactionOptions& compact_options) const {
   if (input_set->size() == 0U) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Compaction must include at least one file.");
   }
   assert(input_files);
@@ -329,7 +329,7 @@ Status CompactionPicker::GetCompactionInputsFromFileNumbers(
       message += " ";
       message += ToString(fn);
     }
-    return Status::InvalidArgument(message);
+    return STATUS(InvalidArgument, message);
   }
 
   for (int level = first_non_empty_level;
@@ -739,7 +739,7 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
     // include all files between the first and the last compaction input files.
     for (int f = first_included; f <= last_included; ++f) {
       if (current_files[f].being_compacted) {
-        return Status::Aborted(
+        return STATUS(Aborted,
             "Necessary compaction input file " + current_files[f].name +
             " is currently being compacted.");
       }
@@ -772,7 +772,7 @@ Status CompactionPicker::SanitizeCompactionInputFilesForAllLevels(
         if (HaveOverlappingKeyRanges(
             comparator, aggregated_file_meta, next_lv_file)) {
           if (next_lv_file.being_compacted) {
-            return Status::Aborted(
+            return STATUS(Aborted,
                 "File " + next_lv_file.name +
                 " that has overlapping key range with one of the compaction "
                 " input file is currently being compacted.");
@@ -793,7 +793,7 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
   assert(static_cast<int>(cf_meta.levels.size()) - 1 ==
          cf_meta.levels[cf_meta.levels.size() - 1].level);
   if (output_level >= static_cast<int>(cf_meta.levels.size())) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Output level for column family " + cf_meta.name +
         " must between [0, " +
         ToString(cf_meta.levels[cf_meta.levels.size() - 1].level) +
@@ -801,19 +801,19 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
   }
 
   if (output_level > MaxOutputLevel()) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Exceed the maximum output level defined by "
         "the current compaction algorithm --- " +
             ToString(MaxOutputLevel()));
   }
 
   if (output_level < 0) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Output level cannot be negative.");
   }
 
   if (input_files->size() == 0) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "A compaction must contain at least one file.");
   }
 
@@ -832,7 +832,7 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
       for (auto file_meta : level_meta.files) {
         if (file_num == TableFileNameToNumber(file_meta.name)) {
           if (file_meta.being_compacted) {
-            return Status::Aborted(
+            return STATUS(Aborted,
                 "Specified compaction input file " +
                 MakeTableFileName("", file_num) +
                 " is already being compacted.");
@@ -846,7 +846,7 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
       }
     }
     if (!found) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "Specified compaction input file " +
           MakeTableFileName("", file_num) +
           " does not exist in column family " + cf_meta.name + ".");

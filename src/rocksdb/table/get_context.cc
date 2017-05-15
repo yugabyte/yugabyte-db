@@ -71,7 +71,7 @@ void GetContext::SaveValue(const Slice& value, SequenceNumber seq) {
 
   state_ = kFound;
   if (value_ != nullptr) {
-    value_->assign(value.data(), value.size());
+    value_->assign(value.cdata(), value.size());
   }
 }
 
@@ -96,7 +96,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
         if (kNotFound == state_) {
           state_ = kFound;
           if (value_ != nullptr) {
-            value_->assign(value.data(), value.size());
+            value_->assign(value.cdata(), value.size());
           }
         } else if (kMerge == state_) {
           assert(merge_operator_ != nullptr);

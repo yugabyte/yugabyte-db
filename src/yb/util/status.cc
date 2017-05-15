@@ -15,37 +15,49 @@
 
 namespace yb {
 
-const char* Status::CopyState(const char* state) {
-  uint32_t size;
-  strings::memcpy_inlined(&size, state, sizeof(size));
-  auto result = new char[size + 13];
-  strings::memcpy_inlined(result, state, size + 13);
+namespace {
+
+const char* kTimeoutErrorMsgs[] = {
+    "",                                                  // kNone
+    "Timeout Acquiring Mutex",                           // kMutexTimeout
+    "Timeout waiting to lock key",                       // kLockTimeout
+    "Failed to acquire lock due to max_num_locks limit"  // kLockLimit
+};
+
+}
+
+Status::StatePtr Status::CopyState() const {
+  if (!state_)
+    return nullptr;
+  auto state = state_.get();
+  size_t size = state->message_len + kHeaderSize;
+  StatePtr result(static_cast<State*>(malloc(size)));
+  memcpy(result.get(), state, size);
   return result;
 }
 
 Status::Status(Code code,
+               const char* file_name,
+               int line_number,
                const Slice& msg,
                const Slice& msg2,
-               int64_t error_code,
-               const char* file_name,
-               int line_number)
+               int64_t error_code)
     : file_name_(file_name),
       line_number_(line_number) {
   assert(code != kOk);
-  const uint32_t len1 = msg.size();
-  const uint32_t len2 = msg2.size();
-  const uint32_t size = len1 + (len2 ? (2 + len2) : 0);
-  auto result = new char[size + kMsgPos];
-  memcpy(result, &size, sizeof(size));
-  result[kCodePos] = static_cast<char>(code);
-  memcpy(result + kErrorCodePos, &error_code, sizeof(error_code));
-  memcpy(result + kMsgPos, msg.data(), len1);
+  const size_t len1 = msg.size();
+  const size_t len2 = msg2.size();
+  const size_t size = len1 + (len2 ? (2 + len2) : 0);
+  state_.reset(static_cast<State*>(malloc(size + kHeaderSize)));
+  state_->message_len = static_cast<uint32_t>(size);
+  state_->code = static_cast<uint8_t>(code);
+  state_->error_code = error_code;
+  memcpy(state_->message, msg.data(), len1);
   if (len2) {
-    result[kMsgPos + len1] = ':';
-    result[kMsgPos + len1 + 1] = ' ';
-    memcpy(result + kMsgPos + 2 + len1, msg2.data(), len2);
+    state_->message[len1] = ':';
+    state_->message[len1 + 1] = ' ';
+    memcpy(state_->message + 2 + len1, msg2.data(), len2);
   }
-  state_ = result;
 #ifndef NDEBUG
   static const bool print_stack_trace = getenv("YB_STACK_TRACE_ON_ERROR_STATUS") != nullptr;
   if (print_stack_trace) {
@@ -54,7 +66,7 @@ Status::Status(Code code,
     //        @ yb::Status::Status(yb::Status::Code, yb::Slice const&, yb::Slice const&, long,
     //                             char const*, int)
     //    ~/code/yugabyte/src/yb/util/status.h:137:
-    //        @ yb::Status::Corruption(char const*, int, yb::Slice const&, yb::Slice const&, short)
+    //        @ yb::STATUS(Corruption, char const*, int, yb::Slice const&, yb::Slice const&, short)
     //    ~/code/yugabyte/src/yb/common/doc_hybrid_time.cc:94:
     //        @ yb::DocHybridTime::DecodeFrom(yb::Slice*)
     LOG(WARNING) << "Non-OK status generated: " << ToString() << ", stack trace:\n"
@@ -63,81 +75,33 @@ Status::Status(Code code,
 #endif
 }
 
-std::string Status::CodeAsString() const {
-  if (state_ == nullptr) {
-    return "OK";
-  }
+Status::Status(Code code, const char* file_name, int line_number, TimeoutError error)
+    : Status(code,
+             file_name,
+             line_number,
+             kTimeoutErrorMsgs[static_cast<int>(error)],
+             "",
+             static_cast<int>(error)) {}
 
-  const char* type;
-  const Code status_code = code();
-  switch (status_code) {
-    case kOk:
-      type = "OK";
-      break;
-    case kNotFound:
-      type = "Not found";
-      break;
-    case kCorruption:
-      type = "Corruption";
-      break;
-    case kNotSupported:
-      type = "Not implemented";
-      break;
-    case kInvalidArgument:
-      type = "Invalid argument";
-      break;
-    case kIOError:
-      type = "IO error";
-      break;
-    case kAlreadyPresent:
-      type = "Already present";
-      break;
-    case kRuntimeError:
-      type = "Runtime error";
-      break;
-    case kNetworkError:
-      type = "Network error";
-      break;
-    case kIllegalState:
-      type = "Illegal state";
-      break;
-    case kNotAuthorized:
-      type = "Not authorized";
-      break;
-    case kAborted:
-      type = "Aborted";
-      break;
-    case kRemoteError:
-      type = "Remote error";
-      break;
-    case kServiceUnavailable:
-      type = "Service unavailable";
-      break;
-    case kTimedOut:
-      type = "Timed out";
-      break;
-    case kUninitialized:
-      type = "Uninitialized";
-      break;
-    case kConfigurationError:
-      type = "Configuration error";
-      break;
-    case kIncomplete:
-      type = "Incomplete";
-      break;
-    case kEndOfFile:
-      type = "End of file";
-      break;
-    case kInvalidCommand:
-      type = "Invalid command";
-      break;
-    case kSqlError:
-      type = "SQL error";
-      break;
-    default:
-      return "Incorrect status code " + std::to_string(status_code);
+namespace {
+
+#define YB_STATUS_RETURN_MESSAGE(name, value, message) \
+    case Status::BOOST_PP_CAT(k, name): \
+      return message;
+
+const char* CodeAsCString(Status::Code code) {
+  switch (code) {
+    BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_RETURN_MESSAGE, YB_STATUS_CODES)
   }
-  return std::string(type);
+  return nullptr;
+}
+
+} // namespace
+
+std::string Status::CodeAsString() const {
+  auto code = this->code();
+  auto* cstr = CodeAsCString(code);
+  return cstr != nullptr ? cstr : "Incorrect status code " + std::to_string(code);
 }
 
 std::string Status::ToString(bool include_file_and_line) const {
@@ -178,18 +142,7 @@ Slice Status::message() const {
     return Slice();
   }
 
-  uint32_t length;
-  memcpy(&length, state_, sizeof(length));
-  return Slice(state_ + kMsgPos, length);
-}
-
-int64_t Status::GetErrorCode() const {
-  if (state_ == nullptr) {
-    return 0;
-  }
-  int64_t error_code;
-  memcpy(&error_code, state_ + kErrorCodePos, sizeof(error_code));
-  return error_code;
+  return Slice(state_->message, state_->message_len);
 }
 
 int16_t Status::posix_code() const {
@@ -204,18 +157,18 @@ int64_t Status::sql_error_code() const {
 }
 
 Status Status::CloneAndPrepend(const Slice& msg) const {
-  return Status(code(), msg, message(), posix_code(), file_name_, line_number_);
+  return Status(code(), file_name_, line_number_, msg, message(), posix_code());
 }
 
 Status Status::CloneAndAppend(const Slice& msg) const {
-  return Status(code(), message(), msg, posix_code(), file_name_, line_number_);
+  return Status(code(), file_name_, line_number_, message(), msg, posix_code());
 }
 
 size_t Status::memory_footprint_excluding_this() const {
-  return state_ ? yb_malloc_usable_size(state_) : 0;
+  return state_ ? malloc_usable_size(state_.get()) : 0;
 }
 
 size_t Status::memory_footprint_including_this() const {
-  return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
+  return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 }  // namespace yb

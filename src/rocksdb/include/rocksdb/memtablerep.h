@@ -32,20 +32,24 @@
 // The last four implementations are designed for situations in which
 // iteration over the entire collection is rare since doing so requires all the
 // keys to be copied into a sorted data structure.
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_MEMTABLEREP_H
+#define ROCKSDB_INCLUDE_ROCKSDB_MEMTABLEREP_H
 
 #pragma once
 
-#include <memory>
-#include <stdexcept>
 #include <stdint.h>
 #include <stdlib.h>
+
+#include <memory>
+#include <stdexcept>
+
+#include "rocksdb/slice.h"
 
 namespace rocksdb {
 
 class Arena;
 class MemTableAllocator;
 class LookupKey;
-class Slice;
 class SliceTransform;
 class Logger;
 
@@ -327,3 +331,5 @@ extern MemTableRepFactory* NewHashCuckooRepFactory(
     unsigned int hash_function_count = 4);
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
+
+#endif // ROCKSDB_INCLUDE_ROCKSDB_MEMTABLEREP_H

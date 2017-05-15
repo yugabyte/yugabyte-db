@@ -86,7 +86,7 @@ inline ValueType DecodeValueType(const rocksdb::Slice& value) {
 // Decode the first byte of the given slice as a ValueType and consume it.
 inline ValueType ConsumeValueType(rocksdb::Slice* slice) {
   return slice->empty() ? ValueType::kInvalidValueType
-                        : static_cast<ValueType>(slice->ConsumeByte());
+                        : static_cast<ValueType>(slice->consume_byte());
 }
 
 inline std::ostream& operator<<(std::ostream& out, const ValueType value_type) {

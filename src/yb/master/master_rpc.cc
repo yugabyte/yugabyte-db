@@ -19,7 +19,6 @@
 
 #include "yb/master/master_rpc.h"
 
-#include <boost/bind.hpp>
 #include <mutex>
 
 #include "yb/common/wire_protocol.h"
@@ -29,7 +28,6 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.proxy.h"
 #include "yb/util/net/net_util.h"
-
 
 using std::shared_ptr;
 using std::string;
@@ -187,7 +185,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(const Sockaddr& node_
     }
     if (new_status.ok()) {
       if (resp.role() != RaftPeerPB::LEADER) {
-        // Use a Status::NotFound() to indicate that the node is not
+        // Use a STATUS(NotFound, "") to indicate that the node is not
         // the leader: this way, we can handle the case where we've
         // received a reply from all of the nodes in the cluster (no
         // network or other errors encountered), but haven't found a

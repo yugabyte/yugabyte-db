@@ -22,7 +22,7 @@
  */
 
 #ifndef ROCKSDB_LITE
-#include "redis_lists.h"
+#include "rocksdb/utilities/redis/redis_lists.h"
 
 #include <iostream>
 #include <memory>
@@ -31,8 +31,7 @@
 #include "rocksdb/slice.h"
 #include "util/coding.h"
 
-namespace rocksdb
-{
+namespace rocksdb {
 
 /// Constructors
 
@@ -86,7 +85,7 @@ bool RedisLists::Index(const std::string& key, int32_t index,
 
   // Handle REDIS negative indices (from the end); fast iff Length() takes O(1)
   if (index < 0) {
-    index = Length(key) - (-index);  //replace (-i) with (N-i).
+    index = Length(key) - (-index);  // replace (-i) with (N-i).
   }
 
   // Iterate through the list until the desired index is found.
@@ -142,10 +141,10 @@ std::vector<std::string> RedisLists::Range(const std::string& key,
   // Traverse the list and update the vector
   int curIdx = 0;
   Slice elem;
-  for (RedisListIterator it(data); !it.Done() && curIdx<=last; it.Skip()) {
+  for (RedisListIterator it(data); !it.Done() && curIdx <= last; it.Skip()) {
     if (first <= curIdx && curIdx <= last) {
       it.GetCurrent(&elem);
-      result[curIdx-first].assign(elem.data(),elem.size());
+      result[curIdx - first].assign(elem.cdata(), elem.size());
     }
 
     ++curIdx;
@@ -168,7 +167,7 @@ void RedisLists::Print(const std::string& key) {
     std::cout << "ITEM " << elem.ToString() << std::endl;
   }
 
-  //Now print the byte data
+  // Now print the byte data
   RedisListIterator it(data);
   std::cout << "==Printing data==" << std::endl;
   std::cout << data.size() << std::endl;
@@ -177,9 +176,9 @@ void RedisLists::Print(const std::string& key) {
   std::cout << result.data() << std::endl;
   if (true) {
     std::cout << "size: " << result.size() << std::endl;
-    const char* val = result.data();
-    for(int i=0; i<(int)result.size(); ++i) {
-      std::cout << (int)val[i] << " " << (val[i]>=32?val[i]:' ') << std::endl;
+    const char* val = result.cdata();
+    for(size_t i = 0; i < result.size(); ++i) {
+      std::cout << static_cast<int>(val[i]) << " " << (val[i] >= 32 ? val[i] : ' ') << std::endl;
     }
     std::cout << std::endl;
   }
@@ -391,7 +390,7 @@ bool RedisLists::PopRight(const std::string& key, std::string* result) {
     return true;
   } else {
     // Must have been an empty list
-    assert(it.Done() && len==0 && curIndex == 0);
+    assert(it.Done() && len == 0 && curIndex == 0);
     return false;
   }
 }
@@ -473,7 +472,7 @@ int RedisLists::RemoveLast(const std::string& key, int32_t num,
 
   // Construct an iterator to the data. Reserve enough space for the result.
   RedisListIterator it(data);
-  int bytesRemoved = std::min(num,totalOccs)*it.SizeOf(value);
+  int bytesRemoved = std::min(num, totalOccs) * it.SizeOf(value);
   it.Reserve(it.Size() - bytesRemoved);
 
   // Traverse the list, appending all but the desired occurrences of value.

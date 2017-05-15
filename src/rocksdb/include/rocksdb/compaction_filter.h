@@ -6,16 +6,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_COMPACTION_FILTER_H_
-#define STORAGE_ROCKSDB_INCLUDE_COMPACTION_FILTER_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_COMPACTION_FILTER_H
+#define ROCKSDB_INCLUDE_ROCKSDB_COMPACTION_FILTER_H
 
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "rocksdb/slice.h"
+
 namespace rocksdb {
 
-class Slice;
 class SliceTransform;
 
 // Context information of a compaction run
@@ -134,4 +135,4 @@ class CompactionFilterFactory {
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_COMPACTION_FILTER_H_
+#endif // ROCKSDB_INCLUDE_ROCKSDB_COMPACTION_FILTER_H

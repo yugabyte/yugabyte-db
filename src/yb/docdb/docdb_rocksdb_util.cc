@@ -93,7 +93,7 @@ Status SeekToValidKvAtTs(
     }
 
     DocHybridTime ht_from_found_key;
-    RETURN_NOT_OK(ht_from_found_key.DecodeFromEnd(RocksDBToYBSlice(iter->key())));
+    RETURN_NOT_OK(ht_from_found_key.DecodeFromEnd(iter->key()));
     if (ht_from_found_key.hybrid_time() <= hybrid_time) {
       break;
     }

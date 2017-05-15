@@ -3,11 +3,12 @@
  * Copyright 2013 Facebook
  */
 
-#include "stringappend2.h"
+#include "utilities/merge_operators/string_append/stringappend2.h"
+
+#include <assert.h>
 
 #include <memory>
 #include <string>
-#include <assert.h>
 
 #include "rocksdb/slice.h"
 #include "rocksdb/merge_operator.h"
@@ -44,7 +45,7 @@ bool StringAppendTESTOperator::FullMerge(
   // Prepend the *existing_value if one exists.
   if (existing_value) {
     new_value->reserve(numBytes + existing_value->size());
-    new_value->append(existing_value->data(), existing_value->size());
+    new_value->append(existing_value->cdata(), existing_value->size());
     printDelim = true;
   } else if (numBytes) {
     new_value->reserve(numBytes-1); // Minus 1 since we have one less delimiter
@@ -53,7 +54,7 @@ bool StringAppendTESTOperator::FullMerge(
   // Concatenate the sequence of strings (and add a delimiter between each)
   for(auto it = operands.begin(); it != operands.end(); ++it) {
     if (printDelim) {
-      new_value->append(1,delim_);
+      new_value->append(1, delim_);
     }
     new_value->append(*it);
     printDelim = true;
@@ -88,12 +89,12 @@ bool StringAppendTESTOperator::_AssocPartialMergeMulti(
   new_value->reserve(size);
 
   // Apply concatenation
-  new_value->assign(operand_list.front().data(), operand_list.front().size());
+  new_value->assign(operand_list.front().cdata(), operand_list.front().size());
 
   for (std::deque<Slice>::const_iterator it = operand_list.begin() + 1;
        it != operand_list.end(); ++it) {
     new_value->append(1, delim_);
-    new_value->append(it->data(), it->size());
+    new_value->append(it->cdata(), it->size());
   }
 
   return true;

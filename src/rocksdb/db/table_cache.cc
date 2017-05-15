@@ -164,7 +164,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
 
   if (*handle == nullptr) {
     if (no_io) {  // Don't do IO and return a not-found status
-      return Status::Incomplete("Table not found in table_cache, no_io is set");
+      return STATUS(Incomplete, "Table not found in table_cache, no_io is set");
     }
     unique_ptr<TableReader> table_reader;
     s = GetTableReader(env_options, internal_comparator, fd,
@@ -277,7 +277,7 @@ Status TableCache::Get(const ReadOptions& options,
         row_cache_id_.size());
     AppendVarint64(&row_cache_key, fd_number);
     AppendVarint64(&row_cache_key, seq_no);
-    row_cache_key.TrimAppend(row_cache_key.Size(), user_key.data(),
+    row_cache_key.TrimAppend(row_cache_key.Size(), user_key.cdata(),
         user_key.size());
 
     if (auto row_handle = ioptions_.row_cache->Lookup(row_cache_key.GetKey())) {

@@ -69,7 +69,7 @@ class ErrorEnv : public EnvWrapper {
     result->reset();
     if (writable_file_error_) {
       ++num_writable_file_errors_;
-      return Status::IOError(fname, "fake error");
+      return STATUS(IOError, fname, "fake error");
     }
     return target()->NewWritableFile(fname, result, soptions);
   }
@@ -216,7 +216,7 @@ class StringSink: public WritableFile {
   }
   virtual Status Sync() override { return Status::OK(); }
   virtual Status Append(const Slice& slice) override {
-    contents_.append(slice.data(), slice.size());
+    contents_.append(slice.cdata(), slice.size());
     return Status::OK();
   }
   void Drop(size_t bytes) {
@@ -237,7 +237,7 @@ class StringSource: public RandomAccessFile {
  public:
   explicit StringSource(const Slice& contents, uint64_t uniq_id = 0,
                         bool mmap = false)
-      : contents_(contents.data(), contents.size()),
+      : contents_(contents.cdata(), contents.size()),
         uniq_id_(uniq_id),
         mmap_(mmap),
         total_reads_(0) {}
@@ -250,7 +250,7 @@ class StringSource: public RandomAccessFile {
       char* scratch) const override {
     total_reads_++;
     if (offset > contents_.size()) {
-      return Status::InvalidArgument("invalid Read offset");
+      return STATUS(InvalidArgument, "invalid Read offset");
     }
     if (offset + n > contents_.size()) {
       n = contents_.size() - static_cast<size_t>(offset);
@@ -415,14 +415,14 @@ class StringEnv : public EnvWrapper {
         offset_ += n;
         *result = Slice(scratch, n);
       } else {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "Attemp to read when it already reached eof.");
       }
       return Status::OK();
     }
     Status Skip(uint64_t n) override {
       if (offset_ >= data_.size()) {
-        return Status::InvalidArgument(
+        return STATUS(InvalidArgument,
             "Attemp to read when it already reached eof.");
       }
       // TODO(yhchiang): Currently doesn't handle the overflow case.
@@ -447,7 +447,7 @@ class StringEnv : public EnvWrapper {
     virtual Status Flush() override { return Status::OK(); }
     virtual Status Sync() override { return Status::OK(); }
     virtual Status Append(const Slice& slice) override {
-      contents_->append(slice.data(), slice.size());
+      contents_->append(slice.cdata(), slice.size());
       return Status::OK();
     }
 
@@ -479,7 +479,7 @@ class StringEnv : public EnvWrapper {
                            const EnvOptions& options) override {
     auto iter = files_.find(f);
     if (iter == files_.end()) {
-      return Status::NotFound("The specified file does not exist", f);
+      return STATUS(NotFound, "The specified file does not exist", f);
     }
     r->reset(new SeqStringSource(iter->second));
     return Status::OK();
@@ -487,48 +487,48 @@ class StringEnv : public EnvWrapper {
   Status NewRandomAccessFile(const std::string& f,
                              unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& options) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
   Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
                          const EnvOptions& options) override {
     auto iter = files_.find(f);
     if (iter != files_.end()) {
-      return Status::IOError("The specified file already exists", f);
+      return STATUS(IOError, "The specified file already exists", f);
     }
     r->reset(new StringSink(&files_[f]));
     return Status::OK();
   }
   virtual Status NewDirectory(const std::string& name,
                               unique_ptr<Directory>* result) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
   Status FileExists(const std::string& f) override {
     if (files_.find(f) == files_.end()) {
-      return Status::NotFound();
+      return STATUS(NotFound, "");
     }
     return Status::OK();
   }
   Status GetChildren(const std::string& dir,
                      std::vector<std::string>* r) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
   Status DeleteFile(const std::string& f) override {
     files_.erase(f);
     return Status::OK();
   }
   Status CreateDir(const std::string& d) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
   Status CreateDirIfMissing(const std::string& d) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
   Status DeleteDir(const std::string& d) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
   Status GetFileSize(const std::string& f, uint64_t* s) override {
     auto iter = files_.find(f);
     if (iter == files_.end()) {
-      return Status::NotFound("The specified file does not exist:", f);
+      return STATUS(NotFound, "The specified file does not exist:", f);
     }
     *s = iter->second.size();
     return Status::OK();
@@ -536,22 +536,22 @@ class StringEnv : public EnvWrapper {
 
   Status GetFileModificationTime(const std::string& fname,
                                  uint64_t* file_mtime) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
 
   Status RenameFile(const std::string& s, const std::string& t) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
 
   Status LinkFile(const std::string& s, const std::string& t) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
 
   Status LockFile(const std::string& f, FileLock** l) override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
 
-  Status UnlockFile(FileLock* l) override { return Status::NotSupported(); }
+  Status UnlockFile(FileLock* l) override { return STATUS(NotSupported, ""); }
 
  protected:
   std::unordered_map<std::string, std::string> files_;

@@ -7,9 +7,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <memory>
+
 #include "rocksdb/db.h"
 
-#include <memory>
 #include "db/memtable.h"
 #include "db/column_family.h"
 #include "db/write_batch_internal.h"
@@ -47,7 +48,7 @@ static std::string PrintContents(WriteBatch* b) {
   ScopedArenaIterator iter(mem->NewIterator(ReadOptions(), &arena));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     ParsedInternalKey ikey;
-    memset((void *)&ikey, 0, sizeof(ikey));
+    memset(&ikey, 0, sizeof(ikey));
     EXPECT_TRUE(ParseInternalKey(iter->key(), &ikey));
     switch (ikey.type) {
       case kTypeValue:
@@ -94,7 +95,7 @@ static std::string PrintContents(WriteBatch* b) {
   EXPECT_EQ(b->HasSingleDelete(), single_delete_count > 0);
   EXPECT_EQ(b->HasMerge(), merge_count > 0);
   if (!s.ok()) {
-    state.append(s.ToString());
+    state.append(s.ToString(false));
   } else if (count != WriteBatchInternal::Count(b)) {
     state.append("CountMismatch()");
   }
@@ -153,7 +154,7 @@ TEST_F(WriteBatchTest, Corruption) {
   WriteBatchInternal::SetSequence(&batch, 200);
   Slice contents = WriteBatchInternal::Contents(&batch);
   WriteBatchInternal::SetContents(&batch,
-                                  Slice(contents.data(),contents.size()-1));
+                                  Slice(contents.data(), contents.size() - 1));
   ASSERT_EQ("Put(foo, bar)@200"
             "Corruption: bad WriteBatch Delete",
             PrintContents(&batch));
@@ -206,53 +207,55 @@ TEST_F(WriteBatchTest, SingleDeletion) {
 }
 
 namespace {
-  struct TestHandler : public WriteBatch::Handler {
-    std::string seen;
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
+
+struct TestHandler : public WriteBatch::Handler {
+  std::string seen;
+  virtual Status PutCF(uint32_t column_family_id, const Slice& key,
+                       const Slice& value) override {
+    if (column_family_id == 0) {
+      seen += "Put(" + key.ToDebugString() + ", " + value.ToDebugString() + ")";
+    } else {
+      seen += "PutCF(" + ToString(column_family_id) + ", " +
+              key.ToDebugString() + ", " + value.ToDebugString() + ")";
+    }
+    return Status::OK();
+  }
+  virtual Status DeleteCF(uint32_t column_family_id,
+                          const Slice& key) override {
+    if (column_family_id == 0) {
+      seen += "Delete(" + key.ToDebugString() + ")";
+    } else {
+      seen += "DeleteCF(" + ToString(column_family_id) + ", " +
+              key.ToDebugString() + ")";
+    }
+    return Status::OK();
+  }
+  virtual Status SingleDeleteCF(uint32_t column_family_id,
+                                const Slice& key) override {
+    if (column_family_id == 0) {
+      seen += "SingleDelete(" + key.ToDebugString() + ")";
+    } else {
+      seen += "SingleDeleteCF(" + ToString(column_family_id) + ", " +
+              key.ToDebugString() + ")";
+    }
+    return Status::OK();
+  }
+  virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) override {
-      if (column_family_id == 0) {
-        seen += "Put(" + key.ToString() + ", " + value.ToString() + ")";
-      } else {
-        seen += "PutCF(" + ToString(column_family_id) + ", " +
-                key.ToString() + ", " + value.ToString() + ")";
-      }
-      return Status::OK();
+    if (column_family_id == 0) {
+      seen += "Merge(" + key.ToDebugString() + ", " + value.ToDebugString() + ")";
+    } else {
+      seen += "MergeCF(" + ToString(column_family_id) + ", " +
+              key.ToDebugString() + ", " + value.ToDebugString() + ")";
     }
-    virtual Status DeleteCF(uint32_t column_family_id,
-                            const Slice& key) override {
-      if (column_family_id == 0) {
-        seen += "Delete(" + key.ToString() + ")";
-      } else {
-        seen += "DeleteCF(" + ToString(column_family_id) + ", " +
-                key.ToString() + ")";
-      }
-      return Status::OK();
-    }
-    virtual Status SingleDeleteCF(uint32_t column_family_id,
-                                  const Slice& key) override {
-      if (column_family_id == 0) {
-        seen += "SingleDelete(" + key.ToString() + ")";
-      } else {
-        seen += "SingleDeleteCF(" + ToString(column_family_id) + ", " +
-                key.ToString() + ")";
-      }
-      return Status::OK();
-    }
-    virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
-                           const Slice& value) override {
-      if (column_family_id == 0) {
-        seen += "Merge(" + key.ToString() + ", " + value.ToString() + ")";
-      } else {
-        seen += "MergeCF(" + ToString(column_family_id) + ", " +
-                key.ToString() + ", " + value.ToString() + ")";
-      }
-      return Status::OK();
-    }
-    void LogData(const Slice& blob) override {
-      seen += "LogData(" + blob.ToString() + ")";
-    }
-  };
-}
+    return Status::OK();
+  }
+  void LogData(const Slice& blob) override {
+    seen += "LogData(" + blob.ToDebugString() + ")";
+  }
+};
+
+} // namespace
 
 TEST_F(WriteBatchTest, PutNotImplemented) {
   WriteBatch batch;
@@ -532,7 +535,8 @@ class ColumnFamilyHandleImplDummy : public ColumnFamilyHandleImpl {
  private:
   uint32_t id_;
 };
-}  // namespace anonymous
+
+}  // anonymous namespace
 
 TEST_F(WriteBatchTest, ColumnFamiliesBatchTest) {
   WriteBatch batch;

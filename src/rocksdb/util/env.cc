@@ -52,7 +52,8 @@ Status Env::GetChildrenFileAttributes(const std::string& dir,
   size_t result_size = 0;
   for (size_t i = 0; i < child_fnames.size(); ++i) {
     const std::string path = dir + "/" + child_fnames[i];
-    if (!(s = GetFileSize(path, &(*result)[result_size].size_bytes)).ok()) {
+    s = GetFileSize(path, &(*result)[result_size].size_bytes);
+    if (!s.ok()) {
       if (FileExists(path).IsNotFound()) {
         // The file may have been deleted since we listed the directory
         continue;
@@ -359,7 +360,7 @@ Status ReadFileToString(Env* env, const std::string& fname, std::string* data) {
     if (!s.ok()) {
       break;
     }
-    data->append(fragment.data(), fragment.size());
+    data->append(fragment.cdata(), fragment.size());
     if (fragment.empty()) {
       break;
     }

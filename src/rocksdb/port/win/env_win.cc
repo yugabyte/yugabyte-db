@@ -7,17 +7,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <algorithm>
-#include <deque>
-#include <thread>
-#include <ctime>
-
 #include <errno.h>
 #include <process.h>
 #include <io.h>
 #include <direct.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#include <algorithm>
+#include <deque>
+#include <thread>
+#include <ctime>
 
 #include "rocksdb/env.h"
 #include "rocksdb/slice.h"
@@ -32,7 +32,7 @@
 #include "util/sync_point.h"
 #include "util/aligned_buffer.h"
 
-#include "util/thread_status_updater.h"
+#include "util/thread_senv_tatus_updater.h"
 #include "util/thread_status_util.h"
 
 #include <Rpc.h>  // For UUID generation
@@ -62,7 +62,7 @@ ThreadStatusUpdater* CreateThreadStatusUpdater() {
 }
 
 inline Status IOErrorFromWindowsError(const std::string& context, DWORD err) {
-  return Status::IOError(context, GetWindowsErrSz(err));
+  return STATUS(IOError, context, GetWindowsErrSz(err));
 }
 
 inline Status IOErrorFromLastWindowsError(const std::string& context) {
@@ -70,7 +70,7 @@ inline Status IOErrorFromLastWindowsError(const std::string& context) {
 }
 
 inline Status IOError(const std::string& context, int err_number) {
-  return Status::IOError(context, strerror(err_number));
+  return STATUS(IOError, context, strerror(err_number));
 }
 
 // TODO(sdong): temp logging. Need to help debugging. Remove it when
@@ -111,7 +111,7 @@ SSIZE_T pwrite(HANDLE hFile, const char* src, size_t numBytes,
 
   SSIZE_T result = 0;
 
-  unsigned long bytesWritten = 0;
+  DWORD bytesWritten = 0;
 
   if (FALSE == WriteFile(hFile, src, static_cast<DWORD>(numBytes), &bytesWritten,
     &overlapped)) {
@@ -135,7 +135,7 @@ SSIZE_T pread(HANDLE hFile, char* src, size_t numBytes, uint64_t offset) {
 
   SSIZE_T result = 0;
 
-  unsigned long bytesRead = 0;
+  DWORD bytesRead = 0;
 
   if (FALSE == ReadFile(hFile, src, static_cast<DWORD>(numBytes), &bytesRead,
     &overlapped)) {
@@ -646,7 +646,7 @@ class WinSequentialFile : public SequentialFile {
       return IOErrorFromWindowsError(filename_, ERROR_INVALID_PARAMETER);
     }
 
-    DWORD bytesToRead = static_cast<DWORD>(n); //cast is safe due to the check above
+    DWORD bytesToRead = static_cast<DWORD>(n); // cast is safe due to the check above
     DWORD bytesRead = 0;
     BOOL ret = ReadFile(file_, scratch, bytesToRead, &bytesRead, NULL);
     if (ret == TRUE) {
@@ -668,7 +668,7 @@ class WinSequentialFile : public SequentialFile {
     }
 
     LARGE_INTEGER li;
-    li.QuadPart = static_cast<int64_t>(n); //cast is safe due to the check above
+    li.QuadPart = static_cast<int64_t>(n); // cast is safe due to the check above
     BOOL ret = SetFilePointerEx(file_, li, NULL, FILE_CURRENT);
     if (ret == FALSE) {
       return IOErrorFromWindowsError(filename_, GetLastError());
@@ -716,48 +716,61 @@ class WinRandomAccessFile : public RandomAccessFile {
    * @buffer - buffer to use
    * @dest - user supplied buffer
   */
-  SSIZE_T ReadIntoBuffer(uint64_t user_offset, uint64_t first_page_start,
-                         size_t bytes_to_read, size_t& left,
-                         AlignedBuffer& buffer, char* dest) const {
-    assert(buffer.CurrentSize() == 0);
-    assert(buffer.Capacity() >= bytes_to_read);
+  SSIZE_T ReadIntoBuffer(uint64_t user_offset,
+                         uint64_t first_page_start,
+                         size_t bytes_to_read,
+                         size_t* const left,
+                         AlignedBuffer* buffer, char* dest) const {
+    assert(buffer->CurrentSize() == 0);
+    assert(buffer->Capacity() >= bytes_to_read);
 
     SSIZE_T read =
-        pread(hFile_, buffer.Destination(), bytes_to_read, first_page_start);
+        pread(hFile_, buffer->Destination(), bytes_to_read, first_page_start);
 
     if (read > 0) {
-      buffer.Size(read);
+      buffer->Size(read);
 
       // Let's figure out how much we read from the users standpoint
-      if ((first_page_start + buffer.CurrentSize()) > user_offset) {
+      if ((first_page_start + buffer->CurrentSize()) > user_offset) {
         assert(first_page_start <= user_offset);
         size_t buffer_offset = user_offset - first_page_start;
-        read = buffer.Read(dest, buffer_offset, left);
+        read = buffer->Read(dest, buffer_offset, left);
       } else {
         read = 0;
       }
-      left -= read;
+      *left -= read;
     }
     return read;
   }
 
-  SSIZE_T ReadIntoOneShotBuffer(uint64_t user_offset, uint64_t first_page_start,
-                                size_t bytes_to_read, size_t& left,
+  SSIZE_T ReadIntoOneShotBuffer(uint64_t user_offset,
+                                uint64_t first_page_start,
+                                size_t bytes_to_read,
+                                size_t* const left,
                                 char* dest) const {
     AlignedBuffer bigBuffer;
     bigBuffer.Alignment(buffer_.Alignment());
     bigBuffer.AllocateNewBuffer(bytes_to_read);
 
-    return ReadIntoBuffer(user_offset, first_page_start, bytes_to_read, left,
-                          bigBuffer, dest);
+    return ReadIntoBuffer(user_offset,
+                          first_page_start,
+                          bytes_to_read,
+                          left,
+                          &bigBuffer,
+                          dest);
   }
 
   SSIZE_T ReadIntoInstanceBuffer(uint64_t user_offset,
                                  uint64_t first_page_start,
-                                 size_t bytes_to_read, size_t& left,
+                                 size_t bytes_to_read,
+                                 size_t* const left,
                                  char* dest) const {
-    SSIZE_T read = ReadIntoBuffer(user_offset, first_page_start, bytes_to_read,
-                                  left, buffer_, dest);
+    SSIZE_T read = ReadIntoBuffer(user_offset,
+                                  first_page_start,
+                                  bytes_to_read,
+                                  left,
+                                  &buffer_,
+                                  dest);
 
     if (read > 0) {
       buffered_start_ = first_page_start;
@@ -766,16 +779,17 @@ class WinRandomAccessFile : public RandomAccessFile {
     return read;
   }
 
-  void CalculateReadParameters(uint64_t offset, size_t bytes_requested,
-                                size_t& actual_bytes_toread,
-                                uint64_t& first_page_start) const {
+  void CalculateReadParameters(uint64_t offset,
+                                size_t bytes_requested,
+                                size_t* const actual_bytes_toread,
+                                uint64_t* const first_page_start) const {
 
     const size_t alignment = buffer_.Alignment();
 
-    first_page_start = TruncateToPageBoundary(alignment, offset);
+    *first_page_start = TruncateToPageBoundary(alignment, offset);
     const uint64_t last_page_start =
       TruncateToPageBoundary(alignment, offset + bytes_requested - 1);
-    actual_bytes_toread = (last_page_start - first_page_start) + alignment;
+    *actual_bytes_toread = (last_page_start - *first_page_start) + alignment;
   }
 
  public:
@@ -878,14 +892,12 @@ class WinRandomAccessFile : public RandomAccessFile {
               lock.unlock();
               r = ReadIntoOneShotBuffer(offset, first_page_start,
                 actual_bytes_toread, left, dest);
-            }
-            else {
+            } else {
               buffer_.AllocateNewBuffer(actual_bytes_toread);
               r = ReadIntoInstanceBuffer(offset, first_page_start,
                 actual_bytes_toread, left, dest);
             }
-          }
-          else {
+          } else {
             buffer_.Clear();
             r = ReadIntoInstanceBuffer(offset, first_page_start,
               actual_bytes_toread, left, dest);
@@ -1138,7 +1150,7 @@ void WinthreadCall(const char* label, std::error_code result) {
 }
 }
 
-typedef VOID(WINAPI * FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
+typedef VOID(WINAPI *FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
 
 class WinEnv : public Env {
  public:
@@ -1172,7 +1184,7 @@ class WinEnv : public Env {
   Status GetCurrentTime(int64_t* unix_time) override {
     time_t time = std::time(nullptr);
     if (time == (time_t)(-1)) {
-      return Status::NotSupported("Failed to get time");
+      return STATUS(NotSupported, "Failed to get time");
     }
 
     *unix_time = time;
@@ -1383,7 +1395,7 @@ class WinEnv : public Env {
     // F_OK == 0
     const int F_OK_ = 0;
     return _access(fname.c_str(), F_OK_) == 0 ? Status::OK()
-                                              : Status::NotFound();
+                                              : STATUS(NotFound, "");
   }
 
   virtual Status GetChildren(const std::string& dir,
@@ -1436,7 +1448,7 @@ class WinEnv : public Env {
     if (_mkdir(name.c_str()) != 0) {
       if (errno == EEXIST) {
         result =
-            Status::IOError("`" + name + "' exists but is not a directory");
+            STATUS(IOError, "`" + name + "' exists but is not a directory");
       } else {
         auto code = errno;
         result = IOError("Failed to create dir: " + name, code);
@@ -1699,7 +1711,8 @@ class WinEnv : public Env {
       li.QuadPart /= c_FtToMicroSec;
       return li.QuadPart;
     }
-    using namespace std::chrono;
+    using std::chrono::duration_cast;
+    using std::chrono::system_clock;
     return duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
   }
 
@@ -1767,7 +1780,7 @@ class WinEnv : public Env {
 
     char* ret = _getcwd(&result[0], _MAX_PATH);
     if (ret == nullptr) {
-      return Status::IOError("Failed to get current working directory",
+      return STATUS(IOError, "Failed to get current working directory",
                              strerror(errno));
     }
 

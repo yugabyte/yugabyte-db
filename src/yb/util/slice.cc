@@ -31,8 +31,21 @@ Status Slice::check_size(size_t expected_size) const {
 }
 
 // Return a string that contains the copy of the referenced data.
-std::string Slice::ToString() const {
+std::string Slice::ToBuffer() const {
   return std::string(reinterpret_cast<const char *>(data_), size_);
+}
+
+std::string Slice::ToString(bool hex) const {
+  if (!hex) {
+    return ToString();
+  }
+  std::string result;
+  char buf[10];
+  for (size_t i = 0; i < size_; i++) {
+    snprintf(buf, sizeof(buf), "%02X", data_[i]);
+    result += buf;
+  }
+  return result;
 }
 
 std::string Slice::ToDebugString(size_t max_len) const {
@@ -68,6 +81,20 @@ std::string Slice::ToDebugString(size_t max_len) const {
     StringAppendF(&ret, "...<%zd bytes total>", size_);
   }
   return ret;
+}
+
+Slice::Slice(const SliceParts& parts, std::string* buf) {
+  size_t length = 0;
+  for (int i = 0; i < parts.num_parts; ++i) {
+    length += parts.parts[i].size();
+  }
+  buf->reserve(length);
+
+  for (int i = 0; i < parts.num_parts; ++i) {
+    buf->append(parts.parts[i].cdata(), parts.parts[i].size());
+  }
+  data_ = reinterpret_cast<const uint8_t*>(buf->data());
+  size_ = buf->size();
 }
 
 }  // namespace yb

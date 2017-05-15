@@ -137,7 +137,7 @@ void ManagedIterator::SeekInternal(const Slice& user_key, bool seek_to_first) {
 
 void ManagedIterator::Prev() {
   if (!valid_) {
-    status_ = Status::InvalidArgument("Iterator value invalid");
+    status_ = STATUS(InvalidArgument, "Iterator value invalid");
     return;
   }
   MILock l(&in_use_, this);
@@ -152,7 +152,7 @@ void ManagedIterator::Prev() {
     }
     if (key().compare(old_key) != 0) {
       valid_ = false;
-      status_ = Status::Incomplete("Cannot do Prev now");
+      status_ = STATUS(Incomplete, "Cannot do Prev now");
       return;
     }
   }
@@ -167,7 +167,7 @@ void ManagedIterator::Prev() {
 
 void ManagedIterator::Next() {
   if (!valid_) {
-    status_ = Status::InvalidArgument("Iterator value invalid");
+    status_ = STATUS(InvalidArgument, "Iterator value invalid");
     return;
   }
   MILock l(&in_use_, this);
@@ -182,7 +182,7 @@ void ManagedIterator::Next() {
     }
     if (key().compare(old_key) != 0) {
       valid_ = false;
-      status_ = Status::Incomplete("Cannot do Next now");
+      status_ = STATUS(Incomplete, "Cannot do Next now");
       return;
     }
   }

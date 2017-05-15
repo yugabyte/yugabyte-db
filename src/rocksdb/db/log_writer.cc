@@ -34,7 +34,7 @@ Writer::~Writer() {
 }
 
 Status Writer::AddRecord(const Slice& slice) {
-  const char* ptr = slice.data();
+  const char* ptr = slice.cdata();
   size_t left = slice.size();
 
   // Header size varies depending on whether we are recycling or not.

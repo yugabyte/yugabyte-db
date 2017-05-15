@@ -149,7 +149,7 @@ Status FlushJob::Run(FileMetaData* file_meta) {
 
   if (s.ok() &&
       (shutting_down_->load(std::memory_order_acquire) || cfd_->IsDropped())) {
-    s = Status::ShutdownInProgress(
+    s = STATUS(ShutdownInProgress,
         "Database shutdown or Column family drop during flush");
   }
 

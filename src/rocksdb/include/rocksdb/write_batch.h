@@ -22,25 +22,26 @@
 // non-const method, all threads accessing the same WriteBatch must use
 // external synchronization.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_WRITE_BATCH_H_
-#define STORAGE_ROCKSDB_INCLUDE_WRITE_BATCH_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_WRITE_BATCH_H
+#define ROCKSDB_INCLUDE_ROCKSDB_WRITE_BATCH_H
+
+#include <stdint.h>
 
 #include <atomic>
 #include <stack>
 #include <string>
-#include <stdint.h>
 #include <vector>
 #include <algorithm>
+
+#include "rocksdb/slice.h"
 #include "rocksdb/status.h"
-#include "rocksdb/write_batch_base.h"
 #include "rocksdb/types.h"
+#include "rocksdb/write_batch_base.h"
 
 namespace rocksdb {
 
-class Slice;
 class ColumnFamilyHandle;
 struct SavePoints;
-struct SliceParts;
 
 class WriteBatch : public WriteBatchBase {
  public:
@@ -126,7 +127,7 @@ class WriteBatch : public WriteBatchBase {
 
   // Remove all entries in this batch (Put, Merge, Delete, PutLogData) since the
   // most recent call to SetSavePoint() and removes the most recent save point.
-  // If there is no previous call to SetSavePoint(), Status::NotFound()
+  // If there is no previous call to SetSavePoint(), STATUS(NotFound, "")
   // will be returned.
   // Oterwise returns Status::OK().
   Status RollbackToSavePoint() override;
@@ -147,7 +148,7 @@ class WriteBatch : public WriteBatchBase {
         Put(key, value);
         return Status::OK();
       }
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "non-default column family and PutCF not implemented");
     }
     virtual void Put(const Slice& /*key*/, const Slice& /*value*/) {}
@@ -157,7 +158,7 @@ class WriteBatch : public WriteBatchBase {
         Delete(key);
         return Status::OK();
       }
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "non-default column family and DeleteCF not implemented");
     }
     virtual void Delete(const Slice& /*key*/) {}
@@ -167,7 +168,7 @@ class WriteBatch : public WriteBatchBase {
         SingleDelete(key);
         return Status::OK();
       }
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "non-default column family and SingleDeleteCF not implemented");
     }
     virtual void SingleDelete(const Slice& /*key*/) {}
@@ -181,7 +182,7 @@ class WriteBatch : public WriteBatchBase {
         Merge(key, value);
         return Status::OK();
       }
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "non-default column family and MergeCF not implemented");
     }
     virtual void Merge(const Slice& /*key*/, const Slice& /*value*/) {}
@@ -293,4 +294,4 @@ class WriteBatch : public WriteBatchBase {
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_WRITE_BATCH_H_
+#endif // ROCKSDB_INCLUDE_ROCKSDB_WRITE_BATCH_H

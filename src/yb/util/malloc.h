@@ -17,7 +17,7 @@
 #ifndef YB_UTIL_MALLOC_H
 #define YB_UTIL_MALLOC_H
 
-#include <stdint.h>
+#include <cstddef>
 
 namespace yb {
 
@@ -25,7 +25,7 @@ namespace yb {
 //
 // Really just centralizes the const_cast, as this function is often called
 // on const pointers (i.e. "this" in a const method).
-int64_t yb_malloc_usable_size(const void* obj);
+size_t malloc_usable_size(const void* obj);
 
 } // namespace yb
 

@@ -53,7 +53,7 @@ Status GetLatestOptionsFileName(const std::string& dbpath,
     }
   }
   if (latest_file_name.size() == 0) {
-    return Status::NotFound("No options files found in the DB directory.");
+    return STATUS(NotFound, "No options files found in the DB directory.");
   }
   *options_file_name = latest_file_name;
   return Status::OK();

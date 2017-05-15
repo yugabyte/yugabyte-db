@@ -42,7 +42,7 @@ class WriteCallbackTestWriteCallback1 : public WriteCallback {
     // Make sure db is a DBImpl
     DBImpl* db_impl = dynamic_cast<DBImpl*> (db);
     if (db_impl == nullptr) {
-      return Status::InvalidArgument("");
+      return STATUS(InvalidArgument, "");
     }
 
     return Status::OK();
@@ -54,7 +54,7 @@ class WriteCallbackTestWriteCallback1 : public WriteCallback {
 class WriteCallbackTestWriteCallback2 : public WriteCallback {
  public:
   Status Callback(DB *db) override {
-    return Status::Busy();
+    return STATUS(Busy, "");
   }
   bool AllowWriteBatching() override { return true; }
 };
@@ -78,7 +78,7 @@ class MockWriteCallback : public WriteCallback {
   Status Callback(DB* db) override {
     was_called_.store(true);
     if (should_fail_) {
-      return Status::Busy();
+      return STATUS(Busy, "");
     } else {
       return Status::OK();
     }
@@ -89,7 +89,7 @@ class MockWriteCallback : public WriteCallback {
 
 TEST_F(WriteCallbackTest, WriteWithCallbackTest) {
   struct WriteOP {
-    WriteOP(bool should_fail = false) { callback_.should_fail_ = should_fail; }
+    WriteOP(bool should_fail = false) { callback_.should_fail_ = should_fail; } // NOLINT
 
     void Put(const string& key, const string& val) {
       kvs_.push_back(std::make_pair(key, val));

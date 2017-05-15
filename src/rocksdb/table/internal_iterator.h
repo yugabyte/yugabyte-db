@@ -3,6 +3,8 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 //
+#ifndef ROCKSDB_TABLE_INTERNAL_ITERATOR_H
+#define ROCKSDB_TABLE_INTERNAL_ITERATOR_H
 
 #pragma once
 
@@ -59,17 +61,17 @@ class InternalIterator : public Cleanable {
 
   // If an error has occurred, return it.  Else return an ok status.
   // If non-blocking IO is requested and this operation cannot be
-  // satisfied without doing some IO, then this returns Status::Incomplete().
+  // satisfied without doing some IO, then this returns STATUS(Incomplete, ).
   virtual Status status() const = 0;
 
   // Make sure that all current and future data blocks used by this iterator
   // will be pinned in memory and will not be released except when
   // ReleasePinnedData() is called or the iterator is deleted.
-  virtual Status PinData() { return Status::NotSupported(""); }
+  virtual Status PinData() { return STATUS(NotSupported, ""); }
 
   // Release all blocks that were pinned because of PinData() and no future
   // blocks will be pinned.
-  virtual Status ReleasePinnedData() { return Status::NotSupported(""); }
+  virtual Status ReleasePinnedData() { return STATUS(NotSupported, ""); }
 
   // If true, this means that the Slice returned by key() is valid as long
   // as the iterator is not deleted and ReleasePinnedData() is not called.
@@ -81,7 +83,7 @@ class InternalIterator : public Cleanable {
   virtual bool IsKeyPinned() const { return false; }
 
   virtual Status GetProperty(std::string prop_name, std::string* prop) {
-    return Status::NotSupported("");
+    return STATUS(NotSupported, "");
   }
 
  private:
@@ -97,3 +99,5 @@ extern InternalIterator* NewEmptyInternalIterator();
 extern InternalIterator* NewErrorInternalIterator(const Status& status);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_TABLE_INTERNAL_ITERATOR_H

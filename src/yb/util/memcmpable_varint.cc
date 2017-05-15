@@ -259,14 +259,8 @@ void PutMemcmpableVarint64(faststring *dst, uint64_t value) {
   dst->append(buf, used);
 }
 
-bool GetMemcmpableVarint64(Slice *input, uint64_t *value) {
+Status GetMemcmpableVarint64(Slice *input, uint64_t *value) {
   size_t size = sqlite4GetVarint64(input->data(), input->size(), value);
-  input->remove_prefix(size);
-  return size > 0;
-}
-
-Status GetMemcmpableVarint64(rocksdb::Slice *input, uint64_t *value) {
-  size_t size = sqlite4GetVarint64(yb::util::to_uchar_ptr(input->data()), input->size(), value);
   input->remove_prefix(size);
   if (size <= 0) {
     return STATUS(InvalidArgument, "Valid varint couldn't be decoded");

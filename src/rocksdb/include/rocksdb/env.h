@@ -23,9 +23,11 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "rocksdb/file.h"
+#include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 #include "rocksdb/thread_status.h"
-#include "rocksdb/file.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -59,7 +61,6 @@ class FileLock;
 class Logger;
 class RandomAccessFile;
 class SequentialFile;
-class Slice;
 class WritableFile;
 class Directory;
 struct DBOptions;
@@ -240,7 +241,7 @@ class Env {
 
   // Hard Link file src to target.
   virtual Status LinkFile(const std::string& src, const std::string& target) {
-    return Status::NotSupported("LinkFile is not supported for this Env");
+    return STATUS(NotSupported, "LinkFile is not supported for this Env");
   }
 
   // Lock the specified file.  Used to prevent concurrent access to
@@ -372,7 +373,7 @@ class Env {
 
   // Returns the status of all threads that belong to the current Env.
   virtual Status GetThreadList(std::vector<ThreadStatus>* thread_list) {
-    return Status::NotSupported("Not supported.");
+    return STATUS(NotSupported, "Not supported.");
   }
 
   // Returns the pointer to ThreadStatusUpdater.  This function will be
@@ -430,7 +431,7 @@ class SequentialFile {
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
   virtual Status InvalidateCache(size_t offset, size_t length) {
-    return Status::NotSupported("InvalidateCache not supported.");
+    return STATUS(NotSupported, "InvalidateCache not supported.");
   }
 };
 
@@ -476,7 +477,7 @@ class RandomAccessFile : public File {
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
   virtual Status InvalidateCache(size_t offset, size_t length) {
-    return Status::NotSupported("InvalidateCache not supported.");
+    return STATUS(NotSupported, "InvalidateCache not supported.");
   }
 };
 
@@ -511,7 +512,7 @@ class WritableFile : public File {
   // Positioned write for unbuffered access default forward
   // to simple append as most of the tests are buffered by default
   virtual Status PositionedAppend(const Slice& /* data */, uint64_t /* offset */) {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "PositionedAppend not supported");
   }
 
   // Truncate is necessary to trim the file to the correct size
@@ -588,7 +589,7 @@ class WritableFile : public File {
   // If the system is not caching the file contents, then this is a noop.
   // This call has no effect on dirty pages in the cache.
   virtual Status InvalidateCache(size_t offset, size_t length) {
-    return Status::NotSupported("InvalidateCache not supported.");
+    return STATUS(NotSupported, "InvalidateCache not supported.");
   }
 
   // Sync a file range with disk.

@@ -44,7 +44,7 @@ class TestFilterBitsBuilder : public FilterBitsBuilder {
 class TestFilterBitsReader : public FilterBitsReader {
  public:
   explicit TestFilterBitsReader(const Slice& contents)
-      : data_(contents.data()), len_(static_cast<uint32_t>(contents.size())) {}
+      : data_(contents.cdata()), len_(static_cast<uint32_t>(contents.size())) {}
 
   bool MayMatch(const Slice& entry) override {
     uint32_t h = Hash(entry.data(), entry.size(), 1);

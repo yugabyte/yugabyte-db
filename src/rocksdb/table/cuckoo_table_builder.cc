@@ -82,16 +82,16 @@ CuckooTableBuilder::CuckooTableBuilder(
 
 void CuckooTableBuilder::Add(const Slice& key, const Slice& value) {
   if (num_entries_ >= kMaxVectorIdx - 1) {
-    status_ = Status::NotSupported("Number of keys in a file must be < 2^32-1");
+    status_ = STATUS(NotSupported, "Number of keys in a file must be < 2^32-1");
     return;
   }
   ParsedInternalKey ikey;
   if (!ParseInternalKey(key, &ikey)) {
-    status_ = Status::Corruption("Unable to parse key into inernal key.");
+    status_ = STATUS(Corruption, "Unable to parse key into inernal key.");
     return;
   }
   if (ikey.type != kTypeDeletion && ikey.type != kTypeValue) {
-    status_ = Status::NotSupported("Unsupported key type " +
+    status_ = STATUS(NotSupported, "Unsupported key type " +
                                    ToString(ikey.type));
     return;
   }
@@ -103,12 +103,12 @@ void CuckooTableBuilder::Add(const Slice& key, const Slice& value) {
   if (!has_seen_first_key_) {
     is_last_level_file_ = ikey.sequence == 0;
     has_seen_first_key_ = true;
-    smallest_user_key_.assign(ikey.user_key.data(), ikey.user_key.size());
-    largest_user_key_.assign(ikey.user_key.data(), ikey.user_key.size());
+    smallest_user_key_.assign(ikey.user_key.cdata(), ikey.user_key.size());
+    largest_user_key_.assign(ikey.user_key.cdata(), ikey.user_key.size());
     key_size_ = is_last_level_file_ ? ikey.user_key.size() : key.size();
   }
   if (key_size_ != (is_last_level_file_ ? ikey.user_key.size() : key.size())) {
-    status_ = Status::NotSupported("all keys have to be the same size");
+    status_ = STATUS(NotSupported, "all keys have to be the same size");
     return;
   }
 
@@ -118,22 +118,22 @@ void CuckooTableBuilder::Add(const Slice& key, const Slice& value) {
       value_size_ = value.size();
     }
     if (value_size_ != value.size()) {
-      status_ = Status::NotSupported("all values have to be the same size");
+      status_ = STATUS(NotSupported, "all values have to be the same size");
       return;
     }
 
     if (is_last_level_file_) {
-      kvs_.append(ikey.user_key.data(), ikey.user_key.size());
+      kvs_.append(ikey.user_key.cdata(), ikey.user_key.size());
     } else {
-      kvs_.append(key.data(), key.size());
+      kvs_.append(key.cdata(), key.size());
     }
-    kvs_.append(value.data(), value.size());
+    kvs_.append(value.cdata(), value.size());
     ++num_values_;
   } else {
     if (is_last_level_file_) {
-      deleted_keys_.append(ikey.user_key.data(), ikey.user_key.size());
+      deleted_keys_.append(ikey.user_key.cdata(), ikey.user_key.size());
     } else {
-      deleted_keys_.append(key.data(), key.size());
+      deleted_keys_.append(key.cdata(), key.size());
     }
   }
   ++num_entries_;
@@ -144,9 +144,9 @@ void CuckooTableBuilder::Add(const Slice& key, const Slice& value) {
   // and use them to find a key outside this range in Finish() operation.
   // Note that this strategy is independent of user comparator used here.
   if (ikey.user_key.compare(smallest_user_key_) < 0) {
-    smallest_user_key_.assign(ikey.user_key.data(), ikey.user_key.size());
+    smallest_user_key_.assign(ikey.user_key.cdata(), ikey.user_key.size());
   } else if (ikey.user_key.compare(largest_user_key_) > 0) {
-    largest_user_key_.assign(ikey.user_key.data(), ikey.user_key.size());
+    largest_user_key_.assign(ikey.user_key.cdata(), ikey.user_key.size());
   }
   if (!use_module_hash_) {
     if (hash_table_size_ < num_entries_ / max_hash_table_ratio_) {
@@ -206,7 +206,7 @@ Status CuckooTableBuilder::MakeHashTable(std::vector<CuckooBucket>* buckets) {
         } else {
           if (ucomp_->Compare(user_key,
                 GetUserKey((*buckets)[hash_val].vector_idx)) == 0) {
-            return Status::NotSupported("Same key is being inserted again.");
+            return STATUS(NotSupported, "Same key is being inserted again.");
           }
           hash_vals.push_back(hash_val);
         }
@@ -216,7 +216,7 @@ Status CuckooTableBuilder::MakeHashTable(std::vector<CuckooBucket>* buckets) {
           ++make_space_for_key_call_id, buckets, &bucket_id)) {
       // Rehash by increashing number of hash tables.
       if (num_hash_func_ >= max_num_hash_func_) {
-        return Status::NotSupported("Too many collisions. Unable to hash.");
+        return STATUS(NotSupported, "Too many collisions. Unable to hash.");
       }
       // We don't really need to rehash the entire table because old hashes are
       // still valid and we only increased the number of hash functions.
@@ -278,7 +278,7 @@ Status CuckooTableBuilder::Finish() {
       }
     }
     if (curr_pos < 0) {
-      return Status::Corruption("Unable to find unused key");
+      return STATUS(Corruption, "Unable to find unused key");
     }
     if (is_last_level_file_) {
       unused_bucket = unused_user_key;

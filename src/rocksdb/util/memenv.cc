@@ -2,14 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <string.h>
+
+#include <map>
+#include <string>
+#include <vector>
+
 #include "rocksdb/env.h"
 #include "rocksdb/status.h"
 #include "port/port.h"
 #include "util/mutexlock.h"
-#include <map>
-#include <string.h>
-#include <string>
-#include <vector>
 
 namespace rocksdb {
 
@@ -71,7 +73,7 @@ class FileState {
 
   Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const {
     if (offset > size_) {
-      return Status::IOError("Offset greater than file size.");
+      return STATUS(IOError, "Offset greater than file size.");
     }
     const uint64_t available = size_ - offset;
     if (n > available) {
@@ -112,7 +114,7 @@ class FileState {
   }
 
   Status Append(const Slice& data) {
-    const char* src = data.data();
+    const char* src = data.cdata();
     size_t src_len = data.size();
 
     while (src_len > 0) {
@@ -185,7 +187,7 @@ class SequentialFileImpl : public SequentialFile {
 
   Status Skip(uint64_t n) override {
     if (pos_ > file_->Size()) {
-      return Status::IOError("pos_ > file_->Size()");
+      return STATUS(IOError, "pos_ > file_->Size()");
     }
     const size_t available = file_->Size() - pos_;
     if (n > available) {
@@ -221,7 +223,7 @@ class RandomAccessFileImpl : public RandomAccessFile {
 
 class WritableFileImpl : public WritableFile {
  public:
-  WritableFileImpl(FileState* file) : file_(file) {
+  explicit WritableFileImpl(FileState* file) : file_(file) {
     file_->Ref();
   }
 
@@ -253,7 +255,7 @@ class InMemoryEnv : public EnvWrapper {
   explicit InMemoryEnv(Env* base_env) : EnvWrapper(base_env) { }
 
   virtual ~InMemoryEnv() {
-    for (FileSystem::iterator i = file_map_.begin(); i != file_map_.end(); ++i){
+    for (FileSystem::iterator i = file_map_.begin(); i != file_map_.end(); ++i) {
       i->second->Unref();
     }
   }
@@ -266,7 +268,7 @@ class InMemoryEnv : public EnvWrapper {
     MutexLock lock(&mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       *result = NULL;
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     result->reset(new SequentialFileImpl(file_map_[nfname]));
@@ -280,7 +282,7 @@ class InMemoryEnv : public EnvWrapper {
     MutexLock lock(&mutex_);
     if (file_map_.find(nfname) == file_map_.end()) {
       *result = NULL;
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     result->reset(new RandomAccessFileImpl(file_map_[nfname]));
@@ -316,7 +318,7 @@ class InMemoryEnv : public EnvWrapper {
     if (file_map_.find(nfname) != file_map_.end()) {
       return Status::OK();
     } else {
-      return Status::NotFound();
+      return STATUS(NotFound, "");
     }
   }
 
@@ -325,7 +327,7 @@ class InMemoryEnv : public EnvWrapper {
     MutexLock lock(&mutex_);
     result->clear();
 
-    for (FileSystem::iterator i = file_map_.begin(); i != file_map_.end(); ++i){
+    for (FileSystem::iterator i = file_map_.begin(); i != file_map_.end(); ++i) {
       const std::string& filename = i->first;
 
       if (filename.size() >= dir.size() + 1 && filename[dir.size()] == '/' &&
@@ -350,7 +352,7 @@ class InMemoryEnv : public EnvWrapper {
     std::string nfname = NormalizeFileName(fname);
     MutexLock lock(&mutex_);
     if (file_map_.find(nfname) == file_map_.end()) {
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     DeleteFileInternal(nfname);
@@ -375,7 +377,7 @@ class InMemoryEnv : public EnvWrapper {
     MutexLock lock(&mutex_);
 
     if (file_map_.find(nfname) == file_map_.end()) {
-      return Status::IOError(fname, "File not found");
+      return STATUS(IOError, fname, "File not found");
     }
 
     *file_size = file_map_[nfname]->Size();
@@ -384,7 +386,7 @@ class InMemoryEnv : public EnvWrapper {
 
   virtual Status GetFileModificationTime(const std::string& fname,
                                          uint64_t* time) override {
-    return Status::NotSupported("getFileMTime", "Not supported in MemEnv");
+    return STATUS(NotSupported, "getFileMTime", "Not supported in MemEnv");
   }
 
   virtual Status RenameFile(const std::string& src,
@@ -393,7 +395,7 @@ class InMemoryEnv : public EnvWrapper {
     std::string ndest = NormalizeFileName(dest);
     MutexLock lock(&mutex_);
     if (file_map_.find(nsrc) == file_map_.end()) {
-      return Status::IOError(src, "File not found");
+      return STATUS(IOError, src, "File not found");
     }
 
     DeleteFileInternal(dest);

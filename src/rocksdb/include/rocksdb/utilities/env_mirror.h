@@ -14,11 +14,10 @@
 // This is useful when implementing a new Env and ensuring that the
 // semantics and behavior are correct (in that they match that of an
 // existing, stable Env, like the default POSIX one).
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_ENV_MIRROR_H
+#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_ENV_MIRROR_H
 
 #ifndef ROCKSDB_LITE
-
-#ifndef STORAGE_ROCKSDB_INCLUDE_UTILITIES_ENVMIRROR_H_
-#define STORAGE_ROCKSDB_INCLUDE_UTLIITIES_ENVMIRROR_H_
 
 #include <iostream>
 #include <algorithm>
@@ -53,13 +52,13 @@ class EnvMirror : public EnvWrapper {
     unique_ptr<Directory> br;
     Status as = a_->NewDirectory(name, result);
     Status bs = b_->NewDirectory(name, &br);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
   Status FileExists(const std::string& f) override {
     Status as = a_->FileExists(f);
     Status bs = b_->FileExists(f);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
   Status GetChildren(const std::string& dir,
@@ -67,7 +66,7 @@ class EnvMirror : public EnvWrapper {
     std::vector<std::string> ar, br;
     Status as = a_->GetChildren(dir, &ar);
     Status bs = b_->GetChildren(dir, &br);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     std::sort(ar.begin(), ar.end());
     std::sort(br.begin(), br.end());
     if (!as.ok() || ar != br) {
@@ -79,32 +78,32 @@ class EnvMirror : public EnvWrapper {
   Status DeleteFile(const std::string& f) override {
     Status as = a_->DeleteFile(f);
     Status bs = b_->DeleteFile(f);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
   Status CreateDir(const std::string& d) override {
     Status as = a_->CreateDir(d);
     Status bs = b_->CreateDir(d);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
   Status CreateDirIfMissing(const std::string& d) override {
     Status as = a_->CreateDirIfMissing(d);
     Status bs = b_->CreateDirIfMissing(d);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
   Status DeleteDir(const std::string& d) override {
     Status as = a_->DeleteDir(d);
     Status bs = b_->DeleteDir(d);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
   Status GetFileSize(const std::string& f, uint64_t* s) override {
     uint64_t asize, bsize;
     Status as = a_->GetFileSize(f, &asize);
     Status bs = b_->GetFileSize(f, &bsize);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     assert(!as.ok() || asize == bsize);
     *s = asize;
     return as;
@@ -115,7 +114,7 @@ class EnvMirror : public EnvWrapper {
     uint64_t amtime, bmtime;
     Status as = a_->GetFileModificationTime(fname, &amtime);
     Status bs = b_->GetFileModificationTime(fname, &bmtime);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     assert(!as.ok() || amtime - bmtime < 10000 || bmtime - amtime < 10000);
     *file_mtime = amtime;
     return as;
@@ -124,14 +123,14 @@ class EnvMirror : public EnvWrapper {
   Status RenameFile(const std::string& s, const std::string& t) override {
     Status as = a_->RenameFile(s, t);
     Status bs = b_->RenameFile(s, t);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
 
   Status LinkFile(const std::string& s, const std::string& t) override {
     Status as = a_->LinkFile(s, t);
     Status bs = b_->LinkFile(s, t);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
 
@@ -145,7 +144,7 @@ class EnvMirror : public EnvWrapper {
     FileLock* al, *bl;
     Status as = a_->LockFile(f, &al);
     Status bs = b_->LockFile(f, &bl);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     if (as.ok()) *l = new FileLockMirror(al, bl);
     return as;
   }
@@ -154,13 +153,13 @@ class EnvMirror : public EnvWrapper {
     FileLockMirror* ml = static_cast<FileLockMirror*>(l);
     Status as = a_->UnlockFile(ml->a_);
     Status bs = b_->UnlockFile(ml->b_);
-    assert(as == bs);
+    assert(as.code() == bs.code());
     return as;
   }
 };
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_UTILITIES_ENVMIRROR_H_
-
 #endif  // ROCKSDB_LITE
+
+#endif  // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_ENV_MIRROR_H

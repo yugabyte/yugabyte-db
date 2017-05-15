@@ -17,9 +17,9 @@
 
 #include "yb/cfile/cfile_reader.h"
 
-#include <glog/logging.h>
-
 #include <algorithm>
+
+#include <glog/logging.h>
 
 #include "yb/cfile/block_cache.h"
 #include "yb/cfile/block_handle.h"
@@ -162,11 +162,11 @@ Status CFileReader::ReadAndParseHeader() {
   RETURN_NOT_OK(ReadMagicAndLength(0, &header_size));
 
   // Now read the protobuf header.
-  uint8_t header_space[header_size];
+  std::vector<uint8_t> header_space(header_size);
   Slice header_slice;
   header_.reset(new CFileHeaderPB());
   RETURN_NOT_OK(block_->Read(kMagicAndLengthSize, header_size,
-                             &header_slice, header_space));
+                             &header_slice, header_space.data()));
   if (!header_->ParseFromArray(header_slice.data(), header_size)) {
     return STATUS(Corruption, "Invalid cfile pb header");
   }
@@ -192,11 +192,11 @@ Status CFileReader::ReadAndParseFooter() {
 
   // Now read the protobuf footer.
   footer_.reset(new CFileFooterPB());
-  uint8_t footer_space[footer_size];
+  std::vector<uint8_t> footer_space(footer_size);
   Slice footer_slice;
   uint64_t off = file_size_ - kMagicAndLengthSize - footer_size;
   RETURN_NOT_OK(block_->Read(off, footer_size,
-                             &footer_slice, footer_space));
+                             &footer_slice, footer_space.data()));
   if (!footer_->ParseFromArray(footer_slice.data(), footer_size)) {
     return STATUS(Corruption, "Invalid cfile pb footer");
   }
@@ -443,7 +443,7 @@ Status CFileReader::NewIterator(CFileIterator **iter, CacheControl cache_control
 }
 
 size_t CFileReader::memory_footprint() const {
-  size_t size = yb_malloc_usable_size(this);
+  size_t size = malloc_usable_size(this);
   size += block_->memory_footprint();
   size += init_once_.memory_footprint_excluding_this();
 
@@ -457,7 +457,7 @@ size_t CFileReader::memory_footprint() const {
     size += footer_->SpaceUsed();
   }
   if (block_uncompressor_) {
-    size += yb_malloc_usable_size(block_uncompressor_.get());
+    size += malloc_usable_size(block_uncompressor_.get());
   }
   return size;
 }

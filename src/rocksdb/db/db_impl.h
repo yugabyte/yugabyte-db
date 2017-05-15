@@ -6,6 +6,9 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_DB_DB_IMPL_H
+#define ROCKSDB_DB_DB_IMPL_H
+
 #pragma once
 
 #include <algorithm>
@@ -25,13 +28,13 @@
 #include "db/flush_scheduler.h"
 #include "db/internal_stats.h"
 #include "db/log_writer.h"
+#include "db/memtable_list.h"
 #include "db/snapshot_impl.h"
 #include "db/version_edit.h"
 #include "db/wal_manager.h"
 #include "db/write_controller.h"
 #include "db/write_thread.h"
 #include "db/writebuffer.h"
-#include "memtable_list.h"
 #include "port/port.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
@@ -182,7 +185,7 @@ class DBImpl : public DB {
   virtual Status GetLiveFiles(std::vector<std::string>&,
                               uint64_t* manifest_file_size,
                               bool flush_memtable = true) override;
-  virtual Status GetSortedWalFiles(VectorLogPtr& files) override;
+  virtual Status GetSortedWalFiles(VectorLogPtr* files) override;
 
   virtual Status GetUpdatesSince(
       SequenceNumber seq_number, unique_ptr<TransactionLogIterator>* iter,
@@ -196,7 +199,7 @@ class DBImpl : public DB {
       std::vector<LiveFileMetaData>* metadata) override;
 
   // Obtains the meta data of the specified column family of the DB.
-  // Status::NotFound() will be returned if the current DB does not have
+  // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.
   // TODO(yhchiang): output parameter is placed in the end in this codebase.
   virtual void GetColumnFamilyMetaData(
@@ -273,7 +276,7 @@ class DBImpl : public DB {
   // match to our in-memory records
   virtual Status CheckConsistency();
 
-  virtual Status GetDbIdentity(std::string& identity) const override;
+  virtual Status GetDbIdentity(std::string* identity) const override;
 
   Status RunManualCompaction(ColumnFamilyData* cfd, int input_level,
                              int output_level, uint32_t output_path_id,
@@ -872,13 +875,6 @@ class DBImpl : public DB {
   DBImpl(const DBImpl&);
   void operator=(const DBImpl&);
 
-  // Return the earliest snapshot where seqno is visible.
-  // Store the snapshot right before that, if any, in prev_snapshot
-  inline SequenceNumber findEarliestVisibleSnapshot(
-    SequenceNumber in,
-    std::vector<SequenceNumber>& snapshots,
-    SequenceNumber* prev_snapshot);
-
   // Background threads call this function, which is just a wrapper around
   // the InstallSuperVersion() function. Background threads carry
   // job_context which can have new_superversion already
@@ -939,3 +935,5 @@ static void ClipToRange(T* ptr, V minvalue, V maxvalue) {
 }
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_DB_IMPL_H

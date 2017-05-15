@@ -93,16 +93,16 @@ Status BlockBasedTableFactory::SanitizeOptions(
     const ColumnFamilyOptions& cf_opts) const {
   if (table_options_.index_type == BlockBasedTableOptions::kHashSearch &&
       cf_opts.prefix_extractor == nullptr) {
-    return Status::InvalidArgument("Hash index is specified for block-based "
+    return STATUS(InvalidArgument, "Hash index is specified for block-based "
         "table, but prefix_extractor is not given");
   }
   if (table_options_.cache_index_and_filter_blocks &&
       table_options_.no_block_cache) {
-    return Status::InvalidArgument("Enable cache_index_and_filter_blocks, "
+    return STATUS(InvalidArgument, "Enable cache_index_and_filter_blocks, "
         ", but block cache is disabled");
   }
   if (!BlockBasedTableSupportedVersion(table_options_.format_version)) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "Unsupported BlockBasedTable format_version. Please check "
         "include/rocksdb/table.h for more info");
   }

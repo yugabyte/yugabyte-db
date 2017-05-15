@@ -115,38 +115,29 @@ TEST_F(FormatTest, IterKeyOperation) {
   const char p[] = "abcdefghijklmnopqrstuvwxyz";
   const char q[] = "0123456789";
 
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string(""));
+  ASSERT_EQ(k.GetKey(), "");
 
   k.TrimAppend(0, p, 3);
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string("abc"));
+  ASSERT_EQ(k.GetKey(), "abc");
 
   k.TrimAppend(1, p, 3);
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string("aabc"));
+  ASSERT_EQ(k.GetKey(), "aabc");
 
   k.TrimAppend(0, p, 26);
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string("abcdefghijklmnopqrstuvwxyz"));
+  ASSERT_EQ(k.GetKey(), "abcdefghijklmnopqrstuvwxyz");
 
   k.TrimAppend(26, q, 10);
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string("abcdefghijklmnopqrstuvwxyz0123456789"));
+  ASSERT_EQ(k.GetKey(), "abcdefghijklmnopqrstuvwxyz0123456789");
 
   k.TrimAppend(36, q, 1);
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string("abcdefghijklmnopqrstuvwxyz01234567890"));
+  ASSERT_EQ(k.GetKey(), "abcdefghijklmnopqrstuvwxyz01234567890");
 
   k.TrimAppend(26, q, 1);
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string("abcdefghijklmnopqrstuvwxyz0"));
+  ASSERT_EQ(k.GetKey(), "abcdefghijklmnopqrstuvwxyz0");
 
   // Size going up, memory allocation is triggered
   k.TrimAppend(27, p, 26);
-  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
-            std::string("abcdefghijklmnopqrstuvwxyz0"
-              "abcdefghijklmnopqrstuvwxyz"));
+  ASSERT_EQ(k.GetKey(), "abcdefghijklmnopqrstuvwxyz0abcdefghijklmnopqrstuvwxyz");
 }
 
 TEST_F(FormatTest, UpdateInternalKey) {
@@ -163,7 +154,7 @@ TEST_F(FormatTest, UpdateInternalKey) {
   Slice in(ikey);
   ParsedInternalKey decoded;
   ASSERT_TRUE(ParseInternalKey(in, &decoded));
-  ASSERT_EQ(user_key, decoded.user_key.ToString());
+  ASSERT_EQ(user_key, decoded.user_key);
   ASSERT_EQ(new_seq, decoded.sequence);
   ASSERT_EQ(new_val_type, decoded.type);
 }

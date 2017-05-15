@@ -38,7 +38,7 @@ void UnPackSequenceAndType(uint64_t packed, uint64_t* seq, ValueType* t) {
 }
 
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
-  result->append(key.user_key.data(), key.user_key.size());
+  result->append(key.user_key.cdata(), key.user_key.size());
   PutFixed64(result, PackSequenceAndType(key.sequence, key.type));
 }
 
@@ -135,7 +135,7 @@ void InternalKeyComparator::FindShortestSeparator(
   // Attempt to shorten the user portion of the key
   Slice user_start = ExtractUserKey(*start);
   Slice user_limit = ExtractUserKey(limit);
-  std::string tmp(user_start.data(), user_start.size());
+  std::string tmp = user_start.ToBuffer();
   user_comparator_->FindShortestSeparator(&tmp, user_limit);
   if (tmp.size() < user_start.size() &&
       user_comparator_->Compare(user_start, tmp) < 0) {
@@ -150,7 +150,7 @@ void InternalKeyComparator::FindShortestSeparator(
 
 void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
   Slice user_key = ExtractUserKey(*key);
-  std::string tmp(user_key.data(), user_key.size());
+  std::string tmp = user_key.ToBuffer();
   user_comparator_->FindShortSuccessor(&tmp);
   if (tmp.size() < user_key.size() &&
       user_comparator_->Compare(user_key, tmp) < 0) {

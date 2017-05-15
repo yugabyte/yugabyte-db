@@ -322,7 +322,7 @@ void ThreadStatusUpdater::ClearThreadState() {
 
 Status ThreadStatusUpdater::GetThreadList(
     std::vector<ThreadStatus>* thread_list) {
-  return Status::NotSupported(
+  return STATUS(NotSupported,
       "GetThreadList is not supported in the current running environment.");
 }
 

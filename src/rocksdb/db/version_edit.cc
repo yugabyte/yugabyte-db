@@ -97,10 +97,10 @@ Status DecodeBoundaryValues(BoundaryValuesExtractor* extractor,
                             const BoundaryValuesPB& values,
                             FileBoundaryValues<InternalKey>* out) {
   if (!values.has_key()) {
-    return Status::Corruption("key missing");
+    return STATUS(Corruption, "key missing");
   }
   if (!values.has_seqno()) {
-    return Status::Corruption("seqno missing");
+    return STATUS(Corruption, "seqno missing");
   }
   out->key = InternalKey::DecodeFrom(values.key());
   out->seqno = values.seqno();
@@ -195,7 +195,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
   Clear();
   VersionEditPB pb;
   if (!pb.ParseFromArray(src.data(), static_cast<int>(src.size()))) {
-    return Status::Corruption("VersionEdit");
+    return STATUS(Corruption, "VersionEdit");
   }
 
   if (pb.has_comparator()) {

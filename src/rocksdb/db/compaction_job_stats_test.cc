@@ -562,11 +562,10 @@ uint64_t EstimatedFileSize(
 
 namespace {
 
-void CopyPrefix(
-    const Slice& src, size_t prefix_length, std::string* dst) {
+void CopyPrefix(const Slice& src, size_t prefix_length, std::string* dst) {
   assert(prefix_length > 0);
   size_t length = src.size() > prefix_length ? prefix_length : src.size();
-  dst->assign(src.data(), length);
+  dst->assign(src.cdata(), length);
 }
 
 }  // namespace

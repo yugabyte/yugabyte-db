@@ -49,7 +49,6 @@ set(ROCKSDB_SRCS
     db/merge_helper.cc
     db/merge_operator.cc
     db/repair.cc
-    db/slice.cc
     db/snapshot_impl.cc
     db/table_cache.cc
     db/table_properties_collector.cc
@@ -169,10 +168,8 @@ set(ROCKSDB_SRCS
     util/perf_level.cc
     util/random.cc
     util/rate_limiter.cc
-    util/slice.cc
+    util/slice_transform.cc
     util/statistics.cc
-    util/status.cc
-    util/status_message.cc
     util/string_util.cc
     util/sync_point.cc
     util/thread_local.cc
@@ -210,7 +207,7 @@ endif()
 
 add_library(rocksdb ${ROCKSDB_SRCS} precompiled_header.h)
 add_precompiled_header(rocksdb precompiled_header.h FORCEINCLUDE)
-target_link_libraries(rocksdb gflags gutil snappy bz2 z)
+target_link_libraries(rocksdb gflags gutil snappy bz2 z yb_util)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc

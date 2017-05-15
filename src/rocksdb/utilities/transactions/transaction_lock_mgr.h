@@ -2,6 +2,8 @@
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
+#ifndef ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_LOCK_MGR_H
+#define ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_LOCK_MGR_H
 
 #pragma once
 #ifndef ROCKSDB_LITE
@@ -11,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "rocksdb/slice.h"
 #include "rocksdb/utilities/transaction.h"
 #include "util/instrumented_mutex.h"
 #include "util/thread_local.h"
@@ -23,7 +26,6 @@ struct LockInfo;
 struct LockMap;
 struct LockMapStripe;
 
-class Slice;
 class TransactionDBImpl;
 
 class TransactionLockMgr {
@@ -96,3 +98,5 @@ class TransactionLockMgr {
 
 }  //  namespace rocksdb
 #endif  // ROCKSDB_LITE
+
+#endif // ROCKSDB_UTILITIES_TRANSACTIONS_TRANSACTION_LOCK_MGR_H

@@ -46,7 +46,7 @@
 #include "util/perf_context_imp.h"
 #include "util/statistics.h"
 
-#include <yb/gutil/macros.h>
+#include "yb/gutil/macros.h"
 
 namespace rocksdb {
 
@@ -215,46 +215,46 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
   switch (*tag) {
     case kTypeColumnFamilyValue:
       if (!GetVarint32(input, column_family)) {
-        return Status::Corruption("bad WriteBatch Put");
+        return STATUS(Corruption, "bad WriteBatch Put");
       }
       FALLTHROUGH_INTENDED;
     case kTypeValue:
       if (!GetLengthPrefixedSlice(input, key) ||
           !GetLengthPrefixedSlice(input, value)) {
-        return Status::Corruption("bad WriteBatch Put");
+        return STATUS(Corruption, "bad WriteBatch Put");
       }
       break;
     case kTypeColumnFamilyDeletion:
     case kTypeColumnFamilySingleDeletion:
       if (!GetVarint32(input, column_family)) {
-        return Status::Corruption("bad WriteBatch Delete");
+        return STATUS(Corruption, "bad WriteBatch Delete");
       }
       FALLTHROUGH_INTENDED;
     case kTypeDeletion:
     case kTypeSingleDeletion:
       if (!GetLengthPrefixedSlice(input, key)) {
-        return Status::Corruption("bad WriteBatch Delete");
+        return STATUS(Corruption, "bad WriteBatch Delete");
       }
       break;
     case kTypeColumnFamilyMerge:
       if (!GetVarint32(input, column_family)) {
-        return Status::Corruption("bad WriteBatch Merge");
+        return STATUS(Corruption, "bad WriteBatch Merge");
       }
       FALLTHROUGH_INTENDED;
     case kTypeMerge:
       if (!GetLengthPrefixedSlice(input, key) ||
           !GetLengthPrefixedSlice(input, value)) {
-        return Status::Corruption("bad WriteBatch Merge");
+        return STATUS(Corruption, "bad WriteBatch Merge");
       }
       break;
     case kTypeLogData:
       assert(blob != nullptr);
       if (!GetLengthPrefixedSlice(input, blob)) {
-        return Status::Corruption("bad WriteBatch Blob");
+        return STATUS(Corruption, "bad WriteBatch Blob");
       }
       break;
     default:
-      return Status::Corruption("unknown WriteBatch tag");
+      return STATUS(Corruption, "unknown WriteBatch tag");
   }
   return Status::OK();
 }
@@ -262,7 +262,7 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
 Status WriteBatch::Iterate(Handler* handler) const {
   Slice input(rep_);
   if (input.size() < kHeader) {
-    return Status::Corruption("malformed WriteBatch (too small)");
+    return STATUS(Corruption, "malformed WriteBatch (too small)");
   }
 
   input.remove_prefix(kHeader);
@@ -319,14 +319,14 @@ Status WriteBatch::Iterate(Handler* handler) const {
         handler->LogData(blob);
         break;
       default:
-        return Status::Corruption("unknown WriteBatch tag");
+        return STATUS(Corruption, "unknown WriteBatch tag");
     }
   }
   if (!s.ok()) {
     return s;
   }
   if (found != WriteBatchInternal::Count(this)) {
-    return Status::Corruption("WriteBatch has wrong count");
+    return STATUS(Corruption, "WriteBatch has wrong count");
   } else {
     return Status::OK();
   }
@@ -532,7 +532,7 @@ void WriteBatch::SetSavePoint() {
 
 Status WriteBatch::RollbackToSavePoint() {
   if (save_points_ == nullptr || save_points_->stack.size() == 0) {
-    return Status::NotFound();
+    return STATUS(NotFound, "");
   }
 
   // Pop the most recent savepoint off the stack
@@ -574,7 +574,7 @@ Status WriteBatch::ValidateUserSequenceNumbers() {
     std::stringstream ss;
     ss << "num_user_sequence_numbers=" << user_sequence_numbers_.size() << ", "
       << "count=" << Count();
-    return Status::Corruption(ss.str());
+    return STATUS(Corruption, ss.str());
   }
 
   return Status::OK();
@@ -629,7 +629,7 @@ class MemTableInserter : public WriteBatch::Handler {
       if (ignore_missing_column_families_) {
         *s = Status::OK();
       } else {
-        *s = Status::InvalidArgument(
+        *s = STATUS(InvalidArgument,
             "Invalid column family specified in write batch");
       }
       return false;
@@ -862,8 +862,9 @@ class MemTableInserter : public WriteBatch::Handler {
     } else {
       return sequence_;
     }
-  };
+  }
 };
+
 }  // namespace
 
 // This function can only be called in these conditions:
@@ -907,7 +908,7 @@ Status WriteBatchInternal::InsertInto(const WriteBatch* batch,
 
 void WriteBatchInternal::SetContents(WriteBatch* b, const Slice& contents) {
   assert(contents.size() >= kHeader);
-  b->rep_.assign(contents.data(), contents.size());
+  b->rep_.assign(contents.cdata(), contents.size());
   b->content_flags_.store(ContentFlags::DEFERRED, std::memory_order_relaxed);
 }
 

@@ -7,10 +7,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "util/mock_env.h"
-#include "port/sys_time.h"
 #include <algorithm>
 #include <chrono>
+
+#include "util/mock_env.h"
+#include "port/sys_time.h"
 #include "util/rate_limiter.h"
 #include "util/random.h"
 #include "util/murmurhash.h"
@@ -100,7 +101,7 @@ class MemFile {
   Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const {
     MutexLock lock(&mutex_);
     if (offset > Size()) {
-      return Status::IOError("Offset greater than file size.");
+      return STATUS(IOError, "Offset greater than file size.");
     }
     const uint64_t available = Size() - offset;
     if (n > available) {
@@ -121,7 +122,7 @@ class MemFile {
 
   Status Append(const Slice& data) {
     MutexLock lock(&mutex_);
-    data_.append(data.data(), data.size());
+    data_.append(data.cdata(), data.size());
     size_ = data_.size();
     modified_time_ = Now();
     return Status::OK();
@@ -192,7 +193,7 @@ class MockSequentialFile : public SequentialFile {
 
   Status Skip(uint64_t n) override {
     if (pos_ > file_->Size()) {
-      return Status::IOError("pos_ > file_->Size()");
+      return STATUS(IOError, "pos_ > file_->Size()");
     }
     const size_t available = file_->Size() - pos_;
     if (n > available) {
@@ -415,11 +416,11 @@ Status MockEnv::NewSequentialFile(const std::string& fname,
   MutexLock lock(&mutex_);
   if (file_map_.find(fn) == file_map_.end()) {
     *result = NULL;
-    return Status::IOError(fn, "File not found");
+    return STATUS(IOError, fn, "File not found");
   }
   auto* f = file_map_[fn];
   if (f->is_lock_file()) {
-    return Status::InvalidArgument(fn, "Cannot open a lock file.");
+    return STATUS(InvalidArgument, fn, "Cannot open a lock file.");
   }
   result->reset(new MockSequentialFile(f));
   return Status::OK();
@@ -432,11 +433,11 @@ Status MockEnv::NewRandomAccessFile(const std::string& fname,
   MutexLock lock(&mutex_);
   if (file_map_.find(fn) == file_map_.end()) {
     *result = NULL;
-    return Status::IOError(fn, "File not found");
+    return STATUS(IOError, fn, "File not found");
   }
   auto* f = file_map_[fn];
   if (f->is_lock_file()) {
-    return Status::InvalidArgument(fn, "Cannot open a lock file.");
+    return STATUS(InvalidArgument, fn, "Cannot open a lock file.");
   }
   result->reset(new MockRandomAccessFile(f));
   return Status::OK();
@@ -480,7 +481,7 @@ Status MockEnv::FileExists(const std::string& fname) {
       return Status::OK();
     }
   }
-  return Status::NotFound();
+  return STATUS(NotFound, "");
 }
 
 Status MockEnv::GetChildren(const std::string& dir,
@@ -521,7 +522,7 @@ Status MockEnv::DeleteFile(const std::string& fname) {
   auto fn = NormalizePath(fname);
   MutexLock lock(&mutex_);
   if (file_map_.find(fn) == file_map_.end()) {
-    return Status::IOError(fn, "File not found");
+    return STATUS(IOError, fn, "File not found");
   }
 
   DeleteFileInternal(fn);
@@ -545,7 +546,7 @@ Status MockEnv::GetFileSize(const std::string& fname, uint64_t* file_size) {
   MutexLock lock(&mutex_);
   auto iter = file_map_.find(fn);
   if (iter == file_map_.end()) {
-    return Status::IOError(fn, "File not found");
+    return STATUS(IOError, fn, "File not found");
   }
 
   *file_size = iter->second->Size();
@@ -558,7 +559,7 @@ Status MockEnv::GetFileModificationTime(const std::string& fname,
   MutexLock lock(&mutex_);
   auto iter = file_map_.find(fn);
   if (iter == file_map_.end()) {
-    return Status::IOError(fn, "File not found");
+    return STATUS(IOError, fn, "File not found");
   }
   *time = iter->second->ModifiedTime();
   return Status::OK();
@@ -569,7 +570,7 @@ Status MockEnv::RenameFile(const std::string& src, const std::string& dest) {
   auto t = NormalizePath(dest);
   MutexLock lock(&mutex_);
   if (file_map_.find(s) == file_map_.end()) {
-    return Status::IOError(s, "File not found");
+    return STATUS(IOError, s, "File not found");
   }
 
   DeleteFileInternal(t);
@@ -583,7 +584,7 @@ Status MockEnv::LinkFile(const std::string& src, const std::string& dest) {
   auto t = NormalizePath(dest);
   MutexLock lock(&mutex_);
   if (file_map_.find(s) == file_map_.end()) {
-    return Status::IOError(s, "File not found");
+    return STATUS(IOError, s, "File not found");
   }
 
   DeleteFileInternal(t);
@@ -615,10 +616,10 @@ Status MockEnv::LockFile(const std::string& fname, FileLock** flock) {
     MutexLock lock(&mutex_);
     if (file_map_.find(fn) != file_map_.end()) {
       if (!file_map_[fn]->is_lock_file()) {
-        return Status::InvalidArgument(fname, "Not a lock file.");
+        return STATUS(InvalidArgument, fname, "Not a lock file.");
       }
       if (!file_map_[fn]->Lock()) {
-        return Status::IOError(fn, "Lock is already held.");
+        return STATUS(IOError, fn, "Lock is already held.");
       }
     } else {
       auto* file = new MemFile(this, fn, true);
@@ -637,7 +638,7 @@ Status MockEnv::UnlockFile(FileLock* flock) {
     MutexLock lock(&mutex_);
     if (file_map_.find(fn) != file_map_.end()) {
       if (!file_map_[fn]->is_lock_file()) {
-        return Status::InvalidArgument(fn, "Not a lock file.");
+        return STATUS(InvalidArgument, fn, "Not a lock file.");
       }
       file_map_[fn]->Unlock();
     }
@@ -671,7 +672,7 @@ Status MockEnv::Truncate(const std::string& fname, size_t size) {
   MutexLock lock(&mutex_);
   auto iter = file_map_.find(fn);
   if (iter == file_map_.end()) {
-    return Status::IOError(fn, "File not found");
+    return STATUS(IOError, fn, "File not found");
   }
   iter->second->Truncate(size);
   return Status::OK();
@@ -682,7 +683,7 @@ Status MockEnv::CorruptBuffer(const std::string& fname) {
   MutexLock lock(&mutex_);
   auto iter = file_map_.find(fn);
   if (iter == file_map_.end()) {
-    return Status::IOError(fn, "File not found");
+    return STATUS(IOError, fn, "File not found");
   }
   iter->second->CorruptBuffer();
   return Status::OK();

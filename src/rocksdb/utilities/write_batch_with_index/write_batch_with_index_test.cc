@@ -47,8 +47,8 @@ struct TestHandler : public WriteBatch::Handler {
   virtual Status PutCF(uint32_t column_family_id, const Slice& key,
                        const Slice& value) {
     Entry e;
-    e.key = key.ToString();
-    e.value = value.ToString();
+    e.key = key.ToBuffer();
+    e.value = value.ToBuffer();
     e.type = kPutRecord;
     seen[column_family_id].push_back(e);
     return Status::OK();
@@ -56,8 +56,8 @@ struct TestHandler : public WriteBatch::Handler {
   virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) {
     Entry e;
-    e.key = key.ToString();
-    e.value = value.ToString();
+    e.key = key.ToBuffer();
+    e.value = value.ToBuffer();
     e.type = kMergeRecord;
     seen[column_family_id].push_back(e);
     return Status::OK();
@@ -65,14 +65,14 @@ struct TestHandler : public WriteBatch::Handler {
   virtual void LogData(const Slice& blob) {}
   virtual Status DeleteCF(uint32_t column_family_id, const Slice& key) {
     Entry e;
-    e.key = key.ToString();
+    e.key = key.ToBuffer();
     e.value = "";
     e.type = kDeleteRecord;
     seen[column_family_id].push_back(e);
     return Status::OK();
   }
 };
-}  // namespace anonymous
+}  // anonymous namespace
 
 class WriteBatchWithIndexTest : public testing::Test {};
 
@@ -1781,7 +1781,7 @@ TEST_F(WriteBatchWithIndexTest, SingleDeleteDeltaIterTest) {
   ASSERT_EQ("B:b3,E:ee,", value);
 }
 
-}  // namespace
+}  // namespace rocksdb
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();

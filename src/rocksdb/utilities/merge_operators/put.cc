@@ -8,7 +8,7 @@
 #include "rocksdb/merge_operator.h"
 #include "utilities/merge_operators.h"
 
-using namespace rocksdb;
+namespace rocksdb {
 
 namespace { // anonymous namespace
 
@@ -39,16 +39,16 @@ class PutOperator : public MergeOperator {
                             const Slice& right_operand,
                             std::string* new_value,
                             Logger* logger) const override {
-    new_value->assign(right_operand.data(), right_operand.size());
+    new_value->assign(right_operand.cdata(), right_operand.size());
     return true;
   }
 
   using MergeOperator::PartialMergeMulti;
   virtual bool PartialMergeMulti(const Slice& key,
                                  const std::deque<Slice>& operand_list,
-                                 std::string* new_value, Logger* logger) const
-      override {
-    new_value->assign(operand_list.back().data(), operand_list.back().size());
+                                 std::string* new_value,
+                                 Logger* logger) const override {
+    new_value->assign(operand_list.back().cdata(), operand_list.back().size());
     return true;
   }
 
@@ -59,10 +59,8 @@ class PutOperator : public MergeOperator {
 
 } // end of anonymous namespace
 
-namespace rocksdb {
-
 std::shared_ptr<MergeOperator> MergeOperators::CreatePutOperator() {
   return std::make_shared<PutOperator>();
 }
 
-}
+} // namespace rocksdb

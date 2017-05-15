@@ -70,7 +70,7 @@ Status DBImplReadOnly::NewIterators(
     const std::vector<ColumnFamilyHandle*>& column_families,
     std::vector<Iterator*>* iterators) {
   if (iterators == nullptr) {
-    return Status::InvalidArgument("iterators not allowed to be nullptr");
+    return STATUS(InvalidArgument, "iterators not allowed to be nullptr");
   }
   iterators->clear();
   iterators->reserve(column_families.size());
@@ -142,7 +142,7 @@ Status DB::OpenForReadOnly(
       auto cfd =
           impl->versions_->GetColumnFamilySet()->GetColumnFamily(cf.name);
       if (cfd == nullptr) {
-        s = Status::InvalidArgument("Column family not found: ", cf.name);
+        s = STATUS(InvalidArgument, "Column family not found: ", cf.name);
         break;
       }
       handles->push_back(new ColumnFamilyHandleImpl(cfd, impl, &impl->mutex_));
@@ -174,7 +174,7 @@ Status DB::OpenForReadOnly(
 
 Status DB::OpenForReadOnly(const Options& options, const std::string& dbname,
                            DB** dbptr, bool error_if_log_file_exist) {
-  return Status::NotSupported("Not supported in ROCKSDB_LITE.");
+  return STATUS(NotSupported, "Not supported in ROCKSDB_LITE.");
 }
 
 Status DB::OpenForReadOnly(
@@ -182,7 +182,7 @@ Status DB::OpenForReadOnly(
     const std::vector<ColumnFamilyDescriptor>& column_families,
     std::vector<ColumnFamilyHandle*>* handles, DB** dbptr,
     bool error_if_log_file_exist) {
-  return Status::NotSupported("Not supported in ROCKSDB_LITE.");
+  return STATUS(NotSupported, "Not supported in ROCKSDB_LITE.");
 }
 #endif  // !ROCKSDB_LITE
 

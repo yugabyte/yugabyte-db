@@ -142,7 +142,7 @@ class DBIter: public Iterator {
   virtual Status GetProperty(std::string prop_name,
                              std::string* prop) override {
     if (prop == nullptr) {
-      return Status::InvalidArgument("prop is nullptr");
+      return STATUS(InvalidArgument, "prop is nullptr");
     }
     if (prop_name == "rocksdb.iterator.super-version-number") {
       // First try to pass the value returned from inner iterator.
@@ -158,7 +158,7 @@ class DBIter: public Iterator {
       }
       return Status::OK();
     }
-    return Status::InvalidArgument("Undentified property.");
+    return STATUS(InvalidArgument, "Undentified property.");
   }
 
   void Next() override;
@@ -221,7 +221,7 @@ class DBIter: public Iterator {
 
 inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
   if (!ParseInternalKey(iter_->key(), ikey)) {
-    status_ = Status::Corruption("corrupted internal key in DBIter");
+    status_ = STATUS(Corruption, "corrupted internal key in DBIter");
     RLOG(InfoLogLevel::ERROR_LEVEL,
         logger_, "corrupted internal key in DBIter: %s",
         iter_->key().ToString(true).c_str());
@@ -366,7 +366,7 @@ void DBIter::MergeValuesNewToOld() {
   if (!user_merge_operator_) {
     RLOG(InfoLogLevel::ERROR_LEVEL,
         logger_, "Options::merge_operator is null.");
-    status_ = Status::InvalidArgument("user_merge_operator_ must be set.");
+    status_ = STATUS(InvalidArgument, "user_merge_operator_ must be set.");
     valid_ = false;
     return;
   }

@@ -109,13 +109,13 @@ void TransactionLogIteratorImpl::SeekToStartSequence(
   while (RestrictedRead(&record, &scratch)) {
     if (record.size() < 12) {
       reporter_.Corruption(
-        record.size(), Status::Corruption("very small log record"));
+        record.size(), STATUS(Corruption, "very small log record"));
       continue;
     }
     UpdateCurrentWriteBatch(record);
     if (currentLastSeq_ >= startingSequenceNumber_) {
       if (strict && currentBatchSeq_ != startingSequenceNumber_) {
-        currentStatus_ = Status::Corruption("Gap in sequence number. Could not "
+        currentStatus_ = STATUS(Corruption, "Gap in sequence number. Could not "
                                             "seek to required sequence number");
         reporter_.Info(currentStatus_.ToString().c_str());
         return;
@@ -136,11 +136,11 @@ void TransactionLogIteratorImpl::SeekToStartSequence(
   // If strict is set, we want to seek exactly till the start sequence and it
   // should have been present in the file we scanned above
   if (strict) {
-    currentStatus_ = Status::Corruption("Gap in sequence number. Could not "
+    currentStatus_ = STATUS(Corruption, "Gap in sequence number. Could not "
                                         "seek to required sequence number");
     reporter_.Info(currentStatus_.ToString().c_str());
   } else if (files_->size() != 1) {
-    currentStatus_ = Status::Corruption("Start sequence was not found, "
+    currentStatus_ = STATUS(Corruption, "Start sequence was not found, "
                                         "skipping to the next available");
     reporter_.Info(currentStatus_.ToString().c_str());
     // Let NextImpl find the next available entry. started_ remains false
@@ -169,7 +169,7 @@ void TransactionLogIteratorImpl::NextImpl(bool internal) {
     while (RestrictedRead(&record, &scratch)) {
       if (record.size() < 12) {
         reporter_.Corruption(
-          record.size(), Status::Corruption("very small log record"));
+          record.size(), STATUS(Corruption, "very small log record"));
         continue;
       } else {
         // started_ should be true if called by application
@@ -198,7 +198,7 @@ void TransactionLogIteratorImpl::NextImpl(bool internal) {
       if (currentLastSeq_ == versions_->LastSequence()) {
         currentStatus_ = Status::OK();
       } else {
-        currentStatus_ = Status::Corruption("NO MORE DATA LEFT");
+        currentStatus_ = STATUS(Corruption, "NO MORE DATA LEFT");
       }
       return;
     }
@@ -240,7 +240,7 @@ void TransactionLogIteratorImpl::UpdateCurrentWriteBatch(const Slice& record) {
     }
     startingSequenceNumber_ = expectedSeq;
     // currentStatus_ will be set to Ok if reseek succeeds
-    currentStatus_ = Status::NotFound("Gap in sequence numbers");
+    currentStatus_ = STATUS(NotFound, "Gap in sequence numbers");
     return SeekToStartSequence(currentFileIndex_, true);
   }
 
@@ -263,8 +263,10 @@ Status TransactionLogIteratorImpl::OpenLogReader(const LogFile* logFile) {
   }
   assert(file);
   currentLogReader_.reset(new log::Reader(options_->info_log,
-					  std::move(file), &reporter_,
-                                          read_options_.verify_checksums_, 0,
+                                          std::move(file),
+                                          &reporter_,
+                                          read_options_.verify_checksums_,
+                                          0,
                                           logFile->LogNumber()));
   return Status::OK();
 }

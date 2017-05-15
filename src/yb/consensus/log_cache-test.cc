@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
 #include <memory>
 #include <string>
+
+#include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus-test-util.h"
@@ -175,7 +176,7 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
   ASSERT_EQ(1, messages.size());
 }
 
-// Tests that the cache returns Status::NotFound() if queried for messages after an
+// Tests that the cache returns STATUS(NotFound, "") if queried for messages after an
 // index that is higher than it's latest, returns an empty set of messages when queried for
 // the the last index and returns all messages when queried for MinimumOpId().
 TEST_F(LogCacheTest, TestCacheEdgeCases) {

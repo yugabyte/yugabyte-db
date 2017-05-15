@@ -71,7 +71,7 @@ class SanityTest {
         return s;
       }
       if (result != v) {
-        return Status::Corruption("Unexpected value for key " + k);
+        return STATUS(Corruption, "Unexpected value for key " + k);
       }
     }
     return Status::OK();

@@ -38,14 +38,14 @@ namespace rocksdb {
 
 #ifndef ROCKSDB_LITE
 
-Status WalManager::GetSortedWalFiles(VectorLogPtr& files) {
+Status WalManager::GetSortedWalFiles(VectorLogPtr* files) {
   // First get sorted files in db dir, then get sorted files from archived
   // dir, to avoid a race condition where a log file is moved to archived
   // dir in between.
   Status s;
   // list wal files in main db dir.
   VectorLogPtr logs;
-  s = GetSortedWalsOfType(db_options_.wal_dir, logs, kAliveLogFile);
+  s = GetSortedWalsOfType(db_options_.wal_dir, &logs, kAliveLogFile);
   if (!s.ok()) {
     return s;
   }
@@ -56,7 +56,7 @@ Status WalManager::GetSortedWalFiles(VectorLogPtr& files) {
   TEST_SYNC_POINT("WalManager::GetSortedWalFiles:1");
   TEST_SYNC_POINT("WalManager::GetSortedWalFiles:2");
 
-  files.clear();
+  files->clear();
   // list wal files in archive dir.
   std::string archivedir = ArchivalDirectory(db_options_.wal_dir);
   Status exists = env_->FileExists(archivedir);
@@ -71,17 +71,17 @@ Status WalManager::GetSortedWalFiles(VectorLogPtr& files) {
   }
 
   uint64_t latest_archived_log_number = 0;
-  if (!files.empty()) {
-    latest_archived_log_number = files.back()->LogNumber();
+  if (!files->empty()) {
+    latest_archived_log_number = files->back()->LogNumber();
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "Latest Archived log: %" PRIu64,
         latest_archived_log_number);
   }
 
-  files.reserve(files.size() + logs.size());
+  files->reserve(files->size() + logs.size());
   for (auto& log : logs) {
     if (log->LogNumber() > latest_archived_log_number) {
-      files.push_back(std::move(log));
+      files->push_back(std::move(log));
     } else {
       // When the race condition happens, we could see the
       // same log in both db dir and archived dir. Simply
@@ -104,12 +104,12 @@ Status WalManager::GetUpdatesSince(
   //  Do binary search and open files and find the seq number.
 
   std::unique_ptr<VectorLogPtr> wal_files(new VectorLogPtr);
-  Status s = GetSortedWalFiles(*wal_files);
+  Status s = GetSortedWalFiles(wal_files.get());
   if (!s.ok()) {
     return s;
   }
 
-  s = RetainProbableWalFiles(*wal_files, seq);
+  s = RetainProbableWalFiles(wal_files.get(), seq);
   if (!s.ok()) {
     return s;
   }
@@ -236,7 +236,7 @@ void WalManager::PurgeObsoleteWALFiles() {
 
   size_t files_del_num = log_files_num - files_keep_num;
   VectorLogPtr archived_logs;
-  GetSortedWalsOfType(archival_dir, archived_logs, kArchivedLogFile);
+  GetSortedWalsOfType(archival_dir, &archived_logs, kArchivedLogFile);
 
   if (files_del_num > archived_logs.size()) {
     RLOG(InfoLogLevel::WARN_LEVEL, db_options_.info_log,
@@ -284,14 +284,14 @@ struct CompareLogByPointer {
 }
 
 Status WalManager::GetSortedWalsOfType(const std::string& path,
-                                       VectorLogPtr& log_files,
+                                       VectorLogPtr* log_files,
                                        WalFileType log_type) {
   std::vector<std::string> all_files;
   const Status status = env_->GetChildren(path, &all_files);
   if (!status.ok()) {
     return status;
   }
-  log_files.reserve(all_files.size());
+  log_files->reserve(all_files.size());
   for (const auto& f : all_files) {
     uint64_t number;
     FileType type;
@@ -329,23 +329,23 @@ Status WalManager::GetSortedWalsOfType(const std::string& path,
         return s;
       }
 
-      log_files.push_back(std::unique_ptr<LogFile>(
+      log_files->push_back(std::unique_ptr<LogFile>(
           new LogFileImpl(number, log_type, sequence, size_bytes)));
     }
   }
   CompareLogByPointer compare_log_files;
-  std::sort(log_files.begin(), log_files.end(), compare_log_files);
+  std::sort(log_files->begin(), log_files->end(), compare_log_files);
   return status;
 }
 
-Status WalManager::RetainProbableWalFiles(VectorLogPtr& all_logs,
+Status WalManager::RetainProbableWalFiles(VectorLogPtr* all_logs,
                                           const SequenceNumber target) {
   int64_t start = 0;  // signed to avoid overflow when target is < first file.
-  int64_t end = static_cast<int64_t>(all_logs.size()) - 1;
+  int64_t end = static_cast<int64_t>(all_logs->size()) - 1;
   // Binary Search. avoid opening all files.
   while (end >= start) {
     int64_t mid = start + (end - start) / 2;  // Avoid overflow.
-    SequenceNumber current_seq_num = all_logs.at(mid)->StartSequence();
+    SequenceNumber current_seq_num = (*all_logs)[mid]->StartSequence();
     if (current_seq_num == target) {
       end = mid;
       break;
@@ -356,9 +356,9 @@ Status WalManager::RetainProbableWalFiles(VectorLogPtr& all_logs,
     }
   }
   // end could be -ve.
-  size_t start_index = std::max(static_cast<int64_t>(0), end);
+  size_t start_index = std::max<int64_t>(0, end);
   // The last wal file is always included
-  all_logs.erase(all_logs.begin(), all_logs.begin() + start_index);
+  all_logs->erase(all_logs->begin(), all_logs->begin() + start_index);
   return Status::OK();
 }
 
@@ -369,7 +369,7 @@ Status WalManager::ReadFirstRecord(const WalFileType type,
   if (type != kAliveLogFile && type != kArchivedLogFile) {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
         "[WalManger] Unknown file type %s", ToString(type).c_str());
-    return Status::NotSupported(
+    return STATUS(NotSupported,
         "File Type Not Known " + ToString(type));
   }
   {
@@ -457,7 +457,7 @@ Status WalManager::ReadFirstLine(const std::string& fname,
       (status.ok() || !db_options_.paranoid_checks)) {
     if (record.size() < 12) {
       reporter.Corruption(record.size(),
-                          Status::Corruption("log record too small"));
+                          STATUS(Corruption, "log record too small"));
       // TODO read record's till the first no corrupt entry?
     } else {
       WriteBatch batch;

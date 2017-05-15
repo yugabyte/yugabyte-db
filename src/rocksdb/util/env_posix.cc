@@ -305,10 +305,10 @@ class PosixEnv : public Env {
       case ENAMETOOLONG:
       case ENOENT:
       case ENOTDIR:
-        return Status::NotFound();
+        return STATUS(NotFound, "");
       default:
         assert(result == EIO || result == ENOMEM);
-        return Status::IOError("Unexpected error(" + ToString(result) +
+        return STATUS(IOError, "Unexpected error(" + ToString(result) +
                                ") accessing file `" + fname + "' ");
     }
   }
@@ -352,7 +352,7 @@ class PosixEnv : public Env {
       } else if (!DirExists(name)) { // Check that name is actually a
                                      // directory.
         // Message is taken from mkdir
-        result = Status::IOError("`"+name+"' exists but is not a directory");
+        result = STATUS(IOError, "`"+name+"' exists but is not a directory");
       }
     }
     return result;
@@ -402,7 +402,7 @@ class PosixEnv : public Env {
     Status result;
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
-        return Status::NotSupported("No cross FS links allowed");
+        return STATUS(NotSupported, "No cross FS links allowed");
       }
       result = IOError(src, errno);
     }
@@ -461,7 +461,7 @@ class PosixEnv : public Env {
       *result = env;
     } else {
       char buf[100];
-      snprintf(buf, sizeof(buf), "/tmp/rocksdbtest-%d", int(geteuid()));
+      snprintf(buf, sizeof(buf), "/tmp/rocksdbtest-%ud", geteuid());
       *result = buf;
     }
     // Directory may already exist
@@ -541,7 +541,7 @@ class PosixEnv : public Env {
     int ret = gethostname(name, static_cast<size_t>(len));
     if (ret < 0) {
       if (errno == EFAULT || errno == EINVAL)
-        return Status::InvalidArgument(strerror(errno));
+        return STATUS(InvalidArgument, strerror(errno));
       else
         return IOError("GetHostName", errno);
     }
@@ -567,7 +567,7 @@ class PosixEnv : public Env {
     char the_path[256];
     char* ret = getcwd(the_path, 256);
     if (ret == nullptr) {
-      return Status::IOError(strerror(errno));
+      return STATUS(IOError, strerror(errno));
     }
 
     *output_path = ret;
@@ -650,7 +650,7 @@ class PosixEnv : public Env {
   bool SupportsFastAllocate(const std::string& path) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
     struct statfs s;
-    if (statfs(path.c_str(), &s)){
+    if (statfs(path.c_str(), &s)) {
       return false;
     }
     switch (s.f_type) {
@@ -757,9 +757,9 @@ std::string Env::GenerateUniqueId() {
   char uuid2[200];
   snprintf(uuid2,
            200,
-           "%lx-%lx",
-           (unsigned long)nanos_uuid_portion,
-           (unsigned long)random_uuid_portion);
+           "%" PRIu64 "x-%" PRIu64 "x",
+           nanos_uuid_portion,
+           random_uuid_portion);
   return uuid2;
 }
 

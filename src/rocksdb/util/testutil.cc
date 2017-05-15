@@ -434,7 +434,7 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
     switch (static_cast<TestBoundaryUserValueTag>(tag)) {
       case TAG_INT_VALUE: {
         if (sizeof(int64_t) != data.size()) {
-          return Status::Corruption("Invalid size of data " + std::to_string(data.size()));
+          return STATUS(Corruption, "Invalid size of data " + std::to_string(data.size()));
         }
 
         int64_t temp;

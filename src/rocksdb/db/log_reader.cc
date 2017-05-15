@@ -24,7 +24,7 @@ Reader::Reporter::~Reporter() {
 }
 
 Reader::Reader(std::shared_ptr<Logger> info_log,
-	       unique_ptr<SequentialFileReader>&& _file,
+               unique_ptr<SequentialFileReader>&& _file,
                Reporter* reporter, bool checksum, uint64_t initial_offset,
                uint64_t log_num)
     : info_log_(info_log),
@@ -121,7 +121,7 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch,
           ReportCorruption(scratch->size(), "partial record without end(2)");
         }
         prospective_record_offset = physical_record_offset;
-        scratch->assign(fragment.data(), fragment.size());
+        scratch->assign(fragment.cdata(), fragment.size());
         in_fragmented_record = true;
         break;
 
@@ -131,7 +131,7 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch,
           ReportCorruption(fragment.size(),
                            "missing start of fragmented record(1)");
         } else {
-          scratch->append(fragment.data(), fragment.size());
+          scratch->append(fragment.cdata(), fragment.size());
         }
         break;
 
@@ -141,7 +141,7 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch,
           ReportCorruption(fragment.size(),
                            "missing start of fragmented record(2)");
         } else {
-          scratch->append(fragment.data(), fragment.size());
+          scratch->append(fragment.cdata(), fragment.size());
           *record = Slice(*scratch);
           last_record_offset_ = prospective_record_offset;
           return true;
@@ -236,7 +236,7 @@ void Reader::UnmarkEOF() {
   // backing_store_ is used to concatenate what is left in buffer_ and
   // the remainder of the block. If buffer_ already uses backing_store_,
   // we just append the new data.
-  if (buffer_.data() != backing_store_ + consumed_bytes) {
+  if (buffer_.cdata() != backing_store_ + consumed_bytes) {
     // Buffer_ does not use backing_store_ for storage.
     // Copy what is left in buffer_ to backing_store.
     memmove(backing_store_ + consumed_bytes, buffer_.data(), buffer_.size());
@@ -258,7 +258,7 @@ void Reader::UnmarkEOF() {
     return;
   }
 
-  if (read_buffer.data() != backing_store_ + eof_offset_) {
+  if (read_buffer.cdata() != backing_store_ + eof_offset_) {
     // Read did not write to backing_store_
     memmove(backing_store_ + eof_offset_, read_buffer.data(),
       read_buffer.size());
@@ -276,7 +276,7 @@ void Reader::UnmarkEOF() {
 }
 
 void Reader::ReportCorruption(size_t bytes, const char* reason) {
-  ReportDrop(bytes, Status::Corruption(reason));
+  ReportDrop(bytes, STATUS(Corruption, reason));
 }
 
 void Reader::ReportDrop(size_t bytes, const Status& reason) {
@@ -326,13 +326,13 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result, size_t* drop_size) {
     if (buffer_.size() < (size_t)kHeaderSize) {
       int r;
       if (!ReadMore(drop_size, &r)) {
-	return r;
+        return r;
       }
       continue;
     }
 
     // Parse the header
-    const char* header = buffer_.data();
+    const char* header = buffer_.cdata();
     const uint32_t a = static_cast<uint32_t>(header[4]) & 0xff;
     const uint32_t b = static_cast<uint32_t>(header[5]) & 0xff;
     const unsigned int type = header[6];
@@ -342,11 +342,11 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result, size_t* drop_size) {
       header_size = kRecyclableHeaderSize;
       // We need enough for the larger header
       if (buffer_.size() < (size_t)kRecyclableHeaderSize) {
-	int r;
-	if (!ReadMore(drop_size, &r)) {
+        int r;
+        if (!ReadMore(drop_size, &r)) {
           return r;
         }
-	continue;
+        continue;
       }
       const uint32_t log_num = DecodeFixed32(header + 7);
       if (log_num != log_number_) {

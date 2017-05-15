@@ -61,7 +61,7 @@ Status OptimisticTransactionImpl::Commit() {
   if (db_impl == nullptr) {
     // This should only happen if we support creating transactions from
     // a StackableDB and someone overrides GetRootDB().
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "DB::GetRootDB() returned an unexpected DB class");
   }
 

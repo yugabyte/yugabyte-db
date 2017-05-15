@@ -120,7 +120,7 @@ void CompactionIterator::NextFromInput() {
       // TODO(noetzli): We should have a more elegant solution for this.
       if (expect_valid_internal_key_) {
         assert(!"Corrupted internal key not expected.");
-        status_ = Status::Corruption("Corrupted internal key not expected.");
+        status_ = STATUS(Corruption, "Corrupted internal key not expected.");
         break;
       }
       key_ = current_key_.SetKey(key_);
@@ -202,8 +202,8 @@ void CompactionIterator::NextFromInput() {
     SequenceNumber last_snapshot = current_user_key_snapshot_;
     SequenceNumber prev_snapshot = 0;  // 0 means no previous snapshot
     current_user_key_snapshot_ =
-        visible_at_tip_ ? visible_at_tip_ : findEarliestVisibleSnapshot(
-                                                ikey_.sequence, &prev_snapshot);
+        visible_at_tip_ ? visible_at_tip_
+                        : FindEarliestVisibleSnapshot(ikey_.sequence, &prev_snapshot);
 
     if (clear_and_output_next_key_) {
       // In the previous iteration we encountered a single delete that we could
@@ -363,7 +363,7 @@ void CompactionIterator::NextFromInput() {
     } else if (ikey_.type == kTypeMerge) {
       if (!merge_helper_->HasOperator()) {
         LOG_TO_BUFFER(log_buffer_, "Options::merge_operator is null.");
-        status_ = Status::InvalidArgument(
+        status_ = STATUS(InvalidArgument,
             "merge_operator is not properly initialized.");
         return;
       }
@@ -420,7 +420,7 @@ void CompactionIterator::PrepareOutput() {
   }
 }
 
-inline SequenceNumber CompactionIterator::findEarliestVisibleSnapshot(
+inline SequenceNumber CompactionIterator::FindEarliestVisibleSnapshot(
     SequenceNumber in, SequenceNumber* prev_snapshot) {
   assert(snapshots_->size());
   SequenceNumber prev __attribute__((unused)) = 0;

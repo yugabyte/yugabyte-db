@@ -81,11 +81,11 @@ class DiskRowSetWriter {
   CHECKED_STATUS AppendBlock(const RowBlock &block);
 
   // Closes the CFiles and their underlying writable blocks.
-  // If no rows were written, returns Status::Aborted().
+  // If no rows were written, returns Status::kAborted.
   CHECKED_STATUS Finish();
 
   // Closes the CFiles, releasing the underlying blocks to 'closer'.
-  // If no rows were written, returns Status::Aborted().
+  // If no rows were written, returns Status::kAborted.
   CHECKED_STATUS FinishAndReleaseBlocks(fs::ScopedWritableBlockCloser* closer);
 
   // The base DiskRowSetWriter never rolls. This method is necessary for tests
@@ -105,8 +105,6 @@ class DiskRowSetWriter {
   const Schema& schema() const { return *schema_; }
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(DiskRowSetWriter);
-
   CHECKED_STATUS InitBloomFileWriter();
 
   // Initializes the index writer required for compound keys
@@ -130,6 +128,8 @@ class DiskRowSetWriter {
 
   // The last encoded key written.
   faststring last_encoded_key_;
+
+  DISALLOW_COPY_AND_ASSIGN(DiskRowSetWriter);
 };
 
 

@@ -1,12 +1,16 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_TABLE_PROPERTIES_H
+#define ROCKSDB_INCLUDE_ROCKSDB_TABLE_PROPERTIES_H
+
 #pragma once
 
 #include <stdint.h>
 #include <string>
 #include <map>
 #include "rocksdb/status.h"
+#include "rocksdb/slice.h"
 #include "rocksdb/types.h"
 
 namespace rocksdb {
@@ -114,8 +118,7 @@ class TablePropertiesCollector {
   // @params key    the user key that is inserted into the table.
   // @params value  the value that is inserted into the table.
   virtual Status Add(const Slice& /*key*/, const Slice& /*value*/) {
-    return Status::InvalidArgument(
-        "TablePropertiesCollector::Add() deprecated.");
+    return STATUS(InvalidArgument, "TablePropertiesCollector::Add() deprecated.");
   }
 
   // AddUserKey() will be called when a new key/value pair is inserted into the
@@ -171,3 +174,5 @@ class TablePropertiesCollectorFactory {
 extern uint64_t GetDeletedKeys(const UserCollectedProperties& props);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_INCLUDE_ROCKSDB_TABLE_PROPERTIES_H

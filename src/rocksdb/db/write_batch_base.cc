@@ -14,7 +14,7 @@ namespace rocksdb {
 // Simple implementation of SlicePart variants of Put().  Child classes
 // can override these method with more performant solutions if they choose.
 void WriteBatchBase::Put(ColumnFamilyHandle* column_family,
-                         const SliceParts& key, const SliceParts& value) {
+                         const yb::SliceParts& key, const SliceParts& value) {
   std::string key_buf, value_buf;
   Slice key_slice(key, &key_buf);
   Slice value_slice(value, &value_buf);

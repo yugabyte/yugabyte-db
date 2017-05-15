@@ -137,14 +137,13 @@ bool FixedSizeFilterBlockReader::MayMatch(const Slice& entry) {
 }
 
 size_t FixedSizeFilterBlockReader::ApproximateMemoryUsage() const {
-  return contents_.data.size_;
+  return contents_.data.size();
 }
 
 std::string FixedSizeFilterBlockReader::ToString() const {
   std::string result;
-  result.reserve(contents_.data.size_ * 2);
-  Slice filter = Slice(contents_.data.data_, contents_.data.size_);
-  AppendItem(&result, std::string("Filter block"), filter.ToString(true));
+  result.reserve(contents_.data.size() * 2);
+  AppendItem(&result, std::string("Filter block"), contents_.data.ToString(true));
   return result;
 }
 }  // namespace rocksdb

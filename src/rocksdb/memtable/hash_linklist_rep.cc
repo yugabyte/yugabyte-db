@@ -382,7 +382,7 @@ class HashLinkListRep : public MemTableRep {
 
   class DynamicIterator : public HashLinkListRep::LinkListIterator {
    public:
-    explicit DynamicIterator(HashLinkListRep& memtable_rep)
+    explicit DynamicIterator(const HashLinkListRep& memtable_rep)
         : HashLinkListRep::LinkListIterator(&memtable_rep, nullptr),
           memtable_rep_(memtable_rep) {}
 
@@ -406,7 +406,7 @@ class HashLinkListRep : public MemTableRep {
         } else {
           IterKey encoded_key;
           encoded_key.EncodeLengthPrefixedKey(k);
-          skip_list_iter_->Seek(encoded_key.GetKey().data());
+          skip_list_iter_->Seek(encoded_key.GetKey().cdata());
         }
       } else {
         // The bucket is organized as a linked list
@@ -698,7 +698,7 @@ void HashLinkListRep::Get(const LookupKey& k, void* callback_args,
   if (skip_list_header != nullptr) {
     // Is a skip list
     MemtableSkipList::Iterator iter(&skip_list_header->skip_list);
-    for (iter.Seek(k.memtable_key().data());
+    for (iter.Seek(k.memtable_key().cdata());
          iter.Valid() && callback_func(callback_args, iter.key());
          iter.Next()) {
     }

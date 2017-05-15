@@ -272,7 +272,7 @@ void ThreadPool::SetRunTimeMicrosHistogram(const scoped_refptr<Histogram>& hist)
 void ThreadPool::DispatchThread(bool permanent) {
   MutexLock unique_lock(lock_);
   while (true) {
-    // Note: Status::Aborted() is used to indicate normal shutdown.
+    // Note: STATUS(Aborted, ) is used to indicate normal shutdown.
     if (!pool_status_.ok()) {
       VLOG(2) << "DispatchThread exiting: " << pool_status_.ToString();
       break;

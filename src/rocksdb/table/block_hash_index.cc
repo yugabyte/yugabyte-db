@@ -32,7 +32,7 @@ Status CreateBlockHashIndex(const SliceTransform* hash_key_extractor,
     if (!GetVarint32(&meta_pos, &prefix_size) ||
         !GetVarint32(&meta_pos, &entry_index) ||
         !GetVarint32(&meta_pos, &num_blocks)) {
-      s = Status::Corruption(
+      s = STATUS(Corruption,
           "Corrupted prefix meta block: unable to read from it.");
       break;
     }
@@ -43,7 +43,7 @@ Status CreateBlockHashIndex(const SliceTransform* hash_key_extractor,
   }
 
   if (s.ok() && pos != prefixes.size()) {
-    s = Status::Corruption("Corrupted prefix meta block");
+    s = STATUS(Corruption, "Corrupted prefix meta block");
   }
 
   if (!s.ok()) {

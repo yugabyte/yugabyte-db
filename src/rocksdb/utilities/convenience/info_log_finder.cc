@@ -19,7 +19,7 @@ Status GetInfoLogList(DB* db, std::vector<std::string>* info_log_list) {
   std::string path;
 
   if (!db) {
-    return Status::InvalidArgument("DB pointer is not valid");
+    return STATUS(InvalidArgument, "DB pointer is not valid");
   }
 
   const Options& options = db->GetOptions();

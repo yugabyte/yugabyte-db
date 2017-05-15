@@ -95,7 +95,7 @@ Status DeleteScheduler::MoveToTrash(const std::string& file_path,
   // Figure out the name of the file in trash folder
   size_t idx = file_path.rfind("/");
   if (idx == std::string::npos || idx == file_path.size() - 1) {
-    return Status::InvalidArgument("file_path is corrupted");
+    return STATUS(InvalidArgument, "file_path is corrupted");
   }
   *path_in_trash = trash_dir_ + file_path.substr(idx);
   std::string unique_suffix = "";

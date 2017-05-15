@@ -302,7 +302,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
   const string& filename() const override { return filename_; }
 
   size_t memory_footprint() const override {
-    return yb_malloc_usable_size(this) + filename_.capacity();
+    return malloc_usable_size(this) + filename_.capacity();
   }
 };
 

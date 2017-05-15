@@ -19,6 +19,7 @@
 
 #include "rocksdb/version.h"
 #include "rocksdb/listener.h"
+#include "rocksdb/slice.h"
 #include "rocksdb/universal_compaction.h"
 
 #ifdef max
@@ -43,7 +44,6 @@ class TableFactory;
 class MemTableRepFactory;
 class TablePropertiesCollectorFactory;
 class RateLimiter;
-class Slice;
 class SliceTransform;
 class Statistics;
 class InternalKeyComparator;

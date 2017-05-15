@@ -194,7 +194,7 @@ void TwoLevelIterator::InitDataBlock() {
       // no need to change anything
     } else {
       InternalIterator* iter = state_->NewSecondaryIterator(handle);
-      data_block_handle_.assign(handle.data(), handle.size());
+      data_block_handle_.assign(handle.cdata(), handle.size());
       SetSecondLevelIterator(iter);
     }
   }

@@ -133,7 +133,7 @@ Status TransactionImpl::DoCommit(WriteBatch* batch) {
 
   if (expiration_time_ > 0) {
     if (IsExpired()) {
-      return Status::Expired();
+      return STATUS(Expired, "");
     }
 
     // Transaction should only be committed if the thread succeeds
@@ -151,7 +151,7 @@ Status TransactionImpl::DoCommit(WriteBatch* batch) {
       s = db_->Write(write_options_, batch);
     } else {
       assert(exec_status_ == LOCKS_STOLEN);
-      return Status::Expired();
+      return STATUS(Expired, "");
     }
   } else {
     s = db_->Write(write_options_, batch);

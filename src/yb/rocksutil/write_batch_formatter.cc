@@ -75,7 +75,7 @@ void WriteBatchFormatter::OutputField(const rocksdb::Slice& value) {
     out_ << ", ";
   }
   need_separator_ = true,
-  out_ << FormatBytesAsStr(value.data(), value.size(), QuotesType::kSingleQuotes);
+  out_ << FormatBytesAsStr(value.cdata(), value.size(), QuotesType::kSingleQuotes);
 }
 
 void WriteBatchFormatter::FinishOutputLine() {

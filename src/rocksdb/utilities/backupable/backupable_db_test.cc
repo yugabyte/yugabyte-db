@@ -120,11 +120,11 @@ class DummyDB : public StackableDB {
     bool alive_;
   }; // DummyLogFile
 
-  Status GetSortedWalFiles(VectorLogPtr& files) override {
+  Status GetSortedWalFiles(VectorLogPtr* files) override {
     EXPECT_TRUE(!deletions_enabled_);
-    files.resize(wal_files_.size());
-    for (size_t i = 0; i < files.size(); ++i) {
-      files[i].reset(
+    files->resize(wal_files_.size());
+    for (size_t i = 0; i < files->size(); ++i) {
+      (*files)[i].reset(
           new DummyLogFile(wal_files_[i].first, wal_files_[i].second));
     }
     return Status::OK();
@@ -182,7 +182,7 @@ class TestEnv : public EnvWrapper {
     MutexLock l(&mutex_);
     written_files_.push_back(f);
     if (limit_written_files_ <= 0) {
-      return Status::NotSupported("Sorry, can't do this");
+      return STATUS(NotSupported, "Sorry, can't do this");
     }
     limit_written_files_--;
     return EnvWrapper::NewWritableFile(f, r, options);
@@ -227,7 +227,7 @@ class TestEnv : public EnvWrapper {
   Status GetChildren(const std::string& dir,
                      std::vector<std::string>* r) override {
     if (get_children_failure_) {
-      return Status::IOError("SimulatedFailure");
+      return STATUS(IOError, "SimulatedFailure");
     }
     return EnvWrapper::GetChildren(dir, r);
   }
@@ -255,7 +255,7 @@ class TestEnv : public EnvWrapper {
 
   Status CreateDirIfMissing(const std::string& d) override {
     if (create_dir_if_missing_failure_) {
-      return Status::IOError("SimulatedFailure");
+      return STATUS(IOError, "SimulatedFailure");
     }
     return EnvWrapper::CreateDirIfMissing(d);
   }
@@ -264,7 +264,7 @@ class TestEnv : public EnvWrapper {
   virtual Status NewDirectory(const std::string& name,
                               unique_ptr<Directory>* result) override {
     if (new_directory_failure_) {
-      return Status::IOError("SimulatedFailure");
+      return STATUS(IOError, "SimulatedFailure");
     }
     return EnvWrapper::NewDirectory(name, result);
   }
@@ -290,7 +290,7 @@ class FileManager : public EnvWrapper {
     std::vector<std::string> children;
     GetChildren(dir, &children);
     if (children.size() <= 2) { // . and ..
-      return Status::NotFound("");
+      return STATUS(NotFound, "");
     }
     while (true) {
       int i = rnd_.Next() % children.size();
@@ -300,7 +300,7 @@ class FileManager : public EnvWrapper {
     }
     // should never get here
     assert(false);
-    return Status::NotFound("");
+    return STATUS(NotFound, "");
   }
 
   Status AppendToRandomFileInDir(const std::string& dir,
@@ -308,7 +308,7 @@ class FileManager : public EnvWrapper {
     std::vector<std::string> children;
     GetChildren(dir, &children);
     if (children.size() <= 2) {
-      return Status::NotFound("");
+      return STATUS(NotFound, "");
     }
     while (true) {
       int i = rnd_.Next() % children.size();
@@ -318,7 +318,7 @@ class FileManager : public EnvWrapper {
     }
     // should never get here
     assert(false);
-    return Status::NotFound("");
+    return STATUS(NotFound, "");
   }
 
   Status CorruptFile(const std::string& fname, uint64_t bytes_to_corrupt) {
@@ -353,15 +353,15 @@ class FileManager : public EnvWrapper {
 
     auto pos = metadata.find("private");
     if (pos == std::string::npos) {
-      return Status::Corruption("private file is expected");
+      return STATUS(Corruption, "private file is expected");
     }
     pos = metadata.find(" crc32 ", pos + 6);
     if (pos == std::string::npos) {
-      return Status::Corruption("checksum not found");
+      return STATUS(Corruption, "checksum not found");
     }
 
     if (metadata.size() < pos + 7) {
-      return Status::Corruption("bad CRC32 checksum value");
+      return STATUS(Corruption, "bad CRC32 checksum value");
     }
 
     if (appear_valid) {
@@ -804,8 +804,7 @@ TEST_F(BackupableDBTest, NoDoubleCopy) {
   ASSERT_OK(test_backup_env_->FileExists(backupdir_ + "/shared/00010.sst"));
 
   // 00011.sst was only in backup 1, should be deleted
-  ASSERT_EQ(Status::NotFound(),
-            test_backup_env_->FileExists(backupdir_ + "/shared/00011.sst"));
+  ASSERT_TRUE(test_backup_env_->FileExists(backupdir_ + "/shared/00011.sst").IsNotFound());
   ASSERT_OK(test_backup_env_->FileExists(backupdir_ + "/shared/00015.sst"));
 
   // MANIFEST file size should be only 100
@@ -960,22 +959,14 @@ TEST_F(BackupableDBTest, CorruptionsTest) {
   ASSERT_OK(backup_engine_->DeleteBackup(3));
   ASSERT_OK(backup_engine_->DeleteBackup(2));
   (void)backup_engine_->GarbageCollect();
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/meta/5"));
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/private/5"));
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/meta/4"));
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/private/4"));
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/meta/3"));
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/private/3"));
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/meta/2"));
-  ASSERT_EQ(Status::NotFound(),
-            file_manager_->FileExists(backupdir_ + "/private/2"));
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/meta/5").IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/private/5").IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/meta/4").IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/private/4").IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/meta/3").IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/private/3").IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/meta/2").IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(backupdir_ + "/private/2").IsNotFound());
 
   CloseBackupEngine();
   AssertBackupConsistency(0, 0, keys_iteration * 1, keys_iteration * 5);
@@ -1135,9 +1126,9 @@ TEST_F(BackupableDBTest, DeleteTmpFiles) {
   // Need to call this explicitly to delete tmp files
   (void)backup_engine_->GarbageCollect();
   CloseDBAndBackupEngine();
-  ASSERT_EQ(Status::NotFound(), file_manager_->FileExists(shared_tmp));
-  ASSERT_EQ(Status::NotFound(), file_manager_->FileExists(private_tmp_file));
-  ASSERT_EQ(Status::NotFound(), file_manager_->FileExists(private_tmp_dir));
+  ASSERT_TRUE(file_manager_->FileExists(shared_tmp).IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(private_tmp_file).IsNotFound());
+  ASSERT_TRUE(file_manager_->FileExists(private_tmp_dir).IsNotFound());
 }
 
 TEST_F(BackupableDBTest, KeepLogFiles) {

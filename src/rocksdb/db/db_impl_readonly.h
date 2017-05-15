@@ -2,6 +2,8 @@
 //  This source code is licensed under the BSD-style license found in the
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
+#ifndef ROCKSDB_DB_DB_IMPL_READONLY_H
+#define ROCKSDB_DB_DB_IMPL_READONLY_H
 
 #pragma once
 
@@ -39,35 +41,35 @@ class DBImplReadOnly : public DBImpl {
   virtual Status Put(const WriteOptions& options,
                      ColumnFamilyHandle* column_family, const Slice& key,
                      const Slice& value) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
   using DBImpl::Merge;
   virtual Status Merge(const WriteOptions& options,
                        ColumnFamilyHandle* column_family, const Slice& key,
                        const Slice& value) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
   using DBImpl::Delete;
   virtual Status Delete(const WriteOptions& options,
                         ColumnFamilyHandle* column_family,
                         const Slice& key) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
   using DBImpl::SingleDelete;
   virtual Status SingleDelete(const WriteOptions& options,
                               ColumnFamilyHandle* column_family,
                               const Slice& key) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
   virtual Status Write(const WriteOptions& options,
                        WriteBatch* updates) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
   using DBImpl::CompactRange;
   virtual Status CompactRange(const CompactRangeOptions& options,
                               ColumnFamilyHandle* column_family,
                               const Slice* begin, const Slice* end) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 
   using DBImpl::CompactFiles;
@@ -76,33 +78,33 @@ class DBImplReadOnly : public DBImpl {
       ColumnFamilyHandle* column_family,
       const std::vector<std::string>& input_file_names,
       const int output_level, const int output_path_id = -1) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 
 #ifndef ROCKSDB_LITE
   virtual Status DisableFileDeletions() override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 
   virtual Status EnableFileDeletions(bool force) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
   virtual Status GetLiveFiles(std::vector<std::string>&,
                               uint64_t* manifest_file_size,
                               bool flush_memtable = true) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 #endif  // ROCKSDB_LITE
 
   using DBImpl::Flush;
   virtual Status Flush(const FlushOptions& options,
                        ColumnFamilyHandle* column_family) override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 
   using DBImpl::SyncWAL;
   virtual Status SyncWAL() override {
-    return Status::NotSupported("Not supported operation in read only mode.");
+    return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 
  private:
@@ -112,6 +114,8 @@ class DBImplReadOnly : public DBImpl {
   DBImplReadOnly(const DBImplReadOnly&);
   void operator=(const DBImplReadOnly&);
 };
-}
+} // namespace rocksdb
 
 #endif  // !ROCKSDB_LITE
+
+#endif // ROCKSDB_DB_DB_IMPL_READONLY_H

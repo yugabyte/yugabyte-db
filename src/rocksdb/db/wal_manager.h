@@ -6,6 +6,9 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#ifndef ROCKSDB_DB_WAL_MANAGER_H
+#define ROCKSDB_DB_WAL_MANAGER_H
+
 #pragma once
 
 #include <atomic>
@@ -38,7 +41,7 @@ class WalManager {
         env_(db_options.env),
         purge_wal_files_last_run_(0) {}
 
-  Status GetSortedWalFiles(VectorLogPtr& files);
+  Status GetSortedWalFiles(VectorLogPtr* files);
 
   Status GetUpdatesSince(
       SequenceNumber seq_number, std::unique_ptr<TransactionLogIterator>* iter,
@@ -60,13 +63,11 @@ class WalManager {
   }
 
  private:
-  Status GetSortedWalsOfType(const std::string& path, VectorLogPtr& log_files,
-                             WalFileType type);
+  Status GetSortedWalsOfType(const std::string& path, VectorLogPtr* log_files, WalFileType type);
   // Requires: all_logs should be sorted with earliest log file first
   // Retains all log files in all_logs which contain updates with seq no.
   // Greater Than or Equal to the requested SequenceNumber.
-  Status RetainProbableWalFiles(VectorLogPtr& all_logs,
-                                const SequenceNumber target);
+  Status RetainProbableWalFiles(VectorLogPtr* all_logs, const SequenceNumber target);
 
   Status ReadFirstRecord(const WalFileType type, const uint64_t number,
                          SequenceNumber* sequence);
@@ -93,3 +94,5 @@ class WalManager {
 
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_WAL_MANAGER_H

@@ -55,7 +55,7 @@ class XFTransactionWriteHandler : public WriteBatch::Handler {
 
     ColumnFamilyHandle* cfh = db_impl_->GetColumnFamilyHandle(column_family_id);
     if (cfh == nullptr) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "XFUNC test could not find column family "
           "handle for id ",
           ToString(column_family_id));
@@ -72,7 +72,7 @@ class XFTransactionWriteHandler : public WriteBatch::Handler {
 
     ColumnFamilyHandle* cfh = db_impl_->GetColumnFamilyHandle(column_family_id);
     if (cfh == nullptr) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "XFUNC test could not find column family "
           "handle for id ",
           ToString(column_family_id));
@@ -89,7 +89,7 @@ class XFTransactionWriteHandler : public WriteBatch::Handler {
 
     ColumnFamilyHandle* cfh = db_impl_->GetColumnFamilyHandle(column_family_id);
     if (cfh == nullptr) {
-      return Status::InvalidArgument(
+      return STATUS(InvalidArgument,
           "XFUNC test could not find column family "
           "handle for id ",
           ToString(column_family_id));

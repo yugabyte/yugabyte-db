@@ -267,7 +267,7 @@ TEST_F(DeleteFileTest, DeleteFileWithIterator) {
 TEST_F(DeleteFileTest, DeleteLogFiles) {
   AddKeys(10, 0);
   VectorLogPtr logfiles;
-  db_->GetSortedWalFiles(logfiles);
+  db_->GetSortedWalFiles(&logfiles);
   ASSERT_GT(logfiles.size(), 0UL);
   // Take the last log file which is expected to be alive and try to delete it
   // Should not succeed because live logs are not allowed to be deleted
@@ -287,7 +287,7 @@ TEST_F(DeleteFileTest, DeleteLogFiles) {
   db_->Flush(fopts);
   AddKeys(10, 0);
   db_->Flush(fopts);
-  db_->GetSortedWalFiles(logfiles);
+  db_->GetSortedWalFiles(&logfiles);
   ASSERT_GT(logfiles.size(), 0UL);
   std::unique_ptr<LogFile> archived_log = std::move(logfiles.front());
   ASSERT_EQ(archived_log->Type(), kArchivedLogFile);
@@ -296,8 +296,7 @@ TEST_F(DeleteFileTest, DeleteLogFiles) {
   fprintf(stdout, "Deleting archived log file %s\n",
           archived_log->PathName().c_str());
   ASSERT_OK(db_->DeleteFile(archived_log->PathName()));
-  ASSERT_EQ(Status::NotFound(), env_->FileExists(options_.wal_dir + "/" +
-                                                 archived_log->PathName()));
+  ASSERT_TRUE(env_->FileExists(options_.wal_dir + "/" + archived_log->PathName()).IsNotFound());
   CloseDB();
 }
 

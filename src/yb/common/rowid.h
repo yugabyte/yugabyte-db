@@ -49,7 +49,7 @@ inline void EncodeRowId(faststring *dst, rowid_t rowid) {
 // Returns false if the Slice is too short.
 inline bool DecodeRowId(Slice *s, rowid_t *rowid) {
   uint64_t tmp;
-  bool ret = GetMemcmpableVarint64(s, &tmp);
+  bool ret = GetMemcmpableVarint64(s, &tmp).ok();
   DCHECK_LT(tmp, 1ULL << 32);
   *rowid = tmp;
   return ret;
@@ -57,4 +57,4 @@ inline bool DecodeRowId(Slice *s, rowid_t *rowid) {
 
 } // namespace yb
 
-#endif
+#endif // YB_COMMON_ROWID_H

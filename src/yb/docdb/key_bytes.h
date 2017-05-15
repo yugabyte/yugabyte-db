@@ -25,7 +25,7 @@ class KeyBytes {
 
   KeyBytes() {}
   explicit KeyBytes(const std::string& data) : data_(data) {}
-  explicit KeyBytes(const rocksdb::Slice& slice) : data_(slice.data(), slice.size()) {}
+  explicit KeyBytes(const rocksdb::Slice& slice) : data_(slice.ToBuffer()) {}
 
   std::string ToString() const {
     return yb::util::FormatBytesAsStr(data_);
@@ -134,7 +134,7 @@ class KeyBytes {
   const std::string& AsStringRef() const { return data_; }
 
   void Reset(rocksdb::Slice slice) {
-    data_ = std::string(slice.data(), slice.size());
+    data_.assign(slice.cdata(), slice.size());
   }
 
   void Clear() {

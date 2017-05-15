@@ -16,8 +16,8 @@
 // non-const method, all threads accessing the same Iterator must use
 // external synchronization.
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_ITERATOR_H_
-#define STORAGE_ROCKSDB_INCLUDE_ITERATOR_H_
+#ifndef ROCKSDB_INCLUDE_ROCKSDB_ITERATOR_H
+#define ROCKSDB_INCLUDE_ROCKSDB_ITERATOR_H
 
 #include <string>
 #include "rocksdb/slice.h"
@@ -93,7 +93,7 @@ class Iterator : public Cleanable {
 
   // If an error has occurred, return it.  Else return an ok status.
   // If non-blocking IO is requested and this operation cannot be
-  // satisfied without doing some IO, then this returns Status::Incomplete().
+  // satisfied without doing some IO, then this returns STATUS(Incomplete, ).
   virtual Status status() const = 0;
 
   // Property "rocksdb.iterator.is-key-pinned":
@@ -124,4 +124,4 @@ extern Iterator* NewErrorIterator(const Status& status);
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_INCLUDE_ITERATOR_H_
+#endif // ROCKSDB_INCLUDE_ROCKSDB_ITERATOR_H

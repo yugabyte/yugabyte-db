@@ -53,7 +53,7 @@ Status Checkpoint::Create(DB* db, Checkpoint** checkpoint_ptr) {
 }
 
 Status Checkpoint::CreateCheckpoint(const std::string& checkpoint_dir) {
-  return Status::NotSupported("");
+  return STATUS(NotSupported, "");
 }
 
 // Builds an openable snapshot of RocksDB
@@ -67,7 +67,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
 
   s = db_->GetEnv()->FileExists(checkpoint_dir);
   if (s.ok()) {
-    return Status::InvalidArgument("Directory exists");
+    return STATUS(InvalidArgument, "Directory exists");
   } else if (!s.IsNotFound()) {
     assert(s.IsIOError());
     return s;
@@ -80,7 +80,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
   }
   // if we have more than one column family, we need to also get WAL files
   if (s.ok()) {
-    s = db_->GetSortedWalFiles(live_wal_files);
+    s = db_->GetSortedWalFiles(&live_wal_files);
   }
   if (!s.ok()) {
     db_->EnableFileDeletions(false);
@@ -103,7 +103,7 @@ Status CheckpointImpl::CreateCheckpoint(const std::string& checkpoint_dir) {
     FileType type;
     bool ok = ParseFileName(live_files[i], &number, &type);
     if (!ok) {
-      s = Status::Corruption("Can't parse file name. This is very bad");
+      s = STATUS(Corruption, "Can't parse file name. This is very bad");
       break;
     }
     // we should only get sst, manifest and current files here

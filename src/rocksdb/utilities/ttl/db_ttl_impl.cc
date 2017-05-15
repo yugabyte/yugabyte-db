@@ -80,7 +80,7 @@ Status DBWithTTL::Open(
     std::vector<int32_t> ttls, bool read_only) {
 
   if (ttls.size() != column_families.size()) {
-    return Status::InvalidArgument(
+    return STATUS(InvalidArgument,
         "ttls size has to be the same as number of column families");
   }
 
@@ -136,7 +136,7 @@ Status DBWithTTLImpl::AppendTS(const Slice& val, std::string* val_with_ts,
     return st;
   }
   EncodeFixed32(ts_string, (int32_t)curtime);
-  val_with_ts->append(val.data(), val.size());
+  val_with_ts->append(val.cdata(), val.size());
   val_with_ts->append(ts_string, kTSLength);
   return st;
 }
@@ -145,13 +145,13 @@ Status DBWithTTLImpl::AppendTS(const Slice& val, std::string* val_with_ts,
 // timestamp refers to a time lesser than ttl-feature release time
 Status DBWithTTLImpl::SanityCheckTimestamp(const Slice& str) {
   if (str.size() < kTSLength) {
-    return Status::Corruption("Error: value's length less than timestamp's\n");
+    return STATUS(Corruption, "Error: value's length less than timestamp's\n");
   }
   // Checks that TS is not lesser than kMinTimestamp
   // Gaurds against corruption & normal database opened incorrectly in ttl mode
   int32_t timestamp_value = DecodeFixed32(str.data() + str.size() - kTSLength);
   if (timestamp_value < kMinTimestamp) {
-    return Status::Corruption("Error: Timestamp < ttl feature release time!\n");
+    return STATUS(Corruption, "Error: Timestamp < ttl feature release time!\n");
   }
   return Status::OK();
 }
@@ -174,7 +174,7 @@ bool DBWithTTLImpl::IsStale(const Slice& value, int32_t ttl, Env* env) {
 Status DBWithTTLImpl::StripTS(std::string* str) {
   Status st;
   if (str->length() < kTSLength) {
-    return Status::Corruption("Bad timestamp in key-value");
+    return STATUS(Corruption, "Bad timestamp in key-value");
   }
   // Erasing characters which hold the TS
   str->erase(str->length() - kTSLength, kTSLength);

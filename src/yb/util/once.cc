@@ -26,7 +26,7 @@ size_t YBOnceDynamic::memory_footprint_excluding_this() const {
 }
 
 size_t YBOnceDynamic::memory_footprint_including_this() const {
-  return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
+  return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
 } // namespace yb

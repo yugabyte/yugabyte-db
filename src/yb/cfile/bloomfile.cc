@@ -15,10 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <mutex>
 #include <sched.h>
-#include <string>
 #include <unistd.h>
+
+#include <mutex>
+#include <string>
 
 #include "yb/cfile/bloomfile.h"
 #include "yb/cfile/cfile_writer.h"
@@ -285,7 +286,7 @@ Status BloomFileReader::CheckKeyPresent(const BloomKeyProbe &probe,
 }
 
 size_t BloomFileReader::memory_footprint_excluding_reader() const {
-  size_t size = yb_malloc_usable_size(this);
+  size_t size = malloc_usable_size(this);
 
   size += init_once_.memory_footprint_excluding_this();
 
@@ -293,14 +294,14 @@ size_t BloomFileReader::memory_footprint_excluding_reader() const {
   //
   // TODO: Track the iterators' memory footprint? May change with every seek;
   // not clear if it's worth doing.
-  size += yb_malloc_usable_size(
+  size += malloc_usable_size(
       const_cast<BloomFileReader*>(this)->index_iters_.c_array());
   for (int i = 0; i < index_iters_.size(); i++) {
-    size += yb_malloc_usable_size(&index_iters_[i]);
+    size += malloc_usable_size(&index_iters_[i]);
   }
 
   if (iter_locks_) {
-    size += yb_malloc_usable_size(iter_locks_.get());
+    size += malloc_usable_size(iter_locks_.get());
   }
 
   return size;

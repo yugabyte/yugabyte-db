@@ -106,7 +106,7 @@ class DummyTableFactory : public TableFactory {
                                 unique_ptr<RandomAccessFileReader>&& file,
                                 uint64_t file_size,
                                 unique_ptr<TableReader>* table_reader) const override  {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
 
   bool IsSplitSstForWriteSupported() const override { return false; }
@@ -119,7 +119,7 @@ class DummyTableFactory : public TableFactory {
 
   virtual Status SanitizeOptions(const DBOptions& db_opts,
                                  const ColumnFamilyOptions& cf_opts) const override {
-    return Status::NotSupported();
+    return STATUS(NotSupported, "");
   }
 
   std::string GetPrintableTableOptions() const override { return ""; }

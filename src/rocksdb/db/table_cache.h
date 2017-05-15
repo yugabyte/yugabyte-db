@@ -8,11 +8,14 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 // Thread-safe (provides internal synchronization)
+#ifndef ROCKSDB_DB_TABLE_CACHE_H
+#define ROCKSDB_DB_TABLE_CACHE_H
 
 #pragma once
+#include <stdint.h>
+
 #include <string>
 #include <vector>
-#include <stdint.h>
 
 #include "db/dbformat.h"
 #include "port/port.h"
@@ -81,7 +84,7 @@ class TableCache {
   // @no_io: indicates if we should load table to the cache if it is not present
   //         in table cache yet.
   // @returns: `properties` will be reset on success. Please note that we will
-  //            return Status::Incomplete() if table is not present in cache and
+  //            return STATUS(Incomplete, ) if table is not present in cache and
   //            we set `no_io` to be true.
   Status GetTableProperties(const EnvOptions& toptions,
                             const InternalKeyComparator& internal_comparator,
@@ -115,3 +118,5 @@ class TableCache {
 };
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_DB_TABLE_CACHE_H

@@ -2,12 +2,17 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
+#ifndef ROCKSDB_TABLE_BLOCK_HASH_INDEX_H
+#define ROCKSDB_TABLE_BLOCK_HASH_INDEX_H
+
 #pragma once
 
 #include <string>
 #include <unordered_map>
 
+#include "rocksdb/slice.h"
 #include "rocksdb/status.h"
+
 #include "util/arena.h"
 #include "util/murmurhash.h"
 
@@ -15,7 +20,6 @@ namespace rocksdb {
 
 class Comparator;
 class InternalIterator;
-class Slice;
 class SliceTransform;
 
 // Build a hash-based index to speed up the lookup for "index block".
@@ -84,3 +88,5 @@ BlockHashIndex* CreateBlockHashIndexOnTheFly(
     const SliceTransform* hash_key_extractor);
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_TABLE_BLOCK_HASH_INDEX_H

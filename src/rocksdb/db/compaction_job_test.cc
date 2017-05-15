@@ -118,12 +118,12 @@ class CompactionJobTest : public testing::Test {
 
       if (first_key ||
           cfd_->user_comparator()->Compare(key.user_key, smallest) < 0) {
-        smallest.assign(key.user_key.data(), key.user_key.size());
+        smallest = key.user_key.ToBuffer();
         smallest_key = InternalKey::DecodeFrom(skey);
       }
       if (first_key ||
           cfd_->user_comparator()->Compare(key.user_key, largest) > 0) {
-        largest.assign(key.user_key.data(), key.user_key.size());
+        largest = key.user_key.ToBuffer();
         largest_key = InternalKey::DecodeFrom(skey);
       }
 

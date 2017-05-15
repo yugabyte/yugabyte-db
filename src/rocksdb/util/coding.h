@@ -11,11 +11,14 @@
 // * Fixed-length numbers are encoded with least-significant byte first
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
+#ifndef ROCKSDB_UTIL_CODING_H
+#define ROCKSDB_UTIL_CODING_H
 
 #pragma once
-#include <algorithm>
 #include <stdint.h>
 #include <string.h>
+
+#include <algorithm>
 #include <string>
 
 #include "rocksdb/write_batch.h"
@@ -51,8 +54,8 @@ extern Slice GetSliceUntil(Slice* slice, char delimiter);
 // in *v and return a pointer just past the parsed value, or return
 // nullptr on error.  These routines only look at bytes in the range
 // [p..limit-1]
-extern const char* GetVarint32Ptr(const char* p,const char* limit, uint32_t* v);
-extern const char* GetVarint64Ptr(const char* p,const char* limit, uint64_t* v);
+extern const char* GetVarint32Ptr(const char* p, const char* limit, uint32_t* v);
+extern const char* GetVarint64Ptr(const char* p, const char* limit, uint64_t* v);
 
 // Returns the length of the varint32 or varint64 encoding of "v"
 extern int VarintLength(uint64_t v);
@@ -85,6 +88,10 @@ inline uint32_t DecodeFixed32(const char* ptr) {
   }
 }
 
+inline uint32_t DecodeFixed32(const uint8_t* ptr) {
+  return DecodeFixed32(reinterpret_cast<const char*>(ptr));
+}
+
 inline uint64_t DecodeFixed64(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
@@ -96,6 +103,10 @@ inline uint64_t DecodeFixed64(const char* ptr) {
     uint64_t hi = DecodeFixed32(ptr + 4);
     return (hi << 32) | lo;
   }
+}
+
+inline uint64_t DecodeFixed64(const uint8_t* ptr) {
+  return DecodeFixed64(reinterpret_cast<const char*>(ptr));
 }
 
 // Internal routine for use by fallback path of GetVarint32Ptr
@@ -179,7 +190,7 @@ inline void PutVarint64(std::string* dst, uint64_t v) {
 
 inline void PutLengthPrefixedSlice(std::string* dst, const Slice& value) {
   PutVarint32(dst, static_cast<uint32_t>(value.size()));
-  dst->append(value.data(), value.size());
+  dst->append(value.cdata(), value.size());
 }
 
 inline void PutLengthPrefixedSliceParts(std::string* dst,
@@ -190,7 +201,7 @@ inline void PutLengthPrefixedSliceParts(std::string* dst,
   }
   PutVarint32(dst, static_cast<uint32_t>(total_bytes));
   for (int i = 0; i < slice_parts.num_parts; ++i) {
-    dst->append(slice_parts.parts[i].data(), slice_parts.parts[i].size());
+    dst->append(slice_parts.parts[i].cdata(), slice_parts.parts[i].size());
   }
 }
 
@@ -213,7 +224,7 @@ inline bool GetFixed64(Slice* input, uint64_t* value) {
 }
 
 inline bool GetVarint32(Slice* input, uint32_t* value) {
-  const char* p = input->data();
+  const char* p = input->cdata();
   const char* limit = p + input->size();
   const char* q = GetVarint32Ptr(p, limit, value);
   if (q == nullptr) {
@@ -225,7 +236,7 @@ inline bool GetVarint32(Slice* input, uint32_t* value) {
 }
 
 inline bool GetVarint64(Slice* input, uint64_t* value) {
-  const char* p = input->data();
+  const char* p = input->cdata();
   const char* limit = p + input->size();
   const char* q = GetVarint64Ptr(p, limit, value);
   if (q == nullptr) {
@@ -266,3 +277,5 @@ inline Slice GetSliceUntil(Slice* slice, char delimiter) {
 }
 
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_CODING_H

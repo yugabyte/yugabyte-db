@@ -152,7 +152,7 @@ Status DBImpl::GetLiveFiles(std::vector<std::string> &ret,
   return Status::OK();
 }
 
-Status DBImpl::GetSortedWalFiles(VectorLogPtr& files) {
+Status DBImpl::GetSortedWalFiles(VectorLogPtr* files) {
   return wal_manager_.GetSortedWalFiles(files);
 }
 

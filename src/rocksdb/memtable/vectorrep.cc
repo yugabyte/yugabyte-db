@@ -4,13 +4,13 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
 #ifndef ROCKSDB_LITE
-#include "rocksdb/memtablerep.h"
-
 #include <unordered_set>
 #include <set>
 #include <memory>
 #include <algorithm>
 #include <type_traits>
+
+#include "rocksdb/memtablerep.h"
 
 #include "util/arena.h"
 #include "db/memtable.h"
@@ -21,7 +21,7 @@
 namespace rocksdb {
 namespace {
 
-using namespace stl_wrappers;
+using stl_wrappers::Compare;
 
 class VectorRep : public MemTableRep {
  public:
@@ -252,7 +252,7 @@ void VectorRep::Get(const LookupKey& k, void* callback_args,
   VectorRep::Iterator iter(vector_rep, immutable_ ? bucket_ : bucket, compare_);
   rwlock_.ReadUnlock();
 
-  for (iter.Seek(k.user_key(), k.memtable_key().data());
+  for (iter.Seek(k.user_key(), k.memtable_key().cdata());
        iter.Valid() && callback_func(callback_args, iter.key()); iter.Next()) {
   }
 }
