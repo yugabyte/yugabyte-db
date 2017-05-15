@@ -2,11 +2,11 @@
 
 import React, { Component } from 'react';
 import { FormattedNumber } from 'react-intl';
-import { isValidNumber } from 'utils/ObjectUtils';
+import { isFinite } from 'lodash';
 
 export default class YBFormattedNumber extends Component {
   render() {
-    if (!isValidNumber(this.props.value)) {
+    if (!isFinite(this.props.value)) {
       return <span>n/a</span>;
     }
     return (

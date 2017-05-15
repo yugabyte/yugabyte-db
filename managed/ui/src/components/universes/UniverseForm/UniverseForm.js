@@ -2,7 +2,7 @@ import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
 import _ from 'lodash';
-import { isDefinedNotNull, isValidArray, isValidObject, areIntentsEqual } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isValidArray, isNonEmptyObject, areIntentsEqual } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
   YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
 } from 'components/common/forms/fields';
@@ -94,7 +94,7 @@ export default class UniverseForm extends Component {
           return item.value;
         });
       }
-      if (isValidObject(universeTaskParams.placementInfo)) {
+      if (isDefinedNotNull(universeTaskParams.placementInfo)) {
         universeTaskParams.placementInfo.isCustom = this.state.isCustom;
       }
       if (currentUniverse) {
@@ -275,12 +275,13 @@ export default class UniverseForm extends Component {
     var self = this;
     const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
-        && isValidArray(nextProps.cloud.instanceTypes.data) && !isValidArray(Object.keys(this.state.deviceInfo))
-        && isValidObject(this.state.instanceTypeSelected)) {
+        && isValidArray(nextProps.cloud.instanceTypes.data)
+        && isNonEmptyObject(this.state.deviceInfo)
+        && isDefinedNotNull(this.state.instanceTypeSelected)) {
       let instanceTypeSelected = nextProps.cloud.instanceTypes.data.find(function(item){
         return item.instanceTypeCode ===  self.state.instanceTypeSelected;
       });
-      if (isValidObject(instanceTypeSelected) && isValidArray(Object.keys(instanceTypeSelected))) {
+      if (isNonEmptyObject(instanceTypeSelected)) {
         let volumesList = instanceTypeSelected.instanceTypeDetails.volumeDetailsList;
         let volumeDetail = volumesList[0];
         let mountPoints = null;
@@ -307,14 +308,14 @@ export default class UniverseForm extends Component {
 
     // Set Default Software Package in case of Create
     if (nextProps.softwareVersions !== this.props.softwareVersions
-        && !isValidObject(this.props.universe.currentUniverse)
+        && !_.isObject(this.props.universe.currentUniverse)
         && isValidArray(nextProps.softwareVersions)
         && !isValidArray(this.props.softwareVersions)) {
       this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
     }
 
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
-    if (currentUniverse && isValidArray(Object.keys(currentUniverse)) && showModal
+    if (currentUniverse && isNonEmptyObject(currentUniverse) && showModal
         && !this.props.universe.showModal && visibleModal === "universeModal") {
       var userIntent  = currentUniverse.universeDetails.userIntent;
       this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
@@ -371,7 +372,7 @@ export default class UniverseForm extends Component {
         groups[prefix] ? groups[prefix].push(it.instanceTypeCode): groups[prefix] = [it.instanceTypeCode];
         return groups;
       }, {});
-      if (isValidArray(Object.keys(optGroups))) {
+      if (isNonEmptyObject(optGroups)) {
         universeInstanceTypeList = Object.keys(optGroups).map(function(key, idx){
           return(
             <optgroup label={`${key.toUpperCase()} type instances`} key={key+idx}>
@@ -418,7 +419,7 @@ export default class UniverseForm extends Component {
     })
 
     var accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
-    if (isValidObject(accessKeys) && isValidArray(accessKeys.data)) {
+    if (_.isObject(accessKeys) && isValidArray(accessKeys.data)) {
       accessKeyOptions = accessKeys.data.map(function(item, idx){
         return <option key={idx} value={item.idKey.keyCode}>{item.idKey.keyCode}</option>
       })
@@ -435,7 +436,7 @@ export default class UniverseForm extends Component {
       return num + ' GB';
     }
     var isFieldReadOnly = universe.currentUniverse ? true : false;
-    if (isValidArray(Object.keys(self.state.deviceInfo))) {
+    if (_.isObject(self.state.deviceInfo) && isNonEmptyObject(self.state.deviceInfo)) {
       if (self.state.volumeType === 'EBS') {
         let iopsField = <span/>;
         if (self.state.deviceInfo.ebsType === 'IO1') {
