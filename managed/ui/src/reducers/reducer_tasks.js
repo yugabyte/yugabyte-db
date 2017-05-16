@@ -1,29 +1,24 @@
 // Copyright (c) YugaByte, Inc.
-import { FETCH_TASK_PROGRESS, FETCH_TASK_PROGRESS_SUCCESS,
-         FETCH_TASK_PROGRESS_FAILURE, RESET_TASK_PROGRESS, FETCH_CURRENT_TASK_PROGRESS_FAILURE,
-         FETCH_CURRENT_TASK_PROGRESS_SUCCESS, FETCH_CUSTOMER_TASKS, FETCH_CUSTOMER_TASKS_SUCCESS,
-         FETCH_CUSTOMER_TASKS_FAILURE, RESET_CUSTOMER_TASKS } from '../actions/tasks';
+import { FETCH_TASK_PROGRESS, FETCH_TASK_PROGRESS_RESPONSE, RESET_TASK_PROGRESS,
+  FETCH_CUSTOMER_TASKS, FETCH_CUSTOMER_TASKS_SUCCESS, FETCH_CUSTOMER_TASKS_FAILURE,
+  RESET_CUSTOMER_TASKS } from '../actions/tasks';
 
-const INITIAL_STATE = {taskProgressData: [], currentTaskList: {}, customerTaskList: []};
+import { getInitialState, setInitialState, setLoadingState, setPromiseResponse }  from '../utils/PromiseUtils';
+
+const INITIAL_STATE = {
+  taskProgressData: getInitialState(),
+  currentTaskList: {},
+  customerTaskList: []
+};
 
 export default function(state = INITIAL_STATE, action) {
-  let error;
   switch(action.type) {
     case FETCH_TASK_PROGRESS:
-      return { ...state, taskProgressData: [], loading: true};
-    case FETCH_TASK_PROGRESS_SUCCESS:
-      return { ...state, taskProgressData: action.payload.data, error: null, loading: false};
-    case FETCH_TASK_PROGRESS_FAILURE:
-      error = action.payload.data || {message: action.payload.error};
-      return { ...state, taskProgressData: [], error: error, loading: false};
+      return setLoadingState(state, "taskProgressData", {});
+    case FETCH_TASK_PROGRESS_RESPONSE:
+      return setPromiseResponse(state, "taskProgressData", action);
     case RESET_TASK_PROGRESS:
-      return { ...state, taskProgressData: [], error: null, loading: false};
-    case FETCH_CURRENT_TASK_PROGRESS_SUCCESS:
-      var taskList = state.currentTaskList;
-      taskList[action.payload.taskUUID] = action.payload;
-      return { ...state, currentTaskList: taskList, error: null, loading: false};
-    case FETCH_CURRENT_TASK_PROGRESS_FAILURE:
-      return { ...state}
+      return setInitialState(state, "taskProgressData", {});
     case FETCH_CUSTOMER_TASKS:
       return {...state}
     case FETCH_CUSTOMER_TASKS_SUCCESS:

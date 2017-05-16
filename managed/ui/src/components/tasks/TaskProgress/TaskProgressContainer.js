@@ -2,20 +2,14 @@
 
 import { connect } from 'react-redux';
 
-import { fetchTaskProgress, fetchTaskProgressSuccess,
-         fetchTaskProgressFailure, resetTaskProgress } from '../../../actions/tasks';
+import { fetchTaskProgress, fetchTaskProgressResponse, resetTaskProgress } from '../../../actions/tasks';
 import { TaskProgress } from '../../tasks';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     fetchTaskProgress: (taskUUID) => {
-      dispatch(fetchTaskProgress(taskUUID))
-      .then((response) => {
-        if (!response.error) {
-          dispatch(fetchTaskProgressSuccess(response.payload));
-        } else {
-          dispatch(fetchTaskProgressFailure(response.payload));
-        }
+      dispatch(fetchTaskProgress(taskUUID)).then((response) => {
+        dispatch(fetchTaskProgressResponse(response.payload));
       });
     },
     resetTaskProgress: () => {
@@ -26,8 +20,7 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state, ownProps) {
   return {
-    tasks: state.tasks,
-    universe: state.universe
+    taskProgressData: state.tasks.taskProgressData
   };
 }
 
