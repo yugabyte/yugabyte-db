@@ -6,7 +6,7 @@ import { Button, Image, ProgressBar } from 'react-bootstrap';
 import cassandraLogo from '../images/cassandra.png';
 import redisLogo from '../images/redis.png';
 import './ListTables.scss';
-import {isValidArray} from '../../../utils/ObjectUtils';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 import { CreateTableContainer } from '../../tables';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
@@ -62,12 +62,12 @@ export default class ListTables extends Component {
     var numCassandraTables = 0;
     var numRedisTables = 0;
 
-    if (isValidArray(self.props.tables.universeTablesList)) {
+    if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       self.props.tables.universeTablesList.forEach(function (item, idx) {
         if (item.tableType === "REDIS_TABLE_TYPE") {
-            numRedisTables++;
+          numRedisTables++;
         } else {
-            numCassandraTables++;
+          numCassandraTables++;
         }
       });
     }
@@ -97,7 +97,7 @@ class ListTableGrid extends Component {
     var universeUUID = this.props.universe.currentUniverse.universeUUID;
     const {universe: {universeTasks}} = this.props;
     // Do not send tables query if task type is create, status is pending and target is universe
-    if (!universeTasks || !isValidArray(universeTasks[universeUUID]) || !(universeTasks[universeUUID][0].type === "Create"
+    if (!universeTasks || !isNonEmptyArray(universeTasks[universeUUID]) || !(universeTasks[universeUUID][0].type === "Create"
       && universeTasks[universeUUID][0].status === "Running" && universeTasks[universeUUID][0].target === "Universe")) {
       this.props.fetchUniverseTables(universeUUID);
     }
@@ -141,7 +141,7 @@ class ListTableGrid extends Component {
     }
 
     var listItems = [];
-    if (isValidArray(self.props.tables.universeTablesList)) {
+    if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       listItems = self.props.tables.universeTablesList.map(function (item, idx) {
         return {
           "keySpace": item.keySpace,

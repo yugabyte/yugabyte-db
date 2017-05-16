@@ -4,7 +4,7 @@ import React, { Component, PropTypes } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBPanelItem } from '../../panels';
-import { isValidObject, isValidArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import NodeConnectModal from './NodeConnectModal';
 
 export default class NodeDetails extends Component {
@@ -21,7 +21,7 @@ export default class NodeDetails extends Component {
   render() {
     const { nodeDetails } = this.props;
 
-    if (!isValidArray(nodeDetails)) {
+    if (!isNonEmptyArray(nodeDetails)) {
       return <span />;
     }
     const nodeDetailRows = nodeDetails.filter(function(nodeDetail){

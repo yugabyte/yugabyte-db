@@ -17,7 +17,7 @@ import { YBTabsPanel } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
-import { isValidObject, isValidArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
 import {YBLoadingIcon} from '../../common/indicators';
 import './UniverseDetail.scss';
 
@@ -179,7 +179,7 @@ class UniverseTaskList extends Component {
         return (task.status !== "Failed" && task.percentComplete !== 100) ? task.id : false;
       }).filter(Boolean);
     }
-    if (isValidArray(universeTaskHistoryArray)) {
+    if (isNonEmptyArray(universeTaskHistoryArray)) {
       universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>
     }
 
