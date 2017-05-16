@@ -21,7 +21,6 @@ export default class UniverseTable extends Component {
 
   componentWillUnmount() {
     this.props.resetUniverseTasks();
-    this.props.resetTaskProgress();
   }
 
   render() {
@@ -61,12 +60,8 @@ export default class UniverseTable extends Component {
 }
 
 class YBUniverseItem extends Component {
-  componentWillMount() {
-    const {taskId} = this.props;
-    this.props.fetchCurrentTaskList(taskId);
-  }
   render() {
-    const {universe} = this.props;
+    const { universe } = this.props;
     return (
       <div className={"universe-list-item"}>
         <ListGroupItem >
