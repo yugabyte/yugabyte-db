@@ -119,7 +119,7 @@ Status RpcServer::Bind() {
 
   rpc_bound_addresses_.resize(rpc_bind_addresses_.size());
   for (size_t i = 0; i != rpc_bind_addresses_.size(); ++i) {
-    RETURN_NOT_OK(messenger_->AcceptOnAddress(rpc_bind_addresses_[i], &rpc_bound_addresses_[i]));
+    RETURN_NOT_OK(messenger_->ListenAddress(rpc_bind_addresses_[i], &rpc_bound_addresses_[i]));
   }
 
   server_state_ = BOUND;
@@ -133,6 +133,7 @@ Status RpcServer::Start() {
   CHECK_EQ(server_state_, BOUND);
   server_state_ = STARTED;
 
+  RETURN_NOT_OK(messenger_->StartAcceptor());
   string bound_addrs_str;
   for (const Sockaddr& bind_addr : rpc_bound_addresses_) {
     if (!bound_addrs_str.empty()) bound_addrs_str += ", ";

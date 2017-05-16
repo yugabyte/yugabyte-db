@@ -176,24 +176,25 @@ void Messenger::Shutdown() {
   }
 }
 
-Status Messenger::AcceptOnAddress(const Sockaddr &accept_addr, Sockaddr* bound_addr) {
-  Socket sock;
-  RETURN_NOT_OK(sock.Init(0));
-  RETURN_NOT_OK(sock.SetReuseAddr(true));
-  RETURN_NOT_OK(sock.Bind(accept_addr));
-  if (bound_addr) {
-    RETURN_NOT_OK(sock.GetSocketAddress(bound_addr));
-  }
+Status Messenger::ListenAddress(const Sockaddr &accept_addr, Sockaddr* bound_addr) {
   Acceptor* acceptor;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
     if (!acceptor_) {
       acceptor_.reset(new Acceptor(this));
-      RETURN_NOT_OK(acceptor_->Start());
     }
     acceptor = acceptor_.get();
   }
-  return acceptor->Add(std::move(sock));
+  return acceptor->Listen(accept_addr, bound_addr);
+}
+
+Status Messenger::StartAcceptor() {
+  std::lock_guard<percpu_rwlock> guard(lock_);
+  if (acceptor_) {
+    return acceptor_->Start();
+  } else {
+    return STATUS(IllegalState, "Trying to start acceptor w/o active addresses");
+  }
 }
 
 void Messenger::ShutdownAcceptor() {

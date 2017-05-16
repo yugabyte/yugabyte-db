@@ -123,9 +123,14 @@ class Messenger {
   // from MessengerBuilder::Build will automatically call this method.
   void Shutdown();
 
-  // Accept connections on given address.
-  CHECKED_STATUS AcceptOnAddress(const Sockaddr& accept_addr, Sockaddr* bound_addr = nullptr);
+  // Setup messenger to listen connections on given address.
+  CHECKED_STATUS ListenAddress(const Sockaddr& accept_addr, Sockaddr* bound_addr = nullptr);
+
+  // Stop accepting connections.
   void ShutdownAcceptor();
+
+  // Start accepting connections.
+  CHECKED_STATUS StartAcceptor();
 
   // Register a new RpcService to handle inbound requests.
   CHECKED_STATUS RegisterService(const std::string& service_name,

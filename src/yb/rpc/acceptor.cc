@@ -64,7 +64,14 @@ Acceptor::~Acceptor() {
   Shutdown();
 }
 
-Status Acceptor::Add(Socket socket) {
+Status Acceptor::Listen(const Sockaddr &address, Sockaddr* bound_address) {
+  Socket socket;
+  RETURN_NOT_OK(socket.Init(0));
+  RETURN_NOT_OK(socket.SetReuseAddr(true));
+  RETURN_NOT_OK(socket.Bind(address));
+  if (bound_address) {
+    RETURN_NOT_OK(socket.GetSocketAddress(bound_address));
+  }
   RETURN_NOT_OK(socket.SetNonBlocking(true));
   RETURN_NOT_OK(socket.Listen(FLAGS_rpc_acceptor_listen_backlog));
 
@@ -89,6 +96,7 @@ Status Acceptor::Start() {
   async_.set(loop_);
   async_.set<Acceptor, &Acceptor::AsyncHandler>(this);
   async_.start();
+  async_.send();
   return yb::Thread::Create("acceptor", "acceptor", &Acceptor::RunThread, this, &thread_);
 }
 

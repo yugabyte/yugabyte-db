@@ -170,7 +170,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   CHECK_OK(bld.Build(&server_messenger_));
 
   Sockaddr server_addr;
-  ASSERT_OK(server_messenger_->AcceptOnAddress(Sockaddr(), &server_addr));
+  ASSERT_OK(server_messenger_->ListenAddress(Sockaddr(), &server_addr));
 
   gscoped_ptr<ServiceIf> service(new GenericCalculatorService());
   service_name_ = service->service_name();
@@ -180,6 +180,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
                                   service.Pass(),
                                   server_messenger_->metric_entity());
   ASSERT_OK(server_messenger_->RegisterService(service_name_, service_pool_));
+  ASSERT_OK(server_messenger_->StartAcceptor());
 
   scoped_refptr<yb::Thread> threads[3];
   Status status[3];

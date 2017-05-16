@@ -46,8 +46,9 @@ class Acceptor {
   explicit Acceptor(Messenger *messenger);
   ~Acceptor();
 
-  // 'socket' must be already bound, but should not yet be listening.
-  CHECKED_STATUS Add(Socket socket);
+  // Setup acceptor to listen address.
+  // Return bound address in bound_address.
+  CHECKED_STATUS Listen(const Sockaddr &address, Sockaddr* bound_address);
 
   CHECKED_STATUS Start();
   void Shutdown();

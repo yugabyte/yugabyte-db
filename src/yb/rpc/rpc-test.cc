@@ -80,7 +80,8 @@ TEST_F(TestRpc, TestAcceptorPoolStartStop) {
   for (int i = 0; i < n_iters; i++) {
     shared_ptr<Messenger> messenger(CreateMessenger("TestAcceptorPoolStartStop"));
     Sockaddr bound_addr;
-    ASSERT_OK(messenger->AcceptOnAddress(Sockaddr(), &bound_addr));
+    ASSERT_OK(messenger->ListenAddress(Sockaddr(), &bound_addr));
+    ASSERT_OK(messenger->StartAcceptor());
     ASSERT_NE(0, bound_addr.port());
     messenger->Shutdown();
   }

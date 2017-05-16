@@ -415,7 +415,7 @@ class RpcTestBase : public YBTest {
   template<class ServiceClass>
   void DoStartTestServer(Sockaddr *server_addr) {
     server_messenger_ = CreateMessenger("TestServer", n_server_reactor_threads_);
-    ASSERT_OK(server_messenger_->AcceptOnAddress(Sockaddr(), server_addr));
+    ASSERT_OK(server_messenger_->ListenAddress(Sockaddr(), server_addr));
 
     constexpr size_t kQueueLength = 50;
     thread_pool_.reset(new ThreadPool("rpc-test", kQueueLength, n_worker_threads_));
@@ -427,6 +427,8 @@ class RpcTestBase : public YBTest {
                                     service.Pass(),
                                     metric_entity);
     ASSERT_OK(server_messenger_->RegisterService(service_name_, service_pool_));
+
+    ASSERT_OK(server_messenger_->StartAcceptor());
   }
 
  protected:
