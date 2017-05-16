@@ -243,6 +243,21 @@ class TabletPeerTest : public YBTabletTest,
     if (table_type_ != KUDU_COLUMNAR_TABLE_TYPE) {
       return;
     }
+
+    OpId last_log_opid;
+    // Wait for the leader election opid to be appended.
+    const MonoDelta timeout(MonoDelta::FromSeconds(10));
+    const MonoTime start(MonoTime::Now(MonoTime::FINE));
+    while (last_log_opid.index() < 1) {
+      MonoTime now(MonoTime::Now(MonoTime::FINE));
+      MonoDelta elapsed(now.GetDeltaSince(start));
+      if (elapsed.MoreThan(timeout)) {
+        FAIL() << "Leader election log entry not appended";
+      }
+      SleepFor(MonoDelta::FromMilliseconds(100));
+      tablet_peer_->log_->GetLatestEntryOpId(&last_log_opid);
+    }
+
     // Make sure that there are no registered anchors in the registry
     CHECK_EQ(0, tablet_peer_->log_anchor_registry()->GetAnchorCountForTests());
     int64_t earliest_index = -1;
@@ -250,7 +265,6 @@ class TabletPeerTest : public YBTabletTest,
     // anchors) by comparing the TabletPeer's earliest needed OpId and the last
     // entry in the log; if they match there is nothing in flight.
     CHECK_OK(tablet_peer_->GetEarliestNeededLogIndex(&earliest_index));
-    OpId last_log_opid;
     tablet_peer_->log_->GetLatestEntryOpId(&last_log_opid);
     CHECK_EQ(earliest_index, last_log_opid.index())
       << "Found unexpected anchor: " << earliest_index
