@@ -7,6 +7,7 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Token;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -124,7 +125,7 @@ public class TestKeyspace extends TestBase {
     LOG.info("--- TEST CQL: CREATE & DROP KEYSPACE TIMEOUTS - End");
   }
 
-  @Test
+  @Ignore("Enable after ENG-1468 fixed.")
   public void testNoKeyspace() throws Exception {
     LOG.info("--- TEST CQL: NO KEYSPACE - Start");
 
