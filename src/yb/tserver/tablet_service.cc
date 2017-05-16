@@ -1161,9 +1161,9 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
     return;
   }
   Status s = scope->StepDown(req, resp);
-  scope.CheckStatus(s, resp);
   LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success. Resp code="
             << TabletServerErrorPB::Code_Name(resp->error().code());
+  scope.CheckStatus(s, resp);
 }
 
 void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *req,

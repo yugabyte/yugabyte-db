@@ -2247,11 +2247,13 @@ void RaftConsensus::NotifyOriginatorAboutLostElection(const std::string& origina
       auto rpc = std::make_shared<rpc::RpcController>();
       proxy->LeaderElectionLostAsync(&req, resp.get(), rpc.get(), [this, resp, rpc] {
         if (!rpc->status().ok()) {
-          LOG_WITH_PREFIX(WARNING) << "Notify about lost election RPC failure: "
-                                   << rpc->status().ToString();
+          LOG(WARNING) << state_->LogPrefixThreadSafe()
+                       << "Notify about lost election RPC failure: "
+                       << rpc->status().ToString();
         } else if (resp->has_error()) {
-          LOG_WITH_PREFIX(WARNING) << "Notify about lost election failed: "
-                                   << StatusFromPB(resp->error().status()).ToString();
+          LOG(WARNING) << state_->LogPrefixThreadSafe()
+                       << "Notify about lost election failed: "
+                       << StatusFromPB(resp->error().status()).ToString();
         }
       });
       return;
