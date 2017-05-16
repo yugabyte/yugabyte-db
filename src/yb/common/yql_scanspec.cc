@@ -57,7 +57,7 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         return;                                                                         \
       }
 
-    // For relational conditions, the bounds are as follows. If the column is not a range column,
+    // For relational conditions, the ranges are as follows. If the column is not a range column,
     // just return since it doesn't impose a bound on a range column.
     //
     // We are not distinguishing between < and <= currently but treat the bound as inclusive lower
@@ -67,11 +67,11 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
     // inclusive bound. Same for > and >=.
     case YQL_OP_EQUAL: {
       if (has_range_column) {
-        // - <column> = <value> --> lower/upper bounds = <value>
+        // - <column> = <value> --> min/max values = <value>
         YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
-        ranges_.at(column_id).lower_bound = val_expr->value();
-        ranges_.at(column_id).upper_bound = val_expr->value();
+        ranges_.at(column_id).min_value = val_expr->value();
+        ranges_.at(column_id).max_value = val_expr->value();
       }
       return;
     }
@@ -81,11 +81,11 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
         if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
-          // - <column> <= <value> --> upper_bound = <value>
-          ranges_.at(column_id).upper_bound = val_expr->value();
+          // - <column> <= <value> --> max_value = <value>
+          ranges_.at(column_id).max_value = val_expr->value();
         } else {
-          // - <value> <= <column> --> lower_bound = <value>
-          ranges_.at(column_id).lower_bound = val_expr->value();
+          // - <value> <= <column> --> min_value = <value>
+          ranges_.at(column_id).min_value = val_expr->value();
         }
       }
       return;
@@ -96,11 +96,11 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN(col_expr, val_expr);
         const ColumnId column_id(col_expr->column_id());
         if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
-          // - <column> >= <value> --> lower_bound = <value>
-          ranges_.at(column_id).lower_bound = val_expr->value();
+          // - <column> >= <value> --> min_value = <value>
+          ranges_.at(column_id).min_value = val_expr->value();
         } else {
-          // - <value> >= <column> --> upper_bound = <value>
-          ranges_.at(column_id).upper_bound = val_expr->value();
+          // - <value> >= <column> --> max_value = <value>
+          ranges_.at(column_id).max_value = val_expr->value();
         }
       }
       return;
@@ -108,16 +108,16 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
     case YQL_OP_BETWEEN: {
       if (has_range_column) {
         // <column> BETWEEN <value_1> <value_2>:
-        // - lower_bound = <value_1>
-        // - upper_bound = <value_2>
+        // - min_value = <value_1>
+        // - max_value = <value_2>
         CHECK_EQ(operands.size(), 3);
         if (operands.Get(0).expr_case() == YQLExpressionPB::ExprCase::kColumnId) {
           const ColumnId column_id(operands.Get(0).column_id());
           if (operands.Get(1).expr_case() == YQLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).lower_bound = operands.Get(1).value();
+            ranges_.at(column_id).min_value = operands.Get(1).value();
           }
           if (operands.Get(2).expr_case() == YQLExpressionPB::ExprCase::kValue) {
-            ranges_.at(column_id).upper_bound = operands.Get(2).value();
+            ranges_.at(column_id).max_value = operands.Get(2).value();
           }
         }
       }
@@ -126,7 +126,7 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
 
 #undef YQL_GET_COLUMN_VALUE_EXPR_ELSE_RETURN
 
-    // For logical conditions, the bounds are union/intersect/complement of the operands' ranges.
+    // For logical conditions, the ranges are union/intersect/complement of the operands' ranges.
     case YQL_OP_AND: {
       CHECK_EQ(operands.size(), 2);
       CHECK_EQ(operands.Get(0).expr_case(), YQLExpressionPB::ExprCase::kCondition);
@@ -140,23 +140,23 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         const auto& right_range = right.ranges_.at(column_id);
 
         // <condition> AND <condition>:
-        // - lower_bound = max(left_lower_bound, right_lower_bound)
-        // - upper_bound = min(left_upper_bound, right_upper_bound)
-        // - if only left or right lower/upper bound is defined, it is the resulting bound.
-        if (YQLValue::BothNotNull(left_range.lower_bound, right_range.lower_bound)) {
-          range.lower_bound = std::max(left_range.lower_bound, right_range.lower_bound);
-        } else if (!YQLValue::IsNull(left_range.lower_bound)) {
-          range.lower_bound = left_range.lower_bound;
-        } else if (!YQLValue::IsNull(right_range.lower_bound)) {
-          range.lower_bound = right_range.lower_bound;
+        // - min_value = max(left_min_value, right_min_value)
+        // - max_value = min(left_max_value, right_max_value)
+        // - if only left or right min/max value is defined, it is the resulting value.
+        if (YQLValue::BothNotNull(left_range.min_value, right_range.min_value)) {
+          range.min_value = std::max(left_range.min_value, right_range.min_value);
+        } else if (!YQLValue::IsNull(left_range.min_value)) {
+          range.min_value = left_range.min_value;
+        } else if (!YQLValue::IsNull(right_range.min_value)) {
+          range.min_value = right_range.min_value;
         }
 
-        if (YQLValue::BothNotNull(left_range.upper_bound, right_range.upper_bound)) {
-          range.upper_bound = std::min(left_range.upper_bound, right_range.upper_bound);
-        } else if (!YQLValue::IsNull(left_range.upper_bound)) {
-          range.upper_bound = left_range.upper_bound;
-        } else if (!YQLValue::IsNull(right_range.upper_bound)) {
-          range.upper_bound = right_range.upper_bound;
+        if (YQLValue::BothNotNull(left_range.max_value, right_range.max_value)) {
+          range.max_value = std::min(left_range.max_value, right_range.max_value);
+        } else if (!YQLValue::IsNull(left_range.max_value)) {
+          range.max_value = left_range.max_value;
+        } else if (!YQLValue::IsNull(right_range.max_value)) {
+          range.max_value = right_range.max_value;
         }
       }
       return;
@@ -174,15 +174,15 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         const auto& right_range = right.ranges_.at(column_id);
 
         // <condition> OR <condition>:
-        // - lower_bound = min(left_lower_bound, right_lower_bound)
-        // - upper_bound = max(left_upper_bound, right_upper_bound)
-        // - if either left or right (or both) lower/upper bound is undefined, there is no bound.
-        if (YQLValue::BothNotNull(left_range.lower_bound, right_range.lower_bound)) {
-          range.lower_bound = std::min(left_range.lower_bound, right_range.lower_bound);
+        // - min_value = min(left_min_value, right_min_value)
+        // - max_value = max(left_max_value, right_max_value)
+        // - if either left or right (or both) min/max value is undefined, there is no bound.
+        if (YQLValue::BothNotNull(left_range.min_value, right_range.min_value)) {
+          range.min_value = std::min(left_range.min_value, right_range.min_value);
         }
 
-        if (YQLValue::BothNotNull(left_range.upper_bound, right_range.upper_bound)) {
-          range.upper_bound = std::max(left_range.upper_bound, right_range.upper_bound);
+        if (YQLValue::BothNotNull(left_range.max_value, right_range.max_value)) {
+          range.max_value = std::max(left_range.max_value, right_range.max_value);
         }
       }
       return;
@@ -197,17 +197,17 @@ YQLScanRange::YQLScanRange(const Schema& schema, const YQLConditionPB& condition
         const auto& other_range = other.ranges_.at(column_id);
 
         // NOT <condition>:
-        if (YQLValue::BothNotNull(other_range.lower_bound, other_range.upper_bound)) {
-          // If the condition's lower and upper bounds are defined, the negation of it will be
+        if (YQLValue::BothNotNull(other_range.min_value, other_range.max_value)) {
+          // If the condition's min and max values are defined, the negation of it will be
           // disjoint ranges at the two ends, which is not representable as a simple range. So
           // we will treat the result as unbounded.
           return;
         }
 
-        // Otherwise, for one-sided range or unbounded range, the resulting lower/upper bounds are
+        // Otherwise, for one-sided range or unbounded range, the resulting min/max values are
         // just the reverse of the bounds.
-        range.lower_bound = other_range.upper_bound;
-        range.upper_bound = other_range.lower_bound;
+        range.min_value = other_range.max_value;
+        range.max_value = other_range.min_value;
       }
       return;
     }
@@ -245,7 +245,10 @@ vector<YQLValuePB> YQLScanRange::range_values(const bool lower_bound) const {
   for (size_t i = 0; i < schema_.num_key_columns(); i++) {
     if (!schema_.column(i).is_hash_key()) {
       const auto& range = ranges_.at(schema_.column_id(i));
-      const auto& value = lower_bound ? range.lower_bound : range.upper_bound;
+      bool desc_col = schema_.column(i).sorting_type() == ColumnSchema::kDescending;
+      // lower bound for ASC column and upper bound for DESC column -> min value
+      // otherwise -> max value
+      const auto& value = lower_bound ^ desc_col ? range.min_value : range.max_value;
       if (YQLValue::IsNull(value)) {
         range_values.clear();
         break;

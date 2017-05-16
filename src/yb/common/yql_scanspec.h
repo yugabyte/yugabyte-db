@@ -21,8 +21,8 @@ class YQLScanRange {
 
   // Value range of a column
   struct YQLRange {
-    YQLValuePB lower_bound;
-    YQLValuePB upper_bound;
+    YQLValuePB min_value;
+    YQLValuePB max_value;
   };
 
   YQLScanRange(const Schema& schema, const YQLConditionPB& condition);

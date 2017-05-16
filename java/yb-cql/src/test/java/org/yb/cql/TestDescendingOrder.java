@@ -5,6 +5,8 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
+import org.yb.client.RowResult;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -82,6 +84,125 @@ public class TestDescendingOrder extends BaseCQLTest {
 
     String selectStmt = "SELECT h1, r1, r2, v1, v2 FROM test_create WHERE h1 = 1";
     return session.execute(selectStmt);
+  }
+
+
+  @Test
+  public void testScanWithBoundsDesc() throws Exception {
+    // Setting up.
+    createTable("int", "varchar", "WITH CLUSTERING ORDER BY(r1 DESC)");
+    String insertTemplate = "INSERT INTO test_create (h1, r1, r2, v1, v2) " +
+        "VALUES (1, %d, 'str_%d', 1, 'a');";
+    for (int i = 1; i <= 5; i++) {
+      for (int j = 1; j <= 5; j++) {
+        String insertStmt = String.format(insertTemplate, i, j);
+        session.execute(insertStmt);
+      }
+    }
+
+    String selectTemplate = "SELECT * FROM test_create WHERE h1 = 1 AND " +
+        "r1 %s %d AND r2 %s 'str_%d'";
+
+    // Upper bound for both DESC and ASC columns.
+    String selectStmt = String.format(selectTemplate, "<", 3, "<", 4);
+    ResultSet rs = session.execute(selectStmt);
+    // {2, 1} * {1, 2, 3}
+    assertEquals(6, rs.getAvailableWithoutFetching());
+    for (int i = 2; i > 0; i--) { // expecting r1 values in DESC order
+      for (int j = 1; j < 4; j++) { // expecting r2 values in ASC order
+        Row row = rs.one();
+        assertEquals(1, row.getInt("h1"));
+        assertEquals(i, row.getInt("r1"));
+        assertEquals("str_" + Integer.toString(j), row.getString("r2"));
+      }
+    }
+
+    // Lower bound for both DESC and ASC columns.
+    selectStmt = String.format(selectTemplate, ">", 3, ">", 2);
+    rs = session.execute(selectStmt);
+    // {5, 4} * {3, 4, 5}
+    assertEquals(6, rs.getAvailableWithoutFetching());
+    for (int i = 5; i > 3; i--) { // expecting r1 values in DESC order
+      for (int j = 3; j <= 5; j++) { // expecting r2 values in ASC order
+        Row row = rs.one();
+        assertEquals(1, row.getInt("h1"));
+        assertEquals(i, row.getInt("r1"));
+        assertEquals("str_" + Integer.toString(j), row.getString("r2"));
+      }
+    }
+
+    // Lower bound for DESC column and upper bound for ASC column.
+    selectStmt = String.format(selectTemplate, ">", 2, "<", 3);
+    rs = session.execute(selectStmt);
+    // {5, 4, 3} * {1, 2}
+    assertEquals(6, rs.getAvailableWithoutFetching());
+    for (int i = 5; i > 2; i--) { // expecting r1 values in DESC order
+      for (int j = 1; j < 3; j++) { // expecting r2 values in ASC order
+        Row row = rs.one();
+        assertEquals(1, row.getInt("h1"));
+        assertEquals(i, row.getInt("r1"));
+        assertEquals("str_" + Integer.toString(j), row.getString("r2"));
+      }
+    }
+
+    // Upper bound for DESC column and lower bound for ASC column.
+    selectStmt = String.format(selectTemplate, "<", 4, ">", 3);
+    rs = session.execute(selectStmt);
+    // {3, 2, 1} * {4, 5}
+    assertEquals(6, rs.getAvailableWithoutFetching());
+    for (int i = 3; i >= 1; i--) { // expecting r1 values in DESC order
+      for (int j = 4; j <= 5; j++) { // expecting r2 values in ASC order
+        Row row = rs.one();
+        assertEquals(1, row.getInt("h1"));
+        assertEquals(i, row.getInt("r1"));
+        assertEquals("str_" + Integer.toString(j), row.getString("r2"));
+      }
+    }
+
+    // Upper and lower bound for DESC column only.
+    selectStmt = "SELECT * FROM test_create WHERE h1 = 1 AND r1 > 1 AND r1 < 4;";
+    rs = session.execute(selectStmt);
+    // {3, 2} * {1, 2, 3, 4, 5}
+    assertEquals(10, rs.getAvailableWithoutFetching());
+    for (int i = 3; i > 1; i--) { // expecting r1 values in DESC order
+      for (int j = 1; j <= 5; j++) { // expecting r2 values in ASC order
+        Row row = rs.one();
+        assertEquals(1, row.getInt("h1"));
+        assertEquals(i, row.getInt("r1"));
+        assertEquals("str_" + Integer.toString(j), row.getString("r2"));
+      }
+    }
+
+    // Upper and lower bound for ASC column only.
+    selectStmt = "SELECT * FROM test_create WHERE h1 = 1 AND r2 > 'str_2' AND r2 < 'str_5';";
+    rs = session.execute(selectStmt);
+    // {5, 4, 3, 2, 1} * {3, 4}
+    assertEquals(10, rs.getAvailableWithoutFetching());
+    for (int i = 5; i >= 1; i--) { // expecting r1 values in DESC order
+      for (int j = 3; j < 5; j++) { // expecting r2 values in ASC order
+        Row row = rs.one();
+        assertEquals(1, row.getInt("h1"));
+        assertEquals(i, row.getInt("r1"));
+        assertEquals("str_" + Integer.toString(j), row.getString("r2"));
+      }
+    }
+
+    // Upper and lower bounds for both DESC and ASC columns.
+    selectStmt = "SELECT * FROM test_create WHERE h1 = 1 AND r1 > 1 AND r1 < 4 AND " +
+        "r2 > 'str_2' AND r2 < 'str_5';";
+    rs = session.execute(selectStmt);
+    // {3, 2} * {3, 4}
+    assertEquals(4, rs.getAvailableWithoutFetching());
+    for (int i = 3; i > 1; i--) { // expecting r1 values in DESC order
+      for (int j = 3; j < 5; j++) { // expecting r2 values in ASC order
+        Row row = rs.one();
+        assertEquals(1, row.getInt("h1"));
+        assertEquals(i, row.getInt("r1"));
+        assertEquals("str_" + Integer.toString(j), row.getString("r2"));
+      }
+    }
+
+    dropTable();
   }
 
   private void intDesc(String type, long lower_bound, long upper_bound) throws Exception {
