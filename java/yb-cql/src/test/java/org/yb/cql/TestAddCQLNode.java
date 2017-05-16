@@ -2,7 +2,7 @@ package org.yb.cql;
 
 import com.datastax.driver.core.Host;
 import org.junit.Test;
-import org.yb.client.MiniYBCluster;
+import org.yb.minicluster.MiniYBCluster;
 
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;

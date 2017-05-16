@@ -1,7 +1,7 @@
 /**
  * Copyright (c) YugaByte, Inc.
  */
-package org.yb.client;
+package org.yb.minicluster;
 
 import java.util.List;
 

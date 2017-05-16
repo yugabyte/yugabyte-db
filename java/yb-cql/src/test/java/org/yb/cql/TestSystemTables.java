@@ -10,7 +10,7 @@ import java.util.UUID;
 import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import org.yb.client.MiniYBCluster;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.master.Master;
 
 import static org.junit.Assert.assertEquals;

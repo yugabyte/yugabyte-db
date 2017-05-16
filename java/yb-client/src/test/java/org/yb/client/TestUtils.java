@@ -110,17 +110,32 @@ public class TestUtils {
     if (ybRootDir != null) {
       return ybRootDir;
     }
-    URL myUrl = BaseYBClientTest.class.getProtectionDomain().getCodeSource().getLocation();
-    File myPath = new File(urlToPath(myUrl));
-    while (myPath != null) {
-      if (new File(myPath, ".git").isDirectory()) {
-        // Cache the root dir so that we don't have to find it every time.
-        ybRootDir = myPath.getAbsolutePath();
+    final URL myUrl = BaseYBClientTest.class.getProtectionDomain().getCodeSource().getLocation();
+    final String pathToCode = urlToPath(myUrl);
+    final String currentDir = System.getProperty("user.dir");
+
+    // Try to find the YB directory root by navigating upward from either the source code location,
+    // or, if that does not work, from the current directory.
+    for (String initialPath : new String[] { pathToCode, currentDir }) {
+      ybRootDir = findGitRepoContaining(initialPath);
+      if (ybRootDir != null) {
         return ybRootDir;
       }
-      myPath = myPath.getParentFile();
     }
-    throw new RuntimeException("Unable to find build dir! myUrl=" + myUrl);
+    throw new RuntimeException(
+        "Unable to find build dir! myUrl=" + myUrl + ", currentDir=" + currentDir);
+  }
+
+  private static String findGitRepoContaining(String initialPath) {
+    File currentPath = new File(initialPath);
+    while (currentPath != null) {
+      if (new File(currentPath, ".git").isDirectory()) {
+        // Cache the root dir so that we don't have to find it every time.
+        return currentPath.getAbsolutePath();
+      }
+      currentPath = currentPath.getParentFile();
+    }
+    return null;
   }
 
   /**

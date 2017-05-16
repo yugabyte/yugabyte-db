@@ -9,8 +9,6 @@ import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
-import org.yb.client.MiniYBCluster;
-import org.yb.client.MiniYBClusterBuilder;
 
 import java.util.List;
 

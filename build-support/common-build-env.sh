@@ -21,6 +21,12 @@ YB_COMMON_BUILD_ENV_SOURCED=1
 
 declare -i MAX_JAVA_BUILD_ATTEMPTS=5
 
+# What matches these expressions will be filtered out of Maven output.
+MVN_OUTPUT_FILTER_REGEX='\[INFO\] (Download(ing|ed): |'
+MVN_OUTPUT_FILTER_REGEX+='[^ ]+ already added, skipping$)|'
+MVN_OUTPUT_FILTER_REGEX+='^Generating .*[.]html[.][.][.]$'
+readonly MVN_OUTPUT_FILTER_REGEX
+
 # -------------------------------------------------------------------------------------------------
 # Functions used in initializing some constants
 # -------------------------------------------------------------------------------------------------
@@ -580,10 +586,13 @@ build_yb_java_code_filter_save_output() {
     local java_build_output_path=/tmp/yb-java-build-$( get_timestamp ).$$.tmp
     has_local_output=true
   fi
-  set +e -x  # do not fail on grep failure; print the command to stderr.
-  if mvn "$@" --batch-mode 2>&1 | \
-      egrep -v --line-buffered '\[INFO\] (Download(ing|ed): |[^ ]+ already added, skipping$)' | \
-      egrep -v --line-buffered '^Generating .*[.]html[.][.][.]$' | \
+  local mvn_opts=( --batch-mode )
+  if ! is_jenkins; then
+    mvn_opts+=( -DskipAssembly -Dmaven.javadoc.skip )
+  fi
+  set +e -x  # +e: do not fail on grep failure, -x: print the command to stderr.
+  if mvn "${mvn_opts[@]}" "$@" 2>&1 | \
+      egrep -v --line-buffered "$MVN_OUTPUT_FILTER_REGEX" | \
       tee "$java_build_output_path"; then
     set +x # stop printing commands
     # We are testing for mvn build failure with grep, since we run mvn with '--fail-never' which

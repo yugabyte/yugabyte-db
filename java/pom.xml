@@ -42,12 +42,14 @@
 
     <!-- Maven plugins -->
     <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
-    <maven-assembly-plugin.version>2.2.1</maven-assembly-plugin.version>
+    <maven-assembly-plugin.version>3.0.0</maven-assembly-plugin.version>
+    <maven-jar-plugin.version>3.0.2</maven-jar-plugin.version>
     <maven-enforcer-plugin.version>1.4</maven-enforcer-plugin.version>
     <protobuf-maven-plugin.version>0.5.0</protobuf-maven-plugin.version>
     <maven-surefire-plugin.version>2.20</maven-surefire-plugin.version>
     <maven-failsafe-plugin.version>2.20</maven-failsafe-plugin.version>
     <schema-validator-maven-plugin.version>5.5.0-SNAPSHOT</schema-validator-maven-plugin.version>
+    <scala-maven-plugin.version>3.2.1</scala-maven-plugin.version>
 
     <!-- Library dependencies -->
     <async.version>1.4.1</async.version>
@@ -186,6 +188,29 @@
               </pluginExecutions>
             </lifecycleMappingMetadata>
           </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-assembly-plugin</artifactId>
+          <version>${maven-assembly-plugin.version}</version>
+          <configuration>
+            <descriptorRefs>
+              <descriptorRef>jar-with-dependencies</descriptorRef>
+            </descriptorRefs>
+          </configuration>
+          <executions>
+            <execution>
+              <phase>install</phase>
+              <goals>
+                <goal>single</goal>
+              </goals>
+            </execution>
+          </executions>
         </plugin>
       </plugins>
     </pluginManagement>

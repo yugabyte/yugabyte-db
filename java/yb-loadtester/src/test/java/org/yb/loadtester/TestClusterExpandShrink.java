@@ -13,7 +13,7 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
-import org.yb.client.MiniYBCluster;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;

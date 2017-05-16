@@ -20,8 +20,8 @@ import com.google.common.collect.ImmutableList
 import org.apache.spark.SparkContext
 import org.yb.ColumnSchema.ColumnSchemaBuilder
 import org.yb.client.YBClient.YBClientBuilder
-import org.yb.client.MiniYBCluster
-import org.yb.client.MiniYBClusterBuilder
+import org.yb.minicluster.MiniYBCluster
+import org.yb.minicluster.MiniYBClusterBuilder
 import org.yb.client.{CreateTableOptions, YBClient, YBTable}
 import org.yb.{Schema, Type}
 import org.scalatest.{BeforeAndAfterAll, Suite}

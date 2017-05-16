@@ -13,7 +13,7 @@
  *
  * Portions Copyright (c) YugaByte, Inc.
  */
-package org.yb.client;
+package org.yb.minicluster;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -21,8 +21,9 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.apache.commons.io.FileUtils;
-import org.yb.minicluster.MiniYBDaemon;
-import org.yb.minicluster.MiniYBDaemonType;
+import org.yb.client.BaseYBClientTest;
+import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
 import org.yb.util.NetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

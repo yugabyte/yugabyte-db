@@ -34,6 +34,35 @@
 
   <dependencies>
     <dependency>
+      <groupId>org.yb</groupId>
+      <artifactId>yb-client</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.yb</groupId>
+      <artifactId>yb-client</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.yb</groupId>
+      <artifactId>interface-annotations</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.yb</groupId>
+      <artifactId>yb-mapreduce</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-common</artifactId>
+      <version>${hadoop.version}</version>
+    </dependency>
+
+    <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-core_${scala.binary.version}</artifactId>
       <version>${spark.version}</version>
@@ -69,35 +98,6 @@
       <type>test-jar</type>
       <classifier>tests</classifier>
       <scope>test</scope>
-    </dependency>
-
-    <dependency>
-      <groupId>org.yb</groupId>
-      <artifactId>yb-client</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.yb</groupId>
-      <artifactId>yb-client</artifactId>
-      <version>${project.version}</version>
-      <type>test-jar</type>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.yb</groupId>
-      <artifactId>interface-annotations</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.yb</groupId>
-      <artifactId>yb-mapreduce</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
-      <artifactId>hadoop-common</artifactId>
-      <version>${hadoop.version}</version>
     </dependency>
 
     <dependency>
@@ -138,7 +138,7 @@
       <plugin>
         <groupId>net.alchim31.maven</groupId>
         <artifactId>scala-maven-plugin</artifactId>
-        <version>3.2.0</version>
+        <version>${scala-maven-plugin.version}</version>
         <configuration>
           <charset>${project.build.sourceEncoding}</charset>
           <scalaVersion>${scala.version}</scalaVersion>
