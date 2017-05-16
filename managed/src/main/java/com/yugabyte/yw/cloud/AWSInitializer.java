@@ -310,6 +310,38 @@ public class AWSInitializer {
         volumeSizeGB = Integer.parseInt(parts[2]);
         volumeType = VolumeType.valueOf(parts[3]);
       }
+      // TODO: remove this once aws pricing api is fixed
+      // TODO: see discussion: https://forums.aws.amazon.com/thread.jspa?messageID=783507
+      String[] instanceTypeParts = instanceTypeCode.split("\\.");
+      if (instanceTypeCode.startsWith("i3")) {
+        volumeType = VolumeType.SSD;
+        switch (instanceTypeParts[1]) {
+          case "large":
+            volumeCount = 1;
+            volumeSizeGB = 475;
+            break;
+          case "xlarge":
+            volumeCount = 1;
+            volumeSizeGB = 950;
+            break;
+          case "2xlarge":
+            volumeCount = 1;
+            volumeSizeGB = 1900;
+            break;
+          case "4xlarge":
+            volumeCount = 2;
+            volumeSizeGB = 1900;
+            break;
+          case "8xlarge":
+            volumeCount = 4;
+            volumeSizeGB = 1900;
+            break;
+          case "16xlarge":
+            volumeCount = 8;
+            volumeSizeGB = 1900;
+            break;
+        }
+      }
 
       // Fill up all the per-region details.
       String regionName = productAttrs.get("location");
