@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { isValidArray, isValidObject } from 'utils/ObjectUtils';
+import { isNonEmptyObject } from 'utils/ObjectUtils';
 const statusTypes =
 {
   singleRF: {currentStatusIcon: "fa fa-exclamation", currentStatusString: "Primary data placement is not redundant," +
@@ -20,7 +20,7 @@ export default class AZSelectorTable extends Component {
   }
   render() {
     const {placementInfo} = this.props;
-    if (!isValidObject(placementInfo) || !isValidArray(Object.keys(placementInfo))) {
+    if (!isNonEmptyObject(placementInfo)) {
       return <span/>;
     }
     var currentStatusType = "";

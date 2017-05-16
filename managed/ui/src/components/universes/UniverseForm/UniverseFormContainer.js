@@ -12,7 +12,7 @@ import {createUniverse, createUniverseSuccess, createUniverseFailure,
         configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
         checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
         fetchUniverseInfoFailure } from 'actions/universe';
-import { isDefinedNotNull, isValidArray } from 'utils/ObjectUtils';
+import { isDefinedNotNull } from 'utils/ObjectUtils';
 
 //For any field errors upon submission (i.e. not instant check)
 
@@ -205,7 +205,7 @@ const validate = values => {
   if (!isDefinedNotNull(values.provider)) {
     errors.provider = 'Provider Value is Required'
   }
-  if (!isValidArray(values.regionList) && !isDefinedNotNull(values.regionList)) {
+  if (!isDefinedNotNull(values.regionList)) {
     errors.regionList = 'Region Value is Required'
   }
   if (!isDefinedNotNull(values.instanceType)) {

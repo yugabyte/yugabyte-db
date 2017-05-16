@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { Link } from 'react-router';
-import { isValidArray } from '../../../utils/ObjectUtils';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 import moment from 'moment';
 
 import './TaskAlerts.scss'
@@ -67,7 +67,7 @@ export default class TaskAlerts extends Component {
   render() {
     const {tasks: {customerTaskList}} = this.props;
     var tasksDisplayList = [];
-    if(isValidArray(customerTaskList)) {
+    if (isNonEmptyArray(customerTaskList)) {
       var displayItems = customerTaskList.slice(0, 4);
       tasksDisplayList = displayItems.map(function(listItem, idx){
         return (<AlertItem key={`alertItem${idx}`} taskInfo={listItem}/>)

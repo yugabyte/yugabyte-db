@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import moment from 'moment';
 import 'moment-precise-range-plugin';
 import { Row, Col } from 'react-bootstrap';
-import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import './TableSchema.scss';
 
 export default class TableSchema extends Component {
@@ -14,7 +14,7 @@ export default class TableSchema extends Component {
     var partitionKeyRows = [];
     var clusteringKeyRows = [];
     var otherKeyRows = [];
-    if (isValidObject(tableDetails) && isValidArray(tableDetails.columns)) {
+    if (isValidObject(tableDetails) && isNonEmptyArray(tableDetails.columns)) {
       ttlInSeconds = tableDetails.ttlInSeconds;
       tableDetails.columns.forEach(function(item){
         if (item.isPartitionKey) {
@@ -86,7 +86,7 @@ class SchemaRowDefinition extends Component {
   render() {
     const {rows} = this.props;
     var rowEntries = <span/>;
-    if (isValidArray(rows)) {
+    if (isNonEmptyArray(rows)) {
       rowEntries = rows.map(function(item, idx){
         return (
         <Row key={idx}>
