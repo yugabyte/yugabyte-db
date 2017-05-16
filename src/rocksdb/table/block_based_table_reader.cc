@@ -107,7 +107,7 @@ Cache::Handle* GetEntryFromCache(Cache* block_cache, const Slice& key,
                                  Tickers block_cache_miss_ticker,
                                  Tickers block_cache_hit_ticker,
                                  Statistics* statistics) {
-  auto cache_handle = block_cache->Lookup(key);
+  auto cache_handle = block_cache->Lookup(key, kInMultiTouchId);
   if (cache_handle != nullptr) {
     PERF_COUNTER_ADD(block_cache_hit_count, 1);
     // overall cache hit
@@ -867,7 +867,7 @@ Status BlockBasedTable::GetDataBlockFromCache(
 
   assert(!compressed_block_cache_key.empty());
   block_cache_compressed_handle =
-      block_cache_compressed->Lookup(compressed_block_cache_key);
+      block_cache_compressed->Lookup(compressed_block_cache_key, kInMultiTouchId);
   // if we found in the compressed cache, then uncompress and insert into
   // uncompressed cache
   if (block_cache_compressed_handle == nullptr) {
@@ -893,8 +893,9 @@ Status BlockBasedTable::GetDataBlockFromCache(
     assert(block->value->compression_type() == kNoCompression);
     if (block_cache != nullptr && block->value->cachable() &&
         read_options.fill_cache) {
+      // TODO: Defaults to multi touch cache. Need to update with real query id.
       s = block_cache->Insert(
-          block_cache_key, block->value, block->value->usable_size(),
+          block_cache_key, kInMultiTouchId, block->value, block->value->usable_size(),
           &DeleteCachedEntry<Block>, &(block->cache_handle));
       if (s.ok()) {
         RecordTick(statistics, BLOCK_CACHE_ADD);
@@ -942,7 +943,8 @@ Status BlockBasedTable::PutDataBlockToCache(
   // Release the hold on the compressed cache entry immediately.
   if (block_cache_compressed != nullptr && raw_block != nullptr &&
       raw_block->cachable()) {
-    s = block_cache_compressed->Insert(compressed_block_cache_key, raw_block,
+    // TODO: Defaults to multi touch cache. Need to update with real query id.
+    s = block_cache_compressed->Insert(compressed_block_cache_key, kInMultiTouchId, raw_block,
                                        raw_block->usable_size(),
                                        &DeleteCachedEntry<Block>);
     if (s.ok()) {
@@ -958,7 +960,8 @@ Status BlockBasedTable::PutDataBlockToCache(
   // insert into uncompressed block cache
   assert((block->value->compression_type() == kNoCompression));
   if (block_cache != nullptr && block->value->cachable()) {
-    s = block_cache->Insert(block_cache_key, block->value,
+    // TODO: Defaults to multi touch cache. Need to update with real query id.
+    s = block_cache->Insert(block_cache_key, kInMultiTouchId, block->value,
                             block->value->usable_size(),
                             &DeleteCachedEntry<Block>, &(block->cache_handle));
     if (s.ok()) {
@@ -1134,7 +1137,8 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(boo
     filter = ReadFilterBlock(*filter_block_handle, rep_, &filter_size);
     if (filter != nullptr) {
       assert(filter_size > 0);
-      Status s = block_cache->Insert(filter_block_cache_key, filter, filter_size,
+      // TODO: Defaults to multi touch cache. Need to update with real query id.
+      Status s = block_cache->Insert(filter_block_cache_key, kInMultiTouchId, filter, filter_size,
           &DeleteCachedEntry<FilterBlockReader>,
           &cache_handle);
       if (s.ok()) {
@@ -1187,8 +1191,10 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     std::unique_ptr<IndexReader> index_reader_unique;
     Status s = CreateDataBlockIndexReader(&index_reader_unique);
     if (s.ok()) {
-      s = block_cache->Insert(key, index_reader_unique.get(), index_reader_unique->usable_size(),
-          &DeleteCachedEntry<IndexReader>, &cache_handle);
+      // TODO: Defaults to multi touch cache. Need to update with real query id.
+      s = block_cache->Insert(key, kInMultiTouchId, index_reader_unique.get(),
+                              index_reader_unique->usable_size(),
+                              &DeleteCachedEntry<IndexReader>, &cache_handle);
     }
 
     if (s.ok()) {

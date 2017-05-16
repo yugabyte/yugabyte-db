@@ -162,7 +162,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
   Status s;
   uint64_t number = fd.GetNumber();
   Slice key = GetSliceForFileNumber(&number);
-  *handle = cache_->Lookup(key);
+  *handle = cache_->Lookup(key, kInMultiTouchId);
   TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0",
       const_cast<bool*>(&no_io));
 
@@ -180,7 +180,8 @@ Status TableCache::FindTable(const EnvOptions& env_options,
       // We do not cache error results so that if the error is transient,
       // or somebody repairs the file, we recover automatically.
     } else {
-      s = cache_->Insert(key, table_reader.get(), 1, &DeleteEntry<TableReader>,
+      // TODO: Defaults to multi touch cache. Need to update with real query id.
+      s = cache_->Insert(key, kInMultiTouchId, table_reader.get(), 1, &DeleteEntry<TableReader>,
           handle);
       if (s.ok()) {
         // Release ownership of table reader.
@@ -286,7 +287,7 @@ Status TableCache::Get(const ReadOptions& options,
     row_cache_key.TrimAppend(row_cache_key.Size(), user_key.cdata(),
         user_key.size());
 
-    if (auto row_handle = ioptions_.row_cache->Lookup(row_cache_key.GetKey())) {
+    if (auto row_handle = ioptions_.row_cache->Lookup(row_cache_key.GetKey(), kInMultiTouchId)) {
       auto found_row_cache_entry = static_cast<const std::string*>(
           ioptions_.row_cache->Value(row_handle));
       replayGetContextLog(*found_row_cache_entry, user_key, get_context);
@@ -328,7 +329,8 @@ Status TableCache::Get(const ReadOptions& options,
     size_t charge =
         row_cache_key.Size() + row_cache_entry->size() + sizeof(std::string);
     void* row_ptr = new std::string(std::move(*row_cache_entry));
-    ioptions_.row_cache->Insert(row_cache_key.GetKey(), row_ptr, charge,
+    // TODO: Defaults to multi touch cache. Need to update with real query id.
+    ioptions_.row_cache->Insert(row_cache_key.GetKey(), kInMultiTouchId, row_ptr, charge,
         &DeleteEntry<std::string>);
   }
 #endif  // ROCKSDB_LITE

@@ -22,14 +22,20 @@
 #ifndef STORAGE_ROCKSDB_INCLUDE_CACHE_H_
 #define STORAGE_ROCKSDB_INCLUDE_CACHE_H_
 
-#include <memory>
 #include <stdint.h>
+#include <memory>
 #include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 
 namespace rocksdb {
 
 using std::shared_ptr;
+
+// Classifies the type of the subcache.
+enum SubCacheType {
+  SINGLE_TOUCH,
+  MULTI_TOUCH
+};
 
 class Cache;
 
@@ -43,6 +49,12 @@ extern shared_ptr<Cache> NewLRUCache(size_t capacity);
 extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits);
 extern shared_ptr<Cache> NewLRUCache(size_t capacity, int num_shard_bits,
                                      bool strict_capacity_limit);
+
+using QueryId = int32_t;
+// Query ids to represent values that should be in multi-touch cache.
+constexpr QueryId kInMultiTouchId = -1;
+// Query ids to represent values that should not be in any cache.
+constexpr QueryId kNoCacheQueryId = 0;
 
 class Cache {
  public:
@@ -72,7 +84,11 @@ class Cache {
   //
   // When the inserted entry is no longer needed, the key and
   // value will be passed to "deleter".
-  virtual Status Insert(const Slice& key, void* value, size_t charge,
+  // The query ids will allow the cache values to be included in the
+  // single touch or multi touch cache, which gives scan resistance to the
+  // cache.
+  virtual Status Insert(const Slice& key, const QueryId query_id,
+                        void* value, size_t charge,
                         void (*deleter)(const Slice& key, void* value),
                         Handle** handle = nullptr) = 0;
 
@@ -81,7 +97,7 @@ class Cache {
   // Else return a handle that corresponds to the mapping.  The caller
   // must call this->Release(handle) when the returned mapping is no
   // longer needed.
-  virtual Handle* Lookup(const Slice& key) = 0;
+  virtual Handle* Lookup(const Slice& key, const QueryId query_id) = 0;
 
   // Release a mapping returned by a previous Lookup().
   // REQUIRES: handle must not have been released yet.
@@ -131,6 +147,12 @@ class Cache {
   // returns the memory size for the entries in use by the system
   virtual size_t GetPinnedUsage() const = 0;
 
+  // Gets the sub_cache type of the handle.
+  virtual SubCacheType GetSubCacheType(Handle* e) const {
+    // Default implementation assumes multi-touch.
+    return MULTI_TOUCH;
+  }
+
   // Call this on shutdown if you want to speed it up. Cache will disown
   // any underlying data and will not free it on delete. This call will leak
   // memory - call this only if you're shutting down the process.
@@ -138,7 +160,7 @@ class Cache {
   // Always delete the DB object before calling this method!
   virtual void DisownData() {
     // default implementation is noop
-  };
+  }
 
   // Apply callback to all entries in the cache
   // If thread_safe is true, it will also lock the accesses. Otherwise, it will

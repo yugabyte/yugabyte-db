@@ -7,8 +7,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #include <cstdlib>
+#include <gflags/gflags.h>
 #include "db/db_test_util.h"
 #include "port/stack_trace.h"
+
+DECLARE_double(cache_single_touch_ratio);
 
 namespace rocksdb {
 
@@ -134,7 +137,8 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
   }
   size_t usage = cache->GetUsage();
   ASSERT_LT(0, usage);
-  cache->SetCapacity(usage);
+  // Updating multi-touch capacity exactly equal to the usage to induce failures.
+  cache->SetCapacity(usage / (1 - FLAGS_cache_single_touch_ratio));
   ASSERT_EQ(usage, cache->GetPinnedUsage());
 
   // Test with strict capacity limit.
@@ -146,7 +150,7 @@ TEST_F(DBBlockCacheTest, TestWithoutCompressedBlockCache) {
   delete iter;
   iter = nullptr;
 
-  // Release interators and access cache again.
+  // Release iterators and access cache again.
   for (size_t i = 0; i < kNumBlocks - 1; i++) {
     iterators[i].reset();
     CheckCacheCounters(options, 0, 0, 0, 0);
