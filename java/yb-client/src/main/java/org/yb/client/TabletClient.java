@@ -400,7 +400,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
 
     // This check is specifically for the ERROR_SERVER_TOO_BUSY case above.
     if (retryableHeaderException != null) {
-      ybClient.handleRetryableError(rpc, retryableHeaderException);
+      ybClient.handleRetryableError(rpc, retryableHeaderException, this);
       return null;
     }
 
@@ -470,7 +470,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
                  Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_STEP_DOWN ||
                error.getCode() ==
                  Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_SERVE) {
-      ybClient.handleRetryableError(rpc, ex);
+      ybClient.handleRetryableError(rpc, ex, this);
       // The following error codes are an indication that the tablet isn't a leader.
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
                code == WireProtocol.AppStatusPB.ErrorCode.ABORTED ||
@@ -497,12 +497,12 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
       ybClient.handleNotLeader(rpc, ex, this);
     } else if (error.getCode() == Master.MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED ||
                error.getCode() == Master.MasterErrorPB.Code.CAN_RETRY_LOAD_BALANCE_CHECK) {
-      ybClient.handleRetryableError(rpc, ex);
+      ybClient.handleRetryableError(rpc, ex, this);
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE &&
         (!(rpc instanceof GetMasterRegistrationRequest))) {
       // TODO: This is a crutch until we either don't have to retry RPCs going to the
       // same server or use retry policies.
-      ybClient.handleRetryableError(rpc, ex);
+      ybClient.handleRetryableError(rpc, ex, this);
     } else {
       return ex;
     }

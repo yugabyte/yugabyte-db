@@ -44,8 +44,11 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread_restrictions.h"
+
+DECLARE_string(flagfile);
 
 namespace yb {
 
@@ -270,7 +273,6 @@ template Status YBClient::Data::SyncLeaderMasterRpc(
 
 YBClient::Data::Data()
     : master_server_endpoint_(),
-      master_server_addrs_file_(),
       master_server_addrs_(),
       latest_observed_hybrid_time_(YBClient::kNoHybridTime) {
 }
@@ -1000,10 +1002,19 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
     master_server_addrs_.push_back(master_addrs);
     LOG(INFO) << "Got master addresses = " << master_addrs
               << " from REST endpoint: " << master_server_endpoint_;
-  } else if (!master_server_addrs_file_.empty()) {
-    LOG(INFO) << "Reinitialize master addresses from file: " << master_server_addrs_file_;
-    // TODO: implement file based reading.
-    return STATUS(NotSupported, "Reading master addresses from file not yet implemented.");
+  } else if (!FLAGS_flagfile.empty()) {
+    LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
+    if (!RefreshFlagsFile(FLAGS_flagfile)) {
+      return STATUS_SUBSTITUTE(RuntimeError, "Couldn't load flags from file: $0", FLAGS_flagfile);
+    }
+
+    if (FLAGS_tserver_master_addrs.empty()) {
+      return STATUS_SUBSTITUTE(IllegalState, "Couldn't find flag $0 in flagfile $1",
+                               FLAGS_tserver_master_addrs, FLAGS_flagfile);
+    }
+    master_server_addrs_.clear();
+    master_server_addrs_.push_back(FLAGS_tserver_master_addrs);
+    LOG (INFO) << "New master addresses: " << FLAGS_tserver_master_addrs;
   } else {
     LOG(INFO) << "Skipping reinitialize of master addresses, no REST endpoint or file specified";
   }

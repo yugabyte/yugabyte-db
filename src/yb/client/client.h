@@ -147,10 +147,6 @@ class YB_EXPORT YBClientBuilder {
   // both 'add_master_server_addr_file' and 'add_master_server_addr'.
   YBClientBuilder& add_master_server_endpoint(const std::string& endpoint);
 
-  // Add a file from which the address of the masters can be loaded initially, and refreshed in case
-  // of retries. Note that the endpoint mechanism overrides 'add_master_server_addr'.
-  YBClientBuilder& add_master_server_addr_file(const std::string& file);
-
   // Add an RPC address of a master. At least one master is required.
   YBClientBuilder& add_master_server_addr(const std::string& addr);
 

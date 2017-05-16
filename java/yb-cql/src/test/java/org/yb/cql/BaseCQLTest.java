@@ -94,6 +94,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     }
     LOG.info("BaseCQLTest.tearDownAfter is running: " +
         "finished dropping tables and closing CQL session/client");
+    afterBaseCQLTestTearDown();
+  }
+
+  protected void afterBaseCQLTestTearDown() throws Exception {
   }
 
   protected void CreateTable(String test_table, String column_type) throws Exception {

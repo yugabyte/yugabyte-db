@@ -17,13 +17,11 @@
 
 #include "yb/util/flags.h"
 
+#include <gperftools/heap-profiler.h>
 #include <iostream>
 #include <string>
 #include <unordered_set>
 #include <vector>
-
-#include <gflags/gflags.h>
-#include <gperftools/heap-profiler.h>
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
@@ -57,6 +55,13 @@ DEFINE_string(heap_profile_path, "", "Output path to store heap profiles. If not
     "profiles are stored in /tmp/<process-name>.<pid>.<n>.heap.");
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
+
+DEFINE_string(tserver_master_addrs, "127.0.0.1:7051",
+              "Comma separated addresses of the masters which the "
+              "tablet server should connect to. The CQL proxy reads this flag as well to "
+              "determine the new set of masters");
+TAG_FLAG(tserver_master_addrs, stable);
+
 
 // Tag a bunch of the flags that we inherit from glog/gflags.
 
@@ -282,6 +287,14 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
 #endif
 
   return ret;
+}
+
+bool RefreshFlagsFile(const std::string& filename) {
+  // prog_name is a placeholder that isn't really used by ReadFromFlags.
+  // TODO: Find a better way to refresh flags from the file, ReadFromFlagsFile is going to be
+  // deprecated.
+  const char* prog_name = "yb";
+  return google::ReadFromFlagsFile(filename, prog_name, false);
 }
 
 } // namespace yb

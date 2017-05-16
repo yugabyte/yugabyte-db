@@ -18,6 +18,9 @@
 #define YB_UTIL_FLAGS_H
 
 #include "yb/gutil/macros.h"
+#include <gflags/gflags.h>
+
+DECLARE_string(tserver_master_addrs);
 
 namespace yb {
 
@@ -35,5 +38,8 @@ namespace yb {
 // See gflags.h for more information.
 int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 
+// Reads the given file and updates the value of all flags specified in the file. Returns true on
+// success, false otherwise.
+bool RefreshFlagsFile(const std::string& filename);
 } // namespace yb
 #endif /* YB_UTIL_FLAGS_H */

@@ -8,11 +8,13 @@ import com.google.gson.JsonParser;
 import com.yugabyte.sample.Main;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
+import org.yb.client.ChangeConfigResponse;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.TestUtils;
@@ -35,15 +37,17 @@ import static org.junit.Assert.fail;
  * This is an integration test that ensures we can expand, shrink and fully move a YB cluster
  * without any significant impact to a running load test.
  */
-public class TestClusterExpandShrink extends BaseCQLTest {
+public class TestClusterEdits extends BaseCQLTest {
 
-  private static final Logger LOG = LoggerFactory.getLogger(TestClusterExpandShrink.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestClusterEdits.class);
 
-  private static LoadTester loadTesterRunnable = null;
+  private LoadTester loadTesterRunnable = null;
 
-  private static Thread loadTesterThread = null;
+  private Thread loadTesterThread = null;
 
-  private static String cqlContactPoints = null;
+  private String cqlContactPoints = null;
+
+  private YBClient client = null;
 
   private static final String WORKLOAD = "CassandraStockTicker";
 
@@ -51,16 +55,22 @@ public class TestClusterExpandShrink extends BaseCQLTest {
   private static final int NUM_OPS_INCREMENT = 10000;
 
   // Timeout to wait for desired number of ops.
-  private static final int WAIT_FOR_OPS_TIMEOUT_MS = 30000; // 30 seconds
+  private static final int WAIT_FOR_OPS_TIMEOUT_MS = 60000; // 60 seconds
 
   // Timeout to wait for load balancing to complete.
-  private static final int LOADBALANCE_TIMEOUT_MS = 30000; // 30 seconds
+  private static final int LOADBALANCE_TIMEOUT_MS = 60000; // 60 seconds
 
   // Timeout to wait for cluster move to complete.
   private static final int CLUSTER_MOVE_TIMEOUT_MS = 300000; // 5 mins
 
   // Timeout for test completion.
-  private static final int TEST_TIMEOUT_SEC = 300; // 5 mins
+  private static final int TEST_TIMEOUT_SEC = 600; // 10 mins
+
+  // Timeout to wait for a new master to come up.
+  private static final int NEW_MASTER_TIMEOUT_MS = 10000; // 10 seconds.
+
+  // The total number of ops seen so far.
+  private static long totalOps = 0;
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -70,21 +80,44 @@ public class TestClusterExpandShrink extends BaseCQLTest {
   @Override
   protected void afterStartingMiniCluster() {
     cqlContactPoints = miniCluster.getCQLContactPointsAsString();
+    client = miniCluster.getClient();
+    LOG.info("Retrieved contact points from cluster: " + cqlContactPoints);
+  }
+
+  @Before
+  public void startLoadTester() throws Exception {
+    // Start the load tester.
+    LOG.info("Using contact points for load tester: " + cqlContactPoints);
+    loadTesterRunnable = new LoadTester(WORKLOAD, cqlContactPoints);
+    loadTesterThread = new Thread(loadTesterRunnable);
+    loadTesterThread.start();
+    LOG.info("Loadtester start.");
   }
 
   @After
-  public void TearDownAfter() throws Exception {
+  public void stopLoadTester() throws Exception {
     // Stop load tester and exit.
     if (loadTesterRunnable != null) {
       loadTesterRunnable.stopLoadTester();
+      loadTesterRunnable = null;
     }
 
     if (loadTesterThread != null) {
       loadTesterThread.join();
+      loadTesterThread = null;
     }
+
+    LOG.info("Loadtester stopped.");
   }
 
-  public class LoadTester implements Runnable {
+  @Override
+  protected void afterBaseCQLTestTearDown() throws Exception {
+    // We need to destroy the mini cluster after BaseCQLTest cleans up all the tables and keyspaces.
+    destroyMiniCluster();
+    LOG.info("Stopped minicluster.");
+  }
+
+  private class LoadTester implements Runnable {
 
     private final Main testRunner;
 
@@ -122,12 +155,11 @@ public class TestClusterExpandShrink extends BaseCQLTest {
       return testRunner.getNumExceptions();
     }
 
-    public long waitNumOpsAtLeast(long expectedNumOps) throws Exception {
+    public void waitNumOpsAtLeast(long expectedNumOps) throws Exception {
       TestUtils.waitFor(() -> testRunner.numOps() >= expectedNumOps, WAIT_FOR_OPS_TIMEOUT_MS);
-      Long numOps = testRunner.numOps();
-      LOG.info("Num Ops: " + numOps + ", Expected: " + expectedNumOps);
-      assertTrue(numOps >= expectedNumOps);
-      return numOps;
+      totalOps = testRunner.numOps();
+      LOG.info("Num Ops: " + totalOps + ", Expected: " + expectedNumOps);
+      assertTrue(totalOps >= expectedNumOps);
     }
   }
 
@@ -190,7 +222,10 @@ public class TestClusterExpandShrink extends BaseCQLTest {
   }
 
   private void verifyExpectedLiveTServers(int expected_live) throws Exception {
-    YBClient client = miniCluster.getClient();
+    // Wait for metrics to be submitted.
+    Thread.sleep(2 * MiniYBCluster.CATALOG_MANAGER_BG_TASK_WAIT_MS);
+
+    // Now verify leader master has expected number of live tservers.
     HostAndPort masterHostAndPort = client.getLeaderMasterHostAndPort();
     int masterLeaderWebPort =
       miniCluster.getMasters().get(masterHostAndPort).getWebPort();
@@ -211,33 +246,60 @@ public class TestClusterExpandShrink extends BaseCQLTest {
     fail("Didn't find live tserver metric");
   }
 
-  @Test(timeout = 600000) // 10 minutes.
-  public void testClusterExpandShrink() throws Exception {
-    // Start the load tester.
-    loadTesterRunnable = new LoadTester(WORKLOAD, cqlContactPoints);
-    loadTesterThread = new Thread(loadTesterRunnable);
-    loadTesterThread.start();
-    LOG.info("Loadtester start.");
-
-    // Wait for load tester to generate traffic.
-    long totalOps = loadTesterRunnable.waitNumOpsAtLeast(NUM_OPS_INCREMENT);
-
+  private void performFullMasterMove() throws Exception {
     // Create a copy to store original list.
-    Map<HostAndPort, MiniYBDaemon> originalTServers = new HashMap<>(miniCluster.getTabletServers());
-    assertEquals(NUM_TABLET_SERVERS, originalTServers.size());
+    Map<HostAndPort, MiniYBDaemon> originalMasters = new HashMap<>(miniCluster.getMasters());
+    for (HostAndPort originalMaster : originalMasters.keySet()) {
+      // Add new master.
+      HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
 
+      // Wait for new master to be online.
+      assertTrue(client.waitForMaster(masterRpcHostPort, NEW_MASTER_TIMEOUT_MS));
+
+      LOG.info("New master online: " + masterRpcHostPort.toString());
+
+      // Add new master to the config.
+      ChangeConfigResponse response = client.changeMasterConfig(masterRpcHostPort.getHostText(),
+        masterRpcHostPort.getPort(), true);
+      assertFalse("ChangeConfig has error: " + response.errorMessage(), response.hasError());
+
+      LOG.info("Added new master to config: " + masterRpcHostPort.toString());
+
+      // Remove old master.
+      response = client.changeMasterConfig(originalMaster.getHostText(), originalMaster.getPort(),
+        false);
+      assertFalse("ChangeConfig has error: " + response.errorMessage(), response.hasError());
+
+      LOG.info("Removed old master from config: " + originalMaster.toString());
+
+      // Kill the old master.
+      miniCluster.killMasterOnHostPort(originalMaster);
+
+      LOG.info("Killed old master: " + originalMaster.toString());
+
+      // Wait for hearbeat interval to ensure tservers pick up the new masters.
+      Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS);
+
+      LOG.info("Done waiting for new leader");
+
+      // Verify no load tester errors.
+      assertFalse(loadTesterRunnable.hasFailures());
+    }
+  }
+
+  private void addNewTServers() throws Exception {
     // Now double the number of tservers to expand the cluster and verify load spreads.
     for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
       miniCluster.startTServer(null);
     }
 
-    YBClient client = miniCluster.getClient();
+    // Wait for the CQL client to discover the new nodes.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+  }
 
-    // Wait for the load to be balanced across the cluster.
-    assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS * 2));
-
+  private void verifyStateAfterTServerAddition() throws Exception {
     // Wait for some ops across the entire cluster.
-    totalOps = loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
 
     // Verify no failures in load tester.
     assertFalse(loadTesterRunnable.hasFailures());
@@ -247,9 +309,9 @@ public class TestClusterExpandShrink extends BaseCQLTest {
 
     // Verify live tservers.
     verifyExpectedLiveTServers(2 * NUM_TABLET_SERVERS);
+  }
 
-    LOG.info("Cluster Expand Done!");
-
+  private void removeTServers(Map<HostAndPort, MiniYBDaemon> originalTServers) throws Exception {
     // Retrieve existing config, set blacklist and reconfigure cluster.
     List<Common.HostPortPB> blacklisted_hosts = new ArrayList<>();
     for (Map.Entry<HostAndPort, MiniYBDaemon> ts : originalTServers.entrySet()) {
@@ -260,7 +322,6 @@ public class TestClusterExpandShrink extends BaseCQLTest {
       blacklisted_hosts.add(hostPortPB);
     }
 
-    // TODO: We should ensure we can move all masters as well.
     ModifyMasterClusterConfigBlacklist operation =
       new ModifyMasterClusterConfigBlacklist(client, blacklisted_hosts, true);
     try {
@@ -292,10 +353,11 @@ public class TestClusterExpandShrink extends BaseCQLTest {
     // Verify live tservers.
     verifyExpectedLiveTServers(NUM_TABLET_SERVERS);
 
-    LOG.info("Cluster Shrink Done!");
+  }
 
+  private void verifyClusterHealth() throws Exception {
     // Wait for some ops.
-    totalOps = loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
 
     // Wait for some more ops and verify no exceptions.
     loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
@@ -312,7 +374,56 @@ public class TestClusterExpandShrink extends BaseCQLTest {
 
     // Verify no failures in the load tester.
     assertFalse(loadTesterRunnable.hasFailures());
+  }
 
-    LOG.info("Cluster Test Done!");
+  private void performTServerExpandShrink(boolean fullMove) throws Exception {
+    // Create a copy to store original tserver list.
+    Map<HostAndPort, MiniYBDaemon> originalTServers = new HashMap<>(miniCluster.getTabletServers());
+    assertEquals(NUM_TABLET_SERVERS, originalTServers.size());
+
+    addNewTServers();
+
+    // In the full move case, we don't wait for load balancing.
+    if (!fullMove) {
+      // Wait for the load to be balanced across the cluster.
+      assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS * 2));
+    }
+
+    verifyStateAfterTServerAddition();
+
+    LOG.info("Cluster Expand Done!");
+
+    removeTServers(originalTServers);
+
+    LOG.info("Cluster Shrink Done!");
+  }
+
+  @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
+  public void testClusterFullMove() throws Exception {
+    // Wait for load tester to generate traffic.
+    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+
+    // First try to move all the masters.
+    performFullMasterMove();
+
+    // Wait for some ops and verify no failures in load tester.
+    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+    assertFalse(loadTesterRunnable.hasFailures());
+
+    // Now perform a full tserver move.
+    performTServerExpandShrink(true);
+
+    verifyClusterHealth();
+  }
+
+  @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 10 minutes.
+  public void testClusterExpandAndShrink() throws Exception {
+    // Wait for load tester to generate traffic.
+    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
+
+    // Now perform a tserver expand and shrink.
+    performTServerExpandShrink(false);
+
+    verifyClusterHealth();
   }
 }

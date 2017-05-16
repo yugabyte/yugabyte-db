@@ -99,11 +99,7 @@ public class Main {
   }
 
   public long numOps() {
-    int count = 0;
-    for (IOPSThread iopsThread : iopsThreads) {
-      count += iopsThread.numOps();
-    }
-    return count;
+    return AppBase.numOps();
   }
 
   public void run() {

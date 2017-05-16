@@ -23,13 +23,7 @@
 #include "yb/master/master.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/flag_tags.h"
-
-DEFINE_string(tserver_master_addrs, "127.0.0.1:7051",
-              "Comma separated addresses of the masters which the "
-              "tablet server should connect to. The masters do not "
-              "read this flag -- configure the masters separately "
-              "using 'rpc_bind_addresses'.");
-TAG_FLAG(tserver_master_addrs, stable);
+#include "yb/util/flags.h"
 
 using std::vector;
 

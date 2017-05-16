@@ -20,7 +20,7 @@ public class TestEditCQLNodes extends BaseCQLTest {
     miniCluster.startTServer(null);
 
     // Wait for node list refresh.
-    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH * 2 * 1000);
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
 
     // Verify we have an extra node.
     assertEquals(miniCluster.getCQLContactPoints().size(),
@@ -36,7 +36,7 @@ public class TestEditCQLNodes extends BaseCQLTest {
     miniCluster.killTabletServerOnHostPort(tserver);
 
     // Wait for node list refresh.
-    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH * 2 * 1000);
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 2 * 1000);
 
     // Verify we have one less node.
     assertEquals(miniCluster.getCQLContactPoints().size(),

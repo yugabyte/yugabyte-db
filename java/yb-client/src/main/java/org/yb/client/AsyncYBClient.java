@@ -966,7 +966,7 @@ public class AsyncYBClient implements AutoCloseable {
         // TODO: Handle the situation when multiple in-flight RPCs are queued waiting
         // for the leader master to be determine (either after a failure or at initialization
         // time). This could re-use some of the existing piping in place for non-master tablets.
-        delayedSendRpcToTablet(request, (NoLeaderMasterFoundException) arg);
+        delayedSendRpcToTablet(request, (NoLeaderMasterFoundException) arg, null);
         return d;
       }
       // Pass all other exceptions through.
@@ -1344,7 +1344,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   <R> void handleTabletNotFound(final YRpc<R> rpc, YBException ex, TabletClient server) {
     invalidateTabletCache(rpc.getTablet(), server);
-    handleRetryableError(rpc, ex);
+    handleRetryableError(rpc, ex, server);
   }
 
   /**
@@ -1353,24 +1353,29 @@ public class AsyncYBClient implements AutoCloseable {
    */
   <R> void handleNotLeader(final YRpc<R> rpc, YBException ex, TabletClient server) {
     rpc.getTablet().demoteLeader(server);
-    handleRetryableError(rpc, ex);
+    handleRetryableError(rpc, ex, server);
   }
 
-  <R> void handleRetryableError(final YRpc<R> rpc, YBException ex) {
+  <R> void handleRetryableError(final YRpc<R> rpc, YBException ex, TabletClient server) {
     // TODO we don't always need to sleep, maybe another replica can serve this RPC.
-    delayedSendRpcToTablet(rpc, ex);
+    delayedSendRpcToTablet(rpc, ex, server);
   }
 
-  private <R> void delayedSendRpcToTablet(final YRpc<R> rpc, YBException ex) {
+  private <R> void delayedSendRpcToTablet(final YRpc<R> rpc, YBException ex, TabletClient server) {
     // Here we simply retry the RPC later. We might be doing this along with a lot of other RPCs
     // in parallel. Asynchbase does some hacking with a "probe" RPC while putting the other ones
     // on hold but we won't be doing this for the moment. Regions in HBase can move a lot,
     // we're not expecting this in YB.
     final class RetryTimer implements TimerTask {
       public void run(final Timeout timeout) {
-        sendRpcToTablet(rpc);
+        if (rpc.isRetrySameServer()) {
+          server.sendRpc(rpc);
+        } else {
+          sendRpcToTablet(rpc);
+        }
       }
     }
+
     long sleepTime = getSleepTimeForRpc(rpc);
     if (cannotRetryRequest(rpc) || rpc.deadlineTracker.wouldSleepingTimeout(sleepTime)) {
       tooManyAttemptsOrTimeout(rpc, ex);
@@ -1538,6 +1543,9 @@ public class AsyncYBClient implements AutoCloseable {
   Deferred<GetMasterRegistrationResponse> getMasterRegistration(TabletClient masterClient) {
     GetMasterRegistrationRequest rpc = new GetMasterRegistrationRequest(masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    // We don't want retries for this RPC to go to different servers, since we are interested in
+    // the master registration of a specific master server.
+    rpc.setRetrySameServer(true);
     Deferred<GetMasterRegistrationResponse> d = rpc.getDeferred();
     rpc.attempt++;
     masterClient.sendRpc(rpc);

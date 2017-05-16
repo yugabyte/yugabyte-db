@@ -68,6 +68,10 @@ public class TestUtils {
   /** Time to sleep in milliseconds waiting for conditions to be met. */
   private static final int SLEEP_TIME_MS = 1000;
 
+  private static Path flagFileTmpPath = null;
+
+  private static final Object flagFilePathLock = new Object();
+
   /**
    * @return the path of the flags file to pass to daemon processes
    * started by the tests
@@ -85,11 +89,15 @@ public class TestUtils {
     try {
       // Somewhat unintuitively, createTempFile() actually creates the file,
       // not just the path, so we have to use REPLACE_EXISTING below.
-      Path tmpFile = Files.createTempFile(
-          Paths.get(getBaseDir()), "yb-flags", ".flags");
-      Files.copy(BaseYBClientTest.class.getResourceAsStream("/flags"), tmpFile,
-          StandardCopyOption.REPLACE_EXISTING);
-      return tmpFile.toAbsolutePath().toString();
+      synchronized (flagFilePathLock) {
+        if (flagFileTmpPath == null || !Files.exists(flagFileTmpPath)) {
+          flagFileTmpPath = Files.createTempFile(
+            Paths.get(getBaseDir()), "yb-flags", ".flags");
+          Files.copy(BaseYBClientTest.class.getResourceAsStream("/flags"), flagFileTmpPath,
+            StandardCopyOption.REPLACE_EXISTING);
+        }
+      }
+      return flagFileTmpPath.toAbsolutePath().toString();
     } catch (IOException e) {
       throw new RuntimeException("Unable to extract flags file into tmp", e);
     }

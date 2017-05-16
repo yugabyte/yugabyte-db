@@ -273,6 +273,25 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Wait for the master server to be running and initialized.
+   * @param hp the host and port for the master.
+   * @param timeoutMS timeout in milliseconds to wait for.
+   * @return returns true if the master is properly initialized, false otherwise.
+   */
+  public boolean waitForMaster(HostAndPort hp, long timeoutMS) throws Exception {
+    if (!waitForServer(hp, timeoutMS)) {
+      return false;
+    }
+
+    long start = System.currentTimeMillis();
+    while (System.currentTimeMillis() - start < timeoutMS &&
+      getMasterUUID(hp.getHostText(), hp.getPort()) == null) {
+      Thread.sleep(AsyncYBClient.SLEEP_TIME);
+    }
+    return getMasterUUID(hp.getHostText(), hp.getPort()) != null;
+  }
+
+  /**
    * Find the uuid of a master using the given host/port.
    * @param host Master host that is being queried.
    * @param port RPC port of the host being queried.
@@ -358,7 +377,7 @@ public class YBClient implements AutoCloseable {
    * Helper API to wait and get current leader's UUID. This takes care of waiting for any election
    * in progress.
    *
-   * @param timeout Amount of time to try getting the leader uuid.
+   * @param timeoutMs Amount of time to try getting the leader uuid.
    * @return Master leader uuid on success, null otherwise.
    */
   private String waitAndGetLeaderMasterUUID(long timeoutMs) throws Exception {

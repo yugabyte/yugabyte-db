@@ -312,7 +312,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     return loadGenerator;
   }
 
-  public long numOps() {
+  public static long numOps() {
     return numKeysRead.get() + numKeysWritten.get();
   }
 }

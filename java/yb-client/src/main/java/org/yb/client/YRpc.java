@@ -99,9 +99,15 @@ public abstract class YRpc<R> {
    */
   byte attempt;  // package-private for TabletClient and AsyncYBClient only.
 
+  // Whether or not retries for this RPC should always go to the same server. This is required in
+  // some cases where we do not want the RPC retries to hit a different server serving the same
+  // tablet.
+  private volatile boolean retrySameServer;
+
   YRpc(YBTable table) {
     this.table = table;
     this.deadlineTracker = new DeadlineTracker();
+    this.retrySameServer = false;
   }
 
   /**
@@ -209,6 +215,14 @@ public abstract class YRpc<R> {
 
   public YBTable getTable() {
     return table;
+  }
+
+  boolean isRetrySameServer() {
+    return this.retrySameServer ;
+  }
+
+  void setRetrySameServer(boolean retrySameServer) {
+    this.retrySameServer = retrySameServer;
   }
 
   void setTimeoutMillis(long timeout) {

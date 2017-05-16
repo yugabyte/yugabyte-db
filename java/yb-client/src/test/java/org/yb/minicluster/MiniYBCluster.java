@@ -32,6 +32,9 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -52,14 +55,21 @@ public class MiniYBCluster implements AutoCloseable {
   private static final int CQL_PORT = 9042;
 
   // How often to push node list refresh events to CQL clients (in seconds)
-  public static final int CQL_NODE_LIST_REFRESH = 5;
+  public static final int CQL_NODE_LIST_REFRESH_SECS = 5;
 
   public static final int TSERVER_HEARTBEAT_TIMEOUT_MS = 5 * 1000;
 
   public static final int TSERVER_HEARTBEAT_INTERVAL_MS = 500;
 
+  public static final int CATALOG_MANAGER_BG_TASK_WAIT_MS = 500;
+
   // We support 127.0.0.1 - 127.0.0.16 on MAC as loopback IPs.
   private static final int NUM_LOCALHOSTS_ON_MAC_OS_X = 16;
+
+  private static final String TSERVER_MASTER_ADDRESSES_FLAG = "--tserver_master_addrs";
+
+  private static final String TSERVER_MASTER_ADDRESSES_FLAG_REGEX =
+    TSERVER_MASTER_ADDRESSES_FLAG + ".*";
 
   // List of threads that print
   private final List<Thread> processInputPrinters = new ArrayList<>();
@@ -240,6 +250,26 @@ public class MiniYBCluster implements AutoCloseable {
     }
   }
 
+  /**
+   * Update the master addresses for MiniYBCluster and also for the flagsfile so that tservers
+   * pick it up.
+   */
+  private void updateMasterAddresses() throws IOException {
+    masterAddresses = NetUtil.hostsAndPortsToString(masterHostPorts);
+    Path flagsFile = Paths.get (TestUtils.getFlagsPath());
+    String content = new String(Files.readAllBytes(flagsFile));
+    LOG.info("Retrieved flags file content: " + content);
+    String tserverMasterAddressesFlag = String.format("%s=%s", TSERVER_MASTER_ADDRESSES_FLAG,
+      masterAddresses);
+    if (content.contains(TSERVER_MASTER_ADDRESSES_FLAG)) {
+      content = content.replaceAll(TSERVER_MASTER_ADDRESSES_FLAG_REGEX, tserverMasterAddressesFlag);
+    } else {
+      content += tserverMasterAddressesFlag + "\n";
+    }
+    Files.write(flagsFile, content.getBytes());
+    LOG.info("Wrote flags file content: " + content);
+  }
+
   public void startTServer(List<String> tserverArgs) throws Exception {
     String baseDirPath = TestUtils.getBaseDir();
     long now = System.currentTimeMillis();
@@ -267,7 +297,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--redis_proxy_webserver_port=" + redisWebPort,
         "--cql_proxy_bind_address=" + tserverBindAddress + ":" + CQL_PORT,
         "--yb_num_shards_per_tserver=3",
-        "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH,
+        "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH_SECS,
         "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
         "--cql_proxy_webserver_port=" + cqlWebPort);
     tsCmdLine.addAll(getCommonDaemonFlags());
@@ -291,6 +321,26 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Returns the common options among regular masters and shell masters.
+   * @return a list of command line options
+   */
+  private List<String> getCommonMasterCmdLine(String flagsPath, String dataDirPath,
+                                              String masterBindAddress, int masterRpcPort,
+                                              int masterWebPort) throws Exception {
+    return Lists.newArrayList(
+      TestUtils.findBinary("yb-master"),
+      "--flagfile=" + flagsPath,
+      "--fs_wal_dirs=" + dataDirPath,
+      "--fs_data_dirs=" + dataDirPath,
+      "--webserver_interface=" + masterBindAddress,
+      "--local_ip_for_outbound_sockets=" + masterBindAddress,
+      "--rpc_bind_addresses=" + masterBindAddress + ":" + masterRpcPort,
+      "--tserver_unresponsive_timeout_ms=" + TSERVER_HEARTBEAT_TIMEOUT_MS,
+      "--catalog_manager_bg_task_wait_ms=" + CATALOG_MANAGER_BG_TASK_WAIT_MS,
+      "--webserver_port=" + masterWebPort);
+  }
+
+  /**
    * Start a new master server in 'shell' mode. Finds free web and RPC ports and then
    * starts the master on those ports, finally populates the 'masters' map.
    *
@@ -307,15 +357,8 @@ public class MiniYBCluster implements AutoCloseable {
     final String dataDirPath =
         baseDirPath + "/master-" + masterBindAddress + "-" + rpcPort + "-" + now;
     final String flagsPath = TestUtils.getFlagsPath();
-    List<String> masterCmdLine = Lists.newArrayList(
-        TestUtils.findBinary("yb-master"),
-        "--flagfile=" + flagsPath,
-        "--fs_wal_dirs=" + dataDirPath,
-        "--fs_data_dirs=" + dataDirPath,
-        "--webserver_interface=" + masterBindAddress,
-        "--local_ip_for_outbound_sockets=" + masterBindAddress,
-        "--rpc_bind_addresses=" + masterBindAddress + ":" + rpcPort,
-        "--webserver_port=" + webPort);
+    List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
+      masterBindAddress, rpcPort, webPort);
     masterCmdLine.addAll(getCommonDaemonFlags());
 
     final MiniYBDaemon daemon = configureAndStartProcess(
@@ -324,6 +367,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     final HostAndPort masterHostPort = HostAndPort.fromParts(masterBindAddress, rpcPort);
     masterHostPorts.add(masterHostPort);
+    updateMasterAddresses();
     masterProcesses.put(masterHostPort, daemon);
 
     if (flagsPath.startsWith(baseDirPath)) {
@@ -379,7 +423,7 @@ public class MiniYBCluster implements AutoCloseable {
       masterHostPorts.add(HostAndPort.fromParts(masterBindAddress, rpcPort));
     }
 
-    masterAddresses = NetUtil.hostsAndPortsToString(masterHostPorts);
+    updateMasterAddresses();
     for (MasterHostPortAllocation masterAlloc : masterHostPortAlloc) {
       final String masterBindAddress = masterAlloc.bindAddress;
       final int masterRpcPort = masterAlloc.rpcPort;
@@ -388,17 +432,9 @@ public class MiniYBCluster implements AutoCloseable {
           baseDirPath + "/master-" + masterBindAddress + "-" + masterRpcPort + "-" + now;
       String flagsPath = TestUtils.getFlagsPath();
       final int masterWebPort = masterAlloc.webPort;
-      List<String> masterCmdLine = Lists.newArrayList(
-          TestUtils.findBinary("yb-master"),
-          "--create_cluster",
-          "--flagfile=" + flagsPath,
-          "--fs_wal_dirs=" + dataDirPath,
-          "--fs_data_dirs=" + dataDirPath,
-          "--webserver_interface=" + masterBindAddress,
-          "--local_ip_for_outbound_sockets=" + masterBindAddress,
-          "--rpc_bind_addresses=" + masterBindAddress + ":" + masterRpcPort,
-          "--tserver_unresponsive_timeout_ms=" + TSERVER_HEARTBEAT_TIMEOUT_MS,
-          "--webserver_port=" + masterWebPort);
+      List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
+        masterBindAddress, masterRpcPort, masterWebPort);
+      masterCmdLine.add(1, "--create_cluster");
       masterCmdLine.addAll(getCommonDaemonFlags());
       if (numMasters > 1) {
         masterCmdLine.add("--master_addresses=" + masterAddresses);
@@ -541,6 +577,8 @@ public class MiniYBCluster implements AutoCloseable {
       // The master is already dead, good.
       return;
     }
+    assert(masterHostPorts.remove(hostAndPort));
+    updateMasterAddresses();
     destroyDaemonAndWait(master);
   }
 
@@ -594,6 +632,9 @@ public class MiniYBCluster implements AutoCloseable {
       } catch (Exception e) {
         LOG.warn("Could not delete path {}", path, e);
       }
+    }
+    if (syncClient != null) {
+      syncClient.shutdown();
     }
     LOG.info("Mini cluster shutdown finished");
   }
