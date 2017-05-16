@@ -114,9 +114,13 @@ class InternalDocIterator {
   CHECKED_STATUS SeekToKeyPrefix();
 
  private:
-  DocWriteBatchCache* doc_write_batch_cache_;
 
+  rocksdb::DB* db_;
+  BloomFilterMode bloom_filter_mode_;
+  // The iterator is created lazily as seek is needed.
   std::unique_ptr<rocksdb::Iterator> iter_;
+
+  DocWriteBatchCache* doc_write_batch_cache_;
 
   // Current key prefix. This corresponds to all keys belonging to a top-level document or a
   // subdocument.

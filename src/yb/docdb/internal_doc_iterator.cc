@@ -27,11 +27,12 @@ InternalDocIterator::InternalDocIterator(rocksdb::DB* rocksdb,
                                          DocWriteBatchCache* doc_write_batch_cache,
                                          BloomFilterMode bloom_filter_mode,
                                          int* num_rocksdb_seeks)
-    : doc_write_batch_cache_(doc_write_batch_cache),
+    : db_(rocksdb),
+      bloom_filter_mode_(bloom_filter_mode),
+      iter_(nullptr),
+      doc_write_batch_cache_(doc_write_batch_cache),
       subdoc_exists_(Trilean::kUnknown),
-      num_rocksdb_seeks_(num_rocksdb_seeks) {
-  iter_ = CreateRocksDBIterator(rocksdb, bloom_filter_mode);
-}
+      num_rocksdb_seeks_(num_rocksdb_seeks) {}
 
 Status InternalDocIterator::SeekToDocument(const KeyBytes& encoded_doc_key) {
   SetDocumentKey(encoded_doc_key);
@@ -80,6 +81,10 @@ Status InternalDocIterator::SeekToKeyPrefix() {
     subdoc_type_ = cached_ht_and_type->second;
     subdoc_exists_ = ToTrilean(subdoc_type_ != ValueType::kTombstone);
   } else {
+    if (!iter_) {
+      // If iter hasn't been created yet, do so now.
+      iter_ = CreateRocksDBIterator(db_, bloom_filter_mode_);
+    }
     ROCKSDB_SEEK(iter_.get(), key_prefix_.AsSlice());
     if (num_rocksdb_seeks_ != nullptr) {
       (*num_rocksdb_seeks_)++;
