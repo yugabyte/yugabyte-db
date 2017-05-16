@@ -277,13 +277,13 @@ TEST_F(VarIntTest, TestDigitPairsEncoding) {
   VarInt large_even_digits("1234567890123456789012");
 
   EXPECT_EQ("[ 00000000 ]", EncodeToDigitPairs(zero));
-  EXPECT_EQ("[ 00011110 ]", EncodeToDigitPairs(one_digit)); // 30 = 0b11110
-  EXPECT_EQ("[ 00110100 ]", EncodeToDigitPairs(two_digit)); // 52 = 0b110100
-  EXPECT_EQ("[ 10011100 01001001 ]", EncodeToDigitPairs(four_digit)); // 28 = 0b11100,73 = 0b1001001
-  EXPECT_EQ("[ 10001010 11100010 11001100 10110110 10100000 10001010 11100010 11001100 "
-      "10110110 10100000 00001010 ]", EncodeToDigitPairs(large_odd_digits));
-  EXPECT_EQ("[ 10010101 10001001 11010111 11000001 10101011 10010101 10001001 11010111 "
-      "11000001 10101011 00010101 ]", EncodeToDigitPairs(large_even_digits));
+  EXPECT_EQ("[ 00111100 ]", EncodeToDigitPairs(one_digit)); // 30 = 0b11110
+  EXPECT_EQ("[ 01101000 ]", EncodeToDigitPairs(two_digit)); // 52 = 0b110100
+  EXPECT_EQ("[ 00111001 10010010 ]", EncodeToDigitPairs(four_digit)); // 28 = 0b11100,73 = 0b1001001
+  EXPECT_EQ("[ 00010101 11000101 10011001 01101101 01000001 00010101 11000101 10011001 "
+      "01101101 01000001 00010100 ]", EncodeToDigitPairs(large_odd_digits));
+  EXPECT_EQ("[ 00101011 00010011 10101111 10000011 01010111 00101011 00010011 10101111 "
+      "10000011 01010111 00101010 ]", EncodeToDigitPairs(large_even_digits));
 
   VarInt decoded;
   size_t size;

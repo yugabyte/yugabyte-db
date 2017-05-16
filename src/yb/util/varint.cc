@@ -348,8 +348,6 @@ Status VarInt::DecodeFromTwosComplement(const Slice& slice) {
   return Status::OK();
 }
 
-
-
 VarInt VarInt::EncodeToDigitPairsBytes() const {
   DCHECK_EQ(radix_, 10);
   if (digits_.empty()) {
@@ -359,8 +357,9 @@ VarInt VarInt::EncodeToDigitPairsBytes() const {
   size_t len = (digits_.size()+1)/2;
   for (size_t i = 0; i < len; i++) {
     int d = digit(2*i) * 10 + digit(2*i+1);
+    d *= 2;
     if (i != len-1) {
-      d += 128;
+      d += 1;
     }
     base256.digits_.push_back(d);
   }
@@ -374,12 +373,11 @@ Status VarInt::DecodeFromDigitPairs(const Slice& slice, size_t *num_decoded_byte
   *num_decoded_bytes = 0;
   for (size_t i = 0; i < slice.size(); i++) {
     uint8_t byte = slice[i];
-    if (byte >= 128) {
-      byte -= 128;
-    } else {
+    if (byte % 2 == 0) {
       *num_decoded_bytes = i + 1;
       i = slice.size();
     }
+    byte /= 2;
     digits_.push_back(byte / 10);
     digits_.push_back(byte % 10);
   }

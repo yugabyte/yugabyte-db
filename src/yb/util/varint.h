@@ -201,7 +201,7 @@ class VarInt {
     return DecodeFromTwosComplement(Slice(string));
   }
 
-  // Encodes pairs of digits into one byte each. The first bit in each byte is the
+  // Encodes pairs of digits into one byte each. The last bit in each byte is the
   // "continuation bit" which is equal to 1 for all bytes except the last.
   std::string EncodeToDigitPairs() const {
     return EncodeToDigitPairsBytes().ToStringFromBase256();
