@@ -1,3 +1,4 @@
+// Copyright (c) YugaByte, Inc.
 package org.yb.loadtester;
 
 import com.google.common.net.HostAndPort;
@@ -7,14 +8,17 @@ import com.google.gson.JsonParser;
 import com.yugabyte.sample.Main;
 import com.yugabyte.sample.common.CmdLineOpts;
 import org.junit.After;
-import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.client.MiniYBCluster;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
+import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
+import org.yb.cql.BaseCQLTest;
+import org.yb.minicluster.MiniYBDaemon;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -31,11 +35,9 @@ import static org.junit.Assert.fail;
  * This is an integration test that ensures we can expand, shrink and fully move a YB cluster
  * without any significant impact to a running load test.
  */
-public class TestClusterExpandShrink {
+public class TestClusterExpandShrink extends BaseCQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestClusterExpandShrink.class);
-
-  private static MiniYBCluster miniCluster = null;
 
   private static LoadTester loadTesterRunnable = null;
 
@@ -43,38 +45,22 @@ public class TestClusterExpandShrink {
 
   private static String cqlContactPoints = null;
 
-  private static final int NUM_MASTERS = 3;
-
-  private static final int NUM_TABLET_SERVERS = 3;
-
   private static final String WORKLOAD = "CassandraStockTicker";
-
-  // Time to sleep in milliseconds waiting for conditions to be met.
-  private static final int SLEEP_TIME_MS = 1000;
 
   // Number of ops to wait for between significant events in the test.
   private static final int NUM_OPS_INCREMENT = 10000;
 
   // Timeout to wait for desired number of ops.
-  private static final int WAIT_FOR_OPS_TIMEOUT = 30000; // 30 seconds
+  private static final int WAIT_FOR_OPS_TIMEOUT_MS = 30000; // 30 seconds
 
   // Timeout to wait for load balancing to complete.
-  private static final int LOADBALANCE_TIMEOUT = 30000; // 30 seconds
+  private static final int LOADBALANCE_TIMEOUT_MS = 30000; // 30 seconds
 
   // Timeout to wait for cluster move to complete.
-  private static final int CLUSTER_MOVE_TIMEOUT = 300000; // 5 mins
+  private static final int CLUSTER_MOVE_TIMEOUT_MS = 300000; // 5 mins
 
-  @Before
-  public void SetUpBefore() throws Exception {
-    miniCluster = new MiniYBCluster.MiniYBClusterBuilder()
-      .numMasters(NUM_MASTERS)
-      .numTservers(NUM_TABLET_SERVERS)
-      .defaultTimeoutMs(50000)
-      .build();
-
-    if (!miniCluster.waitForTabletServers(NUM_TABLET_SERVERS)) {
-      fail("Couldn't get " + NUM_TABLET_SERVERS + " tablet servers running, aborting");
-    }
+  @Override
+  protected void afterStartingMiniCluster() {
     cqlContactPoints = miniCluster.getCQLContactPointsAsString();
   }
 
@@ -87,10 +73,6 @@ public class TestClusterExpandShrink {
 
     if (loadTesterThread != null) {
       loadTesterThread.join();
-    }
-
-    if (miniCluster != null) {
-      miniCluster.shutdown();
     }
   }
 
@@ -132,13 +114,9 @@ public class TestClusterExpandShrink {
       return testRunner.getNumExceptions();
     }
 
-    public int waitNumOpsAtleast(int expectedNumOps) throws Exception {
-      int numOps = 0;
-      long start = System.currentTimeMillis();
-      while (numOps < expectedNumOps && System.currentTimeMillis() - start < WAIT_FOR_OPS_TIMEOUT) {
-        numOps = testRunner.numOps();
-        Thread.sleep(SLEEP_TIME_MS);
-      }
+    public int waitNumOpsAtLeast(int expectedNumOps) throws Exception {
+      Integer numOps = 0;
+      TestUtils.waitFor(() -> testRunner.numOps() >= expectedNumOps, WAIT_FOR_OPS_TIMEOUT_MS);
       LOG.info("Num Ops: " + numOps + ", Expected: " + expectedNumOps);
       assertTrue(numOps >= expectedNumOps);
       return numOps;
@@ -165,7 +143,7 @@ public class TestClusterExpandShrink {
   }
 
   private void verifyMetrics(int minOps) throws Exception {
-    for (MiniYBCluster.TServerInfo ts : miniCluster.getTabletServers().values()) {
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
 
       // This is what the json looks likes:
       //[
@@ -226,7 +204,8 @@ public class TestClusterExpandShrink {
   }
 
   // Enable test once we fix ENG-1472.
-  // @Test(timeout = 600000) // 10 minutes.
+  @Ignore
+  @Test(timeout = 600000) // 10 minutes.
   public void testClusterExpandShrink() throws Exception {
     // Start the load tester.
     loadTesterRunnable = new LoadTester(WORKLOAD, cqlContactPoints);
@@ -234,11 +213,10 @@ public class TestClusterExpandShrink {
     loadTesterThread.start();
 
     // Wait for load tester to generate traffic.
-    int totalOps = loadTesterRunnable.waitNumOpsAtleast(NUM_OPS_INCREMENT);
+    int totalOps = loadTesterRunnable.waitNumOpsAtLeast(NUM_OPS_INCREMENT);
 
     // Create a copy to store original list.
-    Map<Integer, MiniYBCluster.TServerInfo> originalTServers =
-      new HashMap<>(miniCluster.getTabletServers());
+    Map<HostAndPort, MiniYBDaemon> originalTServers = new HashMap<>(miniCluster.getTabletServers());
     assertEquals(NUM_TABLET_SERVERS, originalTServers.size());
 
     // Now double the number of tservers to expand the cluster and verify load spreads.
@@ -249,10 +227,10 @@ public class TestClusterExpandShrink {
     YBClient client = miniCluster.getClient();
 
     // Wait for the load to be balanced across the cluster.
-    assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT, NUM_TABLET_SERVERS * 2));
+    assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS * 2));
 
     // Wait for some ops across the entire cluster.
-    totalOps = loadTesterRunnable.waitNumOpsAtleast(totalOps + NUM_OPS_INCREMENT);
+    totalOps = loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
 
     // Verify no failures in load tester.
     assertFalse(loadTesterRunnable.hasFailures());
@@ -267,10 +245,10 @@ public class TestClusterExpandShrink {
 
     // Retrieve existing config, set blacklist and reconfigure cluster.
     List<Common.HostPortPB> blacklisted_hosts = new ArrayList<>();
-    for (Map.Entry<Integer, MiniYBCluster.TServerInfo> ts : originalTServers.entrySet()) {
+    for (Map.Entry<HostAndPort, MiniYBDaemon> ts : originalTServers.entrySet()) {
       Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
-        .setHost(ts.getValue().getLocalhostIP())
-        .setPort(ts.getKey())
+        .setHost(ts.getKey().getHostText())
+        .setPort(ts.getKey().getPort())
         .build();
       blacklisted_hosts.add(hostPortPB);
     }
@@ -286,20 +264,19 @@ public class TestClusterExpandShrink {
     }
 
     // Wait for the move to complete.
-    long start = System.currentTimeMillis();
-    double move_completion;
-    do {
-      Thread.sleep(SLEEP_TIME_MS);
+    TestUtils.waitFor(() -> {
       verifyExpectedLiveTServers(2 * NUM_TABLET_SERVERS);
-      move_completion = client.getLoadMoveCompletion().getPercentCompleted();
+      final double move_completion = client.getLoadMoveCompletion().getPercentCompleted();
       LOG.info("Move completion percent: " + move_completion);
-    } while (move_completion != 100 && System.currentTimeMillis() - start < CLUSTER_MOVE_TIMEOUT);
-    assertEquals(100, (int)client.getLoadMoveCompletion().getPercentCompleted());
+      return move_completion >= 100;
+    }, CLUSTER_MOVE_TIMEOUT_MS);
+
+    assertEquals(100, (int) client.getLoadMoveCompletion().getPercentCompleted());
 
     // Kill the old tablet servers.
     // TODO: Check that the blacklisted tablet servers have no tablets assigned.
-    for (Integer rpcPort : originalTServers.keySet()) {
-      miniCluster.killTabletServerOnPort(rpcPort);
+    for (HostAndPort rpcPort : originalTServers.keySet()) {
+      miniCluster.killTabletServerOnHostPort(rpcPort);
     }
 
     // Wait for heartbeats to expire.
@@ -311,10 +288,10 @@ public class TestClusterExpandShrink {
     LOG.info("Cluster Shrink Done!");
 
     // Wait for some ops.
-    totalOps = loadTesterRunnable.waitNumOpsAtleast(totalOps + NUM_OPS_INCREMENT);
+    totalOps = loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
 
     // Wait for some more ops and verify no exceptions.
-    loadTesterRunnable.waitNumOpsAtleast(totalOps + NUM_OPS_INCREMENT);
+    loadTesterRunnable.waitNumOpsAtLeast(totalOps + NUM_OPS_INCREMENT);
     assertEquals(0, loadTesterRunnable.getNumExceptions());
 
     // Verify metrics for all tservers.

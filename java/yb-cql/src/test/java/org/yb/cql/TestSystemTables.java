@@ -18,9 +18,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
 
-public class TestSystemTables extends TestBase {
+public class TestSystemTables extends BaseCQLTest {
 
   private void verifyPeersTable(ResultSet rs) throws Exception {
     List<InetSocketAddress> contactPoints = miniCluster.getCQLContactPoints();
@@ -76,7 +75,8 @@ public class TestSystemTables extends TestBase {
     assertEquals(0, rs.all().size());
 
     // Now kill a tablet server and verify peers table has one less entry.
-    miniCluster.killTabletServerOnPort(miniCluster.getTabletServers().keySet().iterator().next());
+    miniCluster.killTabletServerOnHostPort(
+        miniCluster.getTabletServers().keySet().iterator().next());
 
     // Wait for TServer to timeout.
     Thread.sleep(2 * MiniYBCluster.TSERVER_HEARTBEAT_TIMEOUT_MS);
@@ -96,7 +96,7 @@ public class TestSystemTables extends TestBase {
 
     // Start the tserver back up and wait for NUM_TABLET_SERVERS + 1 (since master never forgets
     // tservers).
-    miniCluster.startTServer(NUM_TABLET_SERVERS + 1, null);
+    miniCluster.startTServer(null);
     assertTrue(miniCluster.waitForTabletServers(NUM_TABLET_SERVERS + 1));
   }
 

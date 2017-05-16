@@ -2,13 +2,9 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.ColumnDefinitions;
-import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Session;
-
-import java.util.Iterator;
 
 import org.junit.Test;
 import static org.junit.Assert.assertFalse;
@@ -17,9 +13,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import org.yb.cql.TestBase;
-
-public class TestConditionalDml extends TestBase {
+public class TestConditionalDml extends BaseCQLTest {
 
   // Assert that the specified row (h1, h2, r1, r2, v1, v2) exists.
   void assertRow(int h1, String h2, int r1, String r2, int v1, String v2) {
@@ -39,7 +33,7 @@ public class TestConditionalDml extends TestBase {
     LOG.info("TEST SIMPLE DELETE - Start");
 
     // Setup table
-    SetupTable("t", 0 /* num_rows */);
+    setupTable("t", 0 /* num_rows */);
 
     // Insert one row.
     {
@@ -114,7 +108,7 @@ public class TestConditionalDml extends TestBase {
     LOG.info("TEST SIMPLE INSERT - Start");
 
     // Setup table
-    SetupTable("t", 0 /* num_rows */);
+    setupTable("t", 0 /* num_rows */);
 
     // Test inserting IF NOT EXISTS a row that does not exist.
     String insert_stmt =
@@ -184,7 +178,7 @@ public class TestConditionalDml extends TestBase {
     LOG.info("TEST SIMPLE UPDATE - Start");
 
     // Setup table
-    SetupTable("t", 0 /* num_rows */);
+    setupTable("t", 0 /* num_rows */);
 
     // Insert one row.
     {
@@ -275,18 +269,18 @@ public class TestConditionalDml extends TestBase {
     LOG.info("TEST PRIMARY KEY COLUMN IN IF CLAUSE - Start");
 
     // Setup table
-    SetupTable("t", 0 /* num_rows */);
+    setupTable("t", 0 /* num_rows */);
 
     // Invalid cases: primary key columns not allowed in if clause.
-    RunInvalidStmt("UPDATE t SET v1 = 4, v2 = 'd' " +
+    runInvalidStmt("UPDATE t SET v1 = 4, v2 = 'd' " +
                    "WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
                    "IF h1 = 1;");
-    RunInvalidStmt("UPDATE t SET v1 = 4, v2 = 'd' " +
+    runInvalidStmt("UPDATE t SET v1 = 4, v2 = 'd' " +
                    "WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
                    "IF r1 = 1;");
-    RunInvalidStmt("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
+    runInvalidStmt("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
                    "IF h1 = 1;");
-    RunInvalidStmt("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
+    runInvalidStmt("DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' "+
                    "IF r1 = 1;");
 
     LOG.info("TEST PRIMARY KEY COLUMN IN IF CLAUSE - End");

@@ -18,7 +18,6 @@ package org.yb.client;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
 import com.sun.security.auth.module.UnixSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,10 +26,9 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.lang.management.ManagementFactory;
-import java.lang.management.RuntimeMXBean;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -38,10 +36,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.List;
+import java.util.Random;
 import java.util.Set;
-
-import sun.management.VMManagement;
+import java.util.function.Supplier;
 
 /**
  * A grouping of methods that help unit testing.
@@ -55,12 +52,26 @@ public class TestUtils {
 
   private static final String BIN_DIR_PROP = "binDir";
 
+  private static String ybRootDir = null;
+
+  public static final boolean IS_LINUX = System.getProperty("os.name").equals("Linux");
+
+  private static final long unixUserId = new UnixSystem().getUid();
+  private static final long startTimeMillis = System.currentTimeMillis();
+  private static final Random randomGenerator = new Random(startTimeMillis);
+
+  public static final int MIN_PORT_TO_USE = 10000;
+  public static final int MAX_PORT_TO_USE = 32768;
+
+  /** Time to sleep in milliseconds waiting for conditions to be met. */
+  private static final int SLEEP_TIME_MS = 1000;
+
   /**
    * @return the path of the flags file to pass to daemon processes
    * started by the tests
    */
   public static String getFlagsPath() {
-    URL u = BaseYBTest.class.getResource("/flags");
+    URL u = BaseYBClientTest.class.getResource("/flags");
     if (u == null) {
       throw new RuntimeException("Unable to find 'flags' file");
     }
@@ -74,7 +85,7 @@ public class TestUtils {
       // not just the path, so we have to use REPLACE_EXISTING below.
       Path tmpFile = Files.createTempFile(
           Paths.get(getBaseDir()), "yb-flags", ".flags");
-      Files.copy(BaseYBTest.class.getResourceAsStream("/flags"), tmpFile,
+      Files.copy(BaseYBClientTest.class.getResourceAsStream("/flags"), tmpFile,
           StandardCopyOption.REPLACE_EXISTING);
       return tmpFile.toAbsolutePath().toString();
     } catch (IOException e) {
@@ -95,16 +106,28 @@ public class TestUtils {
     }
   }
 
-  public static String findYbRootDir() {
-    URL myUrl = BaseYBTest.class.getProtectionDomain().getCodeSource().getLocation();
+  public static synchronized String findYbRootDir() {
+    if (ybRootDir != null) {
+      return ybRootDir;
+    }
+    URL myUrl = BaseYBClientTest.class.getProtectionDomain().getCodeSource().getLocation();
     File myPath = new File(urlToPath(myUrl));
     while (myPath != null) {
       if (new File(myPath, ".git").isDirectory()) {
-        return myPath.getAbsolutePath();
+        // Cache the root dir so that we don't have to find it every time.
+        ybRootDir = myPath.getAbsolutePath();
+        return ybRootDir;
       }
       myPath = myPath.getParentFile();
     }
     throw new RuntimeException("Unable to find build dir! myUrl=" + myUrl);
+  }
+
+  /**
+   * @return the directory with YB daemons' web UI assets
+   */
+  public static String getWebserverDocRoot() {
+    return TestUtils.findYbRootDir() + "/www";
   }
 
   /**
@@ -133,55 +156,13 @@ public class TestUtils {
    * @return the base directory within which we will store server data
    */
   public static String getBaseDir() {
-    String s = System.getenv("TEST_TMPDIR");
-    if (s == null) {
-      s = String.format("/tmp/ybtest-%d", new UnixSystem().getUid());
+    String testTmpDir = System.getenv("TEST_TMPDIR");
+    if (testTmpDir == null) {
+      testTmpDir = "/tmp/ybtest-" + unixUserId + "-" + startTimeMillis;
     }
-    File f = new File(s);
+    File f = new File(testTmpDir);
     f.mkdirs();
     return f.getAbsolutePath();
-  }
-
-  /**
-   * Finds the next free port, starting with the one passed. Keep in mind the
-   * time-of-check-time-of-use nature of this method, the returned port might become occupied
-   * after it was checked for availability.
-   * @param startPort First port to be probed.
-   * @return A currently usable port.
-   * @throws IOException IOE is thrown if we can't close a socket we tried to open or if we run
-   * out of ports to try.
-   */
-  public static int findFreePort(int startPort) throws IOException {
-    ServerSocket ss;
-    for(int i = startPort; i < 65536; i++) {
-      try {
-        ss = new ServerSocket(i);
-      } catch (IOException e) {
-        continue;
-      }
-      ss.close();
-      return i;
-    }
-    throw new IOException("Ran out of ports.");
-  }
-
-  /**
-   * Finds a specified number of parts, starting with one passed. Keep in mind the
-   * time-of-check-time-of-use nature of this method.
-   * @see {@link #findFreePort(int)}
-   * @param startPort First port to be probed.
-   * @param numPorts Number of ports to reserve.
-   * @return A list of currently usable ports.
-   * @throws IOException IOE Is thrown if we can't close a socket we tried to open or if run
-   * out of ports to try.
-   */
-  public static List<Integer> findFreePorts(int startPort, int numPorts) throws IOException {
-    List<Integer> ports = Lists.newArrayListWithCapacity(numPorts);
-    for (int i = 0; i < numPorts; i++) {
-      startPort = findFreePort(startPort);
-      ports.add(startPort++);
-    }
-    return ports;
   }
 
   /**
@@ -192,7 +173,7 @@ public class TestUtils {
    * @throws IllegalArgumentException If the process is not a UNIXProcess.
    * @throws Exception If there are other getting the pid via reflection.
    */
-  static int pidOfProcess(Process proc) throws NoSuchFieldException, IllegalAccessException {
+  public static int pidOfProcess(Process proc) throws NoSuchFieldException, IllegalAccessException {
     Class<?> procCls = proc.getClass();
     if (!procCls.getName().equals(UNIX_PROCESS_CLS_NAME)) {
       throw new IllegalArgumentException("stopProcess() expects objects of class " +
@@ -202,27 +183,6 @@ public class TestUtils {
     pidField.setAccessible(true);
     return (Integer) pidField.get(proc);
   }
-
-  /**
-   * @return the local PID of this process.
-   * This is used to generate unique loopback IPs for parallel test running.
-   */
-  public static int getPid() {
-    try {
-      RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
-      java.lang.reflect.Field jvm = runtime.getClass().getDeclaredField("jvm");
-      jvm.setAccessible(true);
-      VMManagement mgmt = (VMManagement) jvm.get(runtime);
-      Method pid_method = mgmt.getClass().getDeclaredMethod("getProcessId");
-      pid_method.setAccessible(true);
-
-      return (Integer) pid_method.invoke(mgmt);
-    } catch (Exception e) {
-      LOG.warn("Cannot get PID", e);
-      return 1;
-    }
-  }
-
 
   /**
    * Send a code specified by its string representation to the specified process.
@@ -263,6 +223,69 @@ public class TestUtils {
    */
   static void resumeProcess(Process proc) throws Exception {
     signalProcess(proc, "CONT");
+  }
+
+  /**
+   * Check if the given port is free on the given network interface.
+   *
+   * @param bindInterface the network interface to bind to
+   * @param port port to bind to
+   * @param logException whether to log an exception in case of failure to bind to the port
+   *                     (but not in case of a failure to close the server socket).
+   * @return true if the given port is free on the given interface
+   * @throws IOException
+   */
+  public static boolean isPortFree(InetAddress bindInterface, int port, boolean logException)
+      throws IOException {
+    final int DEFAULT_BACKLOG = 50;
+    ServerSocket serverSocket;
+    try {
+      serverSocket = new ServerSocket(port, DEFAULT_BACKLOG, bindInterface);
+    } catch (IOException e) {
+      if (logException) {
+        LOG.error("Error trying to bind to " + bindInterface + ":" + port, e);
+      }
+      return false;
+    }
+    serverSocket.close();
+    return true;
+  }
+
+  /**
+   * Find a free port for the given bind interface, starting with the one passed. Keep in mind the
+   * time-of-check-time-of-use nature of this method, the returned port might become occupied
+   * after it was checked for availability.
+   * @return A currently usable port.
+   * @throws IOException if we can't close a socket we tried to open or if we run out of ports to
+   *                     try.
+   */
+  public static int findFreePort(String bindInterface) throws IOException {
+    final InetAddress bindIp = InetAddress.getByName(bindInterface);
+    final int MAX_ATTEMPTS = 1000;
+    for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
+      final int port = MIN_PORT_TO_USE +
+          randomGenerator.nextInt(MAX_PORT_TO_USE - MIN_PORT_TO_USE);
+      if (isPortFree(bindIp, port, attempt == MAX_ATTEMPTS - 1)) {
+        return port;
+      }
+    }
+    throw new IOException("Could not find a free port on interface " + bindInterface + " in " +
+        MAX_ATTEMPTS + " attempts");
+  }
+
+  public static boolean isJenkins() {
+    return System.getenv("BUILD_ID") != null && System.getenv("JOB_NAME") != null;
+  }
+
+  public interface Condition {
+    boolean get() throws Exception;
+  }
+
+  public static void waitFor(Condition condition, long timeoutMs) throws Exception {
+    final long startTimeMs = System.currentTimeMillis();
+    while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
+      Thread.sleep(SLEEP_TIME_MS);
+    }
   }
 
 }

@@ -10,7 +10,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-public class TestCreateTable extends TestBase {
+public class TestCreateTable extends BaseCQLTest {
 
   @Test
   public void testCreateTable() throws Exception {
@@ -76,6 +76,6 @@ public class TestCreateTable extends TestBase {
 
   @Test
   public void testCreateTableSystemNamespace() throws Exception {
-    RunInvalidStmt("CREATE TABLE system.abc (c1 int, PRIMARY KEY(c1));");
+    runInvalidStmt("CREATE TABLE system.abc (c1 int, PRIMARY KEY(c1));");
   }
 }

@@ -21,7 +21,7 @@ import org.yb.Schema;
 import org.yb.Type;
 import org.yb.mapreduce.CommandLineParser;
 import org.yb.mapreduce.HadoopTestingUtility;
-import org.yb.client.BaseYBTest;
+import org.yb.client.BaseYBClientTest;
 import org.yb.client.CreateTableOptions;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Job;
@@ -29,7 +29,6 @@ import org.apache.hadoop.util.GenericOptionsParser;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
-import org.junit.Test;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -39,7 +38,7 @@ import java.util.ArrayList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class ITImportCsv extends BaseYBTest {
+public class ITImportCsv extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       ITImportCsv.class.getName() + "-" + System.currentTimeMillis();
@@ -48,10 +47,8 @@ public class ITImportCsv extends BaseYBTest {
 
   private static Schema schema;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
-
+  @Override
+  public void afterStartingMiniCluster() throws Exception {
     ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(4);
     columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.INT32)
         .key(true)
@@ -73,7 +70,7 @@ public class ITImportCsv extends BaseYBTest {
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     try {
-      BaseYBTest.tearDownAfterClass();
+      BaseYBClientTest.tearDownAfterClass();
     } finally {
       HADOOP_UTIL.cleanup();
     }

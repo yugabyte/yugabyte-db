@@ -9,17 +9,17 @@ import java.net.InetAddress;
 import java.util.Date;
 import java.util.Map;
 
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
-public class TestUpdate extends TestBase {
+public class TestUpdate extends BaseCQLTest {
 
   @Test
   public void testUpdateWithTimestamp() throws Exception {
     String tableName = "test_update_with_timestamp";
     CreateTable(tableName, "timestamp");
     // this includes both string and int inputs
-    Map<String, Date> ts_values = GenerateTimestampMap();
+    Map<String, Date> ts_values = generateTimestampMap();
     for (String key : ts_values.keySet()) {
       Date date_value = ts_values.get(key);
       String ins_stmt = String.format(
@@ -32,7 +32,7 @@ public class TestUpdate extends TestBase {
       session.execute(upd_stmt);
       String sel_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
         + " WHERE h1 = 1 AND h2 = %s;", tableName, key);
-      Row row = RunSelect(tableName, sel_stmt).next();
+      Row row = runSelect(sel_stmt).next();
       assertEquals(1, row.getInt(0));
       assertEquals(2, row.getInt(2));
       assertEquals(3, row.getInt(4));
@@ -71,7 +71,7 @@ public class TestUpdate extends TestBase {
       "  WHERE h1 = 1 AND h2 = 'h2';", tableName);
 
     // Verify row is present.
-    Row row = RunSelect(tableName, select_stmt).next();
+    Row row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
     assertEquals(3, row.getInt(2));
@@ -81,7 +81,7 @@ public class TestUpdate extends TestBase {
 
     // Now verify v1 expires.
     Thread.sleep(1100);
-    row = RunSelect(tableName, select_stmt).next();
+    row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
     assertEquals(3, row.getInt(2));
@@ -91,7 +91,7 @@ public class TestUpdate extends TestBase {
 
     // Now verify v2 expires.
     Thread.sleep(1000);
-    row = RunSelect(tableName, select_stmt).next();
+    row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
     assertEquals(3, row.getInt(2));
@@ -105,13 +105,13 @@ public class TestUpdate extends TestBase {
     String upd_stmt1 = String.format(
       "UPDATE %s SET v2 = '%s' WHERE h1 = 1 AND h2 = %s" +
         " AND r1 = 2 AND r2 = %s;", tableName, ts, "0", "0");
-    RunInvalidStmt(upd_stmt1);
+    runInvalidStmt(upd_stmt1);
 
     // testing WHERE clause
     String upd_stmt2 = String.format(
       "UPDATE %s SET v2 = '%s' WHERE h1 = 1 AND h2 = %s" +
         " AND r1 = 2 AND r2 = %s;", tableName, "0", ts, "0");
-    RunInvalidStmt(upd_stmt2);
+    runInvalidStmt(upd_stmt2);
   }
 
   @Test
@@ -138,7 +138,7 @@ public class TestUpdate extends TestBase {
   }
 
   private void runInvalidUpdateWithTTL(String tableName, long ttlSeconds) {
-    RunInvalidStmt(getUpdateStmt(tableName, ttlSeconds));
+    runInvalidStmt(getUpdateStmt(tableName, ttlSeconds));
   }
 
   private void runValidUpdateWithTTL(String tableName, long ttl_seconds) {
@@ -186,7 +186,7 @@ public class TestUpdate extends TestBase {
     // Verify the update worked.
     String select_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s" +
       "  WHERE h1 = 1 AND h2 = '1.2.3.4';", tableName);
-    Row row = RunSelect(tableName, select_stmt).next();
+    Row row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals(InetAddress.getByName("1.2.3.4"), row.getInet(1));
     assertEquals(2, row.getInt(2));
@@ -197,6 +197,6 @@ public class TestUpdate extends TestBase {
 
   @Test
   public void testUpdateSystemNamespace() throws Exception {
-    RunInvalidStmt("UPDATE system.peers SET h1 = 1, h2 = '1', r1 = 1, r2 = '1';");
+    runInvalidStmt("UPDATE system.peers SET h1 = 1, h2 = '1', r1 = 1, r2 = '1';");
   }
 }

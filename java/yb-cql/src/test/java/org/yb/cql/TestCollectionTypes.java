@@ -7,11 +7,11 @@ import org.junit.Test;
 
 import java.util.*;
 
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
-public class TestCollectionTypes extends TestBase {
+public class TestCollectionTypes extends BaseCQLTest {
 
     private String createTableStmt(String tableName, String keyType, String elemType)
             throws Exception {
@@ -83,7 +83,7 @@ public class TestCollectionTypes extends TestBase {
         String invTableNameBase = "test_coll_types_create_inv_table_";
         // checking that non-key types are not allowed as set elems or map keys
         for (String tp : nonKeyTypes) {
-            RunInvalidStmt(createTableStmt(invTableNameBase + tp, tp, "int"));
+            runInvalidStmt(createTableStmt(invTableNameBase + tp, tp, "int"));
         }
 
         // testing collection types separately because we may enable features selectively later
@@ -91,63 +91,63 @@ public class TestCollectionTypes extends TestBase {
         // checking collection types cannot be primary keys
         String invalidCreateStmt = "CREATE TABLE coll_test_invalid (h map<int, varchar>, r int, " +
                 "v int, primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r map<varchar, int>, v int, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h set<int>, r int, v int, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r set<int>, v int, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h list<int>, r int, v int, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r list<int>, v int, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
 
         // checking that nested collections are disabled
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v list<list<int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v list<set<int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v list<map<int,int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
 
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v map<int,list<int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v map<int, set<int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, " +
                 "v map<int, map<int, int>>, primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         // TODO (mihnea) when we enable nested collections the two cases below must remain invalid:
         // set elements and map keys are encoded as docdb keys so collections cannot be allowed
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v set<list<int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v set<set<int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v set<map<int, int>>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v map<list<int>,int>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, v map<set<int>,int>, " +
                 "primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
         invalidCreateStmt = "CREATE TABLE coll_test_invalid (h int, r int, " +
                 "v map<map<int, int>,int>, primary key((h), r));";
-        RunInvalidStmt(invalidCreateStmt);
+        runInvalidStmt(invalidCreateStmt);
     }
 
     @Test
@@ -197,7 +197,7 @@ public class TestCollectionTypes extends TestBase {
 
         // -------------------------- Check Selecting Basic Values -------------------------------\\
         String select_stmt1 = String.format(select_template, tableName, 1, 1);
-        Row row = RunSelect(tableName, select_stmt1).next();
+        Row row = runSelect(select_stmt1).next();
         assertEquals(1, row.getInt(0));
         assertEquals(1, row.getInt(1));
 
@@ -227,7 +227,7 @@ public class TestCollectionTypes extends TestBase {
 
         //--------------- Check Selecting Null Values -- as Empty Collections --------------------\\
         String select_stmt2 = String.format(select_template, tableName, 1, 2);
-        row = RunSelect(tableName, select_stmt2).next();
+        row = runSelect(select_stmt2).next();
         assertEquals(1, row.getInt(0));
         assertEquals(2, row.getInt(1));
 
@@ -245,7 +245,7 @@ public class TestCollectionTypes extends TestBase {
 
         //----------------- Check Selecting Null Values -- as Missing Values ---------------------\\
         String select_stmt3 = String.format(select_template, tableName, 1, 3);
-        row = RunSelect(tableName, select_stmt3).next();
+        row = runSelect(select_stmt3).next();
         assertEquals(1, row.getInt(0));
         assertEquals(3, row.getInt(1));
 
@@ -263,7 +263,7 @@ public class TestCollectionTypes extends TestBase {
 
         //----------------- Check Selecting Null Values -- as Explicit Nulls ---------------------\\
         String select_stmt4 = String.format(select_template, tableName, 1, 4);
-        row = RunSelect(tableName, select_stmt4).next();
+        row = runSelect(select_stmt4).next();
         assertEquals(1, row.getInt(0));
         assertEquals(4, row.getInt(1));
 
@@ -283,7 +283,7 @@ public class TestCollectionTypes extends TestBase {
         // some properties (e.g. sets and map keys removing duplicates) are implicitly enforced by
         // the Java classes used by Datastax -- we test these on the C++ side also to be safe
         String select_stmt5 = String.format(select_template, tableName, 2, 1);
-        row = RunSelect(tableName, select_stmt5).next();
+        row = runSelect(select_stmt5).next();
         assertEquals(2, row.getInt(0));
         assertEquals(1, row.getInt(1));
 
@@ -315,7 +315,7 @@ public class TestCollectionTypes extends TestBase {
 
         //---------------------- Check Selecting Values Given As Expressions ---------------------\\
         String select_stmt6 = String.format(select_template, tableName, 2, 2);
-        row = RunSelect(tableName, select_stmt6).next();
+        row = runSelect(select_stmt6).next();
         assertEquals(2, row.getInt(0));
         assertEquals(2, row.getInt(1));
 
@@ -349,7 +349,7 @@ public class TestCollectionTypes extends TestBase {
         session.execute(update_stmt1);
 
         // checking update result
-        row = RunSelect(tableName, select_stmt1).next();
+        row = runSelect(select_stmt1).next();
         assertEquals(1, row.getInt(0));
         assertEquals(1, row.getInt(1));
         // Checking Map Value
@@ -364,7 +364,7 @@ public class TestCollectionTypes extends TestBase {
         String update_stmt2 = String.format(update_template, "vs", "{'x', 'y'}");
         session.execute(update_stmt2);
         // checking update result
-        row = RunSelect(tableName, select_stmt1).next();
+        row = runSelect(select_stmt1).next();
         assertEquals(1, row.getInt(0));
         assertEquals(1, row.getInt(1));
         set_value = row.getSet(3, String.class);
@@ -376,7 +376,7 @@ public class TestCollectionTypes extends TestBase {
         String update_stmt3 = String.format(update_template, "vl", "[2, 2.5, 3.0]");
         session.execute(update_stmt3);
         // checking update result
-        row = RunSelect(tableName, select_stmt1).next();
+        row = runSelect(select_stmt1).next();
         assertEquals(1, row.getInt(0));
         assertEquals(1, row.getInt(1));
         list_value = row.getList(4, Double.class);
@@ -429,32 +429,32 @@ public class TestCollectionTypes extends TestBase {
         // testing invalid list syntax
         String insert_stmt1 = String.format(insert_template, 1, 2, "{222 : 'a', 333: 'bcd'}",
                 "{'a', 'b'}", "[1.0 : 2.0, 2.0 : 1.0]");
-        RunInvalidStmt(insert_stmt1);
+        runInvalidStmt(insert_stmt1);
 
         // testing wrong collection type (given List expected Set)
         String insert_stmt2 = String.format(insert_template, 1, 2, "{222 : 'a', 333: 'bcd'}",
                 "['a', 'b']", "[1.0, 2.0, 3.0]");
-        RunInvalidStmt(insert_stmt2);
+        runInvalidStmt(insert_stmt2);
 
         // testing wrong map key type (given Double expected Int -- for one key only)
         String insert_stmt3 = String.format(insert_template, 1, 2, "{222 : 'a', 333.0: 'bcd'}",
                 "{'a', 'b'}", "[1.0, 2.0, 3.0]");
-        RunInvalidStmt(insert_stmt3);
+        runInvalidStmt(insert_stmt3);
 
         // testing wrong map values type (given Int expected String -- for all values)
         String insert_stmt4 = String.format(insert_template, 1, 2, "{222 : 2, 333: 3}",
                 "{'a', 'b'}", "[1.0, 2.0, 3.0]");
-        RunInvalidStmt(insert_stmt4);
+        runInvalidStmt(insert_stmt4);
 
         // testing wrong set elems type (given Int expected String -- for all elems)
         String insert_stmt5 = String.format(insert_template, 1, 2, "{222 : 'a', 333: 'bcd'}",
                 "{1, 2}", "[1.0, 2.0, 3.0]");
-        RunInvalidStmt(insert_stmt5);
+        runInvalidStmt(insert_stmt5);
 
         // testing wrong list elem type (given String expected Int -- for one elem only)
         String insert_stmt6 = String.format(insert_template, 1, 2, "{222 : 'a', 333: 'bcd'}",
                 "{'a', 'b'}", "[1.0, 'y', 3.0]");
-        RunInvalidStmt(insert_stmt6);
+        runInvalidStmt(insert_stmt6);
 
         //------------------------------------------------------------------------------------------
         // Testing Invalid Updates
@@ -463,33 +463,33 @@ public class TestCollectionTypes extends TestBase {
 
         // testing invalid map syntax
         String update_stmt1 = String.format(update_template, "vm", "{121 : 'x', 12}");
-        RunInvalidStmt(update_stmt1);
+        runInvalidStmt(update_stmt1);
 
         // testing wrong collection type (given Set expected Map)
         String update_stmt2 = String.format(update_template, "vm", "{12, 21, 2}");
-        RunInvalidStmt(update_stmt2);
+        runInvalidStmt(update_stmt2);
 
         // testing wrong elements type (given String expected Double)
         String update_stmt3 = String.format(update_template, "vl", "['a', 'b', 'c']");
-        RunInvalidStmt(update_stmt3);
+        runInvalidStmt(update_stmt3);
 
         // testing wrong keys type (given Double expected Int)
         String update_stmt4 = String.format(update_template, "vm", "{1.0 : 'a', 2.0 : 'b'}");
-        RunInvalidStmt(update_stmt4);
+        runInvalidStmt(update_stmt4);
 
         // testing comparisons in where clause using collection columns
         String update_stmt5 = String.format(update_template, "vl", "[1.0, 2.0, 3.0]") +
                 " AND vm = {}";
-        RunInvalidStmt(update_stmt5);
+        runInvalidStmt(update_stmt5);
 
         // testing comparisons in if clause using collection columns
         String update_stmt6 = String.format(update_template, "vl", "[1.0, 2.0, 3.0]") +
                 " IF vs = {'a', 'b'}";
-        RunInvalidStmt(update_stmt6);
+        runInvalidStmt(update_stmt6);
 
         String update_stmt7 = String.format(update_template, "vs", "{'x', 'y'}") +
                 " IF vl < [1.0, 2.0, 4.0]";
-        RunInvalidStmt(update_stmt7);
+        runInvalidStmt(update_stmt7);
 
         // Done -- cleaning up
         dropTable(tableName);
@@ -516,7 +516,7 @@ public class TestCollectionTypes extends TestBase {
         Thread.sleep(1050);
 
         String select_stmt = "SELECT * FROM " + tableName + " WHERE h = 1 and r = 1";
-        Row row = RunSelect(tableName, select_stmt).next();
+        Row row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt(0));
         assertEquals(1, row.getInt(1));
         // check set expired
@@ -567,7 +567,7 @@ public class TestCollectionTypes extends TestBase {
         // Select data from the test table.
         String select_stmt = "SELECT * FROM " + tableName +
                 " WHERE h = 1 AND r = 1;";
-        Row row = RunSelect(tableName, select_stmt).next();
+        Row row = runSelect(select_stmt).next();
         // checking row values
         assertEquals(1, row.getInt(0));
         assertEquals(1, row.getInt(1));
@@ -591,7 +591,7 @@ public class TestCollectionTypes extends TestBase {
         // Select data from the test table.
         select_stmt = "SELECT * FROM " + tableName +
                 " WHERE h = 1 AND r = 2;";
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         // checking row values;
         assertEquals(1, row.getInt(0));
         assertEquals(2, row.getInt(1));
@@ -628,7 +628,7 @@ public class TestCollectionTypes extends TestBase {
         // Select data from the test table.
         select_stmt = "SELECT * FROM " + tableName +
                 " WHERE h = 1 AND r = 1;";
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         // checking row values
         assertEquals(1, row.getInt(0));
         assertEquals(1, row.getInt(1));
@@ -653,7 +653,7 @@ public class TestCollectionTypes extends TestBase {
         // Select data from the test table.
         select_stmt = "SELECT * FROM " + tableName +
                 " WHERE h = 1 AND r = 2;";
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         // checking row values
         assertEquals(1, row.getInt(0));
         assertEquals(2, row.getInt(1));

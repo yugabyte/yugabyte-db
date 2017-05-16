@@ -1,8 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.util.*;
 
 import org.junit.Test;
@@ -10,17 +8,17 @@ import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class TestSelect extends TestBase {
+public class TestSelect extends BaseCQLTest {
   @Test
   public void testSimpleQuery() throws Exception {
     LOG.info("TEST CQL SIMPLE QUERY - Start");
 
     // Setup test table.
-    SetupTable("test_select", 10);
+    setupTable("test_select", 10);
 
     // Select data from the test table.
     String select_stmt = "SELECT h1, h2, r1, r2, v1, v2 FROM test_select" +
@@ -139,7 +137,7 @@ public class TestSelect extends TestBase {
     LOG.info("TEST CQL LIMIT QUERY - Start");
 
     // Setup test table.
-    SetupTable("test_select", 0);
+    setupTable("test_select", 0);
 
     // Insert multiple rows with the same partition key.
     int num_rows = 20;
@@ -282,7 +280,7 @@ public class TestSelect extends TestBase {
     String sel_stmt = String.format(
             "SELECT * from %s WHERE h1 = 1 AND h2 = %s" +
                     " AND r1 = 2 AND r2 = %s;", tableName, ts, "0");
-    RunInvalidStmt(sel_stmt);
+    runInvalidStmt(sel_stmt);
   }
 
   @Test

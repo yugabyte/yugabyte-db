@@ -266,7 +266,6 @@ public class YBClient implements AutoCloseable {
    * @param host Master host that is being queried.
    * @param port RPC port of the host being queried.
    * @return The uuid of the master, or null if not found.
-   * @throws Nothing.
    */
   String getMasterUUID(String host, int port) {
     HostAndPort hostAndPort = HostAndPort.fromParts(host, port);
@@ -292,7 +291,6 @@ public class YBClient implements AutoCloseable {
   /**
    * Find the uuid of the leader master.
    * @return The uuid of the leader master, or null if no leader found.
-   * @throws Nothing.
    */
   public String getLeaderMasterUUID() {
     for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
@@ -321,7 +319,6 @@ public class YBClient implements AutoCloseable {
   /**
    * Find the host/port of the leader master.
    * @return The host and port of the leader master, or null if no leader found.
-   * @throws Nothing.
    */
   public HostAndPort getLeaderMasterHostAndPort() {
     for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
@@ -448,28 +445,28 @@ public class YBClient implements AutoCloseable {
    *
    * @param host Master host that is being added or removed.
    * @param port RPC port of the host being added or removed.
-   * @param isAdd If we are adding or removing the master to the configuration.
+   * @param isAdd true if we are adding a server to the master configuration, false if removing.
    *
    * @return The change config response object.
    */
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd) throws Exception {
-    String changeUuid = getMasterUUID(host, port);
-    if (changeUuid == null) {
+    final String masterUuid = getMasterUUID(host, port);
+    if (masterUuid == null) {
       throw new IllegalArgumentException("Invalid master host/port of " + host + "/" +
                                           port + " - could not get it's uuid.");
     }
 
     LOG.info("Sending changeConfig : Target host:port={}:{} at uuid={}, add={}.",
-             host, port, changeUuid, isAdd);
+             host, port, masterUuid, isAdd);
     long timeout = getDefaultAdminOperationTimeoutMs();
     ChangeConfigResponse resp = null;
-    boolean changeConfigDone = true;
+    boolean changeConfigDone;
     do {
       changeConfigDone = true;
       try {
         Deferred<ChangeConfigResponse> d =
-            asyncClient.changeMasterConfig(host, port, changeUuid, isAdd);
+            asyncClient.changeMasterConfig(host, port, masterUuid, isAdd);
         resp = d.join(timeout);
         if (!resp.hasError()) {
           asyncClient.updateMasterAdresses(host, port, isAdd);

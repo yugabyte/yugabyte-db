@@ -1,23 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.datastax.driver.core.exceptions.QueryValidationException;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.rules.ExpectedException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.MiniYBCluster;
+import org.yb.minicluster.BaseMiniClusterTest;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.Session;
@@ -25,33 +22,10 @@ import com.datastax.driver.core.SocketOptions;
 import org.yb.master.Master;
 
 import java.nio.ByteBuffer;
-import java.util.Iterator;
-import java.util.Date;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.TimeZone;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 
-public class TestBase {
-  protected static final Logger LOG = LoggerFactory.getLogger(TestBase.class);
-
-  protected static final String NUM_MASTERS_PROP = "NUM_MASTERS";
-  protected static final int NUM_TABLET_SERVERS = 3;
-  protected static final int DEFAULT_NUM_MASTERS = 3;
-
-  // Number of masters that will be started for this test if we're starting
-  // a cluster.
-  protected static final int NUM_MASTERS =
-    Integer.getInteger(NUM_MASTERS_PROP, DEFAULT_NUM_MASTERS);
-
-  protected static MiniYBCluster miniCluster;
-
-  protected static final int DEFAULT_SLEEP = 50000;
-  protected static List<String> masterArgs = null;
-  protected static List<String> tserverArgs = null;
+public class BaseCQLTest extends BaseMiniClusterTest {
+  protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
 
   // Long.MAX_VALUE / 1000000000 is the max allowed ttl, since internally in docdb we use MonoDelta
   // to store the ttl, which uses nanoseconds.
@@ -62,40 +36,24 @@ public class TestBase {
   protected Cluster cluster;
   protected Session session;
 
+  /** These keyspaces will be dropped in after the current test method (in the @After handler). */
+  protected Set<String> keyspacesToDrop = new TreeSet<>();
+
   @BeforeClass
-  public static void SetUpBeforeClass() throws Exception {
+  public static void setUpBeforeClass() throws Exception {
+    LOG.info("BaseCQLTest.setUpBeforeClass is running");
+
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.
     System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
-    LOG.info("Setting up before class...");
-
-    miniCluster = new MiniYBCluster.MiniYBClusterBuilder()
-                  .numMasters(NUM_MASTERS)
-                  .numTservers(NUM_TABLET_SERVERS)
-                  .defaultTimeoutMs(DEFAULT_SLEEP)
-                  .masterArgs(masterArgs)
-                  .tserverArgs(tserverArgs)
-                  .build();
-
-    LOG.info("Waiting for tablet servers...");
-    if (!miniCluster.waitForTabletServers(NUM_TABLET_SERVERS)) {
-      fail("Couldn't get " + NUM_TABLET_SERVERS + " tablet servers running, aborting");
-    }
-  }
-
-  @AfterClass
-  public static void TearDownAfterClass() throws Exception {
-    if (miniCluster != null) {
-      miniCluster.shutdown();
-    }
   }
 
   @Before
-  public void SetUpBefore() throws Exception {
+  public void setUpCqlClient() throws Exception {
+    // Set a long timeout for CQL queries since build servers might be really slow (especially Mac
+    // Mini).
     SocketOptions socketOptions = new SocketOptions();
-    // Disable timeouts for sql queries since build servers might be really slow (especially mac
-    // mini)
-    socketOptions.setReadTimeoutMillis(0);
+    socketOptions.setReadTimeoutMillis(60 * 1000);
     cluster = Cluster.builder()
               .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
               // To sniff the CQL wire protocol using Wireshark and debug, uncomment the following
@@ -110,15 +68,25 @@ public class TestBase {
   }
 
   @After
-  public void TearDownAfter() throws Exception {
-    // Clean up all tables before end of each test to lower high-water-mark disk usage.
-    DropTables();
-    session.close();
-    cluster.close();
-  }
+  public void tearDownAfter() throws Exception {
+    LOG.info("BaseCQLTest.tearDownAfter is running: " +
+        "dropping tables and closing CQL session/client");
 
-  @Rule
-  public ExpectedException thrown = ExpectedException.none();
+    // Clean up all tables before end of each test to lower high-water-mark disk usage.
+    dropTables();
+
+    // Also delete all keyspaces, because we may
+    dropKeyspaces();
+
+    if (session != null) {
+      session.close();
+    }
+    if (cluster != null) {
+      cluster.close();
+    }
+    LOG.info("BaseCQLTest.tearDownAfter is running: " +
+        "finished dropping tables and closing CQL session/client");
+  }
 
   protected void CreateTable(String test_table, String column_type) throws Exception {
     LOG.info("CREATE TABLE " + test_table);
@@ -131,38 +99,42 @@ public class TestBase {
     session.execute(create_stmt);
   }
 
-  protected void CreateTable(String test_table) throws Exception {
-     CreateTable(test_table, "varchar");
+  protected void CreateTable(String tableName) throws Exception {
+     CreateTable(tableName, "varchar");
   }
 
-  public void SetupTable(String test_table, int num_rows) throws Exception {
-    CreateTable(test_table);
+  public void setupTable(String tableName, int numRows) throws Exception {
+    CreateTable(tableName);
 
-    LOG.info("INSERT INTO TABLE " + test_table);
-    for (int idx = 0; idx < num_rows; idx++) {
+    LOG.info("INSERT INTO TABLE " + tableName);
+    for (int idx = 0; idx < numRows; idx++) {
       // INSERT: Valid statement with column list.
       String insert_stmt = String.format(
         "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, 'h%d', %d, 'r%d', %d, 'v%d');",
-        test_table, idx, idx, idx+100, idx+100, idx+1000, idx+1000);
+        tableName, idx, idx, idx+100, idx+100, idx+1000, idx+1000);
       session.execute(insert_stmt);
     }
+    LOG.info("INSERT INTO TABLE " + tableName + " FINISHED");
   }
 
-  protected void DropTable(String test_table) throws Exception {
-    String drop_stmt = String.format("DROP TABLE %s;", test_table);
+  protected void DropTable(String tableName) throws Exception {
+    String drop_stmt = String.format("DROP TABLE %s;", tableName);
     session.execute(drop_stmt);
   }
 
-  protected void DropTables() throws Exception {
+  protected void dropTables() throws Exception {
+    if (miniCluster == null) {
+      return;
+    }
     for (Master.ListTablesResponsePB.TableInfo tableInfo :
         miniCluster.getClient().getTablesList().getTableInfoList()) {
       // Drop all non-system tables.
       String namespaceName = tableInfo.getNamespace().getName();
       if (!namespaceName.equals("system") &&
-        !namespaceName.equals("system_auth") &&
-        !namespaceName.equals("system_distributed") &&
-        !namespaceName.equals("system_traces") &&
-        !namespaceName.equals("system_schema")) {
+          !namespaceName.equals("system_auth") &&
+          !namespaceName.equals("system_distributed") &&
+          !namespaceName.equals("system_traces") &&
+          !namespaceName.equals("system_schema")) {
         if (namespaceName.equals(DEFAULT_KEYSPACE)) {
           // Don't need namespace name for default namespace.
           DropTable(tableInfo.getName());
@@ -173,14 +145,28 @@ public class TestBase {
     }
   }
 
-  protected Iterator<Row> RunSelect(String tableName, String select_stmt) {
+  protected void dropKeyspaces() throws Exception {
+    if (keyspacesToDrop.isEmpty()) {
+      LOG.info("No keyspaces to drop after the test.");
+    }
+
+    // Copy the set of keyspaces to drop to avoid concurrent modification exception, because
+    // dropKeyspace will also remove them from the keyspacesToDrop.
+    final Set<String> keyspacesToDropCopy = new TreeSet<>();
+    keyspacesToDropCopy.addAll(keyspacesToDrop);
+    for (String keyspaceName : keyspacesToDropCopy) {
+      dropKeyspace(keyspaceName);
+    }
+  }
+
+  protected Iterator<Row> runSelect(String select_stmt) {
     ResultSet rs = session.execute(select_stmt);
     Iterator<Row> iter = rs.iterator();
     assertTrue(iter.hasNext());
     return iter;
   }
 
-  protected void RunInvalidStmt(String stmt) {
+  protected void runInvalidStmt(String stmt) {
     try {
       session.execute(stmt);
       fail(String.format("Statement did not fail: %s", stmt));
@@ -191,7 +177,7 @@ public class TestBase {
 
   // generates a comprehensive map from valid date-time inputs to corresponding Date values
   // includes both integer and string inputs --  used for Timestamp tests
-  public Map<String, Date> GenerateTimestampMap() {
+  public Map<String, Date> generateTimestampMap() {
     Map<String, Date> ts_values = new HashMap();
     Calendar cal = new GregorianCalendar();
 
@@ -241,7 +227,7 @@ public class TestBase {
     return ts_values;
   }
 
-  protected void assertNoRow(String tableName, String select_stmt) {
+  protected void assertNoRow(String select_stmt) {
     ResultSet rs = session.execute(select_stmt);
     Iterator<Row> iter = rs.iterator();
     assertFalse(iter.hasNext());
@@ -266,6 +252,25 @@ public class TestBase {
     buffer.putLong(input);
     buffer.rewind();
     return buffer;
+  }
+
+  public ResultSet execute(String statement) throws Exception {
+    LOG.info("EXEC CQL: " + statement);
+    final ResultSet result = session.execute(statement);
+    LOG.info("EXEC CQL FINISHED: " + statement);
+    return result;
+  }
+
+  public void createKeyspace(String keyspaceName) throws Exception {
+    String createKeyspaceStmt = "CREATE KEYSPACE " + keyspaceName;
+    execute(createKeyspaceStmt);
+    keyspacesToDrop.add(keyspaceName);
+  }
+
+  public void dropKeyspace(String keyspaceName) throws Exception {
+    String deleteKeyspaceStmt = "DROP KEYSPACE " + keyspaceName;
+    execute(deleteKeyspaceStmt);
+    keyspacesToDrop.remove(keyspaceName);
   }
 
 }

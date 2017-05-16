@@ -27,7 +27,7 @@ class YBContextTest extends FunSuite with TestContext {
 
     insertRows(rowCount)
 
-    val scanRdd = kuduContext.kuduRDD(sc, "test")
+    val scanRdd = ybContext.kuduRDD(sc, "test")
 
     val scanList = scanRdd.map(r => r.getInt(0)).collect()
     assert(scanList.length == rowCount)

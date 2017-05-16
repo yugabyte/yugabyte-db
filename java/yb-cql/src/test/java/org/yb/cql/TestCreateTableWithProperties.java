@@ -9,7 +9,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.Random;
 
-public class TestCreateTableWithProperties extends TestBase {
+public class TestCreateTableWithProperties extends BaseCQLTest {
   @Test
   public void testCreateTable() throws Exception {
     LOG.info("Begin test");
@@ -96,7 +96,7 @@ public class TestCreateTableWithProperties extends TestBase {
   }
 
   private void RunInvalidTableProperty(String property) throws Exception {
-    RunInvalidStmt(CreateTableStmt(property));
+    runInvalidStmt(CreateTableStmt(property));
   }
 
   private void RunValidTableProperty(String property) throws Exception {

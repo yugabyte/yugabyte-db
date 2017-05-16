@@ -15,16 +15,14 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.*;
 import java.util.TreeSet;
-import java.util.UUID;
 
-public class TestAscendingOrder extends TestBase {
+public class TestAscendingOrder extends BaseCQLTest {
   private void createTable(String type1, String type2, String orderStmt) throws Exception {
     String createStmt = String.format("CREATE TABLE test_create " +
                                       "(h1 int, r1 %s, r2 %s, v1 int, v2 varchar, " +

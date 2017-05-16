@@ -2,28 +2,24 @@
 package org.yb.cql;
 
 import java.util.Iterator;
-import java.util.Date;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.TimeZone;
 
 import org.junit.Test;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class TestSelectNoHash extends TestBase {
+public class TestSelectNoHash extends BaseCQLTest {
   @Test
   public void testSelectNoHashQuery() throws Exception {
     LOG.info("TEST CQL SIMPLE NO HASH QUERY - Start");
     int num_rows = 100;
 
     // Setup test table.
-    SetupTable("test_select", num_rows);
+    setupTable("test_select", num_rows);
 
     // Select data from the test table.
     String select_stmt = "SELECT * FROM test_select;";

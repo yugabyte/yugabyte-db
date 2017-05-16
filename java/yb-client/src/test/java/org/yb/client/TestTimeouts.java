@@ -21,7 +21,7 @@ import static org.junit.Assert.fail;
 import com.stumbleupon.async.TimeoutException;
 import org.junit.Test;
 
-public class TestTimeouts extends BaseYBTest {
+public class TestTimeouts extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       TestTimeouts.class.getName() + "-" + System.currentTimeMillis();

@@ -86,8 +86,13 @@ void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
     return;
   }
 
-  VLOG(1) << "Successfully resolved " << hp.ToString() << ": "
-          << (*addrs)[0].ToString();
+  if (VLOG_IS_ON(1)) {
+    const auto host_port_as_str = hp.ToString();
+    const auto resolved_to = (*addrs)[0].ToString();
+    if (host_port_as_str != resolved_to) {
+      VLOG(1) << "Successfully resolved " << host_port_as_str << ": " << resolved_to;
+    }
+  }
 
   {
     std::lock_guard<simple_spinlock> l(lock_);

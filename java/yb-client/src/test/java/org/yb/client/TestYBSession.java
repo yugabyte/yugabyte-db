@@ -17,11 +17,10 @@
 package org.yb.client;
 
 import org.junit.Ignore;
-import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestYBSession extends BaseYBTest {
+public class TestYBSession extends BaseYBClientTest {
   // Generate a unique table name
   private static final String TABLE_NAME_PREFIX =
       TestYBSession.class.getName()+"-"+System.currentTimeMillis();

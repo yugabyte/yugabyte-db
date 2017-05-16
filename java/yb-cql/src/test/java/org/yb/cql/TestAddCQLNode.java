@@ -4,10 +4,10 @@ import com.datastax.driver.core.Host;
 import org.junit.Test;
 import org.yb.client.MiniYBCluster;
 
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
-public class TestAddCQLNode extends TestBase {
+public class TestAddCQLNode extends BaseCQLTest {
 
   @Test
   public void testAddCQLNode() throws Exception {
@@ -28,4 +28,5 @@ public class TestAddCQLNode extends TestBase {
       assertTrue(host.isUp());
     }
   }
+
 }

@@ -9,7 +9,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
-public class TestStaticColumn extends TestBase {
+public class TestStaticColumn extends BaseCQLTest {
 
   private void testSelect(String stmt, String expectedOutput) {
     ResultSet rs = session.execute(stmt);
@@ -69,11 +69,11 @@ public class TestStaticColumn extends TestBase {
     session.execute("drop table t;");
 
     // Static column not allowed without range column.
-    RunInvalidStmt("create table t (h int primary key, s int static, c int);");
+    runInvalidStmt("create table t (h int primary key, s int static, c int);");
 
     // Primary key column cannot be static.
-    RunInvalidStmt("create table t (h int static, r int, c int, primary key ((h), r));");
-    RunInvalidStmt("create table t (h int, r int static, c int, primary key ((h), r));");
+    runInvalidStmt("create table t (h int static, r int, c int, primary key ((h), r));");
+    runInvalidStmt("create table t (h int, r int static, c int, primary key ((h), r));");
 
     LOG.info("Test End");
   }

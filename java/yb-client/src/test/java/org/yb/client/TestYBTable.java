@@ -21,7 +21,6 @@ import org.yb.ColumnSchema;
 import org.yb.Common;
 import org.yb.Schema;
 import org.yb.Type;
-import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -32,7 +31,7 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestYBTable extends BaseYBTest {
+public class TestYBTable extends BaseYBClientTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestYBTable.class);
 
@@ -101,21 +100,16 @@ public class TestYBTable extends BaseYBTest {
     return new Schema(columns);
   }
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
-  }
-
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
-    BaseYBTest.tearDownAfterClass();
+    BaseYBClientTest.tearDownAfterClass();
   }
 
   @Test
   public void testDefaultTTL() {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema defaultSchema = ProtobufHelper.pbToSchema(getTTLSchemaPB(true));
-    YBTable table = BaseYBTest.createTable(tableName, defaultSchema, null);
+    YBTable table = BaseYBClientTest.createTable(tableName, defaultSchema, null);
     assertEquals(Schema.defaultTTL, table.getSchema().getTimeToLiveInMillis());
   }
 
@@ -123,7 +117,7 @@ public class TestYBTable extends BaseYBTest {
   public void testCustomTTL() {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema ttlSchema = ProtobufHelper.pbToSchema(getTTLSchemaPB(false));
-    YBTable table = BaseYBTest.createTable(tableName, ttlSchema, null);
+    YBTable table = BaseYBClientTest.createTable(tableName, ttlSchema, null);
     assertEquals(testTTL, table.getSchema().getTimeToLiveInMillis());
   }
 
@@ -131,7 +125,7 @@ public class TestYBTable extends BaseYBTest {
   public void testSortOrderNone() {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema noneOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.NONE);
-    YBTable table = BaseYBTest.createTable(tableName, noneOrderSchema, null);
+    YBTable table = BaseYBClientTest.createTable(tableName, noneOrderSchema, null);
     for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
       if (columnSchema.getName().equals("key1") || columnSchema.getName().equals("key2")) {
         // Default sort order for range keys is ASC.
@@ -146,7 +140,7 @@ public class TestYBTable extends BaseYBTest {
   public void testSortOrderAsc() {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema ascOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.ASC);
-    YBTable table = BaseYBTest.createTable(tableName, ascOrderSchema, null);
+    YBTable table = BaseYBClientTest.createTable(tableName, ascOrderSchema, null);
     for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
       if (columnSchema.getName().equals("key1") || columnSchema.getName().equals("key2")) {
         // Default sort order for range keys is ASC.
@@ -161,7 +155,7 @@ public class TestYBTable extends BaseYBTest {
   public void testSortOrderDesc() {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema descOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.DESC);
-    YBTable table = BaseYBTest.createTable(tableName, descOrderSchema, null);
+    YBTable table = BaseYBClientTest.createTable(tableName, descOrderSchema, null);
     for (ColumnSchema columnSchema : table.getSchema().getColumns()) {
       if (columnSchema.getName().equals("key1")) {
         assertEquals(ColumnSchema.SortOrder.DESC, columnSchema.getSortOrder());

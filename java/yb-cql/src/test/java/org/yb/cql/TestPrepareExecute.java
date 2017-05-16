@@ -14,7 +14,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertEquals;
 
 
-public class TestPrepareExecute extends TestBase {
+public class TestPrepareExecute extends BaseCQLTest {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
@@ -22,8 +22,8 @@ public class TestPrepareExecute extends TestBase {
     // memory page for the parse tree and two for semantic analysis results). A 64kB cache
     // should be small enough to force prepared statements to be freed and reprepared.
     // Note: add "--v=1" below to see the prepared statement cache usage in trace output.
-    TestBase.tserverArgs = Arrays.asList("--cql_service_max_prepared_statement_size_bytes=65536");
-    TestBase.SetUpBeforeClass();
+    BaseCQLTest.tserverArgs = Arrays.asList("--cql_service_max_prepared_statement_size_bytes=65536");
+    BaseCQLTest.setUpBeforeClass();
   }
 
   @Test
@@ -31,7 +31,7 @@ public class TestPrepareExecute extends TestBase {
     LOG.info("Begin test");
 
     // Setup table.
-    SetupTable("test_prepare", 0 /* num_rows */);
+    setupTable("test_prepare", 0 /* num_rows */);
 
     String insert_stmt =
         "insert into test_prepare (h1, h2, r1, r2, v1, v2) values (1, 'a', 2, 'b', 3, 'c');";
@@ -61,7 +61,7 @@ public class TestPrepareExecute extends TestBase {
     LOG.info("Begin test");
 
     // Setup table.
-    SetupTable("test_prepare", 0 /* num_rows */);
+    setupTable("test_prepare", 0 /* num_rows */);
 
     // Insert 10 rows.
     for (int i = 0; i < 10; i++) {

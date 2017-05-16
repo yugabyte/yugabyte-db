@@ -26,7 +26,6 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.junit.AfterClass;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
@@ -35,23 +34,24 @@ import java.io.IOException;
 
 import static org.junit.Assert.*;
 
-public class TestOutputFormatJob extends BaseYBTest {
+public class TestOutputFormatJob extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       TestOutputFormatJob.class.getName() + "-" + System.currentTimeMillis();
 
   private static final HadoopTestingUtility HADOOP_UTIL = new HadoopTestingUtility();
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
+
     createTable(TABLE_NAME, getBasicSchema(), new CreateTableOptions());
   }
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     try {
-      BaseYBTest.tearDownAfterClass();
+      BaseYBClientTest.tearDownAfterClass();
     } finally {
       HADOOP_UTIL.cleanup();
     }

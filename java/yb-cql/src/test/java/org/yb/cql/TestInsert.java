@@ -10,18 +10,18 @@ import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 
-import static junit.framework.TestCase.assertNull;
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
-public class TestInsert extends TestBase {
+public class TestInsert extends BaseCQLTest {
 
   @Test
   public void testSimpleInsert() throws Exception {
     LOG.info("TEST SIMPLE INSERT - Start");
 
     // Setup table and insert 100 rows.
-    SetupTable("test_insert", 100);
+    setupTable("test_insert", 100);
 
     LOG.info("TEST SIMPLE INSERT - End");
   }
@@ -31,7 +31,7 @@ public class TestInsert extends TestBase {
     String tableName = "test_insert_with_timestamp";
     CreateTable(tableName, "timestamp");
     // this includes both string and int inputs
-    Map<String, Date> ts_values = GenerateTimestampMap();
+    Map<String, Date> ts_values = generateTimestampMap();
     for (String key : ts_values.keySet()) {
       Date date_value = ts_values.get(key);
       String ins_stmt = String.format(
@@ -40,7 +40,7 @@ public class TestInsert extends TestBase {
       session.execute(ins_stmt);
       String sel_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
               + " WHERE h1 = 1 AND h2 = %s;", tableName, key);
-      Row row = RunSelect(tableName, sel_stmt).next();
+      Row row = runSelect(sel_stmt).next();
       assertEquals(1, row.getInt(0));
       assertEquals(2, row.getInt(2));
       assertEquals(3, row.getInt(4));
@@ -55,7 +55,7 @@ public class TestInsert extends TestBase {
     String insert_stmt = String.format(
             "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %d, %d, %d, %d, '%s');",
             tableName, 1, 2, 3, 4, 5, ts);
-    RunInvalidStmt(insert_stmt);
+    runInvalidStmt(insert_stmt);
   }
 
   @Test
@@ -91,7 +91,7 @@ public class TestInsert extends TestBase {
       + "  WHERE h1 = 1 AND h2 = 'h2';", tableName);
 
     // Verify row is present.
-    Row row = RunSelect(tableName, select_stmt).next();
+    Row row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
     assertEquals(3, row.getInt(2));
@@ -101,7 +101,7 @@ public class TestInsert extends TestBase {
 
     // Now verify v1 expires.
     Thread.sleep(1100);
-    row = RunSelect(tableName, select_stmt).next();
+    row = runSelect(select_stmt).next();
     assertEquals(1, row.getInt(0));
     assertEquals("h2", row.getString(1));
     assertEquals(3, row.getInt(2));
@@ -111,7 +111,7 @@ public class TestInsert extends TestBase {
 
     // Now verify v2 expires.
     Thread.sleep(1000);
-    assertNoRow(tableName, select_stmt);
+    assertNoRow(select_stmt);
   }
 
   private String getInsertStmt(String tableName, String ttlSeconds) {
@@ -121,7 +121,7 @@ public class TestInsert extends TestBase {
   }
 
   private void runInvalidInsertWithTTL(String tableName, String ttlSeconds) {
-    RunInvalidStmt(getInsertStmt(tableName, ttlSeconds));
+    runInvalidStmt(getInsertStmt(tableName, ttlSeconds));
   }
 
   private void runValidInsertWithTTL(String tableName, String ttlSeconds) {
@@ -179,12 +179,12 @@ public class TestInsert extends TestBase {
     Thread.sleep(1100);
 
     // Verify row has expired.
-    assertNoRow(tableName, select_stmt);
+    assertNoRow(select_stmt);
 
     // Verify row with TTL reset survives.
     select_stmt = String.format("SELECT h1, h2, r1, r2, v1, v2 FROM %s"
       + "  WHERE h1 = 10 AND h2 = 'h20';", tableName);
-    Row row = RunSelect(tableName, select_stmt).next();
+    Row row = runSelect(select_stmt).next();
     assertEquals(10, row.getInt(0));
     assertEquals("h20", row.getString(1));
     assertEquals(30, row.getInt(2));
@@ -213,17 +213,17 @@ public class TestInsert extends TestBase {
 
     // Now try a bunch of invalid inserts.
     // 1.2.3.400 invalid IPv4
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.400', " +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.400', " +
       "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
     // fe80::2978:9018:b288:3z6c invalid IPv6
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.4', " +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values ('1.2.3.4', " +
       "'fe80::2978:9018:b288:3z6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
     // Invalid types.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (1, " +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (1, " +
       "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (3.1, " +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (3.1, " +
       "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (true, " +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (true, " +
       "'fe80::2978:9018:b288:3f6c', 1, 'fe80::9929:23c3:8309:c29f', '10.10.10.10');", tableName));
   }
 
@@ -252,39 +252,39 @@ public class TestInsert extends TestBase {
 
     // Now try a bunch of invalid inserts.
     // Short UUIDs for c1.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "67c4b82-ef22-4173-bced-0eba570d969e, " +
       "c57c4b82-ef52-2073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-e22-4173-bced-0eba570d969e, " +
       "c57c4b82-ef52-2073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-ef22-413-bced-0eba570d969e, " +
       "c57c4b82-ef52-2073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-ef22-4173-bced-0eba570d96, " +
       "c57c4b82-ef52-2073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
     // Invalid type for c1.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "2, " +
       "c57c4b82-ef52-2073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
     // Invalid UUID for c2.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-ef22-4173-bced-0eba570d969e, " +
       "X57c4b82-ef52-2073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
@@ -317,46 +317,46 @@ public class TestInsert extends TestBase {
 
     // Now try a bunch of invalid inserts.
     // Short TimeUUIDs for c1.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "67c4b82-ef22-1173-bced-0eba570d969e, " +
       "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-e22-1173-bced-0eba570d969e, " +
       "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-ef22-113-bced-0eba570d969e, " +
       "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-ef22-1173-bced-0eba570d96, " +
       "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
     // Invalid type for c1.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "2, " +
       "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
     // Invalid UUID for c2.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-ef22-1173-bced-0eba570d969e, " +
       "X57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-1073-bced-0eba570d969e, " +
       "b57c4b82-ef52-1173-bced-0eba570d969e);", tableName));
 
     // Valid UUID for c1, invalid TIMEUUID for c4.
-    RunInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
+    runInvalidStmt(String.format("INSERT INTO %s (c1, c2, c3, c4, c5) values (" +
       "467c4b82-ef22-1173-bced-0eba570d969e, " +
       "c57c4b82-ef52-1073-aced-0eba570d969e, 1, " +
       "157c4b82-ff32-4073-bced-0eba570d969e, " +
@@ -365,7 +365,7 @@ public class TestInsert extends TestBase {
 
   @Test
   public void testInsertIntoSystemNamespace() throws Exception {
-    RunInvalidStmt("INSERT INTO system.peers (h1, h2, r1, r2) VALUES (1, '1', 1, '1');");
-    RunInvalidStmt("DELETE FROM system.peers WHERE h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1';");
+    runInvalidStmt("INSERT INTO system.peers (h1, h2, r1, r2) VALUES (1, '1', 1, '1');");
+    runInvalidStmt("DELETE FROM system.peers WHERE h1 = 1 AND h2 = '1' AND r1 = 1 AND r2 = '1';");
   }
 }

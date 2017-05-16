@@ -7,10 +7,10 @@ import org.junit.Test;
 
 import java.util.Iterator;
 
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
-public class TestTableTTL extends TestBase {
+public class TestTableTTL extends BaseCQLTest {
 
   private Iterator<Row> execQuery(String tableName, int primaryKey) {
     ResultSet rs = session.execute(String.format("SELECT c1, c2, c3 FROM %s WHERE c1 = %d;",
@@ -21,7 +21,7 @@ public class TestTableTTL extends TestBase {
   private void assertNoRow(String tableName, int primaryKey) {
     String select_stmt = String.format("SELECT c1, c2, c3 FROM %s WHERE c1 = %d;",
       tableName, primaryKey);
-    assertNoRow(tableName, select_stmt);
+    assertNoRow(select_stmt);
   }
 
   private Row getFirstRow(String tableName, int primaryKey) {
@@ -71,7 +71,7 @@ public class TestTableTTL extends TestBase {
   }
 
   private void createTableInvalid(String tableName, long ttl) {
-    RunInvalidStmt(getCreateTableStmt(tableName, ttl));
+    runInvalidStmt(getCreateTableStmt(tableName, ttl));
   }
 
   @Test

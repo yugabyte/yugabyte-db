@@ -31,7 +31,7 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestYBTableInputFormat extends BaseYBTest {
+public class TestYBTableInputFormat extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       TestYBTableInputFormat.class.getName() + "-" + System.currentTimeMillis();

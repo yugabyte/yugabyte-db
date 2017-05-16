@@ -70,6 +70,9 @@ DEFINE_int32(generic_svc_queue_length, 50,
              "RPC Queue length for the generic service");
 TAG_FLAG(generic_svc_queue_length, advanced);
 
+DEFINE_string(yb_test_name, "",
+              "Specifies test name this daemon is running as part of.");
+
 using std::shared_ptr;
 using std::string;
 using std::stringstream;
@@ -138,6 +141,8 @@ Status RpcServerBase::Init() {
   RegisterSpinLockContentionMetrics(metric_entity_);
 
   InitSpinLockContentionProfiling();
+
+  SetStackTraceSignal(SIGUSR2);
 
   // Initialize the clock immediately. This checks that the clock is synchronized
   // so we're less likely to get into a partially initialized state on disk during startup

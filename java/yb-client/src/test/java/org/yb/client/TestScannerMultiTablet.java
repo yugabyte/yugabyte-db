@@ -20,9 +20,7 @@ import com.google.common.collect.Lists;
 import com.stumbleupon.async.Deferred;
 import org.yb.ColumnSchema;
 import org.yb.Schema;
-import org.junit.BeforeClass;
 import org.junit.Ignore;
-import org.junit.Test;
 
 import java.util.ArrayList;
 
@@ -30,7 +28,7 @@ import static org.junit.Assert.assertNull;
 import static org.yb.Type.STRING;
 import static org.junit.Assert.assertEquals;
 
-public class TestScannerMultiTablet extends BaseYBTest {
+public class TestScannerMultiTablet extends BaseYBClientTest {
   // Generate a unique table name
   private static final String TABLE_NAME =
       TestScannerMultiTablet.class.getName()+"-"+System.currentTimeMillis();
@@ -38,9 +36,10 @@ public class TestScannerMultiTablet extends BaseYBTest {
   private static Schema schema = getSchema();
   private static YBTable table;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
+
     // create a 4-tablets table for scanning
     CreateTableOptions builder = new CreateTableOptions();
 

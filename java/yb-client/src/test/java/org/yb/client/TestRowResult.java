@@ -16,7 +16,6 @@
 // under the License.
 package org.yb.client;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.yb.Type;
 
@@ -26,7 +25,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class TestRowResult extends BaseYBTest {
+public class TestRowResult extends BaseYBClientTest {
 
   // Generate a unique table name
   private static final String TABLE_NAME =
@@ -34,11 +33,10 @@ public class TestRowResult extends BaseYBTest {
 
   private static YBTable table;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
     createTable(TABLE_NAME, allTypesSchema, new CreateTableOptions());
-
     table = openTable(TABLE_NAME);
   }
 

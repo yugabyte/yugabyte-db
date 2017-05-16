@@ -8,7 +8,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-public class TestKeyspaceProperties extends TestBase {
+public class TestKeyspaceProperties extends BaseCQLTest {
   private String createKeyspaceStmt(String properties) {
     return String.format("CREATE KEYSPACE test_keyspace WITH %s", properties);
   }
@@ -19,7 +19,7 @@ public class TestKeyspaceProperties extends TestBase {
   }
 
   private void runInvalidKeyspaceProperty(String property) throws Exception {
-    RunInvalidStmt(createKeyspaceStmt(property));
+    runInvalidStmt(createKeyspaceStmt(property));
   }
 
   private void runValidKeyspaceProperty(String property) throws Exception {

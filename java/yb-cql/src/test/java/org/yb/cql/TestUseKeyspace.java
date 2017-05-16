@@ -1,14 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
-import java.util.Arrays;
-import java.util.Vector;
-
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
-public class TestUseKeyspace extends TestBase {
+public class TestUseKeyspace extends BaseCQLTest {
 
   private void testUseKeyspace(String keyspace, boolean create) {
     if (create) {

@@ -325,7 +325,8 @@ void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category,
     (*output) << "<tr><td>" << thread.second.name() << "</td><td>"
               << (static_cast<double>(stats.user_ns) / 1e9) << "</td><td>"
               << (static_cast<double>(stats.kernel_ns) / 1e9) << "</td><td>"
-              << (static_cast<double>(stats.iowait_ns) / 1e9) << "</td></tr>";
+              << (static_cast<double>(stats.iowait_ns) / 1e9) << "</td>"
+              << "<td><pre>" << DumpThreadStack(thread.second.thread_id()) << "</pre></td></tr>";
   }
 }
 

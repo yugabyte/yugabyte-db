@@ -16,34 +16,28 @@
 // under the License.
 package org.yb.client;
 
-import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.assertEquals;
 
-
 /**
  * Tests {@link AsyncYBClient} with multiple masters.
  */
-public class TestMasterFailover extends BaseYBTest {
+public class TestMasterFailover extends BaseYBClientTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestMasterFailover.class);
   private static final String TABLE_NAME =
       TestMasterFailover.class.getName() + "-" + System.currentTimeMillis();
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
+
     createTable(TABLE_NAME, basicSchema, new CreateTableOptions());
   }
 
-  /**
-   * This test is disabled as we're not supporting multi-master just yet.
-   */
   @Test(timeout = 30000)
-  @Ignore
   public void testKillLeader() throws Exception {
     int countMasters = masterHostPorts.size();
     if (countMasters < 3) {

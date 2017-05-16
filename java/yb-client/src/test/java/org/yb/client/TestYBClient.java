@@ -30,10 +30,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,38 +38,25 @@ import org.yb.ColumnSchema;
 import org.yb.Schema;
 import org.yb.Common.TableType;
 import org.yb.Type;
-import org.yb.util.ServerInfo;
 
 import com.google.common.net.HostAndPort;
 
-public class TestYBClient extends BaseYBTest {
-  private static final Logger LOG = LoggerFactory.getLogger(BaseYBTest.class);
+public class TestYBClient extends BaseYBClientTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseYBClientTest.class);
 
   private String tableName;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-  }
-
-  @AfterClass
-  public static void tearDownAfterClass() throws Exception {
+  @After
+  public void tearDownAfter() throws Exception {
+    // Destroy client and mini cluster after every test, so that a new one is used for the next
+    // test.
+    destroyClientAndMiniCluster();
   }
 
   @Before
   public void setTableName() {
     tableName = TestYBClient.class.getName() + "-" + System.currentTimeMillis();
   }
-
-  @Before
-  public void setUpBefore() throws Exception {
-    BaseYBTest.setUpBeforeClass();
-  }
-
-  @After
-  public void tearDownAfter() throws Exception {
-    BaseYBTest.tearDownAfterClass();
-  }
-
 
   private Schema createManyStringsSchema() {
     ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(4);
@@ -119,12 +103,12 @@ public class TestYBClient extends BaseYBTest {
   public void testAllMasterChangeConfig() throws Exception {
     syncClient.waitForMasterLeader(10000);
     LOG.info("Starting testAllChangeMasterConfig");
-    int numBefore = BaseYBTest.miniCluster().getNumMasters();
+    int numBefore = miniCluster.getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
     HostAndPort[] newHp = new HostAndPort[3];
     for (int i = 0; i < 3; i++) {
-      newHp[i] = BaseYBTest.miniCluster().startShellMaster();
+      newHp[i] = miniCluster.startShellMaster();
     }
 
     ChangeConfigResponse resp;
@@ -133,7 +117,7 @@ public class TestYBClient extends BaseYBTest {
       LOG.info("Add server {}", newHp[i].toString());
       resp = syncClient.changeMasterConfig(newHp[i].getHostText(), newHp[i].getPort(), true);
       assertFalse(resp.hasError());
-      oldHp = BaseYBTest.miniCluster().getMasterHostPort(i);
+      oldHp = miniCluster.getMasterHostPort(i);
       LOG.info("Remove server {}", oldHp.toString());
       resp = syncClient.changeMasterConfig(oldHp.getHostText(), oldHp.getPort(), false);
       assertFalse(resp.hasError());
@@ -152,14 +136,14 @@ public class TestYBClient extends BaseYBTest {
     // TODO: See if TestName @Rule can be made to work instead of explicit test names.
     syncClient.waitForMasterLeader(10000);
     LOG.info("Starting testChangeMasterConfig");
-    int numBefore = BaseYBTest.miniCluster().getNumMasters();
+    int numBefore = miniCluster.getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
-    HostAndPort newHp = BaseYBTest.miniCluster().startShellMaster();
+    HostAndPort newHp = miniCluster.startShellMaster();
     ChangeConfigResponse resp = syncClient.changeMasterConfig(
         newHp.getHostText(), newHp.getPort(), true);
     assertFalse(resp.hasError());
-    int numAfter = BaseYBTest.miniCluster().getNumMasters();
+    int numAfter = miniCluster.getNumMasters();
     assertEquals(numAfter, numBefore + 1);
     listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numAfter);
@@ -173,10 +157,10 @@ public class TestYBClient extends BaseYBTest {
   public void testChangeMasterConfigOfLeader() throws Exception {
     syncClient.waitForMasterLeader(10000);
     LOG.info("Starting testChangeMasterConfigOfLeader");
-    int numBefore = BaseYBTest.miniCluster().getNumMasters();
+    int numBefore = miniCluster.getNumMasters();
     ListMastersResponse listResp = syncClient.listMasters();
     assertEquals(listResp.getMasters().size(), numBefore);
-    HostAndPort leaderHp = BaseYBTest.findLeaderMasterHostPort();
+    HostAndPort leaderHp = BaseYBClientTest.findLeaderMasterHostPort();
     ChangeConfigResponse resp = syncClient.changeMasterConfig(
         leaderHp.getHostText(), leaderHp.getPort(), false);
     assertFalse(resp.hasError());

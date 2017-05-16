@@ -18,34 +18,28 @@ package org.yb.mapreduce.tools;
 
 import org.yb.mapreduce.CommandLineParser;
 import org.yb.mapreduce.HadoopTestingUtility;
-import org.yb.client.BaseYBTest;
+import org.yb.client.BaseYBClientTest;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
-import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class ITRowCounter extends BaseYBTest {
+public class ITRowCounter extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       ITRowCounter.class.getName() + "-" + System.currentTimeMillis();
 
   private static final HadoopTestingUtility HADOOP_UTIL = new HadoopTestingUtility();
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
-  }
-
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     try {
-      BaseYBTest.tearDownAfterClass();
+      BaseYBClientTest.tearDownAfterClass();
     } finally {
       HADOOP_UTIL.cleanup();
     }

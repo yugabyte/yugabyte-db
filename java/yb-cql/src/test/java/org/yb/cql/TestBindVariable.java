@@ -12,8 +12,6 @@ import java.util.Map;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.exceptions.SyntaxError;
-import com.datastax.driver.core.exceptions.InvalidQueryException;
 
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
@@ -23,7 +21,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-public class TestBindVariable extends TestBase {
+public class TestBindVariable extends BaseCQLTest {
 
   private void testBindSyntaxError(String stmt, Object... values) {
     try {
@@ -57,7 +55,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 10 /* num_rows */);
+    setupTable("test_bind", 10 /* num_rows */);
 
     {
       // Select data from the test table. Bind by position.
@@ -131,7 +129,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 0 /* num_rows */);
+    setupTable("test_bind", 0 /* num_rows */);
 
     {
       // insert data into the test table. Bind by position.
@@ -200,7 +198,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 0 /* num_rows */);
+    setupTable("test_bind", 0 /* num_rows */);
 
     {
       // update data in the test table. Bind by position.
@@ -269,7 +267,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 0 /* num_rows */);
+    setupTable("test_bind", 0 /* num_rows */);
 
     // Insert 4 rows.
     for (int i = 1; i <= 4; i++) {
@@ -340,7 +338,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 10 /* num_rows */);
+    setupTable("test_bind", 10 /* num_rows */);
 
     {
       // Select data from the test table. Bind by position.
@@ -415,7 +413,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 0 /* num_rows */);
+    setupTable("test_bind", 0 /* num_rows */);
 
     {
       // insert data into the test table. Bind by position.
@@ -482,7 +480,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 0 /* num_rows */);
+    setupTable("test_bind", 0 /* num_rows */);
 
     {
       // update data in the test table. Bind by position.
@@ -549,7 +547,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 0 /* num_rows */);
+    setupTable("test_bind", 0 /* num_rows */);
 
     // Insert 4 rows.
     for (int i = 1; i <= 4; i++) {
@@ -742,7 +740,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 10 /* num_rows */);
+    setupTable("test_bind", 10 /* num_rows */);
 
     // ">=" and "<=" not supported in YQL yet.
     //
@@ -822,7 +820,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 10 /* num_rows */);
+    setupTable("test_bind", 10 /* num_rows */);
 
     {
       // Position bind marker with mixed order.
@@ -1024,7 +1022,7 @@ public class TestBindVariable extends TestBase {
     LOG.info("Begin test");
 
     // Setup test table.
-    SetupTable("test_bind", 0 /* num_rows */);
+    setupTable("test_bind", 0 /* num_rows */);
 
     // Illegal (non-positive) bind position marker.
     testBindSyntaxError("SELECT h1, h2, r1, r2, v1, v2 FROM test_bind" +

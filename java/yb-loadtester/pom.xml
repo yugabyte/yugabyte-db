@@ -1,4 +1,5 @@
 <?xml version="1.0"?>
+<!-- Copyright (c) YugaByte, Inc. -->
 <project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <modelVersion>4.0.0</modelVersion>
@@ -12,6 +13,27 @@
   <name>YB Load Tester</name>
 
   <dependencies>
+    <dependency>
+      <groupId>org.yb</groupId>
+      <artifactId>yb-client</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.yb</groupId>
+      <artifactId>yb-client</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.yb</groupId>
+      <artifactId>yb-cql</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
+      <scope>test</scope>
+    </dependency>
+
     <dependency>
       <groupId>log4j</groupId>
       <artifactId>log4j</artifactId>
@@ -62,19 +84,6 @@
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-sql_2.10</artifactId>
       <version>2.1.0</version>
-    </dependency>
-    <dependency>
-      <groupId>org.yb</groupId>
-      <artifactId>yb-client</artifactId>
-      <version>0.8.0-SNAPSHOT</version>
-      <type>test-jar</type>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.yb</groupId>
-      <artifactId>yb-client</artifactId>
-      <version>0.8.0-SNAPSHOT</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>com.google.code.gson</groupId>

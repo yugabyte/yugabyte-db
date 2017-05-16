@@ -19,7 +19,6 @@ package org.yb.client;
 import com.google.common.base.Charsets;
 import com.google.protobuf.ByteString;
 import com.stumbleupon.async.Deferred;
-import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.yb.Common;
@@ -28,15 +27,15 @@ import org.yb.master.Master;
 
 import static org.junit.Assert.*;
 
-public class TestAsyncYBClient extends BaseYBTest {
+public class TestAsyncYBClient extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       TestAsyncYBClient.class.getName() + "-" + System.currentTimeMillis();
   private static YBTable table;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
     // Set to 1 for testDisconnect to always test disconnecting the right server.
     CreateTableOptions options = new CreateTableOptions().setNumReplicas(1);
     table = createTable(TABLE_NAME, basicSchema, options);

@@ -2,27 +2,22 @@
 package org.yb.cql;
 
 import java.util.Iterator;
-import java.util.Date;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.TimeZone;
 
 import org.junit.Test;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
-import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class TestPagingSelect extends TestBase {
+public class TestPagingSelect extends BaseCQLTest {
   @Test
   public void testContinuousQuery() throws Exception {
     LOG.info("TEST CQL CONTINUOUS SELECT QUERY - Start");
 
     // Setup test table.
-    SetupTable("test_select", 0);
+    setupTable("test_select", 0);
 
     // Insert multiple rows with the same partition key.
     // Default page size is 5000, so make it around 4 pages.

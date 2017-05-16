@@ -15,7 +15,7 @@ import java.util.Iterator;
 import java.util.Random;
 import java.util.TreeSet;
 
-public class TestDecimalDataType extends TestBase {
+public class TestDecimalDataType extends BaseCQLTest {
   private String getRandomVarInt(boolean withSign) {
     String digits = "0123456789";
     final Random random = new Random();

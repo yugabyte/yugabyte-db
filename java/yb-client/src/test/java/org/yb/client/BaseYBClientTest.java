@@ -16,58 +16,36 @@
 // under the License.
 package org.yb.client;
 
-import static org.junit.Assert.fail;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.net.HostAndPort;
+import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
+import org.junit.AfterClass;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.ColumnSchema;
+import org.yb.Schema;
+import org.yb.Type;
+import org.yb.minicluster.BaseMiniClusterTest;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.net.HostAndPort;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.yb.Common.HostPortPB;
-import org.yb.ColumnSchema;
-import org.yb.Schema;
-import org.yb.Type;
-import org.yb.master.Master;
-import org.yb.util.NetUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static org.junit.Assert.fail;
 
-import com.google.common.base.Stopwatch;
-import com.google.common.collect.Lists;
-import com.google.common.net.HostAndPort;
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
+/**
+ * A base class for tests using the YB client (the Java client inherited from Kudu, not the CQL
+ * client).
+ */
+public class BaseYBClientTest extends BaseMiniClusterTest {
 
-public class BaseYBTest {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseYBClientTest.class);
 
-  private static final Logger LOG = LoggerFactory.getLogger(BaseYBTest.class);
-
-  private static final String NUM_MASTERS_PROP = "NUM_MASTERS";
-  private static final int NUM_TABLET_SERVERS = 3;
-  private static final int DEFAULT_NUM_MASTERS = 3;
-
-  // Number of masters that will be started for this test if we're starting
-  // a cluster.
-  private static final int NUM_MASTERS =
-      Integer.getInteger(NUM_MASTERS_PROP, DEFAULT_NUM_MASTERS);
-
-  private static MiniYBCluster miniCluster;
-
-  // Comma separate describing the master addresses and ports.
-  protected static String masterAddresses;
-  protected static List<HostAndPort> masterHostPorts;
-
-  protected static final int DEFAULT_SLEEP = 50000;
-
-  // We create both versions of the client for ease of use.
+  // We create both versions of the client (synchronous and asynchronous) for ease of use.
   protected static AsyncYBClient client;
   protected static YBClient syncClient;
   protected static Schema basicSchema = getBasicSchema();
@@ -76,50 +54,42 @@ public class BaseYBTest {
 
   private static List<String> tableNames = new ArrayList<>();
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    LOG.info("Setting up before class...");
-
-    miniCluster = new MiniYBCluster.MiniYBClusterBuilder()
-        .numMasters(NUM_MASTERS)
-        .numTservers(NUM_TABLET_SERVERS)
-        .defaultTimeoutMs(DEFAULT_SLEEP)
-        .build();
-    masterAddresses = miniCluster.getMasterAddresses();
-    masterHostPorts = miniCluster.getMasterHostPorts();
-
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
     LOG.info("Creating new YB client...");
     client = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
-      .defaultAdminOperationTimeoutMs(DEFAULT_SLEEP)
-      .defaultOperationTimeoutMs(DEFAULT_SLEEP)
-      .defaultSocketReadTimeoutMs(DEFAULT_SLEEP)
-      .build();
+        .defaultAdminOperationTimeoutMs(DEFAULT_SLEEP)
+        .defaultOperationTimeoutMs(DEFAULT_SLEEP)
+        .defaultSocketReadTimeoutMs(DEFAULT_SLEEP)
+        .build();
     syncClient = new YBClient(client);
-    LOG.info("Waiting for tablet servers...");
-    if (!miniCluster.waitForTabletServers(NUM_TABLET_SERVERS)) {
-      fail("Couldn't get " + NUM_TABLET_SERVERS + " tablet servers running, aborting");
+  }
+
+  private static void destroyClient() throws Exception {
+    if (client != null) {
+      Deferred<ArrayList<Void>> d = client.shutdown();
+      d.addErrback(defaultErrorCB);
+      d.join(DEFAULT_SLEEP);
+      // No need to explicitly shutdown the sync client,
+      // shutting down the async client effectively does that.
+      client = null;
+    }
+
+    // TODO: do we need to shutdown / close syncClient here?
+  }
+
+  public static void destroyClientAndMiniCluster() throws Exception {
+    try {
+      destroyClient();
+    } finally {
+      destroyMiniCluster();
     }
   }
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
-    try {
-      if (client != null) {
-        Deferred<ArrayList<Void>> d = client.shutdown();
-        d.addErrback(defaultErrorCB);
-        d.join(DEFAULT_SLEEP);
-        // No need to explicitly shutdown the sync client,
-        // shutting down the async client effectively does that.
-      }
-    } finally {
-      if (miniCluster != null) {
-        miniCluster.shutdown();
-      }
-    }
-  }
-
-  public static MiniYBCluster miniCluster() {
-    return miniCluster;
+    destroyClientAndMiniCluster();
   }
 
   protected static YBTable createTable(String tableName, Schema schema,
@@ -127,13 +97,10 @@ public class BaseYBTest {
     LOG.info("Creating table: {}", tableName);
     Deferred<YBTable> d = client.createTable(tableName, schema, builder);
     final AtomicBoolean gotError = new AtomicBoolean(false);
-    d.addErrback(new Callback<Object, Object>() {
-      @Override
-      public Object call(Object arg) throws Exception {
-        gotError.set(true);
-        LOG.error("Error : " + arg);
-        return null;
-      }
+    d.addErrback(arg -> {
+      gotError.set(true);
+      LOG.error("Error : " + arg);
+      return null;
     });
     YBTable table = null;
     try {
@@ -156,13 +123,10 @@ public class BaseYBTest {
       throws Exception {
     final AtomicInteger counter = new AtomicInteger();
 
-    Callback<Object, RowResultIterator> cb = new Callback<Object, RowResultIterator>() {
-      @Override
-      public Object call(RowResultIterator arg) throws Exception {
-        if (arg == null) return null;
-        counter.addAndGet(arg.getNumRows());
-        return null;
-      }
+    Callback<Object, RowResultIterator> cb = arg -> {
+      if (arg == null) return null;
+      counter.addAndGet(arg.getNumRows());
+      return null;
     };
 
     while (scanner.hasMoreRows()) {
@@ -268,18 +232,15 @@ public class BaseYBTest {
     return insert;
   }
 
-  static Callback<Object, Object> defaultErrorCB = new Callback<Object, Object>() {
-    @Override
-    public Object call(Object arg) throws Exception {
-      if (arg == null) return null;
-      if (arg instanceof Exception) {
-        Exception e = (Exception) arg;
-        LOG.warn("Got exception", e);
-        return new Exception("Can't recover from error: ", e);
-      } else {
-        LOG.warn("Got an error response back " + arg);
-        return new Exception("Can't recover from error, see previous WARN : " + arg);
-      }
+  static Callback<Object, Object> defaultErrorCB = arg -> {
+    if (arg == null) return null;
+    if (arg instanceof Exception) {
+      Exception e = (Exception) arg;
+      LOG.warn("Got exception", e);
+      return new Exception("Can't recover from error: ", e);
+    } else {
+      LOG.warn("Got an error response back " + arg);
+      return new Exception("Can't recover from error, see previous WARN : " + arg);
     }
   };
 
@@ -328,8 +289,8 @@ public class BaseYBTest {
       }
     }
 
-    Integer port = leader.getRpcPort();
-    miniCluster.killTabletServerOnPort(port);
+    HostAndPort leaderHostPort = HostAndPort.fromParts(leader.getRpcHost(), leader.getRpcPort());
+    miniCluster.killTabletServerOnHostPort(leaderHostPort);
   }
 
   /**
@@ -342,46 +303,14 @@ public class BaseYBTest {
   }
 
   /**
-   * Find the uuid of the leader master.
-   * @return The uuid of the leader master.
-   * @throws Exception If we are unable to find the leader master.
-   */
-  public static String findLeaderMasterUUID() throws Exception {
-    return syncClient.getLeaderMasterUUID();
-  }
-
-  /**
    * Helper method to easily kill the leader master.
    *
    * This method is thread-safe.
    * @throws Exception If there is an error finding or killing the leader master.
    */
   protected static void killMasterLeader() throws Exception {
-    int leaderPort = findLeaderMasterPort();
-    miniCluster.killMasterOnPort(leaderPort);
-  }
-
-  /**
-   * Find the port of the leader master in order to retrieve it from the port to process map.
-   * @return The port of the leader master.
-   * @throws Exception If we are unable to find the leader master.
-   */
-  protected static int findLeaderMasterPort() throws Exception {
-    Stopwatch sw = new Stopwatch().start();
-    int leaderPort = -1;
-    while (leaderPort == -1 && sw.elapsed(MILLISECONDS) < DEFAULT_SLEEP) {
-      Deferred<Master.GetTableLocationsResponsePB> masterLocD = client.getMasterTableLocationsPB();
-      Master.GetTableLocationsResponsePB r = masterLocD.join(DEFAULT_SLEEP);
-      leaderPort = r.getTabletLocations(0)
-          .getReplicas(0)
-          .getTsInfo()
-          .getRpcAddresses(0)
-          .getPort();
-    }
-    if (leaderPort == -1) {
-      fail("No leader master found after " + DEFAULT_SLEEP + " ms.");
-    }
-    return leaderPort;
+    HostAndPort leaderHostPort = findLeaderMasterHostPort();
+    miniCluster.killMasterOnHostPort(leaderHostPort);
   }
 
   /**

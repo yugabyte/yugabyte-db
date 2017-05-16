@@ -23,8 +23,6 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.output.NullOutputFormat;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +33,7 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestInputFormatJob extends BaseYBTest {
+public class TestInputFormatJob extends BaseYBClientTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestInputFormatJob.class);
 
   private static final String TABLE_NAME =
@@ -45,20 +43,6 @@ public class TestInputFormatJob extends BaseYBTest {
 
   /** Counter enumeration to count the actual rows. */
   private static enum Counters { ROWS }
-
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
-  }
-
-  @AfterClass
-  public static void tearDownAfterClass() throws Exception {
-    try {
-      BaseYBTest.tearDownAfterClass();
-    } finally {
-      HADOOP_UTIL.cleanup();
-    }
-  }
 
   @Test
   @SuppressWarnings("deprecation")

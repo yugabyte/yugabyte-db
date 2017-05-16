@@ -20,8 +20,9 @@ import com.google.common.collect.ImmutableList
 import org.apache.spark.SparkContext
 import org.yb.ColumnSchema.ColumnSchemaBuilder
 import org.yb.client.YBClient.YBClientBuilder
-import org.yb.client.MiniYBCluster.MiniYBClusterBuilder
-import org.yb.client.{CreateTableOptions, YBClient, YBTable, MiniYBCluster}
+import org.yb.client.MiniYBCluster
+import org.yb.client.MiniYBClusterBuilder
+import org.yb.client.{CreateTableOptions, YBClient, YBTable}
 import org.yb.{Schema, Type}
 import org.scalatest.{BeforeAndAfterAll, Suite}
 
@@ -31,7 +32,7 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
   var miniCluster: MiniYBCluster = null
   var ybClient: YBClient = null
   var table: YBTable = null
-  var kuduContext: YBContext = null
+  var ybContext: YBContext = null
 
   val tableName = "test"
 
@@ -55,7 +56,7 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
     ybClient = new YBClientBuilder(miniCluster.getMasterAddresses).build()
     assert(miniCluster.waitForTabletServers(1))
 
-    kuduContext = new YBContext(miniCluster.getMasterAddresses)
+    ybContext = new YBContext(miniCluster.getMasterAddresses)
 
     val tableOptions = new CreateTableOptions().setNumReplicas(1)
     table = ybClient.createTable(tableName, schema, tableOptions)
@@ -68,7 +69,7 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
   }
 
   def insertRows(rowCount: Integer) {
-    val kuduSession = ybClient.newSession()
+    val ybSession = ybClient.newSession()
 
     for (i <- 1 to rowCount) {
       val insert = table.newInsert
@@ -76,7 +77,7 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
       row.addInt(0, i)
       row.addInt(1, i)
       row.addString(2, i.toString)
-      kuduSession.apply(insert)
+      ybSession.apply(insert)
     }
   }
 }

@@ -11,7 +11,7 @@ import java.util.*;
 
 import static org.junit.Assert.assertEquals;
 
-public class TestBlobDataType extends TestBase {
+public class TestBlobDataType extends BaseCQLTest {
 
     @Test
     public void testValidQueries() throws Exception {
@@ -54,7 +54,7 @@ public class TestBlobDataType extends TestBase {
 
         // selecting for empty keys
         String select_stmt = String.format(select_template, 1, "0x", 1, "0x");
-        Row row = RunSelect(tableName, select_stmt).next();
+        Row row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt("h1"));
         assertEquals(1, row.getInt("r1"));
         assertEquals(1, row.getInt("v1"));
@@ -64,7 +64,7 @@ public class TestBlobDataType extends TestBase {
 
         // selecting for capitalized input (different from insert one) and null values
         select_stmt = String.format(select_template, 1, "0XaBcDeF", 1, "0xAbCdEf");
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt("h1"));
         assertEquals(1, row.getInt("r1"));
         assertEquals(0, row.getInt("v1"));
@@ -75,7 +75,7 @@ public class TestBlobDataType extends TestBase {
 
         // select blobs containing \0 bytes (capitalization is normalized to lowercase)
         select_stmt = String.format(select_template, 1, "0x00ab00", 1, "0x00ef00");
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt("h1"));
         assertEquals(1, row.getInt("r1"));
         assertEquals(1, row.getInt("v1"));
@@ -85,7 +85,7 @@ public class TestBlobDataType extends TestBase {
 
         // select with long keys
         select_stmt = String.format(select_template, 1, "0xab" + long_hex, 1, "0xcd" + long_hex);
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt("h1"));
         assertEquals(1, row.getInt("r1"));
         assertEquals(1, row.getInt("v1"));
@@ -104,7 +104,7 @@ public class TestBlobDataType extends TestBase {
         session.execute(update_stmt);
         // checking row
         select_stmt = String.format(select_template, 1, "0x", 1, "0x");
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt("h1"));
         assertEquals(1, row.getInt("r1"));
         assertEquals(1, row.getInt("v1"));
@@ -117,7 +117,7 @@ public class TestBlobDataType extends TestBase {
         session.execute(update_stmt);
         // checking row
         select_stmt = String.format(select_template, 1, "0x00ab00", 1, "0x00ef00");
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt("h1"));
         assertEquals(1, row.getInt("r1"));
         assertEquals(1, row.getInt("v1"));
@@ -131,7 +131,7 @@ public class TestBlobDataType extends TestBase {
         session.execute(update_stmt);
         // checking row
         select_stmt = String.format(select_template, 1, "0xab" + long_hex, 1, "0xcd" + long_hex);
-        row = RunSelect(tableName, select_stmt).next();
+        row = runSelect(select_stmt).next();
         assertEquals(1, row.getInt("h1"));
         assertEquals(1, row.getInt("r1"));
         assertEquals(1, row.getInt("v1"));
@@ -218,24 +218,24 @@ public class TestBlobDataType extends TestBase {
         //-------------- testing odd number of characters (unfinished last-byte) -----------------\\
         // incomplete value in hash key
         String insert_stmt = String.format(insert_template, 1, "0xa", 1, "0x", 1, "0x");
-        RunInvalidStmt(insert_stmt);
+        runInvalidStmt(insert_stmt);
         // incomplete value in range key
         insert_stmt = String.format(insert_template, 1, "0xab", 1, "0xeff", 1, "0xcd");
-        RunInvalidStmt(insert_stmt);
+        runInvalidStmt(insert_stmt);
         // incomplete value in regular column
         insert_stmt = String.format(insert_template, 1, "0xab", 1, "0xef", 1, "0xcdefg");
-        RunInvalidStmt(insert_stmt);
+        runInvalidStmt(insert_stmt);
 
         //------------------------ testing non-hex characters in input ---------------------------\\
         // invalid letter (in hash key)
         insert_stmt = String.format(insert_template, 1, "0xag", 1, "0xcd", 1, "0xef");
-        RunInvalidStmt(insert_stmt);
+        runInvalidStmt(insert_stmt);
         // invalid character (in range key)
         insert_stmt = String.format(insert_template, 1, "0xab", 1, "0xe!", 1, "0xcdefg");
-        RunInvalidStmt(insert_stmt);
+        runInvalidStmt(insert_stmt);
         // invalid character (in regular column)
         insert_stmt = String.format(insert_template, 1, "0xab", 1, "0xef", 1, "0zcdab");
-        RunInvalidStmt(insert_stmt);
+        runInvalidStmt(insert_stmt);
 
         DropTable(tableName);
     }

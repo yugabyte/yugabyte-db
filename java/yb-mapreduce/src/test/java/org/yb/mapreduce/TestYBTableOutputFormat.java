@@ -20,20 +20,14 @@ import org.yb.client.*;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.RecordWriter;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestYBTableOutputFormat extends BaseYBTest {
+public class TestYBTableOutputFormat extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       TestYBTableOutputFormat.class.getName() + "-" + System.currentTimeMillis();
-
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
-  }
 
   @Test
   public void test() throws Exception {

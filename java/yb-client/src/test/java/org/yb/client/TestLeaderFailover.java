@@ -16,20 +16,19 @@
 // under the License.
 package org.yb.client;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestLeaderFailover extends BaseYBTest {
+public class TestLeaderFailover extends BaseYBClientTest {
 
   private static final String TABLE_NAME =
       TestLeaderFailover.class.getName() + "-" + System.currentTimeMillis();
   private static YBTable table;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
 
     CreateTableOptions builder = new CreateTableOptions().setNumReplicas(3);
     createTable(TABLE_NAME, basicSchema, builder);

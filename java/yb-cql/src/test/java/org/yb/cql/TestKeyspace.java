@@ -5,7 +5,6 @@ import java.util.Iterator;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Token;
 
 import org.junit.Ignore;
 import org.junit.Test;
@@ -13,22 +12,18 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 
-public class TestKeyspace extends TestBase {
-  public ResultSet execute(String statement) throws Exception {
-    LOG.info("EXEC CQL: " + statement);
-    return session.execute(statement);
-  }
-
+public class TestKeyspace extends BaseCQLTest {
   public void setupTable(String test_table) throws Exception {
     LOG.info("Create & setup table: " + test_table);
-    super.SetupTable(test_table, 2 /* num_rows */);
+    super.setupTable(test_table, 2 /* num_rows */);
+    LOG.info("Create & setup table: " + test_table + " -- finished");
   }
 
   public void dropTable(String test_table) throws Exception {
     LOG.info("Drop table: " + test_table);
     super.DropTable(test_table);
+    LOG.info("Drop table finished: " + test_table);
   }
 
   public void checkTableRows(String test_table, int[] ids) throws Exception {
@@ -51,13 +46,16 @@ public class TestKeyspace extends TestBase {
     assertEquals(ids.length, rowCount);
   }
 
-  public void checkTable(String test_table) throws Exception {
-    checkTableRows(test_table, new int[]{1});
+  public void checkTable(String testTableName) throws Exception {
+    LOG.info("Performing some writes and reads against the table " + testTableName);
+    checkTableRows(testTableName, new int[]{1});
+    LOG.info("checkTable finished for " + testTableName);
   }
 
-  public void assertNoTable(String test_table) throws Exception {
-    String invalidStmt = "SELECT * FROM " + test_table + " WHERE h1 = 1 AND h2 = 'h1';";
-    RunInvalidStmt(invalidStmt);
+  public void assertNoTable(String testTableName) throws Exception {
+    LOG.info("Checking that the table " + testTableName + " does not exist after deletion");
+    String invalidStmt = "SELECT * FROM " + testTableName + " WHERE h1 = 1 AND h2 = 'h1';";
+    runInvalidStmt(invalidStmt);
   }
 
   public void insertRow(String test_table, int id) throws Exception {
@@ -67,19 +65,13 @@ public class TestKeyspace extends TestBase {
     execute(insertStmt);
   }
 
-  public void createKeyspace(String test_keyspace) throws Exception {
-    String createKeyspaceStmt = "CREATE KEYSPACE " + test_keyspace + ";";
-    execute(createKeyspaceStmt);
-  }
-
-  public void dropKeyspace(String test_keyspace) throws Exception {
-    String deleteKeyspaceStmt = "DROP KEYSPACE " + test_keyspace + ";";
-    execute(deleteKeyspaceStmt);
-  }
-
-  public void useKeyspace(String test_keyspace) throws Exception {
-    String useKeyspaceStmt = "USE " + test_keyspace + ";";
+  public void useKeyspace(String keyspaceName) throws Exception {
+    String useKeyspaceStmt = "USE " + keyspaceName + ";";
     execute(useKeyspaceStmt);
+  }
+
+  public int getTestMethodTimeoutSec() {
+    return 180;
   }
 
   @Test
@@ -93,7 +85,7 @@ public class TestKeyspace extends TestBase {
 
     for (int i = 0; i < 5; ++i) {
       LOG.info("Create big table: " + tableName);
-      super.SetupTable(tableName, 10000 /* num_rows */);
+      super.setupTable(tableName, 10000 /* num_rows */);
       dropTable(tableName);
 
       // Check results of dropTable() just first a few times.
@@ -113,12 +105,17 @@ public class TestKeyspace extends TestBase {
     String keyspaceName = "test_keyspace";
 
     for (int i = 0; i < 10; ++i) {
+      LOG.info("i={}, creating keyspace {}", i, keyspaceName);
       createKeyspace(keyspaceName);
 
       if (i < 5) {
+        LOG.info("i={}, calling useKeyspace on keyspace {}", i, keyspaceName);
         useKeyspace(keyspaceName);
+      } else {
+        LOG.info("i={}, not calling useKeyspace on keyspace {}", i, keyspaceName);
       }
 
+      LOG.info("i={}, dropping keyspace {}", i, keyspaceName);
       dropKeyspace(keyspaceName);
     }
 
@@ -126,28 +123,29 @@ public class TestKeyspace extends TestBase {
   }
 
   @Ignore("Enable after ENG-1468 fixed.")
+  @Test
   public void testNoKeyspace() throws Exception {
     LOG.info("--- TEST CQL: NO KEYSPACE - Start");
 
-    String keyspaceName = "my_keyspace";
-    String tableName = "test_table";
+    final String keyspaceName = "my_keyspace";
+    final String tableName = "test_table";
 
-    // The table's NOT been created yet.
+    LOG.info("The table's NOT been created yet.");
     assertNoTable(tableName);
 
     setupTable(tableName);
     checkTable(tableName);
     dropTable(tableName);
 
-    // The table's been already deleted.
+    LOG.info("The table's been already deleted.");
     assertNoTable(tableName);
 
-    // Create and delete a keyspace.
+    LOG.info("Create and delete a keyspace.");
     createKeyspace(keyspaceName);
     useKeyspace(keyspaceName);
     dropKeyspace(keyspaceName);
 
-    // Test the table with a short name again.
+    LOG.info("Test the table with a short name again.");
     setupTable(tableName);
     checkTable(tableName);
     dropTable(tableName);
@@ -178,7 +176,7 @@ public class TestKeyspace extends TestBase {
     assertNoTable(tableName);
     // Cannot delete non-empty keyspace.
     String invalidStmt = String.format("DROP KEYSPACE ", keyspaceName);
-    RunInvalidStmt(invalidStmt);
+    runInvalidStmt(invalidStmt);
 
     dropTable(longTableName);
 

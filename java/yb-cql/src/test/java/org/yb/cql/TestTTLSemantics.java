@@ -6,7 +6,7 @@ import com.datastax.driver.core.Row;
 
 import java.util.Iterator;
 
-import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import org.junit.Test;
 
@@ -14,7 +14,7 @@ import org.junit.Test;
  * This an extensive test suite ensures that we appropriately test the tricky cassandra TTL
  * semantics, with various edge cases.
  */
-public class TestTTLSemantics extends TestBase {
+public class TestTTLSemantics extends BaseCQLTest {
 
   private void createTable(String tableName) {
     session.execute(String.format(
@@ -24,7 +24,7 @@ public class TestTTLSemantics extends TestBase {
   }
 
   private void assertNoRow(String tableName, int k1, int k2, int k3, int k4) {
-    assertNoRow(tableName, getSelectStmt(tableName, k1, k2, k3, k4));
+    assertNoRow(getSelectStmt(tableName, k1, k2, k3, k4));
   }
 
   private String getSelectStmtWithPrimaryKey(String tableName, int k1, int k2, int k3, int k4) {

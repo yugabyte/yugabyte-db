@@ -166,6 +166,9 @@ input_files=()
 library_files=()
 compiling_pch=false
 
+# Determine if we're building the precompiled header (not whether we're using one).
+is_precompiled_header=false
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o)
@@ -175,7 +178,8 @@ while [[ $# -gt 0 ]]; do
       fi
     ;;
     *.cc|*.h|*.o|*.a|*.so|*.dylib)
-      # Skip arguments that look like compiler options.
+      # Do not include arguments that look like compiler options into the list of input files,
+      # even if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
         input_files+=( "$1" )
       fi

@@ -21,292 +21,283 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+  <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.yb</groupId>
-    <artifactId>yb-parent</artifactId>
-    <version>0.8.0-SNAPSHOT</version>
-    <packaging>pom</packaging>
+  <groupId>org.yb</groupId>
+  <artifactId>yb-parent</artifactId>
+  <version>0.8.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
 
-    <name>YugaByte</name>
+  <name>YugaByte</name>
 
-    <description>
-        YugaByte client, YBCli, tools, mapreduce bindings, etc.
-    </description>
+  <description>
+    YugaByte client, YBCli, tools, mapreduce bindings, etc.
+  </description>
 
-    <!-- Properties Management -->
-    <properties>
-        <!-- Platform encoding override -->
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+  <!-- Properties Management -->
+  <properties>
+    <!-- Platform encoding override -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-        <!-- Maven plugins -->
-        <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
-        <maven-assembly-plugin.version>2.2.1</maven-assembly-plugin.version>
-        <maven-enforcer-plugin.version>1.4</maven-enforcer-plugin.version>
-        <protobuf-maven-plugin.version>0.5.0</protobuf-maven-plugin.version>
-        <maven-surefire-plugin.version>2.20</maven-surefire-plugin.version>
-        <maven-failsafe-plugin.version>2.20</maven-failsafe-plugin.version>
-        <schema-validator-maven-plugin.version>5.5.0-SNAPSHOT</schema-validator-maven-plugin.version>
+    <!-- Maven plugins -->
+    <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
+    <maven-assembly-plugin.version>2.2.1</maven-assembly-plugin.version>
+    <maven-enforcer-plugin.version>1.4</maven-enforcer-plugin.version>
+    <protobuf-maven-plugin.version>0.5.0</protobuf-maven-plugin.version>
+    <maven-surefire-plugin.version>2.20</maven-surefire-plugin.version>
+    <maven-failsafe-plugin.version>2.20</maven-failsafe-plugin.version>
+    <schema-validator-maven-plugin.version>5.5.0-SNAPSHOT</schema-validator-maven-plugin.version>
 
-        <!-- Library dependencies -->
-        <async.version>1.4.1</async.version>
-        <cassandra-driver-core.version>3.1.2</cassandra-driver-core.version>
-        <commons-cli.version>1.2</commons-cli.version>
-        <commons-io.version>2.4</commons-io.version>
-        <guava.version>16.0.1</guava.version>
-        <hadoop.version>2.7.3</hadoop.version>
-        <jedis.version>2.9.0</jedis.version>
-        <jsr305.version>3.0.1</jsr305.version>
-        <junit.version>4.11</junit.version>
-        <log4j.version>1.2.17</log4j.version>
-        <mockito-all.version>1.9.0</mockito-all.version>
-        <murmur.version>1.0.0</murmur.version>
-        <netty.version>3.8.0.Final</netty.version>
-        <protobuf.version>2.6.1</protobuf.version>
-        <slf4j.version>1.7.12</slf4j.version>
+    <!-- Library dependencies -->
+    <async.version>1.4.1</async.version>
+    <cassandra-driver-core.version>3.1.2</cassandra-driver-core.version>
+    <commons-cli.version>1.2</commons-cli.version>
+    <commons-io.version>2.4</commons-io.version>
+    <guava.version>16.0.1</guava.version>
+    <hadoop.version>2.7.3</hadoop.version>
+    <jedis.version>2.9.0</jedis.version>
+    <jsr305.version>3.0.1</jsr305.version>
+    <junit.version>4.11</junit.version>
+    <log4j.version>1.2.17</log4j.version>
+    <mockito-all.version>1.9.0</mockito-all.version>
+    <murmur.version>1.0.0</murmur.version>
+    <netty.version>3.8.0.Final</netty.version>
+    <protobuf.version>2.6.1</protobuf.version>
+    <slf4j.version>1.7.12</slf4j.version>
 
-        <!-- Misc variables -->
-        <testdata.dir>target/testdata</testdata.dir>
-        <testArgLine>-enableassertions -Xmx1900m
-        -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
-        -Djava.awt.headless=true</testArgLine>
-    </properties>
+    <!-- Misc variables -->
+    <testdata.dir>target/testdata</testdata.dir>
+    <testArgLine>-enableassertions -Xmx1900m
+      -Djava.security.egd=file:/dev/./urandom -Djava.net.preferIPv4Stack=true
+      -Djava.awt.headless=true
+    </testArgLine>
+  </properties>
 
-    <modules>
-        <module>interface-annotations</module>
-        <module>yb-client</module>
-        <module>yb-cli</module>
-        <module>yb-client-tools</module>
-        <module>yb-mapreduce</module>
-        <module>yb-spark</module>
-        <module>yb-cql</module>
-        <module>yb-loadtester</module>
-    </modules>
+  <modules>
+    <module>interface-annotations</module>
+    <module>yb-client</module>
+    <module>yb-cli</module>
+    <module>yb-client-tools</module>
+    <module>yb-mapreduce</module>
+    <module>yb-spark</module>
+    <module>yb-cql</module>
+    <module>yb-loadtester</module>
+  </modules>
 
-    <build>
+  <build>
 
-        <pluginManagement>
-            <plugins>
-                <plugin>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-enforcer-plugin</artifactId>
+          <version>${maven-enforcer-plugin.version}</version>
+          <configuration>
+            <rules>
+              <requireMavenVersion>
+                <version>[3.0.2,)</version>
+              </requireMavenVersion>
+              <requireJavaVersion>
+                <version>[1.8,)</version>
+              </requireJavaVersion>
+            </rules>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>${maven-failsafe-plugin.version}</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>integration-test</goal>
+                <goal>verify</goal>
+              </goals>
+            </execution>
+          </executions>
+          <configuration>
+            <failIfNoTests>false</failIfNoTests>
+            <reuseForks>false</reuseForks>
+            <redirectTestOutputToFile>true</redirectTestOutputToFile>
+            <argLine>${testArgLine}</argLine>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+          <configuration>
+            <failIfNoTests>false</failIfNoTests>
+            <reuseForks>false</reuseForks>
+            <redirectTestOutputToFile>true</redirectTestOutputToFile>
+            <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+            <argLine>${testArgLine}</argLine>
+            <systemPropertyVariables>
+              <!--
+                Explicitly specify the YB binary directory since yb-cql tests use
+                TestUtils in yb-client in a JAR (e.g.
+                ~/.m2/repository/org/yb/yb-client/0.8.0-SNAPSHOT/yb-client-0.8.0-SNAPSHOT-tests.jar)
+                so it cannot derive the bin dir from the class's location in
+                TestUtils.findBuildDir().
+
+                When Java tests are run on Jenkins, the build script will override with Jenkins's
+                bin dir via Maven's command line argument "-DbinDir=...".
+              -->
+              <binDir>${project.basedir}/../../build/latest/bin</binDir>
+            </systemPropertyVariables>
+          </configuration>
+        </plugin>
+        <!-- This plugin's configuration is used to store Eclipse m2e settings only.
+             It has no influence on the Maven build itself. -->
+        <plugin>
+          <groupId>org.eclipse.m2e</groupId>
+          <artifactId>lifecycle-mapping</artifactId>
+          <version>1.0.0</version>
+          <configuration>
+            <lifecycleMappingMetadata>
+              <pluginExecutions>
+                <pluginExecution>
+                  <pluginExecutionFilter>
                     <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-enforcer-plugin</artifactId>
-                    <version>${maven-enforcer-plugin.version}</version>
-                    <configuration>
-                        <rules>
-                            <requireMavenVersion>
-                                <version>[3.0.2,)</version>
-                            </requireMavenVersion>
-                            <requireJavaVersion>
-                                <version>[1.8,)</version>
-                            </requireJavaVersion>
-                        </rules>
-                    </configuration>
-                </plugin>
-                <plugin>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <versionRange>[2.5,)</versionRange>
+                    <goals>
+                      <goal>clean</goal>
+                    </goals>
+                  </pluginExecutionFilter>
+                  <action>
+                    <ignore/>
+                  </action>
+                </pluginExecution>
+                <pluginExecution>
+                  <pluginExecutionFilter>
                     <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-failsafe-plugin</artifactId>
-                    <version>${maven-failsafe-plugin.version}</version>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>integration-test</goal>
-                                <goal>verify</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                    <configuration>
-                        <failIfNoTests>false</failIfNoTests>
-                        <reuseForks>false</reuseForks>
-                        <redirectTestOutputToFile>true</redirectTestOutputToFile>
-                        <argLine>${testArgLine}</argLine>
-                    </configuration>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-surefire-plugin</artifactId>
-                    <version>${maven-surefire-plugin.version}</version>
-                    <configuration>
-                        <failIfNoTests>false</failIfNoTests>
-                        <reuseForks>false</reuseForks>
-                        <redirectTestOutputToFile>true</redirectTestOutputToFile>
-                        <argLine>${testArgLine}</argLine>
-                        <systemPropertyVariables>
-                          <!-- Explicitly specify the YB binary directory since yb-cql tests use
-                               TestUtils in yb-client in a JAR (e.g.
-  /Users/<user>/.m2/repository/org/yb/yb-client/0.8.0-SNAPSHOT/yb-client-0.8.0-SNAPSHOT-tests.jar)
-                               so it cannot derive the bin dir from the class's location in
-                               TestUtils.findBuildDir().
+                    <artifactId>maven-antrun-plugin</artifactId>
+                    <versionRange>[1.8,)</versionRange>
+                    <goals>
+                      <goal>run</goal>
+                    </goals>
+                  </pluginExecutionFilter>
+                  <action>
+                    <ignore/>
+                  </action>
+                </pluginExecution>
+              </pluginExecutions>
+            </lifecycleMappingMetadata>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
 
-                               When Java tests are run on Jenkins, the build script will override
-                               with Jenkin's bin dir via Maven's command line argument
-                               "-DbinDir=...".
-                          -->
-                          <binDir>${project.basedir}/../../build/latest/bin</binDir>
-                        </systemPropertyVariables>
-                    </configuration>
-                </plugin>
-                <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
-                <plugin>
-                  <groupId>org.eclipse.m2e</groupId>
-                  <artifactId>lifecycle-mapping</artifactId>
-                  <version>1.0.0</version>
-                  <configuration>
-                    <lifecycleMappingMetadata>
-                      <pluginExecutions>
-                        <pluginExecution>
-                          <pluginExecutionFilter>
-                            <groupId>
-                              org.apache.maven.plugins
-                            </groupId>
-                            <artifactId>
-                              maven-clean-plugin
-                            </artifactId>
-                            <versionRange>
-                              [2.5,)
-                            </versionRange>
-                            <goals>
-                              <goal>clean</goal>
-                            </goals>
-                          </pluginExecutionFilter>
-                          <action>
-                            <ignore/>
-                          </action>
-                        </pluginExecution>
-                        <pluginExecution>
-                          <pluginExecutionFilter>
-                            <groupId>
-                              org.apache.maven.plugins
-                            </groupId>
-                            <artifactId>
-                              maven-antrun-plugin
-                            </artifactId>
-                            <versionRange>
-                              [1.8,)
-                            </versionRange>
-                            <goals>
-                              <goal>run</goal>
-                            </goals>
-                          </pluginExecutionFilter>
-                          <action>
-                            <ignore/>
-                          </action>
-                        </pluginExecution>
-                      </pluginExecutions>
-                    </lifecycleMappingMetadata>
-                  </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <inherited>false</inherited>
+        <executions>
+          <execution>
+            <id>clean</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>pre-clean</phase>
+          </execution>
+          <execution>
+            <id>default</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+          <execution>
+            <id>site</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <phase>pre-site</phase>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>2.3.2</version>
+        <configuration>
+          <source>1.8</source>
+          <target>1.8</target>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>2.3.2</version>
+        <executions>
+          <execution>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>${maven-antrun-plugin.version}</version>
+        <executions>
+          <execution>
+            <phase>test-compile</phase>
+            <configuration>
+              <target>
+                <delete dir="${testdata.dir}"/>
+                <mkdir dir="${testdata.dir}"/>
+              </target>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>2.10.3</version>
+        <configuration>
+          <maxmemory>2048m</maxmemory>
+          <notimestamp>true</notimestamp>
+          <doclet>
+            org.yb.annotations.tools.IncludePublicAnnotationsStandardDoclet
+          </doclet>
+          <docletArtifact>
+            <groupId>org.yb</groupId>
+            <artifactId>interface-annotations</artifactId>
+            <version>${project.version}</version>
+          </docletArtifact>
+          <name>User API</name>
+          <description>The YB Application Programmer's API</description>
+          <excludePackageNames>
+            com.google:org.yb.cfile:org.yb.consensus:org.yb.log:org.yb.master:org.yb.rpc:org.yb.server:org.yb.tablet:org.yb.tserver:org.yb.server
+          </excludePackageNames>
+          <includeDependencySources>false</includeDependencySources>
 
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-enforcer-plugin</artifactId>
-                <inherited>false</inherited>
-                <executions>
-                    <execution>
-                        <id>clean</id>
-                        <goals>
-                            <goal>enforce</goal>
-                        </goals>
-                        <phase>pre-clean</phase>
-                    </execution>
-                    <execution>
-                        <id>default</id>
-                        <goals>
-                            <goal>enforce</goal>
-                        </goals>
-                        <phase>validate</phase>
-                    </execution>
-                    <execution>
-                        <id>site</id>
-                        <goals>
-                            <goal>enforce</goal>
-                        </goals>
-                        <phase>pre-site</phase>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>2.3.2</version>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>2.3.2</version>
-                <executions>
-                    <execution>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>test-jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <version>${maven-antrun-plugin.version}</version>
-                <executions>
-                    <execution>
-                        <phase>test-compile</phase>
-                        <configuration>
-                            <target>
-                                <delete dir="${testdata.dir}"/>
-                                <mkdir dir="${testdata.dir}"/>
-                            </target>
-                        </configuration>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <version>2.10.3</version>
-                <configuration>
-                    <maxmemory>2048m</maxmemory>
-                    <notimestamp>true</notimestamp>
-                    <doclet>
-                        org.yb.annotations.tools.IncludePublicAnnotationsStandardDoclet
-                    </doclet>
-                    <docletArtifact>
-                        <groupId>org.yb</groupId>
-                        <artifactId>interface-annotations</artifactId>
-                        <version>${project.version}</version>
-                    </docletArtifact>
-                    <name>User API</name>
-                    <description>The YB Application Programmer's API</description>
-                    <excludePackageNames>
-                        com.google:org.yb.cfile:org.yb.consensus:org.yb.log:org.yb.master:org.yb.rpc:org.yb.server:org.yb.tablet:org.yb.tserver:org.yb.server
-                    </excludePackageNames>
-                    <includeDependencySources>false</includeDependencySources>
-
-                    <dependencySourceIncludes>
-                        <dependencySourceInclude>
-                            org.yb:interface-annotations
-                        </dependencySourceInclude>
-                    </dependencySourceIncludes>
-                </configuration>
-            </plugin>
-        </plugins>
-        <extensions>
-          <extension>
-            <groupId>org.kuali.maven.wagons</groupId>
-            <artifactId>maven-s3-wagon</artifactId>
-            <version>1.1.9</version>
-          </extension>
-        </extensions>
-    </build>
+          <dependencySourceIncludes>
+            <dependencySourceInclude>
+              org.yb:interface-annotations
+            </dependencySourceInclude>
+          </dependencySourceIncludes>
+        </configuration>
+      </plugin>
+    </plugins>
+    <extensions>
+      <extension>
+        <groupId>org.kuali.maven.wagons</groupId>
+        <artifactId>maven-s3-wagon</artifactId>
+        <version>1.1.9</version>
+      </extension>
+    </extensions>
+  </build>
 
   <distributionManagement>
     <repository>

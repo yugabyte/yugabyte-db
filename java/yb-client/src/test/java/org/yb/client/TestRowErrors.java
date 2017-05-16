@@ -16,23 +16,15 @@
 // under the License.
 package org.yb.client;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestRowErrors extends BaseYBTest {
+public class TestRowErrors extends BaseYBClientTest {
 
   private static YBTable table;
-
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
-
-  }
-
 
   @Test(timeout = 100000)
   public void singleTabletTest() throws Exception {

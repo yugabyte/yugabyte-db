@@ -37,7 +37,7 @@ public class DeadlineTracker {
    * Creates a new tracker, which starts the stopwatch right now.
    */
   public DeadlineTracker() {
-    this(new Stopwatch());
+    this(Stopwatch.createStarted());
   }
 
   /**

@@ -22,9 +22,7 @@ import org.yb.tserver.Tserver.TabletServerErrorPB;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 import com.stumbleupon.async.TimeoutException;
-import org.junit.BeforeClass;
 import org.junit.Ignore;
-import org.junit.Test;
 
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,7 +42,7 @@ import static org.junit.Assert.*;
  *
  * The test creates a table with a unique(ish) name which it deletes at the end.
  */
-public class TestAsyncYBSession extends BaseYBTest {
+public class TestAsyncYBSession extends BaseYBClientTest {
   // Generate a unique table name
   private static final String TABLE_NAME =
       TestAsyncYBSession.class.getName()+"-"+System.currentTimeMillis();
@@ -52,9 +50,9 @@ public class TestAsyncYBSession extends BaseYBTest {
   private static Schema schema = getBasicSchema();
   private static YBTable table;
 
-  @BeforeClass
-  public static void setUpBeforeClass() throws Exception {
-    BaseYBTest.setUpBeforeClass();
+  @Override
+  protected void afterStartingMiniCluster() throws Exception {
+    super.afterStartingMiniCluster();
     table = createTable(TABLE_NAME, schema, new CreateTableOptions());
   }
 
