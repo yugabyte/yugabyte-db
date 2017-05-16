@@ -12,15 +12,15 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
   CREATE_ZONE_RESPONSE, CREATE_NODE_INSTANCE, CREATE_NODE_INSTANCE_RESPONSE, SET_ON_PREM_CONFIG_DATA
 } from '../actions/cloud';
 
-import { setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
+import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
 import _ from 'lodash';
 
 const INITIAL_STATE = {
-  regions: setInitialState([]),
-  providers: setInitialState([]),
-  instanceTypes: setInitialState([]),
-  supportedRegionList: setInitialState([]),
+  regions: getInitialState([]),
+  providers: getInitialState([]),
+  instanceTypes: getInitialState([]),
+  supportedRegionList: getInitialState([]),
   onPremJsonFormData: [],
   ebsTypes: [],
   loading: {
@@ -33,7 +33,7 @@ const INITIAL_STATE = {
   selectedProvider: null,
   error: null,
   accessKeys: {},
-  bootstrap: setInitialState({}),
+  bootstrap: getInitialState({}),
   dockerBootstrap: {},
   status : 'init',
   fetchMetadata: false
@@ -68,7 +68,7 @@ export default function(state = INITIAL_STATE, action) {
       return setSuccessState(state, "instanceTypes", _.sortBy(action.payload.data, "name"));
 
     case RESET_PROVIDER_LIST:
-      return { ...state, providers: setInitialState([]), regions: setInitialState([]), instanceTypes:setInitialState([])};
+      return { ...state, providers: getInitialState([]), regions: getInitialState([]), instanceTypes:getInitialState([])}
 
     case GET_SUPPORTED_REGION_DATA:
       return setLoadingState(state, "supportedRegionList", []);
@@ -139,9 +139,8 @@ export default function(state = INITIAL_STATE, action) {
       return setSuccessState(state, "bootstrap", {type: "cleanup", response: action.payload.data});
     case DELETE_PROVIDER_FAILURE:
       return setFailureState(state, "bootstrap", action.payload.data.error, {type: "cleanup"});
-
     case RESET_PROVIDER_BOOTSTRAP:
-      return { ...state, bootstrap: setInitialState({})};
+      return setInitialState(state, "bootstrap");
 
     case LIST_ACCESS_KEYS:
       return setLoadingState(state, "accessKeys", []);

@@ -19,10 +19,6 @@ function setPromiseState(state, object, promiseState, data = null, error = null)
   });
 }
 
-export function setInitialState(initValue) {
-  return { data: initValue, promiseState: PromiseState.INIT, error: null };
-}
-
 export function setLoadingState(state, object, data = null) {
   return setPromiseState(state, object, PromiseState.LOADING, data);
 }
@@ -33,6 +29,14 @@ export function setSuccessState(state, object, data) {
 
 export function setFailureState(state, object, error, data = null) {
   return setPromiseState(state, object, PromiseState.ERROR, data, error);
+}
+
+export function getInitialState(data = null) {
+  return { data: data, promiseState: PromiseState.INIT, error: null };
+}
+
+export function setInitialState(state, object, data = {}, error = null) {
+  return setPromiseState(state, object, PromiseState.INIT, data, error);
 }
 
 export function getPromiseState(dataObject) {

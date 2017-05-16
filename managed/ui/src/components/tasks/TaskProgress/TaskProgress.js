@@ -1,9 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, PropTypes } from 'react';
-import { TaskProgressBar, TaskProgressBarWithDetails, TaskProgressStepBar  } from '..';
+import { TaskProgressBar, TaskProgressStepBar  } from '..';
 import { isValidObject } from '../../../utils/ObjectUtils';
-import {YBLoadingIcon} from '../../common/indicators';
+import { YBLoadingIcon } from '../../common/indicators';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 export default class TaskProgress extends Component {
   static contextTypes = {
@@ -12,7 +13,7 @@ export default class TaskProgress extends Component {
 
   static propTypes = {
     taskUUIDs: PropTypes.array,
-    type: PropTypes.oneOf(['Bar', 'Widget', 'BarWithDetails', 'StepBar'])
+    type: PropTypes.oneOf(['Bar', 'StepBar'])
   }
 
   static defaultProps = {
@@ -32,32 +33,36 @@ export default class TaskProgress extends Component {
     this.props.resetTaskProgress();
   }
 
-  render() {
-    const { taskUUIDs, tasks: { taskProgressData, currentTaskList, loading}, type, currentOperation } = this.props;
-    var currentTaskId = taskUUIDs[0];
-    if (taskUUIDs.length === 0) {
-      return <span />;
-    } else if (loading || taskProgressData.length === 0) {
-      return <YBLoadingIcon/>;
-    } else if (taskProgressData.status === "Success" ||
-      taskProgressData.status === "Failure") {
-      // TODO: Better handle/display the success/failure case
-      return <span />;
-    }
+  componentWillReceiveProps(nextProps) {
+      if (this.props.taskProgressData !== nextProps.taskProgressData &&
+          !getPromiseState(nextProps.taskProgressData).isLoading()) {
+        clearTimeout(this.timeout);
 
-    // if ( type === "Widget" ) {
-    //   return <TaskProgressWidget progressData={taskProgressData} />;
-    // } else
-    if (type === "BarWithDetails") {
-      if (!isValidObject(currentTaskList[currentTaskId])) {
-        return <div className="container">Loading...</div>;
+        const { taskProgressData: { data }} = nextProps;
+        // Check to make sure if the current state is running
+        if (isValidObject(data) && (data.status === "Running" || data.status === "Initializing")) {
+          this.scheduleFetch();
+        }
       }
-      return <TaskProgressBarWithDetails progressData={currentTaskList[currentTaskId]}
-                                         currentOperation={currentOperation}/>
-    } else if (type === "StepBar") {
-      return <TaskProgressStepBar progressData={taskProgressData}/>
+  }
+
+  scheduleFetch() {
+    const { taskUUIDs } = this.props;
+    this.timeout = setTimeout(() => this.props.fetchTaskProgress(taskUUIDs[0]), 60000);
+  }
+
+  render() {
+    const { taskUUIDs, taskProgressData, type } = this.props;
+    let taskProgressPromise = getPromiseState(taskProgressData);
+    if (taskUUIDs.length === 0 || taskProgressPromise.isInit()) {
+      return <span />;
+    } else if (taskProgressPromise.isLoading() || taskProgressData.data.status === "Initializing") {
+      return <YBLoadingIcon/>;
+    }
+    if (type === "StepBar") {
+      return <TaskProgressStepBar progressData={taskProgressData.data}/>
     } else {
-      return <TaskProgressBar progressData={taskProgressData} />;
+      return <TaskProgressBar progressData={taskProgressData.data} />;
     }
   }
 }

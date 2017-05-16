@@ -3,10 +3,10 @@
 import { connect } from 'react-redux';
 
 import UniverseTable from './UniverseTable';
-import { fetchUniverseList, fetchUniverseListSuccess,
-         fetchUniverseListFailure, resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
-import { fetchTaskProgress, fetchCurrentTaskListSuccess,
-  fetchCurrentTaskListFailure, resetTaskProgress, fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
+import { fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure,
+  resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
+import { fetchCustomerTasks, fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure } from '../../../actions/tasks';
 import { queryMetrics } from '../../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
@@ -32,26 +32,11 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
+
     resetUniverseTasks: () => {
       dispatch(resetUniverseTasks());
     },
-    fetchCurrentTaskList: (taskUUIDList) => {
-      taskUUIDList.forEach(function(taskUUIDObject, idx){
-        var taskUUID = taskUUIDObject.id;
-        dispatch(fetchTaskProgress(taskUUID))
-          .then((response) => {
-            if (!response.error) {
-              var taskItem = response.payload.data;
-              taskItem.universeUUID = taskUUIDObject.universe;
-              taskItem.taskData = taskUUIDObject.data;
-              taskItem.taskUUID = taskUUID;
-              dispatch(fetchCurrentTaskListSuccess(taskItem));
-            } else {
-              dispatch(fetchCurrentTaskListFailure(response.payload));
-            }
-          });
-      })
-    },
+
     universeReadWriteData: () => {
       var startTime  = Math.floor(Date.now() / 1000) - (12 * 60 * 60 );
       var endTime = Math.floor(Date.now() / 1000);
@@ -64,12 +49,8 @@ const mapDispatchToProps = (dispatch) => {
         .then((response) => {
           if (response.payload.status === 200) {
             dispatch(setUniverseMetrics(response.payload));
-          } 
+          }
         });
-
-    },
-    resetTaskProgress: () => {
-      dispatch(resetTaskProgress());
     }
   }
 }

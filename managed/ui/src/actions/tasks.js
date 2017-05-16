@@ -4,11 +4,8 @@ import axios from 'axios';
 import { ROOT_URL } from '../config';
 
 export const FETCH_TASK_PROGRESS = 'FETCH_TASK_PROGRESS';
-export const FETCH_TASK_PROGRESS_SUCCESS = 'FETCH_TASK_PROGRESS_SUCCESS';
-export const FETCH_TASK_PROGRESS_FAILURE = 'FETCH_TASK_PROGRESS_FAILURE';
+export const FETCH_TASK_PROGRESS_RESPONSE = 'FETCH_TASK_PROGRESS_RESPONSE';
 export const RESET_TASK_PROGRESS = 'RESET_TASK_PROGRESS';
-export const FETCH_CURRENT_TASK_PROGRESS_SUCCESS = 'FETCH_CURRENT_TASK_PROGRESS_SUCCESS';
-export const FETCH_CURRENT_TASK_PROGRESS_FAILURE = 'FETCH_CURRENT_TASK_PROGRESS_FAILURE';
 export const FETCH_CUSTOMER_TASKS = 'FETCH_CUSTOMER_TASKS';
 export const FETCH_CUSTOMER_TASKS_SUCCESS = 'FETCH_CUSTOMER_TASKS_SUCCESS';
 export const FETCH_CUSTOMER_TASKS_FAILURE = 'FETCH_CUSTOMER_TASKS_FAILURE';
@@ -24,37 +21,16 @@ export function fetchTaskProgress(taskUUID) {
   };
 }
 
-export function fetchTaskProgressSuccess(result) {
+export function fetchTaskProgressResponse(result) {
   return {
-    type: FETCH_TASK_PROGRESS_SUCCESS,
+    type: FETCH_TASK_PROGRESS_RESPONSE,
     payload: result
   };
-}
-
-export function fetchTaskProgressFailure(error) {
-  return {
-    type: FETCH_TASK_PROGRESS_FAILURE,
-    payload: error
-  }
 }
 
 export function resetTaskProgress(error) {
   return {
     type: RESET_TASK_PROGRESS
-  }
-}
-
-export function fetchCurrentTaskListSuccess(taskDetail) {
-  return {
-    type: FETCH_CURRENT_TASK_PROGRESS_SUCCESS,
-    payload: taskDetail
-  }
-}
-
-export function fetchCurrentTaskListFailure(error) {
-  return {
-    type: FETCH_CURRENT_TASK_PROGRESS_FAILURE,
-    payload: error
   }
 }
 

@@ -2,7 +2,8 @@
 
 import React, { Component, PropTypes } from 'react';
 import { StepProgressBar } from '../../common/indicators';
-import {Row, Col} from 'react-bootstrap';
+import { isValidObject } from '../../../utils/ObjectUtils';
+import { Row, Col } from 'react-bootstrap';
 import './TaskProgressStepBar.scss'
 
 export default class TaskProgressStepBar extends Component {
@@ -11,21 +12,22 @@ export default class TaskProgressStepBar extends Component {
   }
 
   render() {
-    const { progressData: {details : {taskDetails}}} = this.props;
-    var currentTaskDetail = <span/>;
-    for (var idx = 0; idx < taskDetails.length; idx ++) {
-      if (taskDetails[idx].state === "Running") {
-        currentTaskDetail =
-          <div>
-            <h4>Current Task: {taskDetails[idx].title}</h4>
-            <Row className="description-text-container">
-            <Col lg={8} className="description-text">
-              {taskDetails[idx].description}
-            </Col>
-            </Row>
-          </div>
-      }
+    const { progressData: { details }} = this.props;
+    if (!isValidObject(details)) {
+      return <span />;
     }
+
+    let currentTaskDetail = details.taskDetails
+      .filter((taskDetail) => taskDetail.state === "Running")
+      .map((taskDetail, idx) =>
+        <div key={`taskdetail-{idx}`}>
+          <h4>Current Task: {taskDetail.title}</h4>
+          <Row className="description-text-container">
+          <Col lg={8} className="description-text">
+            {taskDetail.description}
+          </Col>
+          </Row>
+        </div>);
 
     return (
       <Row>

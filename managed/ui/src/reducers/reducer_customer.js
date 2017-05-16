@@ -6,7 +6,7 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_SUCCESS, VALIDATE_FROM_TOKEN_F
          FETCH_SOFTWARE_VERSIONS, FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE,
          FETCH_CUSTOMER_COUNT, UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE } from '../actions/customers';
 import {isValidObject, sortVersionStrings} from '../utils/ObjectUtils';
-import { setInitialState, setLoadingState, setSuccessState, setFailureState }  from '../utils/PromiseUtils';
+import { getInitialState, setLoadingState, setSuccessState, setFailureState }  from '../utils/PromiseUtils';
 
 const INITIAL_STATE = {
   customer: null,
@@ -18,7 +18,7 @@ const INITIAL_STATE = {
   softwareVersions: [],
   hostInfo: null,
   customerCount: {},
-  profile: setInitialState({})
+  profile: getInitialState()
 };
 
 export default function(state = INITIAL_STATE, action) {
