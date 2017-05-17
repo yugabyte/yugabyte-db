@@ -11,7 +11,7 @@ import org.yb.WireProtocol;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ProtobufHelper;
 import org.yb.client.YBClient;
-import org.yb.client.shaded.com.google.common.net.HostAndPort;
+import com.google.common.net.HostAndPort;
 import org.yb.master.Master;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;

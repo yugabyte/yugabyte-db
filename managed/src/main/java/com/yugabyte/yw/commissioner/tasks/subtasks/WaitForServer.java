@@ -6,7 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
 
-import org.yb.client.shaded.com.google.common.net.HostAndPort;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -18,7 +18,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import play.api.Play;
 
 public class WaitForServer extends AbstractTaskBase {
-
   public static final Logger LOG = LoggerFactory.getLogger(WaitForServer.class);
 
   // The YB client.

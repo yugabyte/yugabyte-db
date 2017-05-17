@@ -24,12 +24,12 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents" % "httpclient" % "4.5.2",
   "org.flywaydb" %% "flyway-play" % "3.0.1",
   "com.datastax.cassandra" % "cassandra-driver-core" % "3.1.2",
-  "org.yaml" % "snakeyaml" % "1.17"
+  "org.yaml" % "snakeyaml" % "1.17",
+  "com.google.protobuf" % "protobuf-java" % "2.6.1"
 )
 resolvers += "Yugabyte S3 Snapshots" at "s3://no-such-url/"
 // resolvers += Resolver.mavenLocal
 libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT" % "compile,test" classifier "tests"
 publishTo := Some("yugabyteS3" at "s3://no-such-url/")
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"

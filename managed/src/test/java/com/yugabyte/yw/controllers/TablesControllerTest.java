@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -46,7 +47,6 @@ import org.yb.Type;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
-import org.yb.client.shaded.com.google.protobuf.ByteString;
 import org.yb.master.Master;
 import org.yb.master.Master.ListTablesResponsePB.TableInfo;
 
