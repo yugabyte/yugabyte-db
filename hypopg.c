@@ -197,6 +197,9 @@ hypo_utility_hook(
 				  ProcessUtilityContext context,
 #endif
 				  ParamListInfo params,
+#if PG_VERSION_NUM >= 100000
+				  QueryEnvironment *queryEnv,
+#endif
 #if PG_VERSION_NUM < 90300
 				  bool isTopLevel,
 #endif
@@ -988,6 +991,9 @@ hypo_utility_hook(
 				  ProcessUtilityContext context,
 #endif
 				  ParamListInfo params,
+#if PG_VERSION_NUM >= 100000
+				  QueryEnvironment *queryEnv,
+#endif
 #if PG_VERSION_NUM < 90300
 				  bool isTopLevel,
 #endif
@@ -1015,6 +1021,9 @@ hypo_utility_hook(
 						  context,
 #endif
 						  params,
+#if PG_VERSION_NUM >= 100000
+						  queryEnv,
+#endif
 #if PG_VERSION_NUM < 90300
 						  isTopLevel,
 #endif
@@ -1031,6 +1040,9 @@ hypo_utility_hook(
 								context,
 #endif
 								params,
+#if PG_VERSION_NUM >= 100000
+						  queryEnv,
+#endif
 #if PG_VERSION_NUM < 90300
 								isTopLevel,
 #endif
