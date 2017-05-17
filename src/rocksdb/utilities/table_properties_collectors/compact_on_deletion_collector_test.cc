@@ -19,6 +19,7 @@
 #include "rocksdb/utilities/table_properties_collectors.h"
 #include "util/random.h"
 #include "utilities/table_properties_collectors/compact_on_deletion_collector.h"
+#include "yb/util/stopwatch.h"
 
 int main(int argc, char** argv) {
   const int kWindowSizes[] =
@@ -37,10 +38,18 @@ int main(int argc, char** argv) {
     deletion_triggers.emplace_back(kDeletionTriggers[test]);
   }
 
+
+#ifdef THREAD_SANITIZER
+    // Lower number of runs for tsan due to low perf.
+    constexpr int kNumRandomTests = 20;
+#else
+    constexpr int kNumRandomTests = 100;
+#endif
+
   // randomize tests
   rocksdb::Random rnd(301);
   const int kMaxTestSize = 100000l;
-  for (int random_test = 0; random_test < 100; random_test++) {
+  for (int random_test = 0; random_test < kNumRandomTests; random_test++) {
     int window_size = rnd.Uniform(kMaxTestSize) + 1;
     int deletion_trigger = rnd.Uniform(window_size);
     window_sizes.emplace_back(window_size);
@@ -57,7 +66,7 @@ int main(int argc, char** argv) {
     const int kNumDeletionTrigger = deletion_triggers[test];
     const int kBias = (kNumDeletionTrigger + kBucketSize - 1) / kBucketSize;
     // Simple test
-    {
+    LOG_TIMING(INFO, "TEST1") {
       std::unique_ptr<rocksdb::TablePropertiesCollector> collector;
       auto factory = rocksdb::NewCompactOnDeletionCollectorFactory(
           kWindowSize, kNumDeletionTrigger);
@@ -89,7 +98,7 @@ int main(int argc, char** argv) {
     }
 
     // Only one section of a file satisfies the compaction trigger
-    {
+    LOG_TIMING(INFO, "TEST2") {
       std::unique_ptr<rocksdb::TablePropertiesCollector> collector;
       auto factory = rocksdb::NewCompactOnDeletionCollectorFactory(
           kWindowSize, kNumDeletionTrigger);
@@ -136,7 +145,7 @@ int main(int argc, char** argv) {
 
     // TEST 3:  Issues a lots of deletes, but their density is not
     // high enough to trigger compaction.
-    {
+    LOG_TIMING(INFO, "TEST3") {
       std::unique_ptr<rocksdb::TablePropertiesCollector> collector;
       auto factory = rocksdb::NewCompactOnDeletionCollectorFactory(
           kWindowSize, kNumDeletionTrigger);
