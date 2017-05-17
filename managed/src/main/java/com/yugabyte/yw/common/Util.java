@@ -16,8 +16,6 @@ import java.util.Random;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.MiniYBCluster;
-
 
 public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
@@ -53,43 +51,6 @@ public class Util {
       sb.append(CHARACTERS.charAt(rng.nextInt(CHARACTERS.length())));
     }
     return sb.toString();
-  }
-
-  // Check if we want to unit test via the mini-cluster.
-  public static boolean isLocalTesting() {
-    String ybLocalTesting = System.getProperty("yb.local.testing");
-    if (ybLocalTesting == null) {
-      return false;
-    }
-    return true;
-  }
-
-  public static MiniYBCluster getMiniCluster(int numMasters) {
-    MiniYBCluster ret = null;
-    try {
-      ret = new MiniYBCluster
-        .MiniYBClusterBuilder()
-        .numMasters(numMasters)
-        .numTservers(1)
-        .defaultTimeoutMs(60)
-        .build();
-      LOG.info("Created new mini cluster with {} masters.", numMasters);
-    } catch (Exception e) {
-      String errMsg = "Could not start mini cluster with " + numMasters + " masters. " +
-        "Error: " + e.getMessage();
-      LOG.error(errMsg);
-      throw new RuntimeException(errMsg);
-    }
-
-    return ret;
-  }
-
-  public static void closeMiniCluster(MiniYBCluster miniCluster) {
-    try {
-      miniCluster.close();
-    } catch (Exception e) {
-      LOG.warn("Could not close mini cluster : ", e.getMessage());
-    }
   }
 
   // In place of apache StringUtils.indexInArray(), check if needle is in haystack.
