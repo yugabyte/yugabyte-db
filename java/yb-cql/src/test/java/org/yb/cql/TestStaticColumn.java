@@ -11,15 +11,6 @@ import static org.junit.Assert.fail;
 
 public class TestStaticColumn extends BaseCQLTest {
 
-  private void testSelect(String stmt, String expectedOutput) {
-    ResultSet rs = session.execute(stmt);
-    String actualOutput = "";
-    for (Row row : rs) {
-      actualOutput += row.toString();
-    }
-    assertEquals(expectedOutput, actualOutput);
-  }
-
   private void createTable(boolean insertSeedData) {
     session.execute("create table t (" +
                     "h1 int, h2 varchar, " +
@@ -85,28 +76,28 @@ public class TestStaticColumn extends BaseCQLTest {
     createTable(true);
 
     // Test select rows with a hash key (1, h1). Static columns should be (13, s13).
-    testSelect("select * from t where h1 = 1 and h2 = 'h1';",
-               "Row[1, h1, 1, r1, 13, s13, 1, c1]"+
-               "Row[1, h1, 2, r2, 13, s13, 2, c2]"+
-               "Row[1, h1, 3, r3, 13, s13, 3, c3]");
+    assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
+                "Row[1, h1, 1, r1, 13, s13, 1, c1]"+
+                "Row[1, h1, 2, r2, 13, s13, 2, c2]"+
+                "Row[1, h1, 3, r3, 13, s13, 3, c3]");
 
     // Test select rows with full primary key (2, h2, 3, r3). Static column should be (23, s23).
-    testSelect("select * from t where h1 = 2 and h2 = 'h2' and r1 = 3 and r2 = 'r3';",
-               "Row[2, h2, 3, r3, 23, s23, 3, c3]");
+    assertQuery("select * from t where h1 = 2 and h2 = 'h2' and r1 = 3 and r2 = 'r3';",
+                "Row[2, h2, 3, r3, 23, s23, 3, c3]");
 
     // Test select distinct static rows with a hash key (3, h3). Static colum should be (33, s33).
-    testSelect("select distinct s1, s2 from t where h1 = 3 and h2 = 'h3';",
-               "Row[33, s33]");
+    assertQuery("select distinct s1, s2 from t where h1 = 3 and h2 = 'h3';",
+                "Row[33, s33]");
 
     // Test select distinct static rows from the whole table. The order of rows should be stable
     // when the table shards remain the same.
-    testSelect("select distinct h1, h2, s1, s2 from t;",
-               "Row[5, h5, 50, s50]"+
-               "Row[4, h4, 40, s40]"+
-               "Row[1, h1, 13, s13]"+
-               "Row[3, h3, 33, s33]"+
-               "Row[2, h2, 23, s23]"+
-               "Row[6, h6, 60, s60]");
+    assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[5, h5, 50, s50]"+
+                "Row[4, h4, 40, s40]"+
+                "Row[1, h1, 13, s13]"+
+                "Row[3, h3, 33, s33]"+
+                "Row[2, h2, 23, s23]"+
+                "Row[6, h6, 60, s60]");
 
     LOG.info("Test End");
   }
@@ -145,26 +136,26 @@ public class TestStaticColumn extends BaseCQLTest {
     }
 
     // Test "all" rows. Static columns with hash key only will not show up.
-    testSelect("select * from t;",
-               "Row[1, h1, 1, r1, 13, s13, 1, c1]"+
-               "Row[1, h1, 2, r2, 13, s13, 2, c2]"+
-               "Row[1, h1, 3, r3, 13, s13, 3, c3]"+
-               "Row[3, h3, 1, r1, 33, s33, 1, c1]"+
-               "Row[3, h3, 2, r2, 33, s33, 2, c2]"+
-               "Row[3, h3, 3, r3, 33, s33, 3, c3]"+
-               "Row[2, h2, 1, r1, 23, s23, 1, c1]"+
-               "Row[2, h2, 2, r2, 23, s23, 2, c2]"+
-               "Row[2, h2, 3, r3, 23, s23, 3, c3]");
+    assertQuery("select * from t;",
+                "Row[1, h1, 1, r1, 13, s13, 1, c1]"+
+                "Row[1, h1, 2, r2, 13, s13, 2, c2]"+
+                "Row[1, h1, 3, r3, 13, s13, 3, c3]"+
+                "Row[3, h3, 1, r1, 33, s33, 1, c1]"+
+                "Row[3, h3, 2, r2, 33, s33, 2, c2]"+
+                "Row[3, h3, 3, r3, 33, s33, 3, c3]"+
+                "Row[2, h2, 1, r1, 23, s23, 1, c1]"+
+                "Row[2, h2, 2, r2, 23, s23, 2, c2]"+
+                "Row[2, h2, 3, r3, 23, s23, 3, c3]");
 
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
-    testSelect("select distinct h1, h2, s1, s2 from t;",
-               "Row[5, h5, 50, s50]"+
-               "Row[4, h4, 40, s40]"+
-               "Row[1, h1, 13, s13]"+
-               "Row[3, h3, 33, s33]"+
-               "Row[2, h2, 23, s23]"+
-               "Row[6, h6, 60, s60]");
+    assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[5, h5, 50, s50]"+
+                "Row[4, h4, 40, s40]"+
+                "Row[1, h1, 13, s13]"+
+                "Row[3, h3, 33, s33]"+
+                "Row[2, h2, 23, s23]"+
+                "Row[6, h6, 60, s60]");
 
     LOG.info("Test End");
   }
@@ -224,35 +215,35 @@ public class TestStaticColumn extends BaseCQLTest {
     }
 
     // Test "all" rows. Static columns with hash key only will not show up.
-    testSelect("select * from t;",
-               "Row[1, h1, 1, r1, 15, s15, 1, c1]"+
-               "Row[1, h1, 2, r2, 15, s15, 2, c2]"+
-               "Row[1, h1, 3, r3, 15, s15, 5, c5]"+
-               "Row[3, h3, 1, r1, 35, s35, 1, c1]"+
-               "Row[3, h3, 2, r2, 35, s35, 2, c2]"+
-               "Row[3, h3, 3, r3, 35, s35, 5, c5]"+
-               "Row[2, h2, 1, r1, 25, s25, 1, c1]"+
-               "Row[2, h2, 2, r2, 25, s25, 2, c2]"+
-               "Row[2, h2, 3, r3, 25, s25, 5, c5]");
+    assertQuery("select * from t;",
+                "Row[1, h1, 1, r1, 15, s15, 1, c1]"+
+                "Row[1, h1, 2, r2, 15, s15, 2, c2]"+
+                "Row[1, h1, 3, r3, 15, s15, 5, c5]"+
+                "Row[3, h3, 1, r1, 35, s35, 1, c1]"+
+                "Row[3, h3, 2, r2, 35, s35, 2, c2]"+
+                "Row[3, h3, 3, r3, 35, s35, 5, c5]"+
+                "Row[2, h2, 1, r1, 25, s25, 1, c1]"+
+                "Row[2, h2, 2, r2, 25, s25, 2, c2]"+
+                "Row[2, h2, 3, r3, 25, s25, 5, c5]");
 
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
-    testSelect("select distinct h1, h2, s1, s2 from t;",
-               "Row[5, h5, 100, s100]"+
-               "Row[4, h4, 80, s80]"+
-               "Row[1, h1, 15, s15]"+
-               "Row[3, h3, 35, s35]"+
-               "Row[2, h2, 25, s25]"+
-               "Row[6, h6, 120, s120]");
+    assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[5, h5, 100, s100]"+
+                "Row[4, h4, 80, s80]"+
+                "Row[1, h1, 15, s15]"+
+                "Row[3, h3, 35, s35]"+
+                "Row[2, h2, 25, s25]"+
+                "Row[6, h6, 120, s120]");
 
     // Update a static columns to null. Expect that row to be gone.
     session.execute("update t set s1 = null, s2 = null where h1 = 6 and h2 = 'h6';");
-    testSelect("select distinct h1, h2, s1, s2 from t;",
-               "Row[5, h5, 100, s100]"+
-               "Row[4, h4, 80, s80]"+
-               "Row[1, h1, 15, s15]"+
-               "Row[3, h3, 35, s35]"+
-               "Row[2, h2, 25, s25]");
+    assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[5, h5, 100, s100]"+
+                "Row[4, h4, 80, s80]"+
+                "Row[1, h1, 15, s15]"+
+                "Row[3, h3, 35, s35]"+
+                "Row[2, h2, 25, s25]");
 
     LOG.info("Test End");
   }
@@ -334,21 +325,21 @@ public class TestStaticColumn extends BaseCQLTest {
     }
 
     // Test "all" rows. Static columns with hash key only will not show up.
-    testSelect("select * from t where h1 = 1 and h2 = 'h1';",
-               "Row[1, h1, 1, r1, 17, s17, 1, c1]"+
-               "Row[1, h1, 2, r2, 17, s17, 2, c2]"+
-               "Row[1, h1, 3, r3, 17, s17, 3, c3]");
+    assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
+                "Row[1, h1, 1, r1, 17, s17, 1, c1]"+
+                "Row[1, h1, 2, r2, 17, s17, 2, c2]"+
+                "Row[1, h1, 3, r3, 17, s17, 3, c3]");
 
     // Test select distinct static rows from the whole table. Static columns with hash key only
     // will show up now.
-    testSelect("select distinct h1, h2, s1, s2 from t;",
-               "Row[7, h7, 76, s76]"+
-               "Row[5, h5, 50, s50]"+
-               "Row[4, h4, 40, s40]"+
-               "Row[1, h1, 17, s17]"+
-               "Row[3, h3, 33, s33]"+
-               "Row[2, h2, 23, s23]"+
-               "Row[6, h6, 60, s60]");
+    assertQuery("select distinct h1, h2, s1, s2 from t;",
+                "Row[7, h7, 76, s76]"+
+                "Row[5, h5, 50, s50]"+
+                "Row[4, h4, 40, s40]"+
+                "Row[1, h1, 17, s17]"+
+                "Row[3, h3, 33, s33]"+
+                "Row[2, h2, 23, s23]"+
+                "Row[6, h6, 60, s60]");
 
     LOG.info("Test End");
   }
@@ -373,12 +364,12 @@ public class TestStaticColumn extends BaseCQLTest {
                     "values (2, 'h2', 3, {'e', 'f'}, {'e' : 1, 'f' : 1});");
 
     // Verify the static collection columns
-    testSelect("select * from t;",
-               "Row[1, h1, 1, r1, 2, [c, d], {c=1, d=1}, 1, c1]"+
-               "Row[1, h1, 2, r2, 2, [c, d], {c=1, d=1}, 2, c2]");
-    testSelect("select distinct h1, h2, s1, s2, s3 from t;",
-               "Row[1, h1, 2, [c, d], {c=1, d=1}]"+
-               "Row[2, h2, 3, [e, f], {e=1, f=1}]");
+    assertQuery("select * from t;",
+                "Row[1, h1, 1, r1, 2, [c, d], {c=1, d=1}, 1, c1]"+
+                "Row[1, h1, 2, r2, 2, [c, d], {c=1, d=1}, 2, c2]");
+    assertQuery("select distinct h1, h2, s1, s2, s3 from t;",
+                "Row[1, h1, 2, [c, d], {c=1, d=1}]"+
+                "Row[2, h2, 3, [e, f], {e=1, f=1}]");
 
     LOG.info("Test End");
   }
@@ -394,18 +385,18 @@ public class TestStaticColumn extends BaseCQLTest {
                     "where h1 = 1 and h2 = 'h1' and r1 = 1 and r2 = 'r1';");
 
     // Test select rows with a hash key (1, h1). Expect updated s1 and c1.
-    testSelect("select * from t where h1 = 1 and h2 = 'h1';",
-               "Row[1, h1, 1, r1, 14, s13, 4, c1]"+
-               "Row[1, h1, 2, r2, 14, s13, 2, c2]"+
-               "Row[1, h1, 3, r3, 14, s13, 3, c3]");
+    assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
+                "Row[1, h1, 1, r1, 14, s13, 4, c1]"+
+                "Row[1, h1, 2, r2, 14, s13, 2, c2]"+
+                "Row[1, h1, 3, r3, 14, s13, 3, c3]");
 
     Thread.sleep(5000);
 
     // Test select rows with a hash key (1, h1) again. Expect s1 and c1 gone.
-    testSelect("select * from t where h1 = 1 and h2 = 'h1';",
-               "Row[1, h1, 1, r1, NULL, s13, NULL, c1]"+
-               "Row[1, h1, 2, r2, NULL, s13, 2, c2]"+
-               "Row[1, h1, 3, r3, NULL, s13, 3, c3]");
+    assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
+                "Row[1, h1, 1, r1, NULL, s13, NULL, c1]"+
+                "Row[1, h1, 2, r2, NULL, s13, 2, c2]"+
+                "Row[1, h1, 3, r3, NULL, s13, 3, c3]");
 
     // Update static and non-static column with TTL again.
     session.execute("update t using ttl 5 set s1 = 14, c1 = 4 " +
@@ -415,39 +406,39 @@ public class TestStaticColumn extends BaseCQLTest {
                     "where h1 = 1 and h2 = 'h1';");
 
     // Test select rows with a hash key (1, h1). Expect updated s1 and c1.
-    testSelect("select * from t where h1 = 1 and h2 = 'h1';",
-               "Row[1, h1, 1, r1, 15, s13, 4, c1]"+
-               "Row[1, h1, 2, r2, 15, s13, 2, c2]"+
-               "Row[1, h1, 3, r3, 15, s13, 3, c3]");
+    assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
+                "Row[1, h1, 1, r1, 15, s13, 4, c1]"+
+                "Row[1, h1, 2, r2, 15, s13, 2, c2]"+
+                "Row[1, h1, 3, r3, 15, s13, 3, c3]");
 
     Thread.sleep(5000);
 
     // Test select rows with a hash key (1, h1) again. Expect c1 gone but s1 hasn't.
-    testSelect("select * from t where h1 = 1 and h2 = 'h1';",
-               "Row[1, h1, 1, r1, 15, s13, NULL, c1]"+
-               "Row[1, h1, 2, r2, 15, s13, 2, c2]"+
-               "Row[1, h1, 3, r3, 15, s13, 3, c3]");
+    assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
+                "Row[1, h1, 1, r1, 15, s13, NULL, c1]"+
+                "Row[1, h1, 2, r2, 15, s13, 2, c2]"+
+                "Row[1, h1, 3, r3, 15, s13, 3, c3]");
 
     Thread.sleep(5000);
 
     // Test select rows with a hash key (1, h1) again. Expect s1 gone also.
-    testSelect("select * from t where h1 = 1 and h2 = 'h1';",
-               "Row[1, h1, 1, r1, NULL, s13, NULL, c1]"+
-               "Row[1, h1, 2, r2, NULL, s13, 2, c2]"+
-               "Row[1, h1, 3, r3, NULL, s13, 3, c3]");
+    assertQuery("select * from t where h1 = 1 and h2 = 'h1';",
+                "Row[1, h1, 1, r1, NULL, s13, NULL, c1]"+
+                "Row[1, h1, 2, r2, NULL, s13, 2, c2]"+
+                "Row[1, h1, 3, r3, NULL, s13, 3, c3]");
 
     // Insert static column alone with TTL.
     session.execute("insert into t (h1, h2, s1, s2) values (7, 'h7', 17, 's17') using ttl 5;");
 
     // Verify the static column.
-    testSelect("select distinct h1, h2, s1, s2 from t where h1 = 7 and h2 = 'h7';",
-               "Row[7, h7, 17, s17]");
+    assertQuery("select distinct h1, h2, s1, s2 from t where h1 = 7 and h2 = 'h7';",
+                "Row[7, h7, 17, s17]");
 
     Thread.sleep(5000);
 
     // Verify the static column is gone.
-    testSelect("select distinct h1, h2, s1, s2 from t where h1 = 7 and h2 = 'h7';",
-               "");
+    assertQuery("select distinct h1, h2, s1, s2 from t where h1 = 7 and h2 = 'h7';",
+                "");
 
     LOG.info("Test End");
   }

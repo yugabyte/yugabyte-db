@@ -152,6 +152,24 @@ public class TestConditionalDml extends BaseCQLTest {
       assertRow(1, "a", 2, "b", 3, "c");
     }
 
+    // Test inserting same row with different value on condition only IF NOT EXISTS OR v1 < 3.
+    insert_stmt =
+        "INSERT INTO t (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 4, 'd') " +
+        "IF NOT EXISTS OR v1 < 3;";
+    {
+      // Expected not applied. Verify "[applied]" and "v1" (current value 3) are returned.
+      ResultSet rs = session.execute(insert_stmt);
+      ColumnDefinitions cols = rs.getColumnDefinitions();
+      assertEquals(2, cols.size());
+      assertEquals(DataType.cboolean(), cols.getType("[applied]"));
+      assertEquals(DataType.cint(), cols.getType("v1"));
+      assertFalse(rs.wasApplied());
+      assertEquals(3, rs.one().getInt("v1"));
+
+      // Expect the row to exist.
+      assertRow(1, "a", 2, "b", 3, "c");
+    }
+
     // Test inserting same row with different value again on condition only IF NOT EXISTS OR v1 = 3
     // this time.
     insert_stmt =
@@ -165,6 +183,21 @@ public class TestConditionalDml extends BaseCQLTest {
 
       // Expect the row with new value.
       assertRow(1, "a", 2, "b", 4, "d");
+    }
+
+    // Test inserting same row with different value again on condition only IF NOT EXISTS OR v1 <= 4
+    // this time.
+    insert_stmt =
+        "INSERT INTO t (h1, h2, r1, r2, v1, v2) VALUES (1, 'a', 2, 'b', 5, 'e') " +
+        "IF NOT EXISTS OR v1 <= 4;";
+    {
+      // Expected applied.
+      ResultSet rs = session.execute(insert_stmt);
+      ColumnDefinitions cols = rs.getColumnDefinitions();
+      assertTrue(rs.wasApplied());
+
+      // Expect the row with new value.
+      assertRow(1, "a", 2, "b", 5, "e");
     }
 
     // Tear down table
@@ -242,6 +275,23 @@ public class TestConditionalDml extends BaseCQLTest {
       assertRow(1, "a", 2, "b", 4, "d");
     }
 
+    // Test updating a row that exists on condition only IF NOT EXISTS or v1 > 4 and v2 = 'c'
+    update_stmt =
+        "UPDATE t SET v1 = 4, v2 = 'd' WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' " +
+        "IF NOT EXISTS OR v1 > 4 AND v2 = 'c';";
+    {
+      // Expected not applied.
+      ResultSet rs = session.execute(update_stmt);
+      ColumnDefinitions cols = rs.getColumnDefinitions();
+      assertFalse(rs.wasApplied());
+      Row row = rs.one();
+      assertEquals(4, row.getInt("v1"));
+      assertEquals("d", row.getString("v2"));
+
+      // Expect the row unchanged.
+      assertRow(1, "a", 2, "b", 4, "d");
+    }
+
     // Test updating a row that exists on condition only IF EXISTS and either of 2 values.
     update_stmt =
         "UPDATE t SET v1 = 5, v2 = 'e' WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' " +
@@ -256,6 +306,22 @@ public class TestConditionalDml extends BaseCQLTest {
 
       // Expect the row update.
       assertRow(1, "a", 2, "b", 5, "e");
+    }
+
+    // Test updating a row that exists on condition only IF EXISTS and >= a value.
+    update_stmt =
+        "UPDATE t SET v1 = 6, v2 = 'f' WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'b' " +
+        "IF EXISTS AND v1 >= 5;";
+    {
+      // Expected applied.
+      ResultSet rs = session.execute(update_stmt);
+      ColumnDefinitions cols = rs.getColumnDefinitions();
+      assertEquals(1, cols.size());
+      assertEquals(DataType.cboolean(), cols.getType("[applied]"));
+      assertTrue(rs.wasApplied());
+
+      // Expect the row update.
+      assertRow(1, "a", 2, "b", 6, "f");
     }
 
     // Tear down table

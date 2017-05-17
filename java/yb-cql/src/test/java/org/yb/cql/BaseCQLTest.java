@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package org.yb.cql;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -231,6 +232,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     ResultSet rs = session.execute(select_stmt);
     Iterator<Row> iter = rs.iterator();
     assertFalse(iter.hasNext());
+  }
+
+  protected void assertQuery(String stmt, String expectedResult) {
+    ResultSet rs = session.execute(stmt);
+    String actualResult = "";
+    for (Row row : rs) {
+      actualResult += row.toString();
+    }
+    assertEquals(expectedResult, actualResult);
   }
 
   // blob type utils

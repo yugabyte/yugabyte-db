@@ -20,7 +20,7 @@ namespace yb {
 namespace sql {
 
 //--------------------------------------------------------------------------------------------------
-// Counter of operators on each column.
+// Counter of operators on each column. "gt" includes ">" and ">=". "lt" includes "<" and "<=".
 class ColumnOpCounter {
  public:
   ColumnOpCounter() : gt_count_(0), lt_count_(0), eq_count_(0) { }

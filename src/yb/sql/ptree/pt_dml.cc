@@ -266,7 +266,8 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       break;
     }
 
-    case YQL_OP_LESS_THAN: {
+    case YQL_OP_LESS_THAN: FALLTHROUGH_INTENDED;
+    case YQL_OP_LESS_THAN_EQUAL: {
       if (col_desc->is_hash()) {
         return sem_context->Error(expr->loc(), "Partition column cannot be used in this expression",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -285,11 +286,12 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       counter.increase_lt();
 
       // Cache the column operator for execution.
-      ColumnOp col_op(col_desc, value, YQLOperator::YQL_OP_LESS_THAN);
+      ColumnOp col_op(col_desc, value, expr->yql_op());
       ops_->push_back(col_op);
       break;
     }
 
+    case YQL_OP_GREATER_THAN_EQUAL: FALLTHROUGH_INTENDED;
     case YQL_OP_GREATER_THAN: {
       if (col_desc->is_hash()) {
         return sem_context->Error(expr->loc(), "Partition column cannot be used in this expression",
@@ -309,7 +311,7 @@ CHECKED_STATUS WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       counter.increase_gt();
 
       // Cache the column operator for execution.
-      ColumnOp col_op(col_desc, value, YQLOperator::YQL_OP_GREATER_THAN);
+      ColumnOp col_op(col_desc, value, expr->yql_op());
       ops_->push_back(col_op);
       break;
     }

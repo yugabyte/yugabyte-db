@@ -5,6 +5,7 @@ import java.util.*;
 
 import org.junit.Test;
 
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
@@ -130,6 +131,78 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(row_count, num_rows);
 
     LOG.info("TEST CQL SIMPLE QUERY - End");
+  }
+
+  @Test
+  public void testRangeQuery() throws Exception {
+    LOG.info("TEST CQL RANGE QUERY - Start");
+
+    // Setup test table.
+    setupTable("test_select", 0);
+
+    // Populate rows.
+    {
+      String insert_stmt = "INSERT INTO test_select (h1, h2, r1, r2, v1, v2) " +
+                           "VALUES (?, ?, ?, ?, ?, ?);";
+      PreparedStatement stmt = session.prepare(insert_stmt);
+      for (int i = 1; i <= 3; i++) {
+        for (int j = 1; j <= 3; j++) {
+          session.execute(stmt.bind(new Integer(i), "h" + i,
+                                    new Integer(j), "r" + j,
+                                    new Integer(j), "v" + i + j));
+        }
+      }
+    }
+
+    // Test with ">" and "<".
+    assertQuery("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 > 1 AND r1 < 3;",
+                "Row[1, h1, 2, r2, 2, v12]");
+
+    // Test with mixing ">" and "<=".
+    assertQuery("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 > 1 AND r1 <= 3;",
+                "Row[1, h1, 2, r2, 2, v12]" +
+                "Row[1, h1, 3, r3, 3, v13]");
+
+    // Test with ">=" and "<=".
+    assertQuery("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 >= 1 AND r1 <= 3;",
+                "Row[1, h1, 1, r1, 1, v11]" +
+                "Row[1, h1, 2, r2, 2, v12]" +
+                "Row[1, h1, 3, r3, 3, v13]");
+
+    // Test with ">=" and "<=" on r1 and ">" and "<" on r2.
+    assertQuery("SELECT * FROM test_select " +
+                "WHERE h1 = 1 AND h2 = 'h1' AND r1 >= 1 AND r1 <= 3 AND r2 > 'r1' AND r2 < 'r3';",
+                "Row[1, h1, 2, r2, 2, v12]");
+
+    // Test with "=>" and "<=" with partial hash key.
+    assertQuery("SELECT * FROM test_select WHERE h1 = 1 AND r1 >= 1 AND r1 <= 3;",
+                "Row[1, h1, 1, r1, 1, v11]" +
+                "Row[1, h1, 2, r2, 2, v12]" +
+                "Row[1, h1, 3, r3, 3, v13]");
+
+    // Test with ">" and "<" with no hash key.
+    assertQuery("SELECT * FROM test_select WHERE r1 > 1 AND r1 < 3;",
+                "Row[1, h1, 2, r2, 2, v12]" +
+                "Row[3, h3, 2, r2, 2, v32]" +
+                "Row[2, h2, 2, r2, 2, v22]");
+
+    // Invalid range: equal and bound conditions cannot be used together.
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 >= 1 AND r1 = 3;");
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 > 1 AND r1 = 3;");
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 = 1 AND r1 < 3;");
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 = 1 AND r1 <= 3;");
+
+    // Invalid range: two lower or two upper bound conditions cannot be used together.
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 >= 1 AND r1 >= 3;");
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 >= 1 AND r1 > 3;");
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 < 1 AND r1 <= 3;");
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 <= 1 AND r1 <= 3;");
+
+    // Invalid range: not-equal not supported.
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 <> 1;");
+    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 != 1;");
+
+    LOG.info("TEST CQL RANGE QUERY - End");
   }
 
   @Test

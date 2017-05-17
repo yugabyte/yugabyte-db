@@ -17,13 +17,15 @@ using client::YBColumnSchema;
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS PTExpr::CheckOperator(SemContext *sem_context) {
-  // Where clause only allow AND, EQ, LT, and GT operators.
+  // Where clause only allow AND, EQ, LT, LE, GT, and GE operators.
   if (sem_context->where_state() != nullptr) {
     switch (yql_op_) {
       case YQL_OP_AND:
       case YQL_OP_EQUAL:
       case YQL_OP_LESS_THAN:
+      case YQL_OP_LESS_THAN_EQUAL:
       case YQL_OP_GREATER_THAN:
+      case YQL_OP_GREATER_THAN_EQUAL:
         break;
       default:
         return sem_context->Error(loc(), "This operator is not allowed in where clause",
