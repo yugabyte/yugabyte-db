@@ -105,8 +105,12 @@ Status NewFileReader(const ImmutableCFOptions& ioptions, const EnvOptions& env_o
   }
 
   StopWatch sw(ioptions.env, ioptions.statistics, TABLE_OPEN_IO_MICROS);
-  file_reader->reset(new RandomAccessFileReader(std::move(file), ioptions.env,
-      ioptions.statistics, record_read_stats, file_read_hist));
+  file_reader->reset(new RandomAccessFileReader(
+      std::move(file),
+      ioptions.env,
+      record_read_stats ? ioptions.statistics : nullptr,
+      SST_READ_MICROS,
+      file_read_hist));
   return Status::OK();
 }
 

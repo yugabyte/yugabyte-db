@@ -6,10 +6,14 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#pragma once
+
+#ifndef ROCKSDB_UTIL_FILE_READER_WRITER_H
+#define ROCKSDB_UTIL_FILE_READER_WRITER_H
+
 #include <string>
 #include "rocksdb/env.h"
 #include "util/aligned_buffer.h"
+#include "util/statistics.h"
 #include "port/port.h"
 
 namespace rocksdb {
@@ -59,7 +63,7 @@ class RandomAccessFileReader {
   explicit RandomAccessFileReader(std::unique_ptr<RandomAccessFile>&& raf,
                                   Env* env = nullptr,
                                   Statistics* stats = nullptr,
-                                  uint32_t hist_type = 0,
+                                  Histograms hist_type = HISTOGRAM_ENUM_MAX,
                                   HistogramImpl* file_read_hist = nullptr)
       : file_(std::move(raf)),
         env_(env),
@@ -71,7 +75,7 @@ class RandomAccessFileReader {
     *this = std::move(o);
   }
 
-  RandomAccessFileReader& operator=(RandomAccessFileReader&& o) ROCKSDB_NOEXCEPT{
+  RandomAccessFileReader& operator=(RandomAccessFileReader&& o) ROCKSDB_NOEXCEPT {
     file_ = std::move(o.file_);
     env_ = std::move(o.env_);
     stats_ = std::move(o.stats_);
@@ -171,3 +175,5 @@ extern Status NewWritableFile(Env* env, const std::string& fname,
                               unique_ptr<WritableFile>* result,
                               const EnvOptions& options);
 }  // namespace rocksdb
+
+#endif // ROCKSDB_UTIL_FILE_READER_WRITER_H
