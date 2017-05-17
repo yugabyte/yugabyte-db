@@ -2,7 +2,7 @@ import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
 import _ from 'lodash';
-import { isDefinedNotNull, isValidArray, isNonEmptyObject, areIntentsEqual } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isValidArray, isNonEmptyObject, areIntentsEqual, isEmptyObject } from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
   YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
 } from 'components/common/forms/fields';
@@ -276,7 +276,7 @@ export default class UniverseForm extends Component {
     const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
         && isValidArray(nextProps.cloud.instanceTypes.data)
-        && isNonEmptyObject(this.state.deviceInfo)
+        && isEmptyObject(this.state.deviceInfo)
         && isDefinedNotNull(this.state.instanceTypeSelected)) {
       let instanceTypeSelected = nextProps.cloud.instanceTypes.data.find(function(item){
         return item.instanceTypeCode ===  self.state.instanceTypeSelected;
