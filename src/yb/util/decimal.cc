@@ -231,7 +231,14 @@ int Decimal::CompareTo(const Decimal &other) const {
   if (is_positive_ != other.is_positive_) {
     return static_cast<int>(is_positive_) - static_cast<int>(other.is_positive_);
   }
-  int comp = exponent_.CompareTo(other.exponent_);
+  int comp;
+  // We must compare zeros in a special way because the exponent logic doesn't work with special
+  // canonicalization for zero.
+  if (digits_.empty() || other.digits_.empty()) {
+    comp = static_cast<int>(digits_.empty()) - static_cast<int>(other.digits_.empty());
+    return is_positive_ ? -comp : comp;
+  }
+  comp = exponent_.CompareTo(other.exponent_);
   if (comp != 0) {
     return is_positive_ ? comp : -comp;
   }
@@ -246,13 +253,17 @@ int Decimal::CompareTo(const Decimal &other) const {
 }
 
 string Decimal::EncodeToComparable() const {
-  string exponent = exponent_.EncodeToComparable(
-      /* is_signed */ true, /* num_reserved_bits */ 1);
+  // Zero is encoded to the special value 128.
+  if (digits_.empty()) {
+    return string(1, 128);
+  }
+  // We reserve two bits for sign: -, zero, and +. Their sign portions are resp. '00', '10', '11'.
+  string exponent = exponent_.EncodeToComparable(/* is_signed */ true, /* num_reserved_bits */ 2);
   const string mantissa = VarInt(digits_, 10).EncodeToDigitPairs();
   string output = exponent + mantissa;
-  // The first (reserved) bit is zero. This is the Decimal's sign bit. We set it to one here.
-  output[0] += 128;
-  // For negatives, everything is complemented (including the sign bit) which was set to 1.
+  // The first two (reserved) bits are set to 1 here.
+  output[0] += 192;
+  // For negatives, everything is complemented (including the sign bits) which were set to 1 above.
   if (!is_positive_) {
     for (int i = 0; i < output.size(); i++) {
       output[i] = ~output[i]; // Bitwise not.
@@ -265,7 +276,13 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
   if (slice.empty()) {
     return STATUS(Corruption, "Cannot decode Decimal from empty slice.");
   }
-  // The first bit is sign.
+  // Zero is specially decoded from the value 128.
+  if (slice[0] == 128) {
+    clear();
+    *num_decoded_bytes = 1;
+    return Status::OK();
+  }
+  // The first bit is enough to decode the sign.
   is_positive_ = slice[0] >= 128;
   // We have to complement everything if negative, so we are making a copy.
   string encoded = slice.ToString();
@@ -276,7 +293,7 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
   }
   size_t num_exponent_bytes = 0;
   RETURN_NOT_OK(exponent_.DecodeFromComparable(
-      encoded, &num_exponent_bytes, /* is signed */ true, /* num_reserved_bits */ 1));
+      encoded, &num_exponent_bytes, /* is signed */ true, /* num_reserved_bits */ 2));
   Slice remaining_slice(encoded);
   remaining_slice.remove_prefix(num_exponent_bytes);
   VarInt mantissa;

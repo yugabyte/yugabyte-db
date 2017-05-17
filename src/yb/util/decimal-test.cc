@@ -29,6 +29,7 @@ class DecimalTest : public YBTest {
       // Checking the higher boundary of the scale.
       "-1.36e-2147483645", // Note that the scale is 2147483647, largest signed int.
       "-0",
+      "0.05",
       "1.15",
       "1.2",
       "120e0",
@@ -36,8 +37,10 @@ class DecimalTest : public YBTest {
       "2638.2e+3624"
   };
 
-  const std::vector<size_t> kComparableEncodingLengths = {10, 10, 3, 3, 3, 3, 7, 2, 3, 2, 2, 3, 5};
-  const std::vector<size_t> kBigDecimalEncodingLengths = {9, 8, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 6};
+  const std::vector<size_t> kComparableEncodingLengths =
+      {10, 10, 3, 3, 3, 3, 7, 1, 2, 3, 2, 2, 3, 6};
+  const std::vector<size_t> kBigDecimalEncodingLengths =
+      {9, 8, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 6};
 };
 
 TEST_F(DecimalTest, TestToStringFunctions) {
