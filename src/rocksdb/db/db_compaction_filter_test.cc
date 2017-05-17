@@ -9,6 +9,7 @@
 
 #include "db/db_test_util.h"
 #include "port/stack_trace.h"
+#include "yb/util/stopwatch.h"
 
 namespace rocksdb {
 
@@ -99,7 +100,7 @@ class ConditionalFilter : public CompactionFilter {
 
 class ChangeFilter : public CompactionFilter {
  public:
-  explicit ChangeFilter() {}
+  ChangeFilter() {}
 
   virtual bool Filter(int level, const Slice& key, const Slice& value,
                       std::string* new_value, bool* value_changed) const
@@ -209,7 +210,7 @@ class ConditionalFilterFactory : public CompactionFilterFactory {
 
 class ChangeFilterFactory : public CompactionFilterFactory {
  public:
-  explicit ChangeFilterFactory() {}
+  ChangeFilterFactory() {}
 
   virtual std::unique_ptr<CompactionFilter> CreateCompactionFilter(
       const CompactionFilter::Context& context) override {
@@ -407,55 +408,72 @@ TEST_F(DBTestCompactionFilter, CompactionFilterWithValueChange) {
     options = CurrentOptions(options);
     CreateAndReopenWithCF({"pikachu"}, options);
 
-    // Write 100K+1 keys, these are written to a few files
+#ifdef THREAD_SANITIZER
+    // Lower number of runs for tsan due to low perf.
+    constexpr int kNumKeys = 10001;
+#else
+    constexpr int kNumKeys = 100001;
+#endif
+
+    // Write 'kNumKeys' keys, these are written to a few files
     // in L0. We do this so that the current snapshot points
-    // to the 100001 key.The compaction filter is  not invoked
+    // to the last key that we write. The compaction filter is  not invoked
     // on keys that are visible via a snapshot because we
     // anyways cannot delete it.
     const std::string value(10, 'x');
-    for (int i = 0; i < 100001; i++) {
-      char key[100];
-      snprintf(key, sizeof(key), "B%010d", i);
-      Put(1, key, value);
+    LOG_TIMING(INFO, "Writing Keys") {
+      for (int i = 0; i < kNumKeys; i++) {
+        char key[100];
+        snprintf(key, sizeof(key), "B%010d", i);
+        Put(1, key, value);
+      }
     }
 
-    // push all files to  lower levels
-    ASSERT_OK(Flush(1));
-    if (option_config_ != kUniversalCompactionMultiLevel &&
-        option_config_ != kUniversalSubcompactions) {
-      dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
-      dbfull()->TEST_CompactRange(1, nullptr, nullptr, handles_[1]);
-    } else {
-      dbfull()->CompactRange(CompactRangeOptions(), handles_[1], nullptr,
-                             nullptr);
+    LOG_TIMING(INFO, "Pushing files to lower levels") {
+      // push all files to  lower levels
+      ASSERT_OK(Flush(1));
+      if (option_config_ != kUniversalCompactionMultiLevel &&
+          option_config_ != kUniversalSubcompactions) {
+        dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
+        dbfull()->TEST_CompactRange(1, nullptr, nullptr, handles_[1]);
+      } else {
+        dbfull()->CompactRange(CompactRangeOptions(), handles_[1], nullptr,
+            nullptr);
+      }
     }
 
     // re-write all data again
-    for (int i = 0; i < 100001; i++) {
-      char key[100];
-      snprintf(key, sizeof(key), "B%010d", i);
-      Put(1, key, value);
+    LOG_TIMING(INFO, "Rewriting data") {
+      for (int i = 0; i < kNumKeys; i++) {
+        char key[100];
+        snprintf(key, sizeof(key), "B%010d", i);
+        Put(1, key, value);
+      }
     }
 
     // push all files to  lower levels. This should
-    // invoke the compaction filter for all 100000 keys.
-    ASSERT_OK(Flush(1));
-    if (option_config_ != kUniversalCompactionMultiLevel &&
-        option_config_ != kUniversalSubcompactions) {
-      dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
-      dbfull()->TEST_CompactRange(1, nullptr, nullptr, handles_[1]);
-    } else {
-      dbfull()->CompactRange(CompactRangeOptions(), handles_[1], nullptr,
-                             nullptr);
+    // invoke the compaction filter for all kNumKeys - 1 keys.
+    LOG_TIMING(INFO, "Pushing files to lower levels after rewrite") {
+      ASSERT_OK(Flush(1));
+      if (option_config_ != kUniversalCompactionMultiLevel &&
+          option_config_ != kUniversalSubcompactions) {
+        dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
+        dbfull()->TEST_CompactRange(1, nullptr, nullptr, handles_[1]);
+      } else {
+        dbfull()->CompactRange(CompactRangeOptions(), handles_[1], nullptr,
+            nullptr);
+      }
     }
 
     // verify that all keys now have the new value that
     // was set by the compaction process.
-    for (int i = 0; i < 100001; i++) {
-      char key[100];
-      snprintf(key, sizeof(key), "B%010d", i);
-      std::string newvalue = Get(1, key);
-      ASSERT_EQ(newvalue.compare(NEW_VALUE), 0);
+    LOG_TIMING(INFO, "Verify keys") {
+      for (int i = 0; i < kNumKeys; i++) {
+        char key[100];
+        snprintf(key, sizeof(key), "B%010d", i);
+        std::string newvalue = Get(1, key);
+        ASSERT_EQ(newvalue.compare(NEW_VALUE), 0);
+      }
     }
   } while (ChangeCompactOptions());
 }
