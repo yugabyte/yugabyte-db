@@ -17,6 +17,8 @@
 #include <inttypes.h>
 #include <limits>
 
+#include <gflags/gflags.h>
+
 #include "rocksdb/cache.h"
 #include "rocksdb/compaction_filter.h"
 #include "rocksdb/comparator.h"
@@ -33,6 +35,9 @@
 #include "util/compression.h"
 #include "util/statistics.h"
 #include "util/xfunc.h"
+
+DEFINE_int32(memstore_size_mb, 16,
+             "Max size (in mb) of the memstore, before needing to flush.");
 
 namespace rocksdb {
 
@@ -83,7 +88,7 @@ ColumnFamilyOptions::ColumnFamilyOptions()
       merge_operator(nullptr),
       compaction_filter(nullptr),
       compaction_filter_factory(nullptr),
-      write_buffer_size(4 << 20),
+      write_buffer_size(FLAGS_memstore_size_mb << 20), // Option expects bytes.
       max_write_buffer_number(2),
       min_write_buffer_number_to_merge(1),
       max_write_buffer_number_to_maintain(0),
