@@ -8,7 +8,7 @@ import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { Field } from 'redux-form';
 import { withRouter } from 'react-router';
-import  { isValidArray, isValidObject, trimString, convertSpaceToDash } from '../../../utils/ObjectUtils';
+import  { isNonEmptyArray, isValidObject, trimString, convertSpaceToDash } from 'utils/ObjectUtils';
 import { RegionMap } from '../../maps';
 
 const PROVIDER_TYPE = "aws";
@@ -103,7 +103,7 @@ class AWSProviderConfiguration extends Component {
     let universeExistsForProvider = false;
     let providerConfig;
     if (isValidObject(awsProvider)) {
-      if (isValidArray(configuredProviders.data) && isValidArray(universeList)){
+      if (isNonEmptyArray(configuredProviders.data) && isNonEmptyArray(universeList)) {
         universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === awsProvider.uuid));
       }
 
@@ -112,7 +112,7 @@ class AWSProviderConfiguration extends Component {
       );
 
       let accessKeyList = "Not Configured";
-      if (isValidObject(accessKeys) && isValidArray(accessKeys.data)) {
+      if (isValidObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
         accessKeyList = accessKeys.data.map( (accessKey) => accessKey.idKey.keyCode ).join(", ")
       }
 

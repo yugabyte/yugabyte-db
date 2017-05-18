@@ -7,7 +7,7 @@ import { createProvider, createProviderResponse, createInstanceType, createInsta
   createRegion, createRegionResponse, createZone, createZoneResponse, createNodeInstance,
   createNodeInstanceResponse, createAccessKey, createAccessKeyResponse, resetProviderBootstrap,
   fetchCloudMetadata } from '../../../actions/cloud';
-import { isValidArray } from '../../../utils/ObjectUtils';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 
 const mapStateToProps = (state) => {
   return {
@@ -24,7 +24,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createOnPremAccessKeys: (providerUUID, regionsMap, config) => {
-      if (isObject(config) && isValidArray(config.regions) && isObject(config.key)) {
+      if (isObject(config) && isNonEmptyArray(config.regions) && isObject(config.key)) {
         config.regions.forEach((region) => {
           if (isObject(region)) {
             dispatch(createAccessKey(providerUUID, regionsMap[region.code], config.key)).then((response) => {
@@ -36,7 +36,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createOnPremInstanceTypes: (providerType, providerUUID, config) => {
-      if (isObject(config) && isValidArray(config.instanceTypes)) {
+      if (isObject(config) && isNonEmptyArray(config.instanceTypes)) {
         config.instanceTypes.forEach((type) => {
           dispatch(createInstanceType(providerType, providerUUID, type)).then((response) => {
             dispatch(createInstanceTypeResponse(response.payload));
@@ -52,7 +52,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createOnPremRegions: (providerUUID, config) => {
-      if (isObject(config) && isValidArray(config.regions)) {
+      if (isObject(config) && isNonEmptyArray(config.regions)) {
         config.regions.forEach((region) => {
           dispatch(createRegion(providerUUID, region.code, "")).then((response) => {
             dispatch(createRegionResponse(response.payload));
@@ -62,9 +62,9 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createOnPremZones: (providerUUID, regionsMap, config) => {
-      if (isObject(config) && isValidArray(config.regions)) {
+      if (isObject(config) && isNonEmptyArray(config.regions)) {
         config.regions.forEach((region) => {
-          if (isObject(region) && isValidArray(region.zones)) {
+          if (isObject(region) && isNonEmptyArray(region.zones)) {
             region.zones.forEach((zone) => {
               dispatch(createZone(providerUUID, regionsMap[region.code], zone)).then((response) => {
                 dispatch(createZoneResponse(response.payload));
@@ -76,7 +76,7 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     createOnPremNodes: (zonesMap, config) => {
-      if (isObject(config) && isValidArray(config.nodes)) {
+      if (isObject(config) && isNonEmptyArray(config.nodes)) {
         config.nodes.forEach((node) => {
           if (isObject(node)) {
             node.nodeName = "yb-" + node.zone + "-n" + config.nodes.indexOf(node).toString();

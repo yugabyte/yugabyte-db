@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import {ListGroup, ListGroupItem, Checkbox} from 'react-bootstrap';
-import {isValidArray} from '../../utils/ObjectUtils';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 import './stylesheets/RegionMapLegend.css'
 
 export default class RegionMapLegend extends Component{
@@ -11,7 +11,7 @@ export default class RegionMapLegend extends Component{
     var providerList = <ListGroupItem>
                          No Providers Configured
                        </ListGroupItem>;
-    if (isValidArray(providers)) {
+    if (isNonEmptyArray(providers)) {
       providerList = providers.map(function (item, idx) {
         return  (
           <ListGroupItem key={idx}>

@@ -2,7 +2,7 @@
 
 import React, { Component, PropTypes } from 'react';
 import { isObject } from 'lodash';
-import { isValidArray } from '../../../../utils/ObjectUtils';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 import YBRadioButton from './YBRadioButton';
 import { YBLabel } from '../../descriptors';
 
@@ -31,7 +31,7 @@ export default class YBRadioButtonBar extends Component {
     var self = this;
     function radioButtonForOption(option) {
       var value, display;
-      if (isValidArray(option)) {
+      if (isNonEmptyArray(option)) {
         [value, display] = option;
       } else if (isObject(option)) {
         value = option.value;
