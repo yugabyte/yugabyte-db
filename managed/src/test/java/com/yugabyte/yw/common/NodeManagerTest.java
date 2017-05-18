@@ -60,6 +60,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private final String fakeMountPath1 = "/fake/path/d0";
   private final String fakeMountPath2 = "/fake/path/d1";
   private final String fakeMountPaths = fakeMountPath1 + "," + fakeMountPath2;
+  private final String instanceTypeCode = "fake_instance_type";
 
   private class TestData {
     public Common.CloudType cloudType;
@@ -69,8 +70,6 @@ public class NodeManagerTest extends FakeDBApplication {
     public AvailabilityZone zone;
     public NodeInstance node;
     public List<String> baseCommand = new ArrayList<>();
-
-    public static final String instanceTypeCode = "fake_instance_type";
 
     public TestData(Provider p, Common.CloudType cloud, DeviceInfo.EBSType ebs) {
       cloudType = cloud;
@@ -250,6 +249,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--gflags");
           expectedCommand.add(gflagsJson);
         }
+        break;
+      case Destroy:
+        expectedCommand.add("--instance_type");
+        expectedCommand.add(instanceTypeCode);
         break;
     }
     if (params.deviceInfo != null) {
