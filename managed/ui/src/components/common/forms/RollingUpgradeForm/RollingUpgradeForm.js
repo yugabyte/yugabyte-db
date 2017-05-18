@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import {Field, FieldArray } from 'redux-form';
 import {Row, Col} from 'react-bootstrap';
 import { YBButton, YBModal, YBInputField, YBCheckBox, YBSelectWithLabel } from '../fields';
-import {isValidObject, isValidArray} from '../../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 
 class FlagInput extends Component {
   render() {
@@ -83,7 +83,7 @@ export default class RollingUpgradeForm extends Component {
     payload.ybSoftwareVersion = values.ybSoftwareVersion;
     payload.nodeNames = nodeNames;
     payload.universeUUID = universeUUID;
-    if (isValidArray(values.gflags)) {
+    if (isNonEmptyArray(values.gflags)) {
       payload.gflags = values.gflags;
     }
     this.props.submitRollingUpgradeForm(payload, universeUUID);
@@ -138,7 +138,7 @@ class ItemList extends Component {
   render() {
     const {nodeList} = this.props;
     var nodeCheckList = <Field name={"check"} component={YBCheckBox}/>
-    if (isValidArray(nodeList)) {
+    if (isNonEmptyArray(nodeList)) {
       nodeCheckList =
         nodeList.map(function (item, idx) {
           return (

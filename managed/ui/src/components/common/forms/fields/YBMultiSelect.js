@@ -6,7 +6,7 @@ import Select from 'react-select';
 import 'react-select/dist/react-select.css';
 
 import { YBLabel } from 'components/common/descriptors';
-import { isValidArray } from 'utils/ObjectUtils';
+import { isNonEmptyArray } from 'utils/ObjectUtils';
 
 // TODO: Rename to YBMultiSelect after changing prior YBMultiSelect references.
 // TODO: Make default export after checking all corresponding imports.
@@ -17,7 +17,7 @@ export class YBNewMultiSelect extends Component {
     // If AZ is changed from multi to single, take only last selection.
     if (this.props.multi !== props.multi && props.multi === false) {
       var currentSelection = this.props.input.value;
-      if (isValidArray(currentSelection) && currentSelection.length > 0) {
+      if (isNonEmptyArray(currentSelection)) {
         newSelection = currentSelection.splice(-1, 1);
       }
     }
@@ -26,7 +26,7 @@ export class YBNewMultiSelect extends Component {
       newSelection = [];
     }
 
-    if (isValidArray(newSelection) && isFunction(this.props.input.onChange)) {
+    if (isNonEmptyArray(newSelection) && isFunction(this.props.input.onChange)) {
       this.props.input.onChange(newSelection);
     }
   }

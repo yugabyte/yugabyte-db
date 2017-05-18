@@ -4,7 +4,7 @@ import React, {Component} from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import {withRouter} from 'react-router';
-import  { isValidArray, isEmptyObject, isValidObject } from '../../../utils/ObjectUtils';
+import  { isNonEmptyArray, isEmptyObject, isValidObject } from 'utils/ObjectUtils';
 import { YBConfirmModal } from '../../modals';
 import { RegionMap } from '../../maps';
 
@@ -48,7 +48,7 @@ class DockerProviderConfiguration extends Component {
 
     if (isValidObject(dockerProvider)) {
       let universeExistsForProvider = false;
-      if (isValidArray(configuredProviders.data) && isValidArray(universeList)){
+      if (isNonEmptyArray(configuredProviders.data) && isNonEmptyArray(universeList)) {
         universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === dockerProvider.uuid));
       }
       let deleteButtonDisabled = submitting || universeExistsForProvider;
