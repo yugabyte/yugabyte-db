@@ -18,9 +18,9 @@
 #include "yb/util/logging.h"
 
 DEFINE_int32(rocksdb_max_background_flushes, 1, "Number threads to do background flushes.");
-DEFINE_int32(rocksdb_base_background_compactions, 1,
+DEFINE_int32(rocksdb_base_background_compactions, 2,
              "Number threads to do background compactions.");
-DEFINE_int32(rocksdb_max_background_compactions, 2,
+DEFINE_int32(rocksdb_max_background_compactions, 4,
              "Increased number of threads to do background compactions (used when compactions need "
              "to catch up.)");
 DEFINE_int32(rocksdb_level0_file_num_compaction_trigger, 5,
