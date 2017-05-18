@@ -170,7 +170,7 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
   ASSERT_OK(addr.FromString("1.2.3.4"));
 
   // To get a descending sorting, we store the negative of a decimal type. 100.2 gets converted to
-  // -100.2 which in the encoded form is equal to \x3c\x75\x7f\xeb. \x3c = < and \x75 = u.
+  // -100.2 which in the encoded form is equal to \x3c\xea\xfe\xd7. \x3c = <.
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       ApplyEagerLineContinuation(
           R"#(
@@ -180,8 +180,8 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
              a\x89\x9e\x93\xce\xff\xfe\xff\xff\
              .\xfe\xfd\xfc\xfb\xff\xff\
              c\x7f\xff\xff\xff\xff\xff\xfc\x17\
-             d<u\x7f\xeb\
-             E\xbd\x0a\
+             d<\xea\xfe\xd7\
+             E\xbd\x14\
              !"
           )#"),
       FormatBytesAsStr(DocKey({
