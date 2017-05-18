@@ -51,6 +51,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   @Before
   public void setUpCqlClient() throws Exception {
+    LOG.info("BaseCQLTest.setUpCqlClient is running");
     // Set a long timeout for CQL queries since build servers might be really slow (especially Mac
     // Mini).
     SocketOptions socketOptions = new SocketOptions();
@@ -66,6 +67,10 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
 
     session = cluster.connect();
+
+    String defaultKeyspaceName = "my_keyspace";
+    createKeyspace(defaultKeyspaceName);
+    useKeyspace(defaultKeyspaceName);
   }
 
   @After
@@ -275,6 +280,11 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     String createKeyspaceStmt = "CREATE KEYSPACE " + keyspaceName;
     execute(createKeyspaceStmt);
     keyspacesToDrop.add(keyspaceName);
+  }
+
+  public void useKeyspace(String keyspaceName) throws Exception {
+    String useKeyspaceStmt = "USE " + keyspaceName;
+    execute(useKeyspaceStmt);
   }
 
   public void dropKeyspace(String keyspaceName) throws Exception {
