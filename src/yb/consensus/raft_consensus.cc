@@ -795,7 +795,6 @@ Status RaftConsensus::AppendNewRoundToQueueUnlocked(const scoped_refptr<Consensu
     if (append_cb != nullptr) {
       append_cb->HandleConsensusAppend();
     }
-
   }
   RETURN_NOT_OK(state_->AddPendingOperation(round));
 
@@ -1058,7 +1057,6 @@ void RaftConsensus::DeduplicateLeaderRequestUnlocked(ConsensusRequestPB* rpc_req
                           << "   Dedup: " << *deduplicated_req->preceding_opid << "->"
                           << deduplicated_req->OpsRangeString();
   }
-
 }
 
 Status RaftConsensus::HandleLeaderRequestTermUnlocked(const ConsensusRequestPB* request,

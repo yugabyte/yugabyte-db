@@ -59,6 +59,14 @@ public class TestClusterExpandShrink extends BaseCQLTest {
   // Timeout to wait for cluster move to complete.
   private static final int CLUSTER_MOVE_TIMEOUT_MS = 300000; // 5 mins
 
+  // Timeout for test completion.
+  private static final int TEST_TIMEOUT_SEC = 300; // 5 mins
+
+  @Override
+  public int getTestMethodTimeoutSec() {
+    return TEST_TIMEOUT_SEC;
+  }
+
   @Override
   protected void afterStartingMiniCluster() {
     cqlContactPoints = miniCluster.getCQLContactPointsAsString();
@@ -115,8 +123,8 @@ public class TestClusterExpandShrink extends BaseCQLTest {
     }
 
     public int waitNumOpsAtLeast(int expectedNumOps) throws Exception {
-      Integer numOps = 0;
       TestUtils.waitFor(() -> testRunner.numOps() >= expectedNumOps, WAIT_FOR_OPS_TIMEOUT_MS);
+      Integer numOps = testRunner.numOps();
       LOG.info("Num Ops: " + numOps + ", Expected: " + expectedNumOps);
       assertTrue(numOps >= expectedNumOps);
       return numOps;
@@ -185,7 +193,7 @@ public class TestClusterExpandShrink extends BaseCQLTest {
     YBClient client = miniCluster.getClient();
     HostAndPort masterHostAndPort = client.getLeaderMasterHostAndPort();
     int masterLeaderWebPort =
-      miniCluster.getMasters().get(masterHostAndPort.getPort()).getWebPort();
+      miniCluster.getMasters().get(masterHostAndPort).getWebPort();
     JsonElement jsonTree = getMetricsJson(masterHostAndPort.getHostText(), masterLeaderWebPort);
     for (JsonElement element : jsonTree.getAsJsonArray()) {
       JsonObject object = element.getAsJsonObject();
@@ -203,14 +211,13 @@ public class TestClusterExpandShrink extends BaseCQLTest {
     fail("Didn't find live tserver metric");
   }
 
-  // Enable test once we fix ENG-1472.
-  @Ignore
   @Test(timeout = 600000) // 10 minutes.
   public void testClusterExpandShrink() throws Exception {
     // Start the load tester.
     loadTesterRunnable = new LoadTester(WORKLOAD, cqlContactPoints);
     loadTesterThread = new Thread(loadTesterRunnable);
     loadTesterThread.start();
+    LOG.info("Loadtester start.");
 
     // Wait for load tester to generate traffic.
     int totalOps = loadTesterRunnable.waitNumOpsAtLeast(NUM_OPS_INCREMENT);
@@ -305,5 +312,7 @@ public class TestClusterExpandShrink extends BaseCQLTest {
 
     // Verify no failures in the load tester.
     assertFalse(loadTesterRunnable.hasFailures());
+
+    LOG.info("Cluster Test Done!");
   }
 }

@@ -75,6 +75,7 @@ Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
       << "than the latest recorded term, which is " << GetCurrentTermUnlocked();
 
   next_index_ = last_id_in_wal.index() + 1;
+
   last_received_op_id_.CopyFrom(last_id_in_wal);
 
   state_ = kRunning;
@@ -298,7 +299,7 @@ bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch
 
   scoped_refptr<ConsensusRound> round = GetPendingOpByIndexOrNullUnlocked(op_id.index());
   if (round == nullptr) {
-    LOG(ERROR) << "Consensus round not found for op id " << op_id << ": "
+    LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Consensus round not found for op id " << op_id << ": "
                << "committed_index=" << committed_index << ", "
                << "last_received_index=" << last_received_index << ". Current state:"
                << ToStringUnlocked();
@@ -465,9 +466,9 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     DCHECK(round->replicate_msg()->change_config_record().old_config().has_opid_index());
     DCHECK(round->replicate_msg()->change_config_record().has_new_config());
     DCHECK(!round->replicate_msg()->change_config_record().new_config().has_opid_index());
-    const RaftConfigPB& old_config = round->replicate_msg()->change_config_record().old_config();
-    const RaftConfigPB& new_config = round->replicate_msg()->change_config_record().new_config();
     if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+      const RaftConfigPB& old_config = round->replicate_msg()->change_config_record().old_config();
+      const RaftConfigPB& new_config = round->replicate_msg()->change_config_record().new_config();
       // The leader has to mark the configuration as pending before it gets here
       // because the active configuration affects the replication queue.
       // Do one last sanity check.
@@ -552,12 +553,11 @@ Status ReplicaState::UpdateMajorityReplicatedUnlocked(const OpId& majority_repli
 void ReplicaState::SetLastCommittedIndexUnlocked(const OpId& committed_index) {
   DCHECK(update_lock_.is_locked());
   CHECK_GE(last_received_op_id_.index(), committed_index.index());
-
   last_committed_index_ = committed_index;
 }
 
 Status ReplicaState::InitCommittedIndexUnlocked(const OpId& committed_index) {
-  if(!OpIdEquals(last_committed_index_, MinimumOpId())) {
+  if (!OpIdEquals(last_committed_index_, MinimumOpId())) {
     return STATUS_SUBSTITUTE(
         IllegalState,
         "Committed index already initialized to: $0, tried to set $1",
@@ -737,9 +737,10 @@ bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
 void ReplicaState::UpdateLastReceivedOpIdUnlocked(const OpId& op_id) {
   DCHECK(update_lock_.is_locked());
   DCHECK_LE(OpIdCompare(last_received_op_id_, op_id), 0)
-    << "Previously received OpId: " << last_received_op_id_.ShortDebugString()
-    << ", updated OpId: " << op_id.ShortDebugString()
-    << ", Trace:" << std::endl << Trace::CurrentTrace()->DumpToString(true);
+      << "Previously received OpId: " << last_received_op_id_.ShortDebugString()
+      << ", updated OpId: " << op_id.ShortDebugString()
+      << ", Trace:" << std::endl << Trace::CurrentTrace()->DumpToString(true);
+
   last_received_op_id_ = op_id;
   last_received_op_id_current_leader_ = last_received_op_id_;
   next_index_ = op_id.index() + 1;

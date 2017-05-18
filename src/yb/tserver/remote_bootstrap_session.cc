@@ -146,6 +146,20 @@ Status RemoteBootstrapSession::ChangeRole() {
                                          requestor_uuid_, tablet_peer_->tablet_id()));
 }
 
+Status RemoteBootstrapSession::SetInitialCommittedState() {
+  scoped_refptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
+  if (!consensus) {
+    tablet::TabletStatePB tablet_state = tablet_peer_->state();
+    return STATUS(IllegalState,
+                  Substitute("Unable to initialize remote bootstrap session "
+                             "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
+                             tablet_peer_->tablet_id(), tablet::TabletStatePB_Name(tablet_state),
+                             tablet_state));
+  }
+  initial_committed_cstate_ = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+  return Status::OK();
+}
+
 Status RemoteBootstrapSession::Init() {
   // Take locks to support re-initialization of the same session.
   boost::lock_guard<simple_spinlock> l(session_lock_);
@@ -185,6 +199,27 @@ Status RemoteBootstrapSession::Init() {
   OpId last_logged_opid;
   tablet_peer_->log()->GetLatestEntryOpId(&last_logged_opid);
 
+  if (tablet_superblock_.table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE) {
+    auto tablet = tablet_peer_->shared_tablet();
+    if (PREDICT_FALSE(!tablet)) {
+      return STATUS(IllegalState, "Tablet is not running");
+    }
+
+    MonoTime now = MonoTime::Now(MonoTime::FINE);
+    auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
+    RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
+                          Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));
+
+    auto session_checkpoint_dir = std::to_string(last_logged_opid.index()) + "_" + now.ToString();
+    checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
+
+    // Clear any previous rocksdb files in the superblock. Each session should create a new list
+    // based the checkpoint directory files.
+    tablet_superblock_.clear_rocksdb_files();
+    RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
+                                           tablet_superblock_.mutable_rocksdb_files()));
+  }
+
   // Get the current segments from the log, including the active segment.
   // The Log doesn't add the active segment to the log reader's list until
   // a header has been written to it (but it will not have a footer).
@@ -195,17 +230,10 @@ Status RemoteBootstrapSession::Init() {
   LOG(INFO) << "Got snapshot of " << log_segments_.size() << " log segments";
 
   // Look up the committed consensus state.
-  // We do this after snapshotting the log to avoid a scenario where the latest
-  // entry in the log has a term higher than the term stored in the consensus
-  // metadata, which will result in a CHECK failure on RaftConsensus init.
-  scoped_refptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
-  if (!consensus) {
-    tablet::TabletStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState, Substitute("Unable to initialize remote bootstrap session "
-                                "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
-                                tablet_id, tablet::TabletStatePB_Name(tablet_state), tablet_state));
-  }
-  initial_committed_cstate_ = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+  // We do this after snapshotting the log for YB table types to avoid a scenario where the latest
+  // entry in the log has a term higher than the term stored in the consensus metadata, which
+  // will result in a CHECK failure on RaftConsensus init.
+  RETURN_NOT_OK(SetInitialCommittedState());
 
   // Re-anchor on the highest OpId that was in the log right before we
   // snapshotted the log segments. This helps ensure that we don't end up in a
@@ -214,30 +242,6 @@ Status RemoteBootstrapSession::Init() {
   // this anchor is released by ending the remote bootstrap session.
   RETURN_NOT_OK(tablet_peer_->log_anchor_registry()->UpdateRegistration(
       last_logged_opid.index(), anchor_owner_token, &log_anchor_));
-
-  if (tablet_superblock_.table_type() == TableType::KUDU_COLUMNAR_TABLE_TYPE) {
-    return Status::OK();
-  }
-
-  assert(tablet_superblock_.table_type() != TableType::KUDU_COLUMNAR_TABLE_TYPE);
-  auto tablet = tablet_peer_->shared_tablet();
-  if (PREDICT_FALSE(!tablet)) {
-    return STATUS(IllegalState, "Tablet is not running");
-  }
-
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
-  auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
-  RETURN_NOT_OK_PREPEND(metadata->fs_manager()->CreateDirIfMissing(checkpoints_dir),
-                        Substitute("Unable to create checkpoints diretory $0", checkpoints_dir));
-
-  auto session_checkpoint_dir = std::to_string(last_logged_opid.index()) + "_" + now.ToString();
-  checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
-
-  // Clear any previous rocksdb files in the superblock. Each session should create a new list
-  // based the checkpoint directory files.
-  tablet_superblock_.clear_rocksdb_files();
-  RETURN_NOT_OK(tablet->CreateCheckpoint(checkpoint_dir_,
-                                         tablet_superblock_.mutable_rocksdb_files()));
 
   return Status::OK();
 }

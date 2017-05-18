@@ -147,7 +147,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // Change the peer's role to VOTER.
   CHECKED_STATUS ChangeRole();
 
-private:
+ private:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
 
   FRIEND_TEST(RemoteBootstrapRocksDBTest, TestCheckpointDirectory);
@@ -176,6 +176,9 @@ private:
 
   // Unregister log anchor, if it's registered.
   CHECKED_STATUS UnregisterAnchorIfNeededUnlocked();
+
+  // Helper API to set initial_committed_cstate_.
+  CHECKED_STATUS SetInitialCommittedState();
 
   scoped_refptr<tablet::TabletPeer> tablet_peer_;
   const std::string session_id_;
