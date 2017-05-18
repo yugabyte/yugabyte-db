@@ -34,6 +34,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   protected static final String DEFAULT_KEYSPACE = "default_keyspace";
 
+  protected static final String DEFAULT_TEST_KEYSPACE = "cql_test_keyspace";
+
   protected Cluster cluster;
   protected Session session;
 
@@ -68,9 +70,9 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
     session = cluster.connect();
 
-    String defaultKeyspaceName = "my_keyspace";
-    createKeyspace(defaultKeyspaceName);
-    useKeyspace(defaultKeyspaceName);
+    // Create and use test keyspace to be able using short table names later.
+    createKeyspaceIfNotExists(DEFAULT_TEST_KEYSPACE);
+    useKeyspace(DEFAULT_TEST_KEYSPACE);
   }
 
   @After
@@ -277,18 +279,24 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   }
 
   public void createKeyspace(String keyspaceName) throws Exception {
-    String createKeyspaceStmt = "CREATE KEYSPACE " + keyspaceName;
+    String createKeyspaceStmt = "CREATE KEYSPACE \"" + keyspaceName + "\";";
+    execute(createKeyspaceStmt);
+    keyspacesToDrop.add(keyspaceName);
+  }
+
+  public void createKeyspaceIfNotExists(String keyspaceName) throws Exception {
+    String createKeyspaceStmt = "CREATE KEYSPACE IF NOT EXISTS \"" + keyspaceName + "\";";
     execute(createKeyspaceStmt);
     keyspacesToDrop.add(keyspaceName);
   }
 
   public void useKeyspace(String keyspaceName) throws Exception {
-    String useKeyspaceStmt = "USE " + keyspaceName;
+    String useKeyspaceStmt = "USE \"" + keyspaceName + "\";";
     execute(useKeyspaceStmt);
   }
 
   public void dropKeyspace(String keyspaceName) throws Exception {
-    String deleteKeyspaceStmt = "DROP KEYSPACE " + keyspaceName;
+    String deleteKeyspaceStmt = "DROP KEYSPACE \"" + keyspaceName + "\";";
     execute(deleteKeyspaceStmt);
     keyspacesToDrop.remove(keyspaceName);
   }

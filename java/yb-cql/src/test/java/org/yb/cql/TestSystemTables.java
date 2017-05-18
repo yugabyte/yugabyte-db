@@ -149,13 +149,15 @@ public class TestSystemTables extends BaseCQLTest {
   public void testSystemKeyspacesAndTables() throws Exception {
     List <Row> results = session.execute(
       "SELECT * FROM system_schema.keyspaces;").all();
-    assertEquals(3, results.size());
-    assertEquals("system_schema", results.get(0).getString("keyspace_name"));
+    assertEquals(4, results.size());
+    assertEquals(DEFAULT_TEST_KEYSPACE, results.get(0).getString("keyspace_name"));
     assertTrue(results.get(0).getBool("durable_writes"));
-    assertEquals("system", results.get(1).getString("keyspace_name"));
+    assertEquals("system_schema", results.get(1).getString("keyspace_name"));
     assertTrue(results.get(1).getBool("durable_writes"));
-    assertEquals(DEFAULT_KEYSPACE, results.get(2).getString("keyspace_name"));
+    assertEquals("system", results.get(2).getString("keyspace_name"));
     assertTrue(results.get(2).getBool("durable_writes"));
+    assertEquals(DEFAULT_KEYSPACE, results.get(3).getString("keyspace_name"));
+    assertTrue(results.get(3).getBool("durable_writes"));
 
     results = session.execute(
       "SELECT * FROM system_schema.tables;").all();
@@ -188,9 +190,9 @@ public class TestSystemTables extends BaseCQLTest {
     results = session.execute(
       String.format("SELECT keyspace_name, table_name, flags FROM system_schema.tables WHERE " +
         "keyspace_name = " +
-        "'%s' and table_name = 'my_table';", DEFAULT_KEYSPACE)).all();
+        "'%s' and table_name = 'my_table';", DEFAULT_TEST_KEYSPACE)).all();
     assertEquals(1, results.size());
-    assertEquals(DEFAULT_KEYSPACE, results.get(0).getString("keyspace_name"));
+    assertEquals(DEFAULT_TEST_KEYSPACE, results.get(0).getString("keyspace_name"));
     assertEquals("my_table", results.get(0).getString("table_name"));
     assertEquals(new HashSet<String>(Arrays.asList("compound")),
       results.get(0).getSet("flags", String.class));
@@ -238,7 +240,7 @@ public class TestSystemTables extends BaseCQLTest {
 
   private void verifyColumnSchema(Row row, String table_name, String column_name, String kind,
                                   int position, String type, String clustering_order) {
-    assertEquals(DEFAULT_KEYSPACE, row.getString("keyspace_name"));
+    assertEquals(DEFAULT_TEST_KEYSPACE, row.getString("keyspace_name"));
     assertEquals(table_name, row.getString("table_name"));
     assertEquals(column_name, row.getString("column_name"));
     assertEquals(clustering_order, row.getString("clustering_order"));
@@ -253,7 +255,7 @@ public class TestSystemTables extends BaseCQLTest {
       " c7 map <text, text>, c8 list<text>, c9 set<int>, PRIMARY KEY((c1, c2, c3), c4, c5, c6)) " +
       "WITH CLUSTERING ORDER BY (c4 DESC);");
     List<Row> results = session.execute(String.format("SELECT * FROM system_schema.columns WHERE " +
-      "keyspace_name = '%s' AND table_name = 'many_columns'", DEFAULT_KEYSPACE)).all();
+      "keyspace_name = '%s' AND table_name = 'many_columns'", DEFAULT_TEST_KEYSPACE)).all();
     assertEquals(9, results.size());
     verifyColumnSchema(results.get(0), "many_columns", "c1", "partition_key", 0, "int", "none");
     verifyColumnSchema(results.get(1), "many_columns", "c2", "partition_key", 1, "text", "none");
