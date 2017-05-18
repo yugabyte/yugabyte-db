@@ -3993,7 +3993,12 @@ TEST_F(DBTest, SyncMultipleLogs) {
 class RecoveryTestHelper {
  public:
   // Number of WAL files to generate
-  static const int kWALFilesCount = 10;
+#ifdef THREAD_SANITIZER
+    // Lower number of wals for tsan due to low perf.
+    static constexpr int kWALFilesCount = 5;
+#else
+    static constexpr int kWALFilesCount = 10;
+#endif
   // Starting number for the WAL file name like 00010.log
   static const int kWALFileOffset = 10;
   // Keys to be written per WAL file
@@ -8854,7 +8859,13 @@ TEST_F(DBTest, AddExternalSstFileOverlappingRanges) {
 
     printf("Option config = %d\n", option_config_);
     std::vector<std::pair<int, int>> key_ranges;
-    for (int i = 0; i < 500; i++) {
+#ifdef THREAD_SANITIZER
+      // Lower number of key ranges for tsan due to low perf.
+      constexpr int kNumKeyRanges = 100;
+#else
+      constexpr int kNumKeyRanges = 500;
+#endif
+    for (int i = 0; i < kNumKeyRanges; i++) {
       int range_start = rnd.Uniform(20000);
       int keys_per_range = 10 + rnd.Uniform(41);
 
@@ -8997,8 +9008,13 @@ TEST_F(DBTest, PinnedDataIteratorRandomized) {
   // Generate Random data
   Random rnd(301);
 
-  int puts = 100000;
-  int key_pool = static_cast<int>(puts * 0.7);
+#ifdef THREAD_SANITIZER
+    // Lower number of keys for tsan due to low perf.
+    constexpr int kNumPuts = 10000;
+#else
+    constexpr int kNumPuts = 100000;
+#endif
+  int key_pool = static_cast<int>(kNumPuts * 0.7);
   int key_size = 100;
   int val_size = 1000;
   int seeks_percentage = 20;   // 20% of keys will be used to test seek()
@@ -9021,7 +9037,7 @@ TEST_F(DBTest, PinnedDataIteratorRandomized) {
     std::map<std::string, std::string> true_data;
     std::vector<std::string> random_keys;
     std::vector<std::string> deleted_keys;
-    for (int i = 0; i < puts; i++) {
+    for (int i = 0; i < kNumPuts; i++) {
       auto& k = generated_keys[rnd.Next() % key_pool];
       auto v = RandomString(&rnd, val_size);
 
