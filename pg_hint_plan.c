@@ -16,6 +16,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/params.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
@@ -26,12 +27,14 @@
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
+#include "parser/analyze.h"
 #include "parser/scansup.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/resowner.h"
 
@@ -87,10 +90,12 @@ PG_MODULE_MAGIC;
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
 #define hint_ereport(str, detail) \
-	ereport(pg_hint_plan_message_level, \
-			(errhidestmt(hidestmt),	\
-			 errmsg("pg_hint_plan%s: hint syntax error at or near \"%s\"", qnostr, (str)), \
-			 errdetail detail))
+	do { \
+		ereport(pg_hint_plan_message_level,		\
+			(errmsg("pg_hint_plan%s: hint syntax error at or near \"%s\"", qnostr, (str)), \
+			 errdetail detail)); \
+		msgqno = qno; \
+	} while(0)
 
 #define skip_space(str) \
 	while (isspace(*str)) \
@@ -213,7 +218,9 @@ typedef enum HintStatus
 								  (hint)->base.state == HINT_STATE_USED)
 
 static unsigned int qno = 0;
+static unsigned int msgqno = 0;
 static char qnostr[32];
+static const char *current_hint_str = NULL;
 
 /* common data for all hints. */
 struct Hint
@@ -373,11 +380,7 @@ void		_PG_fini(void);
 static void push_hint(HintState *hstate);
 static void pop_hint(void);
 
-static void pg_hint_plan_ProcessUtility(Node *parsetree,
-							const char *queryString,
-							ProcessUtilityContext context,
-							ParamListInfo params,
-							DestReceiver *dest, char *completionTag);
+static void pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 										 ParamListInfo boundParams);
 static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
@@ -496,9 +499,6 @@ static int	pg_hint_plan_message_level = INFO;
 /* Default is off, to keep backward compatibility. */
 static bool	pg_hint_plan_enable_hint_table = false;
 
-/* Internal static variables. */
-static bool	hidestmt = false;				/* Allow or inhibit STATEMENT: output */
-
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int hint_inhibit_level = 0;			/* Inhibit hinting if this is above 0 */
 											/* (This could not be above 1)        */
@@ -540,7 +540,7 @@ static const struct config_enum_entry parse_debug_level_options[] = {
 };
 
 /* Saved hook values in case of unload */
-static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static planner_hook_type prev_planner = NULL;
 static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
@@ -671,8 +671,8 @@ _PG_init(void)
 							 NULL);
 
 	/* Install hooks. */
-	prev_ProcessUtility = ProcessUtility_hook;
-	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = pg_hint_plan_post_parse_analyze;
 	prev_planner = planner_hook;
 	planner_hook = pg_hint_plan_planner;
 	prev_join_search = join_search_hook;
@@ -697,7 +697,7 @@ _PG_fini(void)
 	PLpgSQL_plugin	**var_ptr;
 
 	/* Uninstall hooks. */
-	ProcessUtility_hook = prev_ProcessUtility;
+	post_parse_analyze_hook = prev_post_parse_analyze_hook;
 	planner_hook = prev_planner;
 	join_search_hook = prev_join_search;
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
@@ -1266,8 +1266,9 @@ HintStateDump2(HintState *hstate)
 	appendStringInfoChar(&buf, '}');
 
 	ereport(pg_hint_plan_message_level,
-			(errhidestmt(true),
-			 errmsg("%s", buf.data)));
+			(errmsg("%s", buf.data),
+			 errhidestmt(true),
+			 errhidecontext(true)));
 
 	pfree(buf.data);
 }
@@ -1722,7 +1723,15 @@ get_hints_from_table(const char *client_query, const char *client_application)
 
 	PG_TRY();
 	{
+		bool snapshot_set = false;
+
 		hint_inhibit_level++;
+
+		if (!ActiveSnapshotSet())
+		{
+			PushActiveSnapshot(GetTransactionSnapshot());
+			snapshot_set = true;
+		}
 	
 		SPI_connect();
 	
@@ -1759,7 +1768,10 @@ get_hints_from_table(const char *client_query, const char *client_application)
 		}
 	
 		SPI_finish();
-	
+
+		if (snapshot_set)
+			PopActiveSnapshot();
+
 		hint_inhibit_level--;
 	}
 	PG_CATCH();
@@ -1773,30 +1785,87 @@ get_hints_from_table(const char *client_query, const char *client_application)
 }
 
 /*
- * Get client-supplied query string.
+ * Get client-supplied query string. Addtion to that the jumbled query is
+ * supplied if the caller requested. From the restriction of JumbleQuery, some
+ * kind of query needs special amendments. Reutrns NULL if the current hint
+ * string is still valid.
  */
 static const char *
-get_query_string(void)
+get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 {
-	const char *p;
+	const char *p = debug_query_string;
 
-	if (plpgsql_recurse_level > 0)
-	{
-		/*
-		 * This is quite ugly but this is the only point I could find where
-		 * we can get the query string.
-		 */
-		p = (char*)error_context_stack->arg;
-	}
-	else if (stmt_name)
-	{
-		PreparedStatement  *entry;
+	if (jumblequery != NULL)
+		*jumblequery = query;
 
-		entry = FetchPreparedStatement(stmt_name, true);
-		p = entry->plansource->query_string;
+	Assert(plpgsql_recurse_level == 0);
+
+	if (query->commandType == CMD_UTILITY)
+	{
+		Query *target_query = query;
+
+		/* Use the target query if EXPLAIN */
+		if (IsA(query->utilityStmt, ExplainStmt))
+		{
+			ExplainStmt *stmt = (ExplainStmt *)(query->utilityStmt);
+			Assert(IsA(stmt->query, Query));
+			target_query = (Query *)stmt->query;
+
+			if (target_query->commandType == CMD_UTILITY &&
+				target_query->utilityStmt != NULL)
+				target_query = (Query *)target_query->utilityStmt;
+
+			if (jumblequery)
+				*jumblequery = target_query;
+		}
+
+		if (IsA(target_query, CreateTableAsStmt))
+		{
+			/*
+			 * Use the the body query for CREATE AS. The Query for jumble also
+			 * replaced with the corresponding one.
+			 */
+			CreateTableAsStmt  *stmt = (CreateTableAsStmt *) target_query;
+			PreparedStatement  *entry;
+			Query			   *ent_query;
+
+			Assert(IsA(stmt->query, Query));
+			target_query = (Query *) stmt->query;
+
+			if (target_query->commandType == CMD_UTILITY &&
+				IsA(target_query->utilityStmt, ExecuteStmt))
+			{
+				ExecuteStmt *estmt = (ExecuteStmt *) target_query->utilityStmt;
+				entry = FetchPreparedStatement(estmt->name, true);
+				p = entry->plansource->query_string;
+				ent_query = (Query *) linitial (entry->plansource->query_list);
+				Assert(IsA(ent_query, Query));
+				if (jumblequery)
+					*jumblequery = ent_query;
+			}
+		}
+		else
+		if (IsA(target_query, ExecuteStmt))
+		{
+			/*
+			 * Use the prepared query for EXECUTE. The Query for jumble also
+			 * replaced with the corresponding one.
+			 */
+			ExecuteStmt *stmt = (ExecuteStmt *)target_query;
+			PreparedStatement  *entry;
+			Query			   *ent_query;
+
+			entry = FetchPreparedStatement(stmt->name, true);
+			p = entry->plansource->query_string;
+			ent_query = (Query *) linitial (entry->plansource->query_list);
+			Assert(IsA(ent_query, Query));
+			if (jumblequery)
+				*jumblequery = ent_query;
+		}
 	}
-	else
-		p = debug_query_string;
+	/* Return NULL if the pstate is not identical to the top-level query */
+	else if (strcmp(pstate->p_sourcetext, p) != 0)
+		p = NULL;
 
 	return p;
 }
@@ -2473,10 +2542,10 @@ set_config_option_noerror(const char *name, const char *value,
 
 		ereport(elevel,
 				(errcode(errdata->sqlerrcode),
-				 errhidestmt(hidestmt),
 				 errmsg("%s", errdata->message),
 				 errdata->detail ? errdetail("%s", errdata->detail) : 0,
 				 errdata->hint ? errhint("%s", errdata->hint) : 0));
+		msgqno = qno;
 		FreeErrorData(errdata);
 	}
 	PG_END_TRY();
@@ -2625,132 +2694,6 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 }
 
 /*
- * pg_hint_plan hook functions
- */
-
-static void
-pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
-							ProcessUtilityContext context,
-							ParamListInfo params,
-							DestReceiver *dest, char *completionTag)
-{
-	Node				   *node;
-
-	/* 
-	 * Use standard planner if pg_hint_plan is disabled or current nesting 
-	 * depth is nesting depth of SPI calls. 
-	 */
-	if (!pg_hint_plan_enable_hint || hint_inhibit_level > 0)
-	{
-		if (debug_level > 1)
-			ereport(pg_hint_plan_message_level,
-					(errmsg ("pg_hint_plan: ProcessUtility:"
-							 " pg_hint_plan.enable_hint = off")));
-		if (prev_ProcessUtility)
-			(*prev_ProcessUtility) (parsetree, queryString,
-									context, params,
-									dest, completionTag);
-		else
-			standard_ProcessUtility(parsetree, queryString,
-									context, params,
-									dest, completionTag);
-		return;
-	}
-
-	node = parsetree;
-	if (IsA(node, ExplainStmt))
-	{
-		/*
-		 * Draw out parse tree of actual query from Query struct of EXPLAIN
-		 * statement.
-		 */
-		ExplainStmt	   *stmt;
-		Query		   *query;
-
-		stmt = (ExplainStmt *) node;
-
-		Assert(IsA(stmt->query, Query));
-		query = (Query *) stmt->query;
-
-		if (query->commandType == CMD_UTILITY && query->utilityStmt != NULL)
-			node = query->utilityStmt;
-	}
-
-	/*
-	 * If the query was a EXECUTE or CREATE TABLE AS EXECUTE, get query string
-	 * specified to preceding PREPARE command to use it as source of hints.
-	 */
-	if (IsA(node, ExecuteStmt))
-	{
-		ExecuteStmt	   *stmt;
-
-		stmt = (ExecuteStmt *) node;
-		stmt_name = stmt->name;
-	}
-
-	/*
-	 * CREATE AS EXECUTE behavior has changed since 9.2, so we must handle it
-	 * specially here.
-	 */
-	if (IsA(node, CreateTableAsStmt))
-	{
-		CreateTableAsStmt	   *stmt;
-		Query		   *query;
-
-		stmt = (CreateTableAsStmt *) node;
-		Assert(IsA(stmt->query, Query));
-		query = (Query *) stmt->query;
-
-		if (query->commandType == CMD_UTILITY &&
-			IsA(query->utilityStmt, ExecuteStmt))
-		{
-			ExecuteStmt *estmt = (ExecuteStmt *) query->utilityStmt;
-			stmt_name = estmt->name;
-		}
-	}
-
-	if (stmt_name)
-	{
-		if (debug_level > 1)
-			ereport(pg_hint_plan_message_level,
-					(errmsg ("pg_hint_plan: ProcessUtility:"
-							 " stmt_name = \"%s\", statement=\"%s\"",
-							 stmt_name, queryString)));
-
-		PG_TRY();
-		{
-			if (prev_ProcessUtility)
-				(*prev_ProcessUtility) (parsetree, queryString,
-										context, params,
-										dest, completionTag);
-			else
-				standard_ProcessUtility(parsetree, queryString,
-										context, params,
-										dest, completionTag);
-		}
-		PG_CATCH();
-		{
-			stmt_name = NULL;
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-
-		stmt_name = NULL;
-
-		return;
-	}
-
-	if (prev_ProcessUtility)
-			(*prev_ProcessUtility) (parsetree, queryString,
-									context, params,
-									dest, completionTag);
-		else
-			standard_ProcessUtility(parsetree, queryString,
-									context, params,
-									dest, completionTag);
-}
-
-/*
  * Push a hint into hint stack which is implemented with List struct.  Head of
  * list is top of stack.
  */
@@ -2784,24 +2727,182 @@ pop_hint(void)
 		current_hint_state = (HintState *) lfirst(list_head(HintStateStack));
 }
 
+/*
+ * Retrieve and store a hint string from given query or from the hint table.
+ * If we are using the hint table, the query string is needed to be normalized.
+ * However, ParseState, which is not available in planner_hook, is required to
+ * check if the query tree (Query) is surely corresponding to the target query.
+ */
+static void
+pg_hint_plan_post_parse_analyze(ParseState *pstate, Query *query)
+{
+	const char *query_str;
+	MemoryContext	oldcontext;
+
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query);
+
+	/* do nothing under hint table search */
+	if (hint_inhibit_level > 0)
+		return;
+
+	if (!pg_hint_plan_enable_hint)
+	{
+		if (current_hint_str)
+		{
+			pfree((void *)current_hint_str);
+			current_hint_str = NULL;
+		}
+		return;
+	}
+
+	/* increment the query number */
+	qnostr[0] = 0;
+	if (debug_level > 1)
+		snprintf(qnostr, sizeof(qnostr), "[qno=0x%x]", qno++);
+	qno++;
+
+	/* search the hint table for a hint if requested */
+	if (pg_hint_plan_enable_hint_table)
+	{
+		int				query_len;
+		pgssJumbleState	jstate;
+		Query		   *jumblequery;
+		char		   *normalized_query = NULL;
+
+		query_str = get_query_string(pstate, query, &jumblequery);
+
+		/* If this query is not for hint, just return */
+		if (!query_str)
+			return;
+
+		/* clear the previous hint string */
+		if (current_hint_str)
+		{
+			pfree((void *)current_hint_str);
+			current_hint_str = NULL;
+		}
+		
+		if (jumblequery)
+		{
+			/*
+			 * XXX: normalizing code is copied from pg_stat_statements.c, so be
+			 * careful to PostgreSQL's version up.
+			 */
+			jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
+			jstate.jumble_len = 0;
+			jstate.clocations_buf_size = 32;
+			jstate.clocations = (pgssLocationLen *)
+				palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
+			jstate.clocations_count = 0;
+
+			JumbleQuery(&jstate, jumblequery);
+
+			/*
+			 * Normalize the query string by replacing constants with '?'
+			 */
+			/*
+			 * Search hint string which is stored keyed by query string
+			 * and application name.  The query string is normalized to allow
+			 * fuzzy matching.
+			 *
+			 * Adding 1 byte to query_len ensures that the returned string has
+			 * a terminating NULL.
+			 */
+			query_len = strlen(query_str) + 1;
+			normalized_query =
+				generate_normalized_query(&jstate, query_str,
+										  &query_len,
+										  GetDatabaseEncoding());
+
+			/*
+			 * find a hint for the normalized query. the result should be in
+			 * TopMemoryContext
+			 */
+			oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+			current_hint_str =
+				get_hints_from_table(normalized_query, application_name);
+			MemoryContextSwitchTo(oldcontext);
+
+			if (debug_level > 1)
+			{
+				if (current_hint_str)
+					ereport(pg_hint_plan_message_level,
+							(errmsg("pg_hint_plan[qno=0x%x]: "
+									"post_parse_analyze_hook: "
+									"hints from table: \"%s\": "
+									"normalized_query=\"%s\", "
+									"application name =\"%s\"",
+									qno, current_hint_str,
+									normalized_query, application_name),
+							 errhidestmt(msgqno != qno),
+							 errhidecontext(msgqno != qno)));
+				else
+					ereport(pg_hint_plan_message_level,
+							(errmsg("pg_hint_plan[qno=0x%x]: "
+									"no match found in table:  "
+									"application name = \"%s\", "
+									"normalized_query=\"%s\"",
+									qno, application_name,
+									normalized_query),
+							 errhidestmt(msgqno != qno),
+							 errhidecontext(msgqno != qno)));
+
+				msgqno = qno;
+			}
+		}
+
+		/* retrun if we have hint here*/
+		if (current_hint_str)
+			return;
+	}
+	else
+		query_str = get_query_string(pstate, query, NULL);
+
+	if (query_str)
+	{
+		/*
+		 * get hints from the comment. However we may have the same query
+		 * string with the previous call, but just retrieving hints is expected
+		 * to be faster than checking for identicalness before retrieval.
+		 */
+		if (current_hint_str)
+			pfree((void *)current_hint_str);
+
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+		current_hint_str = get_hints_from_comment(query_str);
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	if (debug_level > 1)
+	{
+		if (debug_level == 1 &&
+			(stmt_name || strcmp(query_str, debug_query_string)))
+			ereport(pg_hint_plan_message_level,
+					(errmsg("hints in comment=\"%s\"",
+							current_hint_str ? current_hint_str : "(none)"),
+					 errhidestmt(msgqno != qno),
+					 errhidecontext(msgqno != qno)));
+		else
+			ereport(pg_hint_plan_message_level,
+					(errmsg("hints in comment=\"%s\", stmt=\"%s\", query=\"%s\", debug_query_string=\"%s\"",
+							current_hint_str ? current_hint_str : "(none)",
+							stmt_name, query_str, debug_query_string),
+					 errhidestmt(msgqno != qno),
+					 errhidecontext(msgqno != qno)));
+		msgqno = qno;
+	}
+}
+
+/*
+ * Read and set up hint information
+ */
 static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
-	const char	   *hints = NULL;
-	const char	   *query;
-	char		   *norm_query;
-	pgssJumbleState	jstate;
-	int				query_len;
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
-	char 			msgstr[1024];
-
-	qnostr[0] = 0;
-	strcpy(msgstr, "");
-	if (debug_level > 1)
-		snprintf(qnostr, sizeof(qnostr), "[qno=0x%x]", qno++);
-	hidestmt = false;
 
 	/*
 	 * Use standard planner if pg_hint_plan is disabled or current nesting 
@@ -2811,103 +2912,44 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (!pg_hint_plan_enable_hint || hint_inhibit_level > 0)
 	{
 		if (debug_level > 1)
-			elog(pg_hint_plan_message_level,
-				 "pg_hint_plan%s: planner: enable_hint=%d,"
-				 " hint_inhibit_level=%d",
-				 qnostr, pg_hint_plan_enable_hint, hint_inhibit_level);
-		hidestmt = true;
+			ereport(pg_hint_plan_message_level,
+					(errmsg ("pg_hint_plan%s: planner: enable_hint=%d,"
+							 " hint_inhibit_level=%d",
+							 qnostr, pg_hint_plan_enable_hint,
+							 hint_inhibit_level),
+					 errhidestmt(msgqno != qno)));
+		msgqno = qno;
 
 		goto standard_planner_proc;
 	}
 
-	/* Create hint struct from client-supplied query string. */
-	query = get_query_string();
-
 	/*
-	 * Create hintstate from hint specified for the query, if any.
-	 *
-	 * First we lookup hint in pg_hint.hints table by normalized query string,
-	 * unless pg_hint_plan.enable_hint_table is OFF.
-	 * This parameter provides option to avoid overhead of table lookup during
-	 * planning.
-	 *
-	 * If no hint was found, then we try to get hint from special query comment.
+	 * Support for nested plpgsql functions. This is quite ugly but this is the
+	 * only point I could find where I can get the query string.
 	 */
-	if (pg_hint_plan_enable_hint_table)
+	if (plpgsql_recurse_level > 0)
 	{
-		/*
-		 * Search hint information which is stored for the query and the
-		 * application.  Query string is normalized before using in condition
-		 * in order to allow fuzzy matching.
-		 *
-		 * XXX: normalizing code is copied from pg_stat_statements.c, so be
-		 * careful when supporting PostgreSQL's version up.
-		 */
-		jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
-		jstate.jumble_len = 0;
-		jstate.clocations_buf_size = 32;
-		jstate.clocations = (pgssLocationLen *)
-			palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
-		jstate.clocations_count = 0;
-		JumbleQuery(&jstate, parse);
-		/*
-		 * generate_normalized_query() copies exact given query_len bytes, so we
-		 * add 1 byte for null-termination here.  As comments on
-		 * generate_normalized_query says, generate_normalized_query doesn't
-		 * take care of null-terminate, but additional 1 byte ensures that '\0'
-		 * byte in the source buffer to be copied into norm_query.
-		 */
-		query_len = strlen(query) + 1;
-		norm_query = generate_normalized_query(&jstate,
-											   query,
-											   &query_len,
-											   GetDatabaseEncoding());
-		hints = get_hints_from_table(norm_query, application_name);
-		if (debug_level > 1)
-		{
-			if (hints)
-				snprintf(msgstr, 1024, "hints from table: \"%s\":"
-						 " normalzed_query=\"%s\", application name =\"%s\"",
-						 hints, norm_query, application_name);
-			else
-			{
-				ereport(pg_hint_plan_message_level,
-						(errhidestmt(hidestmt),
-						 errmsg("pg_hint_plan%s:"
-								" no match found in table:"
-								"  application name = \"%s\","
-								" normalzed_query=\"%s\"",
-								qnostr, application_name, norm_query)));
-				hidestmt = true;
-			}
-		}
-	}
-	if (hints == NULL)
-	{
-		hints = get_hints_from_comment(query);
+		MemoryContext oldcontext;
 
-		if (debug_level > 1)
-		{
-			snprintf(msgstr, 1024, "hints in comment=\"%s\"",
-					 hints ? hints : "(none)");
-			if (debug_level > 2 || 
-				stmt_name || strcmp(query, debug_query_string))
-				snprintf(msgstr + strlen(msgstr), 1024- strlen(msgstr), 
-					 ", stmt=\"%s\", query=\"%s\", debug_query_string=\"%s\"",
-						 stmt_name, query, debug_query_string);
-		}
+		if (current_hint_str)
+			pfree((void *)current_hint_str);
+
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+		current_hint_str =
+			get_hints_from_comment((char *)error_context_stack->arg);
+		MemoryContextSwitchTo(oldcontext);
 	}
 
-	hstate = create_hintstate(parse, hints);
+	if (!current_hint_str)
+		goto standard_planner_proc;
 
-	/*
-	 * Use standard planner if the statement has not valid hint.  Other hook
-	 * functions try to change plan with current_hint_state if any, so set it
-	 * to NULL.
-	 */
+	/* parse the hint into hint state struct */
+	hstate = create_hintstate(parse, pstrdup(current_hint_str));
+
+	/* run standard planner if the statement has not valid hint */
 	if (!hstate)
 		goto standard_planner_proc;
-
+	
 	/*
 	 * Push new hint struct to the hint stack to disable previous hint context.
 	 */
@@ -2939,10 +2981,9 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (debug_level > 1)
 	{
 		ereport(pg_hint_plan_message_level,
-				(errhidestmt(hidestmt),
-				 errmsg("pg_hint_plan%s: planner: %s",
-						qnostr, msgstr))); 
-		hidestmt = true;
+				(errhidestmt(msgqno != qno),
+				 errmsg("pg_hint_plan%s: planner", qnostr))); 
+		msgqno = qno;
 	}
 
 	/*
@@ -2987,10 +3028,10 @@ standard_planner_proc:
 	if (debug_level > 1)
 	{
 		ereport(pg_hint_plan_message_level,
-				(errhidestmt(hidestmt),
-				 errmsg("pg_hint_plan%s: planner: no valid hint (%s)",
-						qnostr, msgstr)));
-		hidestmt = true;
+				(errhidestmt(msgqno != qno),
+				 errmsg("pg_hint_plan%s: planner: no valid hint",
+						qnostr)));
+		msgqno = qno;
 	}
 	current_hint_state = NULL;
 	if (prev_planner)
