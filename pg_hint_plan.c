@@ -4405,12 +4405,13 @@ pg_hint_plan_set_rel_pathlist(PlannerInfo * root, RelOptInfo *rel,
 		/* also remove gather path */
 		if (rel->pathlist)
 		{
-			ListCell *cell, *prev = NULL;
+			ListCell *cell, *prev = NULL, *next;
 
-			foreach (cell, rel->pathlist)
+			for (cell = list_head(rel->pathlist) ; cell; cell = next)
 			{
 				Path *path = (Path *) lfirst(cell);
-				
+
+				next = lnext(cell);
 				if (IsA(path, GatherPath))
 					rel->pathlist = list_delete_cell(rel->pathlist,
 													 cell, prev);
