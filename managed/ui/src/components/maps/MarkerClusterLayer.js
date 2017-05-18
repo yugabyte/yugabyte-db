@@ -4,9 +4,10 @@ import Leaflet from 'leaflet';
 import { Media } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { MapLayer } from 'react-leaflet';
+import { isObject } from 'lodash';
 require('leaflet.markercluster');
 import 'leaflet.markercluster/dist/MarkerCluster.css';
-import { isValidArray, isValidObject, sortByLengthOfArrayProperty } from '../../utils/ObjectUtils';
+import { isNonEmptyArray, isValidObject, sortByLengthOfArrayProperty } from 'utils/ObjectUtils';
 import React, { Component } from 'react';
 import './stylesheets/MarkerClusterLayer.scss'
 import ReactDOMServer from 'react-dom/server';
@@ -18,24 +19,22 @@ class MarkerDetail extends Component {
       return <span/>;
     }
 
-    var markerListItems = [{"name": "provider","data": markerDetail.provider.name},
-                           {"name": "region", "data": markerDetail.name}];
-    if (isValidArray(markerDetail.universes)) {
-      var universeDetailItem = markerDetail.universes.map(function(universeItem, universeIdx){
-        return {"name": universeItem.name}
-      })
-      markerListItems.push({"name": "universes", "data": universeDetailItem})
-    }
-
     let universeCount = 0;
     let markerDetailUniverseLinks = null;
-    if (isValidArray(markerDetail.universes)) {
+    const providerName = isObject(markerDetail.provider) ? markerDetail.provider.name : '';
+    var markerListItems = [
+      {name: "provider", data: providerName},
+      {name: "region", data: markerDetail.name},
+    ];
+    if (isNonEmptyArray(markerDetail.universes)) {
       universeCount = markerDetail.universes.length;
-      if (universeCount) {
-        markerDetailUniverseLinks = markerDetail.universes.map(function(universe, index) {
-          return <Link key={index} to={"/universes/" + universe.universeUUID}>{universe.name}</Link>;
-        })
-      }
+      markerDetailUniverseLinks = markerDetail.universes.map((universe, index) =>
+        <Link key={index} to={"/universes/" + universe.universeUUID}>{universe.name}</Link>
+      );
+      markerListItems.push({
+        name: "universes",
+        data: markerDetail.universes.map((universeItem, universeIdx) => ({"name": universeItem.name})),
+      });
     }
 
     return (
