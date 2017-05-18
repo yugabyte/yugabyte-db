@@ -195,6 +195,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.nodeName = node.nodeName;
       // Add the universe uuid.
       params.universeUUID = taskParams().universeUUID;
+      // Add the instance type
+      params.instanceType = node.cloudInfo.instance_type;
       // Create the Ansible task to destroy the server.
       AnsibleDestroyServer task = new AnsibleDestroyServer();
       task.initialize(params);

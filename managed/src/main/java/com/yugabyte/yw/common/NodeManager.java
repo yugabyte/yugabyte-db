@@ -262,6 +262,8 @@ public class NodeManager extends DevopsBase {
         if (!(nodeTaskParam instanceof AnsibleDestroyServer.Params)) {
           throw new RuntimeException("NodeTaskParams is not AnsibleDestroyServer.Params");
         }
+        commandArgs.add("--instance_type");
+        commandArgs.add(nodeTaskParam.instanceType);
         if (nodeTaskParam.deviceInfo != null) {
           commandArgs.addAll(getDeviceArgs(nodeTaskParam));
         }
