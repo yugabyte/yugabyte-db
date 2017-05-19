@@ -1798,8 +1798,6 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 	if (jumblequery != NULL)
 		*jumblequery = query;
 
-	Assert(plpgsql_recurse_level == 0);
-
 	if (query->commandType == CMD_UTILITY)
 	{
 		Query *target_query = query;
@@ -1808,15 +1806,14 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 		if (IsA(query->utilityStmt, ExplainStmt))
 		{
 			ExplainStmt *stmt = (ExplainStmt *)(query->utilityStmt);
+
 			Assert(IsA(stmt->query, Query));
 			target_query = (Query *)stmt->query;
 
+			/* strip out the top-level query for further processing */
 			if (target_query->commandType == CMD_UTILITY &&
 				target_query->utilityStmt != NULL)
 				target_query = (Query *)target_query->utilityStmt;
-
-			if (jumblequery)
-				*jumblequery = target_query;
 		}
 
 		if (IsA(target_query, CreateTableAsStmt))
@@ -1827,21 +1824,18 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 			 */
 			CreateTableAsStmt  *stmt = (CreateTableAsStmt *) target_query;
 			PreparedStatement  *entry;
-			Query			   *ent_query;
+			Query			   *tmp_query;
 
 			Assert(IsA(stmt->query, Query));
-			target_query = (Query *) stmt->query;
+			tmp_query = (Query *) stmt->query;
 
-			if (target_query->commandType == CMD_UTILITY &&
-				IsA(target_query->utilityStmt, ExecuteStmt))
+			if (tmp_query->commandType == CMD_UTILITY &&
+				IsA(tmp_query->utilityStmt, ExecuteStmt))
 			{
-				ExecuteStmt *estmt = (ExecuteStmt *) target_query->utilityStmt;
+				ExecuteStmt *estmt = (ExecuteStmt *) tmp_query->utilityStmt;
 				entry = FetchPreparedStatement(estmt->name, true);
 				p = entry->plansource->query_string;
-				ent_query = (Query *) linitial (entry->plansource->query_list);
-				Assert(IsA(ent_query, Query));
-				if (jumblequery)
-					*jumblequery = ent_query;
+				target_query = (Query *) linitial (entry->plansource->query_list);
 			}
 		}
 		else
@@ -1853,15 +1847,19 @@ get_query_string(ParseState *pstate, Query *query, Query **jumblequery)
 			 */
 			ExecuteStmt *stmt = (ExecuteStmt *)target_query;
 			PreparedStatement  *entry;
-			Query			   *ent_query;
 
 			entry = FetchPreparedStatement(stmt->name, true);
 			p = entry->plansource->query_string;
-			ent_query = (Query *) linitial (entry->plansource->query_list);
-			Assert(IsA(ent_query, Query));
-			if (jumblequery)
-				*jumblequery = ent_query;
+			target_query = (Query *) linitial (entry->plansource->query_list);
 		}
+
+		/* We don't accept other than a Query other than a CMD_UTILITY */
+		if (!IsA(target_query, Query) ||
+			target_query->commandType == CMD_UTILITY)
+			target_query = NULL;
+
+		if (jumblequery)
+			*jumblequery = target_query;
 	}
 	/* Return NULL if the pstate is not identical to the top-level query */
 	else if (strcmp(pstate->p_sourcetext, p) != 0)
