@@ -3096,6 +3096,11 @@ class RetryingTSRpcTask : public MonitoredTask {
   atomic<int64_t> reactor_task_id_;
 
  private:
+  // Returns true if we should impose a limit in the number of retries for this task type.
+  bool RetryLimitTaskType() {
+    return type() != ASYNC_CREATE_REPLICA && type() != ASYNC_DELETE_REPLICA;
+  }
+
   // Reschedules the current task after a backoff delay.
   // Returns false if the task was not rescheduled due to reaching the maximum
   // timeout or because the task is no longer in a running state.
@@ -3108,7 +3113,7 @@ class RetryingTSRpcTask : public MonitoredTask {
       return false;
     }
 
-    if (attempt_ > FLAGS_unresponsive_ts_rpc_retry_limit) {
+    if (RetryLimitTaskType() && attempt_ > FLAGS_unresponsive_ts_rpc_retry_limit) {
       LOG(WARNING) << "Reached maximum number of retries ("
                    << FLAGS_unresponsive_ts_rpc_retry_limit << ") for request " << description()
                    << ", task=" << this << " state=" << MonitoredTask::state(state());
