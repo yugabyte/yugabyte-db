@@ -72,21 +72,21 @@ public class SimpleLoadGenerator {
   // Random number generator.
   Random random = new Random();
 
-  public SimpleLoadGenerator(long startKey, long endKey) {
+  public SimpleLoadGenerator(long startKey, long endKey, long maxWrittenKey) {
     this.startKey = startKey;
     this.endKey = endKey;
-    maxWrittenKey = new AtomicLong(-1);
-    maxGeneratedKey = new AtomicLong(-1);
+    this.maxWrittenKey = new AtomicLong(maxWrittenKey);
+    this.maxGeneratedKey = new AtomicLong(maxWrittenKey);
     failedKeys = new HashSet<Long>();
     writtenKeys = new HashSet<Long>();
     writtenKeysTracker = new Thread("Written Keys Tracker") {
         @Override
         public void run() {
           do {
-            long key = maxWrittenKey.get() + 1;
+            long key = SimpleLoadGenerator.this.maxWrittenKey.get() + 1;
             synchronized (this) {
               if (failedKeys.contains(key) || writtenKeys.remove(key)) {
-                maxWrittenKey.set(key);
+                SimpleLoadGenerator.this.maxWrittenKey.set(key);
               } else {
                 try {
                   wait();
@@ -142,6 +142,14 @@ public class SimpleLoadGenerator {
       if (!failedKeys.contains(key))
         return generateKey(key);
     } while (true);
+  }
+
+  public long getMaxWrittenKey() {
+    return maxWrittenKey.get();
+  }
+
+  public long getMaxGeneratedKey() {
+    return maxGeneratedKey.get();
   }
 
   private Key generateKey(long key) {

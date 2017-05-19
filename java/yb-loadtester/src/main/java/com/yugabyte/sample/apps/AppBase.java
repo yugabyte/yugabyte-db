@@ -304,7 +304,8 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     if (loadGenerator == null) {
       synchronized (this) {
         if (loadGenerator == null) {
-          loadGenerator = new SimpleLoadGenerator(0, appConfig.numUniqueKeysToWrite);
+          loadGenerator = new SimpleLoadGenerator(0, appConfig.numUniqueKeysToWrite,
+              appConfig.maxWrittenKey);
         }
       }
     }

@@ -146,6 +146,13 @@ public class CassandraKeyValue extends AppBase {
   }
 
   @Override
+  public void appendMessage(StringBuilder sb) {
+    super.appendMessage(sb);
+    sb.append("maxWrittenKey: " + getSimpleLoadGenerator().getMaxWrittenKey() +  " | ");
+    sb.append("maxGeneratedKey: " + getSimpleLoadGenerator().getMaxGeneratedKey() +  " | ");
+  }
+
+  @Override
   public String getWorkloadDescription(String optsPrefix, String optsSuffix) {
     StringBuilder sb = new StringBuilder();
     sb.append(optsPrefix);

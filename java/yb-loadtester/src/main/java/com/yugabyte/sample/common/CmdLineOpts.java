@@ -179,6 +179,8 @@ public class CmdLineOpts {
       AppBase.appConfig.numUniqueKeysToWrite =
           Long.parseLong(cmd.getOptionValue("num_unique_keys"));
     }
+    AppBase.appConfig.maxWrittenKey = Long.parseLong(cmd.getOptionValue("max_written_key",
+        String.valueOf(AppBase.appConfig.maxWrittenKey)));
     if (cmd.hasOption("value_size")) {
       AppBase.appConfig.valueSize = Integer.parseInt(cmd.getOptionValue("value_size"));
     }
@@ -257,6 +259,8 @@ public class CmdLineOpts {
     // Options for the key-value workloads.
     options.addOption("num_unique_keys", true,
                       "[KV workloads only] Number of unique keys to write into the DB.");
+    options.addOption("max_written_key", true,
+        "[KV workloads only, reusing existing table] Max written key number.");
 
     // Options for CassandraSparkWordCount app.
     options.addOption("wordcount_input_file", true,

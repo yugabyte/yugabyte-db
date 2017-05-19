@@ -47,6 +47,9 @@ public class AppConfig {
   // updates to existing keys.
   public long numUniqueKeysToWrite;
 
+  // Maximum written key in case we reuse existing table.
+  public long maxWrittenKey = -1;
+
   // The table level TTL in seconds. No TTL is applied if this value is set to -1.
   public long tableTTLSeconds = -1;
 }
