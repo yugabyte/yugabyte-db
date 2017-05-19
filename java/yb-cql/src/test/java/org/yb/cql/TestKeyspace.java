@@ -354,10 +354,10 @@ public class TestKeyspace extends BaseCQLTest {
 
     // Table1 name: "a" . "b.c"
     // Table2 name: "a.b" . "c"
-    String keyspaceName1 = "\"a\"";
-    String keyspaceName2 = "\"a.b\"";
-    String longTableName1 = keyspaceName1 + "." + "\"b.c\""; // Table1.
-    String longTableName2 = keyspaceName2 + "." + "\"c\""; // Table2.
+    String keyspaceName1 = "a";
+    String keyspaceName2 = "a.b";
+    String longTableName1 = "\"" + keyspaceName1 + "\"." + "\"b.c\""; // Table1.
+    String longTableName2 = "\"" + keyspaceName2 + "\"." + "\"c\""; // Table2.
 
     // Table1 has NOT been created yet.
     assertNoTable(longTableName1);

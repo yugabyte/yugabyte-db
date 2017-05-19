@@ -27,6 +27,15 @@ public class CassandraHelloWorld extends AppBase {
       Cluster cluster = Cluster.builder().addContactPointsWithPorts(getNodesAsInet()).build();
       Session session = cluster.connect();
 
+      // Create the keyspace and use it.
+      String createKeyspaceStatement =
+          "CREATE KEYSPACE IF NOT EXISTS \"my_keyspace\";";
+      ResultSet createKeyspaceResult = session.execute(createKeyspaceStatement);
+      LOG.info("Created a keyspace with CQL statement: " + createKeyspaceStatement);
+      String useKeyspaceStatement = "USE \"my_keyspace\";";
+      ResultSet useKeyspaceResult = session.execute(useKeyspaceStatement);
+      LOG.info("Use the new keyspace with CQL statement: " + useKeyspaceStatement);
+
       // Create the table with a key column 'k' and a value column 'v'.
       String createTableStatement =
           "CREATE TABLE IF NOT EXISTS Employee (id int primary key, name varchar, age int);";

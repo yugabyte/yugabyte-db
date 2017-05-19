@@ -168,7 +168,7 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < FLAGS_num_iter; ++i) {
     if (!use_redis_table) {
-      const YBTableName table_name(FLAGS_table_name);
+      const YBTableName table_name("my_keyspace", FLAGS_table_name);
       shared_ptr<YBClient> client = CreateYBClient();
       SetupYBTable(client);
 
@@ -226,7 +226,8 @@ void SetupYBTable(const shared_ptr<YBClient> &client) {
     LOG(INFO) << "Ignoring FLAGS_table_name. Redis proxy expects table name to be .redis";
     FLAGS_table_name = ".redis";
   }
-  const YBTableName table_name(FLAGS_table_name);
+  const YBTableName table_name("my_keyspace", FLAGS_table_name);
+  CHECK_OK(client->CreateNamespaceIfNotExists(table_name.namespace_name()));
 
   if (!YBTableExistsAlready(client, table_name) || DropTableIfNecessary(client, table_name)) {
     CreateTable(table_name, client);

@@ -80,6 +80,13 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     if (cassandra_session == null) {
       LOG.debug("Creating a session...");
       cassandra_session = cassandra_cluster.connect();
+
+      String create_keyspace_stmt = "CREATE KEYSPACE IF NOT EXISTS my_keyspace;";
+      cassandra_session.execute(create_keyspace_stmt);
+      LOG.debug("Created a keyspace my_keyspace using query: [" + create_keyspace_stmt + "]");
+      String use_keyspace_stmt = "USE my_keyspace;";
+      cassandra_session.execute(use_keyspace_stmt);
+      LOG.debug("Used the new keyspace my_keyspace using query: [" + use_keyspace_stmt + "]");
     }
   }
 
