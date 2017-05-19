@@ -14,6 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
 #include "yb/consensus/consensus_queue.h"
 
 #include <algorithm>
@@ -46,6 +47,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/enums.h"
 
 DEFINE_int32(consensus_max_batch_size_bytes, 1024 * 1024,
              "The maximum per-tablet RPC batch size when updating peers.");
@@ -70,6 +72,7 @@ namespace consensus {
 using log::AsyncLogReader;
 using log::Log;
 using rpc::Messenger;
+using util::to_underlying;
 using strings::Substitute;
 
 METRIC_DEFINE_gauge_int64(tablet, majority_done_ops, "Leader Operations Acked by Majority",
@@ -109,30 +112,23 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
       metrics_(metric_entity) {
   DCHECK(local_peer_pb_.has_permanent_uuid());
   DCHECK(local_peer_pb_.has_last_known_addr());
-  queue_state_.current_term = MinimumOpId().term();
-  queue_state_.committed_index = MinimumOpId();
-  queue_state_.all_replicated_opid = MinimumOpId();
-  queue_state_.majority_replicated_opid = MinimumOpId();
-  queue_state_.state = kQueueConstructed;
-  queue_state_.mode = NON_LEADER;
-  queue_state_.majority_size_ = -1;
   CHECK_OK(ThreadPoolBuilder("queue-observers-pool").set_min_threads(1)
            .set_max_threads(1).Build(&observers_pool_));
 }
 
 void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
-  CHECK_EQ(queue_state_.state, kQueueConstructed);
+  LockGuard lock(queue_lock_);
+  CHECK_EQ(queue_state_.state, State::kQueueConstructed);
   log_cache_.Init(last_locally_replicated);
   queue_state_.last_appended = last_locally_replicated;
-  queue_state_.state = kQueueOpen;
+  queue_state_.state = State::kQueueOpen;
   TrackPeerUnlocked(local_peer_pb_.permanent_uuid());
 }
 
 void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
                                      int64_t current_term,
                                      const RaftConfigPB& active_config) {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   CHECK(committed_index.IsInitialized());
   queue_state_.current_term = current_term;
   queue_state_.committed_index = committed_index;
@@ -142,7 +138,7 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
       << local_peer_pb_.ShortDebugString() << " not a voter in config: "
       << queue_state_.active_config->ShortDebugString();
   queue_state_.majority_size_ = MajoritySize(CountVoters(*queue_state_.active_config));
-  queue_state_.mode = LEADER;
+  queue_state_.mode = Mode::LEADER;
 
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Queue going to LEADER mode. State: "
       << queue_state_.ToString();
@@ -157,22 +153,22 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
 }
 
 void PeerMessageQueue::SetNonLeaderMode() {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   queue_state_.active_config.reset();
-  queue_state_.mode = NON_LEADER;
+  queue_state_.mode = Mode::NON_LEADER;
   queue_state_.majority_size_ = -1;
   LOG_WITH_PREFIX_UNLOCKED(INFO) << "Queue going to NON_LEADER mode. State: "
       << queue_state_.ToString();
 }
 
 void PeerMessageQueue::TrackPeer(const string& uuid) {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   TrackPeerUnlocked(uuid);
 }
 
 void PeerMessageQueue::TrackPeerUnlocked(const string& uuid) {
   CHECK(!uuid.empty()) << "Got request to track peer with empty UUID";
-  DCHECK_EQ(queue_state_.state, kQueueOpen);
+  DCHECK_EQ(queue_state_.state, State::kQueueOpen);
 
   TrackedPeer* tracked_peer = new TrackedPeer(uuid);
   // We don't know the last operation received by the peer so, following the
@@ -194,7 +190,7 @@ void PeerMessageQueue::TrackPeerUnlocked(const string& uuid) {
 }
 
 void PeerMessageQueue::UntrackPeer(const string& uuid) {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   TrackedPeer* peer = EraseKeyReturnValuePtr(&peers_map_, uuid);
   if (peer != nullptr) {
     delete peer;
@@ -202,7 +198,7 @@ void PeerMessageQueue::UntrackPeer(const string& uuid) {
 }
 
 void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
-  if (queue_state_.mode != LEADER) return;
+  if (queue_state_.mode != Mode::LEADER) return;
   unordered_set<string> config_peer_uuids;
   for (const RaftPeerPB& peer_pb : queue_state_.active_config->peers()) {
     InsertOrDie(&config_peer_uuids, peer_pb.permanent_uuid());
@@ -231,7 +227,7 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   *fake_response.mutable_status()->mutable_last_received() = id;
   *fake_response.mutable_status()->mutable_last_received_current_leader() = id;
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     fake_response.mutable_status()->set_last_committed_idx(queue_state_.committed_index.index());
   }
   bool junk;
@@ -280,12 +276,12 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   TrackedPeer* peer = nullptr;
   OpId preceding_id;
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
-    DCHECK_EQ(queue_state_.state, kQueueOpen);
+    LockGuard lock(queue_lock_);
+    DCHECK_EQ(queue_state_.state, State::kQueueOpen);
     DCHECK_NE(uuid, local_peer_pb_.permanent_uuid());
 
     peer = FindPtrOrNull(peers_map_, uuid);
-    if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == NON_LEADER)) {
+    if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
 
@@ -392,11 +388,11 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
   TrackedPeer* peer = nullptr;
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
-    DCHECK_EQ(queue_state_.state, kQueueOpen);
+    LockGuard lock(queue_lock_);
+    DCHECK_EQ(queue_state_.state, State::kQueueOpen);
     DCHECK_NE(uuid, local_peer_pb_.permanent_uuid());
     peer = FindPtrOrNull(peers_map_, uuid);
-    if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == NON_LEADER)) {
+    if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
   }
@@ -468,7 +464,7 @@ void PeerMessageQueue::AdvanceQueueWatermark(const char* type,
 }
 
 void PeerMessageQueue::NotifyPeerIsResponsiveDespiteError(const std::string& peer_uuid) {
-  std::lock_guard<simple_spinlock> l(queue_lock_);
+  LockGuard l(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
   if (!peer) return;
   peer->last_successful_communication_time = MonoTime::Now(MonoTime::FINE);
@@ -483,11 +479,11 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
   OpId updated_majority_replicated_opid;
   Mode mode_copy;
   {
-    std::lock_guard<simple_spinlock> scoped_lock(queue_lock_);
-    DCHECK_NE(kQueueConstructed, queue_state_.state);
+    LockGuard scoped_lock(queue_lock_);
+    DCHECK_NE(State::kQueueConstructed, queue_state_.state);
 
     TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
-    if (PREDICT_FALSE(queue_state_.state != kQueueOpen || peer == nullptr)) {
+    if (PREDICT_FALSE(queue_state_.state != State::kQueueOpen || peer == nullptr)) {
       LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Queue is closed or peer was untracked, disregarding "
           "peer response. Response: " << response.ShortDebugString();
       *more_pending = false;
@@ -618,7 +614,7 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
         (peer->last_known_committed_idx < queue_state_.committed_index.index());
 
     mode_copy = queue_state_.mode;
-    if (mode_copy == LEADER) {
+    if (mode_copy == Mode::LEADER) {
       // Advance the majority replicated index.
       AdvanceQueueWatermark("majority_replicated",
                             &queue_state_.majority_replicated_opid,
@@ -643,29 +639,29 @@ void PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
     UpdateMetrics();
   }
 
-  if (mode_copy == LEADER) {
+  if (mode_copy == Mode::LEADER) {
     NotifyObserversOfMajorityReplOpChange(updated_majority_replicated_opid);
   }
 }
 
 PeerMessageQueue::TrackedPeer PeerMessageQueue::GetTrackedPeerForTests(string uuid) {
-  std::lock_guard<simple_spinlock> scoped_lock(queue_lock_);
+  LockGuard scoped_lock(queue_lock_);
   TrackedPeer* tracked = FindOrDie(peers_map_, uuid);
   return *tracked;
 }
 
 OpId PeerMessageQueue::GetAllReplicatedIndexForTests() const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   return queue_state_.all_replicated_opid;
 }
 
 OpId PeerMessageQueue::GetCommittedIndexForTests() const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   return queue_state_.committed_index;
 }
 
 OpId PeerMessageQueue::GetMajorityReplicatedOpIdForTests() const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   return queue_state_.majority_replicated_opid;
 }
 
@@ -683,7 +679,7 @@ void PeerMessageQueue::UpdateMetrics() {
 void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
   using std::endl;
 
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   out << "<h3>Watermarks</h3>" << endl;
   out << "<table>" << endl;;
   out << "  <tr><th>Peer</th><th>Watermark</th></tr>" << endl;
@@ -699,19 +695,19 @@ void PeerMessageQueue::DumpToHtml(std::ostream& out) const {
 
 void PeerMessageQueue::ClearUnlocked() {
   STLDeleteValues(&peers_map_);
-  queue_state_.state = kQueueClosed;
+  queue_state_.state = State::kQueueClosed;
 }
 
 void PeerMessageQueue::Close() {
   observers_pool_->Shutdown();
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   ClearUnlocked();
 }
 
 string PeerMessageQueue::ToString() const {
   // Even though metrics are thread-safe obtain the lock so that we get
   // a "consistent" snapshot of the metrics.
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   return ToStringUnlocked();
 }
 
@@ -723,7 +719,7 @@ string PeerMessageQueue::ToStringUnlocked() const {
 }
 
 void PeerMessageQueue::RegisterObserver(PeerMessageQueueObserver* observer) {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   auto iter = std::find(observers_.begin(), observers_.end(), observer);
   if (iter == observers_.end()) {
     observers_.push_back(observer);
@@ -731,13 +727,34 @@ void PeerMessageQueue::RegisterObserver(PeerMessageQueueObserver* observer) {
 }
 
 Status PeerMessageQueue::UnRegisterObserver(PeerMessageQueueObserver* observer) {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   auto iter = std::find(observers_.begin(), observers_.end(), observer);
   if (iter == observers_.end()) {
     return STATUS(NotFound, "Can't find observer.");
   }
   observers_.erase(iter);
   return Status::OK();
+}
+
+const char* PeerMessageQueue::ModeToStr(Mode mode) {
+  switch (mode) {
+    case Mode::LEADER: return "LEADER";
+    case Mode::NON_LEADER: return "NON_LEADER";
+  }
+  LOG(FATAL) << "Invalid PeerMessageQueue::Mode: " << to_underlying(mode);
+}
+
+const char* PeerMessageQueue::StateToStr(State state) {
+  switch (state) {
+    case State::kQueueConstructed:
+      return "QUEUE_CONSTRUCTED";
+    case State::kQueueOpen:
+      return "QUEUE_OPEN";
+    case State::kQueueClosed:
+      return "QUEUE_CLOSED";
+
+  }
+  LOG(FATAL) << "Invalid PeerMessageQueue::State: " << to_underlying(state);
 }
 
 bool PeerMessageQueue::IsOpInLog(const OpId& desired_op) const {
@@ -773,7 +790,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
     const OpId new_majority_replicated_op) {
   std::vector<PeerMessageQueueObserver*> copy;
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     copy = observers_;
   }
 
@@ -785,7 +802,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
   }
 
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     if (new_committed_index.IsInitialized() &&
         new_committed_index.index() > queue_state_.committed_index.index()) {
       queue_state_.committed_index.CopyFrom(new_committed_index);
@@ -797,7 +814,7 @@ void PeerMessageQueue::NotifyObserversOfTermChangeTask(int64_t term) {
   MAYBE_INJECT_RANDOM_LATENCY(FLAGS_consensus_inject_latency_ms_in_notifications);
   std::vector<PeerMessageQueueObserver*> copy;
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     copy = observers_;
   }
   for (PeerMessageQueueObserver* observer : copy) {
@@ -820,7 +837,7 @@ void PeerMessageQueue::NotifyObserversOfFailedFollowerTask(const string& uuid,
   MAYBE_INJECT_RANDOM_LATENCY(FLAGS_consensus_inject_latency_ms_in_notifications);
   std::vector<PeerMessageQueueObserver*> observers_copy;
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    LockGuard lock(queue_lock_);
     observers_copy = observers_;
   }
   for (PeerMessageQueueObserver* observer : observers_copy) {
@@ -857,17 +874,22 @@ string PeerMessageQueue::LogPrefixUnlocked() const {
   return Substitute("T $0 P $1 [$2]: ",
                     tablet_id_,
                     local_peer_pb_.permanent_uuid(),
-                    mode == LEADER ? "LEADER" : "NON_LEADER");
+                    ModeToStr(mode));
 }
 
 string PeerMessageQueue::QueueState::ToString() const {
   return Substitute("All replicated op: $0, Majority replicated op: $1, "
       "Committed index: $2, Last appended: $3, Current term: $4, Majority size: $5, "
       "State: $6, Mode: $7$8",
-      OpIdToString(all_replicated_opid), OpIdToString(majority_replicated_opid),
-      OpIdToString(committed_index), OpIdToString(last_appended), current_term,
-      majority_size_, state, (mode == LEADER ? "LEADER" : "NON_LEADER"),
-      active_config ? ", active raft config: " + active_config->ShortDebugString() : "");
+      /* 0 */ OpIdToString(all_replicated_opid),
+      /* 1 */ OpIdToString(majority_replicated_opid),
+      /* 2 */ OpIdToString(committed_index),
+      /* 3 */ OpIdToString(last_appended),
+      /* 4 */ current_term,
+      /* 5 */ majority_size_,
+      /* 6 */ StateToStr(state),
+      /* 7 */ ModeToStr(mode),
+      /* 8 */ active_config ? ", active raft config: " + active_config->ShortDebugString() : "");
 }
 
 }  // namespace consensus
