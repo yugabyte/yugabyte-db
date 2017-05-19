@@ -7,8 +7,8 @@
 // any changes here, make sure that you're not breaking any platforms.
 //
 
-#ifndef BASE_CASTS_H_
-#define BASE_CASTS_H_
+#ifndef YB_GUTIL_CASTS_H
+#define YB_GUTIL_CASTS_H
 
 #include <assert.h>         // for use with down_cast<>
 #include <string.h>         // for memcpy
@@ -91,7 +91,7 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 // or the reference form. If you call down_cast with a const T&, the
 // compiler will just bind From to const T.
 template<typename To, typename From>
-inline To down_cast(From& f) {
+inline To down_cast(From& f) { // NOLINT
   COMPILE_ASSERT(base::is_reference<To>::value, target_type_not_a_reference);
   typedef typename base::remove_reference<To>::type* ToAsPointer;
   if (false) {
@@ -389,4 +389,16 @@ inline Enum tight_enum_cast(int e_val) {
   return static_cast<Enum>(e_val);
 }
 
-#endif  // BASE_CASTS_H_
+template<class Out, class In>
+Out pointer_cast(In* in) {
+  void* temp = in;
+  return static_cast<Out>(temp);
+}
+
+template<class Out, class In>
+Out pointer_cast(const In* in) {
+  const void* temp = in;
+  return static_cast<Out>(temp);
+}
+
+#endif // YB_GUTIL_CASTS_H

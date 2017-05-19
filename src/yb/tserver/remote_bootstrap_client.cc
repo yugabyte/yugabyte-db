@@ -31,7 +31,6 @@
 #include "yb/gutil/walltime.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/transfer.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap.h"
 #include "yb/tablet/tablet_peer.h"
@@ -67,6 +66,8 @@ DEFINE_int32(committed_config_change_role_timeout_sec, 30,
              "Number of seconds to wait for the CHANGE_ROLE to be in the committed config before "
              "timing out. ");
 TAG_FLAG(committed_config_change_role_timeout_sec, hidden);
+
+DECLARE_int32(rpc_max_message_size);
 
 // RETURN_NOT_OK_PREPEND() with a remote-error unwinding step.
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \

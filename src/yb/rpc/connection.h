@@ -34,12 +34,11 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_types.h"
 #include "yb/rpc/outbound_call.h"
-#include "yb/rpc/sasl_client.h"
-#include "yb/rpc/sasl_server.h"
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/server_event.h"
-#include "yb/rpc/transfer.h"
 #include "yb/sql/sql_session.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
@@ -50,13 +49,42 @@
 namespace yb {
 namespace rpc {
 
+class Connection;
 class DumpRunningRpcsRequestPB;
-
+class GrowableBuffer;
+class Reactor;
+class ReactorTask;
+class ReactorThread;
 class RpcConnectionPB;
 
-class ReactorThread;
+// ConnectionContext class is used by connection for doing protocol
+// specific logic.
+class ConnectionContext {
+ public:
+  virtual ~ConnectionContext() {}
 
-class ReactorTask;
+  // Perform negotiation for a connection
+  virtual void RunNegotiation(Connection* connection, const MonoTime& deadline) = 0;
+
+  // Split slice into separate calls and invoke them.
+  // Return number of processed bytes in `consumed`.
+  virtual CHECKED_STATUS ProcessCalls(Connection* connection, Slice slice, size_t* consumed) = 0;
+
+  // Dump information about status of this connection context to protobuf.
+  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
+
+  // Checks whether this connection context is idle.
+  virtual bool Idle() = 0;
+
+  // Reading buffer limit for this connection context.
+  // The reading buffer will never be larger than this limit.
+  virtual size_t BufferLimit() = 0;
+
+  // Type of this connection context, i.e. YB, Redis, CQL etc.
+  virtual ConnectionType Type() = 0;
+};
+
+YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
 
 //
 // A connection between an endpoint and us.
@@ -75,24 +103,24 @@ class ReactorTask;
 // This class is not fully thread-safe.  It is accessed only from the context of a
 // single ReactorThread except where otherwise specified.
 //
-class Connection : public RefCountedThreadSafe<Connection> {
+class Connection final : public RefCountedThreadSafe<Connection> {
  public:
-  enum Direction {
-    // This host is sending calls via this connection.
-        CLIENT,
-    // This host is receiving calls via this connection.
-        SERVER
-  };
+  typedef ConnectionDirection Direction;
 
   // Create a new Connection.
   // reactor_thread: the reactor that owns us.
   // remote: the address of the remote end
   // socket: the socket to take ownership of.
   // direction: whether we are the client or server side
+  // context: context for this connection. Context is used by connection to handle
+  // protocol specific actions, such as parsing of incoming data into calls.
   Connection(ReactorThread* reactor_thread,
              Sockaddr remote,
              int socket,
-             Direction direction);
+             Direction direction,
+             std::unique_ptr<ConnectionContext> context);
+
+  ~Connection();
 
   // Set underlying socket to non-blocking (or blocking) mode.
   CHECKED_STATUS SetNonBlocking(bool enabled);
@@ -100,8 +128,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Register our socket with an epoll loop.  We will only ever be registered in
   // one epoll loop at a time.
   void EpollRegister(ev::loop_ref& loop);  // NOLINT
-
-  virtual ~Connection();
 
   MonoTime last_activity_time() const {
     return last_activity_time_;
@@ -152,9 +178,6 @@ class Connection : public RefCountedThreadSafe<Connection> {
 
   Socket* socket() { return &socket_; }
 
-  // Perform negotiation for a connection
-  virtual void RunNegotiation(const MonoTime& deadline) = 0;
-
   // Go through the process of transferring control of the underlying socket back to the Reactor.
   void CompleteNegotiation(const Status& negotiation_status);
 
@@ -174,26 +197,16 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Do appropriate actions after adding outbound call.
   void OutboundQueued();
 
- protected:
-  friend class YBInboundCall;
-
-  typedef std::unordered_map<uint64_t, InboundCallPtr> inbound_call_map_t;
-
-  virtual void CreateInboundTransfer() = 0;
-
-  virtual AbstractInboundTransfer* inbound() const = 0;
-
-  // An incoming packet has completed transferring on the server side.
-  // This parses the call and delivers it into the call queue.
-  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) = 0;
+  void RunNegotiation(const MonoTime& deadline);
 
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
   // client callback.
-  void HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfer);
+  CHECKED_STATUS HandleCallResponse(Slice slice);
 
-  virtual void HandleFinishedTransfer() = 0;
+  ConnectionContext& context() { return *context_; }
 
+ private:
   CHECKED_STATUS DoWrite();
 
   // Does actual outbound data queueing. Invoked in appropriate reactor thread.
@@ -204,6 +217,11 @@ class Connection : public RefCountedThreadSafe<Connection> {
   void ClearSending(const Status& status);
 
   void CallSent(OutboundCallPtr call);
+
+  CHECKED_STATUS Receive(bool* received);
+
+  // Try to parse received data into calls and process them.
+  CHECKED_STATUS TryProcessCalls(bool* had_calls);
 
   // The reactor thread that created this connection.
   ReactorThread* const reactor_thread_;
@@ -229,20 +247,16 @@ class Connection : public RefCountedThreadSafe<Connection> {
   // Set to true when the connection is registered on a loop.
   // This is used for a sanity check in the destructor that we are properly
   // un-registered before shutting down.
-  bool is_epoll_registered_;
+  bool is_epoll_registered_ = false;
 
   // Calls which have been sent and are now waiting for a response.
   std::unordered_map<int32_t, OutboundCallPtr> awaiting_response_;
-
-  // Calls which have been received on the server and are currently
-  // being handled.
-  inbound_call_map_t calls_being_handled_;
 
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
   Status shutdown_status_;
 
   // Whether we completed connection negotiation.
-  bool negotiation_complete_;
+  bool negotiation_complete_ = false;
 
   // We instantiate and store this metric instance at the level of connection, but not at the level
   // of the class emitting metrics (OutboundTransfer) as recommended in metrics.h. This is on
@@ -266,7 +280,10 @@ class Connection : public RefCountedThreadSafe<Connection> {
                       CompareExpiration> expiration_queue_;
   ev::timer timer_;
 
-  // Fields sending_* contain bytes and calls we are currently sending to socket.
+  // Data received on this connection that has not been processed yet.
+  GrowableBuffer read_buffer_;
+
+  // sending_* contain bytes and calls we are currently sending to socket
   std::deque<util::RefCntBuffer> sending_;
   std::deque<OutboundDataPtr> sending_outbound_datas_;
   size_t send_position_ = 0;
@@ -282,15 +299,11 @@ class Connection : public RefCountedThreadSafe<Connection> {
   std::vector<OutboundDataPtr> outbound_data_being_processed_;
 
   std::shared_ptr<ReactorTask> process_response_queue_task_;
-};
 
-#define RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status) \
-  if (PREDICT_FALSE(!status.ok())) {                            \
-    if (Socket::IsTemporarySocketError(status.posix_code())) {  \
-      return Status::OK(); /* EAGAIN, etc. */                   \
-    }                                                           \
-    return status;                                              \
-  }
+  // Connection is responsible for sending and receiving bytes.
+  // Context is responsible for what to do with them.
+  std::unique_ptr<ConnectionContext> context_;
+};
 
 }  // namespace rpc
 }  // namespace yb

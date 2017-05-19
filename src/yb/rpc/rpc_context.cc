@@ -69,11 +69,11 @@ scoped_refptr<debug::ConvertableToTraceFormat> TracePb(const Message& msg) {
 }
 }  // anonymous namespace
 
-RpcContext::RpcContext(InboundCall *call,
+RpcContext::RpcContext(InboundCallPtr call,
                        const google::protobuf::Message *request_pb,
                        const google::protobuf::Message *response_pb,
                        RpcMethodMetrics metrics)
-  : call_(CHECK_NOTNULL(call)),
+  : call_(std::move(call)),
     request_pb_(request_pb),
     response_pb_(response_pb),
     metrics_(metrics) {
@@ -94,9 +94,9 @@ RpcContext::RpcContext(InboundCall *call,
 static const shared_ptr<const Message> EMPTY_MESSAGE =
     shared_ptr<const Message>(new EmptyMessagePB());
 
-RpcContext::RpcContext(InboundCall *call,
+RpcContext::RpcContext(InboundCallPtr call,
                        RpcMethodMetrics metrics)
-  : call_(CHECK_NOTNULL(call)),
+  : call_(std::move(call)),
     request_pb_(EMPTY_MESSAGE),
     response_pb_(EMPTY_MESSAGE),
     metrics_(metrics) {

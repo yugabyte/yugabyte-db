@@ -16,8 +16,9 @@
 // under the License.
 #include "yb/tserver/remote_bootstrap-test-base.h"
 
-#include <gflags/gflags.h>
 #include <limits>
+
+#include <gflags/gflags.h>
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -25,7 +26,6 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/rpc/rpc_header.pb.h"
-#include "yb/rpc/transfer.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"

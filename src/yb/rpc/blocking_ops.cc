@@ -111,7 +111,7 @@ Status ReceiveFramedMessageBlocking(Socket* sock, faststring* recv_buf,
   recv_buf->resize(payload_len + kMsgLengthPrefixLength);
   RETURN_NOT_OK(sock->BlockingRecv(recv_buf->data() + kMsgLengthPrefixLength,
                 payload_len, &recvd, deadline));
-  Slice slice(recv_buf->data(), payload_len + kMsgLengthPrefixLength);
+  Slice slice(recv_buf->data() + kMsgLengthPrefixLength, payload_len);
   RETURN_NOT_OK(serialization::ParseYBMessage(slice, header, param_buf));
   return Status::OK();
 }

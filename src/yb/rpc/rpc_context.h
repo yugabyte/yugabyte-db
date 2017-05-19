@@ -36,6 +36,12 @@ namespace yb {
 class Sockaddr;
 class Trace;
 
+namespace util {
+
+class RefCntBuffer;
+
+}
+
 namespace rpc {
 
 class UserCredentials;
@@ -59,11 +65,11 @@ class RpcContext {
  public:
   // Create an RpcContext. This is called only from generated code
   // and is not a public API.
-  RpcContext(InboundCall *call,
+  RpcContext(scoped_refptr<InboundCall> call,
              const google::protobuf::Message *request_pb,
              const google::protobuf::Message *response_pb,
              RpcMethodMetrics metrics);
-  RpcContext(InboundCall *call,
+  RpcContext(scoped_refptr<InboundCall> call,
              RpcMethodMetrics metrics);
 
   ~RpcContext();

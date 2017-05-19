@@ -145,7 +145,7 @@ bool ResettableHeartbeaterThread::IsCurrentThread() const {
 }
 
 Status ResettableHeartbeaterThread::Start() {
-  CHECK(thread_ == nullptr);
+  CHECK(!thread_);
   run_latch_.Reset(1);
   return yb::Thread::Create("heartbeater", strings::Substitute("$0-heartbeat", name_),
                               &ResettableHeartbeaterThread::RunThread,

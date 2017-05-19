@@ -79,7 +79,7 @@ void Proxy::AsyncRequest(const string& method,
                          const google::protobuf::Message& req,
                          google::protobuf::Message* response,
                          RpcController* controller,
-                         const ResponseCallback& callback) const {
+                         ResponseCallback callback) const {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
   is_started_.store(true, std::memory_order_release);
   uint8_t idx = num_calls_.fetch_add(1) % FLAGS_num_connections_to_server;

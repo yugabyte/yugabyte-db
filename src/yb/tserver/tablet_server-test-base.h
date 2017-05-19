@@ -32,6 +32,7 @@
 #include <vector>
 #include <gtest/gtest.h>
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/log_reader.h"

@@ -7,289 +7,381 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/negotiation.h"
+#include "yb/rpc/reactor.h"
 #include "yb/rpc/redis_encoding.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/serialization.h"
 
+#include "yb/util/logging.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/split.h"
 
 #include "yb/util/debug/trace_event.h"
 
-using google::protobuf::MessageLite;
-using strings::Substitute;
+#include "yb/util/memory/memory.h"
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 
+using strings::Substitute;
+using std::placeholders::_1;
+
 namespace yb {
 namespace rpc {
 
-RedisInboundTransfer::~RedisInboundTransfer() {
-}
+namespace {
 
-RedisInboundTransfer::RedisInboundTransfer() {
-  buf_.resize(kProtoIOBufLen);
-  ASAN_POISON_MEMORY_REGION(buf_.data(), kProtoIOBufLen);
-}
+constexpr size_t kMaxBufferSize = 512_MB;
+constexpr size_t kMaxNumberOfArgs = 1 << 20;
+constexpr size_t kLineEndLength = 2;
 
-string RedisInboundTransfer::StatusAsString() const {
-  return strings::Substitute("$0 : $1 bytes received", this, cur_offset_);
-}
+} // namespace
 
-bool RedisInboundTransfer::FindEndOfLine() {
-  searching_pos_ = max(searching_pos_, parsing_pos_);
-  const char* newline = static_cast<const char*>(memchr(buf_.c_str() + searching_pos_, '\n',
-      cur_offset_ - searching_pos_));
+// RedisParser is a finite state machine with memory.
+// It could remember current parsing state and be invoked again when new data arrives.
+// In this case parsing will be continued from the last position.
+class RedisParser {
+ public:
+  explicit RedisParser(Slice source, std::vector<Slice>* args)
+      : pos_(source.data()), end_(source.end()), args_(args)
+  {}
 
-  // Nothing to do without a \r\n.
-  if (newline == nullptr) {
-    // Update searching_pos_ to cur_offset_ so that we don't search the searched bytes again.
-    searching_pos_ = cur_offset_;
-    return false;
+  // Begin of input is going to be consumed, so we should adjust our pointers.
+  // Since the beginning of input is being consumed by shifting the remaining bytes to the
+  // beginning of the buffer.
+  void Consume(size_t count) {
+    pos_ -= count;
+    end_ -= count;
+    if (token_begin_ != nullptr) {
+      token_begin_ -= count;
+    }
   }
 
-  return true;
-}
+  // New data arrived, so update the end of available bytes.
+  void Update(Slice source) {
+    DCHECK_BETWEEN(pos_, source.data(), source.end());
+    DCHECK_BETWEEN(end_, source.data(), source.end());
 
-Status RedisInboundTransfer::ParseNumber(int64_t* parse_result) {
-  // NOLINTNEXTLINE
-  static_assert(sizeof(long long) == sizeof(int64_t),
-      "Expecting long long to be a 64-bit integer");
-  char* end_ptr = nullptr;
-  *parse_result = std::strtoll(buf_.c_str() + parsing_pos_, &end_ptr, 0);
-  // If the length is well-formed, it should extend all the way until newline.
-  SCHECK_EQ(
-      '\r', end_ptr[0], Corruption, "Redis protocol error: expecting a number followed by newline");
-  SCHECK_EQ(
-      '\n', end_ptr[1], Corruption, "Redis protocol error: expecting a number followed by newline");
-  parsing_pos_ = (end_ptr - buf_.c_str()) + 2;
-  return Status::OK();
-}
+    end_ = source.end();
+  }
 
-Status RedisInboundTransfer::CheckInlineBuffer() {
-  if (done_) return Status::OK();
+  // Parse next command.
+  CHECKED_STATUS NextCommand(const uint8_t** end_of_command) {
+    *end_of_command = nullptr;
+    while (pos_ != end_) {
+      incomplete_ = false;
+      Status status = AdvanceToNextToken();
+      if (!status.ok()) {
+        return status;
+      }
+      if (incomplete_) {
+        pos_ = end_;
+        *end_of_command = nullptr;
+        return Status::OK();
+      }
+      if (state_ == State::FINISHED) {
+        *end_of_command = pos_;
+        state_ = State::INITIAL;
+        return Status::OK();
+      }
+    }
+    return Status::OK();
+  }
+ private:
+  // Redis command could be of 2 types.
+  // First one is just single line that terminates with \r\n.
+  // Second one is bulk command, that has form:
+  // *<BULK_ARGUMENTS>\r\n
+  // $<SIZE_IN_BYTES_OF_BULK_ARGUMENT_1>\r\n
+  // <BULK_ARGUMENT_1>\r\n
+  // ...
+  // $<SIZE_IN_BYTES_OF_BULK_ARGUMENT_N>\r\n
+  // <BULK_ARGUMENT_N>\r\n
+  enum class State {
+    // Initial state of parser.
+    INITIAL,
+    // We determined that command is single line command and waiting for \r\n
+    SINGLE_LINE,
+    // We are parsing the first line of a bulk command.
+    BULK_HEADER,
+    // We are parsing bulk argument size. arguments_left_ has valid value.
+    BULK_ARGUMENT_SIZE,
+    // We are parsing bulk argument body. arguments_left_, current_argument_size_ have valid values.
+    BULK_ARGUMENT_BODY,
+    // Just mark that we finished parsing of command. Will become INITIAL in NextCommand.
+    FINISHED,
+  };
 
-  if (!FindEndOfLine()) {
+  CHECKED_STATUS AdvanceToNextToken() {
+    switch (state_) {
+      case State::INITIAL:
+        return Initial();
+      case State::SINGLE_LINE:
+        return SingleLine();
+      case State::BULK_HEADER:
+        return BulkHeader();
+      case State::BULK_ARGUMENT_SIZE:
+        return BulkArgumentSize();
+      case State::BULK_ARGUMENT_BODY:
+        return BulkArgumentBody();
+      case State::FINISHED:
+        return STATUS(IllegalState, "Should not be in FINISHED state during NextToken");
+    }
+    LOG(FATAL) << "Unexpected parser state: " << util::to_underlying(state_);
+  }
+
+  CHECKED_STATUS Initial() {
+    token_begin_ = pos_;
+    state_ = *pos_ == '*' ? State::BULK_HEADER : State::SINGLE_LINE;
     return Status::OK();
   }
 
-  client_command_.cmd_args.clear();
-  const char* newline = static_cast<const char*>(memchr(buf_.c_str() + searching_pos_, '\r',
-      cur_offset_ - searching_pos_));
-  const size_t query_len = newline - (buf_.c_str() + parsing_pos_);
-  // Split the input buffer up to the \r\n.
-  Slice aux(&buf_[parsing_pos_], query_len);
-  // TODO: fail gracefully without killing the server.
-  RETURN_NOT_OK(util::SplitArgs(aux, &client_command_.cmd_args));
-  parsing_pos_ = query_len + 2;
-  done_ = true;
-  return Status::OK();
-}
-
-Status RedisInboundTransfer::CheckMultiBulkBuffer() {
-  if (done_) return Status::OK();
-
-  if (client_command_.num_multi_bulk_args_left == 0) {
-    // Multi bulk length cannot be read without a \r\n.
-    parsing_pos_ = 0;
-    client_command_.cmd_args.clear();
-    client_command_.current_multi_bulk_arg_len = -1;
-
-    DVLOG(4) << "Looking at : "
-             << Slice(buf_.c_str() + parsing_pos_, cur_offset_ - parsing_pos_).ToDebugString(8);
-    if (!FindEndOfLine()) return Status::OK();
-
-    SCHECK_EQ(
-        '*', buf_[parsing_pos_], Corruption,
-        StringPrintf("Expected to see '*' instead of %c", buf_[parsing_pos_]));
-    parsing_pos_++;
-    int64_t num_args = 0;
-    RETURN_NOT_OK(ParseNumber(&num_args));
-    // TODO: create a single macro that checks if a value is in a certain range and de-duplicate
-    // the following.
-    SCHECK_GT(
-        num_args, 0, Corruption,
-        Substitute(
-            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : $0",
-            num_args));
-    SCHECK_LE(
-        num_args, 1024 * 1024, Corruption,
-        Substitute(
-            "Number of lines in multibulk out of expected range (0, 1024 * 1024] : $0",
-            num_args));
-    client_command_.num_multi_bulk_args_left = num_args;
+  CHECKED_STATUS SingleLine() {
+    auto status = FindEndOfLine();
+    if (!status.ok() || incomplete_) {
+      return status;
+    }
+    if (args_) {
+      RETURN_NOT_OK(util::SplitArgs(Slice(token_begin_, pos_), args_));
+    }
+    state_ = State::FINISHED;
+    return Status::OK();
   }
 
-  while (client_command_.num_multi_bulk_args_left > 0) {
-    if (client_command_.current_multi_bulk_arg_len == -1) {  // Read bulk length if unknown.
-      if (!FindEndOfLine()) return Status::OK();
-
-      SCHECK_EQ(
-          buf_[parsing_pos_], '$', Corruption,
-          StringPrintf("Protocol error: expected '$', got '%c'", buf_[parsing_pos_]));
-      parsing_pos_++;
-      int64_t parsed_len = 0;
-      RETURN_NOT_OK(ParseNumber(&parsed_len));
-      SCHECK_GE(
-          parsed_len, 0, Corruption,
-          Substitute(
-              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : $0",
-              parsed_len));
-      SCHECK_LE(
-          parsed_len, 512 * 1024 * 1024, Corruption,
-          Substitute(
-              "Protocol error: invalid bulk length not in the range [0, 512 * 1024 * 1024] : $0",
-              parsed_len));
-      client_command_.current_multi_bulk_arg_len = parsed_len;
+  CHECKED_STATUS BulkHeader() {
+    auto status = FindEndOfLine();
+    if (!status.ok() || incomplete_) {
+      return status;
     }
+    ptrdiff_t num_args = 0;
+    RETURN_NOT_OK(ParseNumber('*', 1, kMaxNumberOfArgs, "Number of lines in multiline", &num_args));
+    if (args_) {
+      args_->clear();
+      args_->reserve(num_args);
+    }
+    state_ = State::BULK_ARGUMENT_SIZE;
+    token_begin_ = pos_;
+    arguments_left_ = num_args;
+    return Status::OK();
+  }
 
-    // Read bulk argument.
-    if (cur_offset_ < parsing_pos_ + client_command_.current_multi_bulk_arg_len + 2) {
-      // Not enough data (+2 == trailing \r\n).
+  CHECKED_STATUS BulkArgumentSize() {
+    auto status = FindEndOfLine();
+    if (!status.ok() || incomplete_) {
+      return status;
+    }
+    ptrdiff_t current_size;
+    RETURN_NOT_OK(ParseNumber('$', 0, kMaxBufferSize, "Argument size", &current_size));
+    state_ = State::BULK_ARGUMENT_BODY;
+    token_begin_ = pos_;
+    current_argument_size_ = current_size;
+    return Status::OK();
+  }
+
+  CHECKED_STATUS BulkArgumentBody() {
+    auto desired_position = token_begin_ + current_argument_size_ + kLineEndLength;
+    if (desired_position > end_) {
+      incomplete_ = true;
+      pos_ = end_;
       return Status::OK();
     }
-
-    client_command_.cmd_args.push_back(
-        Slice(buf_.data() + parsing_pos_, client_command_.current_multi_bulk_arg_len));
-    parsing_pos_ += client_command_.current_multi_bulk_arg_len + 2;
-    client_command_.num_multi_bulk_args_left--;
-    client_command_.current_multi_bulk_arg_len = -1;
-  }
-
-  // We're done consuming the client's command when num_multi_bulk_args_left == 0.
-  done_ = true;
-  return Status::OK();
-}
-
-RedisInboundTransfer* RedisInboundTransfer::ExcessData() const {
-  CHECK_GE(cur_offset_, parsing_pos_) << "Parsing position cannot be past current offset.";
-  if (cur_offset_ == parsing_pos_) return nullptr;
-
-  // Copy excess data from buf_. Starting at pos_ up to cur_offset_.
-  const int excess_bytes_len = cur_offset_ - parsing_pos_;
-  RedisInboundTransfer *excess = new RedisInboundTransfer();
-  // Right now, all the buffers are created with the same size. When we handle large sized
-  // requests in RedisInboundTransfer, make sure that we have a large enough buffer.
-  assert(excess->buf_.size() > excess_bytes_len);
-  ASAN_UNPOISON_MEMORY_REGION(excess->buf_.data(), excess_bytes_len);
-  memcpy(static_cast<void *>(excess->buf_.data()),
-      static_cast<const void *>(buf_.data() + parsing_pos_),
-      excess_bytes_len);
-  excess->cur_offset_ = excess_bytes_len;
-
-  // TODO: what's a better way to report errors here?
-  CHECK_OK(excess->CheckReadCompletely());
-
-  return excess;
-}
-
-Status RedisInboundTransfer::CheckReadCompletely() {
-  /* Determine request type when unknown. */
-  if (buf_[0] == '*') {
-    RETURN_NOT_OK(CheckMultiBulkBuffer());
-  } else {
-    RETURN_NOT_OK(CheckInlineBuffer());
-  }
-  return Status::OK();
-}
-
-Status RedisInboundTransfer::ReceiveBuffer(Socket& socket) {
-  // Try to read into the buffer whatever is available.
-  const int32_t buf_space_left = kProtoIOBufLen - cur_offset_;
-  int32_t bytes_read = 0;
-
-  ASAN_UNPOISON_MEMORY_REGION(&buf_[cur_offset_], buf_space_left);
-  Status status = socket.Recv(&buf_[cur_offset_], buf_space_left, &bytes_read);
-  DCHECK_GE(bytes_read, 0);
-  ASAN_POISON_MEMORY_REGION(&buf_[cur_offset_] + bytes_read, buf_space_left - bytes_read);
-
-  RETURN_ON_ERROR_OR_SOCKET_NOT_READY(status);
-  if (bytes_read == 0) {
+    if (desired_position[-1] != '\n' || desired_position[-2] != '\r') {
+      return STATUS(NetworkError, "No \\r\\n after bulk");
+    }
+    if (args_) {
+      args_->emplace_back(token_begin_, current_argument_size_);
+    }
+    --arguments_left_;
+    pos_ = desired_position;
+    token_begin_ = pos_;
+    if (arguments_left_ == 0) {
+      state_ = State::FINISHED;
+    } else {
+      state_ = State::BULK_ARGUMENT_SIZE;
+    }
     return Status::OK();
   }
-  cur_offset_ += bytes_read;
 
-  // Check if we have read the whole command.
-  RETURN_NOT_OK(CheckReadCompletely());
+  CHECKED_STATUS FindEndOfLine() {
+    auto new_line = static_cast<const uint8_t *>(memchr(pos_, '\n', end_ - pos_));
+    incomplete_ = new_line == nullptr;
+    if (!incomplete_) {
+      if (new_line == token_begin_) {
+        return STATUS(NetworkError, "End of line at the beginning of a Redis command");
+      }
+      if (new_line[-1] != '\r') {
+        return STATUS(NetworkError, "\\n is not prefixed with \\r");
+      }
+      pos_ = ++new_line;
+    }
+    return Status::OK();
+  }
+
+  // Parses number with specified bounds.
+  // Number is located in separate line, and contain prefix before actual number.
+  // Line starts at token_begin_ and pos_ is a start of next line.
+  CHECKED_STATUS ParseNumber(char prefix,
+                             ptrdiff_t min,
+                             ptrdiff_t max,
+                             const char* name,
+                             ptrdiff_t* out) {
+    if (*token_begin_ != prefix) {
+      return STATUS_SUBSTITUTE(Corruption,
+                               "Invalid character before number, expected: $0, but found: $1",
+                               prefix,
+                               static_cast<char>(*token_begin_));
+    }
+    char* token_end;
+    auto parsed_number = std::strtoll(pointer_cast<const char*>(token_begin_ + 1), &token_end, 10);
+    static_assert(sizeof(parsed_number) == sizeof(*out), "Expected size");
+    const char* expected_stop = pointer_cast<const char*>(pos_ - kLineEndLength);
+    if (token_end != expected_stop) {
+      return STATUS_SUBSTITUTE(NetworkError,
+                               "$0 was failed to parse, extra data after number: $1",
+                               name,
+                               Slice(token_end, expected_stop).ToDebugString());
+    }
+    SCHECK_BOUNDS(parsed_number,
+                  min,
+                  max,
+                  Corruption,
+                  Substitute("$0 out of expected range [$1, $2] : $3",
+                      name, min, max, parsed_number));
+    *out = static_cast<ptrdiff_t>(parsed_number);
+    return Status::OK();
+  }
+
+  // Current parsing position.
+  const uint8_t* pos_;
+
+  // End of data.
+  const uint8_t* end_;
+
+  // Command arguments.
+  std::vector<Slice>* args_;
+
+  // Parser state.
+  State state_ = State::INITIAL;
+
+  // Beginning of last token.
+  const uint8_t* token_begin_ = nullptr;
+
+  // Mark that current token is incomplete.
+  bool incomplete_ = false;
+
+  // Number of arguments left in bulk command.
+  size_t arguments_left_ = 0;
+
+  // Size of the current argument in bulk command.
+  size_t current_argument_size_ = 0;
+};
+
+RedisConnectionContext::RedisConnectionContext() {}
+RedisConnectionContext::~RedisConnectionContext() {}
+
+void RedisConnectionContext::RunNegotiation(Connection* connection, const MonoTime& deadline) {
+  Negotiation::RedisNegotiation(connection, deadline);
+}
+
+Status RedisConnectionContext::ProcessCalls(Connection* connection,
+                                            Slice slice,
+                                            size_t* consumed) {
+  if (!parser_) {
+    parser_.reset(new RedisParser(slice, /* args */ nullptr));
+  } else {
+    parser_->Update(slice);
+  }
+  RedisParser& parser = *parser_;
+  *consumed = 0;
+  const uint8_t* begin_of_command = slice.data();
+  for(;;) {
+    const uint8_t* end_of_command = nullptr;
+    RETURN_NOT_OK(parser.NextCommand(&end_of_command));
+    if (end_of_command == nullptr) {
+      break;
+    }
+    RETURN_NOT_OK(HandleInboundCall(connection, Slice(begin_of_command, end_of_command)));
+    begin_of_command = end_of_command;
+    *consumed = end_of_command - slice.data();
+  }
+  parser.Consume(*consumed);
   return Status::OK();
 }
 
-RedisConnection::RedisConnection(ReactorThread* reactor_thread,
-                                 Sockaddr remote,
-                                 int socket,
-                                 Direction direction)
-    : Connection(reactor_thread, remote, socket, direction), processing_call_(false) {}
+Status RedisConnectionContext::HandleInboundCall(Connection* connection, Slice redis_command) {
+  auto reactor_thread = connection->reactor_thread();
+  DCHECK(reactor_thread->IsCurrentThread());
 
-void RedisConnection::RunNegotiation(const MonoTime& deadline) {
-  Negotiation::RedisNegotiation(this, deadline);
-}
+  RedisInboundCall* call;
+  InboundCallPtr call_ptr(call = new RedisInboundCall(connection, call_processed_listener()));
 
-void RedisConnection::CreateInboundTransfer() {
-  return inbound_.reset(new RedisInboundTransfer());
-}
-
-AbstractInboundTransfer *RedisConnection::inbound() const {
-  return inbound_.get();
-}
-
-void RedisConnection::HandleFinishedTransfer() {
-  if (processing_call_) {
-    DVLOG(4) << "Already handling a call from the client. Need to wait. " << ToString();
-    return;
-  }
-
-  DCHECK_EQ(direction_, SERVER) << "Invalid direction for Redis: " << direction_;
-  RedisInboundTransfer* next_transfer = inbound_->ExcessData();
-  HandleIncomingCall(inbound_.PassAs<AbstractInboundTransfer>());
-  inbound_.reset(next_transfer);
-}
-
-void RedisConnection::HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) {
-  DCHECK(reactor_thread_->IsCurrentThread());
-
-  InboundCallPtr call(new RedisInboundCall(this));
-
-  Status s = call->ParseFrom(transfer.Pass());
+  Status s = call->ParseFrom(redis_command);
   if (!s.ok()) {
-    LOG(WARNING) << ToString() << ": received bad data: " << s.ToString();
-    reactor_thread_->DestroyConnection(this, s);
-    return;
+    return s;
   }
 
-  processing_call_ = true;
-  reactor_thread_->reactor()->messenger()->QueueInboundCall(std::move(call));
+  Enqueue(std::move(call_ptr));
+
+  return Status::OK();
 }
 
-void RedisConnection::FinishedHandlingACall() {
-  // If the next client call has already been received by the server. Check if it is
-  // ready to be handled.
-  processing_call_ = false;
-  if (inbound_ && inbound_->TransferFinished()) {
-    HandleFinishedTransfer();
-  }
+size_t RedisConnectionContext::BufferLimit() {
+  return kMaxBufferSize;
 }
 
-RedisInboundCall::RedisInboundCall(RedisConnection* conn) : conn_(conn) {}
+RedisInboundCall::RedisInboundCall(Connection* conn, CallProcessedListener call_processed_listener)
+    : InboundCall(conn, std::move(call_processed_listener)) {
+}
 
-Status RedisInboundCall::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
+Status RedisInboundCall::ParseFrom(Slice source) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
 
-  trace_->AddChildTrace(transfer->trace());
-  RETURN_NOT_OK(serialization::ParseRedisMessage(transfer->data(), &serialized_request_));
+  request_data_.assign(source.data(), source.end());
+  serialized_request_ = source = Slice(request_data_.data(), request_data_.size());
 
-  RemoteMethodPB remote_method_pb;
-  remote_method_pb.set_service_name("yb.redisserver.RedisServerService");
-  remote_method_pb.set_method_name("anyMethod");
-  remote_method_.FromPB(remote_method_pb);
+  Status status;
+  RedisParser parser(source, &client_command_.cmd_args);
+  const uint8_t* end_of_command = nullptr;
+  RETURN_NOT_OK(parser.NextCommand(&end_of_command));
+  if (end_of_command != source.end()) {
+    return STATUS_SUBSTITUTE(Corruption,
+                             "Parsed size $0 does not match source size $1",
+                             end_of_command - source.data(),
+                             source.size());
+  }
 
-  // Retain the buffer that we have a view into.
-  transfer_.swap(transfer);
+  remote_method_ = RemoteMethod("yb.redisserver.RedisServerService", "anyMethod");
+
   return Status::OK();
 }
 
-RedisClientCommand& RedisInboundCall::GetClientCommand() {
-  return down_cast<RedisInboundTransfer*>(transfer_.get())->client_command();
+MonoTime RedisInboundCall::GetClientDeadline() const {
+  return MonoTime::Max();  // No timeout specified in the protocol for Redis.
+}
+
+void RedisInboundCall::LogTrace() const {
+  MonoTime now = MonoTime::Now(MonoTime::FINE);
+  auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+
+  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces)) {
+    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
+    trace_->Dump(&LOG(INFO), /* include_time_deltas */ true);
+  }
+}
+
+string RedisInboundCall::ToString() const {
+  return strings::Substitute("Redis Call $0 from $1",
+      remote_method_.ToString(),
+      connection()->remote().ToString());
+}
+
+void RedisInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
+                              RpcCallInProgressPB* resp) {
+  if (req.include_traces() && trace_) {
+    resp->set_trace_buffer(trace_->DumpToString(true));
+  }
+  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
+      .ToMicroseconds());
 }
 
 Status RedisInboundCall::SerializeResponseBuffer(const google::protobuf::MessageLite& response,
@@ -328,49 +420,8 @@ Status RedisInboundCall::SerializeResponseBuffer(const google::protobuf::Message
   return Status::OK();
 }
 
-string RedisInboundCall::ToString() const {
-  return Substitute("Redis Call $0 from $1",
-      remote_method_.ToString(),
-      conn_->remote().ToString());
-}
-
-void RedisInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
-                              RpcCallInProgressPB* resp) {
-  if (req.include_traces() && trace_) {
-    resp->set_trace_buffer(trace_->DumpToString(true));
-  }
-  resp->set_micros_elapsed(MonoTime::Now(MonoTime::FINE).GetDeltaSince(timing_.time_received)
-      .ToMicroseconds());
-}
-
-MonoTime RedisInboundCall::GetClientDeadline() const {
-  return MonoTime::Max();  // No timeout specified in the protocol for Redis.
-}
-
-void RedisInboundCall::LogTrace() const {
-  MonoTime now = MonoTime::Now(MonoTime::FINE);
-  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
-
-  if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    trace_->Dump(&LOG(INFO), true);
-  }
-}
-
-void RedisInboundCall::QueueResponseToConnection() {
-  conn_->QueueOutboundData(InboundCallPtr(this));
-}
-
-ConnectionPtr RedisInboundCall::get_connection() const {
-  return conn_;
-}
-
 void RedisInboundCall::Serialize(std::deque<util::RefCntBuffer>* output) const {
   output->push_back(response_msg_buf_);
-}
-
-void RedisInboundCall::NotifyTransferred(const Status& status) {
-  conn_->FinishedHandlingACall();
 }
 
 } // namespace rpc

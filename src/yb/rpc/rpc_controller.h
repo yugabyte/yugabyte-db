@@ -134,4 +134,5 @@ class RpcController {
 
 } // namespace rpc
 } // namespace yb
+
 #endif // YB_RPC_RPC_CONTROLLER_H

@@ -17,6 +17,8 @@
 #ifndef YB_RPC_NEGOTIATION_H
 #define YB_RPC_NEGOTIATION_H
 
+#include <boost/intrusive_ptr.hpp>
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/monotime.h"
@@ -24,20 +26,16 @@
 namespace yb {
 namespace rpc {
 
-class YBConnection;
-class RedisConnection;
-class CQLConnection;
+class YBConnectionContext;
 
 class Negotiation {
  public:
-  static void RunNegotiation(const ConnectionPtr& conn,
-                             const MonoTime& deadline);
-  static void YBNegotiation(const scoped_refptr<YBConnection>& conn,
+  static void RunNegotiation(const ConnectionPtr& conn, const MonoTime& deadline);
+  static void YBNegotiation(const ConnectionPtr& conn,
+                            YBConnectionContext* context,
                             const MonoTime& deadline);
-  static void RedisNegotiation(const scoped_refptr<RedisConnection>& conn,
-                               const MonoTime& deadline);
-  static void CQLNegotiation(const scoped_refptr<CQLConnection>& conn,
-                             const MonoTime& deadline);
+  static void RedisNegotiation(const ConnectionPtr& conn, const MonoTime& deadline);
+  static void CQLNegotiation(const ConnectionPtr& conn, const MonoTime& deadline);
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(Negotiation);
 };

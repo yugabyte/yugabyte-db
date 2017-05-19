@@ -61,6 +61,7 @@ set(YRPC_SRCS
     rpc.cc
     rpc_context.cc
     rpc_controller.cc
+    rpc_with_queue.cc
     sasl_common.cc
     sasl_client.cc
     sasl_helper.cc
@@ -69,7 +70,6 @@ set(YRPC_SRCS
     service_if.cc
     service_pool.cc
     thread_pool.cc
-    transfer.cc
     yb_rpc.cc)
 
 set(YRPC_LIBS

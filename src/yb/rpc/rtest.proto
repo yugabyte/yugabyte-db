@@ -54,15 +54,13 @@ message SleepRequestPB {
 message SleepResponsePB {
 }
 
-message SendTwoStringsRequestPB {
-  required uint32 random_seed = 1;
-  required uint64 size1 = 2;
-  required uint64 size2 = 3;
+message SendStringsRequestPB {
+  optional uint32 random_seed = 1;
+  repeated uint64 sizes = 2;
 }
 
-message SendTwoStringsResponsePB {
-  required uint32 sidecar1 = 1;
-  required uint32 sidecar2 = 2;
+message SendStringsResponsePB {
+  repeated uint32 sidecars = 1;
 }
 
 message EchoRequestPB {

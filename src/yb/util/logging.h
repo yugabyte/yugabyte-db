@@ -239,11 +239,21 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 //   DCHECK_ONLY_NOTNULL(my_ptr)
 //   SomeType* p = DCHECK_NOTNULL(SomeFunc());
 
+#define CHECK_BETWEEN(val, lower_bound, upper_bound) \
+  do { CHECK_GE(val, lower_bound); CHECK_LE(val, upper_bound); } while(false)
+
 #ifndef NDEBUG
 #define DCHECK_ONLY_NOTNULL(expr) do { DCHECK_NOTNULL(expr); } while(false)
+#define DCHECK_BETWEEN(val, lower_bound, upper_bound) CHECK_BETWEEN(val, lower_bound, upper_bound)
 #else
 #define DCHECK_ONLY_NOTNULL(expr) do {} while(false)
+#define DCHECK_BETWEEN(val, lower_bound, upper_bound) \
+  GLOG_MSVC_PUSH_DISABLE_WARNING(4127) \
+  while (false) \
+    GLOG_MSVC_POP_WARNING() CHECK_BETWEEN(val, lower_bound, upper_bound)
 #endif
+
+
 
 } // namespace yb
 

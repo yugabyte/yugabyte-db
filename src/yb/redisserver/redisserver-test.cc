@@ -1,10 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-#include <memory>
-#include <string>
-#include <vector>
 #include <chrono>
+#include <memory>
+#include <random>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "cpp_redis/redis_client.hpp"
 #include "cpp_redis/reply.hpp"
@@ -43,7 +44,7 @@ class TestRedisService : public RedisTableTestBase {
   void RestartClient();
   void SendCommandAndExpectTimeout(const string& cmd);
 
-  void SendCommandAndExpectResponse(const string& cmd, const string& resp);
+  void SendCommandAndExpectResponse(const string& cmd, const string& resp, bool partial = false);
 
   void DoRedisTest(vector<string> command,
                    cpp_redis::reply::type reply_type,
@@ -54,6 +55,8 @@ class TestRedisService : public RedisTableTestBase {
   void VerifyCallbacks();
 
   int server_port() { return redis_server_port_; }
+
+  Status Send(const std::string& cmd);
 
   Status SendCommandAndGetResponse(
       const string& cmd, int expected_resp_length, int timeout_in_millis = 10000);
@@ -133,13 +136,19 @@ void TestRedisService::TearDown() {
   RedisTableTestBase::TearDown();
 }
 
-Status TestRedisService::SendCommandAndGetResponse(
-    const string& cmd, int expected_resp_length, int timeout_in_millis) {
+Status TestRedisService::Send(const std::string& cmd) {
   // Send the command.
   int32_t bytes_written = 0;
   EXPECT_OK(client_sock_.Write(util::to_uchar_ptr(cmd.c_str()), cmd.length(), &bytes_written));
 
   EXPECT_EQ(cmd.length(), bytes_written);
+
+  return Status::OK();
+}
+
+Status TestRedisService::SendCommandAndGetResponse(
+    const string& cmd, int expected_resp_length, int timeout_in_millis) {
+  RETURN_NOT_OK(Send(cmd));
 
   // Receive the response.
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
@@ -160,8 +169,30 @@ void TestRedisService::SendCommandAndExpectTimeout(const string& cmd) {
 
 
 
-void TestRedisService::SendCommandAndExpectResponse(const string& cmd, const string& resp) {
-  ASSERT_OK(SendCommandAndGetResponse(cmd, resp.length()));
+void TestRedisService::SendCommandAndExpectResponse(const string& cmd,
+                                                    const string& resp,
+                                                    bool partial) {
+  if (partial) {
+    auto seed = GetRandomSeed32();
+    std::mt19937_64 rng(seed);
+    size_t last = cmd.length() - 2;
+    size_t splits = std::uniform_int_distribution<size_t>(1, 10)(rng);
+    std::vector<size_t> bounds(splits);
+    std::generate(bounds.begin(), bounds.end(), [&rng, last]{
+      return std::uniform_int_distribution<size_t>(1, last)(rng);
+    });
+    std::sort(bounds.begin(), bounds.end());
+    bounds.erase(std::unique(bounds.begin(), bounds.end()), bounds.end());
+    size_t p = 0;
+    for (auto i : bounds) {
+      ASSERT_OK(Send(cmd.substr(p, i - p)));
+      p = i;
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    ASSERT_OK(SendCommandAndGetResponse(cmd.substr(p), resp.length()));
+  } else {
+    ASSERT_OK(SendCommandAndGetResponse(cmd, resp.length()));
+  }
 
   // Verify that the response is as expected.
 
@@ -197,12 +228,37 @@ TEST_F(TestRedisService, BatchedCommandsInline) {
       "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n", "+OK\r\n+OK\r\n+bar\r\n+5\r\n");
 }
 
+TEST_F(TestRedisService, BatchedCommandsInlinePartial) {
+  for (int i = 0; i != 1000; ++i) {
+    ASSERT_NO_FATAL_FAILURE(
+        SendCommandAndExpectResponse(
+            "set a 5\r\nset foo bar\r\nget foo\r\nget a\r\n",
+            "+OK\r\n+OK\r\n+bar\r\n+5\r\n",
+            /* partial */ true)
+    );
+  }
+}
+
 TEST_F(TestRedisService, BatchedCommandMulti) {
   SendCommandAndExpectResponse(
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n"
       "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$4\r\nTEST\r\n",
       "+OK\r\n+OK\r\n+OK\r\n");
+}
+
+TEST_F(TestRedisService, BatchedCommandMultiPartial) {
+  for (int i = 0; i != 1000; ++i) {
+    ASSERT_NO_FATAL_FAILURE(
+      SendCommandAndExpectResponse(
+          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST1\r\n"
+          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST2\r\n"
+          "*3\r\n$3\r\nset\r\n$3\r\nfoo\r\n$5\r\nTEST3\r\n"
+          "*2\r\n$3\r\nget\r\n$3\r\nfoo\r\n",
+          "+OK\r\n+OK\r\n+OK\r\n+TEST3\r\n",
+          /* partial */ true)
+    );
+  }
 }
 
 TEST_F(TestRedisService, IncompleteCommandInline) {

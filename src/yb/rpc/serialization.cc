@@ -128,19 +128,12 @@ Status SerializeHeader(const MessageLite& header,
 Status ParseYBMessage(const Slice& buf,
                       MessageLite* parsed_header,
                       Slice* parsed_main_message) {
-
-  // First grab the total length
   if (PREDICT_FALSE(buf.size() < kMsgLengthPrefixLength)) {
     return STATUS(Corruption, "Invalid packet: not enough bytes for length header",
                               buf.ToDebugString());
   }
 
-  int total_len = NetworkByteOrder::Load32(buf.data());
-  DCHECK_EQ(total_len + kMsgLengthPrefixLength, buf.size())
-    << "Got mis-sized buffer: " << buf.ToDebugString();
-
   CodedInputStream in(buf.data(), buf.size());
-  in.Skip(kMsgLengthPrefixLength);
 
   uint32_t header_len;
   if (PREDICT_FALSE(!in.ReadVarint32(&header_len))) {

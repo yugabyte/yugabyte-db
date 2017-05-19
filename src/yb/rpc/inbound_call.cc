@@ -26,6 +26,7 @@
 #include "yb/rpc/service_pool.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
 
@@ -40,28 +41,33 @@ using yb::RedisResponsePB;
 
 DEFINE_bool(rpc_dump_all_traces, false,
             "If true, dump all RPC traces at INFO level");
+TAG_FLAG(rpc_dump_all_traces, advanced);
+TAG_FLAG(rpc_dump_all_traces, runtime);
+
 DEFINE_bool(collect_end_to_end_traces, false,
             "If true, collected traces includes information for sub-components "
             "potentially running on a different server. ");
+TAG_FLAG(collect_end_to_end_traces, advanced);
+TAG_FLAG(collect_end_to_end_traces, runtime);
+
 DEFINE_int32(print_trace_every, 0,
              "Controls the rate at which traces are printed. Setting this to 0 "
              "disables printing the collected traces.");
-DEFINE_int32(rpc_slow_query_threshold_ms, 50,
-             "Traces for calls that take longer than this threshold (in ms) are logged");
-TAG_FLAG(rpc_dump_all_traces, advanced);
-TAG_FLAG(rpc_dump_all_traces, runtime);
-TAG_FLAG(collect_end_to_end_traces, advanced);
-TAG_FLAG(collect_end_to_end_traces, runtime);
 TAG_FLAG(print_trace_every, advanced);
 TAG_FLAG(print_trace_every, runtime);
+
+DEFINE_int32(rpc_slow_query_threshold_ms, 50,
+             "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
 TAG_FLAG(rpc_slow_query_threshold_ms, runtime);
 
 namespace yb {
 namespace rpc {
 
-InboundCall::InboundCall()
-    : trace_(new Trace) {
+InboundCall::InboundCall(Connection* conn, CallProcessedListener call_processed_listener)
+    : trace_(new Trace),
+      conn_(conn),
+      call_processed_listener_(std::move(call_processed_listener)) {
   TRACE_TO(trace_, "Created InboundCall");
   RecordCallReceived();
 }
@@ -122,27 +128,37 @@ void InboundCall::Respond(const MessageLite& response,
   TRACE_TO(trace_, "Queueing $0 response", is_success ? "success" : "failure");
 
   LogTrace();
-  get_connection()->QueueOutboundData(InboundCallPtr(this));
+  conn_->QueueOutboundData(InboundCallPtr(this));
+}
+
+void InboundCall::NotifyTransferred(const Status& status) {
+  if (status.ok()) {
+    TRACE_TO(trace_, "Transfer finished");
+  } else {
+    LOG(WARNING) << "Connection torn down before " << ToString()
+                 << " could send its response: " << status.ToString();
+  }
+  if (call_processed_listener_)
+    call_processed_listener_(this);
 }
 
 Status InboundCall::AddRpcSidecar(util::RefCntBuffer car, int* idx) {
   // Check that the number of sidecars does not exceed the number of payload
-  // slices that are free (two are used up by the header and main message
-  // protobufs).
-  if (sidecars_.size() + 2 > OutboundTransfer::kMaxPayloadSlices) {
+  // slices that are free.
+  if (sidecars_.size() >= CallResponse::kMaxSidecarSlices) {
     return STATUS(ServiceUnavailable, "All available sidecars already used");
   }
-  *idx = sidecars_.size();
+  *idx = static_cast<int>(sidecars_.size());
   sidecars_.push_back(std::move(car));
   return Status::OK();
 }
 
 const Sockaddr& InboundCall::remote_address() const {
-  return get_connection()->remote();
+  return conn_->remote();
 }
 
 ConnectionPtr InboundCall::connection() const {
-  return get_connection();
+  return conn_;
 }
 
 Trace* InboundCall::trace() {
@@ -182,7 +198,7 @@ bool InboundCall::ClientTimedOut() const {
 }
 
 const UserCredentials& InboundCall::user_credentials() const {
-  return get_connection()->user_credentials();
+  return conn_->user_credentials();
 }
 
 }  // namespace rpc

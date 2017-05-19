@@ -244,7 +244,7 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
                           const char* const filename, const int lineno,
                           const char* const original_function_name) {
   assert(data != nullptr);
-  const SymbolizationContext& context = *PointerCast<SymbolizationContext*>(data);
+  const SymbolizationContext& context = *pointer_cast<SymbolizationContext*>(data);
   string* const buf = context.buf;
   int demangle_status = 0;
   char* const demangled_function_name =

@@ -191,7 +191,7 @@ class StringSink: public WritableFile {
       reader_contents_(reader_contents),
       last_flush_(0) {
     if (reader_contents_ != nullptr) {
-      *reader_contents_ = Slice(contents_.data(), 0);
+      *reader_contents_ = Slice(contents_.data(), 0UL);
     }
   }
 

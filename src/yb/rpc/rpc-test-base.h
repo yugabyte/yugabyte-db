@@ -53,8 +53,8 @@ using yb::rpc_test::EchoRequestPB;
 using yb::rpc_test::EchoResponsePB;
 using yb::rpc_test::PanicRequestPB;
 using yb::rpc_test::PanicResponsePB;
-using yb::rpc_test::SendTwoStringsRequestPB;
-using yb::rpc_test::SendTwoStringsResponsePB;
+using yb::rpc_test::SendStringsRequestPB;
+using yb::rpc_test::SendStringsResponsePB;
 using yb::rpc_test::SleepRequestPB;
 using yb::rpc_test::SleepResponsePB;
 using yb::rpc_test::WhoAmIRequestPB;
@@ -73,7 +73,7 @@ class GenericCalculatorService : public ServiceIf {
   static const char *kFullServiceName;
   static const char *kAddMethodName;
   static const char *kSleepMethodName;
-  static const char *kSendTwoStringsMethodName;
+  static const char *kSendStringsMethodName;
 
   static const char* kFirstString;
   static const char* kSecondString;
@@ -91,8 +91,8 @@ class GenericCalculatorService : public ServiceIf {
       DoAdd(incoming);
     } else if (incoming->remote_method().method_name() == kSleepMethodName) {
       DoSleep(incoming);
-    } else if (incoming->remote_method().method_name() == kSendTwoStringsMethodName) {
-      DoSendTwoStrings(incoming);
+    } else if (incoming->remote_method().method_name() == kSendStringsMethodName) {
+      DoSendStrings(incoming);
     } else {
       incoming->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
                                STATUS(InvalidArgument, "bad method"));
@@ -115,26 +115,26 @@ class GenericCalculatorService : public ServiceIf {
     incoming->RespondSuccess(resp);
   }
 
-  void DoSendTwoStrings(InboundCall* incoming) {
+  void DoSendStrings(InboundCall* incoming) {
     Slice param(incoming->serialized_request());
-    SendTwoStringsRequestPB req;
+    SendStringsRequestPB req;
     if (!req.ParseFromArray(param.data(), param.size())) {
       LOG(FATAL) << "couldn't parse: " << param.ToDebugString();
     }
 
     Random r(req.random_seed());
-    auto first = util::RefCntBuffer(req.size1());
-    RandomString(first.udata(), req.size1(), &r);
-
-    auto second = util::RefCntBuffer(req.size2());
-    RandomString(second.udata(), req.size2(), &r);
-
-    SendTwoStringsResponsePB resp;
-    int idx1, idx2;
-    CHECK_OK(incoming->AddRpcSidecar(first, &idx1));
-    CHECK_OK(incoming->AddRpcSidecar(second, &idx2));
-    resp.set_sidecar1(idx1);
-    resp.set_sidecar2(idx2);
+    SendStringsResponsePB resp;
+    for (auto size : req.sizes()) {
+      auto sidecar = util::RefCntBuffer(size);
+      RandomString(sidecar.udata(), size, &r);
+      int idx = 0;
+      auto status = incoming->AddRpcSidecar(sidecar, &idx);
+      if (!status.ok()) {
+        incoming->RespondFailure(ErrorStatusPB::ERROR_APPLICATION, status);
+        return;
+      }
+      resp.add_sidecars(idx);
+    }
 
     incoming->RespondSuccess(resp);
   }
@@ -262,7 +262,7 @@ class CalculatorService : public CalculatorServiceIf {
 const char *GenericCalculatorService::kFullServiceName = "yb.rpc.GenericCalculatorService";
 const char *GenericCalculatorService::kAddMethodName = "Add";
 const char *GenericCalculatorService::kSleepMethodName = "Sleep";
-const char *GenericCalculatorService::kSendTwoStringsMethodName = "SendTwoStrings";
+const char *GenericCalculatorService::kSendStringsMethodName = "SendStrings";
 
 const char *GenericCalculatorService::kFirstString =
     "1111111111111111111111111111111111111111111111111111111111";
@@ -330,33 +330,40 @@ class RpcTestBase : public YBTest {
     return Status::OK();
   }
 
-  void DoTestSidecar(const Proxy &p, int size1, int size2) {
+  void DoTestSidecar(const Proxy &p,
+                     std::vector<size_t> sizes,
+                     Status::Code expected_code = Status::Code::kOk) {
     const uint32_t kSeed = 12345;
 
-    SendTwoStringsRequestPB req;
-    req.set_size1(size1);
-    req.set_size2(size2);
+    SendStringsRequestPB req;
+    for (auto size : sizes) {
+      req.add_sizes(size);
+    }
     req.set_random_seed(kSeed);
 
-    SendTwoStringsResponsePB resp;
+    SendStringsResponsePB resp;
     RpcController controller;
     controller.set_timeout(MonoDelta::FromMilliseconds(10000));
-    CHECK_OK(p.SyncRequest(GenericCalculatorService::kSendTwoStringsMethodName,
-                           req, &resp, &controller));
+    auto status = p.SyncRequest(GenericCalculatorService::kSendStringsMethodName,
+                                req,
+                                &resp,
+                                &controller);
 
-    Slice first = GetSidecarPointer(controller, resp.sidecar1(), size1);
-    Slice second = GetSidecarPointer(controller, resp.sidecar2(), size2);
+    ASSERT_EQ(expected_code, status.code()) << "Invalid status received: " << status.ToString();
+
+    if (!status.ok()) {
+      return;
+    }
 
     Random rng(kSeed);
     faststring expected;
-
-    expected.resize(size1);
-    RandomString(expected.data(), size1, &rng);
-    CHECK_EQ(0, first.compare(Slice(expected)));
-
-    expected.resize(size2);
-    RandomString(expected.data(), size2, &rng);
-    CHECK_EQ(0, second.compare(Slice(expected)));
+    for (size_t i = 0; i != sizes.size(); ++i) {
+      size_t size = sizes[i];
+      expected.resize(size);
+      Slice sidecar = GetSidecarPointer(controller, resp.sidecars(i), size);
+      RandomString(expected.data(), size, &rng);
+      ASSERT_EQ(0, sidecar.compare(expected)) << "Invalid sidecar at " << i << " position";
+    }
   }
 
   void DoTestExpectTimeout(const Proxy &p, const MonoDelta &timeout) {

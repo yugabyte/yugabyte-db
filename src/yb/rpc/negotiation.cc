@@ -50,11 +50,13 @@ TAG_FLAG(rpc_trace_negotiation, experimental);
 namespace yb {
 namespace rpc {
 
+namespace {
+
 using std::shared_ptr;
 using strings::Substitute;
 
 // Client: Send ConnectionContextPB message based on information stored in the Connection object.
-static Status SendConnectionContext(YBConnection* conn, const MonoTime& deadline) {
+Status SendConnectionContext(Connection *conn, const MonoTime &deadline) {
   TRACE("Sending connection context");
   RequestHeader header;
   header.set_call_id(kConnectionContextCallId);
@@ -69,13 +71,15 @@ static Status SendConnectionContext(YBConnection* conn, const MonoTime& deadline
 // Server: Receive ConnectionContextPB message and update the corresponding fields in the
 // associated Connection object. Perform validation against SASL-negotiated information
 // as needed.
-static Status RecvConnectionContext(YBConnection* conn, const MonoTime& deadline) {
+Status RecvConnectionContext(Connection *conn,
+                             YBConnectionContext *context,
+                             const MonoTime &deadline) {
   TRACE("Waiting for connection context");
   faststring recv_buf(1024); // Should be plenty for a ConnectionContextPB message.
   RequestHeader header;
   Slice param_buf;
   RETURN_NOT_OK(ReceiveFramedMessageBlocking(conn->socket(), &recv_buf,
-                                             &header, &param_buf, deadline));
+      &header, &param_buf, deadline));
   DCHECK(header.IsInitialized());
 
   if (header.call_id() != kConnectionContextCallId) {
@@ -92,13 +96,13 @@ static Status RecvConnectionContext(YBConnection* conn, const MonoTime& deadline
   // Update the fields of our Connection object from the ConnectionContextPB.
   if (conn_context.has_user_info()) {
     // Validate real user against SASL impl.
-    if (conn->sasl_server().negotiated_mechanism() == SaslMechanism::PLAIN) {
-      if (conn->sasl_server().plain_auth_user() != conn_context.user_info().real_user()) {
+    if (context->sasl_server().negotiated_mechanism() == SaslMechanism::PLAIN) {
+      if (context->sasl_server().plain_auth_user() != conn_context.user_info().real_user()) {
         return STATUS(NotAuthorized,
             "ConnectionContextPB specified different real user than sent in SASL negotiation",
             StringPrintf("\"%s\" vs. \"%s\"",
                 conn_context.user_info().real_user().c_str(),
-                conn->sasl_server().plain_auth_user().c_str()));
+                context->sasl_server().plain_auth_user().c_str()));
       }
     }
     conn->mutable_user_credentials()->set_real_user(conn_context.user_info().real_user());
@@ -106,14 +110,14 @@ static Status RecvConnectionContext(YBConnection* conn, const MonoTime& deadline
     // TODO: Validate effective user when we implement impersonation.
     if (conn_context.user_info().has_effective_user()) {
       conn->mutable_user_credentials()->set_effective_user(
-        conn_context.user_info().effective_user());
+          conn_context.user_info().effective_user());
     }
   }
   return Status::OK();
 }
 
 // Wait for the client connection to be established and become ready for writing.
-static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline) {
+Status WaitForClientConnect(Connection *conn, const MonoTime &deadline) {
   TRACE("Waiting for socket to connect");
   int fd = conn->socket()->GetFd();
   struct pollfd poll_fd;
@@ -177,8 +181,8 @@ static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline)
   int rc = getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &socklen);
   if (rc != 0) {
     return STATUS(NetworkError, "Unable to check connected socket for errors",
-                                ErrnoToString(errno),
-                                errno);
+        ErrnoToString(errno),
+        errno);
   }
   if (so_error != 0) {
     return STATUS(NetworkError, "connect", ErrnoToString(so_error), so_error);
@@ -188,20 +192,21 @@ static Status WaitForClientConnect(YBConnection* conn, const MonoTime& deadline)
 }
 
 // Disable / reset socket timeouts.
-static Status DisableSocketTimeouts(Connection* conn) {
+Status DisableSocketTimeouts(Connection *conn) {
   RETURN_NOT_OK(conn->socket()->SetSendTimeout(MonoDelta::FromNanoseconds(0L)));
   RETURN_NOT_OK(conn->socket()->SetRecvTimeout(MonoDelta::FromNanoseconds(0L)));
   return Status::OK();
 }
 
 // Perform client negotiation. We don't LOG() anything, we leave that to our caller.
-static Status DoClientNegotiation(YBConnection* conn,
-                                  const MonoTime& deadline) {
+Status DoClientNegotiation(Connection *conn,
+                           YBConnectionContext *context,
+                           const MonoTime &deadline) {
   RETURN_NOT_OK(WaitForClientConnect(conn, deadline));
   RETURN_NOT_OK(conn->SetNonBlocking(false));
-  RETURN_NOT_OK(conn->InitSaslClient());
-  conn->sasl_client().set_deadline(deadline);
-  RETURN_NOT_OK(conn->sasl_client().Negotiate());
+  RETURN_NOT_OK(context->InitSaslClient(conn));
+  context->sasl_client().set_deadline(deadline);
+  RETURN_NOT_OK(context->sasl_client().Negotiate());
   RETURN_NOT_OK(SendConnectionContext(conn, deadline));
   RETURN_NOT_OK(DisableSocketTimeouts(conn));
 
@@ -209,62 +214,64 @@ static Status DoClientNegotiation(YBConnection* conn,
 }
 
 // Perform server negotiation. We don't LOG() anything, we leave that to our caller.
-static Status DoServerNegotiation(YBConnection* conn,
-                                  const MonoTime& deadline) {
+static Status DoServerNegotiation(Connection *conn,
+                                  YBConnectionContext *context,
+                                  const MonoTime &deadline) {
   RETURN_NOT_OK(conn->SetNonBlocking(false));
-  RETURN_NOT_OK(conn->InitSaslServer());
-  conn->sasl_server().set_deadline(deadline);
-  RETURN_NOT_OK(conn->sasl_server().Negotiate());
-  RETURN_NOT_OK(RecvConnectionContext(conn, deadline));
+  RETURN_NOT_OK(context->InitSaslServer(conn));
+  context->sasl_server().set_deadline(deadline);
+  RETURN_NOT_OK(context->sasl_server().Negotiate());
+  RETURN_NOT_OK(RecvConnectionContext(conn, context, deadline));
   RETURN_NOT_OK(DisableSocketTimeouts(conn));
 
   return Status::OK();
 }
 
-static Status DoRedisServerNegotiation(Connection* conn,
-                                       const MonoTime& deadline) {
-  RETURN_NOT_OK(conn->SetNonBlocking(false));
+static Status DoRedisServerNegotiation(Connection *conn,
+                                       const MonoTime &deadline) {
   RETURN_NOT_OK(DisableSocketTimeouts(conn));
   return Status::OK();
 }
 
-static Status DoCQLNegotiation(Connection* conn,
-                               const MonoTime& deadline) {
+static Status DoCQLNegotiation(Connection *conn,
+                               const MonoTime &deadline) {
   // TODO(robert) - check if options are meaningful
-  RETURN_NOT_OK(conn->SetNonBlocking(false));
   RETURN_NOT_OK(DisableSocketTimeouts(conn));
   return Status::OK();
 }
+
+} // namespace
 
 void Negotiation::RunNegotiation(const ConnectionPtr& conn,
                                  const MonoTime& deadline) {
   conn->RunNegotiation(deadline);
 }
 
-void Negotiation::RedisNegotiation(const scoped_refptr<RedisConnection>& conn,
+void Negotiation::RedisNegotiation(const ConnectionPtr& conn,
                                    const MonoTime& deadline) {
-  CHECK_EQ(conn->direction(), Connection::SERVER);
+  CHECK_EQ(conn->direction(), ConnectionDirection::SERVER);
   conn->CompleteNegotiation(DoRedisServerNegotiation(conn.get(), deadline));
 }
 
-void Negotiation::CQLNegotiation(const scoped_refptr<CQLConnection>& conn,
+void Negotiation::CQLNegotiation(const ConnectionPtr& conn,
                                  const MonoTime& deadline) {
-  CHECK_EQ(conn->direction(), Connection::SERVER);
+  CHECK_EQ(conn->direction(), ConnectionDirection::SERVER);
   conn->CompleteNegotiation(DoCQLNegotiation(conn.get(), deadline));
 }
 
-void Negotiation::YBNegotiation(const scoped_refptr<YBConnection>& conn,
+void Negotiation::YBNegotiation(const ConnectionPtr& conn,
+                                YBConnectionContext* context,
                                 const MonoTime& deadline) {
   Status s;
-  if (conn->direction() == Connection::SERVER) {
-    s = DoServerNegotiation(conn.get(), deadline);
+  if (conn->direction() == ConnectionDirection::SERVER) {
+    s = DoServerNegotiation(conn.get(), context, deadline);
   } else {
-    s = DoClientNegotiation(conn.get(), deadline);
+    s = DoClientNegotiation(conn.get(), context, deadline);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Substitute("$0 connection negotiation failed: $1",
-                            conn->direction() == Connection::SERVER ? "Server" : "Client",
+                            conn->direction() == ConnectionDirection::SERVER ? "Server" : "Client",
                             conn->ToString());
     s = s.CloneAndPrepend(msg);
   }

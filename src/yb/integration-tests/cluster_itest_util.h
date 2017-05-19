@@ -56,6 +56,7 @@ namespace client {
 class YBClient;
 class YBSchema;
 class YBTable;
+class YBTableName;
 }
 
 namespace consensus {

@@ -6,7 +6,10 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/cqlserver/cql_message.h"
 #include "yb/cqlserver/cql_server.h"
+
 #include "yb/gutil/strings/join.h"
 #include "yb/util/cast.h"
 #include "yb/util/test_util.h"

@@ -33,7 +33,6 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/rpc/connection.h"
-#include "yb/rpc/transfer.h"
 #include "yb/util/thread.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"

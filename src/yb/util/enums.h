@@ -36,7 +36,11 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
     return "unknown " BOOST_PP_STRINGIZE(enum_name); \
   } \
   \
-  constexpr size_t BOOST_PP_CAT(kElementsIn, enum_name) = BOOST_PP_SEQ_SIZE(list);
+  inline std::ostream& operator<<(std::ostream& out, enum_name value) { \
+    return out << ToString(value); \
+  } \
+  \
+  constexpr size_t BOOST_PP_CAT(kElementsIn, enum_name) = BOOST_PP_SEQ_SIZE(list); \
   /**/
 
 #define YB_DEFINE_ENUM(enum_name, list) YB_DEFINE_ENUM_IMPL(enum_name, BOOST_PP_NIL, list)

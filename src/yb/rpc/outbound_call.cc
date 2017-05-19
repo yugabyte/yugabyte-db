@@ -29,7 +29,6 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
-#include "yb/rpc/transfer.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
 #include "yb/util/trace.h"
@@ -146,6 +145,7 @@ void OutboundCall::NotifyTransferred(const Status& status) {
     } else {
       VLOG(1) << "Connection torn down before " << ToString()
               << " could send its call: " << status.ToString();
+
       SetFailed(status);
     }
   }
@@ -546,49 +546,43 @@ Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
   return Status::OK();
 }
 
-Status CallResponse::ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) {
+Status CallResponse::ParseFrom(Slice source) {
   CHECK(!parsed_);
   Slice entire_message;
-  RETURN_NOT_OK(serialization::ParseYBMessage(transfer->data(), &header_,
-                                              &entire_message));
+
+  response_data_.assign(source.data(), source.end());
+  source = Slice(response_data_.data(), response_data_.size());
+  RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
 
   // Use information from header to extract the payload slices.
-  int last = header_.sidecar_offsets_size() - 1;
+  const size_t sidecars = header_.sidecar_offsets_size();
 
-  if (last >= OutboundTransfer::kMaxPayloadSlices) {
+  if (sidecars > kMaxSidecarSlices) {
     return STATUS(Corruption, strings::Substitute(
-        "Received $0 additional payload slices, expected at most %d",
-        last, OutboundTransfer::kMaxPayloadSlices));
+        "Received $0 additional payload slices, expected at most $1",
+        sidecars, kMaxSidecarSlices));
   }
 
-  if (last >= 0) {
+  if (sidecars > 0) {
     serialized_response_ = Slice(entire_message.data(),
                                  header_.sidecar_offsets(0));
-    for (int i = 0; i < last; ++i) {
-      uint32_t next_offset = header_.sidecar_offsets(i);
-      int32_t len = header_.sidecar_offsets(i + 1) - next_offset;
-      if (next_offset + len > entire_message.size() || len < 0) {
+    for (size_t i = 0; i < sidecars; ++i) {
+      size_t begin_offset = header_.sidecar_offsets(i);
+      size_t end_offset = i + 1 == sidecars ? entire_message.size()
+                                            : header_.sidecar_offsets(i + 1);
+      if (end_offset > entire_message.size() || end_offset < begin_offset) {
         return STATUS(Corruption, strings::Substitute(
             "Invalid sidecar offsets; sidecar $0 apparently starts at $1,"
-            " has length $2, but the entire message has length $3",
-            i, next_offset, len, entire_message.size()));
+            " ends at $2, but the entire message has length $3",
+            i, begin_offset, end_offset, entire_message.size()));
       }
-      sidecar_slices_[i] = Slice(entire_message.data() + next_offset, len);
+      sidecar_slices_[i] = Slice(entire_message.data() + begin_offset,
+                                 entire_message.data() + end_offset);
     }
-    uint32_t next_offset = header_.sidecar_offsets(last);
-    if (next_offset > entire_message.size()) {
-        return STATUS(Corruption, strings::Substitute(
-            "Invalid sidecar offsets; the last sidecar ($0) apparently starts "
-            "at $1, but the entire message has length $2",
-            last, next_offset, entire_message.size()));
-    }
-    sidecar_slices_[last] = Slice(entire_message.data() + next_offset,
-                                  entire_message.size() - next_offset);
   } else {
     serialized_response_ = entire_message;
   }
 
-  transfer_.swap(transfer);
   parsed_ = true;
   return Status::OK();
 }

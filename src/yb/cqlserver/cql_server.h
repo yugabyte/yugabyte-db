@@ -25,6 +25,8 @@ namespace yb {
 
 namespace cqlserver {
 
+class EventResponse;
+
 class CQLServer : public server::RpcAndWebServerBase {
  public:
   static const uint16_t kDefaultPort = 9042;

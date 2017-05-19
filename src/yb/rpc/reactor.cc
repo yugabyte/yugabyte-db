@@ -31,7 +31,6 @@
 
 #include <glog/logging.h>
 
-#include <boost/intrusive/list.hpp>
 #include <boost/scope_exit.hpp>
 
 #include "yb/gutil/ref_counted.h"
@@ -45,12 +44,12 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/sasl_client.h"
 #include "yb/rpc/sasl_server.h"
-#include "yb/rpc/transfer.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
@@ -79,33 +78,28 @@ Status ShutdownError(bool aborted) {
       STATUS(ServiceUnavailable, msg, "", ESHUTDOWN);
 }
 
+ConnectionContext* MakeNewConnectionContext(ConnectionType connection_type) {
+  switch (connection_type) {
+    case ConnectionType::YB:
+      return new YBConnectionContext();
+
+    case ConnectionType::REDIS:
+      return new RedisConnectionContext();
+
+    case ConnectionType::CQL:
+      return new CQLConnectionContext();
+  }
+
+  LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(connection_type);
+}
+
 Connection* MakeNewConnection(ConnectionType connection_type,
                               ReactorThread* reactor_thread,
                               const Sockaddr& remote,
                               int socket,
                               Connection::Direction direction) {
-  switch (connection_type) {
-    case ConnectionType::YB:
-      return new YBConnection(reactor_thread,
-                              remote,
-                              socket,
-                              direction);
-
-    case ConnectionType::REDIS:
-      return new RedisConnection(reactor_thread,
-                                 remote,
-                                 socket,
-                                 direction);
-
-    case ConnectionType::CQL:
-      return new CQLConnection(reactor_thread,
-                               remote,
-                               socket,
-                               direction);
-
-    default:
-      LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(connection_type);
-  }
+  std::unique_ptr<ConnectionContext> context(MakeNewConnectionContext(connection_type));
+  return new Connection(reactor_thread, remote, socket, direction, move(context));
 }
 
 } // anonymous namespace
@@ -410,7 +404,7 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
                                 this,
                                 conn_id.remote(),
                                 sock.Release(),
-                                Connection::CLIENT));
+                                ConnectionDirection::CLIENT));
   (*conn)->set_user_credentials(conn_id.user_credentials());
 
   // Kick off blocking client connection negotiation.
@@ -479,8 +473,7 @@ Status ReactorThread::StartConnect(Socket *sock, const Sockaddr &remote, bool *i
     return ret;
   }
 
-  int posix_code = ret.posix_code();
-  if (Socket::IsTemporarySocketError(posix_code) || (posix_code == EINPROGRESS)) {
+  if (Socket::IsTemporarySocketError(ret)) {
     // The connect operation is in progress.
     *in_progress = true;
     VLOG(3) << "StartConnect: connect in progress for " << remote.ToString();
@@ -501,7 +494,7 @@ void ReactorThread::DestroyConnection(Connection *conn,
   conn->Shutdown(conn_status);
 
   // Unlink connection from lists.
-  if (conn->direction() == Connection::CLIENT) {
+  if (conn->direction() == ConnectionDirection::CLIENT) {
     ConnectionId conn_id(conn->remote(), conn->user_credentials());
     bool erased = false;
     for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
@@ -521,7 +514,7 @@ void ReactorThread::DestroyConnection(Connection *conn,
       }
     }
     CHECK(erased) << "Couldn't find connection for any index to " << conn->ToString();
-  } else if (conn->direction() == Connection::SERVER) {
+  } else if (conn->direction() == ConnectionDirection::SERVER) {
     auto it = server_conns_.begin();
     while (it != server_conns_.end()) {
       if ((*it).get() == conn) {
@@ -791,7 +784,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Sockaddr &remote) {
                                &thread_,
                                remote,
                                socket->Release(),
-                               Connection::SERVER));
+                               ConnectionDirection::SERVER));
   ScheduleReactorTask(std::make_shared<RegisterConnectionTask>(conn));
 }
 

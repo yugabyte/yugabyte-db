@@ -62,7 +62,7 @@ class Socket {
 
   // Returns true if the error is temporary and will go away if we retry on
   // the socket.
-  static bool IsTemporarySocketError(int err);
+  static bool IsTemporarySocketError(const Status& status);
 
   CHECKED_STATUS Init(int flags); // See FLAG_NONBLOCKING
 

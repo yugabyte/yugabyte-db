@@ -412,7 +412,7 @@ class ArenaComponent {
 
  private:
   uint8_t* begin_of_this() {
-    return PointerCast<uint8_t*>(this);
+    return pointer_cast<uint8_t*>(this);
   }
 
   // Mark the given range unpoisoned in ASAN.

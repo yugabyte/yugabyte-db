@@ -31,11 +31,11 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_types.h"
+#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/thread_pool.h"
-#include "yb/rpc/transfer.h"
 
 #include "yb/sql/sql_session.h"
 
@@ -54,7 +54,14 @@ class Message;
 namespace yb {
 
 class Histogram;
+class RedisResponsePB;
 class Trace;
+
+namespace util {
+
+class RefCntBuffer;
+
+}
 
 namespace rpc {
 
@@ -72,16 +79,10 @@ struct InboundCallTiming {
 // Inbound call on server
 class InboundCall : public RpcCall {
  public:
-  InboundCall();
-  virtual ~InboundCall();
+  typedef std::function<void(InboundCall*)> CallProcessedListener;
 
-  // Parse an inbound call message.
-  //
-  // This only deserializes the call header, populating the 'header_' and
-  // 'serialized_request_' member variables. The actual call parameter is
-  // not deserialized, as this may be CPU-expensive, and this is called
-  // from the reactor thread.
-  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) = 0;
+  InboundCall(Connection* conn, CallProcessedListener call_processed_listener);
+  virtual ~InboundCall();
 
   // Return the serialized request parameter protobuf.
   const Slice &serialized_request() const {
@@ -163,17 +164,13 @@ class InboundCall : public RpcCall {
   void Respond(const google::protobuf::MessageLite& response,
                bool is_success);
 
-  // Returns a ptr to the Connection for use.
-  virtual ConnectionPtr get_connection() const = 0;
-
-  // Queues the response to the Connection implementation.
-  virtual void QueueResponseToConnection() = 0;
+  void NotifyTransferred(const Status& status) override;
 
   // Serialize a response message for either success or failure. If it is a success,
   // 'response' should be the user-defined response type for the call. If it is a
   // failure, 'response' should be an ErrorStatusPB instance.
   virtual CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
-                                         bool is_success) = 0;
+                                                 bool is_success) = 0;
 
   // Log a WARNING message if the RPC response was slow enough that the
   // client likely timed out. This is based on the client-provided timeout
@@ -185,10 +182,8 @@ class InboundCall : public RpcCall {
   // This references memory held by 'transfer_'.
   Slice serialized_request_;
 
-  // The transfer that produced the call.
-  // This is kept around because it retains the memory referred to
-  // by 'serialized_request_' above.
-  gscoped_ptr<AbstractInboundTransfer> transfer_;
+  // Data source of this call.
+  std::vector<char> request_data_;
 
   // Vector of additional sidecars that are tacked on to the call's response
   // after serialization of the protobuf. See rpc/rpc_sidecar.h for more info.
@@ -205,6 +200,10 @@ class InboundCall : public RpcCall {
   RemoteMethod remote_method_;
 
  private:
+  // The connection on which this inbound call arrived.
+  ConnectionPtr conn_;
+  std::function<void(InboundCall*)> call_processed_listener_;
+
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };
 

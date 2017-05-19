@@ -35,6 +35,7 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/faststring.h"
 #endif
+#include "yb/util/cast.h"
 #include "yb/util/yb_export.h"
 
 namespace yb {
@@ -55,6 +56,9 @@ class YB_EXPORT Slice {
   Slice(const uint8_t* begin, const uint8_t* end) : data_(begin), size_(end - begin) {
     CHECK_LE(begin, end);
   }
+
+  Slice(const char* begin, const char* end)
+      : Slice(util::to_uchar_ptr(begin), util::to_uchar_ptr(end)) {}
 
   // Create a slice that refers to d[0,n-1].
   Slice(const char* d, size_t n) :

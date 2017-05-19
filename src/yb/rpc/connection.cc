@@ -18,16 +18,24 @@
 #include "yb/rpc/connection.h"
 
 #include <iostream>
+#include <utility>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/enums.h"
+
 #include "yb/rpc/auth_store.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/negotiation.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/sasl_client.h"
+#include "yb/rpc/sasl_server.h"
+
 #include "yb/util/trace.h"
 
 using std::shared_ptr;
@@ -36,6 +44,8 @@ using strings::Substitute;
 
 namespace yb {
 namespace rpc {
+
+DEFINE_uint64(rpc_initial_buffer_size, 4096, "Initial buffer size used for RPC calls");
 
 METRIC_DEFINE_histogram(
     server, handler_latency_outbound_transfer, "Time taken to transfer the response ",
@@ -48,14 +58,15 @@ METRIC_DEFINE_histogram(
 Connection::Connection(ReactorThread* reactor_thread,
                        Sockaddr remote,
                        int socket,
-                       Direction direction)
+                       Direction direction,
+                       std::unique_ptr<ConnectionContext> context)
     : reactor_thread_(reactor_thread),
       socket_(socket),
       remote_(std::move(remote)),
       direction_(direction),
       last_activity_time_(MonoTime::Now(MonoTime::FINE)),
-      is_epoll_registered_(false),
-      negotiation_complete_(false) {
+      read_buffer_(FLAGS_rpc_initial_buffer_size, context->BufferLimit()),
+      context_(move(context)) {
   const auto metric_entity = reactor_thread->reactor()->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
       METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
@@ -73,7 +84,7 @@ void Connection::EpollRegister(ev::loop_ref& loop) {  // NOLINT
   io_.set(loop);
   io_.set<Connection, &Connection::Handler>(this);
   int events = ev::READ;
-  if (direction_ == CLIENT && negotiation_complete_) {
+  if (direction_ == Direction::CLIENT && negotiation_complete_) {
     events |= ev::WRITE;
   }
   io_.start(socket_.GetFd(), events);
@@ -98,8 +109,7 @@ Connection::~Connection() {
 bool Connection::Idle() const {
   DCHECK(reactor_thread_->IsCurrentThread());
   // check if we're in the middle of receiving something
-  AbstractInboundTransfer* transfer = inbound();
-  if (transfer && (transfer->TransferStarted())) {
+  if (!read_buffer_.empty()) {
     return false;
   }
   // check if we still need to send something
@@ -111,7 +121,8 @@ bool Connection::Idle() const {
     return false;
   }
 
-  if (!calls_being_handled_.empty()) {
+  // Check upstream logic (i.e. processing calls etc.)
+  if (!context_->Idle()) {
     return false;
   }
 
@@ -138,11 +149,11 @@ void Connection::Shutdown(const Status& status) {
   DCHECK(reactor_thread_->IsCurrentThread());
   shutdown_status_ = status;
 
-  if (inbound() != nullptr && inbound()->TransferStarted()) {
+  if (!read_buffer_.empty()) {
     double secs_since_active = reactor_thread_->cur_time()
         .GetDeltaSince(last_activity_time_).ToSeconds();
     LOG(WARNING) << "Shutting down connection " << ToString() << " with pending inbound data ("
-                 << inbound()->StatusAsString() << ", last active "
+                 << read_buffer_ << ", last active "
                  << HumanReadableElapsedTime::ToShortString(secs_since_active)
                  << " ago, status=" << status.ToString() << ")";
   }
@@ -214,7 +225,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
 
 void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   DCHECK(call);
-  DCHECK_EQ(direction_, CLIENT);
+  DCHECK_EQ(direction_, Direction::CLIENT);
   DCHECK(reactor_thread_->IsCurrentThread());
 
   if (PREDICT_FALSE(!shutdown_status_.ok())) {
@@ -239,8 +250,7 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   DCHECK(reactor_thread_->IsCurrentThread());
 
   DVLOG(3) << ToString() << " Handler(revents=" << revents << ")";
-
-  auto status = Status::OK();
+auto status = Status::OK();
   if (revents & EV_ERROR) {
     status = STATUS(NetworkError, ToString() + ": Handler encountered an error");
   }
@@ -267,16 +277,11 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
 
 Status Connection::ReadHandler() {
   DCHECK(reactor_thread_->IsCurrentThread());
-
   last_activity_time_ = reactor_thread_->cur_time();
 
-  while (true) {
-    if (inbound() == nullptr) {
-      CreateInboundTransfer();
-    }
-    TRACE_TO(inbound()->trace(), "Receiving Buffer");
-    Status status = inbound()->ReceiveBuffer(socket_);
-    TRACE_TO(inbound()->trace(), "Done Receiving Buffer");
+  for (;;) {
+    bool received = false;
+    auto status = Receive(&received);
     if (PREDICT_FALSE(!status.ok())) {
       if (status.posix_code() == ESHUTDOWN) {
         VLOG(1) << ToString() << " shut down by remote end.";
@@ -285,37 +290,78 @@ Status Connection::ReadHandler() {
       }
       return status;
     }
-    if (!inbound()->TransferFinished()) {
-      DVLOG(3) << ToString() << ": read is not yet finished yet.";
+    // Exit the loop if we did not receive anything.
+    if (!received) {
       return Status::OK();
     }
-    TRACE_TO(inbound()->trace(), "Handling Finished Transfer");
-    HandleFinishedTransfer();
+    // If we were not able to process next call exit loop.
+    // If status is ok, it means that we just do not have enough data to process yet.
+    bool continue_receiving = false;
+    status = TryProcessCalls(&continue_receiving);
+    if (!continue_receiving) {
+      return status;
+    }
+  }
+}
 
-    // TODO: it would seem that it would be good to loop around and see if
-    // there is more data on the socket by trying another recv(), but it turns
-    // out that it really hurts throughput to do so. A better approach
-    // might be for each InboundTransfer to actually try to read an extra byte,
-    // and if it succeeds, then we'd copy that byte into a new InboundTransfer
-    // and loop around, since it's likely the next call also arrived at the
-    // same time.
-    break;
+Status Connection::Receive(bool* received) {
+  auto status = read_buffer_.PrepareRead();
+  if (!status.ok()) {
+    return status;
   }
 
+  const int32_t remaining_buf_capacity = static_cast<int32_t>(
+      std::min(read_buffer_.capacity_left(),
+               static_cast<size_t>(std::numeric_limits<int32_t>::max())));
+  int32_t nread = 0;
+  status = socket_.Recv(read_buffer_.write_position(), remaining_buf_capacity, &nread);
+  if (!status.ok()) {
+    if (Socket::IsTemporarySocketError(status)) {
+      *received = false;
+      return Status::OK();
+    }
+    return status;
+  }
+
+  read_buffer_.DataAppended(nread);
+  *received = nread != 0;
   return Status::OK();
 }
 
-void Connection::HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfer) {
+Status Connection::TryProcessCalls(bool* continue_receiving) {
+  CHECK_NOTNULL(continue_receiving);
+  DCHECK(reactor_thread_->IsCurrentThread());
+
+  if (read_buffer_.empty()) {
+    *continue_receiving = false;
+    return Status::OK();
+  }
+
+  size_t consumed = 0;
+  const Slice bytes_to_process(read_buffer_.begin(), read_buffer_.size());
+
+  auto result = context_->ProcessCalls(this, bytes_to_process, &consumed);
+  if (PREDICT_FALSE(!result.ok())) {
+    LOG(WARNING) << ToString() << " command sequence failure: " << result.ToString();
+    *continue_receiving = false;
+    return result;
+  }
+  *continue_receiving = true;
+  read_buffer_.Consume(consumed);
+  return Status::OK();
+}
+
+Status Connection::HandleCallResponse(Slice call_data) {
   DCHECK(reactor_thread_->IsCurrentThread());
   gscoped_ptr<CallResponse> resp(new CallResponse);
-  CHECK_OK(resp->ParseFrom(transfer.Pass()));
+  RETURN_NOT_OK(resp->ParseFrom(call_data));
 
   auto awaiting = awaiting_response_.find(resp->call_id());
   if (awaiting == awaiting_response_.end()) {
     LOG(ERROR) << ToString() << ": Got a response for call id " << resp->call_id() << " which "
                << "was not pending! Ignoring.";
     DCHECK(awaiting != awaiting_response_.end());
-    return;
+    return Status::OK();
   }
   auto call = awaiting->second;
   awaiting_response_.erase(awaiting);
@@ -323,10 +369,12 @@ void Connection::HandleCallResponse(gscoped_ptr<AbstractInboundTransfer> transfe
   if (PREDICT_FALSE(!call)) {
     // The call already failed due to a timeout.
     VLOG(1) << "Got response to call id " << resp->call_id() << " after client already timed out";
-    return;
+    return Status::OK();
   }
 
   call->SetResponse(resp.Pass());
+
+  return Status::OK();
 }
 
 Status Connection::WriteHandler() {
@@ -361,7 +409,7 @@ Status Connection::DoWrite() {
 
     auto status = socket_.Writev(iov, iov_len, &written);
     if (PREDICT_FALSE(!status.ok())) {
-      if (!Socket::IsTemporarySocketError(status.posix_code())) {
+      if (!Socket::IsTemporarySocketError(status)) {
         LOG(WARNING) << ToString() << " send error: " << status.ToString();
         return status;
       } else {
@@ -378,7 +426,7 @@ Status Connection::DoWrite() {
       sending_.pop_front();
       sending_outbound_datas_.pop_front();
       if (call) {
-        if (direction_ == CLIENT) {
+        if (direction_ == Direction::CLIENT) {
           OutboundCallPtr outbound_call(down_cast<OutboundCall*>(call.get()));
           CallSent(std::move(outbound_call));
         }
@@ -414,7 +462,7 @@ std::string Connection::ToString() const {
   // which might concurrently change from another thread.
   return strings::Substitute(
     "Connection ($0) $1 $2", this,
-    direction_ == SERVER ? "server connection from" : "client connection to",
+    direction_ == Direction::SERVER ? "server connection from" : "client connection to",
     remote_.ToString());
 }
 
@@ -453,6 +501,10 @@ void Connection::MarkNegotiationComplete() {
   negotiation_complete_ = true;
 }
 
+void Connection::RunNegotiation(const MonoTime& deadline) {
+  context_->RunNegotiation(this, deadline);
+}
+
 Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
                           RpcConnectionPB* resp) {
   DCHECK(reactor_thread_->IsCurrentThread());
@@ -466,7 +518,7 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
     resp->set_state(RpcConnectionPB::NEGOTIATING);
   }
 
-  if (direction_ == CLIENT) {
+  if (direction_ == Direction::CLIENT) {
     for (auto& entry : awaiting_response_) {
       if (entry.second) {
         entry.second->DumpPB(req, resp->add_calls_in_flight());
@@ -477,14 +529,11 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
         down_cast<OutboundCall*>(call.get())->DumpPB(req, resp->add_calls_in_flight());
       }
     }
-  } else if (direction_ == SERVER) {
-    for (const inbound_call_map_t::value_type& entry : calls_being_handled_) {
-      auto c = entry.second;
-      c->DumpPB(req, resp->add_calls_in_flight());
-    }
-  } else {
-    LOG(FATAL);
+  } else if (direction_ != Direction::SERVER) {
+    LOG(FATAL) << "Invalid direction: " << util::to_underlying(direction_);
   }
+  context_->DumpPB(req, resp);
+
   return Status::OK();
 }
 
@@ -529,7 +578,7 @@ void Connection::ProcessResponseQueue() {
 
 void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_thread()->IsCurrentThread());
-  DCHECK_EQ(direction_, SERVER);
+  DCHECK_EQ(direction_, Direction::SERVER);
 
   // If the connection is torn down, then the QueueOutbound() call that
   // eventually runs in the reactor thread will take care of calling

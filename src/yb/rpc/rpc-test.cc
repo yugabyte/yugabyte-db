@@ -278,11 +278,18 @@ TEST_F(TestRpc, TestRpcSidecar) {
   Proxy p(client_messenger, server_addr, GenericCalculatorService::static_service_name());
 
   // Test some small sidecars
-  DoTestSidecar(p, 123, 456);
+  DoTestSidecar(p, {123, 456});
 
   // Test some larger sidecars to verify that we properly handle the case where
   // we can't write the whole response to the socket in a single call.
-  DoTestSidecar(p, 3000 * 1024, 2000 * 1024);
+  DoTestSidecar(p, {3000 * 1024, 2000 * 1024});
+
+  std::vector<size_t> sizes(CallResponse::kMaxSidecarSlices);
+  std::fill(sizes.begin(), sizes.end(), 123);
+  DoTestSidecar(p, sizes);
+
+  sizes.push_back(333);
+  DoTestSidecar(p, sizes, Status::kRemoteError);
 }
 
 // Test that timeouts are properly handled.

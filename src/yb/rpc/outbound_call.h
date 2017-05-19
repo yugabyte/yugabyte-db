@@ -17,6 +17,7 @@
 #ifndef YB_RPC_OUTBOUND_CALL_H_
 #define YB_RPC_OUTBOUND_CALL_H_
 
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -31,7 +32,6 @@
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
-#include "yb/rpc/transfer.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
@@ -337,11 +337,13 @@ class OutboundCall : public RpcCall {
 // over.
 class CallResponse {
  public:
+  static constexpr size_t kMaxSidecarSlices = 8;
+
   CallResponse();
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object.
-  CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer);
+  CHECKED_STATUS ParseFrom(Slice source);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -377,11 +379,12 @@ class CallResponse {
   Slice serialized_response_;
 
   // Slices of data for rpc sidecars. They point into memory owned by transfer_.
-  Slice sidecar_slices_[OutboundTransfer::kMaxPayloadSlices];
+  // Number of sidecars chould be obtained from header_.
+  Slice sidecar_slices_[kMaxSidecarSlices];
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
-  gscoped_ptr<AbstractInboundTransfer> transfer_;
+  std::vector<uint8_t> response_data_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };

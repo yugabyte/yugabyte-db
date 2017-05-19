@@ -120,8 +120,12 @@ int Socket::GetFd() const {
   return fd_;
 }
 
-bool Socket::IsTemporarySocketError(int err) {
-  return ((err == EAGAIN) || (err == EWOULDBLOCK) || (err == EINTR));
+bool Socket::IsTemporarySocketError(const Status& status) {
+  if (!status.IsNetworkError()) {
+    return false;
+  }
+  int err = status.posix_code();
+  return err == EAGAIN || err == EWOULDBLOCK || err == EINTR || err == EINPROGRESS;
 }
 
 #if defined(__linux__)

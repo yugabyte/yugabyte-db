@@ -23,6 +23,7 @@
 #include <string>
 
 #include "yb/gutil/atomicops.h"
+#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/response_callback.h"
 #include "yb/rpc/rpc_controller.h"
@@ -91,7 +92,7 @@ class Proxy {
                     const google::protobuf::Message& req,
                     google::protobuf::Message* resp,
                     RpcController* controller,
-                    const ResponseCallback& callback) const;
+                    ResponseCallback callback) const;
 
   // The same as AsyncRequest(), except that the call blocks until the call
   // finishes. If the call fails, returns a non-OK result.
@@ -107,6 +108,8 @@ class Proxy {
   const UserCredentials& user_credentials() const { return conn_id_.user_credentials(); }
 
  private:
+  GrowableBuffer& Buffer() const;
+
   const std::string service_name_;
   std::shared_ptr<Messenger> messenger_;
   ConnectionId conn_id_;

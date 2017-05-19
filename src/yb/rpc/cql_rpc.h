@@ -7,8 +7,7 @@
 #include "yb/cqlserver/cql_message.h"
 
 #include "yb/rpc/connection.h"
-#include "yb/rpc/inbound_call.h"
-#include "yb/rpc/reactor.h"
+#include "yb/rpc/rpc_with_queue.h"
 #include "yb/rpc/server_event.h"
 
 #include "yb/sql/sql_session.h"
@@ -16,59 +15,17 @@
 namespace yb {
 namespace rpc {
 
-class CQLInboundTransfer : public AbstractInboundTransfer {
+class CQLConnectionContext : public ConnectionContextWithQueue {
  public:
-  CQLInboundTransfer();
-
-  // Read from the socket into our buffer.
-  CHECKED_STATUS ReceiveBuffer(Socket& socket) override;  // NOLINT.
-
-  // Return true if any bytes have yet been received.
-  bool TransferStarted() const override {
-    return cur_offset_ != 0;
-  }
-
-  // Return true if the entire transfer has been received.
-  bool TransferFinished() const override {
-    return cur_offset_ == total_length_;
-  }
-
-  // Return a string indicating the status of this transfer (number of bytes received, etc)
-  // suitable for logging.
-  std::string StatusAsString() const override;
+  CQLConnectionContext();
 
  private:
-  int32_t total_length_ = cqlserver::CQLMessage::kMessageHeaderLength;
+  void RunNegotiation(Connection* connection, const MonoTime& deadline) override;
+  CHECKED_STATUS ProcessCalls(Connection* connection, Slice slice, size_t* consumed) override;
+  size_t BufferLimit() override;
+  ConnectionType Type() override { return ConnectionType::CQL; }
 
-  DISALLOW_COPY_AND_ASSIGN(CQLInboundTransfer);
-};
-
-class CQLConnection : public Connection {
- public:
-  CQLConnection(ReactorThread* reactor_thread,
-                Sockaddr remote,
-                int socket,
-                Direction direction);
-
-  virtual void RunNegotiation(const MonoTime& deadline) override;
-
-  sql::SqlSession::SharedPtr sql_session() const { return sql_session_; }
-
- protected:
-  virtual void CreateInboundTransfer() override;
-
-  virtual void HandleIncomingCall(gscoped_ptr<AbstractInboundTransfer> transfer) override;
-
-  virtual void HandleFinishedTransfer() override;
-
-  AbstractInboundTransfer* inbound() const override;
-
- private:
-  friend class CQLInboundCall;
-
-  gscoped_ptr<CQLInboundTransfer> inbound_;
-
-  void FinishedHandlingACall();
+  CHECKED_STATUS HandleInboundCall(Connection* connection, Slice slice);
 
   // SQL session of this CQL client connection.
   // TODO(robert): To get around the need for this RPC layer to link with the SQL layer for the
@@ -81,23 +38,23 @@ class CQLConnection : public Connection {
 
 class CQLInboundCall : public InboundCall {
  public:
-  explicit CQLInboundCall(CQLConnection* conn);
+  explicit CQLInboundCall(Connection* conn,
+                          CallProcessedListener call_processed_listener,
+                          sql::SqlSession::SharedPtr sql_session);
 
-  virtual CHECKED_STATUS ParseFrom(gscoped_ptr<AbstractInboundTransfer> transfer) override;
+  CHECKED_STATUS ParseFrom(Slice source);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
   void Serialize(std::deque<util::RefCntBuffer>* output) const override;
+
   CHECKED_STATUS SerializeResponseBuffer(const google::protobuf::MessageLite& response,
                                          bool is_success) override;
+  void LogTrace() const override;
+  std::string ToString() const override;
+  void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
 
-  virtual void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
-  virtual void QueueResponseToConnection() override;
-  virtual void LogTrace() const override;
-  virtual std::string ToString() const override;
-  virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
-
-  virtual MonoTime GetClientDeadline() const override;
+  MonoTime GetClientDeadline() const override;
 
   // Return the response message buffer.
   util::RefCntBuffer& response_msg_buf() {
@@ -105,7 +62,9 @@ class CQLInboundCall : public InboundCall {
   }
 
   // Return the SQL session of this CQL call.
-  sql::SqlSession::SharedPtr GetSqlSession() const;
+  const sql::SqlSession::SharedPtr& sql_session() const {
+    return sql_session_;
+  }
 
   void SetResumeFrom(Callback<void(void)>* resume_from) {
     resume_from_ = resume_from;
@@ -113,17 +72,12 @@ class CQLInboundCall : public InboundCall {
 
   bool TryResume();
 
- protected:
-  ConnectionPtr get_connection() const override;
-
  private:
-  void NotifyTransferred(const Status& status) override;
-
-  // The connection on which this inbound call arrived.
-  boost::intrusive_ptr<CQLConnection> conn_;
-  util::RefCntBuffer response_msg_buf_;
+  void RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) override;
 
   Callback<void(void)>* resume_from_ = nullptr;
+  util::RefCntBuffer response_msg_buf_;
+  sql::SqlSession::SharedPtr sql_session_;
 };
 
 } // namespace rpc

@@ -25,11 +25,12 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
-#include "yb/rpc/transfer.h"
 #include "yb/server/metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
+
+DECLARE_int32(rpc_max_message_size);
 
 namespace yb {
 namespace tserver {

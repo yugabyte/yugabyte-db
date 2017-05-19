@@ -190,7 +190,7 @@ Status SqlEnv::DeleteKeyspace(const string& keyspace_name) {
   // Reset the current keyspace name if it's dropped.
   if (CurrentKeyspace() == keyspace_name) {
     if (current_call_ != nullptr) {
-      current_cql_call()->GetSqlSession()->set_current_keyspace(kUndefinedKeyspace);
+      current_cql_call()->sql_session()->set_current_keyspace(kUndefinedKeyspace);
     } else {
       current_keyspace_.reset(new string(kUndefinedKeyspace));
     }
@@ -217,7 +217,7 @@ Status SqlEnv::UseKeyspace(const string& keyspace_name) {
 
   // Set the current keyspace name.
   if (current_call_ != nullptr) {
-    current_cql_call()->GetSqlSession()->set_current_keyspace(keyspace_name);
+    current_cql_call()->sql_session()->set_current_keyspace(keyspace_name);
   } else {
     current_keyspace_.reset(new string(keyspace_name));
   }
