@@ -18,8 +18,9 @@
 #ifndef YB_UTIL_RANDOM_UTIL_H
 #define YB_UTIL_RANDOM_UTIL_H
 
-#include <cstdlib>
 #include <stdint.h>
+#include <cstdlib>
+#include <string>
 
 namespace yb {
 
@@ -33,6 +34,8 @@ void RandomString(void* dest, size_t n, Random* rng);
 // Generate a 32-bit random seed from several sources, including timestamp,
 // pid & tid.
 uint32_t GetRandomSeed32();
+
+std::string RandomHumanReadableString(int len, Random* rnd);
 
 } // namespace yb
 

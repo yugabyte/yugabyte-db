@@ -4,7 +4,7 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
-using namespace rocksdb;
+using rocksdb::InfoLogLevel;
 
 namespace yb {
 
@@ -19,15 +19,29 @@ void YBRocksDBLogger::LogvWithContext(const char* file,
     const rocksdb::InfoLogLevel log_level,
     const char* format,
     va_list ap) {
-  // Any log messages longer than 1024 will get truncated. The user is responsible for chopping
-  // longer messages into multiple lines.
-  static constexpr int kBufferSize = 1024;
-  char buffer[kBufferSize];
+  // We try first to use 1024-bytes buffer on stack and then dynamically allocated buffer of larger
+  // size.
+  static constexpr size_t kInitialBufferSize = 1024;
+  static const size_t kMaxBufferSize = google::LogMessage::kMaxLogMessageLen;
 
-  va_list backup_ap;
-  va_copy(backup_ap, ap);
-  vsnprintf(buffer, kBufferSize, format, backup_ap);
-  va_end(backup_ap);
+  char initial_buffer[kInitialBufferSize];
+  std::unique_ptr<char[]> dynamic_buffer;
+  char* buffer = initial_buffer;
+
+  auto print = [&buffer, &ap, &format](size_t buffer_size) -> size_t {
+    va_list backup_ap;
+    va_copy(backup_ap, ap);
+    const size_t size = vsnprintf(buffer, buffer_size, format, backup_ap);
+    va_end(backup_ap);
+    return size;
+  };
+
+  const size_t required_buffer_size = print(kInitialBufferSize) + 1;
+  if (required_buffer_size > kInitialBufferSize) {
+    const size_t buffer_size = std::min(required_buffer_size, kMaxBufferSize);
+    dynamic_buffer.reset(buffer = new char[buffer_size]);
+    print(buffer_size);
+  }
 
   google::LogMessage(file, line, YBRocksDBLogger::ConvertToGLogLevel(log_level)).stream()
       << prefix_ << buffer;
@@ -66,4 +80,4 @@ rocksdb::InfoLogLevel YBRocksDBLogger::ConvertToRocksDBLogLevel(const int glog_l
   }
 }
 
-}
+} //  namespace yb

@@ -17,11 +17,11 @@
 
 #include "yb/util/random_util.h"
 
+#include <sys/types.h>
+#include <unistd.h>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include "yb/util/env.h"
 #include "yb/util/random.h"
@@ -48,6 +48,17 @@ uint32_t GetRandomSeed32() {
   seed *= getpid();
   seed *= Env::Default()->gettid();
   return seed;
+}
+
+std::string RandomHumanReadableString(int len, Random* rnd) {
+  // TODO: https://yugabyte.atlassian.net/browse/ENG-1508: Avoid code duplication in yb::Random and
+  // rocksdb::Random. Currently this does not allow to reuse the same function in both code bases.
+  std::string ret;
+  ret.resize(len);
+  for (int i = 0; i < len; ++i) {
+    ret[i] = static_cast<char>('a' + rnd->Uniform(26));
+  }
+  return ret;
 }
 
 } // namespace yb
