@@ -29,7 +29,8 @@ class ClusterManager(object):
         self.tserver_ips = ClusterManager.get_arg(args, 'tserver_ips')
         default_pem = os.path.join(os.environ["HOME"], ".yugabyte/yugabyte-dev-aws-keypair.pem")
         self.pem_file = ClusterManager.get_arg(args, 'pem_file', default_pem)
-        self.repo = ClusterManager.get_arg(args, 'repo', '~/code/yugabyte')
+        self.repo = ClusterManager.get_arg(args, 'repo',
+                                           os.path.join(os.environ["HOME"], 'code/yugabyte'))
         default_tar_prefix = "yugabyte.{0}-release".format(
             subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip())
         self.tar_prefix = ClusterManager.get_arg(args, 'tar_prefix', default_tar_prefix)
