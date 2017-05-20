@@ -106,6 +106,35 @@ std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f) {
   return std::make_shared<FunctorReactorTask<F>>(f);
 }
 
+template <class F, class Object>
+class FunctorReactorTaskWithWeakPtr : public ReactorTask {
+ public:
+  explicit FunctorReactorTaskWithWeakPtr(const F& f, const std::weak_ptr<Object>& ptr)
+      : f_(f), ptr_(ptr) {}
+
+  void Run(ReactorThread *reactor) override  {
+    auto shared_ptr = ptr_.lock();
+    if (shared_ptr) {
+      f_(reactor);
+    }
+  }
+ private:
+  F f_;
+  std::weak_ptr<Object> ptr_;
+};
+
+template <class F, class Object>
+std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f,
+                                                    const std::weak_ptr<Object>& ptr) {
+  return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr);
+}
+
+template <class F, class Object>
+std::shared_ptr<ReactorTask> MakeFunctorReactorTask(const F& f,
+                                                    const std::shared_ptr<Object>& ptr) {
+  return std::make_shared<FunctorReactorTaskWithWeakPtr<F, Object>>(f, ptr);
+}
+
 // A ReactorTask that is scheduled to run at some point in the future.
 //
 // Semantically it works like RunFunctionTask with a few key differences:
@@ -288,6 +317,8 @@ class ReactorThread {
 
   void ProcessOutboundQueue();
 
+  void CheckReadyToStop();
+
   scoped_refptr<yb::Thread> thread_;
 
   // our epoll object (or kqueue, etc).
@@ -319,6 +350,9 @@ class ReactorThread {
   // List of current connections coming into the server.
   conn_list_t server_conns_;
 
+  // List of connections that should be completed before we could stop this thread.
+  conn_list_t waiting_conns_;
+
   Reactor *reactor_;
 
   // If a connection has been idle for this much time, it is torn down.
@@ -329,6 +363,8 @@ class ReactorThread {
 
   simple_spinlock outbound_queue_lock_;
   bool closing_ = false;
+  // We found that should shutdown, but not all connections are ready for it.
+  bool stopping_ = false;
   std::vector<OutboundCallPtr> outbound_queue_;
   std::vector<OutboundCallPtr> processing_outbound_queue_;
   std::vector<ConnectionPtr> processing_connections_;

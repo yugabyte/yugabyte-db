@@ -20,12 +20,14 @@ class CQLConnectionContext : public ConnectionContextWithQueue {
   CQLConnectionContext();
 
  private:
-  void RunNegotiation(Connection* connection, const MonoTime& deadline) override;
-  CHECKED_STATUS ProcessCalls(Connection* connection, Slice slice, size_t* consumed) override;
+  void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
+  CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
+                              Slice slice,
+                              size_t* consumed) override;
   size_t BufferLimit() override;
   ConnectionType Type() override { return ConnectionType::CQL; }
 
-  CHECKED_STATUS HandleInboundCall(Connection* connection, Slice slice);
+  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice slice);
 
   // SQL session of this CQL client connection.
   // TODO(robert): To get around the need for this RPC layer to link with the SQL layer for the
@@ -38,7 +40,7 @@ class CQLConnectionContext : public ConnectionContextWithQueue {
 
 class CQLInboundCall : public InboundCall {
  public:
-  explicit CQLInboundCall(Connection* conn,
+  explicit CQLInboundCall(ConnectionPtr conn,
                           CallProcessedListener call_processed_listener,
                           sql::SqlSession::SharedPtr sql_session);
 

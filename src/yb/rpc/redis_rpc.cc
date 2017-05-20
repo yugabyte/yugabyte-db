@@ -278,11 +278,11 @@ class RedisParser {
 RedisConnectionContext::RedisConnectionContext() {}
 RedisConnectionContext::~RedisConnectionContext() {}
 
-void RedisConnectionContext::RunNegotiation(Connection* connection, const MonoTime& deadline) {
-  Negotiation::RedisNegotiation(connection, deadline);
+void RedisConnectionContext::RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) {
+  Negotiation::RedisNegotiation(std::move(connection), deadline);
 }
 
-Status RedisConnectionContext::ProcessCalls(Connection* connection,
+Status RedisConnectionContext::ProcessCalls(const ConnectionPtr& connection,
                                             Slice slice,
                                             size_t* consumed) {
   if (!parser_) {
@@ -307,7 +307,8 @@ Status RedisConnectionContext::ProcessCalls(Connection* connection,
   return Status::OK();
 }
 
-Status RedisConnectionContext::HandleInboundCall(Connection* connection, Slice redis_command) {
+Status RedisConnectionContext::HandleInboundCall(const ConnectionPtr& connection,
+                                                 Slice redis_command) {
   auto reactor_thread = connection->reactor_thread();
   DCHECK(reactor_thread->IsCurrentThread());
 
@@ -328,8 +329,9 @@ size_t RedisConnectionContext::BufferLimit() {
   return kMaxBufferSize;
 }
 
-RedisInboundCall::RedisInboundCall(Connection* conn, CallProcessedListener call_processed_listener)
-    : InboundCall(conn, std::move(call_processed_listener)) {
+RedisInboundCall::RedisInboundCall(ConnectionPtr conn,
+                                   CallProcessedListener call_processed_listener)
+    : InboundCall(std::move(conn), std::move(call_processed_listener)) {
 }
 
 Status RedisInboundCall::ParseFrom(Slice source) {

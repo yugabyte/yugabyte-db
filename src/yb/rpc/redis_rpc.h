@@ -19,12 +19,14 @@ class RedisConnectionContext : public ConnectionContextWithQueue {
   ~RedisConnectionContext();
 
  private:
-  void RunNegotiation(Connection* connection, const MonoTime& deadline) override;
-  CHECKED_STATUS ProcessCalls(Connection* connection, Slice slice, size_t* consumed) override;
+  void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
+  CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
+                              Slice slice,
+                              size_t* consumed) override;
   size_t BufferLimit() override;
   ConnectionType Type() override { return ConnectionType::REDIS; }
 
-  CHECKED_STATUS HandleInboundCall(Connection* connection, Slice redis_command);
+  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice redis_command);
 
   std::unique_ptr<RedisParser> parser_;
 };
@@ -36,7 +38,7 @@ struct RedisClientCommand {
 
 class RedisInboundCall : public InboundCall {
  public:
-  explicit RedisInboundCall(Connection* conn, CallProcessedListener call_processed_listener);
+  explicit RedisInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
 
   CHECKED_STATUS ParseFrom(Slice source);
 

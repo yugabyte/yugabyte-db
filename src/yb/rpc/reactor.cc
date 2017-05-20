@@ -93,13 +93,13 @@ ConnectionContext* MakeNewConnectionContext(ConnectionType connection_type) {
   LOG(FATAL) << "Unknown connection type " << yb::util::to_underlying(connection_type);
 }
 
-Connection* MakeNewConnection(ConnectionType connection_type,
+ConnectionPtr MakeNewConnection(ConnectionType connection_type,
                               ReactorThread* reactor_thread,
                               const Sockaddr& remote,
                               int socket,
                               Connection::Direction direction) {
   std::unique_ptr<ConnectionContext> context(MakeNewConnectionContext(connection_type));
-  return new Connection(reactor_thread, remote, socket, direction, move(context));
+  return std::make_shared<Connection>(reactor_thread, remote, socket, direction, move(context));
 }
 
 } // anonymous namespace
@@ -146,22 +146,31 @@ void ReactorThread::Shutdown() {
 void ReactorThread::ShutdownInternal() {
   DCHECK(IsCurrentThread());
 
+  stopping_ = true;
+
   // Tear down any outbound TCP connections.
   Status service_unavailable = ShutdownError(false);
   VLOG(1) << name() << ": tearing down outbound TCP connections...";
-  for (auto c = client_conns_.begin(); c != client_conns_.end();
-       c = client_conns_.begin()) {
-    const ConnectionPtr& conn = (*c).second;
+  decltype(client_conns_) client_conns = std::move(client_conns_);
+  for (auto& pair : client_conns) {
+    const ConnectionPtr& conn = pair.second;
     VLOG(1) << name() << ": shutting down " << conn->ToString();
     conn->Shutdown(service_unavailable);
-    client_conns_.erase(c);
+    if (!conn->context().ReadyToStop()) {
+      waiting_conns_.push_back(conn);
+    }
   }
+  client_conns.clear();
 
   // Tear down any inbound TCP connections.
   VLOG(1) << name() << ": tearing down inbound TCP connections...";
   for (const ConnectionPtr& conn : server_conns_) {
     VLOG(1) << name() << ": shutting down " << conn->ToString();
     conn->Shutdown(service_unavailable);
+    if (!conn->context().ReadyToStop()) {
+      LOG(INFO) << "Waiting for " << conn.get();
+      waiting_conns_.push_back(conn);
+    }
   }
   server_conns_.clear();
 
@@ -174,6 +183,11 @@ void ReactorThread::ShutdownInternal() {
     task->Abort(aborted);
   }
   scheduled_tasks_.clear();
+
+  for (const auto& task : async_handler_tasks_) {
+    task->Abort(aborted);
+  }
+
 
   {
     std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
@@ -225,6 +239,13 @@ void ReactorThread::WakeThread() {
   async_.send();
 }
 
+void ReactorThread::CheckReadyToStop() {
+  waiting_conns_.remove_if([](const ConnectionPtr& conn) { return conn->context().ReadyToStop(); });
+  if (waiting_conns_.empty()) {
+    loop_.break_loop(); // break the epoll loop and terminate the thread
+  }
+}
+
 // Handle async events.  These events are sent to the reactor by other
 // threads that want to bring something to our attention, like the fact that
 // we're shutting down, or the fact that there is a new outbound Transfer
@@ -237,7 +258,7 @@ void ReactorThread::AsyncHandler(ev::async &watcher, int revents) {
   } BOOST_SCOPE_EXIT_END;
   if (PREDICT_FALSE(!reactor_->DrainTaskQueue(&async_handler_tasks_))) {
     ShutdownInternal();
-    loop_.break_loop(); // break the epoll loop and terminate the thread
+    CheckReadyToStop();
     return;
   }
 
@@ -303,6 +324,12 @@ void ReactorThread::TimerHandler(ev::timer &watcher, int revents) {
       "the timer handler.";
     return;
   }
+
+  if (stopping_) {
+    CheckReadyToStop();
+    return;
+  }
+
   MonoTime now(MonoTime::Now(MonoTime::COARSE));
   VLOG(4) << name() << ": timer tick at " << now.ToString();
   cur_time_ = now;
@@ -400,11 +427,11 @@ Status ReactorThread::FindOrStartConnection(const ConnectionId &conn_id,
   RETURN_NOT_OK(StartConnect(&sock, conn_id.remote(), &connect_in_progress));
 
   // Register the new connection in our map.
-  conn->reset(MakeNewConnection(reactor_->connection_type_,
-                                this,
-                                conn_id.remote(),
-                                sock.Release(),
-                                ConnectionDirection::CLIENT));
+  *conn = MakeNewConnection(reactor_->connection_type_,
+                            this,
+                            conn_id.remote(),
+                            sock.Release(),
+                            ConnectionDirection::CLIENT);
   (*conn)->set_user_credentials(conn_id.user_credentials());
 
   // Kick off blocking client connection negotiation.
@@ -491,6 +518,7 @@ void ReactorThread::DestroyConnection(Connection *conn,
 
   VLOG(3) << "DestroyConnection(" << conn->ToString() << ", " << conn_status.ToString() << ")";
 
+  ConnectionPtr retained_conn = conn->shared_from_this();
   conn->Shutdown(conn_status);
 
   // Unlink connection from lists.
@@ -779,12 +807,11 @@ void Reactor::QueueEventOnAllConnections(scoped_refptr<ServerEvent> server_event
 
 void Reactor::RegisterInboundSocket(Socket *socket, const Sockaddr &remote) {
   VLOG(3) << name_ << ": new inbound connection to " << remote.ToString();
-  ConnectionPtr conn;
-  conn.reset(MakeNewConnection(connection_type_,
-                               &thread_,
-                               remote,
-                               socket->Release(),
-                               ConnectionDirection::SERVER));
+  auto conn = MakeNewConnection(connection_type_,
+                                &thread_,
+                                remote,
+                                socket->Release(),
+                                ConnectionDirection::SERVER);
   ScheduleReactorTask(std::make_shared<RegisterConnectionTask>(conn));
 }
 

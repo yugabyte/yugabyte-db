@@ -18,7 +18,7 @@ class RpcContext;
 class RpcController;
 
 class Connection;
-typedef boost::intrusive_ptr<Connection> ConnectionPtr;
+typedef std::shared_ptr<Connection> ConnectionPtr;
 
 class InboundCall;
 typedef scoped_refptr<InboundCall> InboundCallPtr;

@@ -242,24 +242,24 @@ static Status DoCQLNegotiation(Connection *conn,
 
 } // namespace
 
-void Negotiation::RunNegotiation(const ConnectionPtr& conn,
+void Negotiation::RunNegotiation(ConnectionPtr conn,
                                  const MonoTime& deadline) {
   conn->RunNegotiation(deadline);
 }
 
-void Negotiation::RedisNegotiation(const ConnectionPtr& conn,
+void Negotiation::RedisNegotiation(ConnectionPtr conn,
                                    const MonoTime& deadline) {
   CHECK_EQ(conn->direction(), ConnectionDirection::SERVER);
   conn->CompleteNegotiation(DoRedisServerNegotiation(conn.get(), deadline));
 }
 
-void Negotiation::CQLNegotiation(const ConnectionPtr& conn,
+void Negotiation::CQLNegotiation(ConnectionPtr conn,
                                  const MonoTime& deadline) {
   CHECK_EQ(conn->direction(), ConnectionDirection::SERVER);
   conn->CompleteNegotiation(DoCQLNegotiation(conn.get(), deadline));
 }
 
-void Negotiation::YBNegotiation(const ConnectionPtr& conn,
+void Negotiation::YBNegotiation(ConnectionPtr conn,
                                 YBConnectionContext* context,
                                 const MonoTime& deadline) {
   Status s;

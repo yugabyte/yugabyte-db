@@ -33,20 +33,24 @@ class YBConnectionContext : public ConnectionContext {
  private:
   size_t BufferLimit() override;
 
-  void RunNegotiation(Connection* connection, const MonoTime& deadline) override;
+  void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) override;
 
-  CHECKED_STATUS ProcessCalls(Connection* connection, Slice slice, size_t* consumed) override;
+  CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
+                              Slice slice,
+                              size_t* consumed) override;
 
   void DumpPB(const DumpRunningRpcsRequestPB& req,
               RpcConnectionPB* resp) override;
 
   bool Idle() override;
 
+  bool ReadyToStop() override { return calls_being_handled_.empty(); }
+
   ConnectionType Type() override { return ConnectionType::YB; }
 
   void EraseCall(InboundCall* call);
-  CHECKED_STATUS HandleCall(Connection* connection, Slice call_data);
-  CHECKED_STATUS HandleInboundCall(Connection* connection, Slice call_data);
+  CHECKED_STATUS HandleCall(const ConnectionPtr& connection, Slice call_data);
+  CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, Slice call_data);
 
   // SASL client instance used for connection negotiation when Direction == CLIENT.
   std::unique_ptr<SaslClient> sasl_client_;
@@ -61,7 +65,7 @@ class YBConnectionContext : public ConnectionContext {
 
 class YBInboundCall : public InboundCall {
  public:
-  explicit YBInboundCall(Connection* conn, CallProcessedListener call_processed_listener);
+  explicit YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
 
   // Parse an inbound call message.
   //

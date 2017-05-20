@@ -24,6 +24,7 @@
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/service_if.h"
+#include "yb/rpc/reactor.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
@@ -212,7 +213,16 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 }
 
 void RpcContext::CloseConnection() {
-  shutdown(call_->connection()->socket()->GetFd(), SHUT_RD | SHUT_WR);
+  auto connection = call_->connection();
+  connection->reactor_thread()->reactor()->ScheduleReactorTask(
+      MakeFunctorReactorTask([connection](ReactorThread*) {
+        if (connection->socket()->GetFd() >= 0) {
+          auto status = connection->socket()->Shutdown(true, true);
+          if (!status.ok()) {
+            LOG(INFO) << "Failed to shutdown socket: " << status.ToString();
+          }
+        }
+      }));
 }
 
 }  // namespace rpc

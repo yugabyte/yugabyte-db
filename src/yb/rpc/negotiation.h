@@ -30,12 +30,12 @@ class YBConnectionContext;
 
 class Negotiation {
  public:
-  static void RunNegotiation(const ConnectionPtr& conn, const MonoTime& deadline);
-  static void YBNegotiation(const ConnectionPtr& conn,
+  static void RunNegotiation(ConnectionPtr conn, const MonoTime& deadline);
+  static void YBNegotiation(ConnectionPtr conn,
                             YBConnectionContext* context,
                             const MonoTime& deadline);
-  static void RedisNegotiation(const ConnectionPtr& conn, const MonoTime& deadline);
-  static void CQLNegotiation(const ConnectionPtr& conn, const MonoTime& deadline);
+  static void RedisNegotiation(ConnectionPtr conn, const MonoTime& deadline);
+  static void CQLNegotiation(ConnectionPtr conn, const MonoTime& deadline);
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(Negotiation);
 };

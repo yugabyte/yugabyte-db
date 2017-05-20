@@ -64,17 +64,22 @@ class ConnectionContext {
   virtual ~ConnectionContext() {}
 
   // Perform negotiation for a connection
-  virtual void RunNegotiation(Connection* connection, const MonoTime& deadline) = 0;
+  virtual void RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) = 0;
 
   // Split slice into separate calls and invoke them.
   // Return number of processed bytes in `consumed`.
-  virtual CHECKED_STATUS ProcessCalls(Connection* connection, Slice slice, size_t* consumed) = 0;
+  virtual CHECKED_STATUS ProcessCalls(const ConnectionPtr& connection,
+                                      Slice slice,
+                                      size_t* consumed) = 0;
 
   // Dump information about status of this connection context to protobuf.
   virtual void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) = 0;
 
   // Checks whether this connection context is idle.
   virtual bool Idle() = 0;
+
+  // Returns true if connection does not have any pending work and could be safey released.
+  virtual bool ReadyToStop() = 0;
 
   // Reading buffer limit for this connection context.
   // The reading buffer will never be larger than this limit.
@@ -103,7 +108,7 @@ YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
 // This class is not fully thread-safe.  It is accessed only from the context of a
 // single ReactorThread except where otherwise specified.
 //
-class Connection final : public RefCountedThreadSafe<Connection> {
+class Connection final : public std::enable_shared_from_this<Connection> {
  public:
   typedef ConnectionDirection Direction;
 

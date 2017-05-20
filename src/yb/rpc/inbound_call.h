@@ -81,7 +81,7 @@ class InboundCall : public RpcCall {
  public:
   typedef std::function<void(InboundCall*)> CallProcessedListener;
 
-  InboundCall(Connection* conn, CallProcessedListener call_processed_listener);
+  InboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
   virtual ~InboundCall();
 
   // Return the serialized request parameter protobuf.

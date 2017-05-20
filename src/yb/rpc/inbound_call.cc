@@ -64,9 +64,9 @@ TAG_FLAG(rpc_slow_query_threshold_ms, runtime);
 namespace yb {
 namespace rpc {
 
-InboundCall::InboundCall(Connection* conn, CallProcessedListener call_processed_listener)
+InboundCall::InboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
     : trace_(new Trace),
-      conn_(conn),
+      conn_(std::move(conn)),
       call_processed_listener_(std::move(call_processed_listener)) {
   TRACE_TO(trace_, "Created InboundCall");
   RecordCallReceived();

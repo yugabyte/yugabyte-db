@@ -198,6 +198,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   // The rest would time out after 10 sec, but we help them along.
   ASSERT_OK(server_messenger_->UnregisterService(service_name_));
   service_pool_->Shutdown();
+  thread_pool.Shutdown();
   server_messenger_->Shutdown();
 
   for (const auto& thread : threads) {

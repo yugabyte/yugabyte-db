@@ -26,11 +26,11 @@ CQLConnectionContext::CQLConnectionContext()
     : sql_session_(new sql::SqlSession()) {
 }
 
-void CQLConnectionContext::RunNegotiation(Connection* connection, const MonoTime& deadline) {
-  Negotiation::CQLNegotiation(connection, deadline);
+void CQLConnectionContext::RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) {
+  Negotiation::CQLNegotiation(std::move(connection), deadline);
 }
 
-Status CQLConnectionContext::ProcessCalls(Connection* connection,
+Status CQLConnectionContext::ProcessCalls(const ConnectionPtr& connection,
                                           Slice slice,
                                           size_t* consumed) {
   auto pos = slice.data();
@@ -66,7 +66,7 @@ size_t CQLConnectionContext::BufferLimit() {
   return CQLMessage::kMaxMessageLength;
 }
 
-CHECKED_STATUS CQLConnectionContext::HandleInboundCall(Connection* connection, Slice slice) {
+Status CQLConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice slice) {
   auto reactor_thread = connection->reactor_thread();
   DCHECK(reactor_thread->IsCurrentThread());
 
@@ -86,10 +86,11 @@ CHECKED_STATUS CQLConnectionContext::HandleInboundCall(Connection* connection, S
   return Status::OK();
 }
 
-CQLInboundCall::CQLInboundCall(Connection* conn,
+CQLInboundCall::CQLInboundCall(ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
                                sql::SqlSession::SharedPtr sql_session)
-    : InboundCall(conn, call_processed_listener), sql_session_(std::move(sql_session)) {
+    : InboundCall(std::move(conn), std::move(call_processed_listener)),
+      sql_session_(std::move(sql_session)) {
 }
 
 Status CQLInboundCall::ParseFrom(Slice source) {

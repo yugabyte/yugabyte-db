@@ -34,15 +34,17 @@ YBConnectionContext::YBConnectionContext() {}
 
 YBConnectionContext::~YBConnectionContext() {}
 
-void YBConnectionContext::RunNegotiation(Connection* connection, const MonoTime& deadline) {
-  Negotiation::YBNegotiation(connection, this, deadline);
+void YBConnectionContext::RunNegotiation(ConnectionPtr connection, const MonoTime& deadline) {
+  Negotiation::YBNegotiation(std::move(connection), this, deadline);
 }
 
 size_t YBConnectionContext::BufferLimit() {
   return FLAGS_rpc_max_message_size;
 }
 
-Status YBConnectionContext::ProcessCalls(Connection* connection, Slice slice, size_t* consumed) {
+Status YBConnectionContext::ProcessCalls(const ConnectionPtr& connection,
+                                         Slice slice,
+                                         size_t* consumed) {
   auto pos = slice.data();
   const auto end = slice.end();
   while (end - pos >= kMsgLengthPrefixLength) {
@@ -71,7 +73,7 @@ Status YBConnectionContext::ProcessCalls(Connection* connection, Slice slice, si
   return Status::OK();
 }
 
-Status YBConnectionContext::HandleCall(Connection* connection, Slice call_data) {
+Status YBConnectionContext::HandleCall(const ConnectionPtr& connection, Slice call_data) {
   const auto direction = connection->direction();
   switch (direction) {
     case ConnectionDirection::CLIENT:
@@ -113,7 +115,7 @@ Status YBConnectionContext::InitSaslServer(Connection* connection) {
   return Status::OK();
 }
 
-Status YBConnectionContext::HandleInboundCall(Connection* connection, Slice call_data) {
+Status YBConnectionContext::HandleInboundCall(const ConnectionPtr& connection, Slice call_data) {
   auto reactor_thread = connection->reactor_thread();
   DCHECK(reactor_thread->IsCurrentThread());
 
@@ -147,8 +149,8 @@ void YBConnectionContext::EraseCall(InboundCall* call) {
   DCHECK_EQ(call_from_map, call);
 }
 
-YBInboundCall::YBInboundCall(Connection* conn, CallProcessedListener call_processed_listener)
-    : InboundCall(conn, std::move(call_processed_listener)) {}
+YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
+    : InboundCall(std::move(conn), std::move(call_processed_listener)) {}
 
 MonoTime YBInboundCall::GetClientDeadline() const {
   if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {

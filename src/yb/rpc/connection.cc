@@ -70,8 +70,17 @@ Connection::Connection(ReactorThread* reactor_thread,
   const auto metric_entity = reactor_thread->reactor()->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
       METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
-  process_response_queue_task_ =
-      MakeFunctorReactorTask(std::bind(&Connection::ProcessResponseQueue, this));
+}
+
+Connection::~Connection() {
+  // Must clear the outbound_transfers_ list before deleting.
+  CHECK(sending_.empty());
+
+  // It's crucial that the connection is Shutdown first -- otherwise
+  // our destructor will end up calling read_io_.stop() and write_io_.stop()
+  // from a possibly non-reactor thread context. This can then make all
+  // hell break loose with libev.
+  CHECK(!is_epoll_registered_);
 }
 
 Status Connection::SetNonBlocking(bool enabled) {
@@ -93,17 +102,6 @@ void Connection::EpollRegister(ev::loop_ref& loop) {  // NOLINT
   timer_.set<Connection, &Connection::HandleTimeout>(this); // NOLINT
 
   is_epoll_registered_ = true;
-}
-
-Connection::~Connection() {
-  // Must clear the outbound_transfers_ list before deleting.
-  CHECK(sending_.empty());
-
-  // It's crucial that the connection is Shutdown first -- otherwise
-  // our destructor will end up calling read_io_.stop() and write_io_.stop()
-  // from a possibly non-reactor thread context. This can then make all
-  // hell break loose with libev.
-  CHECK(!is_epoll_registered_);
 }
 
 bool Connection::Idle() const {
@@ -147,7 +145,11 @@ void Connection::ClearSending(const Status& status) {
 
 void Connection::Shutdown(const Status& status) {
   DCHECK(reactor_thread_->IsCurrentThread());
-  shutdown_status_ = status;
+  {
+    std::lock_guard<simple_spinlock> lock(outbound_data_queue_lock_);
+    outbound_data_being_processed_.swap(outbound_data_to_process_);
+    shutdown_status_ = status;
+  }
 
   if (!read_buffer_.empty()) {
     double secs_since_active = reactor_thread_->cur_time()
@@ -168,10 +170,6 @@ void Connection::Shutdown(const Status& status) {
 
   ClearSending(status);
 
-  {
-    std::lock_guard<simple_spinlock> lock(outbound_data_queue_lock_);
-    outbound_data_being_processed_.swap(outbound_data_to_process_);
-  }
   for (auto& call : outbound_data_being_processed_) {
     call->Transferred(status);
   }
@@ -189,7 +187,12 @@ void Connection::OutboundQueued() {
     // If we weren't waiting write to be ready, we could try to write data to socket.
     auto status = DoWrite();
     if (!status.ok()) {
-      reactor_thread_->DestroyConnection(this, status);
+      reactor_thread_->reactor()->ScheduleReactorTask(
+        MakeFunctorReactorTask(std::bind(&ReactorThread::DestroyConnection,
+                                         reactor_thread_,
+                                         this,
+                                         status),
+                               shared_from_this()));
     }
   }
 }
@@ -250,7 +253,7 @@ void Connection::Handler(ev::io& watcher, int revents) {  // NOLINT
   DCHECK(reactor_thread_->IsCurrentThread());
 
   DVLOG(3) << ToString() << " Handler(revents=" << revents << ")";
-auto status = Status::OK();
+  auto status = Status::OK();
   if (revents & EV_ERROR) {
     status = STATUS(NetworkError, ToString() + ": Handler encountered an error");
   }
@@ -340,7 +343,7 @@ Status Connection::TryProcessCalls(bool* continue_receiving) {
   size_t consumed = 0;
   const Slice bytes_to_process(read_buffer_.begin(), read_buffer_.size());
 
-  auto result = context_->ProcessCalls(this, bytes_to_process, &consumed);
+  auto result = context_->ProcessCalls(shared_from_this(), bytes_to_process, &consumed);
   if (PREDICT_FALSE(!result.ok())) {
     LOG(WARNING) << ToString() << " command sequence failure: " << result.ToString();
     *continue_receiving = false;
@@ -470,9 +473,9 @@ std::string Connection::ToString() const {
 // regular RPC handling. Destroys Connection on negotiation error.
 class NegotiationCompletedTask : public ReactorTask {
  public:
-  NegotiationCompletedTask(Connection* conn,
+  NegotiationCompletedTask(ConnectionPtr conn,
                            const Status& negotiation_status)
-      : conn_(conn),
+      : conn_(std::move(conn)),
         negotiation_status_(negotiation_status) {
   }
 
@@ -492,7 +495,7 @@ class NegotiationCompletedTask : public ReactorTask {
 };
 
 void Connection::CompleteNegotiation(const Status& negotiation_status) {
-  auto task = std::make_shared<NegotiationCompletedTask>(this, negotiation_status);
+  auto task = std::make_shared<NegotiationCompletedTask>(shared_from_this(), negotiation_status);
   reactor_thread_->reactor()->ScheduleReactorTask(task);
 }
 
@@ -502,7 +505,7 @@ void Connection::MarkNegotiationComplete() {
 }
 
 void Connection::RunNegotiation(const MonoTime& deadline) {
-  context_->RunNegotiation(this, deadline);
+  context_->RunNegotiation(shared_from_this(), deadline);
 }
 
 Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
@@ -549,9 +552,22 @@ void Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
 
   bool was_empty = false;
   {
-    std::lock_guard<simple_spinlock> lock(outbound_data_queue_lock_);
+    std::unique_lock<simple_spinlock> lock(outbound_data_queue_lock_);
+    if (!shutdown_status_.ok()) {
+      auto task = MakeFunctorReactorTask(std::bind(&OutboundData::Transferred,
+                                                   outbound_data,
+                                                   shutdown_status_));
+      lock.unlock();
+      reactor_thread_->reactor()->ScheduleReactorTask(task);
+      return;
+    }
     was_empty = outbound_data_to_process_.empty();
     outbound_data_to_process_.push_back(std::move(outbound_data));
+    if (!process_response_queue_task_) {
+      process_response_queue_task_ =
+          MakeFunctorReactorTask(std::bind(&Connection::ProcessResponseQueue, this),
+                                 shared_from_this());
+    }
   }
 
   if (was_empty) {
@@ -579,6 +595,11 @@ void Connection::ProcessResponseQueue() {
 void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_thread()->IsCurrentThread());
   DCHECK_EQ(direction_, Direction::SERVER);
+
+  if (!shutdown_status_.ok()) {
+    outbound_data->Transferred(shutdown_status_);
+    return;
+  }
 
   // If the connection is torn down, then the QueueOutbound() call that
   // eventually runs in the reactor thread will take care of calling

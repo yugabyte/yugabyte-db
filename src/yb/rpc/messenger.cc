@@ -171,6 +171,7 @@ void Messenger::Shutdown() {
   for (auto* reactor : reactors) {
     reactor->Shutdown();
   }
+
   for (auto* reactor : reactors) {
     reactor->Join();
   }

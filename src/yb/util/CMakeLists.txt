@@ -88,6 +88,7 @@ else ()
 endif()
 
 set(UTIL_SRCS
+  allocation_tracker.cc
   atomic.cc
   bitmap.cc
   bloom_filter.cc
