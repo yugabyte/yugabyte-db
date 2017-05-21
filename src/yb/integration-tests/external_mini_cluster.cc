@@ -185,6 +185,7 @@ Status ExternalMiniCluster::Start() {
   RETURN_NOT_OK(WaitForTabletServerCount(
                   opts_.num_tablet_servers,
                   MonoDelta::FromSeconds(kTabletServerRegistrationTimeoutSeconds)));
+
   return Status::OK();
 }
 
@@ -1202,6 +1203,30 @@ ExternalDaemon::ExternalDaemon(
 ExternalDaemon::~ExternalDaemon() {
 }
 
+bool ExternalDaemon::ServerInfoPathsExist() {
+  return Env::Default()->FileExists(GetServerInfoPath());
+}
+
+Status ExternalDaemon::BuildServerStateFromInfoPath() {
+  return BuildServerStateFromInfoPath(GetServerInfoPath(), &status_);
+}
+
+Status ExternalDaemon::BuildServerStateFromInfoPath(
+    const string& info_path, std::unique_ptr<ServerStatusPB>* server_status) {
+  server_status->reset(new ServerStatusPB());
+  RETURN_NOT_OK_PREPEND(pb_util::ReadPBFromPath(Env::Default(), info_path, (*server_status).get()),
+                        "Failed to read info file from " + info_path);
+  return Status::OK();
+}
+
+string ExternalDaemon::GetServerInfoPath() {
+  return JoinPathSegments(data_dir_, "info.pb");
+}
+
+Status ExternalDaemon::DeleteServerInfoPaths() {
+  return Env::Default()->DeleteFile(GetServerInfoPath());
+}
+
 Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   CHECK(!process_);
 
@@ -1224,7 +1249,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
 
   // Tell the server to dump its port information so we can pick it up.
-  string info_path = JoinPathSegments(data_dir_, "info.pb");
+  const string info_path = GetServerInfoPath();
   argv.push_back("--server_dump_info_path=" + info_path);
   argv.push_back("--server_dump_info_format=pb");
 
@@ -1234,7 +1259,10 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 
   // A previous instance of the daemon may have run in the same directory. So, remove
   // the previous info file if it's there.
-  ignore_result(Env::Default()->DeleteFile(info_path));
+  Status s = DeleteServerInfoPaths();
+  if (!s.ok()) {
+    LOG (WARNING) << "Failed to delete info paths: " << s.ToString();
+  }
 
   // Ensure that logging goes to the test output and doesn't get buffered.
   argv.push_back("--logtostderr");
@@ -1270,7 +1298,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   sw.start();
   bool success = false;
   while (sw.elapsed().wall_seconds() < kProcessStartTimeoutSeconds) {
-    if (Env::Default()->FileExists(info_path)) {
+    if (ServerInfoPathsExist()) {
       success = true;
       break;
     }
@@ -1294,9 +1322,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
                    kProcessStartTimeoutSeconds, exe_, info_path));
   }
 
-  status_.reset(new ServerStatusPB());
-  RETURN_NOT_OK_PREPEND(pb_util::ReadPBFromPath(Env::Default(), info_path, status_.get()),
-                        "Failed to read info file from " + info_path);
+  RETURN_NOT_OK(BuildServerStateFromInfoPath());
   LOG(INFO) << "Started " << default_output_prefix << " " << exe_ << " as pid " << p->pid();
   VLOG(1) << exe_ << " instance information:\n" << status_->DebugString();
 
@@ -1555,8 +1581,9 @@ ExternalTabletServer::ExternalTabletServer(
 ExternalTabletServer::~ExternalTabletServer() {
 }
 
-Status ExternalTabletServer::Start() {
+Status ExternalTabletServer::Start(bool start_cql_proxy) {
   vector<string> flags;
+  start_cql_proxy_ = start_cql_proxy;
   flags.push_back("--fs_wal_dirs=" + data_dir_);
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
@@ -1568,6 +1595,7 @@ Status ExternalTabletServer::Start() {
   flags.push_back(Substitute("--redis_proxy_webserver_port=$0", redis_http_port_));
   flags.push_back(Substitute("--cql_proxy_bind_address=$0:$1", bind_host_, cql_rpc_port_));
   flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
+  flags.push_back(Substitute("--start_cql_proxy=$0", start_cql_proxy_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
 
   // Use conservative number of threads for the mini cluster for unit test env
@@ -1576,15 +1604,46 @@ Status ExternalTabletServer::Start() {
   flags.push_back("--ts_consensus_svc_num_threads=20");
 
   RETURN_NOT_OK(StartProcess(flags));
+
   return Status::OK();
 }
 
-Status ExternalTabletServer::Restart() {
+Status ExternalTabletServer::BuildServerStateFromInfoPath() {
+  RETURN_NOT_OK(ExternalDaemon::BuildServerStateFromInfoPath());
+  if (start_cql_proxy_) {
+    RETURN_NOT_OK(ExternalDaemon::BuildServerStateFromInfoPath(GetCQLServerInfoPath(),
+                                                               &cqlserver_status_));
+  }
+  return Status::OK();
+}
+
+string ExternalTabletServer::GetCQLServerInfoPath() {
+  return ExternalDaemon::GetServerInfoPath() + "-cql";
+}
+
+bool ExternalTabletServer::ServerInfoPathsExist() {
+  if (start_cql_proxy_) {
+    return ExternalDaemon::ServerInfoPathsExist() &&
+        Env::Default()->FileExists(GetCQLServerInfoPath());
+  }
+  return ExternalDaemon::ServerInfoPathsExist();
+}
+
+Status ExternalTabletServer::DeleteServerInfoPaths() {
+  // We want to try a deletion for both files.
+  Status s1 = ExternalDaemon::DeleteServerInfoPaths();
+  Status s2 = Env::Default()->DeleteFile(GetCQLServerInfoPath());
+  RETURN_NOT_OK(s1);
+  RETURN_NOT_OK(s2);
+  return Status::OK();
+}
+
+Status ExternalTabletServer::Restart(bool start_cql_proxy) {
   // We store the addresses on shutdown so make sure we did that first.
   if (bound_rpc_.port() == 0) {
     return STATUS(IllegalState, "Tablet server cannot be restarted. Must call Shutdown() first.");
   }
-  return Start();
+  return Start(start_cql_proxy);
 }
 
 }  // namespace yb

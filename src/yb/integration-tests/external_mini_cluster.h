@@ -452,6 +452,18 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   CHECKED_STATUS StartProcess(const std::vector<std::string>& flags);
 
+  virtual CHECKED_STATUS DeleteServerInfoPaths();
+
+
+  virtual bool ServerInfoPathsExist();
+
+  virtual CHECKED_STATUS BuildServerStateFromInfoPath();
+
+  CHECKED_STATUS BuildServerStateFromInfoPath(
+      const string& info_path, std::unique_ptr<server::ServerStatusPB>* server_status);
+
+  string GetServerInfoPath();
+
   // In a code-coverage build, try to flush the coverage data to disk.
   // In a non-coverage build, this does nothing.
   void FlushCoverage();
@@ -464,7 +476,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   gscoped_ptr<Subprocess> process_;
 
-  gscoped_ptr<server::ServerStatusPB> status_;
+  std::unique_ptr<server::ServerStatusPB> status_;
 
   // These capture the daemons parameters and running ports and
   // are used to Restart() the daemon with the same parameters.
@@ -534,14 +546,21 @@ class ExternalTabletServer : public ExternalDaemon {
       uint16_t cql_rpc_port, uint16_t cql_http_port,
       const std::vector<HostPort>& master_addrs, const std::vector<std::string>& extra_flags);
 
-  CHECKED_STATUS Start();
+  CHECKED_STATUS Start(bool start_cql_proxy = true);
 
   // Restarts the daemon.
   // Requires that it has previously been shutdown.
-  CHECKED_STATUS Restart() WARN_UNUSED_RESULT;
+  CHECKED_STATUS Restart(bool start_cql_proxy = true) WARN_UNUSED_RESULT;
 
+ protected:
+  CHECKED_STATUS DeleteServerInfoPaths() override;
+
+  bool ServerInfoPathsExist() override;
+
+  CHECKED_STATUS BuildServerStateFromInfoPath() override;
 
  private:
+  string GetCQLServerInfoPath();
   const std::string master_addrs_;
   const std::string bind_host_;
   const uint16_t rpc_port_;
@@ -550,6 +569,8 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t redis_http_port_;
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
+  bool start_cql_proxy_ = true;
+  std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;
   virtual ~ExternalTabletServer();

@@ -1067,7 +1067,8 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   // Restart the tablet server and wait for the WALs to be deleted and for the
   // superblock to show that it is tombstoned.
   cluster_->tablet_server(kTsIndex)->Shutdown();
-  ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
+  // Don't start the CQL proxy, since it'll try to connect to the master.
+  ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart(false));
   LOG(INFO) << "Waiting for second tablet to be tombstoned...";
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_EXPECTED));
 
@@ -1093,7 +1094,8 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
 
   // Restart the TS, the superblock should be deleted on startup.
   cluster_->tablet_server(kTsIndex)->Shutdown();
-  ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
+  // Don't start the CQL proxy, since it'll try to connect to the master.
+  ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart(false));
   ASSERT_OK(inspect_->WaitForNoDataOnTS(kTsIndex));
 }
 
