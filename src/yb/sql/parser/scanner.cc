@@ -218,7 +218,7 @@ MCString::SharedPtr LexProcessor::MakeIdentifier(const char *text, int len, bool
   // 'I').  Our current compromise is to use tolower() for characters with
   // the high bit set, as long as they aren't part of a multi-byte
   // character, and use an ASCII-only downcasing for 7-bit characters.
-  MCString::SharedPtr ident = MCString::MakeShared(PTreeMem(), len + 1, '\0');
+  MCString::SharedPtr ident = MCString::MakeShared(PTreeMem(), len, '\0');
   int i;
   for (i = 0; i < len; i++) {
     unsigned char ch = static_cast<unsigned char>(text[i]);

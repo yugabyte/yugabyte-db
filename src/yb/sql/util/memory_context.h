@@ -43,53 +43,20 @@ namespace sql {
 class MemoryContext;
 
 //--------------------------------------------------------------------------------------------------
-// MC allocator class.
-template<class MCObject>
-using MCAllocatorBase = ArenaAllocator<MCObject, false>;
-
-template<class MCObject>
-class MCAllocator : public MCAllocatorBase<MCObject> {
- public:
-  // IMPORTANT NOTE:
-  // Although C++ Standard does not require allocator to have default constructor, some linux C++
-  // compilers need default constructor to support String copy constructors that take default
-  // allocator as an argument.
-  //
-  // RESOLUTION:
-  // - Define our own MC type - such as MCString - whose constructor always take allocators as
-  //   argument.
-  // - We provide default constructor for basic_string<char> because this type uses default
-  //   constructor to create a dummy instance that is used for optimization but not for allocation.
-  //   Search "_GLIBCXX_FULLY_DYNAMIC_STRING" for more info.
-  // - The default constructor is marked as deprecated so that we don't mistakenly use it.
-  // - The dummy object created by the default constructor should never be used. If it's used, the
-  //   system will crash immediately due to nullptr memory manager. Our tests will catch it.
-  MCAllocator() __attribute__((deprecated)) : MCAllocatorBase<MCObject>() {
-  }
-  explicit MCAllocator(ArenaAllocator<MCObject, false> arena_allocator)
-      : MCAllocatorBase<MCObject>(arena_allocator) {
-  }
-  MCAllocator(MemoryContext *memory_context, ArenaBase<false> *a) : MCAllocatorBase<MCObject>(a) {
-  }
-
-  virtual ~MCAllocator() {
-  }
-};
-
-//--------------------------------------------------------------------------------------------------
 // MC deleter class for shared_ptr and unique_ptr.
-template<class MCObject = void>
 class MCDeleter {
  public:
-  // Delete is a no-op because we use allocator to allocate and deallocate.
+  template<class MCObject>
   void operator()(MCObject *obj) {
+    obj->~MCObject();
   }
 };
 
 //--------------------------------------------------------------------------------------------------
 // Context-control shared_ptr and unique_ptr
-template<class MCObject> using MCUniPtr = std::unique_ptr<MCObject, MCDeleter<>>;
+template<class MCObject> using MCUniPtr = std::unique_ptr<MCObject, MCDeleter>;
 template<class MCObject> using MCSharedPtr = std::shared_ptr<MCObject>;
+template<class MCObject> using MCAllocator = ArenaAllocator<MCObject, false>;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -107,7 +74,6 @@ class MemoryContext {
   //------------------------------------------------------------------------------------------------
   // Public functions.
   explicit MemoryContext(std::shared_ptr<MemTracker> mem_tracker = nullptr);
-  virtual ~MemoryContext();
 
   //------------------------------------------------------------------------------------------------
   // Char* buffer support.
@@ -125,22 +91,8 @@ class MemoryContext {
 
   // Get the correct allocator for certain datatype.
   template<class MCObject>
-  const MCAllocator<MCObject>& GetAllocator() {
-    const std::type_index type_idx = std::type_index(typeid(MCObject));
-    std::unordered_map<std::type_index, AllocatorBase*>::iterator iter =
-      allocator_map_.find(type_idx);
-    if (iter != allocator_map_.end()) {
-      return *static_cast<MCAllocator<MCObject> *>(iter->second);
-    }
-
-    // Use Arena to malloc the allocators for STD containers.
-    MCAllocator<MCObject> *allocator = manager_->NewObject<MCAllocator<MCObject>>(this,
-                                                                                  manager_.get());
-    allocator_map_[type_idx] = allocator;
-    return *allocator;
-  }
-  const MCDeleter<>& GetDeleter() {
-    return deleter_;
+  MCAllocator<MCObject> GetAllocator() {
+    return MCAllocator<MCObject>(&manager_);
   }
 
   //------------------------------------------------------------------------------------------------
@@ -149,22 +101,22 @@ class MemoryContext {
   // Allocate shared_ptr object.
   template<class MCObject, typename... TypeArgs>
   MCSharedPtr<MCObject> AllocateShared(TypeArgs&&... args) {
-    const MCAllocator<MCObject> alloc = GetAllocator<MCObject>();
-    return std::allocate_shared<MCObject>(alloc, std::forward<TypeArgs>(args)...);
+    MCAllocator<MCObject> allocator(&manager_);
+    return std::allocate_shared<MCObject>(allocator, std::forward<TypeArgs>(args)...);
   }
 
   // Convert raw pointer to shared pointer.
   template<class MCObject>
   MCSharedPtr<MCObject> ToShared(MCObject *raw_ptr) {
-    const MCAllocator<MCObject> alloc = GetAllocator<MCObject>();
-    return MCSharedPtr<MCObject>(raw_ptr, deleter_, alloc);
+    MCAllocator<MCObject> allocator(&manager_);
+    return MCSharedPtr<MCObject>(raw_ptr, MCDeleter(), allocator);
   }
 
   //------------------------------------------------------------------------------------------------
   // Allocate an object.
   template<class MCObject, typename... TypeArgs>
   MCObject *NewObject(TypeArgs&&... args) {
-    return manager_->NewObject<MCObject>(std::forward<TypeArgs>(args)...);
+    return manager_.NewObject<MCObject>(std::forward<TypeArgs>(args)...);
   }
 
   // Reset the memory context to free the previously allocated memory.
@@ -172,14 +124,9 @@ class MemoryContext {
 
  private:
   //------------------------------------------------------------------------------------------------
+  std::shared_ptr<MemoryTrackingBufferAllocator> tracking_allocator_;
   // Allocate and deallocate memory from heap.
-  std::unique_ptr<ArenaBase<false>> manager_;
-
-  // Consists of all allocators for all types that are allocated by this context.
-  std::unordered_map<std::type_index, AllocatorBase*> allocator_map_;
-
-  // Deleter for all objects within this context.
-  MCDeleter<> deleter_;
+  ArenaBase<false> manager_;
 };
 
 }  // namespace sql

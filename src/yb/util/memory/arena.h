@@ -221,22 +221,10 @@ class ArenaBase {
   DISALLOW_COPY_AND_ASSIGN(ArenaBase);
 };
 
-// This is a base class from which all Arena allocator classes are derived. It is to help caching
-// different pointers of different Arena allocator types in a container without having to cast them
-// to (void*). For correctness, this class should have a list of pure virtual functions that an
-// allocator must have. However, we'll work on that later.
-class  AllocatorBase {
- public:
-  AllocatorBase() {
-  }
-  virtual ~AllocatorBase() {
-  }
-};
-
 // STL-compliant allocator, for use with hash_maps and other structures
 // which share lifetime with an Arena. Enables memory control and improves
 // performance.
-template<class T, bool THREADSAFE> class ArenaAllocator : public AllocatorBase {
+template<class T, bool THREADSAFE> class ArenaAllocator {
  public:
   typedef T value_type;
   typedef size_t size_type;
@@ -257,15 +245,13 @@ template<class T, bool THREADSAFE> class ArenaAllocator : public AllocatorBase {
     // allocation. Search "_GLIBCXX_FULLY_DYNAMIC_STRING" for more info.
     //
     // We allow default allocator for char-based type (std::basic_string<char>) but not others.
-    CHECK_EQ(typeid(T).hash_code(), typeid(char).hash_code())
-      << "Default constructor is not allowed in this context";
+    static_assert(std::is_same<T, char>::value,
+                  "Default constructor of ArenaAllocator is available only to char type");
   }
 
   explicit ArenaAllocator(ArenaBase<THREADSAFE>* arena) : arena_(arena) {
     CHECK_NOTNULL(arena_);
   }
-
-  virtual ~ArenaAllocator() { }
 
   pointer allocate(size_type n, allocator<void>::const_pointer /*hint*/ = 0) {
     return reinterpret_cast<T*>(arena_->AllocateBytes(n * sizeof(T)));

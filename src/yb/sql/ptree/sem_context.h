@@ -157,7 +157,7 @@ class SemContext : public ProcessContext {
   const SymbolEntry *SeekSymbol(const MCString& name) const;
 
   // Symbol table.
-  MCMap<MCString, SymbolEntry, MCString::MapCmp> symtab_;
+  MCMap<MCString, SymbolEntry> symtab_;
 
   // Current processing symbol.
   SymbolEntry current_processing_id_;

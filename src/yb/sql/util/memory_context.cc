@@ -10,52 +10,47 @@
 namespace yb {
 namespace sql {
 
-using std::shared_ptr;
-using std::unordered_map;
+namespace {
+
+std::shared_ptr<MemoryTrackingBufferAllocator> CreateTrackingAllocator(
+  std::shared_ptr<MemTracker> mem_tracker) {
+  if (mem_tracker) {
+    return std::make_shared<MemoryTrackingBufferAllocator>(HeapBufferAllocator::Get(),
+                                                           std::move(mem_tracker));
+  } else {
+    return nullptr;
+  }
+}
+
+BufferAllocator* SelectAllocator(
+    const std::shared_ptr<MemoryTrackingBufferAllocator>& tracking_allocator) {
+  if (tracking_allocator) {
+    return tracking_allocator.get();
+  } else {
+    return HeapBufferAllocator::Get();
+  }
+}
+
+} // namespace
 
 //--------------------------------------------------------------------------------------------------
 // Default MemoryContext
 //--------------------------------------------------------------------------------------------------
-MemoryContext::MemoryContext(shared_ptr<MemTracker> mem_tracker)
-    : manager_(mem_tracker != nullptr ?
-               static_cast<ArenaBase<false>*>(
-                   new MemoryTrackingArena(kStartBlockSize, kMaxBlockSize,
-                                           std::make_shared<MemoryTrackingBufferAllocator>(
-                                               HeapBufferAllocator::Get(), mem_tracker))) :
-               static_cast<ArenaBase<false>*>(new Arena(kStartBlockSize, kMaxBlockSize))),
-      deleter_(MCDeleter<>()) {
-}
-
-MemoryContext::~MemoryContext() {
-  for (auto allocator_entry : allocator_map_) {
-    // In GetAllocator() function, MemoryContext called Arena::NewObject() to allocate spaces for
-    // MCAllocator objects, so only the destructors should be called. Delete expression should not
-    // be used here as it also calls free().
-    AllocatorBase *allocator = allocator_entry.second;
-    allocator->~AllocatorBase();
-  }
+MemoryContext::MemoryContext(std::shared_ptr<MemTracker> mem_tracker)
+    : tracking_allocator_(CreateTrackingAllocator(std::move(mem_tracker))),
+      manager_(SelectAllocator(tracking_allocator_), kStartBlockSize, kMaxBlockSize) {
 }
 
 void *MemoryContext::Malloc(size_t size) {
-  return manager_->AllocateBytes(size);
+  return manager_.AllocateBytes(size);
 }
 
 void MemoryContext::Reset() {
-  for (auto allocator_entry : allocator_map_) {
-    // In GetAllocator() function, MemoryContext called Arena::NewObject() to allocate spaces for
-    // MCAllocator objects, so only the destructors should be called. Delete expression should not
-    // be used here as it also calls free().
-    AllocatorBase *allocator = allocator_entry.second;
-    allocator->~AllocatorBase();
-  }
-
-  // Clear allocators allocated from Arena before resetting Arena to release allocated memory.
-  allocator_map_.clear();
-  manager_->Reset();
+  manager_.Reset();
 }
 
 //--------------------------------------------------------------------------------------------------
-// Standard MemoryContext - Not yet immplemented.
+// Standard MemoryContext - Not yet implemented.
 //--------------------------------------------------------------------------------------------------
 
 }  // namespace sql
