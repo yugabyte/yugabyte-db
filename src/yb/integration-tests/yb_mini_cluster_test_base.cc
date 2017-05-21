@@ -28,7 +28,7 @@ template <class T>
 void YBMiniClusterTestBase<T>::DoBeforeTearDown() {
   if (cluster_ && verify_cluster_before_next_tear_down_) {
     LOG(INFO) << "Checking cluster consistency...";
-    NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());
+    ASSERT_NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());
   }
 }
 

@@ -1289,21 +1289,21 @@ TEST_F(DocDBTest, BloomFilterTest) {
         rocksdb(), SubDocKey(key), &doc_from_rocksdb, &subdoc_found_in_rocksdb));
   };
 
-  NO_FATALS(CheckBloom(0, &total_bloom_useful));
-  NO_FATALS(get_doc(key1));
+  ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful));
+  ASSERT_NO_FATALS(get_doc(key1));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
-  NO_FATALS(CheckBloom(0, &total_bloom_useful));
+  ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful));
 
-  NO_FATALS(get_doc(key2));
+  ASSERT_NO_FATALS(get_doc(key2));
   ASSERT_TRUE(!subdoc_found_in_rocksdb);
   // Bloom filter excluded this file.
   // docdb::GetSubDocument sometimes seeks twice - first time on key2 and second time to advance
   // out of it, because key2 was found.
-  NO_FATALS(CheckBloom(2, &total_bloom_useful));
+  ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
 
-  NO_FATALS(get_doc(key3));
+  ASSERT_NO_FATALS(get_doc(key3));
   ASSERT_TRUE(subdoc_found_in_rocksdb);
-  NO_FATALS(CheckBloom(0, &total_bloom_useful));
+  ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful));
 
   dwb.Clear();
   ASSERT_OK(ht.FromUint64(2000));
@@ -1311,12 +1311,12 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), PrimitiveValue("value")));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
   FlushRocksDB();
-  NO_FATALS(get_doc(key1));
-  NO_FATALS(CheckBloom(0, &total_bloom_useful));
-  NO_FATALS(get_doc(key2));
-  NO_FATALS(CheckBloom(2, &total_bloom_useful));
-  NO_FATALS(get_doc(key3));
-  NO_FATALS(CheckBloom(2, &total_bloom_useful));
+  ASSERT_NO_FATALS(get_doc(key1));
+  ASSERT_NO_FATALS(CheckBloom(0, &total_bloom_useful));
+  ASSERT_NO_FATALS(get_doc(key2));
+  ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
+  ASSERT_NO_FATALS(get_doc(key3));
+  ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
 
   dwb.Clear();
   ASSERT_OK(ht.FromUint64(3000));
@@ -1324,12 +1324,12 @@ TEST_F(DocDBTest, BloomFilterTest) {
   ASSERT_OK(dwb.SetPrimitive(DocPath(key3.Encode()), PrimitiveValue("value")));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
   FlushRocksDB();
-  NO_FATALS(get_doc(key1));
-  NO_FATALS(CheckBloom(2, &total_bloom_useful));
-  NO_FATALS(get_doc(key2));
-  NO_FATALS(CheckBloom(2, &total_bloom_useful));
-  NO_FATALS(get_doc(key3));
-  NO_FATALS(CheckBloom(2, &total_bloom_useful));
+  ASSERT_NO_FATALS(get_doc(key1));
+  ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
+  ASSERT_NO_FATALS(get_doc(key2));
+  ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
+  ASSERT_NO_FATALS(get_doc(key3));
+  ASSERT_NO_FATALS(CheckBloom(2, &total_bloom_useful));
 }
 
 TEST_F(DocDBTest, SetPrimitiveWithInitMarker) {

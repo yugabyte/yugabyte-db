@@ -65,7 +65,7 @@ class YbSqlQuery : public YbSqlTestBase {
 
 TEST_F(YbSqlQuery, TestMissingSystemTable) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -78,7 +78,7 @@ TEST_F(YbSqlQuery, TestMissingSystemTable) {
 
 TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -240,7 +240,7 @@ TEST_F(YbSqlQuery, TestSqlQuerySimple) {
 
 TEST_F(YbSqlQuery, TestPagingState) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -408,7 +408,7 @@ TEST_F(YbSqlQuery, TestPagingState) {
 
 TEST_F(YbSqlQuery, TestSqlQueryPartialHash) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -612,7 +612,7 @@ TEST_F(YbSqlQuery, TestSqlQueryPartialHash) {
 
 TEST_F(YbSqlQuery, TestInsertWithTTL) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -627,7 +627,7 @@ TEST_F(YbSqlQuery, TestInsertWithTTL) {
 
 TEST_F(YbSqlQuery, TestUpdateWithTTL) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -662,7 +662,7 @@ TEST_F(YbSqlQuery, TestUpdateWithTTL) {
 // Cassandra deserializer instead
 TEST_F(YbSqlQuery, TestCollectionTypes) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -794,7 +794,7 @@ TEST_F(YbSqlQuery, TestCollectionTypes) {
 
 TEST_F(YbSqlQuery, TestSystemLocal) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -811,7 +811,7 @@ TEST_F(YbSqlQuery, TestSystemLocal) {
 
 TEST_F(YbSqlQuery, TestSystemTablesWithRestart) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -828,7 +828,7 @@ TEST_F(YbSqlQuery, TestSystemTablesWithRestart) {
 
 TEST_F(YbSqlQuery, TestPagination) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();

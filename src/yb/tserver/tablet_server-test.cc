@@ -601,7 +601,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
 
   rows_inserted = nullptr;
   rows_updated = nullptr;
-  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
+  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_, { KeyValue(2, 3), KeyValue(3, 4), KeyValue(4, 4), KeyValue(6, 6) });
 
   // get the clock's hybrid_time after replay
@@ -741,7 +741,7 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushing) {
   // Shutdown the tserver and try and rebuild the tablet from the log
   // produced on recovery (recovery flushed no state, but produced a new
   // log).
-  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
+  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_, { KeyValue(1, 10),
                         KeyValue(2, 20),
                         KeyValue(3, 30),
@@ -754,7 +754,7 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushing) {
 
   // Shutdown and rebuild again to test that the log generated during
   // the previous recovery allows to perform recovery again.
-  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
+  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(schema_, { KeyValue(1, 10),
                         KeyValue(2, 20),
                         KeyValue(3, 30),
@@ -764,21 +764,19 @@ TEST_F(TabletServerTest, TestRecoveryWithMutationsWhileFlushing) {
                         KeyValue(7, 7) });
 }
 
-#define ANFF ASSERT_NO_FATAL_FAILURE
-
 // Regression test for KUDU-176. Ensures that after a major delta compaction,
 // restarting properly recovers the tablet.
 TEST_F(TabletServerTest, TestKUDU_176_RecoveryAfterMajorDeltaCompaction) {
 
   // Flush a DRS with 1 rows.
-  ASSERT_NO_FATAL_FAILURE(InsertTestRowsRemote(0, 1, 1));
+  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
   ASSERT_OK(tablet_peer_->tablet()->Flush());
-  ANFF(VerifyRows(schema_, { KeyValue(1, 1) }));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 1) }));
 
   // Update it, flush deltas.
-  ANFF(UpdateTestRowRemote(0, 1, 2));
+  ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 2));
   ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
-  ANFF(VerifyRows(schema_, { KeyValue(1, 2) }));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
 
   // Major compact deltas.
   {
@@ -790,28 +788,28 @@ TEST_F(TabletServerTest, TestKUDU_176_RecoveryAfterMajorDeltaCompaction) {
   }
 
   // Verify that data is still the same.
-  ANFF(VerifyRows(schema_, { KeyValue(1, 2) }));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
 
   // Verify that data remains after a restart.
   ASSERT_OK(ShutdownAndRebuildTablet());
-  ANFF(VerifyRows(schema_, { KeyValue(1, 2) }));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 2) }));
 }
 
 // Regression test for KUDU-177. Ensures that after a major delta compaction,
 // rows that were in the old DRS's DMS are properly replayed.
 TEST_F(TabletServerTest, TestKUDU_177_RecoveryOfDMSEditsAfterMajorDeltaCompaction) {
   // Flush a DRS with 1 rows.
-  ANFF(InsertTestRowsRemote(0, 1, 1));
+  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
   ASSERT_OK(tablet_peer_->tablet()->Flush());
-  ANFF(VerifyRows(schema_, { KeyValue(1, 1) }));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 1) }));
 
   // Update it, flush deltas.
-  ANFF(UpdateTestRowRemote(0, 1, 2));
+  ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 2));
   ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
 
   // Update it again, so this last update is in the DMS.
-  ANFF(UpdateTestRowRemote(0, 1, 3));
-  ANFF(VerifyRows(schema_, { KeyValue(1, 3) }));
+  ASSERT_NO_FATALS(UpdateTestRowRemote(0, 1, 3));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
 
   // Major compact deltas. This doesn't include the DMS, but the old
   // DMS should "move over" to the output of the delta compaction.
@@ -823,15 +821,15 @@ TEST_F(TabletServerTest, TestKUDU_177_RecoveryOfDMSEditsAfterMajorDeltaCompactio
     ASSERT_OK(tablet_peer_->tablet()->DoMajorDeltaCompaction(col_ids, rsets[0]));
   }
   // Verify that data is still the same.
-  ANFF(VerifyRows(schema_, { KeyValue(1, 3) }));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
 
   // Verify that the update remains after a restart.
   ASSERT_OK(ShutdownAndRebuildTablet());
-  ANFF(VerifyRows(schema_, { KeyValue(1, 3) }));
+  ASSERT_NO_FATALS(VerifyRows(schema_, { KeyValue(1, 3) }));
 }
 
 TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
-  ANFF(InsertTestRowsRemote(0, 1, 7));
+  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 7));
 
   ASSERT_OK(tablet_peer_->tablet()->Flush());
 
@@ -867,7 +865,7 @@ TEST_F(TabletServerTest, TestScan) {
   InsertTestRowsDirect(0, num_rows);
 
   ScanResponsePB resp;
-  ASSERT_NO_FATAL_FAILURE(OpenScannerWithAllColumns(&resp));
+  ASSERT_NO_FATALS(OpenScannerWithAllColumns(&resp));
 
   // Ensure that the scanner ID came back and got inserted into the
   // ScannerManager map.
@@ -880,7 +878,7 @@ TEST_F(TabletServerTest, TestScan) {
 
   // Drain all the rows from the scanner.
   vector<string> results;
-  ASSERT_NO_FATAL_FAILURE(
+  ASSERT_NO_FATALS(
     DrainScannerToStrings(resp.scanner_id(), schema_, &results));
   ASSERT_EQ(num_rows, results.size());
 
@@ -903,7 +901,7 @@ TEST_F(TabletServerTest, TestScannerOpenWhenServerShutsDown) {
   InsertTestRowsDirect(0, 1);
 
   ScanResponsePB resp;
-  ASSERT_NO_FATAL_FAILURE(OpenScannerWithAllColumns(&resp));
+  ASSERT_NO_FATALS(OpenScannerWithAllColumns(&resp));
 
   // Scanner is now open. The test will now shut down the TS with the scanner still
   // out there. Due to KUDU-161 this used to fail, since the scanner (and thus the MRS)
@@ -957,7 +955,7 @@ TEST_F(TabletServerTest, TestSnapshotScan) {
     ASSERT_TRUE(resp.has_more_results());
     // Drain all the rows from the scanner.
     vector<string> results;
-    ASSERT_NO_FATAL_FAILURE(DrainScannerToStrings(resp.scanner_id(), schema_, &results));
+    ASSERT_NO_FATALS(DrainScannerToStrings(resp.scanner_id(), schema_, &results));
     // on each scan we should get (num_rows / num_batches) * batch_idx rows back
     int expected_num_rows = (num_rows / num_batches) * batch_idx;
     ASSERT_EQ(expected_num_rows, results.size());
@@ -1216,7 +1214,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_SnapshotInTheFutureWithPropagatedHybri
             HybridClock::GetLogicalValue(propagated_hybrid_time));
 
   vector<string> results;
-  ASSERT_NO_FATAL_FAILURE(DrainScannerToStrings(resp.scanner_id(), schema_, &results));
+  ASSERT_NO_FATALS(DrainScannerToStrings(resp.scanner_id(), schema_, &results));
   ASSERT_EQ(1, results.size());
   ASSERT_EQ("(int32 key=0, int32 int_val=0, string string_val=original0)", results[0]);
 }
@@ -1293,7 +1291,7 @@ TEST_F(TabletServerTest, TestScanWithStringPredicates) {
 
   // Drain all the rows from the scanner.
   vector<string> results;
-  ASSERT_NO_FATAL_FAILURE(
+  ASSERT_NO_FATALS(
     DrainScannerToStrings(resp.scanner_id(), schema_, &results));
   ASSERT_EQ(10, results.size());
   ASSERT_EQ("(int32 key=50, int32 int_val=100, string string_val=hello 50)", results[0]);
@@ -1338,7 +1336,7 @@ TEST_F(TabletServerTest, TestScanWithPredicates) {
 
   // Drain all the rows from the scanner.
   vector<string> results;
-  ASSERT_NO_FATAL_FAILURE(
+  ASSERT_NO_FATALS(
     DrainScannerToStrings(resp.scanner_id(), schema_, &results));
   ASSERT_EQ(50, results.size());
 }
@@ -1384,7 +1382,7 @@ TEST_F(TabletServerTest, TestScanWithEncodedPredicates) {
 
   // Drain all the rows from the scanner.
   vector<string> results;
-  ASSERT_NO_FATAL_FAILURE(
+  ASSERT_NO_FATALS(
     DrainScannerToStrings(resp.scanner_id(), schema_, &results));
   ASSERT_EQ(9, results.size());
   EXPECT_EQ("(int32 key=51, int32 int_val=102, string string_val=hello 51)",
@@ -1583,7 +1581,7 @@ void TabletServerTest::DoOrderedScanTest(const Schema& projection,
   }
 
   vector<string> results;
-  ASSERT_NO_FATAL_FAILURE(
+  ASSERT_NO_FATALS(
     DrainScannerToStrings(resp.scanner_id(), projection, &results));
 
   ASSERT_EQ(30, results.size());
@@ -1667,14 +1665,14 @@ TEST_F(TabletServerTest, TestAlterSchema) {
   const Schema projection({ ColumnSchema("key", INT32), (ColumnSchema("c2", INT32)) }, 1);
 
   // Try recovering from the original log
-  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
+  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7),
                            KeyValue(1, 7),
                            KeyValue(2, 5),
                            KeyValue(3, 5) });
 
   // Try recovering from the log generated on recovery
-  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
+  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7),
                            KeyValue(1, 7),
                            KeyValue(2, 5),
@@ -1720,11 +1718,11 @@ TEST_F(TabletServerTest, TestAlterSchema_AddColWithoutWriteDefault) {
   VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
 
   // Try recovering from the original log
-  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
+  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
 
   // Try recovering from the log generated on recovery
-  ASSERT_NO_FATAL_FAILURE(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
+  ASSERT_NO_FATALS(WARN_NOT_OK(ShutdownAndRebuildTablet(), "Shutdown failed: "));
   VerifyRows(projection, { KeyValue(0, 7), KeyValue(1, 7) });
 }
 
@@ -1763,9 +1761,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
 
   // Put some data in the tablet. We flush and insert more rows to ensure that
   // there is data both in the MRS and on disk.
-  ASSERT_NO_FATAL_FAILURE(InsertTestRowsRemote(0, 1, 1));
+  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
   ASSERT_OK(tablet_peer_->tablet()->Flush());
-  ASSERT_NO_FATAL_FAILURE(InsertTestRowsRemote(0, 2, 1));
+  ASSERT_NO_FATALS(InsertTestRowsRemote(0, 2, 1));
 
   // Drop any local references to the tablet from within this test,
   // so that when we delete it on the server, it's not held alive
@@ -2060,7 +2058,7 @@ TEST_F(TabletServerTest, TestChecksumScan) {
   ASSERT_FALSE(resp.has_more_results());
 
   // Finally, delete row 2, so we're back to the row 1 checksum.
-  ASSERT_NO_FATAL_FAILURE(DeleteTestRowsRemote(key, 1));
+  ASSERT_NO_FATALS(DeleteTestRowsRemote(key, 1));
   FLAGS_scanner_batch_size_rows = 100;
   req = new_req;
   controller.Reset();

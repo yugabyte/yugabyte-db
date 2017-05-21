@@ -599,7 +599,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   if (current_iteration % verification_frequency_ == 0) {
     // in_mem_docdb_ has its captured_at() hybrid_time set to HybridTime::kMax, so the following
     // will result in checking the latest state of DocDB stored in RocksDB against in_mem_docdb_.
-    NO_FATALS(VerifySnapshot(in_mem_docdb_))
+    ASSERT_NO_FATALS(VerifySnapshot(in_mem_docdb_))
         << "Discrepancy between RocksDB-based and in-memory DocDB state found after iteration "
         << current_iteration;
   }
@@ -612,7 +612,7 @@ HybridTime DocDBLoadGenerator::last_operation_ht() const {
 
 void DocDBLoadGenerator::FlushRocksDB() {
   LOG(INFO) << "Forcing a RocksDB flush after hybrid_time " << last_operation_ht().value();
-  NO_FATALS(fixture_->FlushRocksDB());
+  ASSERT_NO_FATALS(fixture_->FlushRocksDB());
 }
 
 void DocDBLoadGenerator::CaptureDocDbSnapshot() {
@@ -624,7 +624,7 @@ void DocDBLoadGenerator::CaptureDocDbSnapshot() {
 
 void DocDBLoadGenerator::VerifyOldestSnapshot() {
   if (!docdb_snapshots_.empty()) {
-    NO_FATALS(VerifySnapshot(GetOldestSnapshot()));
+    ASSERT_NO_FATALS(VerifySnapshot(GetOldestSnapshot()));
   }
 }
 
@@ -659,7 +659,7 @@ void DocDBLoadGenerator::CheckIfOldestSnapshotIsStillValid(const HybridTime clea
 void DocDBLoadGenerator::VerifyRandomDocDbSnapshot() {
   if (!docdb_snapshots_.empty()) {
     const int snapshot_idx = NextRandomInt(docdb_snapshots_.size());
-    NO_FATALS(VerifySnapshot(docdb_snapshots_[snapshot_idx]));
+    ASSERT_NO_FATALS(VerifySnapshot(docdb_snapshots_[snapshot_idx]));
   }
 }
 

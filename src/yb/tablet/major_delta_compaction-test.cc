@@ -15,11 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <memory>
+#include <unordered_set>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <memory>
-#include <unordered_set>
 
 #include "yb/common/generic_iterators.h"
 #include "yb/common/partial_row.h"
@@ -143,24 +144,25 @@ class TestMajorDeltaCompaction : public YBRowSetTest {
     VerifyDataWithMvccAndExpectedState(snap, expected_state_);
   }
 
-  void VerifyDataWithMvccAndExpectedState(MvccSnapshot& snap,
-                                          const vector<ExpectedRow>& passed_expected_state) {
-      gscoped_ptr<RowwiseIterator> row_iter;
-      ASSERT_OK(tablet()->NewRowIterator(client_schema_, snap,
-                                                Tablet::UNORDERED, &row_iter));
-      ASSERT_OK(row_iter->Init(nullptr));
+  void VerifyDataWithMvccAndExpectedState(
+      MvccSnapshot& snap,  // NOLINT
+      vector<ExpectedRow>& passed_expected_state) {  // NOLINT
+    gscoped_ptr<RowwiseIterator> row_iter;
+    ASSERT_OK(tablet()->NewRowIterator(client_schema_, snap,
+                                              Tablet::UNORDERED, &row_iter));
+    ASSERT_OK(row_iter->Init(nullptr));
 
-      vector<string> results;
-      ASSERT_OK(IterateToStringList(row_iter.get(), &results));
-      VLOG(1) << "Results of iterating over the updated materialized rows:";
-      ASSERT_EQ(passed_expected_state.size(), results.size());
-      for (int i = 0; i < results.size(); i++) {
-        SCOPED_TRACE(Substitute("row $0", i));
-        const string& str = results[i];
-        const ExpectedRow& expected = passed_expected_state[i];
-        ASSERT_EQ(expected.Formatted(), str);
-      }
+    vector<string> results;
+    ASSERT_OK(IterateToStringList(row_iter.get(), &results));
+    VLOG(1) << "Results of iterating over the updated materialized rows:";
+    ASSERT_EQ(passed_expected_state.size(), results.size());
+    for (int i = 0; i < results.size(); i++) {
+      SCOPED_TRACE(Substitute("row $0", i));
+      const string& str = results[i];
+      const ExpectedRow& expected = passed_expected_state[i];
+      ASSERT_EQ(expected.Formatted(), str);
     }
+  }
 
   MvccManager mvcc_;
   vector<ExpectedRow> expected_state_;
@@ -171,7 +173,7 @@ class TestMajorDeltaCompaction : public YBRowSetTest {
 // unchanged columns intact.
 TEST_F(TestMajorDeltaCompaction, TestCompact) {
   const int kNumRows = 100;
-  ASSERT_NO_FATAL_FAILURE(WriteTestTablet(kNumRows));
+  ASSERT_NO_FATALS(WriteTestTablet(kNumRows));
   ASSERT_OK(tablet()->Flush());
 
   vector<shared_ptr<RowSet> > all_rowsets;
@@ -191,17 +193,17 @@ TEST_F(TestMajorDeltaCompaction, TestCompact) {
   for (int i = 0; i < 3; i++) {
     SCOPED_TRACE(Substitute("Update/compact round $0", i));
     // Update the even rows and verify.
-    ASSERT_NO_FATAL_FAILURE(UpdateRows(kNumRows, false));
-    ASSERT_NO_FATAL_FAILURE(VerifyData());
+    ASSERT_NO_FATALS(UpdateRows(kNumRows, false));
+    ASSERT_NO_FATALS(VerifyData());
 
     // Flush the deltas, make sure data stays the same.
     ASSERT_OK(tablet()->FlushBiggestDMS());
-    ASSERT_NO_FATAL_FAILURE(VerifyData());
+    ASSERT_NO_FATALS(VerifyData());
 
     // Update the odd rows and flush deltas
-    ASSERT_NO_FATAL_FAILURE(UpdateRows(kNumRows, true));
+    ASSERT_NO_FATALS(UpdateRows(kNumRows, true));
     ASSERT_OK(tablet()->FlushBiggestDMS());
-    ASSERT_NO_FATAL_FAILURE(VerifyData());
+    ASSERT_NO_FATALS(VerifyData());
 
     // Major compact some columns.
     vector<ColumnId> col_ids;
@@ -210,14 +212,14 @@ TEST_F(TestMajorDeltaCompaction, TestCompact) {
     }
     ASSERT_OK(tablet()->DoMajorDeltaCompaction(col_ids, rs));
 
-    ASSERT_NO_FATAL_FAILURE(VerifyData());
+    ASSERT_NO_FATALS(VerifyData());
   }
 }
 
 // Verify that we do issue UNDO files and that we can read them.
 TEST_F(TestMajorDeltaCompaction, TestUndos) {
   const int kNumRows = 100;
-  ASSERT_NO_FATAL_FAILURE(WriteTestTablet(kNumRows));
+  ASSERT_NO_FATALS(WriteTestTablet(kNumRows));
   ASSERT_OK(tablet()->Flush());
 
   vector<shared_ptr<RowSet> > all_rowsets;
@@ -228,26 +230,26 @@ TEST_F(TestMajorDeltaCompaction, TestUndos) {
   MvccSnapshot snap(*tablet()->mvcc_manager());
 
   // Verify the old data and grab a copy of the old state.
-  ASSERT_NO_FATAL_FAILURE(VerifyDataWithMvccAndExpectedState(snap, expected_state_));
+  ASSERT_NO_FATALS(VerifyDataWithMvccAndExpectedState(snap, expected_state_));
   vector<ExpectedRow> old_state(expected_state_.size());
   std::copy(expected_state_.begin(), expected_state_.end(), old_state.begin());
 
   // Flush the DMS, make sure we still see the old data.
-  ASSERT_NO_FATAL_FAILURE(UpdateRows(kNumRows, false));
+  ASSERT_NO_FATALS(UpdateRows(kNumRows, false));
   ASSERT_OK(tablet()->FlushBiggestDMS());
-  ASSERT_NO_FATAL_FAILURE(VerifyDataWithMvccAndExpectedState(snap, old_state));
+  ASSERT_NO_FATALS(VerifyDataWithMvccAndExpectedState(snap, old_state));
 
   // Major compact, check we still have the old data.
   vector<ColumnId> col_ids_to_compact = { schema_.column_id(1),
                                           schema_.column_id(3),
                                           schema_.column_id(4) };
   ASSERT_OK(tablet()->DoMajorDeltaCompaction(col_ids_to_compact, rs));
-  ASSERT_NO_FATAL_FAILURE(VerifyDataWithMvccAndExpectedState(snap, old_state));
+  ASSERT_NO_FATALS(VerifyDataWithMvccAndExpectedState(snap, old_state));
 
   // Test adding three updates per row to three REDO files.
   for (int i = 0; i < 3; i++) {
     for (int j = 0; j < 3; j++) {
-      ASSERT_NO_FATAL_FAILURE(UpdateRows(kNumRows, false));
+      ASSERT_NO_FATALS(UpdateRows(kNumRows, false));
     }
     ASSERT_OK(tablet()->FlushBiggestDMS());
   }
@@ -256,37 +258,37 @@ TEST_F(TestMajorDeltaCompaction, TestUndos) {
   // and the new data.
   col_ids_to_compact.pop_back();
   ASSERT_OK(tablet()->DoMajorDeltaCompaction(col_ids_to_compact, rs));
-  ASSERT_NO_FATAL_FAILURE(VerifyDataWithMvccAndExpectedState(snap, old_state));
-  ASSERT_NO_FATAL_FAILURE(VerifyData());
+  ASSERT_NO_FATALS(VerifyDataWithMvccAndExpectedState(snap, old_state));
+  ASSERT_NO_FATALS(VerifyData());
 }
 
 // Test that the delete REDO mutations are written back and not filtered out.
 TEST_F(TestMajorDeltaCompaction, TestCarryDeletesOver) {
   const int kNumRows = 100;
 
-  ASSERT_NO_FATAL_FAILURE(WriteTestTablet(kNumRows));
+  ASSERT_NO_FATALS(WriteTestTablet(kNumRows));
   ASSERT_OK(tablet()->Flush());
 
   vector<shared_ptr<RowSet> > all_rowsets;
   tablet()->GetRowSetsForTests(&all_rowsets);
   shared_ptr<RowSet> rs = all_rowsets.front();
 
-  ASSERT_NO_FATAL_FAILURE(UpdateRows(kNumRows, false));
+  ASSERT_NO_FATALS(UpdateRows(kNumRows, false));
   ASSERT_OK(tablet()->FlushBiggestDMS());
 
   MvccSnapshot updates_snap(*tablet()->mvcc_manager());
   vector<ExpectedRow> old_state(expected_state_.size());
   std::copy(expected_state_.begin(), expected_state_.end(), old_state.begin());
 
-  ASSERT_NO_FATAL_FAILURE(DeleteRows(kNumRows));
+  ASSERT_NO_FATALS(DeleteRows(kNumRows));
   ASSERT_OK(tablet()->FlushBiggestDMS());
 
   vector<ColumnId> col_ids_to_compact = { schema_.column_id(4) };
   ASSERT_OK(tablet()->DoMajorDeltaCompaction(col_ids_to_compact, rs));
 
-  ASSERT_NO_FATAL_FAILURE(VerifyData());
+  ASSERT_NO_FATALS(VerifyData());
 
-  ASSERT_NO_FATAL_FAILURE(VerifyDataWithMvccAndExpectedState(updates_snap, old_state));
+  ASSERT_NO_FATALS(VerifyDataWithMvccAndExpectedState(updates_snap, old_state));
 }
 
 // Verify that reinserts only happen in the MRS and not down into the DRS. This test serves as a
@@ -296,13 +298,13 @@ TEST_F(TestMajorDeltaCompaction, TestReinserts) {
   const int kNumRows = 100;
 
   // Reinsert all the rows directly in the MRS.
-  ASSERT_NO_FATAL_FAILURE(WriteTestTablet(kNumRows)); // 1st batch.
-  ASSERT_NO_FATAL_FAILURE(DeleteRows(kNumRows)); // Delete 1st batch.
-  ASSERT_NO_FATAL_FAILURE(WriteTestTablet(kNumRows)); // 2nd batch.
+  ASSERT_NO_FATALS(WriteTestTablet(kNumRows)); // 1st batch.
+  ASSERT_NO_FATALS(DeleteRows(kNumRows)); // Delete 1st batch.
+  ASSERT_NO_FATALS(WriteTestTablet(kNumRows)); // 2nd batch.
   ASSERT_OK(tablet()->Flush());
 
   // Update those rows, we'll try to read them at the end.
-  ASSERT_NO_FATAL_FAILURE(UpdateRows(kNumRows, false)); // Update 2nd batch.
+  ASSERT_NO_FATALS(UpdateRows(kNumRows, false)); // Update 2nd batch.
   vector<ExpectedRow> old_state(expected_state_.size());
   std::copy(expected_state_.begin(), expected_state_.end(), old_state.begin());
   MvccSnapshot second_batch_inserts(*tablet()->mvcc_manager());
@@ -311,12 +313,12 @@ TEST_F(TestMajorDeltaCompaction, TestReinserts) {
   tablet()->GetRowSetsForTests(&all_rowsets);
   ASSERT_EQ(1, all_rowsets.size());
 
-  ASSERT_NO_FATAL_FAILURE(VerifyData());
+  ASSERT_NO_FATALS(VerifyData());
 
   // Delete the rows (will go into the DMS) then reinsert them (will go in a new MRS), then flush
   // the DMS with the deletes so that we can major compact them.
-  ASSERT_NO_FATAL_FAILURE(DeleteRows(kNumRows)); // Delete 2nd batch.
-  ASSERT_NO_FATAL_FAILURE(WriteTestTablet(kNumRows)); // 3rd batch.
+  ASSERT_NO_FATALS(DeleteRows(kNumRows)); // Delete 2nd batch.
+  ASSERT_NO_FATALS(WriteTestTablet(kNumRows)); // 3rd batch.
   ASSERT_OK(tablet()->FlushBiggestDMS());
 
   // At this point, here's the layout (the 1st batch was discarded during the first flush):
@@ -331,7 +333,7 @@ TEST_F(TestMajorDeltaCompaction, TestReinserts) {
   ASSERT_OK(tablet()->DoMajorDeltaCompaction(col_ids_to_compact, rs));
 
   // The data we'll see here is the 3rd batch of inserts, doesn't have updates.
-  ASSERT_NO_FATAL_FAILURE(VerifyData());
+  ASSERT_NO_FATALS(VerifyData());
 
   // Test that the 3rd batch of inserts goes into a new RS, even though it's the same row keys.
   ASSERT_OK(tablet()->Flush());
@@ -340,19 +342,19 @@ TEST_F(TestMajorDeltaCompaction, TestReinserts) {
   ASSERT_EQ(2, all_rowsets.size());
 
   // Verify the 3rd batch.
-  ASSERT_NO_FATAL_FAILURE(VerifyData());
+  ASSERT_NO_FATALS(VerifyData());
 
   // Verify the updates in the second batch are still readable, from the first RS.
-  ASSERT_NO_FATAL_FAILURE(VerifyDataWithMvccAndExpectedState(second_batch_inserts, old_state));
+  ASSERT_NO_FATALS(VerifyDataWithMvccAndExpectedState(second_batch_inserts, old_state));
 }
 
 // Verify that we won't schedule a major compaction when files are just composed of deletes.
 TEST_F(TestMajorDeltaCompaction, TestJustDeletes) {
   const int kNumRows = 100;
 
-  ASSERT_NO_FATAL_FAILURE(WriteTestTablet(kNumRows));
+  ASSERT_NO_FATALS(WriteTestTablet(kNumRows));
   ASSERT_OK(tablet()->Flush());
-  ASSERT_NO_FATAL_FAILURE(DeleteRows(kNumRows));
+  ASSERT_NO_FATALS(DeleteRows(kNumRows));
   ASSERT_OK(tablet()->FlushBiggestDMS());
 
   shared_ptr<RowSet> rs;

@@ -84,7 +84,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   virtual void SetUp() override {
     YBTabletTest::SetUp();
     SetUpTabletPeer();
-    ASSERT_NO_FATAL_FAILURE(PopulateTablet());
+    ASSERT_NO_FATALS(PopulateTablet());
     InitSession();
   }
 

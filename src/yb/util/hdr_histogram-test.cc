@@ -102,10 +102,10 @@ TEST_F(HdrHistogramTest, PercentileAndCopyTest) {
   uint64_t specified_max = 10000;
   HdrHistogram hist(specified_max, kSigDigits);
   load_percentiles(&hist);
-  NO_FATALS(validate_percentiles(&hist, specified_max));
+  ASSERT_NO_FATALS(validate_percentiles(&hist, specified_max));
 
   HdrHistogram copy(hist);
-  NO_FATALS(validate_percentiles(&copy, specified_max));
+  ASSERT_NO_FATALS(validate_percentiles(&copy, specified_max));
 
   ASSERT_EQ(hist.TotalSum(), copy.TotalSum());
 }

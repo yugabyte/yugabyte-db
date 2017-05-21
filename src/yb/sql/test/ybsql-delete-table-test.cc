@@ -19,7 +19,7 @@ class YbSqlDeleteTable : public YbSqlTestBase {
 
 TEST_F(YbSqlDeleteTable, TestSqlDeleteTableSimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();

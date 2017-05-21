@@ -44,7 +44,7 @@ DEFINE_int32(num_tablet_servers, 3, "Number of tablet servers to start");
 DEFINE_int32(num_replicas, 3, "Number of replicas per tablet server");
 
 #define ASSERT_ALL_REPLICAS_AGREE(count) \
-  NO_FATALS(AssertAllReplicasAgree(count))
+  ASSERT_NO_FATALS(AssertAllReplicasAgree(count))
 
 namespace yb {
 namespace tserver {
@@ -434,8 +434,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void BuildAndStart(const std::vector<std::string>& ts_flags = std::vector<std::string>(),
                      const std::vector<std::string>& master_flags = std::vector<std::string>()) {
     CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
-    NO_FATALS(CreateClient(&client_));
-    NO_FATALS(CreateTable());
+    ASSERT_NO_FATALS(CreateClient(&client_));
+    ASSERT_NO_FATALS(CreateTable());
     WaitForTSAndReplicas();
     CHECK_GT(tablet_replicas_.size(), 0);
     tablet_id_ = (*tablet_replicas_.begin()).first;
@@ -443,8 +443,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   void AssertAllReplicasAgree(int expected_result_count) {
     ClusterVerifier cluster_verifier(cluster_.get());
-    NO_FATALS(cluster_verifier.CheckCluster());
-    NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY,
+    ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+    ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(kTableName, ClusterVerifier::EXACTLY,
         expected_result_count));
   }
 

@@ -133,7 +133,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
   void CreateTable() {
     ASSERT_GE(kNumInsertClients, 0);
     ASSERT_GE(kNumInsertsPerClient, 0);
-    NO_FATALS(InitCluster());
+    ASSERT_NO_FATALS(InitCluster());
 
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
 
@@ -278,23 +278,23 @@ const YBTableName FullStackInsertScanTest::kTableName("my_keyspace", "full-stack
 
 TEST_F(FullStackInsertScanTest, MRSOnlyStressTest) {
   FLAGS_enable_maintenance_manager = false;
-  NO_FATALS(CreateTable());
-  NO_FATALS(DoConcurrentClientInserts());
-  NO_FATALS(DoTestScans());
+  ASSERT_NO_FATALS(CreateTable());
+  ASSERT_NO_FATALS(DoConcurrentClientInserts());
+  ASSERT_NO_FATALS(DoTestScans());
 }
 
 TEST_F(FullStackInsertScanTest, WithDiskStressTest) {
-  NO_FATALS(CreateTable());
-  NO_FATALS(DoConcurrentClientInserts());
-  NO_FATALS(FlushToDisk());
-  NO_FATALS(DoTestScans());
+  ASSERT_NO_FATALS(CreateTable());
+  ASSERT_NO_FATALS(DoConcurrentClientInserts());
+  ASSERT_NO_FATALS(FlushToDisk());
+  ASSERT_NO_FATALS(DoTestScans());
 }
 
 void FullStackInsertScanTest::DoConcurrentClientInserts() {
   vector<scoped_refptr<Thread> > threads(kNumInsertClients);
   CountDownLatch start_latch(kNumInsertClients + 1);
   for (int i = 0; i < kNumInsertClients; ++i) {
-    NO_FATALS(CreateNewClient(i));
+    ASSERT_NO_FATALS(CreateNewClient(i));
     ASSERT_OK(Thread::Create(CURRENT_TEST_NAME(),
                              StrCat(CURRENT_TEST_CASE_NAME(), "-id", i),
                              &FullStackInsertScanTest::InsertRows, this,
@@ -324,15 +324,15 @@ void FullStackInsertScanTest::DoTestScans() {
   if (record) {
     CHECK_OK(record->Start());
   }
-  NO_FATALS(ScanProjection(vector<string>(), "empty projection, 0 col"));
-  NO_FATALS(ScanProjection({ "key" }, "key scan, 1 col"));
-  NO_FATALS(ScanProjection(AllColumnNames(), "full schema scan, 10 col"));
-  NO_FATALS(ScanProjection(StringColumnNames(), "String projection, 1 col"));
-  NO_FATALS(ScanProjection(Int32ColumnNames(), "Int32 projection, 4 col"));
-  NO_FATALS(ScanProjection(Int64ColumnNames(), "Int64 projection, 4 col"));
+  ASSERT_NO_FATALS(ScanProjection(vector<string>(), "empty projection, 0 col"));
+  ASSERT_NO_FATALS(ScanProjection({ "key" }, "key scan, 1 col"));
+  ASSERT_NO_FATALS(ScanProjection(AllColumnNames(), "full schema scan, 10 col"));
+  ASSERT_NO_FATALS(ScanProjection(StringColumnNames(), "String projection, 1 col"));
+  ASSERT_NO_FATALS(ScanProjection(Int32ColumnNames(), "Int32 projection, 4 col"));
+  ASSERT_NO_FATALS(ScanProjection(Int64ColumnNames(), "Int64 projection, 4 col"));
 
-  NO_FATALS(InterruptNotNull(record.Pass()));
-  NO_FATALS(InterruptNotNull(stat.Pass()));
+  ASSERT_NO_FATALS(InterruptNotNull(record.Pass()));
+  ASSERT_NO_FATALS(InterruptNotNull(stat.Pass()));
 }
 
 void FullStackInsertScanTest::FlushToDisk() {

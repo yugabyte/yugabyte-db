@@ -50,7 +50,7 @@ DECLARE_bool(enable_leader_failure_detection);
 METRIC_DECLARE_entity(tablet);
 
 #define REPLICATE_SEQUENCE_OF_MESSAGES(a, b, c, d, e, f, g) \
-  ASSERT_NO_FATAL_FAILURE(ReplicateSequenceOfMessages(a, b, c, d, e, f, g))
+  ASSERT_NO_FATALS(ReplicateSequenceOfMessages(a, b, c, d, e, f, g))
 
 using std::shared_ptr;
 
@@ -662,7 +662,7 @@ TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {
 
     // If the locked replica would stop consensus we would hang here
     // as we wait for operations to be replicated to a majority.
-    ASSERT_NO_FATAL_FAILURE(ReplicateSequenceOfMessages(
+    ASSERT_NO_FATALS(ReplicateSequenceOfMessages(
                               10,
                               kLeaderIdx,
                               WAIT_FOR_MAJORITY,
@@ -1034,7 +1034,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_OK(peer->RequestVote(&request, &response));
   ASSERT_TRUE(response.vote_granted());
   ASSERT_EQ(last_op_id.term() + 1, response.responder_term());
-  ASSERT_NO_FATAL_FAILURE(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 1, "peer-0"));
+  ASSERT_NO_FATALS(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 1, "peer-0"));
 
   // Ensure we get same response for same term and same UUID.
   response.Clear();
@@ -1049,7 +1049,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_TRUE(response.has_consensus_error());
   ASSERT_EQ(ConsensusErrorPB::ALREADY_VOTED, response.consensus_error().code());
   ASSERT_EQ(last_op_id.term() + 1, response.responder_term());
-  ASSERT_NO_FATAL_FAILURE(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 1, "peer-0"));
+  ASSERT_NO_FATALS(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 1, "peer-0"));
 
   //
   // Test that replicas refuse votes for an old term.
@@ -1063,7 +1063,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_OK(peer->RequestVote(&request, &response));
   ASSERT_TRUE(response.vote_granted());
   ASSERT_EQ(last_op_id.term() + 2, response.responder_term());
-  ASSERT_NO_FATAL_FAILURE(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 2, "peer-0"));
+  ASSERT_NO_FATALS(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 2, "peer-0"));
 
   // Now try the old term.
   // Note: Use the peer who "won" the election on the previous term (peer-0),
@@ -1075,7 +1075,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_TRUE(response.has_consensus_error());
   ASSERT_EQ(ConsensusErrorPB::INVALID_TERM, response.consensus_error().code());
   ASSERT_EQ(last_op_id.term() + 2, response.responder_term());
-  ASSERT_NO_FATAL_FAILURE(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 2, "peer-0"));
+  ASSERT_NO_FATALS(AssertDurableTermAndVote(kPeerIndex, last_op_id.term() + 2, "peer-0"));
 
   //
   // Ensure replicas vote no for an old op index.
@@ -1090,7 +1090,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   ASSERT_TRUE(response.has_consensus_error());
   ASSERT_EQ(ConsensusErrorPB::LAST_OPID_TOO_OLD, response.consensus_error().code());
   ASSERT_EQ(last_op_id.term() + 3, response.responder_term());
-  ASSERT_NO_FATAL_FAILURE(AssertDurableTermWithoutVote(kPeerIndex, last_op_id.term() + 3));
+  ASSERT_NO_FATALS(AssertDurableTermWithoutVote(kPeerIndex, last_op_id.term() + 3));
 
   // Send a "heartbeat" to the peer. It should be rejected.
   ConsensusRequestPB req;

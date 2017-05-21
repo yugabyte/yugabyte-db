@@ -276,7 +276,8 @@ TEST_F(HybridClockTest, CompareHybridClocksToDelta) {
       HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 10),
       MonoDelta::FromNanoseconds(MonoTime::kNanosecondsPerMicrosecond + 1)));
 
-  NO_FATALS(HybridClock::GetPhysicalValueNanos(HybridTime(std::numeric_limits<uint64_t>::max())));
+  ASSERT_NO_FATALS(HybridClock::GetPhysicalValueNanos(
+      HybridTime(std::numeric_limits<uint64_t>::max())));
 
   EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
       HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),

@@ -157,7 +157,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
 void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {
   crash_test_tserver_flags_.push_back("--log_segment_size_mb=1");  // Faster log rolls.
   // Start the cluster with load balancer turned off.
-  NO_FATALS(StartCluster(crash_test_tserver_flags_, {"--enable_load_balancing=false"}, 5));
+  ASSERT_NO_FATALS(StartCluster(crash_test_tserver_flags_, {"--enable_load_balancing=false"}, 5));
   crash_test_tserver_index_ = 0;  // We'll test with the first TS.
 
   LOG(INFO) << "Started cluster";
@@ -257,7 +257,7 @@ void RemoteBootstrapITest::CrashTestVerify() {
   // Skip cluster_verifier.CheckCluster() because it calls ListTabletServers which gets its list
   // from TSManager::GetAllDescriptors. This list includes the tserver that is in a crash loop, and
   // the check will always fail.
-  NO_FATALS(cluster_verifier.CheckRowCount(crash_test_workload_->table_name(),
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(crash_test_workload_->table_name(),
                                            ClusterVerifier::AT_LEAST,
                                            crash_test_workload_->rows_inserted()));
 }
@@ -280,7 +280,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
   const int kTsIndex = 0; // We'll test with the first TS.
@@ -386,8 +386,8 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
   }
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
       workload.rows_inserted()));
 }
 
@@ -400,7 +400,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
 void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_type) {
   MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0; // We'll test with the first TS.
-  NO_FATALS(StartCluster());
+  ASSERT_NO_FATALS(StartCluster());
 
   // Populate a tablet with some data.
   TestWorkload workload(cluster_.get());
@@ -452,8 +452,8 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   ASSERT_TRUE(cluster_->tablet_server(kTsIndex)->IsProcessAlive());
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
       workload.rows_inserted()));
 }
 
@@ -467,7 +467,7 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
   const int kNumTabletServers = 2;
-  NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumTabletServers));
 
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
   const int kFollowerIndex = 0;
@@ -541,8 +541,8 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::EXACTLY,
       workload.rows_inserted()));
 }
 
@@ -565,7 +565,7 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
   ts_flags.push_back("--flush_threshold_mb=0"); // Constantly flush.
   ts_flags.push_back("--maintenance_manager_polling_interval_ms=10");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
   const MonoDelta timeout = MonoDelta::FromSeconds(FLAGS_remote_bootstrap_itest_timeout_sec);
 
@@ -646,8 +646,8 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
   }
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
                             workload.rows_inserted()));
 }
 
@@ -662,7 +662,7 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
   }
 
   const MonoDelta timeout = MonoDelta::FromSeconds(FLAGS_remote_bootstrap_itest_timeout_sec);
-  NO_FATALS(StartCluster(vector<string>(), vector<string>(), 5));
+  ASSERT_NO_FATALS(StartCluster(vector<string>(), vector<string>(), 5));
 
   TestWorkload workload(cluster_.get());
   workload.set_num_replicas(5);
@@ -737,8 +737,8 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
   }
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(), ClusterVerifier::AT_LEAST,
                             workload.rows_inserted()));
 }
 
@@ -798,7 +798,7 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
   ts_flags.push_back("--enable_remote_bootstrap=false");
   ts_flags.push_back("--rpc_slow_query_threshold_ms=10000000");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
   TestWorkload workload(cluster_.get());
   // TODO(KUDU-1054): the client should handle retrying on different replicas

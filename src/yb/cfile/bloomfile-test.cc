@@ -61,14 +61,14 @@ class BloomFileTest : public BloomFileTestBase {
 
 
 TEST_F(BloomFileTest, TestWriteAndRead) {
-  ASSERT_NO_FATAL_FAILURE(WriteTestBloomFile());
+  ASSERT_NO_FATALS(WriteTestBloomFile());
   ASSERT_OK(OpenBloomFile());
   VerifyBloomFile();
 }
 
 #ifdef NDEBUG
 TEST_F(BloomFileTest, Benchmark) {
-  ASSERT_NO_FATAL_FAILURE(WriteTestBloomFile());
+  ASSERT_NO_FATALS(WriteTestBloomFile());
   ASSERT_OK(OpenBloomFile());
 
   uint64_t count_present = ReadBenchmark();
@@ -88,7 +88,7 @@ TEST_F(BloomFileTest, Benchmark) {
 #endif
 
 TEST_F(BloomFileTest, TestLazyInit) {
-  ASSERT_NO_FATAL_FAILURE(WriteTestBloomFile());
+  ASSERT_NO_FATALS(WriteTestBloomFile());
 
   shared_ptr<MemTracker> tracker = MemTracker::CreateTracker(-1, "test");
   int64_t initial_mem_usage = tracker->consumption();

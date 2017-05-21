@@ -24,7 +24,7 @@ class YbSqlInsertTable : public YbSqlTestBase {
 
 TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -119,7 +119,7 @@ TEST_F(YbSqlInsertTable, TestSqlInsertTableSimple) {
 
 TEST_F(YbSqlInsertTable, TestSqlInsertTableWithExpression) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();

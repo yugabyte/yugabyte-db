@@ -73,7 +73,7 @@ class MasterFailoverTest : public YBTest {
 
   void SetUp() override {
     YBTest::SetUp();
-    ASSERT_NO_FATAL_FAILURE(RestartCluster());
+    ASSERT_NO_FATALS(RestartCluster());
   }
 
   void TearDown() override {

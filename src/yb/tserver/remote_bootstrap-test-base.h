@@ -17,9 +17,9 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_
 #define YB_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_
 
-#include "yb/tserver/tablet_server-test-base.h"
-
 #include <string>
+
+#include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
@@ -53,7 +53,7 @@ class RemoteBootstrapTest : public TabletServerTestBase {
     // starting a remote bootstrap session.
     tablet_peer_->log_anchor_registry()->Register(
       MinimumOpId().index(), CURRENT_TEST_NAME(), &anchor_);
-    ASSERT_NO_FATAL_FAILURE(GenerateTestData());
+    ASSERT_NO_FATALS(GenerateTestData());
   }
 
   virtual void TearDown() override {

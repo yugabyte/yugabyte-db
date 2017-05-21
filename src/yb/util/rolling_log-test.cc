@@ -17,10 +17,11 @@
 
 #include "yb/util/rolling_log.h"
 
-#include <glog/logging.h>
-#include <glog/stl_logging.h>
 #include <string>
 #include <vector>
+
+#include <glog/logging.h>
+#include <glog/stl_logging.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -75,16 +76,16 @@ TEST_F(RollingLogTest, TestLog) {
 
   // Before writing anything, we shouldn't open a log file.
   vector<string> children;
-  NO_FATALS(AssertLogCount(0, &children));
+  ASSERT_NO_FATALS(AssertLogCount(0, &children));
 
   // Appending some data should write a new segment.
   ASSERT_OK(log.Append("Hello world\n"));
-  NO_FATALS(AssertLogCount(1, &children));
+  ASSERT_NO_FATALS(AssertLogCount(1, &children));
 
   for (int i = 0; i < 10; i++) {
     ASSERT_OK(log.Append("Hello world\n"));
   }
-  NO_FATALS(AssertLogCount(2, &children));
+  ASSERT_NO_FATALS(AssertLogCount(2, &children));
 
   faststring data;
   string path = JoinPathSegments(log_dir_, children[0]);
@@ -108,7 +109,7 @@ TEST_F(RollingLogTest, TestCompression) {
   ASSERT_OK(log.Close());
 
   vector<string> children;
-  NO_FATALS(AssertLogCount(1, &children));
+  ASSERT_NO_FATALS(AssertLogCount(1, &children));
   ASSERT_TRUE(HasSuffixString(children[0], ".gz"));
 
   // Ensure that the output is actually gzipped.

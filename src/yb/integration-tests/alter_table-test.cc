@@ -566,7 +566,7 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   UpdateRow(0, { {"c1", 10001} });
   UpdateRow(1, { {"c1", 10002} });
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c1=10001, int32 c2=12345)", rows[0]);
   ASSERT_EQ("(int32 c0=16777216, int32 c1=10002, int32 c2=12345)", rows[1]);
@@ -575,29 +575,29 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
   ASSERT_EQ("(int32 c0=16777216, int32 c2=12345)", rows[1]);
 
   // Test that restart doesn't fail when trying to replay updates or inserts
   // with the dropped column.
-  ASSERT_NO_FATAL_FAILURE(RestartTabletServer());
+  ASSERT_NO_FATALS(RestartTabletServer());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
   ASSERT_EQ("(int32 c0=16777216, int32 c2=12345)", rows[1]);
 
   // Add back a column called 'c2', but should not materialize old data.
   ASSERT_OK(AddNewI32Column(kTableName, "c1", 20000));
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c2=12345, int32 c1=20000)", rows[0]);
   ASSERT_EQ("(int32 c0=16777216, int32 c2=12345, int32 c1=20000)", rows[1]);
 
-  ASSERT_NO_FATAL_FAILURE(RestartTabletServer());
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(RestartTabletServer());
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c2=12345, int32 c1=20000)", rows[0]);
   ASSERT_EQ("(int32 c0=16777216, int32 c2=12345, int32 c1=20000)", rows[1]);
@@ -617,7 +617,7 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   ASSERT_OK(tablet_peer_->tablet()->Flush());
 
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=12345)", rows[0]);
   ASSERT_EQ("(int32 c0=16777216, int32 c1=1, int32 c2=12345)", rows[1]);
@@ -630,7 +630,7 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
 
@@ -651,7 +651,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterUpdatingRemovedColumn) {
   InsertRows(0, 1);
   ASSERT_OK(tablet_peer_->tablet()->Flush());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=12345)", rows[0]);
 
@@ -666,7 +666,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterUpdatingRemovedColumn) {
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1") ->Alter());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c2=12345)", rows[0]);
 
@@ -710,7 +710,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasIntoMissingBaseData) {
   // Make sure the delta is in a delta-file.
   ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=54321)", rows[0]);
   ASSERT_EQ("(int32 c0=16777216, int32 c1=1, int32 c2=12345)", rows[1]);
@@ -759,7 +759,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterAddUpdateRemoveColumn) {
   // Make sure the delta is in a delta-file.
   ASSERT_OK(tablet_peer_->tablet()->FlushBiggestDMS());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c1=0, int32 c2=54321)", rows[0]);
 
@@ -768,7 +768,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterAddUpdateRemoveColumn) {
   gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c2")->Alter());
 
-  NO_FATALS(ScanToStrings(&rows));
+  ASSERT_NO_FATALS(ScanToStrings(&rows));
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("(int32 c0=0, int32 c1=0)", rows[0]);
 

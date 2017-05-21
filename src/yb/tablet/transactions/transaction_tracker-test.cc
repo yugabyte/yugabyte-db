@@ -191,18 +191,18 @@ static void CheckMetrics(const scoped_refptr<MetricEntity>& entity,
 // Basic testing for metrics. Note that the NoOpTransactions we use in this
 // test are all write transactions.
 TEST_F(TransactionTrackerTest, TestMetrics) {
-  NO_FATALS(CheckMetrics(entity_, 0, 0, 0));
+  ASSERT_NO_FATALS(CheckMetrics(entity_, 0, 0, 0));
 
   vector<scoped_refptr<TransactionDriver> > drivers;
   ASSERT_OK(AddDrivers(3, &drivers));
-  NO_FATALS(CheckMetrics(entity_, 3, 0, 0));
+  ASSERT_NO_FATALS(CheckMetrics(entity_, 3, 0, 0));
 
   drivers[0]->Abort(STATUS(Aborted, ""));
-  NO_FATALS(CheckMetrics(entity_, 2, 0, 0));
+  ASSERT_NO_FATALS(CheckMetrics(entity_, 2, 0, 0));
 
   drivers[1]->Abort(STATUS(Aborted, ""));
   drivers[2]->Abort(STATUS(Aborted, ""));
-  NO_FATALS(CheckMetrics(entity_, 0, 0, 0));
+  ASSERT_NO_FATALS(CheckMetrics(entity_, 0, 0, 0));
 }
 
 // Check that the tracker's consumption is very close (but not quite equal to)
@@ -236,19 +236,19 @@ TEST_F(TransactionTrackerTest, TestTooManyTransactions) {
   LOG(INFO) << "Added " << drivers.size() << " drivers";
   ASSERT_TRUE(s.IsServiceUnavailable());
   ASSERT_STR_CONTAINS(s.ToString(), "exceeded its limit");
-  NO_FATALS(CheckMetrics(entity_, drivers.size(), 0, 1));
-  NO_FATALS(CheckMemTracker(t));
+  ASSERT_NO_FATALS(CheckMetrics(entity_, drivers.size(), 0, 1));
+  ASSERT_NO_FATALS(CheckMemTracker(t));
 
   ASSERT_TRUE(AddDrivers(1, &drivers).IsServiceUnavailable());
-  NO_FATALS(CheckMetrics(entity_, drivers.size(), 0, 2));
-  NO_FATALS(CheckMemTracker(t));
+  ASSERT_NO_FATALS(CheckMetrics(entity_, drivers.size(), 0, 2));
+  ASSERT_NO_FATALS(CheckMemTracker(t));
 
   // If we abort one transaction, we should be able to add one more.
   drivers.back()->Abort(STATUS(Aborted, ""));
   drivers.pop_back();
-  NO_FATALS(CheckMemTracker(t));
+  ASSERT_NO_FATALS(CheckMemTracker(t));
   ASSERT_OK(AddDrivers(1, &drivers));
-  NO_FATALS(CheckMemTracker(t));
+  ASSERT_NO_FATALS(CheckMemTracker(t));
 
   // Clean up.
   for (const scoped_refptr<TransactionDriver>& driver : drivers) {

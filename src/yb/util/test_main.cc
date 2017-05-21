@@ -15,15 +15,24 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <signal.h>
+#include <sys/time.h>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <signal.h>
-#include <sys/time.h>
 
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
+#include "yb/util/debug-util.h"
+
+using testing::EmptyTestEventListener;
+using testing::TestPartResult;
+using testing::UnitTest;
+
+using yb::GetStackTrace;
+using yb::StackTraceLineFormat;
 
 DEFINE_int32(test_timeout_after, 0,
              "Maximum total seconds allowed for all unit tests in the suite. Default: disabled");
@@ -35,6 +44,16 @@ static void CreateAndStartTimer();
 // Gracefully kill the process.
 static void KillTestOnTimeout(int signum);
 
+class MinimalistPrinter : public EmptyTestEventListener{
+  // Called after a failed assertion or a SUCCEED() invocation.
+  virtual void OnTestPartResult(const TestPartResult& test_part_result) {
+    if (test_part_result.failed()) {
+      std::cerr << "Test failure stack trace:\n"
+                << GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE, 4) << std::endl;
+    }
+  }
+};
+
 int main(int argc, char **argv) {
   google::InstallFailureSignalHandler();
   // InitGoogleTest() must precede ParseCommandLineFlags(), as the former
@@ -44,6 +63,12 @@ int main(int argc, char **argv) {
 
   // Create the test-timeout timer.
   CreateAndStartTimer();
+
+  // Gets hold of the event listener list.
+  auto& listeners = UnitTest::GetInstance()->listeners();
+
+  // Adds a listener to the end.  Google Test takes the ownership.
+  listeners.Append(new MinimalistPrinter());
 
   int ret = RUN_ALL_TESTS();
 

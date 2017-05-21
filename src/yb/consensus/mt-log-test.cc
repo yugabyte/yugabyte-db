@@ -15,12 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "yb/consensus/log-test-base.h"
-
 #include <algorithm>
 #include <mutex>
 #include <vector>
 
+#include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/ref_counted.h"
@@ -152,7 +151,7 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   LOG_TIMING(INFO, strings::Substitute("inserting $0 batches($1 threads, $2 per-thread)",
                                       FLAGS_num_writer_threads * FLAGS_num_batches_per_thread,
                                       FLAGS_num_batches_per_thread, FLAGS_num_writer_threads)) {
-    ASSERT_NO_FATAL_FAILURE(Run());
+    ASSERT_NO_FATALS(Run());
   }
   ASSERT_OK(log_->Close());
 

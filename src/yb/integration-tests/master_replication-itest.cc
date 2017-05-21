@@ -183,7 +183,7 @@ TEST_F(MasterReplicationTest, TestSysTablesReplication) {
 
   // Repeat the same for the second table.
   ASSERT_OK(CreateTable(client, kTableName2));
-  ASSERT_NO_FATAL_FAILURE(VerifyTableExists(client, kTableName2));
+  ASSERT_NO_FATALS(VerifyTableExists(client, kTableName2));
 }
 
 // When all masters are down, test that we can timeout the connection

@@ -67,7 +67,7 @@ TEST_F(YbSqlCmd, TestSqlCmd) {
     ConnectCluster(FLAGS_ybcmd_master_addresses);
   } else {
     // Init the simulated cluster.
-    NO_FATALS(CreateSimulatedCluster());
+    ASSERT_NO_FATALS(CreateSimulatedCluster());
   }
 
   // Get a processor.

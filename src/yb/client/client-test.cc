@@ -132,8 +132,8 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
 
-    ASSERT_NO_FATAL_FAILURE(CreateTable(kTableName, 1, GenerateSplitRows(), &client_table_));
-    ASSERT_NO_FATAL_FAILURE(CreateTable(kTable2Name, 1, vector<const YBPartialRow*>(),
+    ASSERT_NO_FATALS(CreateTable(kTableName, 1, GenerateSplitRows(), &client_table_));
+    ASSERT_NO_FATALS(CreateTable(kTable2Name, 1, vector<const YBPartialRow*>(),
                                         &client_table2_));
   }
 
@@ -198,7 +198,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(session->Apply(BuildTestRow(table, i)));
     }
     FlushSessionOrDie(session);
-    ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
+    ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
   // Inserts 'num_rows' using the default client.
@@ -215,7 +215,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(session->Apply(update));
     }
     FlushSessionOrDie(session);
-    ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
+    ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
   void DeleteTestRows(YBTable* table, int lo, int hi) {
@@ -227,7 +227,7 @@ class ClientTest : public YBMiniClusterTestBase<MiniCluster> {
       ASSERT_OK(session->Apply(del));
     }
     FlushSessionOrDie(session);
-    ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
+    ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
   shared_ptr<YBInsert> BuildTestRow(YBTable* table, int index) {
@@ -511,7 +511,7 @@ TEST_F(ClientTest, TestMasterDown) {
 }
 
 TEST_F(ClientTest, TestScan) {
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(
+  ASSERT_NO_FATALS(InsertTestRows(
       client_table_.get(), FLAGS_test_scan_num_rows));
 
   ASSERT_EQ(FLAGS_test_scan_num_rows, CountRowsFromClient(client_table_.get()));
@@ -543,7 +543,7 @@ TEST_F(ClientTest, TestScanAtSnapshot) {
   int half_the_rows = FLAGS_test_scan_num_rows / 2;
 
   // Insert half the rows
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
                                          half_the_rows));
 
   // get the time from the server and transform to micros disregarding any
@@ -552,7 +552,7 @@ TEST_F(ClientTest, TestScanAtSnapshot) {
       cluster_->mini_tablet_server(0)->server()->clock()->Now());
 
   // Insert the second half of the rows
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
                                          half_the_rows, half_the_rows));
 
   YBScanner scanner(client_table_.get());
@@ -618,7 +618,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   }
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(YBTableName("TestScanMultiTablet"), 1, rows, &table));
+  ASSERT_NO_FATALS(CreateTable(YBTableName("TestScanMultiTablet"), 1, rows, &table));
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
   // tablet, except the first which is empty.
@@ -736,7 +736,7 @@ TEST_F(ClientTest, TestScanEmptyTable) {
 // row block with the proper number of rows filled in. Impala issues
 // scans like this in order to implement COUNT(*).
 TEST_F(ClientTest, TestScanEmptyProjection) {
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
                                          FLAGS_test_scan_num_rows));
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns(vector<string>()));
@@ -771,7 +771,7 @@ TEST_F(ClientTest, TestProjectInvalidColumn) {
 // Test a scan where we have a predicate on a key column that is not
 // in the projection.
 TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
                                          FLAGS_test_scan_num_rows));
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns({ "int_val" }));
@@ -808,7 +808,7 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
 // Test a scan where we have a predicate on a non-key column that is
 // not in the projection.
 TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
                                          FLAGS_test_scan_num_rows));
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.AddConjunctPredicate(
@@ -882,7 +882,7 @@ TEST_F(ClientTest, TestInvalidPredicates) {
 TEST_F(ClientTest, TestScanCloseProxy) {
   const YBTableName kEmptyTable("TestScanCloseProxy");
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(kEmptyTable, 3, GenerateSplitRows(), &table));
+  ASSERT_NO_FATALS(CreateTable(kEmptyTable, 3, GenerateSplitRows(), &table));
 
   {
     // Open and close an empty scanner.
@@ -893,7 +893,7 @@ TEST_F(ClientTest, TestScanCloseProxy) {
   }
 
   // Insert some test rows.
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(),
+  ASSERT_NO_FATALS(InsertTestRows(table.get(),
                                          FLAGS_test_scan_num_rows));
   {
     // Open and close a scanner with rows.
@@ -930,7 +930,7 @@ static void DoScanWithCallback(
   {
     LOG(INFO) << "Setting up scanner.";
     ASSERT_TRUE(scanner.HasMoreRows());
-    NO_FATALS(ReadBatchToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ReadBatchToStrings(&scanner, &rows));
     ASSERT_GT(rows.size(), 0);
     ASSERT_TRUE(scanner.HasMoreRows());
   }
@@ -949,7 +949,7 @@ static void DoScanWithCallback(
   ASSERT_TRUE(scanner.HasMoreRows());
   ASSERT_OK(scanner.SetBatchSizeBytes(1024*1024));
   while (scanner.HasMoreRows()) {
-    NO_FATALS(ReadBatchToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ReadBatchToStrings(&scanner, &rows));
   }
   scanner.Close();
 
@@ -968,8 +968,8 @@ TEST_F(ClientTest, TestScanFaultTolerance) {
   // Create test table and insert test rows.
   const YBTableName kScanTable("TestScanFaultTolerance");
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(kScanTable, 3, vector<const YBPartialRow*>(), &table));
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(), FLAGS_test_scan_num_rows));
+  ASSERT_NO_FATALS(CreateTable(kScanTable, 3, vector<const YBPartialRow*>(), &table));
+  ASSERT_NO_FATALS(InsertTestRows(table.get(), FLAGS_test_scan_num_rows));
 
   // Do an initial scan to determine the expected rows for later verification.
   vector<string> expected_rows;
@@ -994,14 +994,14 @@ TEST_F(ClientTest, TestScanFaultTolerance) {
 
     // Restarting and waiting should result in a SCANNER_EXPIRED error.
     LOG(INFO) << "Doing a scan while restarting a tserver and waiting for it to come up...";
-    ASSERT_NO_FATAL_FAILURE(internal::DoScanWithCallback(
+    ASSERT_NO_FATALS(internal::DoScanWithCallback(
         table.get(), expected_rows,
         std::bind(&ClientTest_TestScanFaultTolerance_Test::RestartTServerAndWait, this, _1)));
 
     // Restarting and not waiting means the tserver is hopefully bootstrapping, leading to
     // a TABLET_NOT_RUNNING error.
     LOG(INFO) << "Doing a scan while restarting a tserver...";
-    ASSERT_NO_FATAL_FAILURE(internal::DoScanWithCallback(
+    ASSERT_NO_FATALS(internal::DoScanWithCallback(
         table.get(), expected_rows,
         std::bind(&ClientTest_TestScanFaultTolerance_Test::RestartTServerAsync, this, _1)));
     for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
@@ -1011,7 +1011,7 @@ TEST_F(ClientTest, TestScanFaultTolerance) {
 
     // Killing the tserver should lead to an RPC timeout.
     LOG(INFO) << "Doing a scan while killing a tserver...";
-    ASSERT_NO_FATAL_FAILURE(internal::DoScanWithCallback(
+    ASSERT_NO_FATALS(internal::DoScanWithCallback(
         table.get(), expected_rows,
         std::bind(&ClientTest_TestScanFaultTolerance_Test::KillTServer, this, _1)));
 
@@ -1028,7 +1028,7 @@ TEST_F(ClientTest, TestScanFaultTolerance) {
 
 TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(YBTableName("blacklist"),
+  ASSERT_NO_FATALS(CreateTable(YBTableName("blacklist"),
                                       3,
                                       GenerateSplitRows(),
                                       &table));
@@ -1107,15 +1107,15 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
 
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(YBTableName("split-table"),
+  ASSERT_NO_FATALS(CreateTable(YBTableName("split-table"),
                                       1, /* replicas */
                                       GenerateSplitRows(),
                                       &table));
 
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(), 100));
+  ASSERT_NO_FATALS(InsertTestRows(table.get(), 100));
 
   vector<string> all_rows;
-  ASSERT_NO_FATAL_FAILURE(ScanTableToStrings(table.get(), &all_rows));
+  ASSERT_NO_FATALS(ScanTableToStrings(table.get(), &all_rows));
   ASSERT_EQ(100, all_rows.size());
 
   gscoped_ptr<YBPartialRow> row(table->schema().NewRow());
@@ -1128,7 +1128,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     CHECK_OK(row->SetInt32(0, 8));
     ASSERT_OK(scanner.AddExclusiveUpperBound(*row));
     vector<string> rows;
-    ASSERT_NO_FATAL_FAILURE(ScanToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ScanToStrings(&scanner, &rows));
     ASSERT_EQ(8 - 5, rows.size());
     EXPECT_EQ(all_rows[5], rows.front());
     EXPECT_EQ(all_rows[7], rows.back());
@@ -1142,7 +1142,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     CHECK_OK(row->SetInt32(0, 15));
     ASSERT_OK(scanner.AddExclusiveUpperBound(*row));
     vector<string> rows;
-    ASSERT_NO_FATAL_FAILURE(ScanToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ScanToStrings(&scanner, &rows));
     ASSERT_EQ(15 - 5, rows.size());
     EXPECT_EQ(all_rows[5], rows.front());
     EXPECT_EQ(all_rows[14], rows.back());
@@ -1156,7 +1156,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     CHECK_OK(row->SetInt32(0, 20));
     ASSERT_OK(scanner.AddExclusiveUpperBound(*row));
     vector<string> rows;
-    ASSERT_NO_FATAL_FAILURE(ScanToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ScanToStrings(&scanner, &rows));
     ASSERT_EQ(20 - 15, rows.size());
     EXPECT_EQ(all_rows[15], rows.front());
     EXPECT_EQ(all_rows[19], rows.back());
@@ -1168,7 +1168,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     CHECK_OK(row->SetInt32(0, 5));
     ASSERT_OK(scanner.AddLowerBound(*row));
     vector<string> rows;
-    ASSERT_NO_FATAL_FAILURE(ScanToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ScanToStrings(&scanner, &rows));
     ASSERT_EQ(95, rows.size());
     EXPECT_EQ(all_rows[5], rows.front());
     EXPECT_EQ(all_rows[99], rows.back());
@@ -1180,7 +1180,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     CHECK_OK(row->SetInt32(0, 5));
     ASSERT_OK(scanner.AddExclusiveUpperBound(*row));
     vector<string> rows;
-    ASSERT_NO_FATAL_FAILURE(ScanToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ScanToStrings(&scanner, &rows));
     ASSERT_EQ(5, rows.size());
     EXPECT_EQ(all_rows[0], rows.front());
     EXPECT_EQ(all_rows[4], rows.back());
@@ -1192,7 +1192,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
     CHECK_OK(row->SetInt32(0, 15));
     ASSERT_OK(scanner.AddExclusiveUpperBound(*row));
     vector<string> rows;
-    ASSERT_NO_FATAL_FAILURE(ScanToStrings(&scanner, &rows));
+    ASSERT_NO_FATALS(ScanToStrings(&scanner, &rows));
     ASSERT_EQ(15, rows.size());
     EXPECT_EQ(all_rows[0], rows.front());
     EXPECT_EQ(all_rows[14], rows.back());
@@ -1230,7 +1230,7 @@ int64_t SumResults(const YBScanBatch& batch) {
 } // anonymous namespace
 
 TEST_F(ClientTest, TestScannerKeepAlive) {
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(), 1000));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), 1000));
   // Set the scanner ttl really low
   ANNOTATE_BENIGN_RACE(&FLAGS_scanner_ttl_ms, "Set at runtime, for tests.");
   FLAGS_scanner_ttl_ms = 100; // 100 milliseconds
@@ -1298,7 +1298,7 @@ TEST_F(ClientTest, TestScannerKeepAlive) {
 
 // Test cleanup of scanners on the server side when closed.
 TEST_F(ClientTest, TestCloseScanner) {
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(), 10));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), 10));
 
   const tserver::ScannerManager* manager =
     cluster_->mini_tablet_server(0)->server()->scanner_manager();
@@ -1350,7 +1350,7 @@ TEST_F(ClientTest, TestScanTimeout) {
 
   // Warm the cache so that the subsequent timeout occurs within the scan,
   // not the lookup.
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(), 1));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), 1));
 
   // The "overall operation" timed out; no replicas failed.
   {
@@ -1364,7 +1364,7 @@ TEST_F(ClientTest, TestScanTimeout) {
   // Insert some more rows so that the scan takes multiple batches, instead of
   // fetching all the data on the 'Open()' call.
   client_->data_->default_rpc_timeout_ = MonoDelta::FromSeconds(5);
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(), 1000, 1));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), 1000, 1));
   {
     google::FlagSaver saver;
     FLAGS_scanner_max_batch_size_bytes = 100;
@@ -1962,7 +1962,7 @@ TEST_F(ClientTest, TestDeleteTable) {
   ASSERT_OK(client_->OpenTable(kTableName, &client_table_));
 
   // Insert a few rows, and scan them back. This is to populate the MetaCache.
-  NO_FATALS(InsertTestRows(client_.get(), client_table_.get(), 10));
+  ASSERT_NO_FATALS(InsertTestRows(client_.get(), client_table_.get(), 10));
   vector<string> rows;
   ScanTableToStrings(client_table_.get(), &rows);
   ASSERT_EQ(10, rows.size());
@@ -1994,10 +1994,10 @@ TEST_F(ClientTest, TestDeleteTable) {
 
   // Create a new table with the same name. This is to ensure that the client
   // doesn't cache anything inappropriately by table name (see KUDU-1055).
-  NO_FATALS(CreateTable(kTableName, 1, GenerateSplitRows(), &client_table_));
+  ASSERT_NO_FATALS(CreateTable(kTableName, 1, GenerateSplitRows(), &client_table_));
 
   // Should be able to insert successfully into the new table.
-  NO_FATALS(InsertTestRows(client_.get(), client_table_.get(), 10));
+  ASSERT_NO_FATALS(InsertTestRows(client_.get(), client_table_.get(), 10));
 }
 
 TEST_F(ClientTest, TestGetTableSchema) {
@@ -2063,7 +2063,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
   const int kNumReplicas = 3;
 
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(kReplicatedTable,
+  ASSERT_NO_FATALS(CreateTable(kReplicatedTable,
                                       kNumReplicas,
                                       GenerateSplitRows(),
                                       &table));
@@ -2072,7 +2072,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
   ASSERT_EQ(0, CountRowsFromClient(table.get()));
 
   // Insert some data.
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(), kNumRowsToWrite));
+  ASSERT_NO_FATALS(InsertTestRows(table.get(), kNumRowsToWrite));
 
   // Should now see the data.
   ASSERT_EQ(kNumRowsToWrite, CountRowsFromClient(table.get()));
@@ -2088,13 +2088,13 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   const int kNumTries = 100;
 
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(kReplicatedTable,
+  ASSERT_NO_FATALS(CreateTable(kReplicatedTable,
                                       kNumReplicas,
                                       GenerateSplitRows(),
                                       &table));
 
   // Insert some data.
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(), kNumRowsToWrite));
+  ASSERT_NO_FATALS(InsertTestRows(table.get(), kNumRowsToWrite));
 
   // Find the leader of the first tablet.
   Synchronizer sync;
@@ -2139,13 +2139,13 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   const int kNumReplicas = 3;
 
   shared_ptr<YBTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(kReplicatedTable,
+  ASSERT_NO_FATALS(CreateTable(kReplicatedTable,
                                       kNumReplicas,
                                       vector<const YBPartialRow*>(),
                                       &table));
 
   // Insert some data.
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(), kNumRowsToWrite));
+  ASSERT_NO_FATALS(InsertTestRows(table.get(), kNumRowsToWrite));
 
   // TODO: we have to sleep here to make sure that the leader has time to
   // propagate the writes to the followers. We can remove this once the
@@ -2212,7 +2212,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   ASSERT_FALSE(resp.has_error()) << "Got error. Response: " << resp.ShortDebugString();
 
   LOG(INFO) << "Inserting additional rows...";
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_.get(),
                                          table.get(),
                                          kNumRowsToWrite,
                                          kNumRowsToWrite));
@@ -2289,7 +2289,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
     if (i % 50 == 0) {
       LOG(INFO) << "Correctness test " << i;
       FlushSessionOrDie(session);
-      ASSERT_NO_FATAL_FAILURE(CheckCorrectness(&scanner, row, nrows));
+      ASSERT_NO_FATALS(CheckCorrectness(&scanner, row, nrows));
       LOG(INFO) << "...complete";
     }
 
@@ -2326,7 +2326,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
 
   // And one more time for the last batch.
   FlushSessionOrDie(session);
-  ASSERT_NO_FATAL_FAILURE(CheckCorrectness(&scanner, row, nrows));
+  ASSERT_NO_FATALS(CheckCorrectness(&scanner, row, nrows));
 }
 
 // Test whether a batch can handle several mutations in a batch
@@ -2391,7 +2391,7 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
 // rows are inserted.
 TEST_F(ClientTest, TestMasterLookupPermits) {
   int initial_value = client_->data_->meta_cache_->master_lookup_sem_.GetValue();
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
                                          FLAGS_test_scan_num_rows));
   ASSERT_EQ(initial_value,
             client_->data_->meta_cache_->master_lookup_sem_.GetValue());
@@ -2602,7 +2602,7 @@ TEST_F(ClientTest, TestLatestObservedHybridTime) {
   // Check that a write updates the latest observed hybrid_time.
   uint64_t ht0 = client_->GetLatestObservedHybridTime();
   ASSERT_EQ(ht0, YBClient::kNoHybridTime);
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(), 1, 0));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), 1, 0));
   uint64_t ht1 = client_->GetLatestObservedHybridTime();
   ASSERT_NE(ht0, ht1);
 
@@ -2625,7 +2625,7 @@ TEST_F(ClientTest, TestLatestObservedHybridTime) {
 }
 
 TEST_F(ClientTest, TestClonePredicates) {
-  ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(),
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(),
                                          2, 0));
   gscoped_ptr<YBPredicate> predicate(client_table_->NewComparisonPredicate(
       "key",
@@ -2661,7 +2661,7 @@ TEST_F(ClientTest, TestClonePredicates) {
 // Test that scanners will retry after receiving ERROR_SERVER_TOO_BUSY from an
 // overloaded tablet server. Regression test for KUDU-1079.
 TEST_F(ClientTest, TestServerTooBusyRetry) {
-  NO_FATALS(InsertTestRows(client_table_.get(), FLAGS_test_scan_num_rows));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), FLAGS_test_scan_num_rows));
 
   // Introduce latency in each scan to increase the likelihood of
   // ERROR_SERVER_TOO_BUSY.
@@ -2702,7 +2702,7 @@ TEST_F(ClientTest, TestLastErrorEmbeddedInScanTimeoutStatus) {
   // For the random() calls that take place during scan retries.
   SeedRandom();
 
-  NO_FATALS(InsertTestRows(client_table_.get(), FLAGS_test_scan_num_rows));
+  ASSERT_NO_FATALS(InsertTestRows(client_table_.get(), FLAGS_test_scan_num_rows));
 
   {
     // Revert the latency injection flags at the end so the test exits faster.

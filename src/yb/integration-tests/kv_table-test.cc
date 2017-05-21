@@ -87,18 +87,18 @@ class KVTableTest : public YBTableTestBase {
 };
 
 TEST_F(KVTableTest, SimpleKVTableTest) {
-  NO_FATALS(PutSampleKeysValues());
-  NO_FATALS(CheckSampleKeysValues());
+  ASSERT_NO_FATALS(PutSampleKeysValues());
+  ASSERT_NO_FATALS(CheckSampleKeysValues());
   ClusterVerifier cluster_verifier(mini_cluster());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
 }
 
 TEST_F(KVTableTest, PointQuery) {
-  NO_FATALS(PutSampleKeysValues());
+  ASSERT_NO_FATALS(PutSampleKeysValues());
 
   YBScanner scanner(table_.get());
-  NO_FATALS(ConfigureScanner(&scanner));
+  ASSERT_NO_FATALS(ConfigureScanner(&scanner));
   ASSERT_OK(
       scanner.AddConjunctPredicate(
           table_->NewComparisonPredicate(
@@ -114,13 +114,13 @@ TEST_F(KVTableTest, PointQuery) {
 TEST_F(KVTableTest, Eng135MetricsTest) {
   ClusterVerifier cluster_verifier(mini_cluster());
   for (int idx = 0; idx < 10; ++idx) {
-    NO_FATALS(PutSampleKeysValues());
-    NO_FATALS(CheckSampleKeysValues());
-    NO_FATALS(DeleteTable());
-    NO_FATALS(CreateTable());
-    NO_FATALS(OpenTable());
-    NO_FATALS(cluster_verifier.CheckCluster());
-    NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 0));
+    ASSERT_NO_FATALS(PutSampleKeysValues());
+    ASSERT_NO_FATALS(CheckSampleKeysValues());
+    ASSERT_NO_FATALS(DeleteTable());
+    ASSERT_NO_FATALS(CreateTable());
+    ASSERT_NO_FATALS(OpenTable());
+    ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+    ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 0));
   }
 }
 
@@ -170,28 +170,28 @@ TEST_F(KVTableTest, LoadTest) {
   ASSERT_GE(reader.num_reads(), rows);  // assuming reads are at least as fast as writes
 
   ClusterVerifier cluster_verifier(mini_cluster());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, rows));
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, rows));
 }
 
 TEST_F(KVTableTest, Restart) {
-  NO_FATALS(PutSampleKeysValues());
+  ASSERT_NO_FATALS(PutSampleKeysValues());
   // Check we've written the data successfully.
-  NO_FATALS(CheckSampleKeysValues());
-  NO_FATALS(RestartCluster());
+  ASSERT_NO_FATALS(CheckSampleKeysValues());
+  ASSERT_NO_FATALS(RestartCluster());
 
   LOG(INFO) << "Checking entries written before the cluster restart";
-  NO_FATALS(CheckSampleKeysValues());
+  ASSERT_NO_FATALS(CheckSampleKeysValues());
   ClusterVerifier cluster_verifier(mini_cluster());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
 
   LOG(INFO) << "Issuing additional write operations";
-  NO_FATALS(PutSampleKeysValues());
-  NO_FATALS(CheckSampleKeysValues());
+  ASSERT_NO_FATALS(PutSampleKeysValues());
+  ASSERT_NO_FATALS(CheckSampleKeysValues());
 
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY, 3));
 }
 
 }  // namespace integration_tests

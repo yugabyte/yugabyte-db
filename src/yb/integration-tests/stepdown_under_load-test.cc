@@ -138,8 +138,8 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   ASSERT_GE(reader.num_reads(), kReaderThreads);
 
   ClusterVerifier cluster_verifier(external_mini_cluster());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY,
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY,
       writer.num_writes()));
 }
 

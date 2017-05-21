@@ -395,7 +395,7 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
 
   ListTablesResponsePB tables;
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -429,7 +429,7 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_TRUE(delete_done);
 
   // List tables, should show only system table
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -443,7 +443,7 @@ TEST_F(MasterTest, TestCatalog) {
   ASSERT_OK(mini_master_->Restart());
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -681,7 +681,7 @@ TEST_F(MasterTest, TestNamespaces) {
 
   // Check default namespace.
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -699,7 +699,7 @@ TEST_F(MasterTest, TestNamespaces) {
     other_ns_id = resp.id();
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -718,7 +718,7 @@ TEST_F(MasterTest, TestNamespaces) {
         Substitute("Namespace $0 already exists", other_ns_name));
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -738,7 +738,7 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_FALSE(resp.has_error());
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -754,7 +754,7 @@ TEST_F(MasterTest, TestNamespaces) {
     other_ns_id = resp.id();
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -774,7 +774,7 @@ TEST_F(MasterTest, TestNamespaces) {
     ASSERT_FALSE(resp.has_error());
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -792,7 +792,7 @@ TEST_F(MasterTest, TestNamespaces) {
         Substitute("Namespace $0 already exists", kDefaultNamespaceName));
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -816,7 +816,7 @@ TEST_F(MasterTest, TestNamespaces) {
         "Cannot delete default namespace");
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -840,7 +840,7 @@ TEST_F(MasterTest, TestNamespaces) {
         "Cannot delete default namespace");
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -864,7 +864,7 @@ TEST_F(MasterTest, TestNamespaces) {
         "The namespace does not exist");
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     // Including system namespace.
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
@@ -887,7 +887,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     other_ns_id = resp.id();
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -903,7 +903,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema, other_ns_name));
 
   ListTablesResponsePB tables;
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -926,7 +926,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
         "Cannot delete namespace which has a table: " + kTableName);
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -950,7 +950,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
         "Cannot delete namespace which has a table: " + kTableName);
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -963,7 +963,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   ASSERT_OK(DeleteTable(kTableName, other_ns_name));
 
   // List tables, should show only system table.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -980,7 +980,7 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     ASSERT_FALSE(resp.has_error());
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -997,7 +997,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   // Create a table with default namespace.
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1009,7 +1009,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_OK(DeleteTable(kTableName));
 
   // List tables, should show 1 table.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1019,7 +1019,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   // Create a table with the defined (default in fact) namespace.
   ASSERT_OK(CreateTable(kTableName, kTableSchema, kDefaultNamespaceName));
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1031,7 +1031,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_OK(DeleteTable(kTableName, kDefaultNamespaceName));
 
   // List tables, should show 1 table.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1046,7 +1046,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   }
 
   // List tables, should show 1 table.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1064,7 +1064,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     other_ns_id = resp.id();
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -1076,7 +1076,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   // Create a table with the defined new namespace.
   ASSERT_OK(CreateTable(kTableName, kTableSchema, other_ns_name));
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1099,7 +1099,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
         "Invalid namespace id or namespace name");
   }
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1122,7 +1122,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_STR_CONTAINS(resp.error().status().ShortDebugString(),
         "Invalid namespace id or namespace name");
   }
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1141,7 +1141,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     SCOPED_TRACE(resp.DebugString());
     ASSERT_FALSE(resp.has_error());
   }
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1153,7 +1153,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
   ASSERT_OK(DeleteTable(kTableName, kDefaultNamespaceName));
 
   // List tables, should show 1 table.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1170,7 +1170,7 @@ TEST_F(MasterTest, TestTablesWithNamespace) {
     ASSERT_FALSE(resp.has_error());
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -1187,7 +1187,7 @@ TEST_F(MasterTest, TestFullTableName) {
   // Create a table with the defined (default in fact) namespace.
   ASSERT_OK(CreateTable(kTableName, kTableSchema, kDefaultNamespaceName));
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1206,7 +1206,7 @@ TEST_F(MasterTest, TestFullTableName) {
     other_ns_id = resp.id();
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -1218,7 +1218,7 @@ TEST_F(MasterTest, TestFullTableName) {
   // Create a table with the defined new namespace.
   ASSERT_OK(CreateTable(kTableName, kTableSchema, other_ns_name));
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(2 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1229,14 +1229,14 @@ TEST_F(MasterTest, TestFullTableName) {
 
   // Test ListTables() for one particular namespace.
   // There are 2 tables now: 'default::testtb' and 'testns::testtb'.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables, kDefaultNamespaceName));
+  ASSERT_NO_FATALS(DoListAllTables(&tables, kDefaultNamespaceName));
   ASSERT_EQ(1, tables.tables_size());
   CheckTables(
       {
           std::make_tuple(kTableName, kDefaultNamespaceName, kDefaultNamespaceId),
       }, tables);
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables, other_ns_name));
+  ASSERT_NO_FATALS(DoListAllTables(&tables, other_ns_name));
   ASSERT_EQ(1, tables.tables_size());
   CheckTables(
       {
@@ -1261,7 +1261,7 @@ TEST_F(MasterTest, TestFullTableName) {
         "Table already exists");
   }
   // Check that nothing's changed (still have 3 tables).
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(2 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1273,7 +1273,7 @@ TEST_F(MasterTest, TestFullTableName) {
   // Delete the table in the namespace 'testns'.
   ASSERT_OK(DeleteTable(kTableName, other_ns_name));
 
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1300,7 +1300,7 @@ TEST_F(MasterTest, TestFullTableName) {
   ASSERT_OK(DeleteTable(kTableName, kDefaultNamespaceName));
 
   // List tables, should show only system tables.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1317,7 +1317,7 @@ TEST_F(MasterTest, TestFullTableName) {
     ASSERT_FALSE(resp.has_error());
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -1337,7 +1337,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
     other_ns_id = resp.id();
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(2 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {
@@ -1352,7 +1352,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
   ASSERT_OK(CreateTable(kTableName, kTableSchema, other_ns_name));
 
   ListTablesResponsePB tables;
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(1 + mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1424,7 +1424,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
   ASSERT_OK(DeleteTable(kTableName, other_ns_name));
 
   // List tables, should show only system tables.
-  ASSERT_NO_FATAL_FAILURE(DoListAllTables(&tables));
+  ASSERT_NO_FATALS(DoListAllTables(&tables));
   ASSERT_EQ(mini_master_->master()->NumSystemTables(), tables.tables_size());
   CheckTables(
       {
@@ -1441,7 +1441,7 @@ TEST_F(MasterTest, TestGetTableSchema) {
     ASSERT_FALSE(resp.has_error());
   }
   {
-    ASSERT_NO_FATAL_FAILURE(DoListAllNamespaces(&namespaces));
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_EQ(1 + kNumSystemNamespaces, namespaces.namespaces_size());
     CheckNamespaces(
         {

@@ -83,7 +83,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   }
 
   void CreateTable() {
-    ASSERT_NO_FATAL_FAILURE(InitCluster());
+    ASSERT_NO_FATALS(InitCluster());
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
@@ -174,9 +174,9 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
     FLAGS_maintenance_manager_polling_interval_ms = 50;
   }
 
-  ASSERT_NO_FATAL_FAILURE(CreateTable());
-  ASSERT_NO_FATAL_FAILURE(InsertBaseData());
-  ASSERT_NO_FATAL_FAILURE(RunThreads());
+  ASSERT_NO_FATALS(CreateTable());
+  ASSERT_NO_FATALS(InsertBaseData());
+  ASSERT_NO_FATALS(RunThreads());
 }
 
 void UpdateScanDeltaCompactionTest::InsertBaseData() {

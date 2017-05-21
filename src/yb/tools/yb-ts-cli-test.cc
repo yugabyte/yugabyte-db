@@ -62,7 +62,7 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
   TestWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.

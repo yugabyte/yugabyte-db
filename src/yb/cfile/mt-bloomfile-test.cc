@@ -30,7 +30,7 @@ class MTBloomFileTest : public BloomFileTestBase {
 };
 
 TEST_F(MTBloomFileTest, Benchmark) {
-  ASSERT_NO_FATAL_FAILURE(WriteTestBloomFile());
+  ASSERT_NO_FATALS(WriteTestBloomFile());
   ASSERT_OK(OpenBloomFile());
 
   vector<scoped_refptr<yb::Thread> > threads;

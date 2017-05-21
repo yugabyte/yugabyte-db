@@ -48,7 +48,7 @@ class YbSqlStaticColumn : public YbSqlTestBase {
 
 TEST_F(YbSqlStaticColumn, TestCreateTable) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -76,7 +76,7 @@ TEST_F(YbSqlStaticColumn, TestCreateTable) {
 
 TEST_F(YbSqlStaticColumn, TestSelect) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -203,7 +203,7 @@ TEST_F(YbSqlStaticColumn, TestSelect) {
 
 TEST_F(YbSqlStaticColumn, TestPagingSelect) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();

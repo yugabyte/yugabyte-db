@@ -23,7 +23,7 @@
 #include "yb/util/debug-util.h"
 
 // ASSERT_NO_FATAL_FAILURE is just too long to type.
-#define NO_FATALS ASSERT_NO_FATAL_FAILURE
+#define ASSERT_NO_FATALS ASSERT_NO_FATAL_FAILURE
 
 // We are using "const auto" for storing the status so that the same macros work for both YB and
 // RocksDB's Status types.
@@ -100,9 +100,8 @@
     const auto actual_tmp = ::yb::util::TrimStr(yb::util::LeftShiftTextBlock(actual));
 
 #define _ASSERT_EXPECT_STR_EQ_VERBOSE_COMMON_MSG \
-       "\nActual (trimmed):\n" << actual_tmp \
-    << "\n\nExpected (trimmed):\n" << expected_tmp \
-    << "\n\nInvoked from:\n" << ::yb::GetStackTrace(StackTraceLineFormat::CLION_CLICKABLE)
+    "\nActual (trimmed):\n" << actual_tmp \
+        << "\n\nExpected (trimmed):\n" << expected_tmp;
 
 #define ASSERT_STR_EQ_VERBOSE_TRIMMED(expected, actual) \
   do { \

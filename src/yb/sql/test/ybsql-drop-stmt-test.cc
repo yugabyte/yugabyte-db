@@ -26,7 +26,7 @@ class YbSqlDropTable : public YbSqlTestBase {
 
 TEST_F(YbSqlDropTable, TestSqlDropTable) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -63,7 +63,7 @@ TEST_F(YbSqlDropTable, TestSqlDropTable) {
 
 TEST_F(YbSqlDropTable, TestSqlDropKeyspace) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -104,7 +104,7 @@ TEST_F(YbSqlDropTable, TestSqlDropKeyspace) {
 
 TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -155,7 +155,7 @@ TEST_F(YbSqlDropTable, TestSqlDropStmtParser) {
 
 TEST_F(YbSqlDropTable, TestSqlDropStmtAnalyzer) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();

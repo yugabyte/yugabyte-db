@@ -62,9 +62,9 @@ class YBTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
   void TestFirstCall(MaintenanceOp* op) {
     // The very first call to UpdateStats() will update the stats, but
     // subsequent calls are cached.
-    NO_FATALS(StatsShouldChange(op));
-    NO_FATALS(StatsShouldNotChange(op));
-    NO_FATALS(StatsShouldNotChange(op));
+    ASSERT_NO_FATALS(StatsShouldChange(op));
+    ASSERT_NO_FATALS(StatsShouldNotChange(op));
+    ASSERT_NO_FATALS(StatsShouldNotChange(op));
   }
 
   void TestAffectedMetrics(MaintenanceOp* op,
@@ -75,10 +75,10 @@ class YBTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
     for (const scoped_refptr<Histogram>& c : all_possible_metrics_) {
       c->Increment(1); // value doesn't matter
       if (ContainsKey(metrics, c)) {
-        NO_FATALS(StatsShouldChange(op));
+        ASSERT_NO_FATALS(StatsShouldChange(op));
       }
-      NO_FATALS(StatsShouldNotChange(op));
-      NO_FATALS(StatsShouldNotChange(op));
+      ASSERT_NO_FATALS(StatsShouldNotChange(op));
+      ASSERT_NO_FATALS(StatsShouldNotChange(op));
     }
   }
 
@@ -89,15 +89,15 @@ class YBTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
 
 TEST_F(YBTabletMmOpsTest, TestCompactRowSetsOpCacheStats) {
   CompactRowSetsOp op(tablet().get());
-  NO_FATALS(TestFirstCall(&op));
-  NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
+  ASSERT_NO_FATALS(TestFirstCall(&op));
+  ASSERT_NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
                                        tablet()->metrics()->compact_rs_duration }));
 }
 
 TEST_F(YBTabletMmOpsTest, TestMinorDeltaCompactionOpCacheStats) {
   MinorDeltaCompactionOp op(tablet().get());
-  NO_FATALS(TestFirstCall(&op));
-  NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
+  ASSERT_NO_FATALS(TestFirstCall(&op));
+  ASSERT_NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
                                        tablet()->metrics()->flush_dms_duration,
                                        tablet()->metrics()->compact_rs_duration,
                                        tablet()->metrics()->delta_minor_compact_rs_duration }));
@@ -105,8 +105,8 @@ TEST_F(YBTabletMmOpsTest, TestMinorDeltaCompactionOpCacheStats) {
 
 TEST_F(YBTabletMmOpsTest, TestMajorDeltaCompactionOpCacheStats) {
   MajorDeltaCompactionOp op(tablet().get());
-  NO_FATALS(TestFirstCall(&op));
-  NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
+  ASSERT_NO_FATALS(TestFirstCall(&op));
+  ASSERT_NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
                                        tablet()->metrics()->flush_dms_duration,
                                        tablet()->metrics()->compact_rs_duration,
                                        tablet()->metrics()->delta_minor_compact_rs_duration,

@@ -15,8 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <boost/thread/thread.hpp>
 #include <memory>
+
+#include <boost/thread/thread.hpp>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stringprintf.h"
@@ -162,9 +163,9 @@ class TestMultiThreadedRowSetDeltaCompaction : public TestRowSet {
     StartThreads(rs.get());
     SleepFor(MonoDelta::FromSeconds(FLAGS_num_seconds_per_thread));
     base::subtle::NoBarrier_Store(&should_run_, 0);
-    ASSERT_NO_FATAL_FAILURE(JoinThreads());
+    ASSERT_NO_FATALS(JoinThreads());
 
-    ASSERT_NO_FATAL_FAILURE(ReadVerify(rs.get()));
+    ASSERT_NO_FATALS(ReadVerify(rs.get()));
   }
 
   bool ShouldRun() const {

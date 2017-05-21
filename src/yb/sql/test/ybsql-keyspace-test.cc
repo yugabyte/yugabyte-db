@@ -75,7 +75,7 @@ class YbSqlKeyspace : public YbSqlTestBase {
 
 TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceSimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -131,7 +131,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceSimple) {
 
 TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceIfNotExists) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -166,7 +166,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateKeyspaceIfNotExists) {
 
 TEST_F(YbSqlKeyspace, TestSqlCreateSchemaSimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -222,7 +222,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateSchemaSimple) {
 
 TEST_F(YbSqlKeyspace, TestSqlCreateSchemaIfNotExists) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -257,7 +257,7 @@ TEST_F(YbSqlKeyspace, TestSqlCreateSchemaIfNotExists) {
 
 TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceSimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -289,7 +289,7 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceSimple) {
 
 TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -357,7 +357,7 @@ TEST_F(YbSqlKeyspace, TestSqlUseKeyspaceWithTable) {
 
 TEST_F(YbSqlKeyspace, TestCreateSystemTable) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -382,7 +382,7 @@ TEST_F(YbSqlKeyspace, TestCreateSystemTable) {
 
 TEST_F(YbSqlKeyspace, TestSqlSelectInvalidTable) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();

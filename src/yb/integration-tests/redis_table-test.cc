@@ -33,18 +33,18 @@ using client::YBSession;
 using integration_tests::YBTableTestBase;
 
 TEST_F(RedisTableTest, SimpleRedisSetTest) {
-  NO_FATALS(RedisSimpleSetCommands());
+  ASSERT_NO_FATALS(RedisSimpleSetCommands());
 }
 
 TEST_F(RedisTableTest, SimpleRedisGetTest) {
-  NO_FATALS(RedisSimpleSetCommands());
-  NO_FATALS(RedisSimpleGetCommands());
+  ASSERT_NO_FATALS(RedisSimpleSetCommands());
+  ASSERT_NO_FATALS(RedisSimpleGetCommands());
 }
 
 TEST_F(RedisTableTest, RedisTtlTest) {
-  NO_FATALS(RedisTtlSetCommands());
+  ASSERT_NO_FATALS(RedisTtlSetCommands());
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  NO_FATALS(RedisTtlGetCommands());
+  ASSERT_NO_FATALS(RedisTtlGetCommands());
 }
 
 TEST_F(RedisTableTest, RedisOverWriteTest) {

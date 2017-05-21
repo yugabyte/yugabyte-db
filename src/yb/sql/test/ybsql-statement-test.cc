@@ -37,7 +37,7 @@ class YbSqlStatement : public YbSqlTestBase {
 
 TEST_F(YbSqlStatement, TestExecutePrepareAfterTableDrop) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();

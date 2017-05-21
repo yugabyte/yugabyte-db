@@ -25,7 +25,7 @@ class YbSqlUpdateTable : public YbSqlTestBase {
 
 TEST_F(YbSqlUpdateTable, TestSqlUpdateTableSimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();

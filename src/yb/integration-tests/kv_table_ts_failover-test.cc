@@ -86,8 +86,8 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
       LOG(INFO) << "Completed iteration " << i << " of the test";
     }
 
-    NO_FATALS(writer.AssertSucceeded());
-    NO_FATALS(reader.AssertSucceeded());
+    ASSERT_NO_FATALS(writer.AssertSucceeded());
+    ASSERT_NO_FATALS(reader.AssertSucceeded());
 
     // Assuming every thread has time to do at least 50 writes. Had to lower this from 100 after
     // enabling TSAN.
@@ -97,8 +97,8 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     ASSERT_GE(writer.num_writes(), 100);
 
     ClusterVerifier cluster_verifier(external_mini_cluster());
-    NO_FATALS(cluster_verifier.CheckCluster());
-    NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY,
+    ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+    ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(table_->name(), ClusterVerifier::EXACTLY,
         writer.num_writes()));
   }
 }

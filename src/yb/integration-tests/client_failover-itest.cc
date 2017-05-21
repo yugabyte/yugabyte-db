@@ -56,7 +56,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   vector<string> master_flags = {"--catalog_manager_wait_for_new_tablets_to_elect_leader=false"};
 
   // Start up with 4 tablet servers.
-  NO_FATALS(StartCluster(ts_flags, master_flags, 4));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 4));
 
   // Create the test table.
   TestWorkload workload(cluster_.get());

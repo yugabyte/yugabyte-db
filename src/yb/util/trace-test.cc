@@ -15,10 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
 #include <string>
+
+#include <gtest/gtest.h>
 #include <rapidjson/document.h>
-#include <rapidjson/rapidjson.h>
+// Need to add rapidjson.h to the list of recognized third-party libraries in our linter.
+#include <rapidjson/rapidjson.h>  // NOLINT
 
 #include "yb/util/trace.h"
 #include "yb/util/debug/trace_event.h"
@@ -98,10 +100,10 @@ TEST_F(TraceTest, TestChildTrace) {
     ADOPT_TRACE(traceB.get());
     TRACE("hello from traceB");
   }
-  EXPECT_EQ(XOutDigits(traceA->DumpToString(false)),
-            "XXXX XX:XX:XX.XXXXXX trace-test.cc:XX] hello from traceA\n"
+  EXPECT_EQ("XXXX XX:XX:XX.XXXXXX trace-test.cc:XX] hello from traceA\n"
             "Related trace:\n"
-            "XXXX XX:XX:XX.XXXXXX trace-test.cc:XX] hello from traceB\n");
+            "XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceB\n",
+            XOutDigits(traceA->DumpToString(false)));
 }
 
 static void GenerateTraceEvents(int thread_id,
@@ -515,7 +517,7 @@ TEST_F(TraceEventCallbackTest, TraceEventCallbackAndRecording1) {
   TRACE_EVENT_INSTANT0("callback", "no", TRACE_EVENT_SCOPE_GLOBAL);
 
   DropTracedMetadataRecords();
-  ASSERT_NO_FATAL_FAILURE();
+  ASSERT_NO_FATALS();
   VerifyCallbackAndRecordedEvents(2, 2);
 }
 

@@ -74,7 +74,7 @@ TEST_F(CreateTableITest, TestCreateRedisTable) {
   vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
                           Substitute("--placement_region=$0", region),
                           Substitute("--placement_zone=$0", zone)};
-  NO_FATALS(StartCluster(flags, flags, kNumReplicas));
+  ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
   master::ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(kNumReplicas);
@@ -99,7 +99,7 @@ TEST_F(CreateTableITest, TestCreateWithPlacement) {
   vector<string> flags = {Substitute("--placement_cloud=$0", cloud),
                           Substitute("--placement_region=$0", region),
                           Substitute("--placement_zone=$0", zone)};
-  NO_FATALS(StartCluster(flags, flags, kNumReplicas));
+  ASSERT_NO_FATALS(StartCluster(flags, flags, kNumReplicas));
 
   master::ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(kNumReplicas);
@@ -149,7 +149,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   vector<string> ts_flags;
   vector<string> master_flags;
   master_flags.push_back("--tablet_creation_timeout_ms=1000");
-  NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
 
   // Shut down 2/3 of the tablet servers.
   cluster_->tablet_server(1)->Shutdown();
@@ -224,7 +224,7 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   vector<string> master_flags;
   ts_flags.push_back("--never_fsync");  // run faster on slow disks
   master_flags.push_back("--enable_load_balancing=false");  // disable load balancing moves
-  NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());

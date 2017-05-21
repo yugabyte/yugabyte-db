@@ -51,7 +51,7 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
 
 // Test that we replay from the recovery directory, if it exists.
 TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
-  NO_FATALS(StartCluster({ "--fault_crash_during_log_replay=0.05" }));
+  ASSERT_NO_FATALS(StartCluster({ "--fault_crash_during_log_replay=0.05" }));
 
   TestWorkload work(cluster_.get());
   work.set_num_replicas(1);
@@ -88,8 +88,8 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCountWithRetries(work.table_name(),
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCountWithRetries(work.table_name(),
                                        ClusterVerifier::AT_LEAST,
                                        work.rows_inserted(),
                                        MonoDelta::FromSeconds(30)));

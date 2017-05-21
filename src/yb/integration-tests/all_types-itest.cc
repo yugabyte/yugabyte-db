@@ -411,7 +411,7 @@ class AllTypesItest : public YBTest {
     // Check that all of the replicas agree on the inserted data. This retries until
     // all replicas are up-to-date, which is important to ensure that the following
     // Verify always passes.
-    NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());
+    ASSERT_NO_FATALS(ClusterVerifier(cluster_.get()).CheckCluster());
     // Check that the inserted data matches what we thought we inserted.
     ASSERT_OK(VerifyRows());
   }

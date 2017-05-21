@@ -43,7 +43,7 @@ class YbSqlCreateTable : public YbSqlTestBase {
 
 TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -135,7 +135,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableSimple) {
 
 TEST_F(YbSqlCreateTable, TestSqlCreateTableWithTTL) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -165,7 +165,7 @@ TEST_F(YbSqlCreateTable, TestSqlCreateTableWithTTL) {
 
 TEST_F(YbSqlCreateTable, TestSqlCreateTableWithClusteringOrderBy) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get an available processor.
   YbSqlProcessor *processor = GetSqlProcessor();

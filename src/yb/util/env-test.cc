@@ -153,7 +153,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
     ASSERT_OK(env_util::ReadFully(raf, offset, n, &s,
                                          scratch.get()));
     ASSERT_EQ(n, s.size());
-    ASSERT_NO_FATAL_FAILURE(VerifyTestData(s, offset));
+    ASSERT_NO_FATALS(VerifyTestData(s, offset));
   }
 
   void TestAppendVector(size_t num_slices, size_t slice_size, size_t iterations,
@@ -195,7 +195,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
         if (!fast) {
           // Verify as write. Note: this requires that file is pre-allocated, otherwise
           // the ReadFully() fails with EINVAL.
-          ASSERT_NO_FATAL_FAILURE(ReadAndVerifyTestData(raf.get(), num_slices * slice_size * i,
+          ASSERT_NO_FATALS(ReadAndVerifyTestData(raf.get(), num_slices * slice_size * i,
                                                         num_slices * slice_size));
         }
       }
@@ -208,7 +208,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
       ASSERT_OK(env_util::OpenFileForRandom(env_.get(), kTestPath, &raf));
     }
     for (int i = 0; i < iterations; i++) {
-      ASSERT_NO_FATAL_FAILURE(ReadAndVerifyTestData(raf.get(), num_slices * slice_size * i,
+      ASSERT_NO_FATALS(ReadAndVerifyTestData(raf.get(), num_slices * slice_size * i,
                                                     num_slices * slice_size));
     }
   }
@@ -273,7 +273,7 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
 
     // Verify the entire file
     ASSERT_OK(file->Close());
-    ASSERT_NO_FATAL_FAILURE(VerifyChecksumsMatch(kTestPath, total_size, actual_checksum, crc32c));
+    ASSERT_NO_FATALS(VerifyChecksumsMatch(kTestPath, total_size, actual_checksum, crc32c));
   }
 
   static bool fallocate_supported_;
@@ -475,7 +475,7 @@ TEST_F(TestEnv, TestReadFully) {
   gscoped_ptr<Env> mem(NewMemEnv(Env::Default()));
 
   WriteTestFile(mem.get(), kTestPath, kFileSize);
-  ASSERT_NO_FATAL_FAILURE();
+  ASSERT_NO_FATALS();
 
   // Reopen for read
   shared_ptr<RandomAccessFile> raf;
@@ -506,15 +506,15 @@ TEST_P(TestEnv, TestAppendVector) {
   WritableFileOptions opts;
   opts.o_direct = GetParam();
   LOG(INFO) << "Testing AppendVector() only, NO pre-allocation";
-  ASSERT_NO_FATAL_FAILURE(TestAppendVector(2000, 1024, 5, true, false, opts));
+  ASSERT_NO_FATALS(TestAppendVector(2000, 1024, 5, true, false, opts));
 
   if (!fallocate_supported_) {
     LOG(INFO) << "fallocate not supported, skipping preallocated runs";
   } else {
     LOG(INFO) << "Testing AppendVector() only, WITH pre-allocation";
-    ASSERT_NO_FATAL_FAILURE(TestAppendVector(2000, 1024, 5, true, true, opts));
+    ASSERT_NO_FATALS(TestAppendVector(2000, 1024, 5, true, true, opts));
     LOG(INFO) << "Testing AppendVector() together with Append() and Read(), WITH pre-allocation";
-    ASSERT_NO_FATAL_FAILURE(TestAppendVector(128, 4096, 5, false, true, opts));
+    ASSERT_NO_FATALS(TestAppendVector(128, 4096, 5, false, true, opts));
   }
 }
 
@@ -522,7 +522,7 @@ TEST_F(TestEnv, TestRandomData) {
   WritableFileOptions opts;
   opts.o_direct = true;
   LOG(INFO) << "Testing Append() with random data and requests of random sizes";
-  ASSERT_NO_FATAL_FAILURE(TestAppendRandomData(true, opts));
+  ASSERT_NO_FATALS(TestAppendRandomData(true, opts));
 }
 
 TEST_F(TestEnv, TestGetExecutablePath) {
@@ -534,7 +534,7 @@ TEST_F(TestEnv, TestGetExecutablePath) {
 TEST_F(TestEnv, TestOpenEmptyRandomAccessFile) {
   Env* env = Env::Default();
   string test_file = JoinPathSegments(GetTestDataDirectory(), "test_file");
-  ASSERT_NO_FATAL_FAILURE(WriteTestFile(env, test_file, 0));
+  ASSERT_NO_FATALS(WriteTestFile(env, test_file, 0));
   gscoped_ptr<RandomAccessFile> readable_file;
   ASSERT_OK(env->NewRandomAccessFile(test_file, &readable_file));
   uint64_t size;
@@ -788,11 +788,11 @@ TEST_F(TestEnv, TestCopyFile) {
   const int kFileSize = 1024 * 1024 + 11; // Some odd number of bytes.
 
   Env* env = Env::Default();
-  NO_FATALS(WriteTestFile(env, orig_path, kFileSize));
+  ASSERT_NO_FATALS(WriteTestFile(env, orig_path, kFileSize));
   ASSERT_OK(env_util::CopyFile(env, orig_path, copy_path, WritableFileOptions()));
   gscoped_ptr<RandomAccessFile> copy;
   ASSERT_OK(env->NewRandomAccessFile(copy_path, &copy));
-  NO_FATALS(ReadAndVerifyTestData(copy.get(), 0, kFileSize));
+  ASSERT_NO_FATALS(ReadAndVerifyTestData(copy.get(), 0, kFileSize));
 }
 
 INSTANTIATE_TEST_CASE_P(BufferedIO, TestEnv, ::testing::Values(false));

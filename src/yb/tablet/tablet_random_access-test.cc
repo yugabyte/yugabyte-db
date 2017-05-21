@@ -15,12 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+#include <vector>
+
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <string>
-#include <vector>
 
 #include "yb/common/schema.h"
 #include "yb/gutil/casts.h"
@@ -106,7 +107,7 @@ class TestRandomAccess : public YBTabletTest {
   // TODO: should add a version of this test which also tries invalid operations
   // and validates the correct errors.
   void DoRandomBatch() {
-    int key = rand() % expected_tablet_state_.size();
+    int key = rand_r(&random_seed_) % expected_tablet_state_.size();
     string& cur_val = expected_tablet_state_[key];
 
     // Check that a read yields what we expect.
@@ -115,7 +116,7 @@ class TestRandomAccess : public YBTabletTest {
 
     vector<LocalTabletWriter::Op> pending;
     for (int i = 0; i < 3; i++) {
-      int new_val = rand();
+      int new_val = rand_r(&random_seed_);
       if (cur_val.empty()) {
         // If there is no row, then insert one.
         cur_val = InsertRow(key, new_val, &pending);
@@ -139,7 +140,7 @@ class TestRandomAccess : public YBTabletTest {
     s.start();
     while (s.elapsed().wall_seconds() < FLAGS_runtime_seconds) {
       for (int i = 0; i < 100; i++) {
-        ASSERT_NO_FATAL_FAILURE(DoRandomBatch());
+        ASSERT_NO_FATALS(DoRandomBatch());
         op_count++;
       }
     }
@@ -255,6 +256,8 @@ class TestRandomAccess : public YBTabletTest {
   CountDownLatch done_;
 
   gscoped_ptr<LocalTabletWriter> writer_;
+
+  unsigned int random_seed_ = SeedRandom();
 };
 
 TEST_F(TestRandomAccess, Test) {
@@ -275,8 +278,10 @@ void GenerateTestCase(vector<TestOp>* ops, int len) {
   bool worth_compacting = false;
   bool data_in_dms = false;
   ops->clear();
+  unsigned int random_seed = SeedRandom();
   while (ops->size() < len) {
-    TestOp r = tight_enum_cast<TestOp>(rand() % enum_limits<TestOp>::max_enumerator);
+    TestOp r = tight_enum_cast<TestOp>(
+        rand_r(&random_seed) % enum_limits<TestOp>::max_enumerator);
     switch (r) {
       case TEST_INSERT:
         if (exists) continue;

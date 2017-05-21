@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <vector>
+
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <vector>
 
 #include "yb/common/schema.h"
 #include "yb/common/predicate_encoder.h"
@@ -111,7 +112,7 @@ TEST_F(CompositeIntKeysTest, TestPrefixEquality) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "a", EQ, 128);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   // Expect: key >= (128, 0, 0) AND key < (129, 0, 0)
   EXPECT_EQ("PK >= (uint8 a=128, uint8 b=0, uint8 c=0) AND "
             "PK < (uint8 a=129, uint8 b=0, uint8 c=0)",
@@ -123,7 +124,7 @@ TEST_F(CompositeIntKeysTest, TestPrefixUpperBound) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "a", LE, 254);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK < (uint8 a=255, uint8 b=0, uint8 c=0)",
             spec.ToStringWithSchema(schema_));
 }
@@ -134,7 +135,7 @@ TEST_F(CompositeIntKeysTest, TestPrefixLowerBound) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "a", GE, 254);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK >= (uint8 a=254, uint8 b=0, uint8 c=0)", spec.ToStringWithSchema(schema_));
 }
 
@@ -145,7 +146,7 @@ TEST_F(CompositeIntKeysTest, TestNonPrefix) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "b", EQ, 128);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   // Expect: nothing pushed (predicate is still on `b`, not PK)
   EXPECT_EQ("(`b` BETWEEN 128 AND 128)",
             spec.ToStringWithSchema(schema_));
@@ -162,7 +163,7 @@ TEST_F(CompositeIntKeysTest, TestRedundantUpperBound) {
   AddPredicate<uint8_t>(&spec, "b", GE, 3);
   AddPredicate<uint8_t>(&spec, "b", LE, 255);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK >= (uint8 a=255, uint8 b=3, uint8 c=0)", spec.ToStringWithSchema(schema_));
 }
 
@@ -177,7 +178,7 @@ TEST_F(CompositeIntKeysTest, TestRedundantUpperBound2) {
   AddPredicate<uint8_t>(&spec, "b", GE, 3);
   AddPredicate<uint8_t>(&spec, "b", LE, 255);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK >= (uint8 a=1, uint8 b=3, uint8 c=0) AND "
             "PK < (uint8 a=2, uint8 b=0, uint8 c=0)",
             spec.ToStringWithSchema(schema_));
@@ -190,7 +191,7 @@ TEST_F(CompositeIntKeysTest, TestNoErasePredicates) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "a", EQ, 254);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, false));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, false));
   EXPECT_EQ("PK >= (uint8 a=254, uint8 b=0, uint8 c=0) AND "
             "PK < (uint8 a=255, uint8 b=0, uint8 c=0)\n"
             "(`a` BETWEEN 254 AND 254)", spec.ToStringWithSchema(schema_));
@@ -207,7 +208,7 @@ TEST_F(CompositeIntKeysTest, TestNoErasePredicates2) {
   AddPredicate<uint8_t>(&spec, "a", EQ, 254);
   AddPredicate<uint8_t>(&spec, "c", EQ, 254);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   // The predicate on column A should be pushed while "c" remains.
   EXPECT_EQ("PK >= (uint8 a=254, uint8 b=0, uint8 c=0) AND "
             "PK < (uint8 a=255, uint8 b=0, uint8 c=0)\n"
@@ -222,7 +223,7 @@ TEST_F(CompositeIntKeysTest, TestPredicateOrderDoesntMatter) {
   AddPredicate<uint8_t>(&spec, "b", EQ, 254);
   AddPredicate<uint8_t>(&spec, "a", EQ, 254);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK >= (uint8 a=254, uint8 b=254, uint8 c=0) AND "
             "PK < (uint8 a=254, uint8 b=255, uint8 c=0)",
             spec.ToStringWithSchema(schema_));
@@ -247,7 +248,7 @@ TEST_F(CompositeIntStringKeysTest, TestPrefixEquality) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "a", EQ, 128);
   SCOPED_TRACE(spec.ToStringWithSchema(schema_));
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   // Expect: key >= (128, "", "") AND key < (129, "", "")
   EXPECT_EQ("PK >= (uint8 a=128, string b=, string c=) AND "
             "PK < (uint8 a=129, string b=, string c=)",
@@ -260,7 +261,7 @@ TEST_F(CompositeIntStringKeysTest, TestPrefixEqualityWithString) {
   AddPredicate<uint8_t>(&spec, "a", EQ, 128);
   AddPredicate<Slice>(&spec, "b", EQ, Slice("abc"));
   SCOPED_TRACE(spec.ToString());
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK >= (uint8 a=128, string b=abc, string c=) AND "
             "PK < (uint8 a=128, string b=abc\\000, string c=)",
             spec.ToStringWithSchema(schema_));
@@ -280,7 +281,7 @@ TEST_F(SingleIntKeyTest, TestEquality) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "a", EQ, 128);
   SCOPED_TRACE(spec.ToString());
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK >= (uint8 a=128) AND "
             "PK < (uint8 a=129)",
             spec.ToStringWithSchema(schema_));
@@ -290,7 +291,7 @@ TEST_F(SingleIntKeyTest, TestRedundantUpperBound) {
   ScanSpec spec;
   AddPredicate<uint8_t>(&spec, "a", EQ, 255);
   SCOPED_TRACE(spec.ToString());
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("PK >= (uint8 a=255)",
             spec.ToStringWithSchema(schema_));
 }
@@ -298,7 +299,7 @@ TEST_F(SingleIntKeyTest, TestRedundantUpperBound) {
 TEST_F(SingleIntKeyTest, TestNoPredicates) {
   ScanSpec spec;
   SCOPED_TRACE(spec.ToString());
-  ASSERT_NO_FATAL_FAILURE(enc_.EncodeRangePredicates(&spec, true));
+  ASSERT_NO_FATALS(enc_.EncodeRangePredicates(&spec, true));
   EXPECT_EQ("", spec.ToStringWithSchema(schema_));
 }
 

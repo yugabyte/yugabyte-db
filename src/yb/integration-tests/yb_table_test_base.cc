@@ -189,8 +189,8 @@ void YBTableTestBase::ConfigureScanner(YBScanner* scanner) {
 void YBTableTestBase::RestartCluster() {
   DCHECK(!use_external_mini_cluster());
   CHECK_OK(mini_cluster_->RestartSync());
-  NO_FATALS(CreateClient());
-  NO_FATALS(OpenTable());
+  ASSERT_NO_FATALS(CreateClient());
+  ASSERT_NO_FATALS(OpenTable());
 }
 
 void YBTableTestBase::GetScanResults(YBScanner* scanner, vector<pair<string, string>>* result_kvs) {

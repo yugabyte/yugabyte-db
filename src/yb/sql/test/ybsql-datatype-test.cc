@@ -22,7 +22,7 @@ class YbSqlQuery : public YbSqlTestBase {
 
 TEST_F(YbSqlQuery, TestSqlQuerySimple) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -107,7 +107,7 @@ do {                                                                            
 
 TEST_F(YbSqlQuery, TestSqlDecimalType) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();
@@ -130,7 +130,7 @@ TEST_F(YbSqlQuery, TestSqlDecimalType) {
 
 TEST_F(YbSqlQuery, TestSqlDecimalTypeInKey) {
   // Init the simulated cluster.
-  NO_FATALS(CreateSimulatedCluster());
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
 
   // Get a processor.
   YbSqlProcessor *processor = GetSqlProcessor();

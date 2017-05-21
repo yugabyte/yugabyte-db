@@ -31,7 +31,7 @@
 #include "yb/util/test_util.h"
 
 #define ASSERT_VALUES_EQUAL(cmeta, opid_index, uuid, term) \
-  ASSERT_NO_FATAL_FAILURE(AssertValuesEqual(cmeta, opid_index, uuid, term))
+  ASSERT_NO_FATALS(AssertValuesEqual(cmeta, opid_index, uuid, term))
 
 namespace yb {
 namespace consensus {
@@ -267,20 +267,20 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
   remote_state.set_current_term(0);
   *remote_state.mutable_config() = BuildConfig({ "x", "y", "z" });
   cmeta->MergeCommittedConsensusStatePB(remote_state);
-  NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 1, "e"));
+  ASSERT_NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 1, "e"));
 
   // Same as above because the merged term is the same as the cmeta term.
   remote_state.set_current_term(1);
   *remote_state.mutable_config() = BuildConfig({ "f", "g", "h" });
   cmeta->MergeCommittedConsensusStatePB(remote_state);
-  NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 1, "e"));
+  ASSERT_NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 1, "e"));
 
   // Higher term, so wipe out the prior state.
   remote_state.set_current_term(2);
   *remote_state.mutable_config() = BuildConfig({ "i", "j", "k" });
   cmeta->set_pending_config(pending_config);
   cmeta->MergeCommittedConsensusStatePB(remote_state);
-  NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 2, ""));
+  ASSERT_NO_FATALS(AssertConsensusMergeExpected(cmeta, remote_state, 2, ""));
 }
 
 } // namespace consensus

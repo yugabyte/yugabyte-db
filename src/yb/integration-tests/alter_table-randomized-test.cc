@@ -432,19 +432,19 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
 
     if (i % 1000 == 0) {
       LOG(INFO) << "Verifying iteration " << i;
-      NO_FATALS(t.Verify());
+      ASSERT_NO_FATALS(t.Verify());
       LOG(INFO) << "Verification of iteration " << i << " successful";
     }
   }
 
   LOG(INFO) << "About to do the last verification";
-  NO_FATALS(t.Verify());
+  ASSERT_NO_FATALS(t.Verify());
   LOG(INFO) << "Last verification succeeded";
 
   // Not only should the data returned by a scanner match what we expect,
   // we also expect all of the replicas to agree with each other.
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
 }
 
 }  // namespace yb

@@ -303,7 +303,7 @@ class TestCompaction : public YBRowSetTest {
       // Flush it to disk and re-open it.
       shared_ptr<DiskRowSet> rs;
       FlushMRSAndReopenNoRoll(*mrs, schema, &rs);
-      ASSERT_NO_FATAL_FAILURE();
+      ASSERT_NO_FATALS();
       rowsets.push_back(rs);
 
       // Perform some updates into DMS
@@ -313,7 +313,7 @@ class TestCompaction : public YBRowSetTest {
 
     // Merge them.
     shared_ptr<DiskRowSet> result_rs;
-    ASSERT_NO_FATAL_FAILURE(CompactAndReopenNoRoll(rowsets, projection, &result_rs));
+    ASSERT_NO_FATALS(CompactAndReopenNoRoll(rowsets, projection, &result_rs));
 
     // Verify the resulting compaction output has the right number
     // of rows.
@@ -350,7 +350,7 @@ class TestCompaction : public YBRowSetTest {
         }
         shared_ptr<DiskRowSet> rs;
         FlushMRSAndReopenNoRoll(*mrs, schema_, &rs);
-        ASSERT_NO_FATAL_FAILURE();
+        ASSERT_NO_FATALS();
         rowsets.push_back(rs);
       }
     } else {
@@ -480,7 +480,7 @@ TEST_F(TestCompaction, TestRowSetInput) {
     shared_ptr<MemRowSet> mrs(new MemRowSet(0, schema_, log_anchor_registry_.get()));
     InsertRows(mrs.get(), 10, 0);
     FlushMRSAndReopenNoRoll(*mrs, schema_, &rs);
-    ASSERT_NO_FATAL_FAILURE();
+    ASSERT_NO_FATALS();
   }
 
   // Update the rows in the rowset.
@@ -523,7 +523,7 @@ TEST_F(TestCompaction, TestDuplicatedGhostRowsDontSurviveCompaction) {
     shared_ptr<MemRowSet> mrs(new MemRowSet(0, schema_, log_anchor_registry_.get()));
     InsertRows(mrs.get(), 10, 0);
     FlushMRSAndReopenNoRoll(*mrs, schema_, &rs1);
-    ASSERT_NO_FATAL_FAILURE();
+    ASSERT_NO_FATALS();
   }
   // Now delete the rows, this will make the rs report them as deleted and
   // so we would reinsert them into the MRS.
@@ -535,7 +535,7 @@ TEST_F(TestCompaction, TestDuplicatedGhostRowsDontSurviveCompaction) {
     InsertRows(mrs.get(), 10, 0);
     UpdateRows(mrs.get(), 10, 0, 1);
     FlushMRSAndReopenNoRoll(*mrs, schema_, &rs2);
-    ASSERT_NO_FATAL_FAILURE();
+    ASSERT_NO_FATALS();
   }
   DeleteRows(rs2.get(), 10, 0);
 
@@ -545,7 +545,7 @@ TEST_F(TestCompaction, TestDuplicatedGhostRowsDontSurviveCompaction) {
     InsertRows(mrs.get(), 10, 0);
     UpdateRows(mrs.get(), 10, 0, 2);
     FlushMRSAndReopenNoRoll(*mrs, schema_, &rs3);
-    ASSERT_NO_FATAL_FAILURE();
+    ASSERT_NO_FATALS();
   }
 
   shared_ptr<DiskRowSet> result;
@@ -590,7 +590,7 @@ TEST_F(TestCompaction, TestOneToOne) {
   // Flush it to disk and re-open.
   shared_ptr<DiskRowSet> rs;
   FlushMRSAndReopenNoRoll(*mrs, schema_, &rs);
-  ASSERT_NO_FATAL_FAILURE();
+  ASSERT_NO_FATALS();
 
   // Update the rows with some updates that weren't in the snapshot.
   UpdateRows(mrs.get(), 1000, 0, 2);
@@ -632,14 +632,14 @@ TEST_F(TestCompaction, TestKUDU102) {
   InsertRows(mrs.get(), 10, 0);
   shared_ptr<DiskRowSet> rs;
   FlushMRSAndReopenNoRoll(*mrs, schema_, &rs);
-  ASSERT_NO_FATAL_FAILURE();
+  ASSERT_NO_FATALS();
 
   shared_ptr<MemRowSet> mrs_b(new MemRowSet(1, schema_, log_anchor_registry_.get()));
   InsertRows(mrs_b.get(), 10, 100);
   MvccSnapshot snap(mvcc_);
   shared_ptr<DiskRowSet> rs_b;
   FlushMRSAndReopenNoRoll(*mrs_b, schema_, &rs_b);
-  ASSERT_NO_FATAL_FAILURE();
+  ASSERT_NO_FATALS();
 
   // Update all the rows in the second row set
   UpdateRows(mrs_b.get(), 10, 100, 2);
@@ -728,7 +728,7 @@ TEST_F(TestCompaction, BenchmarkMergeWithoutOverlap) {
     LOG(INFO) << "Skipped: must enable slow tests.";
     return;
   }
-  ASSERT_NO_FATAL_FAILURE(DoBenchmark<false>());
+  ASSERT_NO_FATALS(DoBenchmark<false>());
 }
 
 // Benchmark for the compaction merge input when the inputs are entirely
@@ -738,7 +738,7 @@ TEST_F(TestCompaction, BenchmarkMergeWithOverlap) {
     LOG(INFO) << "Skipped: must enable slow tests.";
     return;
   }
-  ASSERT_NO_FATAL_FAILURE(DoBenchmark<true>());
+  ASSERT_NO_FATALS(DoBenchmark<true>());
 }
 #endif
 
@@ -774,7 +774,7 @@ TEST_F(TestCompaction, TestCompactionFreesDiskSpace) {
   }
 
   uint64_t bytes_before;
-  ASSERT_NO_FATAL_FAILURE(GetDataDiskSpace(&bytes_before));
+  ASSERT_NO_FATALS(GetDataDiskSpace(&bytes_before));
 
   ASSERT_OK(tablet()->Compact(Tablet::FORCE_COMPACT_ALL));
 
@@ -784,7 +784,7 @@ TEST_F(TestCompaction, TestCompactionFreesDiskSpace) {
   deadline.AddDelta(MonoDelta::FromSeconds(30));
   while (true) {
     uint64_t bytes_after;
-    ASSERT_NO_FATAL_FAILURE(GetDataDiskSpace(&bytes_after));
+    ASSERT_NO_FATALS(GetDataDiskSpace(&bytes_after));
     LOG(INFO) << Substitute("Data disk space: $0 (before), $1 (after) ",
                             bytes_before, bytes_after);
     if (bytes_after < bytes_before) {

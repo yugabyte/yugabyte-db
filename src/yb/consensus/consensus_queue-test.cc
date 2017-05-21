@@ -488,7 +488,7 @@ TEST_F(ConsensusQueueTest, TestQueueLoadsOperationsForPeer) {
 
   // Now we start tracking the peer, this negotiation round should let
   // the queue know how far along the peer is.
-  ASSERT_NO_FATAL_FAILURE(UpdatePeerWatermarkToOp(&request,
+  ASSERT_NO_FATALS(UpdatePeerWatermarkToOp(&request,
                                                   &response,
                                                   peers_last_op,
                                                   MinimumOpId(),

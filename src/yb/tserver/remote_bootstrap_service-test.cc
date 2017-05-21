@@ -14,12 +14,12 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#include "yb/tserver/remote_bootstrap-test-base.h"
 
 #include <limits>
 
 #include <gflags/gflags.h>
 
+#include "yb/tserver/remote_bootstrap-test-base.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
@@ -36,7 +36,7 @@
 #include "yb/util/test_util.h"
 
 #define ASSERT_REMOTE_ERROR(status, err, code, str) \
-    ASSERT_NO_FATAL_FAILURE(AssertRemoteError(status, err, code, str))
+    ASSERT_NO_FATALS(AssertRemoteError(status, err, code, str))
 
 DECLARE_uint64(remote_bootstrap_idle_timeout_ms);
 DECLARE_uint64(remote_bootstrap_timeout_poll_period_ms);

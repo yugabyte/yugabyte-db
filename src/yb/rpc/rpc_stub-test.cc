@@ -81,7 +81,7 @@ TEST_F(RpcStubTest, TestShortRecvs) {
   CalculatorServiceProxy p(client_messenger_, server_addr_);
 
   for (int i = 0; i < 100; i++) {
-    NO_FATALS(SendSimpleCall());
+    ASSERT_NO_FATALS(SendSimpleCall());
   }
 }
 

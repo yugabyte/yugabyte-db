@@ -153,7 +153,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   OverrideFlagForSlowTests("seconds_to_run", "30");
   OverrideFlagForSlowTests("stress_flush_compact", "true");
   OverrideFlagForSlowTests("stress_wal_gc", "true");
-  ASSERT_NO_FATAL_FAILURE(BuildAndStart());
+  ASSERT_NO_FATALS(BuildAndStart());
 
   string tablet_id = tablet_replicas_.begin()->first;
 
@@ -203,7 +203,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
         std::bind(&TabletServerIntegrationTestBase::ShutdownServerWithUUID, this, _1)));
     LOG(INFO) << "Done with tserver kill test.";
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()-1));
-    ASSERT_NO_FATAL_FAILURE(RestartCluster());
+    ASSERT_NO_FATALS(RestartCluster());
     // Again wait for cluster to finish bootstrapping.
     WaitForTSAndReplicas();
 
@@ -219,7 +219,7 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
   }
 
   // Kill and restart the cluster, verify data remains.
-  ASSERT_NO_FATAL_FAILURE(RestartCluster());
+  ASSERT_NO_FATALS(RestartCluster());
 
   LOG(INFO) << "Verifying rows after restarting entire cluster.";
 
@@ -249,13 +249,13 @@ TEST_F(LinkedListTest, TestLoadAndVerify) {
     ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size() - 1));
   }
 
-  ASSERT_NO_FATAL_FAILURE(RestartCluster());
+  ASSERT_NO_FATALS(RestartCluster());
 
   // Sleep a little bit, so that the tablet is probably in bootstrapping state.
   SleepFor(MonoDelta::FromMilliseconds(100));
 
   // Restart while bootstrapping
-  ASSERT_NO_FATAL_FAILURE(RestartCluster());
+  ASSERT_NO_FATALS(RestartCluster());
 
   ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written, /* latest_at_leader = */ true));
   ASSERT_OK(CheckTabletServersAreAlive(tablet_servers_.size()));
@@ -283,7 +283,7 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
 
   FLAGS_num_tablet_servers = 3;
   FLAGS_num_tablets = 1;
-  ASSERT_NO_FATAL_FAILURE(BuildAndStart());
+  ASSERT_NO_FATALS(BuildAndStart());
 
   // Load the data with one of the three servers down.
   cluster_->tablet_server(0)->Shutdown();
@@ -302,7 +302,7 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   const int kBaseTimeToWaitSecs = 5;
   const int kWaitTime = FLAGS_seconds_to_run + kBaseTimeToWaitSecs;
   const string tablet_id = tablet_replicas_.begin()->first;
-  ASSERT_NO_FATAL_FAILURE(WaitForServersToAgree(
+  ASSERT_NO_FATALS(WaitForServersToAgree(
                             MonoDelta::FromSeconds(kWaitTime),
                             tablet_servers_,
                             tablet_id,

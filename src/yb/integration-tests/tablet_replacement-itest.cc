@@ -57,7 +57,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   int num_tservers = 5;
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(StartCluster(ts_flags, master_flags, num_tservers));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, num_tservers));
 
   TestWorkload workload(cluster_.get());
   workload.set_num_replicas(num_tservers);
@@ -127,7 +127,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags;
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
   TestWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
@@ -186,7 +186,7 @@ TEST_F(TabletReplacementITest, TestEvictAndReplaceDeadFollower) {
   vector<string> ts_flags = { "--enable_leader_failure_detection=false",
                               "--follower_unavailable_considered_failed_sec=5" };
   vector<string> master_flags = { "--catalog_manager_wait_for_new_tablets_to_elect_leader=false" };
-  NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
   TestWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
@@ -245,7 +245,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   // more deterministic.
   master_flags.push_back("--master_tombstone_evicted_tablet_replicas=false");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
-  NO_FATALS(StartCluster(ts_flags, master_flags));
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
   TestWorkload workload(cluster_.get());
   workload.Setup(); // Convenient way to create a table.
@@ -307,8 +307,8 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   ASSERT_OK(itest::WaitUntilTabletRunning(ts_to_remove, tablet_id, timeout));
 
   ClusterVerifier cluster_verifier(cluster_.get());
-  NO_FATALS(cluster_verifier.CheckCluster());
-  NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
+  ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+  ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(workload.table_name(),
                             ClusterVerifier::EXACTLY, 2));
 
   latch.Wait(); // Avoid use-after-free on the response from the delayed RPC callback.

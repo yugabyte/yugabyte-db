@@ -336,14 +336,14 @@ void FlexPartitioningITest::InsertAndVerifyScans() {
   // 1) Various predicates on 'c0', which has non-random data.
   // We concentrate around the value '500' since there is a split point
   // there.
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 100, 120));
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 490, 610));
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 499, 499));
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 500, 500));
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 501, 501));
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 499, 501));
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 499, 500));
-  NO_FATALS(CheckScanWithColumnPredicate("c0", 500, 501));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 100, 120));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 490, 610));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 499, 499));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 500, 500));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 501, 501));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 499, 501));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 499, 500));
+  ASSERT_NO_FATALS(CheckScanWithColumnPredicate("c0", 500, 501));
 
   // 2) Random range predicates on the other columns, which are random ints.
   for (int col_idx = 1; col_idx < table_->schema().num_columns(); col_idx++) {
@@ -355,41 +355,41 @@ void FlexPartitioningITest::InsertAndVerifyScans() {
         std::swap(lower, upper);
       }
 
-      NO_FATALS(CheckScanWithColumnPredicate(table_->schema().Column(col_idx).name(),
+      ASSERT_NO_FATALS(CheckScanWithColumnPredicate(table_->schema().Column(col_idx).name(),
                                              lower, upper));
     }
   }
 
   // 3) Use the "primary key range" API.
   {
-    NO_FATALS(CheckPKRangeScan(100, 120));
-    NO_FATALS(CheckPKRangeScan(490, 610));
-    NO_FATALS(CheckPKRangeScan(499, 499));
-    NO_FATALS(CheckPKRangeScan(500, 500));
-    NO_FATALS(CheckPKRangeScan(501, 501));
-    NO_FATALS(CheckPKRangeScan(499, 501));
-    NO_FATALS(CheckPKRangeScan(499, 500));
-    NO_FATALS(CheckPKRangeScan(500, 501));
+    ASSERT_NO_FATALS(CheckPKRangeScan(100, 120));
+    ASSERT_NO_FATALS(CheckPKRangeScan(490, 610));
+    ASSERT_NO_FATALS(CheckPKRangeScan(499, 499));
+    ASSERT_NO_FATALS(CheckPKRangeScan(500, 500));
+    ASSERT_NO_FATALS(CheckPKRangeScan(501, 501));
+    ASSERT_NO_FATALS(CheckPKRangeScan(499, 501));
+    ASSERT_NO_FATALS(CheckPKRangeScan(499, 500));
+    ASSERT_NO_FATALS(CheckPKRangeScan(500, 501));
   }
 
   // 4) Use the Per-tablet "partition key range" API.
   {
-    NO_FATALS(CheckPartitionKeyRangeScan());
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScan());
   }
 
   // 5) Use the Per-tablet "partition key range" API with primary key range.
   {
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(100, 120));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(200, 400));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(490, 610));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(499, 499));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(500, 500));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(501, 501));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(499, 501));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(499, 500));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(500, 501));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(650, 700));
-    NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(700, 800));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(100, 120));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(200, 400));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(490, 610));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(499, 499));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(500, 500));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(501, 501));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(499, 501));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(499, 500));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(500, 501));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(650, 700));
+    ASSERT_NO_FATALS(CheckPartitionKeyRangeScanWithPKRange(700, 800));
   }
 }
 
@@ -400,7 +400,7 @@ void FlexPartitioningITest::InsertAndVerifyScans() {
 //   RANGE PARTITION BY (c0, c1),
 // );
 TEST_F(FlexPartitioningITest, TestSimplePartitioning) {
-  NO_FATALS(CreateTable(1, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(1, // 2 columns
                         vector<string>(), 0, // No hash buckets
                         vector<string>(), 0, // No hash buckets
                         { "c0" }, // no range partitioning
@@ -415,7 +415,7 @@ TEST_F(FlexPartitioningITest, TestSimplePartitioning) {
 //   BUCKET BY (c0) INTO 3 BUCKETS
 // );
 TEST_F(FlexPartitioningITest, TestSinglePKBucketed) {
-  NO_FATALS(CreateTable(1, // 1 column
+  ASSERT_NO_FATALS(CreateTable(1, // 1 column
                         { "c0" }, 3, // bucket by "c0" in 3 buckets
                         vector<string>(), 0, // no other buckets
                         { "c0" }, // default range
@@ -432,7 +432,7 @@ TEST_F(FlexPartitioningITest, TestSinglePKBucketed) {
 //   BUCKET BY (c1) INTO 3 BUCKETS
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_BucketOnSecondColumn) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         { "c1" }, 3, // bucket by "c0" in 3 buckets
                         vector<string>(), 0, // no other buckets
                         { "c0", "c1" }, // default range
@@ -449,7 +449,7 @@ TEST_F(FlexPartitioningITest, TestCompositePK_BucketOnSecondColumn) {
 //   RANGE PARTITION BY (c1, c0)
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_RangePartitionByReversedPK) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         vector<string>(), 0, // no buckets
                         vector<string>(), 0, // no buckets
                         { "c1", "c0" }, // range partition by reversed PK
@@ -466,7 +466,7 @@ TEST_F(FlexPartitioningITest, TestCompositePK_RangePartitionByReversedPK) {
 //   RANGE PARTITION BY (c0)
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_RangePartitionByPKPrefix) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         vector<string>(), 0, // no buckets
                         vector<string>(), 0, // no buckets
                         { "c0" }, // range partition by c0
@@ -483,7 +483,7 @@ TEST_F(FlexPartitioningITest, TestCompositePK_RangePartitionByPKPrefix) {
 //   RANGE PARTITION BY (c1)
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_RangePartitionByPKSuffix) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         vector<string>(), 0, // no buckets
                         vector<string>(), 0, // no buckets
                         { "c1" }, // range partition by c1
@@ -501,7 +501,7 @@ TEST_F(FlexPartitioningITest, TestCompositePK_RangePartitionByPKSuffix) {
 //   BUCKET BY (c1) INTO 4 BUCKETS
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_RangeAndBucket) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         { "c1" }, 4, // BUCKET BY c1 INTO 4 BUCKETS
                         vector<string>(), 0, // no buckets
                         { "c0" }, // range partition by c0
@@ -519,7 +519,7 @@ TEST_F(FlexPartitioningITest, TestCompositePK_RangeAndBucket) {
 //   BUCKET BY (c0) INTO 3 BUCKETS
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_MultipleBucketings) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         { "c1" }, 4, // BUCKET BY c1 INTO 4 BUCKETS
                         { "c0" }, 3, // BUCKET BY c0 INTO 3 BUCKETS
                         { "c0", "c1" }, // default range partitioning
@@ -537,7 +537,7 @@ TEST_F(FlexPartitioningITest, TestCompositePK_MultipleBucketings) {
 //   BUCKET BY (c0) INTO 4 BUCKETS,
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_SingleBucketNoRange) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         { "c0" }, 4, // BUCKET BY c0 INTO 4 BUCKETS
                         vector<string>(), 0, // no buckets
                         vector<string>(), // no range partitioning
@@ -556,7 +556,7 @@ TEST_F(FlexPartitioningITest, TestCompositePK_SingleBucketNoRange) {
 //   BUCKET BY (c1) INTO 5 BUCKETS,
 // );
 TEST_F(FlexPartitioningITest, TestCompositePK_MultipleBucketingsNoRange) {
-  NO_FATALS(CreateTable(2, // 2 columns
+  ASSERT_NO_FATALS(CreateTable(2, // 2 columns
                         { "c0" }, 4, // BUCKET BY c0 INTO 4 BUCKETS
                         { "c1" }, 5, // BUCKET BY c1 INTO 5 BUCKETS
                         vector<string>(), // no range partitioning

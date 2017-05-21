@@ -150,7 +150,7 @@ void BlockManagerTest<FileBlockManager>::RunLogContainerPreallocationTest() {
 template <>
 void BlockManagerTest<FileBlockManager>::RunMemTrackerTest() {
   shared_ptr<MemTracker> tracker = MemTracker::CreateTracker(-1, "test tracker");
-  ASSERT_NO_FATAL_FAILURE(this->ReopenBlockManager(scoped_refptr<MetricEntity>(),
+  ASSERT_NO_FATALS(this->ReopenBlockManager(scoped_refptr<MetricEntity>(),
                                                    tracker,
                                                    { GetTestDataDirectory() },
                                                    false));
@@ -387,13 +387,13 @@ TYPED_TEST(BlockManagerTest, MultiPathTest) {
   for (int i = 0; i < 3; i++) {
     paths.push_back(this->GetTestPath(Substitute("path$0", i)));
   }
-  ASSERT_NO_FATAL_FAILURE(this->ReopenBlockManager(
+  ASSERT_NO_FATALS(this->ReopenBlockManager(
       scoped_refptr<MetricEntity>(),
       shared_ptr<MemTracker>(),
       paths,
       true));
 
-  ASSERT_NO_FATAL_FAILURE(this->RunMultipathTest(paths));
+  ASSERT_NO_FATALS(this->RunMultipathTest(paths));
 }
 
 static void CloseHelper(ReadableBlock* block) {
@@ -443,11 +443,11 @@ TYPED_TEST(BlockManagerTest, MetricsTest) {
   const string kTestData = "test data";
   MetricRegistry registry;
   scoped_refptr<MetricEntity> entity = METRIC_ENTITY_server.Instantiate(&registry, "test");
-  ASSERT_NO_FATAL_FAILURE(this->ReopenBlockManager(entity,
+  ASSERT_NO_FATALS(this->ReopenBlockManager(entity,
                                                    shared_ptr<MemTracker>(),
                                                    { GetTestDataDirectory() },
                                                    false));
-  ASSERT_NO_FATAL_FAILURE(CheckMetrics(entity, 0, 0, 0, 0, 0, 0));
+  ASSERT_NO_FATALS(CheckMetrics(entity, 0, 0, 0, 0, 0, 0));
 
   for (int i = 0; i < 3; i++) {
     gscoped_ptr<WritableBlock> writer;
@@ -455,7 +455,7 @@ TYPED_TEST(BlockManagerTest, MetricsTest) {
 
     // An open writer. Also reflected in total_writable_blocks.
     ASSERT_OK(this->bm_->CreateBlock(&writer));
-    ASSERT_NO_FATAL_FAILURE(CheckMetrics(
+    ASSERT_NO_FATALS(CheckMetrics(
         entity, 0, 1, i, i + 1,
         i * kTestData.length(), i * kTestData.length()));
 
@@ -463,13 +463,13 @@ TYPED_TEST(BlockManagerTest, MetricsTest) {
     // is now reflected in total_bytes_written.
     ASSERT_OK(writer->Append(kTestData));
     ASSERT_OK(writer->Close());
-    ASSERT_NO_FATAL_FAILURE(CheckMetrics(
+    ASSERT_NO_FATALS(CheckMetrics(
         entity, 0, 0, i, i + 1,
         i * kTestData.length(), (i + 1) * kTestData.length()));
 
     // An open reader.
     ASSERT_OK(this->bm_->OpenBlock(writer->id(), &reader));
-    ASSERT_NO_FATAL_FAILURE(CheckMetrics(
+    ASSERT_NO_FATALS(CheckMetrics(
         entity, 1, 0, i + 1, i + 1,
         i * kTestData.length(), (i + 1) * kTestData.length()));
 
@@ -477,28 +477,28 @@ TYPED_TEST(BlockManagerTest, MetricsTest) {
     Slice data;
     gscoped_ptr<uint8_t[]> scratch(new uint8_t[kTestData.length()]);
     ASSERT_OK(reader->Read(0, kTestData.length(), &data, scratch.get()));
-    ASSERT_NO_FATAL_FAILURE(CheckMetrics(
+    ASSERT_NO_FATALS(CheckMetrics(
         entity, 1, 0, i + 1, i + 1,
         (i + 1) * kTestData.length(), (i + 1) * kTestData.length()));
 
     // The reader is now gone.
     ASSERT_OK(reader->Close());
-    ASSERT_NO_FATAL_FAILURE(CheckMetrics(
+    ASSERT_NO_FATALS(CheckMetrics(
         entity, 0, 0, i + 1, i + 1,
         (i + 1) * kTestData.length(), (i + 1) * kTestData.length()));
   }
 }
 
 TYPED_TEST(BlockManagerTest, LogMetricsTest) {
-  ASSERT_NO_FATAL_FAILURE(this->RunLogMetricsTest());
+  ASSERT_NO_FATALS(this->RunLogMetricsTest());
 }
 
 TYPED_TEST(BlockManagerTest, LogContainerPreallocationTest) {
-  ASSERT_NO_FATAL_FAILURE(this->RunLogContainerPreallocationTest());
+  ASSERT_NO_FATALS(this->RunLogContainerPreallocationTest());
 }
 
 TYPED_TEST(BlockManagerTest, MemTrackerTest) {
-  ASSERT_NO_FATAL_FAILURE(this->RunMemTrackerTest());
+  ASSERT_NO_FATALS(this->RunMemTrackerTest());
 }
 
 } // namespace fs
