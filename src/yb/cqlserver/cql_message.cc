@@ -1583,10 +1583,34 @@ std::string CQLServerEvent::ToString() const {
   return event_response_->ToString();
 }
 
-void CQLServerEvent::Transferred(const Status& status) {
+CQLServerEventList::CQLServerEventList() {
+}
+
+void CQLServerEventList::Transferred(const Status& status) {
   if (!status.ok()) {
     LOG(WARNING) << "Transfer of CQL server event failed: " << status.ToString();
   }
+}
+
+void CQLServerEventList::Serialize(std::deque<util::RefCntBuffer>* output) const {
+  for (const auto& cql_server_event : cql_server_events_) {
+    cql_server_event->Serialize(output);
+  }
+}
+
+std::string CQLServerEventList::ToString() const {
+  std::string ret = "";
+  for (const auto& cql_server_event : cql_server_events_) {
+    if (!ret.empty()) {
+      ret += ", ";
+    }
+    ret += cql_server_event->ToString();
+  }
+  return ret;
+}
+
+void CQLServerEventList::AddEvent(std::unique_ptr<CQLServerEvent> event) {
+  cql_server_events_.push_back(std::move(event));
 }
 
 }  // namespace cqlserver

@@ -9,9 +9,10 @@
 #include <atomic>
 #include <string>
 
+#include "yb/cqlserver/cql_server_options.h"
+#include "yb/cqlserver/cql_message.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
-#include "yb/cqlserver/cql_server_options.h"
 #include "yb/server/server_base.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/net/sockaddr.h"
@@ -47,7 +48,8 @@ class CQLServer : public server::RpcAndWebServerBase {
   boost::asio::deadline_timer timer_;
   const tserver::TabletServer* const tserver_;
 
-  CHECKED_STATUS QueueEventForAllClients(std::unique_ptr<EventResponse> event_response);
+  std::unique_ptr<CQLServerEvent> BuildTopologyChangeEvent(const std::string& event_type,
+                                                           const Endpoint& addr);
 
   DISALLOW_COPY_AND_ASSIGN(CQLServer);
 };

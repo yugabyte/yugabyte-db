@@ -853,12 +853,23 @@ class CQLServerEvent : public rpc::ServerEvent {
   void Serialize(std::deque<util::RefCntBuffer>* output) const override;
   std::string ToString() const override;
  private:
-  void Transferred(const Status& status) override;
 
   std::unique_ptr<EventResponse> event_response_;
   // Need to keep the serialized response around since we return a reference to it via Slice in
   // Serialize().
   util::RefCntBuffer serialized_response_;
+};
+
+//------------------------------------------------------------
+class CQLServerEventList : public rpc::ServerEventList {
+ public:
+  CQLServerEventList();
+  void AddEvent(std::unique_ptr<CQLServerEvent> event);
+  void Serialize(std::deque<util::RefCntBuffer>* output) const override;
+  std::string ToString() const override;
+ private:
+  void Transferred(const Status& status) override;
+  std::vector<std::unique_ptr<CQLServerEvent>> cql_server_events_;
 };
 
 }  // namespace cqlserver

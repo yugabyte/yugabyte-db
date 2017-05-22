@@ -268,7 +268,7 @@ class ReactorThread {
   void Join() { thread_->Join(); }
 
   // Queues a server event on all the connections, such that every client receives it.
-  CHECKED_STATUS QueueEventOnAllConnections(ServerEventPtr server_event);
+  CHECKED_STATUS QueueEventOnAllConnections(ServerEventListPtr server_event);
 
  private:
   friend class AssignOutboundCallTask;
@@ -393,7 +393,7 @@ class Reactor {
                          DumpRunningRpcsResponsePB* resp);
 
   // Queues a server event on all the connections, such that every client receives it.
-  void QueueEventOnAllConnections(ServerEventPtr server_event);
+  void QueueEventOnAllConnections(ServerEventListPtr server_event);
 
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.

@@ -23,12 +23,11 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <ev++.h>
 
 #include <functional>
 #include <mutex>
 #include <string>
-
-#include <ev++.h>
 
 #include <glog/logging.h>
 
@@ -216,7 +215,7 @@ Status ReactorThread::GetMetrics(ReactorMetrics *metrics) {
   return Status::OK();
 }
 
-Status ReactorThread::QueueEventOnAllConnections(ServerEventPtr server_event) {
+Status ReactorThread::QueueEventOnAllConnections(ServerEventListPtr server_event) {
   DCHECK(IsCurrentThread());
   for (const ConnectionPtr& conn : server_conns_) {
     conn->QueueOutboundData(server_event);
@@ -843,7 +842,7 @@ class RegisterConnectionTask : public ReactorTask {
   ConnectionPtr conn_;
 };
 
-void Reactor::QueueEventOnAllConnections(ServerEventPtr server_event) {
+void Reactor::QueueEventOnAllConnections(ServerEventListPtr server_event) {
   ScheduleReactorFunctor([server_event](ReactorThread* thread) {
     CHECK_OK(thread->QueueEventOnAllConnections(server_event));
   });

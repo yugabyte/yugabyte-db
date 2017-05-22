@@ -11,14 +11,22 @@
 namespace yb {
 namespace rpc {
 
-class ServerEvent : public OutboundData {
+class ServerEvent {
  public:
   virtual ~ServerEvent() {}
-  virtual void Serialize(std::deque<util::RefCntBuffer>* buffers) const = 0;
+  // Serializes the data to be sent out via the RPC framework.
+  virtual void Serialize(std::deque<util::RefCntBuffer> *output) const = 0;
   virtual std::string ToString() const = 0;
 };
 
-typedef std::shared_ptr<ServerEvent> ServerEventPtr;
+class ServerEventList : public OutboundData {
+ public:
+  virtual ~ServerEventList() {}
+  virtual void Serialize(std::deque<util::RefCntBuffer> *output) const = 0;
+  virtual std::string ToString() const = 0;
+};
+
+typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
 
 }  // namespace rpc
 }  // namespace yb

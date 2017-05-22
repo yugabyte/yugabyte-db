@@ -65,12 +65,6 @@ void CQLServer::Shutdown() {
   server::RpcAndWebServerBase::Shutdown();
 }
 
-Status CQLServer::QueueEventForAllClients(std::unique_ptr<EventResponse> event_response) {
-  auto server_event = std::make_shared<CQLServerEvent>(std::move(event_response));
-  RETURN_NOT_OK(messenger_->QueueEventOnAllReactors(server_event));
-  return Status::OK();
-}
-
 void CQLServer::RescheduleTimer() {
   // Reschedule the timer.
   boost::system::error_code ec;
@@ -83,13 +77,20 @@ void CQLServer::RescheduleTimer() {
                                 boost::asio::placeholders::error));
 }
 
+std::unique_ptr<CQLServerEvent> CQLServer::BuildTopologyChangeEvent(
+    const std::string& event_type, const Endpoint& addr) {
+  std::unique_ptr<EventResponse> event_response(new TopologyChangeEventResponse(event_type, addr));
+  std::unique_ptr<CQLServerEvent> cql_server_event(new CQLServerEvent(std::move(event_response)));
+  return cql_server_event;
+}
+
 void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
   if (!e) {
-    Status s;
+    auto cqlserver_event_list = std::make_shared<CQLServerEventList>();
     if (tserver_ != nullptr) {
       // Get all live tservers.
       std::vector<master::TSInformationPB> live_tservers;
-      s = tserver_->GetLiveTServers(&live_tservers);
+      Status s = tserver_->GetLiveTServers(&live_tservers);
       if (!s.ok()) {
         LOG (WARNING) << s.ToString();
         RescheduleTimer();
@@ -113,16 +114,22 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &e) {
           continue;
         }
 
-        // Queue event for all clients.
-        std::unique_ptr<EventResponse> event_response(
-            new TopologyChangeEventResponse(TopologyChangeEventResponse::kNewNode,
-                                            addr));
-        s = QueueEventForAllClients(std::move(event_response));
-        if (!s.ok()) {
-          LOG (WARNING) << strings::Substitute("Failed to push event: $0, due to: $1",
-                                               event_response->ToString(), s.ToString());
-        }
+        // Queue event for all clients to add a node.
+        cqlserver_event_list->AddEvent(
+            BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode, addr));
       }
+    }
+
+    // Queue node refresh event, to remove any nodes that are down. Note that the 'MOVED_NODE'
+    // event forces the client to refresh its entire cluster topology. The RPC address associated
+    // with the event doesn't have much significance.
+    cqlserver_event_list->AddEvent(
+        BuildTopologyChangeEvent(TopologyChangeEventResponse::kMovedNode, first_rpc_address()));
+
+    Status s = messenger_->QueueEventOnAllReactors(cqlserver_event_list);
+    if (!s.ok()) {
+      LOG (WARNING) << strings::Substitute("Failed to push events: [$0], due to: $1",
+                                           cqlserver_event_list->ToString(), s.ToString());
     }
 
     RescheduleTimer();
