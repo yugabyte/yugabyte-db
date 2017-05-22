@@ -236,12 +236,12 @@ Status SetColumn(YBPartialRow* row, const int32 column_id, const YQLValuePB& val
     case UUID: {
       string bytes;
       RETURN_NOT_OK(YQLValue::uuid_value(value).ToBytes(&bytes));
-      return row->SetUuid(column_idx, Slice(bytes));
+      return row->SetUuidCopy(column_idx, Slice(bytes));
     }
     case TIMEUUID: {
       string bytes;
       RETURN_NOT_OK(YQLValue::timeuuid_value(value).ToBytes(&bytes));
-      return row->SetTimeUuid(column_idx, Slice(bytes));
+      return row->SetTimeUuidCopy(column_idx, Slice(bytes));
     };
 
     case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;

@@ -382,13 +382,13 @@ CHECKED_STATUS Executor::SetupPartialRow(const ColumnDesc *col_desc,
     case InternalType::kUuidValue: {
       std::string bytes;
       RETURN_NOT_OK(YQLValue::uuid_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetUuid(col_desc->index(), Slice(bytes)));
+      RETURN_NOT_OK(row->SetUuidCopy(col_desc->index(), Slice(bytes)));
       break;
     }
     case InternalType::kTimeuuidValue: {
       std::string bytes;
       RETURN_NOT_OK(YQLValue::timeuuid_value(value_pb).ToBytes(&bytes));
-      RETURN_NOT_OK(row->SetTimeUuid(col_desc->index(), Slice(bytes)));
+      RETURN_NOT_OK(row->SetTimeUuidCopy(col_desc->index(), Slice(bytes)));
       break;
     }
     case InternalType::kBinaryValue:

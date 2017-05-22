@@ -286,6 +286,12 @@ template
 Status YBScanBatch::RowPtr::Get<TypeTraits<INET> >(const Slice& col_name, Slice* val) const;
 
 template
+Status YBScanBatch::RowPtr::Get<TypeTraits<UUID> >(const Slice& col_name, Slice* val) const;
+
+template
+Status YBScanBatch::RowPtr::Get<TypeTraits<TIMEUUID> >(const Slice& col_name, Slice* val) const;
+
+template
 Status YBScanBatch::RowPtr::Get<TypeTraits<BOOL> >(int col_idx, bool* val) const;
 
 template
@@ -317,6 +323,12 @@ Status YBScanBatch::RowPtr::Get<TypeTraits<BINARY> >(int col_idx, Slice* val) co
 
 template
 Status YBScanBatch::RowPtr::Get<TypeTraits<INET> >(int col_idx, Slice* val) const;
+
+template
+Status YBScanBatch::RowPtr::Get<TypeTraits<UUID> >(int col_idx, Slice* val) const;
+
+template
+Status YBScanBatch::RowPtr::Get<TypeTraits<TIMEUUID> >(int col_idx, Slice* val) const;
 
 string YBScanBatch::RowPtr::ToString() const {
   string ret;

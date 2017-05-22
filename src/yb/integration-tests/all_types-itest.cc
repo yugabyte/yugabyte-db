@@ -207,6 +207,8 @@ class AllTypesItest : public YBTest {
     builder.AddColumn("double_val")->Type(DOUBLE);
     builder.AddColumn("binary_val")->Type(BINARY);
     builder.AddColumn("inet_val")->Type(INET);
+    builder.AddColumn("uuid_val")->Type(UUID);
+    builder.AddColumn("timeuuid_val")->Type(TIMEUUID);
     CHECK_OK(builder.Build(&schema_));
   }
 
@@ -264,6 +266,8 @@ class AllTypesItest : public YBTest {
     RETURN_NOT_OK(row->SetStringCopy("string_val", slice_val));
     RETURN_NOT_OK(row->SetBinaryCopy("binary_val", slice_val));
     RETURN_NOT_OK(row->SetInet("inet_val", slice_val));
+    RETURN_NOT_OK(row->SetUuidCopy("uuid_val", slice_val));
+    RETURN_NOT_OK(row->SetTimeUuidCopy("timeuuid_val", slice_val));
     double double_val = int_val;
     RETURN_NOT_OK(row->SetDouble("double_val", double_val));
     RETURN_NOT_OK(row->SetFloat("float_val", double_val));
@@ -303,6 +307,8 @@ class AllTypesItest : public YBTest {
     projection->push_back("int64_val");
     projection->push_back("timestamp_val");
     projection->push_back("inet_val");
+    projection->push_back("uuid_val");
+    projection->push_back("timeuuid_val");
     projection->push_back("string_val");
     projection->push_back("binary_val");
     projection->push_back("double_val");
@@ -341,6 +347,12 @@ class AllTypesItest : public YBTest {
     Slice inet_val;
     ASSERT_OK(row.GetInet("inet_val", &inet_val));
     ASSERT_EQ(inet_val, expected_slice_val);
+    Slice uuid_val;
+    ASSERT_OK(row.GetUuid("uuid_val", &uuid_val));
+    ASSERT_EQ(uuid_val, expected_slice_val);
+    Slice timeuuid_val;
+    ASSERT_OK(row.GetTimeUuid("timeuuid_val", &timeuuid_val));
+    ASSERT_EQ(timeuuid_val, expected_slice_val);
 
     bool expected_bool_val = expected_int_val % 2;
     bool bool_val;
@@ -444,6 +456,8 @@ typedef ::testing::Types<IntKeysTestSetup<KeyTypeWrapper<INT8> >,
                          IntKeysTestSetup<KeyTypeWrapper<TIMESTAMP> >,
                          SliceKeysTestSetup<KeyTypeWrapper<STRING> >,
                          SliceKeysTestSetup<KeyTypeWrapper<INET> >,
+                         SliceKeysTestSetup<KeyTypeWrapper<UUID> >,
+                         SliceKeysTestSetup<KeyTypeWrapper<TIMEUUID> >,
                          SliceKeysTestSetup<KeyTypeWrapper<BINARY> >
                          > KeyTypes;
 

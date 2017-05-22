@@ -195,11 +195,11 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
       break;
     };
     case UUID: {
-      RETURN_NOT_OK(SetUuid(column_idx, *reinterpret_cast<const Slice*>(val)));
+      RETURN_NOT_OK(SetUuidCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     };
     case TIMEUUID: {
-      RETURN_NOT_OK(SetTimeUuid(column_idx, *reinterpret_cast<const Slice*>(val)));
+      RETURN_NOT_OK(SetTimeUuidCopy(column_idx, *reinterpret_cast<const Slice*>(val)));
       break;
     }
     case DECIMAL: FALLTHROUGH_INTENDED;
@@ -219,6 +219,10 @@ void YBPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col) {
       dst = schema_->ExtractColumnFromRow<BINARY>(row, col_idx);
     } else if (col.type_info()->type() == INET) {
       dst = schema_->ExtractColumnFromRow<INET>(row, col_idx);
+    } else if (col.type_info()->type() == UUID) {
+      dst = schema_->ExtractColumnFromRow<UUID>(row, col_idx);
+    } else if (col.type_info()->type() == TIMEUUID) {
+      dst = schema_->ExtractColumnFromRow<TIMEUUID>(row, col_idx);
     } else {
       CHECK(col.type_info()->type() == STRING);
       dst = schema_->ExtractColumnFromRow<STRING>(row, col_idx);
@@ -272,10 +276,10 @@ Status YBPartialRow::SetInet(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_name, val);
 }
 Status YBPartialRow::SetUuid(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<UUID> >(col_name, val);
+  return Set<TypeTraits<UUID> >(col_name, val, false);
 }
 Status YBPartialRow::SetTimeUuid(const Slice& col_name, const Slice& val) {
-  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_name, val);
+  return Set<TypeTraits<TIMEUUID> >(col_name, val, false);
 }
 Status YBPartialRow::SetDecimal(const Slice& col_name, const Slice& val) {
   return Set<TypeTraits<DECIMAL> >(col_name, val, false);
@@ -308,10 +312,10 @@ Status YBPartialRow::SetInet(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_idx, val);
 }
 Status YBPartialRow::SetUuid(int col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<UUID> >(col_idx, val);
+  return Set<TypeTraits<UUID> >(col_idx, val, false);
 }
 Status YBPartialRow::SetTimeUuid(int col_idx, const Slice& val) {
-  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_idx, val);
+  return Set<TypeTraits<TIMEUUID> >(col_idx, val, false);
 }
 Status YBPartialRow::SetDecimal(int col_idx, const Slice& val) {
   return Set<TypeTraits<DECIMAL> >(col_idx, val, false);
@@ -334,6 +338,18 @@ Status YBPartialRow::SetStringCopy(const Slice& col_name, const Slice& val) {
 }
 Status YBPartialRow::SetStringCopy(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<STRING> >(col_idx, val);
+}
+Status YBPartialRow::SetUuidCopy(const Slice& col_name, const Slice& val) {
+  return SetSliceCopy<TypeTraits<UUID> >(col_name, val);
+}
+Status YBPartialRow::SetUuidCopy(int col_idx, const Slice& val) {
+  return SetSliceCopy<TypeTraits<UUID> >(col_idx, val);
+}
+Status YBPartialRow::SetTimeUuidCopy(const Slice& col_name, const Slice& val) {
+  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_name, val);
+}
+Status YBPartialRow::SetTimeUuidCopy(int col_idx, const Slice& val) {
+  return SetSliceCopy<TypeTraits<TIMEUUID> >(col_idx, val);
 }
 
 template<typename T>
