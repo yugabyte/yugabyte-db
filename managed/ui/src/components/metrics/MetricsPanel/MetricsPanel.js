@@ -3,7 +3,7 @@
 import React, { Component, PropTypes } from 'react';
 var Plotly = require('plotly.js/lib/core');
 
-import { removeNullProperties, isValidObject, isValidArray } from '../../../utils/ObjectUtils';
+import { removeNullProperties, isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
 
 const WIDTH_OFFSET = 5;
@@ -63,7 +63,7 @@ export default class MetricsPanel extends Component {
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
-      if (!isValidArray(metric.data)) {
+      if (!isNonEmptyArray(metric.data)) {
         metric.layout["annotations"] = [{
           visible: true,
           align: "center",

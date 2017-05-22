@@ -6,7 +6,7 @@ import { DateTimePicker } from 'react-widgets';
 import { YBButton } from '../../common/forms/fields';
 require('react-widgets/dist/css/react-widgets.css');
 var moment = require('moment');
-import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 var momentLocalizer = require('react-widgets/lib/localizers/moment');
 import './GraphPanelHeader.scss';
 import { withRouter, browserHistory } from 'react-router';
@@ -114,7 +114,7 @@ class GraphPanelHeader extends Component {
         var currentUniverse = universeList.find(function (item) {
           return item.universeDetails.nodePrefix === nodePrefix;
         })
-        if (!isValidObject(currentUniverse) || !isValidArray(Object.keys(currentUniverse))) {
+        if (!isNonEmptyObject(currentUniverse)) {
           currentUniverse = "all";
         }
       } else {
