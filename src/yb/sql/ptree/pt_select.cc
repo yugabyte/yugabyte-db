@@ -221,7 +221,7 @@ PTOrderBy::~PTOrderBy() {
 PTTableRef::PTTableRef(MemoryContext *memctx,
                        YBLocation::SharedPtr loc,
                        const PTQualifiedName::SharedPtr& name,
-                       MCString::SharedPtr alias)
+                       MCSharedPtr<MCString> alias)
     : TreeNode(memctx, loc),
       name_(name),
       alias_(alias) {

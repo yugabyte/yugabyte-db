@@ -26,7 +26,7 @@ using BfuncCompile = yb::bfyql::BFCompileApi<PTExpr, PTExpr>;
 
 PTBcall::PTBcall(MemoryContext *memctx,
                  YBLocation::SharedPtr loc,
-                 const MCString::SharedPtr& name,
+                 const MCSharedPtr<MCString>& name,
                  PTExprListNode::SharedPtr args)
   : PTExpr(memctx, loc, ExprOperator::kBcall, YQLOperator::YQL_OP_NOOP),
     name_(name),

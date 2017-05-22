@@ -2,18 +2,17 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/test/ybsql-test-base.h"
-#include "yb/sql/util/base_types.h"
-#include "yb/sql/ptree/parse_tree.h"
+#include "yb/util/test_util.h"
+
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
-namespace sql {
 
 using std::make_shared;
 using std::string;
 using std::unique_ptr;
 
-class YbSqlTestType : public YbSqlTestBase {
+class MemoryContextTypesTest : public YBTest {
  public:
   //------------------------------------------------------------------------------------------------
   // Test datatypes.
@@ -32,8 +31,8 @@ class YbSqlTestType : public YbSqlTestBase {
 
   //------------------------------------------------------------------------------------------------
   // Test functions.
-  YbSqlTestType()
-      : YbSqlTestBase(),
+  MemoryContextTypesTest()
+      : YBTest(),
         memory_context_(unique_ptr<MemoryContext>(new MemoryContext())) {
   }
 
@@ -47,50 +46,50 @@ class YbSqlTestType : public YbSqlTestBase {
 
 // Testing datatype "MCString" which behaves as std::string but is allocated by the custom
 // allocator "MCAllocator<char>".
-TEST_F(YbSqlTestType, TestMCString) {
+TEST_F(MemoryContextTypesTest, TestMCString) {
   MemoryContext::UniPtr local_memory_context = unique_ptr<MemoryContext>(new MemoryContext());
 
   MCString s1(memory_context());
   CHECK_EQ(s1, "");
 
-  MCString s2(memory_context(), 10, 'a');
+  MCString s2(10, 'a', memory_context());
   CHECK_EQ(s2, "aaaaaaaaaa");
   const char *str2 = "New value of s2";
   s2.assign(str2);
   CHECK_EQ(s2, str2);
 
-  MCString s3(memory_context(), "This is a SQL string");
+  MCString s3("This is a SQL string", memory_context());
   CHECK_EQ(s3, "This is a SQL string");
   s3 += " after being postfixed";
   CHECK_EQ(s3, "This is a SQL string after being postfixed");
 
-  MCString s4(memory_context(), "This is to-be-truncated string", 10);
+  MCString s4("This is to-be-truncated string", 10, memory_context());
   CHECK_EQ(s4, "This is to");
 
   const char *str_to_be_compared = "Testing string comparison";
   s4.assign(str_to_be_compared);
 
   // Compare between strings of the same context.
-  MCString::SharedPtr s5 = MCString::MakeShared(memory_context(), str_to_be_compared);
+  auto s5 = MCMakeShared<MCString>(memory_context(), str_to_be_compared);
   CHECK_EQ(s4, *s5);
 
   // Compare between strings of the same context.
-  MCString s6(memory_context(), str_to_be_compared);
+  MCString s6(str_to_be_compared, memory_context());
   CHECK_EQ(s4, s6);
 
   // Compare between strings of different contexts.
-  MCString s7(local_memory_context.get(), str_to_be_compared);
+  MCString s7(str_to_be_compared, local_memory_context.get());
   CHECK_EQ(s4, s7);
 
   // Allocate from private memory_context().
   const char *str2_to_be_compared = "Testing negative string comparison";
-  MCString s8(memory_context(), str2_to_be_compared);
+  MCString s8(str2_to_be_compared, memory_context());
   CHECK_EQ(s8, str2_to_be_compared);
 
   // Allocate from local.
-  MCString s9(local_memory_context.get(), str2_to_be_compared);
+  MCString s9(str2_to_be_compared, local_memory_context.get());
   CHECK_EQ(s9, str2_to_be_compared);
-  MCString::SharedPtr s10 = MCString::MakeShared(local_memory_context.get(), str2_to_be_compared);
+  auto s10 = MCMakeShared<MCString>(local_memory_context.get(), str2_to_be_compared);
   CHECK_EQ(*s10, str2_to_be_compared);
   CHECK_EQ(s9, *s10);
 
@@ -101,7 +100,7 @@ TEST_F(YbSqlTestType, TestMCString) {
 }
 
 // Test MCVector and MCList.
-TEST_F(YbSqlTestType, TestMCStl) {
+TEST_F(MemoryContextTypesTest, TestMCStl) {
   int i;
   const int max_entry = 99;
 
@@ -131,10 +130,18 @@ TEST_F(YbSqlTestType, TestMCStl) {
     CHECK_EQ(entry, i*3);
     i++;
   }
+
+  MCList<int> list_copy = sql_list;
+  // Checking list.
+  i = 0;
+  for (int entry : list_copy) {
+    CHECK_EQ(entry, i*3);
+    i++;
+  }
 }
 
 // Test MCObject.
-TEST_F(YbSqlTestType, TestMCTreeNode) {
+TEST_F(MemoryContextTypesTest, TestMCTreeNode) {
   int i;
   const int max_entry = 99;
 
@@ -171,5 +178,4 @@ TEST_F(YbSqlTestType, TestMCTreeNode) {
   }
 }
 
-}  // namespace sql
 }  // namespace yb

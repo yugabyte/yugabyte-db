@@ -709,7 +709,7 @@ other                     .
   if (literallen_ == 0) {
     yyerror("zero-length delimited identifier");
   }
-  const MCString::SharedPtr ident = ScanLiteral();
+  const MCSharedPtr<MCString> ident = ScanLiteral();
   if (literallen_ >= NAMEDATALEN) {
     TruncateIdentifier(ident, true);
   }
@@ -743,7 +743,7 @@ other                     .
     yyerror("zero-length delimited identifier");
   }
 
-  const MCString::SharedPtr ident = MakeString(litbuf_udeescape('\\'));
+  const MCSharedPtr<MCString> ident = MakeString(litbuf_udeescape('\\'));
   TruncateIdentifier(ident, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
@@ -763,7 +763,7 @@ other                     .
     yyerror("invalid Unicode escape character");
   }
 
-  const MCString::SharedPtr ident = MakeString(litbuf_udeescape(yytext[yyleng - 2]));
+  const MCSharedPtr<MCString> ident = MakeString(litbuf_udeescape(yytext[yyleng - 2]));
   TruncateIdentifier(ident, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
@@ -785,7 +785,7 @@ other                     .
   yyless(1);
 
   /* Treat it as {identifier}. Convert to lower-case and create IDENT token. */
-  const MCString::SharedPtr ident = MakeIdentifier(yytext, yyleng, true);
+  const MCSharedPtr<MCString> ident = MakeIdentifier(yytext, yyleng, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
 
@@ -999,7 +999,7 @@ other                     .
   }
 
   /* Not a keyword.  Convert the identifier to lower case, and truncate if necessary. */
-  const MCString::SharedPtr ident = MakeIdentifier(yytext, yyleng, true);
+  const MCSharedPtr<MCString> ident = MakeIdentifier(yytext, yyleng, true);
   return GramProcessor::make_IDENT(ident, cursor_);
 }
 

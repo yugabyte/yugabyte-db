@@ -199,9 +199,9 @@ void LexProcessor::ScanNextToken(const ScanState& scan_state,
 
 //--------------------------------------------------------------------------------------------------
 
-MCString::SharedPtr LexProcessor::ScanLiteral() {
+MCSharedPtr<MCString> LexProcessor::ScanLiteral() {
   // Convert the literal to string and count the newline character.
-  MCString::SharedPtr value = MCString::MakeShared(PTreeMem(), literalbuf_, literallen_);
+  MCSharedPtr<MCString> value = MCMakeShared<MCString>(PTreeMem(), literalbuf_, literallen_);
   // Count newlines in this literal.
   CountNewlineInToken(value->c_str());
 
@@ -210,7 +210,7 @@ MCString::SharedPtr LexProcessor::ScanLiteral() {
 
 //--------------------------------------------------------------------------------------------------
 
-MCString::SharedPtr LexProcessor::MakeIdentifier(const char *text, int len, bool warn) {
+MCSharedPtr<MCString> LexProcessor::MakeIdentifier(const char *text, int len, bool warn) {
   // SQL99 specifies Unicode-aware case normalization, which we don't yet
   // have the infrastructure for.  Instead we use tolower() to provide a
   // locale-aware translation.  However, there are some locales where this
@@ -218,7 +218,7 @@ MCString::SharedPtr LexProcessor::MakeIdentifier(const char *text, int len, bool
   // 'I').  Our current compromise is to use tolower() for characters with
   // the high bit set, as long as they aren't part of a multi-byte
   // character, and use an ASCII-only downcasing for 7-bit characters.
-  MCString::SharedPtr ident = MCString::MakeShared(PTreeMem(), len, '\0');
+  MCSharedPtr<MCString> ident = MCMakeShared<MCString>(PTreeMem(), len, '\0');
   int i;
   for (i = 0; i < len; i++) {
     unsigned char ch = static_cast<unsigned char>(text[i]);
@@ -234,7 +234,7 @@ MCString::SharedPtr LexProcessor::MakeIdentifier(const char *text, int len, bool
   return ident;
 }
 
-void LexProcessor::TruncateIdentifier(const MCString::SharedPtr& ident, bool warn) {
+void LexProcessor::TruncateIdentifier(const MCSharedPtr<MCString>& ident, bool warn) {
   int len = ident->length();
   if (len >= NAMEDATALEN) {
     len = pg_encoding_mbcliplen(ident->c_str(), len, NAMEDATALEN - 1);

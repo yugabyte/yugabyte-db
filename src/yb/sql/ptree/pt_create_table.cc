@@ -182,7 +182,7 @@ CHECKED_STATUS PTCreateTable::CheckType(SemContext *sem_context,
 }
 
 void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
-  MCString sem_output(sem_context->PTempMem(), "\tTable ");
+  MCString sem_output("\tTable ", sem_context->PTempMem());
   sem_output += yb_table_name().ToString().c_str();
   sem_output += "(";
 
@@ -222,7 +222,7 @@ CHECKED_STATUS PTCreateTable::ToTableProperties(TableProperties *table_propertie
 
 PTColumnDefinition::PTColumnDefinition(MemoryContext *memctx,
                                        YBLocation::SharedPtr loc,
-                                       const MCString::SharedPtr& name,
+                                       const MCSharedPtr<MCString>& name,
                                        const PTBaseType::SharedPtr& datatype,
                                        const PTListNode::SharedPtr& qualifiers)
     : TreeNode(memctx, loc),

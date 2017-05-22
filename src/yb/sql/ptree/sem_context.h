@@ -138,7 +138,7 @@ class SemContext : public ProcessContext {
     return sem_state_->bindvar_desc();
   }
 
-  const MCString::SharedPtr& bindvar_name() const {
+  const MCSharedPtr<MCString>& bindvar_name() const {
     DCHECK(sem_state_) << "State variable is not set for the expression";
     return sem_state_->bindvar_name();
   }

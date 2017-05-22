@@ -14,7 +14,7 @@ using client::YBColumnSchema;
 
 PTKeyspaceProperty::PTKeyspaceProperty(MemoryContext *memctx,
                                        YBLocation::SharedPtr loc,
-                                       const MCString::SharedPtr& lhs,
+                                       const MCSharedPtr<MCString>& lhs,
                                        const PTExpr::SharedPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
       property_type_(KeyspacePropertyType::kKVProperty) {

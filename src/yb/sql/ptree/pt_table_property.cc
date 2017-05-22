@@ -35,7 +35,7 @@ const std::map<std::string, PTTableProperty::KVProperty> PTTableProperty::kPrope
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
                    YBLocation::SharedPtr loc,
-                   const MCString::SharedPtr& lhs,
+                   const MCSharedPtr<MCString>& lhs,
                    const PTExpr::SharedPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
       property_type_(PropertyType::kTableProperty) {
@@ -43,7 +43,7 @@ PTTableProperty::PTTableProperty(MemoryContext *memctx,
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
-                                 const MCString::SharedPtr& name,
+                                 const MCSharedPtr<MCString>& name,
                                  const PTOrderBy::Direction direction)
     : PTProperty(memctx, loc), name_(name), direction_(direction),
       property_type_(PropertyType::kClusteringOrder) {}

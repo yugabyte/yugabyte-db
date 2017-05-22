@@ -8,10 +8,10 @@
 #define YB_SQL_PTREE_COLUMN_ARG_H_
 
 #include "yb/client/client.h"
-#include "yb/common/types.h"
-#include "yb/sql/util/base_types.h"
-#include "yb/sql/ptree/pt_expr.h"
 #include "yb/common/yql_value.h"
+#include "yb/common/types.h"
+#include "yb/sql/ptree/pt_expr.h"
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
 namespace sql {

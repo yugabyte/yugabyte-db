@@ -10,7 +10,7 @@ using strings::Substitute;
 
 PTProperty::PTProperty(MemoryContext *memctx,
                       YBLocation::SharedPtr loc,
-                      const MCString::SharedPtr& lhs,
+                      const MCSharedPtr<MCString>& lhs,
                       const PTExpr::SharedPtr& rhs)
     : TreeNode(memctx, loc),
       lhs_(lhs),
@@ -35,7 +35,7 @@ Status PTProperty::GetIntValueFromExpr(PTExpr::SharedPtr expr,
   }
 
   if (expr->yql_type_id() == DataType::VARINT || expr->yql_type_id() == DataType::STRING) {
-    MCString::SharedPtr str_val;
+    MCSharedPtr<MCString> str_val;
     if (expr->yql_type_id() == DataType::STRING) {
       str_val = std::dynamic_pointer_cast<PTConstText>(expr)->Eval();
     } else {

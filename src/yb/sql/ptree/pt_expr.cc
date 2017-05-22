@@ -125,8 +125,8 @@ CHECKED_STATUS PTExpr::CheckRhsExpr(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 
-PTLiteralString::PTLiteralString(MCString::SharedPtr value)
-    : PTLiteral<MCString::SharedPtr>(value) {
+PTLiteralString::PTLiteralString(MCSharedPtr<MCString> value)
+    : PTLiteral<MCSharedPtr<MCString>>(value) {
 }
 
 PTLiteralString::~PTLiteralString() {
@@ -546,7 +546,7 @@ void PTRef::PrintSemanticAnalysisResult(SemContext *sem_context) {
 PTExprAlias::PTExprAlias(MemoryContext *memctx,
                          YBLocation::SharedPtr loc,
                          const PTExpr::SharedPtr& expr,
-                         const MCString::SharedPtr& alias)
+                         const MCSharedPtr<MCString>& alias)
     : PTOperator1(memctx, loc, ExprOperator::kAlias, yb::YQLOperator::YQL_OP_NOOP, expr),
       alias_(alias) {
 }
@@ -566,7 +566,7 @@ CHECKED_STATUS PTExprAlias::AnalyzeOperator(SemContext *sem_context, PTExpr::Sha
 
 PTBindVar::PTBindVar(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
-                     const MCString::SharedPtr& name)
+                     const MCSharedPtr<MCString>& name)
     : PTExpr(memctx, loc, ExprOperator::kBindVar),
       pos_(kUnsetPosition),
       name_(name),

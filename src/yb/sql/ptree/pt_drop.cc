@@ -37,7 +37,7 @@ CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
 }
 
 void PTDropStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
-  MCString sem_output(sem_context->PTempMem(), "\t");
+  MCString sem_output("\t", sem_context->PTempMem());
 
   switch (drop_type()) {
     case OBJECT_TABLE: sem_output += "Table "; break;

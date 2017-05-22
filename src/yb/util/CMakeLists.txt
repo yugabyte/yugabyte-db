@@ -126,7 +126,9 @@ set(UTIL_SRCS
   math_util.cc
   memcmpable_varint.cc
   memory/arena.cc
+  memory/mc_types.cc
   memory/memory.cc
+  memory/memory_context.cc
   memenv/memenv.cc
   mem_tracker.cc
   metrics.cc
@@ -298,6 +300,8 @@ ADD_YB_TEST(map-util-test)
 ADD_YB_TEST(memcmpable_varint-test LABELS no_tsan)
 ADD_YB_TEST(memenv/memenv-test)
 ADD_YB_TEST(memory/arena-test)
+ADD_YB_TEST(memory/mc_types-test)
+ADD_YB_TEST(memory/memory_context-test)
 ADD_YB_TEST(mem_tracker-test)
 ADD_YB_TEST(metrics-test)
 ADD_YB_TEST(monotime-test)

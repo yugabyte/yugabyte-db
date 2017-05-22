@@ -118,7 +118,7 @@ class PTTableRef : public TreeNode {
   PTTableRef(MemoryContext *memctx,
              YBLocation::SharedPtr loc,
              const PTQualifiedName::SharedPtr& name,
-             MCString::SharedPtr alias);
+             MCSharedPtr<MCString> alias);
   virtual ~PTTableRef();
 
   template<typename... TypeArgs>
@@ -134,7 +134,7 @@ class PTTableRef : public TreeNode {
 
  private:
   PTQualifiedName::SharedPtr name_;
-  MCString::SharedPtr alias_;
+  MCSharedPtr<MCString> alias_;
 };
 
 using PTTableRefListNode = TreeListNode<PTTableRef>;

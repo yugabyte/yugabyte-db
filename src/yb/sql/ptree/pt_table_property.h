@@ -52,13 +52,13 @@ class PTTableProperty : public PTProperty {
   // Constructor for PropertyType::kTableProperty.
   PTTableProperty(MemoryContext *memctx,
            YBLocation::SharedPtr loc,
-           const MCString::SharedPtr& lhs_,
+           const MCSharedPtr<MCString>& lhs_,
            const PTExpr::SharedPtr& rhs_);
 
   // Constructor for PropertyType::kClusteringOrder.
   PTTableProperty(MemoryContext *memctx,
                   YBLocation::SharedPtr loc,
-                  const MCString::SharedPtr& name,
+                  const MCSharedPtr<MCString>& name,
                   const PTOrderBy::Direction direction);
 
   PTTableProperty(MemoryContext *memctx,
@@ -102,7 +102,7 @@ class PTTableProperty : public PTProperty {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
   }
 
-  MCString::SharedPtr name_;
+  MCSharedPtr<MCString> name_;
   PTOrderBy::Direction direction_;
   PropertyType property_type_;
 
@@ -177,7 +177,7 @@ class PTTablePropertyMap : public PTTableProperty {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  void SetPropertyName(MCString::SharedPtr property_name) {
+  void SetPropertyName(MCSharedPtr<MCString> property_name) {
     lhs_ = property_name;
   }
 

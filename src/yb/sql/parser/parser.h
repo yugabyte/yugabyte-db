@@ -12,7 +12,7 @@
 #include "yb/sql/parser/parse_context.h"
 #include "yb/sql/parser/scanner.h"
 #include "yb/sql/util/errcodes.h"
-#include "yb/sql/util/memory_context.h"
+#include "yb/util/memory/memory_context.h"
 
 namespace yb {
 namespace sql {
@@ -62,8 +62,8 @@ class Parser {
   }
 
   // Converts a char* to MCString.
-  MCString::SharedPtr MakeString(const char *str) {
-    return MCString::MakeShared(PTreeMem(), str);
+  MCSharedPtr<MCString> MakeString(const char *str) {
+    return MCMakeShared<MCString>(PTreeMem(), str);
   }
 
   // Memory pool for allocating and deallocating operating memory spaces during parsing process.

@@ -249,7 +249,7 @@ template<class T, bool THREADSAFE> class ArenaAllocator {
                   "Default constructor of ArenaAllocator is available only to char type");
   }
 
-  explicit ArenaAllocator(ArenaBase<THREADSAFE>* arena) : arena_(arena) {
+  ArenaAllocator(ArenaBase<THREADSAFE>* arena) : arena_(arena) { // NOLINT
     CHECK_NOTNULL(arena_);
   }
 

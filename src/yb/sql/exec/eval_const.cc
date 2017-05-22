@@ -262,7 +262,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstBool *const_pt, YQLValuePB *con
 }
 
 CHECKED_STATUS Executor::PTExprToPB(const PTConstBinary *const_pt, YQLValuePB *const_pb) {
-  const MCString::SharedPtr& value = const_pt->value();
+  const auto& value = const_pt->value();
   switch (const_pt->expected_internal_type()) {
     case InternalType::kBinaryValue: {
       int input_size = static_cast<int>(value->size());
@@ -282,7 +282,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTConstBinary *const_pt, YQLValuePB *c
 }
 
 CHECKED_STATUS Executor::PTExprToPB(const PTConstUuid *const_pt, YQLValuePB *const_pb) {
-  const MCString::SharedPtr& value = const_pt->value();
+  const auto& value = const_pt->value();
   switch (const_pt->expected_internal_type()) {
     case InternalType::kUuidValue: {
       Uuid uuid;

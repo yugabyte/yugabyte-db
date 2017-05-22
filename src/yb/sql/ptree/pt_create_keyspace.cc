@@ -14,7 +14,7 @@ namespace sql {
 
 PTCreateKeyspace::PTCreateKeyspace(MemoryContext *memctx,
     YBLocation::SharedPtr loc,
-    const MCString::SharedPtr& name,
+    const MCSharedPtr<MCString>& name,
     bool create_if_not_exists,
     const PTKeyspacePropertyListNode::SharedPtr& keyspace_properties)
     : TreeNode(memctx, loc),
@@ -40,7 +40,7 @@ CHECKED_STATUS PTCreateKeyspace::Analyze(SemContext *sem_context) {
 }
 
 void PTCreateKeyspace::PrintSemanticAnalysisResult(SemContext *sem_context) {
-  MCString sem_output(sem_context->PTempMem(), "\tKeyspace ");
+  MCString sem_output("\tKeyspace ", sem_context->PTempMem());
   sem_output += name();
   sem_output += (create_if_not_exists()? " IF NOT EXISTS" : "");
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << loc() << "):\n" << sem_output;

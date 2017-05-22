@@ -14,7 +14,7 @@ namespace sql {
 
 PTName::PTName(MemoryContext *memctx,
                YBLocation::SharedPtr loc,
-               const MCString::SharedPtr& name)
+               const MCSharedPtr<MCString>& name)
     : TreeNode(memctx, loc),
       name_(name) {
 }
@@ -55,7 +55,7 @@ CHECKED_STATUS PTName::SetupHashAndPrimaryKey(SemContext *sem_context) {
 //--------------------------------------------------------------------------------------------------
 
 PTNameAll::PTNameAll(MemoryContext *memctx, YBLocation::SharedPtr loc)
-    : PTName(memctx, loc, MCString::MakeShared(memctx, "*")) {
+    : PTName(memctx, loc, MCMakeShared<MCString>(memctx, "*")) {
 }
 
 PTNameAll::~PTNameAll() {
@@ -73,7 +73,7 @@ PTQualifiedName::PTQualifiedName(MemoryContext *memctx,
 
 PTQualifiedName::PTQualifiedName(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc,
-                                 const MCString::SharedPtr& name)
+                                 const MCSharedPtr<MCString>& name)
     : PTName(memctx, loc),
       ptnames_(memctx) {
   Append(PTName::MakeShared(memctx, loc, name));

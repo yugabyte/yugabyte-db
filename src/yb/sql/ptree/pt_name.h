@@ -26,7 +26,7 @@ class PTName : public TreeNode {
   // Constructor and destructor.
   explicit PTName(MemoryContext *memctx = nullptr,
                   YBLocation::SharedPtr loc = nullptr,
-                  const MCString::SharedPtr& name = nullptr);
+                  const MCSharedPtr<MCString>& name = nullptr);
   virtual ~PTName();
 
   template<typename... TypeArgs>
@@ -41,12 +41,12 @@ class PTName : public TreeNode {
     return *name_;
   }
 
-  const MCString::SharedPtr& name_ptr() {
+  const MCSharedPtr<MCString>& name_ptr() {
     return name_;
   }
 
  private:
-  MCString::SharedPtr name_;
+  MCSharedPtr<MCString> name_;
 };
 
 // This class represents "*" (i.e. all fields) in SQL statement.
@@ -83,7 +83,7 @@ class PTQualifiedName : public PTName {
                   const PTName::SharedPtr& ptname);
   PTQualifiedName(MemoryContext *mctx,
                   YBLocation::SharedPtr loc,
-                  const MCString::SharedPtr& name);
+                  const MCSharedPtr<MCString>& name);
   virtual ~PTQualifiedName();
 
   template<typename... TypeArgs>
@@ -109,7 +109,7 @@ class PTQualifiedName : public PTName {
   }
 
   // Construct bind variable name from this name.
-  const MCString::SharedPtr& bindvar_name() {
+  const MCSharedPtr<MCString>& bindvar_name() {
     return ptnames_.back()->name_ptr();
   }
 

@@ -9,7 +9,6 @@ target_link_libraries(ybsql_test
 add_dependencies(ybsql_test ybsql_api)
 
 set(YB_TEST_LINK_LIBS ybsql_test ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(ybsql-type-test)
 ADD_YB_TEST(ybsql-parser-test)
 ADD_YB_TEST(ybsql-create-table-test)
 ADD_YB_TEST(ybsql-drop-stmt-test)
@@ -23,7 +22,6 @@ ADD_YB_TEST(ybsql-semanalyzer-test)
 ADD_YB_TEST(ybsql-statement-test)
 ADD_YB_TEST(ybsql-keyspace-test)
 ADD_YB_TEST(ybsql-static-column-test)
-ADD_YB_TEST(ybsql-memory-context-test)
 
 # Due to some reasons ybcmd is implemented as a gtest, although it is really a tool and not
 # intended to be run as a test. So, we put it in usual binary directory and don't add as a test.

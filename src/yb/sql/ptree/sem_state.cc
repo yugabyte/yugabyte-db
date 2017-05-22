@@ -17,7 +17,7 @@ SemState::SemState(SemContext *sem_context,
                    DataType expected_yql_type_id,
                    InternalType expected_internal_type,
                    const ColumnDesc *bindvar_desc,
-                   const MCString::SharedPtr& bindvar_name)
+                   const MCSharedPtr<MCString>& bindvar_name)
     : sem_context_(sem_context),
       previous_state_(nullptr),
       was_reset(false),
@@ -34,7 +34,7 @@ SemState::SemState(SemContext *sem_context,
                    const YQLType& expected_yql_type,
                    InternalType expected_internal_type,
                    const ColumnDesc *bindvar_desc,
-                   const MCString::SharedPtr& bindvar_name)
+                   const MCSharedPtr<MCString>& bindvar_name)
     : sem_context_(sem_context),
       previous_state_(nullptr),
       was_reset(false),
@@ -63,7 +63,7 @@ void SemState::ResetContextState() {
 void SemState::SetExprState(DataType yql_type_id,
                             InternalType internal_type,
                             const ColumnDesc *desc,
-                            const MCString::SharedPtr& bindvar_name) {
+                            const MCSharedPtr<MCString>& bindvar_name) {
   expected_yql_type_ = YQLType(yql_type_id);
   expected_internal_type_ = internal_type;
   bindvar_desc_ = desc;
@@ -73,7 +73,7 @@ void SemState::SetExprState(DataType yql_type_id,
 void SemState::SetExprState(const YQLType& yql_type,
                             InternalType internal_type,
                             const ColumnDesc *desc,
-                            const MCString::SharedPtr& bindvar_name) {
+                            const MCSharedPtr<MCString>& bindvar_name) {
   expected_yql_type_ = yql_type;
   expected_internal_type_ = internal_type;
   bindvar_desc_ = desc;

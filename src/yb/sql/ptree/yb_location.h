@@ -9,7 +9,7 @@
 #ifndef YB_SQL_PTREE_YB_LOCATION_H_
 #define YB_SQL_PTREE_YB_LOCATION_H_
 
-#include "yb/sql/util/base_types.h"
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
 namespace sql {

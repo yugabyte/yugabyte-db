@@ -33,7 +33,7 @@ class PTProperty : public TreeNode {
   // Constructors and destructor.
   PTProperty(MemoryContext *memctx,
              YBLocation::SharedPtr loc,
-             const MCString::SharedPtr& lhs_,
+             const MCSharedPtr<MCString>& lhs_,
              const PTExpr::SharedPtr& rhs_);
 
   PTProperty(MemoryContext *memctx,
@@ -50,7 +50,7 @@ class PTProperty : public TreeNode {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) = 0;
 
-  MCString::SharedPtr lhs() const {
+  MCSharedPtr<MCString> lhs() const {
     return lhs_;
   }
 
@@ -84,7 +84,7 @@ class PTProperty : public TreeNode {
  protected:
   // Parts of an expression 'lhs_ = rhs_' where lhs stands for left-hand side, and rhs for
   // right-hand side.
-  MCString::SharedPtr lhs_;
+  MCSharedPtr<MCString> lhs_;
   PTExpr::SharedPtr rhs_;
 };
 

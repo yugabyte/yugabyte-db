@@ -2,10 +2,9 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/util/base_types.h"
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
-namespace sql {
 
 //--------------------------------------------------------------------------------------------------
 
@@ -19,27 +18,6 @@ char *MCStrdup(MemoryContext *memctx, const char *str) {
   memcpy(sdup, str, bytes);
   sdup[bytes] = '\0';
   return sdup;
-}
-
-//--------------------------------------------------------------------------------------------------
-
-MCString::MCString(MemoryContext *mem_ctx)
-    : MCStringBase(mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
-}
-
-MCString::MCString(MemoryContext *mem_ctx, const char *str)
-    : MCStringBase(str, mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
-}
-
-MCString::MCString(MemoryContext *mem_ctx, const char *str, size_t len)
-    : MCStringBase(str, len, mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
-}
-
-MCString::MCString(MemoryContext *mem_ctx, size_t len, char c)
-    : MCStringBase(len, c, mem_ctx->GetAllocator<char>()), mem_ctx_(mem_ctx) {
-}
-
-MCString::~MCString() {
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -77,5 +55,4 @@ void *MCBase::operator new[](size_t bytes,
   return ptr;
 }
 
-}  // namespace sql
 }  // namespace yb

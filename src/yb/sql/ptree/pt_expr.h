@@ -647,9 +647,9 @@ using PTNull = PTExprConst<InternalType::VALUE_NOT_SET,
                            void*>;
 
 // String base classes for constant expression.
-class PTLiteralString : public PTLiteral<MCString::SharedPtr> {
+class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
  public:
-  explicit PTLiteralString(MCString::SharedPtr value);
+  explicit PTLiteralString(MCSharedPtr<MCString> value);
   virtual ~PTLiteralString();
 
   CHECKED_STATUS ToInt64(int64_t *value, bool negate) const;
@@ -664,23 +664,23 @@ class PTLiteralString : public PTLiteral<MCString::SharedPtr> {
 };
 using PTConstText = PTExprConst<InternalType::kStringValue,
                                 DataType::STRING,
-                                MCString::SharedPtr,
+                                MCSharedPtr<MCString>,
                                 PTLiteralString>;
 using PTConstVarInt = PTExprConst<InternalType::kStringValue,
                                   DataType::VARINT,
-                                  MCString::SharedPtr,
+                                  MCSharedPtr<MCString>,
                                   PTLiteralString>;
 using PTConstDecimal = PTExprConst<InternalType::kStringValue,
                                    DataType::DECIMAL,
-                                   MCString::SharedPtr,
+                                   MCSharedPtr<MCString>,
                                    PTLiteralString>;
 using PTConstUuid = PTExprConst<InternalType::kUuidValue,
                                 DataType::UUID,
-                                MCString::SharedPtr,
+                                MCSharedPtr<MCString>,
                                 PTLiteralString>;
 using PTConstBinary = PTExprConst<InternalType::kBinaryValue,
                                   DataType::BINARY,
-                                  MCString::SharedPtr,
+                                  MCSharedPtr<MCString>,
                                   PTLiteralString>;
 
 // Boolean constant.
@@ -829,7 +829,7 @@ class PTRef : public PTOperator0 {
   }
 
   // Construct bind variable name from the name of this column.
-  const MCString::SharedPtr& bindvar_name() const {
+  const MCSharedPtr<MCString>& bindvar_name() const {
     return name_->bindvar_name();
   }
 
@@ -867,7 +867,7 @@ class PTExprAlias : public PTOperator1 {
   PTExprAlias(MemoryContext *memctx,
               YBLocation::SharedPtr loc,
               const PTExpr::SharedPtr& expr,
-              const MCString::SharedPtr& alias);
+              const MCSharedPtr<MCString>& alias);
   virtual ~PTExprAlias();
 
   // Support for shared_ptr.
@@ -880,7 +880,7 @@ class PTExprAlias : public PTOperator1 {
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
 
  private:
-  MCString::SharedPtr alias_;
+  MCSharedPtr<MCString> alias_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -914,7 +914,7 @@ class PTBindVar : public PTExpr {
   // Constructor and destructor.
   PTBindVar(MemoryContext *memctx,
             YBLocation::SharedPtr loc,
-            const MCString::SharedPtr& name = nullptr);
+            const MCSharedPtr<MCString>& name = nullptr);
   PTBindVar(MemoryContext *memctx,
             YBLocation::SharedPtr loc,
             int64_t pos);
@@ -942,7 +942,7 @@ class PTBindVar : public PTExpr {
   }
 
   // Access functions for name.
-  MCString::SharedPtr name() const {
+  MCSharedPtr<MCString> name() const {
     return name_;
   }
 
@@ -985,7 +985,7 @@ class PTBindVar : public PTExpr {
   // 0-based position.
   int64_t pos_;
   // Variable name.
-  MCString::SharedPtr name_;
+  MCSharedPtr<MCString> name_;
 
   // Fields that should be resolved by semantic analysis.
   const ColumnDesc *desc_;
@@ -1005,7 +1005,7 @@ class PTBcall : public PTExpr {
   // Constructor and destructor.
   PTBcall(MemoryContext *memctx,
           YBLocation::SharedPtr loc,
-          const MCString::SharedPtr& name,
+          const MCSharedPtr<MCString>& name,
           PTExprListNode::SharedPtr args);
   virtual ~PTBcall();
 
@@ -1038,7 +1038,7 @@ class PTBcall : public PTExpr {
   Status FindCastOpcode(DataType source, DataType target, yb::bfyql::BFOpcode *opcode);
 
   // Builtin function name.
-  MCString::SharedPtr name_;
+  MCSharedPtr<MCString> name_;
 
   // Arguments to builtin call.
   PTExprListNode::SharedPtr args_;

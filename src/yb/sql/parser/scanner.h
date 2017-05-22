@@ -12,9 +12,8 @@
 #ifndef YB_SQL_PARSER_SCANNER_H_
 #define YB_SQL_PARSER_SCANNER_H_
 
-#include <stdint.h>
-
 #include <cstddef>
+#include <cstdint>
 
 // Include base lexer class. FLEX might or might not "include <FlexLexer.h>" in its code and
 // generated code. The macro "yyFlexLexerOnce" is used here to guard duplicate includes.
@@ -22,7 +21,8 @@
 #include <FlexLexer.h>
 #endif
 
-#include "yb/sql/util/base_types.h"
+#include "yb/util/memory/mc_types.h"
+
 #include "yb/sql/parser/parse_context.h"
 
 // Include auto-generated file from YACC.
@@ -145,7 +145,7 @@ class LexProcessor : public yyFlexLexer {
   void ScanError(const char *message, ErrorCode errcode);
 
   // Read literal value during a scan and convert it to MCString.
-  MCString::SharedPtr ScanLiteral();
+  MCSharedPtr<MCString> ScanLiteral();
 
   // Access function for current token location.
   const location &token_loc() const {
@@ -181,14 +181,14 @@ class LexProcessor : public yyFlexLexer {
   void ScanNextToken(const ScanState& scan_state, GramProcessor::symbol_type *next_token);
 
   // Converts text into MCString and truncates it to allowable length, NAMEDATALEN, if needed.
-  MCString::SharedPtr MakeIdentifier(const char *text, int len, bool warn);
+  MCSharedPtr<MCString> MakeIdentifier(const char *text, int len, bool warn);
 
   // Truncates identifier to allowable length, NAMEDATALEN, if necessary.
-  void TruncateIdentifier(const MCString::SharedPtr& ident, bool warn);
+  void TruncateIdentifier(const MCSharedPtr<MCString>& ident, bool warn);
 
   // Converts a char* to MCString.
-  MCString::SharedPtr MakeString(const char *str) {
-    return MCString::MakeShared(PTreeMem(), str);
+  MCSharedPtr<MCString> MakeString(const char *str) {
+    return MCMakeShared<MCString>(PTreeMem(), str);
   }
 
   // Advance current token location by the given number of bytes.

@@ -30,7 +30,7 @@ class PTKeyspaceProperty : public PTProperty {
   // Constructor and destructor.
   PTKeyspaceProperty(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
-                     const MCString::SharedPtr& lhs_,
+                     const MCSharedPtr<MCString>& lhs_,
                      const PTExpr::SharedPtr& rhs_);
 
   PTKeyspaceProperty(MemoryContext *memctx,
@@ -120,7 +120,7 @@ class PTKeyspacePropertyMap : public PTKeyspaceProperty {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  void SetPropertyName(MCString::SharedPtr property_name) {
+  void SetPropertyName(MCSharedPtr<MCString> property_name) {
     lhs_ = property_name;
   }
 

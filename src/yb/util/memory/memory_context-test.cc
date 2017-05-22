@@ -6,13 +6,12 @@
 
 #include "yb/util/test_util.h"
 
-#include "yb/sql/util/memory_context.h"
-#include "yb/sql/util/base_types.h"
+#include "yb/util/memory/memory_context.h"
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
-namespace sql {
 
-class YbSqlMemoryContextTest : public YBTest {
+class MemoryContextTest : public YBTest {
 };
 
 // Updates external counter when object is created/destroyed.
@@ -61,50 +60,50 @@ class CounterHolder {
 class CountedMemoryContext : public CounterHolder, public MemoryContext {
 };
 
-TEST_F(YbSqlMemoryContextTest, TestUniquePtr) {
+TEST_F(MemoryContextTest, TestUniquePtr) {
   CountedMemoryContext mc;
   MCUniPtr<Trackable> trackable(mc.NewObject<Trackable>(&mc.counter));
   ASSERT_EQ(1, mc.counter);
 }
 
-TEST_F(YbSqlMemoryContextTest, TestAllocateShared) {
+TEST_F(MemoryContextTest, TestAllocateShared) {
   CountedMemoryContext mc;
   auto trackable = mc.AllocateShared<Trackable>(&mc.counter);
   ASSERT_EQ(1, mc.counter);
 }
 
-TEST_F(YbSqlMemoryContextTest, TestToShared) {
+TEST_F(MemoryContextTest, TestToShared) {
   CountedMemoryContext mc;
   auto trackable = mc.ToShared(mc.NewObject<Trackable>(&mc.counter));
   ASSERT_EQ(1, mc.counter);
 }
 
-TEST_F(YbSqlMemoryContextTest, TestVector) {
+TEST_F(MemoryContextTest, TestVector) {
   CountedMemoryContext mc;
   MCVector<Trackable> vector(&mc);
   vector.emplace_back(&mc.counter);
   ASSERT_EQ(1, mc.counter);
 }
 
-TEST_F(YbSqlMemoryContextTest, TestList) {
+TEST_F(MemoryContextTest, TestList) {
   CountedMemoryContext mc;
   MCList<Trackable> list(&mc);
   list.emplace_back(&mc.counter);
   ASSERT_EQ(1, mc.counter);
 }
 
-TEST_F(YbSqlMemoryContextTest, TestMap) {
+TEST_F(MemoryContextTest, TestMap) {
   CountedMemoryContext mc;
   MCMap<int, Trackable> map(&mc);
   map.emplace(1, Trackable(&mc.counter));
   ASSERT_EQ(1, mc.counter);
 }
 
-TEST_F(YbSqlMemoryContextTest, TestString) {
+TEST_F(MemoryContextTest, TestString) {
   CountedMemoryContext mc;
   MCMap<MCString, Trackable> map(&mc);
-  MCString one(&mc, "1");
-  MCString ten(&mc, "10");
+  MCString one("1", &mc);
+  MCString ten("10", &mc);
   map.emplace(one, Trackable(&mc.counter));
   ASSERT_EQ(1, mc.counter);
 
@@ -126,5 +125,4 @@ TEST_F(YbSqlMemoryContextTest, TestString) {
   ASSERT_FALSE(one > ten);
 }
 
-} // namespace sql
 } // namespace yb

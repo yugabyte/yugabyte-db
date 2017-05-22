@@ -18,27 +18,22 @@
 //
 // - To allocate a container, one can get the associated allocator by calling GetAllocator.
 //     mem_ctx->GetAllocator<ElementType>();
-//   The file "yb/sql/util/base_types.h" defines several containers including MCString that use
+//   The file "yb/util/memory/mc_types.h" defines several containers including MCString that use
 //   custom allocator from MemoryContext.
 //
 // - When "mem_ctx" is destructed, its private allocator would be freed, and all associated
 //   allocated memory spaces would be deleted and released back to the system.
 //--------------------------------------------------------------------------------------------------
-#ifndef YB_SQL_UTIL_MEMORY_CONTEXT_H_
-#define YB_SQL_UTIL_MEMORY_CONTEXT_H_
+#ifndef YB_UTIL_MEMORY_MEMORY_CONTEXT_H
+#define YB_UTIL_MEMORY_MEMORY_CONTEXT_H
 
 #include <stdarg.h>
 #include <stdio.h>
-#include <typeindex>
-
-#include <type_traits>
-#include <unordered_map>
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 
 namespace yb {
-namespace sql {
 
 class MemoryContext;
 
@@ -56,7 +51,30 @@ class MCDeleter {
 // Context-control shared_ptr and unique_ptr
 template<class MCObject> using MCUniPtr = std::unique_ptr<MCObject, MCDeleter>;
 template<class MCObject> using MCSharedPtr = std::shared_ptr<MCObject>;
-template<class MCObject> using MCAllocator = ArenaAllocator<MCObject, false>;
+
+template<class MCObject>
+class MCAllocator : public ArenaAllocator<MCObject, false> {
+ public:
+  MCAllocator() {}
+  MCAllocator(MemoryContext* memory_context); // NOLINT
+
+  template<class U>
+  MCAllocator(const MCAllocator<U>& other)
+      : ArenaAllocator<MCObject, false>(other),
+        memory_context_(other.memory_context()) { }
+
+  MemoryContext* memory_context() const {
+    return memory_context_;
+  }
+
+  template<class U>
+  struct rebind {
+    typedef MCAllocator<U> other;
+  };
+
+ private:
+  MemoryContext* memory_context_;
+};
 
 //--------------------------------------------------------------------------------------------------
 
@@ -92,7 +110,7 @@ class MemoryContext {
   // Get the correct allocator for certain datatype.
   template<class MCObject>
   MCAllocator<MCObject> GetAllocator() {
-    return MCAllocator<MCObject>(&manager_);
+    return MCAllocator<MCObject>(this);
   }
 
   //------------------------------------------------------------------------------------------------
@@ -101,14 +119,14 @@ class MemoryContext {
   // Allocate shared_ptr object.
   template<class MCObject, typename... TypeArgs>
   MCSharedPtr<MCObject> AllocateShared(TypeArgs&&... args) {
-    MCAllocator<MCObject> allocator(&manager_);
+    MCAllocator<MCObject> allocator(this);
     return std::allocate_shared<MCObject>(allocator, std::forward<TypeArgs>(args)...);
   }
 
   // Convert raw pointer to shared pointer.
   template<class MCObject>
   MCSharedPtr<MCObject> ToShared(MCObject *raw_ptr) {
-    MCAllocator<MCObject> allocator(&manager_);
+    MCAllocator<MCObject> allocator(this);
     return MCSharedPtr<MCObject>(raw_ptr, MCDeleter(), allocator);
   }
 
@@ -123,13 +141,21 @@ class MemoryContext {
   void Reset();
 
  private:
+  template<class MCObject>
+  friend class MCAllocator;
+
   //------------------------------------------------------------------------------------------------
   std::shared_ptr<MemoryTrackingBufferAllocator> tracking_allocator_;
   // Allocate and deallocate memory from heap.
   ArenaBase<false> manager_;
 };
 
-}  // namespace sql
+template<class MCObject>
+MCAllocator<MCObject>::MCAllocator(MemoryContext* memory_context)
+    : ArenaAllocator<MCObject, false>(&memory_context->manager_),
+      memory_context_(memory_context) {
+}
+
 }  // namespace yb
 
-#endif  // YB_SQL_UTIL_MEMORY_CONTEXT_H_
+#endif // YB_UTIL_MEMORY_MEMORY_CONTEXT_H

@@ -14,7 +14,7 @@ namespace sql {
 
 PTUseKeyspace::PTUseKeyspace(MemoryContext *memctx,
                              YBLocation::SharedPtr loc,
-                             const MCString::SharedPtr& name)
+                             const MCSharedPtr<MCString>& name)
     : TreeNode(memctx, loc),
       name_(name) {
 }
@@ -31,7 +31,7 @@ CHECKED_STATUS PTUseKeyspace::Analyze(SemContext *sem_context) {
 }
 
 void PTUseKeyspace::PrintSemanticAnalysisResult(SemContext *sem_context) {
-  MCString sem_output(sem_context->PTempMem(), "\tKeyspace ");
+  MCString sem_output("\tKeyspace ", sem_context->PTempMem());
   sem_output += name();
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << loc() << "):\n" << sem_output;
 }

@@ -89,7 +89,7 @@ typedef int64_t                        PInt64;
 typedef bool                           PBool;
 typedef char                           PChar;
 typedef const char                    *KeywordType;
-typedef MCString::SharedPtr            PString;
+typedef MCSharedPtr<MCString>          PString;
 
 typedef TreeNode::SharedPtr            PTreeNode;
 typedef PTListNode::SharedPtr          PListNode;
@@ -2863,7 +2863,7 @@ a_expr:
     }
     PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode, $1);
     args->Append($3);
-    MCString::SharedPtr name = parser_->MakeString("+");
+    auto name = parser_->MakeString("+");
     $$ = MAKE_NODE(@2, PTBcall, name, args);
   }
   | inactive_a_expr {

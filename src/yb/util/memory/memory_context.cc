@@ -4,11 +4,10 @@
 // Implementation for MemoryContext class.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/sql/util/memory_context.h"
+#include "yb/util/memory/memory_context.h"
 #include "yb/util/logging.h"
 
 namespace yb {
-namespace sql {
 
 namespace {
 
@@ -53,5 +52,4 @@ void MemoryContext::Reset() {
 // Standard MemoryContext - Not yet implemented.
 //--------------------------------------------------------------------------------------------------
 
-}  // namespace sql
 }  // namespace yb

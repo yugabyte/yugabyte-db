@@ -118,7 +118,7 @@ class PTColumnDefinition : public TreeNode {
   // Constructor and destructor.
   PTColumnDefinition(MemoryContext *memctx,
                      YBLocation::SharedPtr loc,
-                     const MCString::SharedPtr& name,
+                     const MCSharedPtr<MCString>& name,
                      const PTBaseType::SharedPtr& datatype,
                      const PTListNode::SharedPtr& qualifiers);
   virtual ~PTColumnDefinition();
@@ -186,7 +186,7 @@ class PTColumnDefinition : public TreeNode {
   }
 
  private:
-  const MCString::SharedPtr name_;
+  const MCSharedPtr<MCString> name_;
   PTBaseType::SharedPtr datatype_;
   PTListNode::SharedPtr qualifiers_;
   bool is_primary_key_;

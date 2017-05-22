@@ -79,7 +79,7 @@ CHECKED_STATUS PTDmlStmt::LookupTable(SemContext *sem_context) {
                              YBColumnSchema::ToInternalDataType(col.type()));
 
     // Insert the column descriptor to symbol table.
-    MCString col_name(sem_context->PTreeMem(), col.name().c_str(), col.name().size());
+    MCString col_name(col.name().c_str(), col.name().size(), sem_context->PTreeMem());
     RETURN_NOT_OK(sem_context->MapSymbol(col_name, &table_columns_[idx]));
   }
 

@@ -9,8 +9,8 @@
 
 #include "yb/client/client.h"
 #include "yb/common/types.h"
-#include "yb/sql/util/base_types.h"
 #include "yb/sql/ptree/pt_type.h"
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
 namespace sql {

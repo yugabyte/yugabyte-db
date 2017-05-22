@@ -31,129 +31,47 @@
 //   can be use to allocate new classes.
 //     MCList<int> mc_list(mc_string.memory_context());
 //--------------------------------------------------------------------------------------------------
-#ifndef YB_SQL_UTIL_BASE_TYPES_H_
-#define YB_SQL_UTIL_BASE_TYPES_H_
+#ifndef YB_UTIL_MEMORY_MC_TYPES_H
+#define YB_UTIL_MEMORY_MC_TYPES_H
 
 #include <list>
 #include <set>
 #include <map>
 #include <string>
+#include <type_traits>
 #include <vector>
 
-#include "yb/sql/util/memory_context.h"
+#include <boost/tti/has_type.hpp>
+
+#include "yb/util/memory/memory_context.h"
 
 namespace yb {
-namespace sql {
 
 //--------------------------------------------------------------------------------------------------
 // Buffer (char*) support.
 char *MCStrdup(MemoryContext *memctx, const char *str);
 
-//--------------------------------------------------------------------------------------------------
-// STL<mc_type> support.
-// - MCStl Template is a mold for all of our STL classes.
-// - All STD-compatible container should use this template. For example, MCList should be
-//   template<class MCObject> using MCList = MCStl<std::list, MCObject>;
-template<template<class, class> class StlType, class MCObject>
-using MCStlBase = StlType<MCObject, MCAllocator<MCObject>>;
-
-template<template<class, class> class StlType, class MCObject>
-class MCStl : public MCStlBase<StlType, MCObject> {
- public:
-  // Constructor for STL types.
-  explicit MCStl(MemoryContext *mem_ctx)
-      : MCStlBase<StlType, MCObject>(mem_ctx->GetAllocator<MCObject>()) {
-    CHECK(mem_ctx) << "Memory context must be provided";
-  }
-};
-
-template<template<class, class, class> class StlType,
-         class MCObject,
-         class Compare = std::less<MCObject>>
-using MCStlBase2 = StlType<MCObject, Compare, MCAllocator<MCObject>>;
-
-template<template<class, class, class> class StlType,
-         class MCObject,
-         class Compare = std::less<MCObject>>
-class MCStl2 : public MCStlBase2<StlType, MCObject, Compare> {
- public:
-  // Constructor for STL types.
-  explicit MCStl2(MemoryContext *mem_ctx)
-      : MCStlBase2<StlType, MCObject, Compare>(
-          mem_ctx->GetAllocator<MCObject>()) {
-    CHECK(mem_ctx) << "Memory context must be provided";
-  }
-};
-
-template<template<class, class, class, class> class StlType,
-         class MCKey,
-         class MCObject,
-         class Compare = std::less<MCKey>>
-using MCStlBase3 = StlType<MCKey, MCObject, Compare, MCAllocator<pair<const MCKey, MCObject>>>;
-
-template<template<class, class, class, class> class StlType,
-         class MCKey,
-         class MCObject,
-         class Compare = std::less<MCKey>>
-class MCStl3 : public MCStlBase3<StlType, MCKey, MCObject, Compare> {
- public:
-  // Constructor for STL types.
-  explicit MCStl3(MemoryContext *mem_ctx)
-      : MCStlBase3<StlType, MCKey, MCObject, Compare>(
-          mem_ctx->GetAllocator<pair<const MCKey, MCObject>>()) {
-    CHECK(mem_ctx) << "Memory context must be provided";
-  }
-};
-
 // Class MCList.
-template<class MCObject> using MCList = MCStl<std::list, MCObject>;
+template<class MCObject> using MCList = std::list<MCObject, MCAllocator<MCObject>>;
 
 // Class MCVector.
-template<class MCObject> using MCVector = MCStl<std::vector, MCObject>;
+template<class MCObject> using MCVector = std::vector<MCObject, MCAllocator<MCObject>>;
 
 // Class MCSet.
 template<class MCObject, class Compare = std::less<MCObject>>
-using MCSet = MCStl2<std::set, MCObject, Compare>;
+using MCSet = std::set<MCObject, Compare, MCAllocator<MCObject>>;
 
 // Class MCMap.
 template<class MCKey, class MCObject, class Compare = std::less<MCKey>>
-using MCMap = MCStl3<std::map, MCKey, MCObject, Compare>;
+using MCMap = std::map<MCKey, MCObject, Compare, MCAllocator<MCObject>>;
 
 //--------------------------------------------------------------------------------------------------
 // String support.
 // To use MCAllocator, strings should be declared as one of the following.
 //   MCString s(memctx);
-//   MCString::SharedPtr s = MCString::MakeShared(memctx);
+//   MCSharedPtr<MCString> s = MCMakeSharedString(memctx);
 
-using MCStringBase = std::basic_string<char, std::char_traits<char>, MCAllocator<char>>;
-
-class MCString : public MCStringBase {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<MCString> SharedPtr;
-  typedef MCSharedPtr<const MCString> SharedPtrConst;
-
-  // Constructors.
-  explicit MCString(MemoryContext *mem_ctx);
-  MCString(MemoryContext *mem_ctx, const char *str);
-  MCString(MemoryContext *mem_ctx, const char *str, size_t len);
-  MCString(MemoryContext *mem_ctx, size_t len, char c);
-
-  MemoryContext *mem_ctx() { return mem_ctx_; }
-
-  // Destructor.
-  virtual ~MCString();
-
-  // Construct a shared_ptr to MCString.
-  template<typename... TypeArgs>
-  static MCString::SharedPtr MakeShared(MemoryContext *mem_ctx, TypeArgs&&... args) {
-    return mem_ctx->AllocateShared<MCString>(mem_ctx, std::forward<TypeArgs>(args)...);
-  }
-
- private:
-  MemoryContext *mem_ctx_;
-};
+typedef std::basic_string<char, std::char_traits<char>, MCAllocator<char>> MCString;
 
 //--------------------------------------------------------------------------------------------------
 // User-defined object support.
@@ -161,10 +79,34 @@ class MCString : public MCStringBase {
 // class MCMyObject : public MCBase {
 // };
 
+BOOST_TTI_HAS_TYPE(allocator_type);
+
+template<class MCObject, typename... TypeArgs>
+typename std::enable_if<!has_type_allocator_type<MCObject>::value, MCSharedPtr<MCObject>>::type
+MCAllocateSharedHelper(MCObject*, MCAllocator<MCObject> allocator, TypeArgs&&... args) {
+  return std::allocate_shared<MCObject>(allocator,
+                                        allocator.memory_context(),
+                                        std::forward<TypeArgs>(args)...);
+}
+
+template<class MCObject, typename... TypeArgs>
+typename std::enable_if<has_type_allocator_type<MCObject>::value, MCSharedPtr<MCObject>>::type
+MCAllocateSharedHelper(MCObject*, MCAllocator<MCObject> allocator, TypeArgs&&... args) {
+  return std::allocate_shared<MCObject>(allocator, std::forward<TypeArgs>(args)..., allocator);
+}
+
+template<class MCObject, typename... TypeArgs>
+MCSharedPtr<MCObject> MCAllocateShared(MCAllocator<MCObject> allocator, TypeArgs&&... args) {
+  return MCAllocateSharedHelper(static_cast<MCObject*>(nullptr),
+                                allocator,
+                                std::forward<TypeArgs>(args)...);
+}
+
 // Construct a shared_ptr to any MC object.
 template<class MCObject, typename... TypeArgs>
 MCSharedPtr<MCObject> MCMakeShared(MemoryContext *memctx, TypeArgs&&... args) {
-  return memctx->AllocateShared<MCObject>(memctx, std::forward<TypeArgs>(args)...);
+  MCAllocator<MCObject> allocator(memctx);
+  return MCAllocateShared<MCObject>(allocator, std::forward<TypeArgs>(args)...);
 }
 
 template<class MCObject>
@@ -216,7 +158,6 @@ class MCBase {
   void *operator new[](size_t bytes) throw() __attribute__((deprecated));
 };
 
-}  // namespace sql
 }  // namespace yb
 
-#endif  // YB_SQL_UTIL_BASE_TYPES_H_
+#endif // YB_UTIL_MEMORY_MC_TYPES_H

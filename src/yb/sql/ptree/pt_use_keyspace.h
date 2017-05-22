@@ -26,7 +26,7 @@ class PTUseKeyspace : public TreeNode {
   // Constructor and destructor.
   PTUseKeyspace(MemoryContext *memctx,
                 YBLocation::SharedPtr loc,
-                const MCString::SharedPtr& name);
+                const MCSharedPtr<MCString>& name);
   virtual ~PTUseKeyspace();
 
   template<typename... TypeArgs>
@@ -48,7 +48,7 @@ class PTUseKeyspace : public TreeNode {
   }
 
  private:
-  MCString::SharedPtr name_;
+  MCSharedPtr<MCString> name_;
 };
 
 }  // namespace sql

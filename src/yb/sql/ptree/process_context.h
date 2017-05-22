@@ -14,8 +14,8 @@
 
 #include "yb/sql/ptree/parse_tree.h"
 #include "yb/sql/ptree/yb_location.h"
-#include "yb/sql/util/base_types.h"
 #include "yb/sql/util/errcodes.h"
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
 namespace sql {
