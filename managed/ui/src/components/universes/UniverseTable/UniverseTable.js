@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
@@ -30,14 +30,14 @@ export default class UniverseTable extends Component {
       return <YBLoadingIcon/>;
     }
 
-    if (!(isValidArray(universeList) && universeList.length)) {
+    if (!isNonEmptyArray(universeList)) {
       return <h5>No universes defined.</h5>;
     }
 
     var universeRowItem =
       universeList.map(function (item, idx) {
         var universeTaskUUIDs = [];
-        if (isValidArray(tasks.customerTaskList)) {
+        if (isNonEmptyArray(tasks.customerTaskList)) {
           universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
             if (taskItem.universeUUID === item.universeUUID) {
               return {"id": taskItem.id, "data": taskItem, "universe": item.universeUUID};
