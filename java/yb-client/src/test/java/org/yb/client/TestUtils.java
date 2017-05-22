@@ -19,12 +19,14 @@ package org.yb.client;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 import com.sun.security.auth.module.UnixSystem;
+import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 
@@ -303,4 +305,22 @@ public class TestUtils {
     }
   }
 
+  public static void printHorizontalLine(PrintStream out) {
+    final StringBuilder horizontalLine = new StringBuilder();
+    for (int i = 0; i < 100; ++i) {
+      horizontalLine.append("-");
+    }
+    out.println(horizontalLine);
+  }
+
+  public static void printHeading(PrintStream out, String msg) {
+    out.println();
+    printHorizontalLine(out);
+    out.println(msg + "\n");
+  }
+
+  public static String getClassAndMethodStr(Description description) {
+    return "class=\"" + description.getClassName() +
+        "\", method=\"" + description.getMethodName() + "\"";
+  }
 }
