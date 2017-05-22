@@ -6,7 +6,7 @@ import { sortBy } from 'lodash';
 import { Map, TileLayer } from 'react-leaflet';
 import MapMarker from './MapMarker';
 import 'leaflet/dist/leaflet.css';
-import {isValidObject, isValidArray} from '../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import MarkerClusterLayer from './MarkerClusterLayer';
 
 import './stylesheets/RegionMap.scss'
@@ -39,7 +39,7 @@ export default class RegionMap extends Component {
     if (type === "all") {
       regionMarkers =  <MarkerClusterLayer newMarkerData={regions}/>
     }
-    if (isValidArray(regionLatLngs) && regionLatLngs.length >= 1) {
+    if (isNonEmptyArray(regionLatLngs)) {
       bounds = regionLatLngs;
     }
     const attribution =
@@ -57,7 +57,7 @@ export default class RegionMap extends Component {
 
     if (showLabels) {
       var regionLabels = <Col md={12}>No Regions Configured</Col>;
-      if (isValidArray(regions) && regions.length) {
+      if (isNonEmptyArray(regions)) {
         regionLabels = sortBy(regions, 'longitude').map((region) => {
           const zoneList = region.zones.map((zone) => {
             return <div key={`zone-${zone.uuid}`} className="zone-name">{zone.name}</div>;

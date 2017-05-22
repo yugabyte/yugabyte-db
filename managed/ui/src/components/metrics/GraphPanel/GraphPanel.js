@@ -5,7 +5,7 @@ import { Accordion, Panel } from 'react-bootstrap';
 import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import {YBLoadingIcon} from '../../common/indicators';
-import {isValidObject, isValidArray} from '../../../utils/ObjectUtils';
+import { isValidObject, isNonEmptyArray } from 'utils/ObjectUtils';
 
 const panelTypes = {
   server:  { title: "Node",
@@ -69,7 +69,7 @@ class GraphPanel extends Component {
       params.nodeName = nodeName;
     }
     // In case of universe metrics , nodePrefix comes from component itself
-    if (isValidArray(this.props.nodePrefixes)) {
+    if (isNonEmptyArray(this.props.nodePrefixes)) {
       params.nodePrefix = this.props.nodePrefixes[0];
     }
 
@@ -92,7 +92,6 @@ class GraphPanel extends Component {
       */
       const width = this.props.width;
       panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
-        // if (isValidObject(metrics[type][metricKey]) && isValidArray(metrics[type][metricKey].data)) {
         return (isValidObject(metrics[type][metricKey])) ?
           <MetricsPanel metricKey={metricKey} key={idx}
                         metric={metrics[type][metricKey]}
