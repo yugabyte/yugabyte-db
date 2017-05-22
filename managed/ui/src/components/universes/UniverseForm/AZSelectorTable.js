@@ -1,7 +1,7 @@
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
 import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
-import { isValidArray, isValidObject, areUniverseConfigsEqual } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isValidObject, areUniverseConfigsEqual } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
 
 const nodeStates = {
@@ -79,7 +79,7 @@ export default class AZSelectorTable extends Component {
 
   getGroupWithCounts(universeConfigTemplate) {
     var uniConfigArray = [];
-    if (isValidArray(universeConfigTemplate.nodeDetailsSet)) {
+    if (isNonEmptyArray(universeConfigTemplate.nodeDetailsSet)) {
       universeConfigTemplate.nodeDetailsSet.forEach(function(nodeItem){
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           var nodeFound = false;
@@ -153,20 +153,22 @@ export default class AZSelectorTable extends Component {
     const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
     var self = this;
     var azListForSelectedRegions = [];
-    if (isValidObject(universeConfigTemplate.userIntent) && isValidArray(universeConfigTemplate.userIntent.regionList)) {
+    if (isValidObject(universeConfigTemplate.userIntent) && 
+      isNonEmptyArray(universeConfigTemplate.userIntent.regionList)
+    ) {
        azListForSelectedRegions = regions.data.filter(
         region => universeConfigTemplate.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }
     var azListOptions = <option/>;
-    if (isValidArray(azListForSelectedRegions)) {
+    if (isNonEmptyArray(azListForSelectedRegions)) {
       azListOptions = azListForSelectedRegions.map(function(azItem, azIdx){
         return <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
       });
     }
     var azGroups = self.state.azItemState;
     var azList = [];
-    if (isValidArray(azGroups) && azGroups.length && isValidArray(azListForSelectedRegions)) {
+    if (isNonEmptyArray(azGroups) && isNonEmptyArray(azListForSelectedRegions)) {
       azList = azGroups.map(function(azGroupItem, idx){
         return (
           <Row key={idx} >
