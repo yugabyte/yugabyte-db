@@ -2,7 +2,8 @@ import React, { Component, PropTypes } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, change } from 'redux-form';
 import _ from 'lodash';
-import { isDefinedNotNull, isValidArray, isNonEmptyObject, areIntentsEqual, isEmptyObject } from 'utils/ObjectUtils';
+import { isDefinedNotNull, isNonEmptyArray, isNonEmptyObject, areIntentsEqual, isEmptyObject }
+  from 'utils/ObjectUtils';
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
   YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
 } from 'components/common/forms/fields';
@@ -81,18 +82,18 @@ export default class UniverseForm extends Component {
       deviceInfo: currentState.deviceInfo,
       accessKeyCode: currentState.accessKeyCode
     };
-    if (isDefinedNotNull(currentState.instanceTypeSelected) && isValidArray(currentState.regionList)) {
+    if (isDefinedNotNull(currentState.instanceTypeSelected) && isNonEmptyArray(currentState.regionList)) {
       this.props.cloud.providers.data.forEach(function (providerItem, idx) {
         if (providerItem.uuid === universeTaskParams.userIntent.provider) {
           universeTaskParams.userIntent.providerType = providerItem.code;
         }
       });
-      if (!isValidArray(universeTaskParams.userIntent.regionList)) {
-        universeTaskParams.userIntent.regionList = [formValues.regionList.value];
-      } else {
+      if (isNonEmptyArray(universeTaskParams.userIntent.regionList)) {
         universeTaskParams.userIntent.regionList = formValues.regionList.map(function (item, idx) {
           return item.value;
         });
+      } else {
+        universeTaskParams.userIntent.regionList = [formValues.regionList.value];
       }
       if (isDefinedNotNull(universeTaskParams.placementInfo)) {
         universeTaskParams.placementInfo.isCustom = this.state.isCustom;
@@ -120,7 +121,7 @@ export default class UniverseForm extends Component {
 
   componentWillMount() {
     this.props.resetConfig();
-    if (isValidArray(this.props.softwareVersions)) {
+    if (isNonEmptyArray(this.props.softwareVersions)) {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
     }
     if (this.props.type === "Edit") {
@@ -275,8 +276,8 @@ export default class UniverseForm extends Component {
     var self = this;
     const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
-        && isValidArray(nextProps.cloud.instanceTypes.data)
-        && isEmptyObject(this.state.deviceInfo)
+        && isNonEmptyArray(nextProps.cloud.instanceTypes.data)
+        && isNonEmptyObject(this.state.deviceInfo)
         && isDefinedNotNull(this.state.instanceTypeSelected)) {
       let instanceTypeSelected = nextProps.cloud.instanceTypes.data.find(function(item){
         return item.instanceTypeCode ===  self.state.instanceTypeSelected;
@@ -302,15 +303,15 @@ export default class UniverseForm extends Component {
     }
 
     // Set default ebsType once API call has completed
-    if (isValidArray(nextProps.cloud.ebsTypes) && !isValidArray(this.props.cloud.ebsTypes)) {
+    if (isNonEmptyArray(nextProps.cloud.ebsTypes) && !isNonEmptyArray(this.props.cloud.ebsTypes)) {
       this.setState({"ebsType": "GP2"});
     }
 
     // Set Default Software Package in case of Create
     if (nextProps.softwareVersions !== this.props.softwareVersions
         && !_.isObject(this.props.universe.currentUniverse)
-        && isValidArray(nextProps.softwareVersions)
-        && !isValidArray(this.props.softwareVersions)) {
+        && isNonEmptyArray(nextProps.softwareVersions)
+        && !isNonEmptyArray(this.props.softwareVersions)) {
       this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
     }
 
@@ -335,7 +336,7 @@ export default class UniverseForm extends Component {
         });
       }
     }
-    if (isValidArray(nextProps.accessKeys.data) && !isValidArray(this.props.accessKeys.data)) {
+    if (isNonEmptyArray(nextProps.accessKeys.data) && !isNonEmptyArray(this.props.accessKeys.data)) {
       this.setState({accessKeyCode: nextProps.accessKeys.data[0].idKey.keyCode})
     }
   }
@@ -345,7 +346,7 @@ export default class UniverseForm extends Component {
     const { visible, handleSubmit, title, universe, softwareVersions, cloud, accessKeys } = this.props;
     var universeProviderList = [];
     var currentProviderCode = "";
-    if (isValidArray(cloud.providers.data)) {
+    if (isNonEmptyArray(cloud.providers.data)) {
       universeProviderList = cloud.providers.data.map(function(providerItem, idx) {
         if (providerItem.uuid === self.state.providerSelected) {
           currentProviderCode = providerItem.code;
@@ -396,7 +397,7 @@ export default class UniverseForm extends Component {
           </option>
         });
     }
-    if (isValidArray(universeInstanceTypeList)) {
+    if (isNonEmptyArray(universeInstanceTypeList)) {
       universeInstanceTypeList.unshift(<option key="" value="">Select</option>);
     }
 
@@ -419,7 +420,7 @@ export default class UniverseForm extends Component {
     })
 
     var accessKeyOptions = <option key={1} value={this.state.accessKeyCode}>{this.state.accessKeyCode}</option>;
-    if (_.isObject(accessKeys) && isValidArray(accessKeys.data)) {
+    if (_.isObject(accessKeys) && isNonEmptyArray(accessKeys.data)) {
       accessKeyOptions = accessKeys.data.map(function(item, idx){
         return <option key={idx} value={item.idKey.keyCode}>{item.idKey.keyCode}</option>
       })
