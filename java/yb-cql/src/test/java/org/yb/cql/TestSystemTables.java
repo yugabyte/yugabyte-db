@@ -1,10 +1,10 @@
 package org.yb.cql;
 
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.Test;
@@ -174,15 +174,15 @@ public class TestSystemTables extends BaseCQLTest {
   public void testSystemKeyspacesAndTables() throws Exception {
     List <Row> results = session.execute(
       "SELECT * FROM system_schema.keyspaces;").all();
-    assertEquals(4, results.size());
-    assertEquals(DEFAULT_TEST_KEYSPACE, results.get(0).getString("keyspace_name"));
-    assertTrue(results.get(0).getBool("durable_writes"));
-    assertEquals("system_schema", results.get(1).getString("keyspace_name"));
-    assertTrue(results.get(1).getBool("durable_writes"));
-    assertEquals("system", results.get(2).getString("keyspace_name"));
-    assertTrue(results.get(2).getBool("durable_writes"));
-    assertEquals(DEFAULT_KEYSPACE, results.get(3).getString("keyspace_name"));
-    assertTrue(results.get(3).getBool("durable_writes"));
+    Set<String> expectedKeySpaces = new HashSet<>(Arrays.asList(DEFAULT_KEYSPACE,
+      DEFAULT_TEST_KEYSPACE, "system_schema", "system"));
+    assertEquals(expectedKeySpaces.size(), results.size());
+
+    for (Row row : results) {
+      assertTrue(row.getBool("durable_writes"));
+      assertTrue(expectedKeySpaces.remove(row.getString("keyspace_name")));
+    }
+    assertEquals(0, expectedKeySpaces.size());
 
     results = session.execute(
       "SELECT * FROM system_schema.tables;").all();
