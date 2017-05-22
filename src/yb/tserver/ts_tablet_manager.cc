@@ -100,7 +100,7 @@ DEFINE_int64(db_block_cache_size_bytes, -1,
              "Size of cross-tablet shared RocksDB block cache (in bytes). "
              "This defaults to -1 for system auto-generated default, which would use "
              "FLAGS_db_block_cache_ram_percentage to select a percentage of the total memory as "
-             "the default size for the shared block cache.");
+             "the default size for the shared block cache. Value of -2 disables block cache.");
 
 DEFINE_int32(db_block_cache_size_percentage, 50,
              "Default percentage of total available memory to use as block cache size, if not "
@@ -162,6 +162,13 @@ using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::RemoteBootstrapClient;
 
+namespace {
+
+constexpr int kDbCacheSizeUsePercentage = -1;
+constexpr int kDbCacheSizeCacheDisabled = -2;
+
+} // namespace
+
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
                                  MetricRegistry* metric_registry)
@@ -181,7 +188,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
 
   int64_t block_cache_size_bytes = FLAGS_db_block_cache_size_bytes;
   // Auto-compute size of block cache if asked to.
-  if (FLAGS_db_block_cache_size_bytes == -1) {
+  if (FLAGS_db_block_cache_size_bytes == kDbCacheSizeUsePercentage) {
     int64_t total_ram;
     // Check some bounds.
     CHECK(FLAGS_db_block_cache_size_percentage > 0 && FLAGS_db_block_cache_size_percentage <= 100)
@@ -192,7 +199,9 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
     block_cache_size_bytes = total_ram * FLAGS_db_block_cache_size_percentage / 100;
   }
-  block_cache_ = rocksdb::NewLRUCache(block_cache_size_bytes);
+  if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
+    block_cache_ = rocksdb::NewLRUCache(block_cache_size_bytes);
+  }
 }
 
 TSTabletManager::~TSTabletManager() {

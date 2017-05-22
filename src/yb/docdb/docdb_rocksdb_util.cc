@@ -263,10 +263,15 @@ void InitRocksDBOptions(
 
   // Set block cache options.
   rocksdb::BlockBasedTableOptions table_options;
-  table_options.block_cache = block_cache;
+  if (block_cache) {
+    table_options.block_cache = block_cache;
+    // Cache the bloom filters in the block cache.
+    table_options.cache_index_and_filter_blocks = true;
+  } else {
+    table_options.no_block_cache = true;
+    table_options.cache_index_and_filter_blocks = false;
+  }
   table_options.block_size = FLAGS_db_block_size_bytes;
-  // Cache the bloom filters in the block cache.
-  table_options.cache_index_and_filter_blocks = true;
 
   // Set our custom bloom filter that is docdb aware.
   if (FLAGS_use_docdb_aware_bloom_filter) {
