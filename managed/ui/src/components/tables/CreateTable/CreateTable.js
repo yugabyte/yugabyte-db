@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import {withRouter} from 'react-router';
 import { YBInputField, YBButton, YBRadioButton, YBSelect } from '../../common/forms/fields';
 import { Field, FieldArray } from 'redux-form';
-import { isValidArray, normalizeToPositiveInt, isValidObject } from '../../../utils/ObjectUtils';
+import { isNonEmptyArray, normalizeToPositiveInt, isValidObject } from 'utils/ObjectUtils';
 import cassandraLogo from '../images/cassandra.png';
 import './CreateTables.scss';
 import {YBConfirmModal} from '../../modals';
@@ -79,7 +79,7 @@ class KeyColumnList extends Component {
                          Type
                        </option>];
 
-    if (isValidArray(columnDataTypes)) {
+    if (isNonEmptyArray(columnDataTypes)) {
       typeOptions = typeOptions.concat(columnDataTypes.map(function(item, idx){
                      return <option key={idx} value={item}>{item}</option>
                     }));
