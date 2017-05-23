@@ -6,7 +6,9 @@ import { DateTimePicker } from 'react-widgets';
 import { YBButton } from '../../common/forms/fields';
 require('react-widgets/dist/css/react-widgets.css');
 var moment = require('moment');
-import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import {getPromiseState} from 'utils/PromiseUtils';
+import { isValidObject, isNonEmptyObject } from 'utils/ObjectUtils';
+
 var momentLocalizer = require('react-widgets/lib/localizers/moment');
 import './GraphPanelHeader.scss';
 import { withRouter, browserHistory } from 'react-router';
@@ -57,7 +59,7 @@ class GraphPanelHeader extends Component {
     var currentUniverse = "all";
     var currentUniversePrefix  = "all";
     if (this.props.origin === "universe") {
-      currentUniverse = this.props.universe.currentUniverse;
+      currentUniverse = this.props.universe.currentUniverse.data;
       currentUniversePrefix = currentUniverse.universeDetails.nodePrefix;
     }
     this.updateUrlQueryParams = this.updateUrlQueryParams.bind(this);
@@ -105,20 +107,21 @@ class GraphPanelHeader extends Component {
 
   componentWillReceiveProps(nextProps) {
     const {location, universe, universe: {universeList}} = nextProps;
-    if (this.props.location !== nextProps.location || this.props.universe.universeList !== universeList) {
+    if (this.props.location !== nextProps.location ||
+       (getPromiseState(universeList).isSuccess() && getPromiseState(this.props.universe.universeList).isLoading())) {
       var nodePrefix = this.state.nodePrefix;
       if (location.query.nodePrefix) {
         nodePrefix = location.query.nodePrefix;
       }
-      if (!universe.currentUniverse) {
-        var currentUniverse = universeList.find(function (item) {
+      if (getPromiseState(universe.currentUniverse).isEmpty() || getPromiseState(universe.currentUniverse).isInit()) {
+        var currentUniverse = universeList.data.find(function (item) {
           return item.universeDetails.nodePrefix === nodePrefix;
         })
         if (!isNonEmptyObject(currentUniverse)) {
           currentUniverse = "all";
         }
       } else {
-        currentUniverse = universe.currentUniverse;
+        currentUniverse = universe.currentUniverse.data;
       }
       var currentSelectedNode = "all";
       if (isValidObject(location.query.nodeName)) {
@@ -171,12 +174,12 @@ class GraphPanelHeader extends Component {
     var self = this;
     var universeFound = false;
     var newParams = this.state;
-    for (var counter = 0; counter < universeList.length; counter++) {
-      if (universeList[counter].universeUUID === event.target.value) {
+    for (var counter = 0; counter < universeList.data.length; counter++) {
+      if (universeList.data[counter].universeUUID === event.target.value) {
         universeFound = true;
-        self.setState({currentSelectedUniverse: universeList[counter], nodePrefix: universeList[counter].universeDetails.nodePrefix,
+        self.setState({currentSelectedUniverse: universeList[counter], nodePrefix: universeList.data[counter].universeDetails.nodePrefix,
                        nodeName: "all"});
-        newParams.nodePrefix = universeList[counter].universeDetails.nodePrefix;
+        newParams.nodePrefix = universeList.data[counter].universeDetails.nodePrefix;
         break;
       }
     }
@@ -318,7 +321,7 @@ export default withRouter(GraphPanelHeader);
 class UniversePicker extends Component {
   render() {
     const {universeItemChanged, universe: {universeList}, selectedUniverse} = this.props;
-    var universeItems = universeList.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    var universeItems = universeList.data.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
                           .map(function(item, idx){
                             return <option key={idx} value={item.universeUUID} name={item.name}>{item.name}</option>
                           });
@@ -342,7 +345,7 @@ class NodePicker extends Component {
   render() {
     const {selectedUniverse, nodeItemChanged, selectedNode} = this.props;
     var nodeItems =[];
-    if (isValidObject(selectedUniverse) && selectedUniverse!== "all") {
+    if (isNonEmptyObject(selectedUniverse) && selectedUniverse!== "all") {
       nodeItems = selectedUniverse.universeDetails.nodeDetailsSet.sort((a, b) => a.nodeName.toLowerCase() > b.nodeName.toLowerCase())
                     .map(function(nodeItem, nodeIdx){
                           return <option key={nodeIdx} value={nodeItem.nodeName}>

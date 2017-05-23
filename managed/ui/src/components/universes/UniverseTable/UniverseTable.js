@@ -4,17 +4,16 @@ import React, { Component } from 'react';
 import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { isValidObject, isValidArray } from '../../../utils/ObjectUtils';
+import { isValidObject, isValidArray, isEmptyArray } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
-import {YBLoadingIcon} from '../../common/indicators';
 import {UniverseStatusContainer} from '../../universes'
 
 export default class UniverseTable extends Component {
 
   componentWillMount() {
-    this.props.fetchUniverseList();
+    this.props.fetchUniverseMetadata();
     this.props.fetchUniverseTasks();
     this.props.universeReadWriteData();
   }
@@ -25,17 +24,14 @@ export default class UniverseTable extends Component {
 
   render() {
     var self = this;
-    const { universe: { universeList, loading }, universeReadWriteData, tasks } = this.props;
-    if (loading.universeList) {
-      return <YBLoadingIcon/>;
-    }
+    const { universe: { universeList }, universeReadWriteData, tasks } = this.props;
 
-    if (!(isValidArray(universeList) && universeList.length)) {
+    if (isEmptyArray(universeList.data)) {
       return <h5>No universes defined.</h5>;
     }
 
     var universeRowItem =
-      universeList.map(function (item, idx) {
+      universeList.data.map(function (item, idx) {
         var universeTaskUUIDs = [];
         if (isValidArray(tasks.customerTaskList)) {
           universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){

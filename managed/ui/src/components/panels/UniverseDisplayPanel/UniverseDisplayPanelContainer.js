@@ -5,12 +5,6 @@ import { connect } from 'react-redux';
 import { UniverseDisplayPanel } from '../../../components/panels';
 import {openDialog, closeDialog} from '../../../actions/universe';
 
-function mapStateToProps(state) {
-  return {
-    universe: state.universe
-  };
-}
-
 const mapDispatchToProps = (dispatch) => {
   return {
     showUniverseModal: () => {
@@ -22,5 +16,5 @@ const mapDispatchToProps = (dispatch) => {
   }
 }
 
-export default connect(mapStateToProps, mapDispatchToProps)(UniverseDisplayPanel);
+export default connect(null, mapDispatchToProps)(UniverseDisplayPanel);
 

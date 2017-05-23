@@ -40,7 +40,7 @@ export function setInitialState(state, object, data = {}, error = null) {
 }
 
 export function getPromiseState(dataObject) {
-  if (dataObject.data && (isValidArray(dataObject.data) || !isEmptyObject(dataObject.data))) {
+  if (isDefinedNotNull(dataObject.data) && (isValidArray(dataObject.data) || !isEmptyObject(dataObject.data))) {
     return PromiseState.SUCCESS;
   } else if (isDefinedNotNull(dataObject.promiseState) && dataObject.promiseState.isSuccess()) {
     return PromiseState.EMPTY;

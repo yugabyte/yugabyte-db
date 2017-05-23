@@ -3,18 +3,14 @@
 import { connect } from 'react-redux';
 import { TableDetail } from '../../tables';
 import {fetchTableDetail, fetchTableDetailFailure, fetchTableDetailSuccess, resetTableDetail} from '../../../actions/tables';
-import {fetchUniverseInfo, fetchUniverseInfoSuccess, fetchUniverseInfoFailure } from '../../../actions/universe';
+import {fetchUniverseInfo, fetchUniverseInfoResponse} from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     fetchUniverseDetail: (universeUUID) => {
       dispatch(fetchUniverseInfo(universeUUID))
         .then((response) => {
-          if (!response.error) {
-            dispatch(fetchUniverseInfoSuccess(response.payload));
-          } else {
-            dispatch(fetchUniverseInfoFailure(response.payload));
-          }
+          dispatch(fetchUniverseInfoResponse(response.payload));
         });
     },
     fetchTableDetail: (universeUUID, tableUUID) => {

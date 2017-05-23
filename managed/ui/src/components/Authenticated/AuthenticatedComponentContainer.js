@@ -4,7 +4,7 @@ import { connect } from 'react-redux';
 import AuthenticatedComponent from './AuthenticatedComponent';
 import { fetchHostInfo, fetchHostInfoSuccess,
   fetchHostInfoFailure } from '../../actions/customers';
-import { fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, resetUniverseList }
+import { fetchUniverseList, fetchUniverseListResponse, resetUniverseList }
          from '../../actions/universe';
 import { getProviderList, getProviderListResponse, getSupportedRegionData, getSupportedRegionDataResponse
          , getEBSTypeList, getEBSTypeListResponse }
@@ -37,11 +37,7 @@ const mapDispatchToProps = (dispatch) => {
     fetchUniverseList: () => {
       dispatch(fetchUniverseList())
         .then((response) => {
-          if (response.payload.status !== 200) {
-            dispatch(fetchUniverseListFailure(response.payload));
-          } else {
-            dispatch(fetchUniverseListSuccess(response.payload));
-          }
+          dispatch(fetchUniverseListResponse(response.payload));
         });
     },
 
@@ -73,7 +69,8 @@ const mapStateToProps = (state) => {
     cloud: state.cloud,
     customer: state.customer,
     universe: state.universe,
-    fetchMetadata: state.cloud.fetchMetadata
+    fetchMetadata: state.cloud.fetchMetadata,
+    fetchUniverseMetadata: state.universe.fetchUniverseMetadata
   };
 };
 

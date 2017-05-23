@@ -8,4 +8,3 @@ export { DEFAULT_GRAPH_FILTER } from './GraphPanelHeader/GraphPanelHeader';
 export { default as UniverseReadWriteMetrics} from './UniverseReadWriteMetrics/UniverseReadWriteMetrics';
 export { default as GraphPanelContainer } from './GraphPanel/GraphPanelContainer';
 export { default as GraphPanelHeaderContainer } from './GraphPanelHeader/GraphPanelHeaderContainer';
-export { default as CustomerMetricsPanelContainer } from './CustomerMetricsPanel/CustomerMetricsPanelContainer';

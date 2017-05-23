@@ -15,7 +15,7 @@ const mapStateToProps = (state) => {
     initialValues: { accountName: "Docker" },
     dockerBootstrap: state.cloud.dockerBootstrap,
     universeList: state.universe.universeList,
-    universeLoading: state.universe.loading.universeList,
+
     visibleModal: state.universe.visibleModal,
     // TODO change this once we refactor aws bootstrap.
     cloudBootstrap: state.cloud.bootstrap

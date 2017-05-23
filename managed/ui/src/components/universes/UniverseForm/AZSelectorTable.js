@@ -1,7 +1,7 @@
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
 import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
-import { isValidArray, isValidObject, areUniverseConfigsEqual } from 'utils/ObjectUtils';
+import { isValidArray, isValidObject, areUniverseConfigsEqual, isNonEmptyObject } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
 
 const nodeStates = {
@@ -40,10 +40,10 @@ export default class AZSelectorTable extends Component {
     currentAZState.forEach(function(item){
       totalNodesInConfig += item.count;
     });
-    if (totalNodesInConfig !== universeConfigTemplate.userIntent.numNodes) {
+    if (totalNodesInConfig !== universeConfigTemplate.data.userIntent.numNodes) {
       numNodesChanged(totalNodesInConfig);
     }
-    var newPlacementInfo = universeConfigTemplate.placementInfo;
+    var newPlacementInfo = universeConfigTemplate.data.placementInfo;
     newPlacementInfo.isCustom = true;
     var newRegionList = [];
     cloud.regions.data.forEach(function(regionItem){
@@ -66,7 +66,7 @@ export default class AZSelectorTable extends Component {
         }
       });
       newPlacementInfo.cloudList[0].regionList = newRegionList;
-      var newTaskParams = universeConfigTemplate;
+      var newTaskParams = universeConfigTemplate.data;
       newTaskParams.placementInfo = newPlacementInfo;
       if (!currentUniverse) {
         this.props.submitConfigureUniverse(newTaskParams);
@@ -77,10 +77,10 @@ export default class AZSelectorTable extends Component {
       }
   }
 
-  getGroupWithCounts(universeConfigTemplate) {
+  getGroupWithCounts(universeConfigTemplateData) {
     var uniConfigArray = [];
-    if (isValidArray(universeConfigTemplate.nodeDetailsSet)) {
-      universeConfigTemplate.nodeDetailsSet.forEach(function(nodeItem){
+    if (isValidArray(universeConfigTemplateData.nodeDetailsSet)) {
+      universeConfigTemplateData.nodeDetailsSet.forEach(function(nodeItem){
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           var nodeFound = false;
           for (var idx = 0; idx < uniConfigArray.length; idx++) {
@@ -98,8 +98,8 @@ export default class AZSelectorTable extends Component {
     }
     var groupsArray = [];
     var uniqueRegions = [];
-    if (isValidObject(universeConfigTemplate.placementInfo)) {
-      universeConfigTemplate.placementInfo.cloudList[0].regionList.forEach(function(regionItem){
+    if (isValidObject(universeConfigTemplateData.placementInfo)) {
+      universeConfigTemplateData.placementInfo.cloudList[0].regionList.forEach(function(regionItem){
         regionItem.azList.forEach(function(azItem){
            uniConfigArray.forEach(function(configArrayItem){
              if(configArrayItem.value === azItem.uuid) {
@@ -118,27 +118,27 @@ export default class AZSelectorTable extends Component {
   componentWillMount() {
     const {universe: {universeConfigTemplate, currentUniverse}, type} = this.props;
     if (type === "Edit" &&  isValidObject(currentUniverse)) {
-      var azGroups = this.getGroupWithCounts(universeConfigTemplate).groups;
+      var azGroups = this.getGroupWithCounts(universeConfigTemplate.data).groups;
       this.setState({azItemState: azGroups});
     }
   }
   componentWillReceiveProps(nextProps) {
     const {universe: {universeConfigTemplate, currentUniverse}} = nextProps;
-    var placementInfo = this.getGroupWithCounts(universeConfigTemplate);
+    var placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
     var azGroups = placementInfo.groups;
-    if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate, universeConfigTemplate)
-      && isValidObject(universeConfigTemplate.placementInfo) && !universeConfigTemplate.placementInfo.isCustom) {
-       this.setState({azItemState: azGroups});
-    } else if (currentUniverse && universeConfigTemplate.userIntent && areUniverseConfigsEqual(universeConfigTemplate, currentUniverse.universeDetails)) {
-      this.setState({azItemState: this.getGroupWithCounts(currentUniverse.universeDetails).groups})
+    if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)
+      && isValidObject(universeConfigTemplate.data.placementInfo) && !universeConfigTemplate.data.placementInfo.isCustom) {
+      this.setState({azItemState: azGroups});
+    } else if (isNonEmptyObject(currentUniverse.data) && universeConfigTemplate.data.userIntent && areUniverseConfigsEqual(universeConfigTemplate.data, currentUniverse.data.universeDetails)) {
+      this.setState({azItemState: this.getGroupWithCounts(currentUniverse.data.universeDetails).groups})
     }
-    if (isValidObject(universeConfigTemplate) && isValidObject(universeConfigTemplate.placementInfo)) {
+    if (isValidObject(universeConfigTemplate.data) && isValidObject(universeConfigTemplate.data.placementInfo)) {
         const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ]
         if (isValidObject(uniqueAZs)) {
           var placementStatusObject = {
             numUniqueRegions: placementInfo.uniqueRegions,
             numUniqueAzs: placementInfo.uniqueAzs,
-            replicationFactor: universeConfigTemplate.userIntent.replicationFactor
+            replicationFactor: universeConfigTemplate.data.userIntent.replicationFactor
           }
           this.props.setPlacementStatus(placementStatusObject);
         }
@@ -153,9 +153,9 @@ export default class AZSelectorTable extends Component {
     const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
     var self = this;
     var azListForSelectedRegions = [];
-    if (isValidObject(universeConfigTemplate.userIntent) && isValidArray(universeConfigTemplate.userIntent.regionList)) {
+    if (isValidObject(universeConfigTemplate.data.userIntent) && isValidArray(universeConfigTemplate.data.userIntent.regionList)) {
        azListForSelectedRegions = regions.data.filter(
-        region => universeConfigTemplate.userIntent.regionList.includes(region.uuid)
+        region => universeConfigTemplate.data.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }
     var azListOptions = <option/>;

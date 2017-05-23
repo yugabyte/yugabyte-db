@@ -103,7 +103,6 @@ const mapStateToProps = (state) => {
     cloudBootstrap: state.cloud.bootstrap,
     initialValues: { accountName: "Amazon" },
     universeList: state.universe.universeList,
-    universeLoading: state.universe.loading.universeList,
     hostInfo: state.customer.hostInfo,
     visibleModal: state.universe.visibleModal
   };

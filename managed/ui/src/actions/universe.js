@@ -5,30 +5,30 @@ import { ROOT_URL } from '../config';
 
 // Create Universe
 export const CREATE_UNIVERSE = 'CREATE_NEW_UNIVERSE';
-export const CREATE_UNIVERSE_SUCCESS = 'CREATE_UNIVERSE_SUCCESS';
-export const CREATE_UNIVERSE_FAILURE = 'CREATE_UNIVERSE_FAILURE';
+export const CREATE_UNIVERSE_RESPONSE = 'CREATE_UNIVERSE_RESPONSE';
 
 // Edit Universe
 export const EDIT_UNIVERSE = 'EDIT_UNIVERSE';
-export const EDIT_UNIVERSE_SUCCESS = 'EDIT_UNIVERSE_SUCCESS';
-export const EDIT_UNIVERSE_FAILURE = 'EDIT_UNIVERSE_FAILURE';
+export const EDIT_UNIVERSE_RESPONSE = 'EDIT_UNIVERSE_RESPONSE';
 
 // Get Universe
 export const FETCH_UNIVERSE_INFO = 'FETCH_UNIVERSE_INFO';
 export const FETCH_UNIVERSE_INFO_SUCCESS = 'FETCH_UNIVERSE_INFO_SUCCESS';
 export const FETCH_UNIVERSE_INFO_FAILURE = 'FETCH_UNIVERSE_INFO_FAILURE';
 export const RESET_UNIVERSE_INFO = 'RESET_UNIVERSE_INFO';
+export const FETCH_UNIVERSE_INFO_RESPONSE = 'FETCH_UNIVERSE_INFO_RESPONSE';
 
 // Get List Of Universe
 export const FETCH_UNIVERSE_LIST = 'FETCH_UNIVERSE_LIST';
+export const FETCH_UNIVERSE_LIST_RESPONSE = 'FETCH_UNIVERSE_LIST_RESPONSE';
 export const FETCH_UNIVERSE_LIST_SUCCESS = 'FETCH_UNIVERSE_LIST_SUCCESS';
 export const FETCH_UNIVERSE_LIST_FAILURE = 'FETCH_UNIVERSE_LIST_FAILURE';
 export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
 
 // Delete Universe
 export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
-export const DELETE_UNIVERSE_SUCCESS = 'DELETE_UNIVERSE_SUCCESS';
-export const DELETE_UNIVERSE_FAILURE = 'DELETE_UNIVERSE_FAILURE';
+export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
+
 
 // Commissioner Tasks for Universe
 export const FETCH_UNIVERSE_TASKS = 'FETCH_UNIVERSE_TASKS';
@@ -48,12 +48,12 @@ export const RESET_ROLLING_UPGRADE = 'RESET_ROLLING_UPGRADE';
 
 // Universe Template Tasks
 export const CONFIGURE_UNIVERSE_TEMPLATE = 'CONFIGURE_UNIVERSE_TEMPLATE';
+export const CONFIGURE_UNIVERSE_TEMPLATE_RESPONSE = 'CONFIGURE_UNIVERSE_TEMPLATE_RESPONSE';
 export const CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS = 'CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS';
-export const CONFIGURE_UNIVERSE_TEMPLATE_FAILURE = 'CONFIGURE_UNIVERSE_TEMPLATE_FAILURE';
 
 export const CONFIGURE_UNIVERSE_RESOURCES = 'CONFIGURE_UNIVERSE_RESOURCES';
-export const CONFIGURE_UNIVERSE_RESOURCES_SUCCESS = 'CONFIGURE_UNIVERSE_RESOURCES_SUCCESS';
-export const CONFIGURE_UNIVERSE_RESOURCES_FAILURE = 'CONFIGURE_UNIVERSE_RESOURCES_FAILURE';
+export const CONFIGURE_UNIVERSE_RESOURCES_RESPONSE = 'CONFIGURE_UNIVERSE_RESOURCES_RESPONSE';
+
 
 //Validation Tasks
 export const CHECK_IF_UNIVERSE_EXISTS = 'CHECK_IF_UNIVERSE_EXISTS';
@@ -67,6 +67,8 @@ export const SET_PLACEMENT_STATUS = 'SET_PLACEMENT_STATUS';
 // Reset Universe Configuration
 export const RESET_UNIVERSE_CONFIGURATION = 'RESET_UNIVERSE_CONFIGURATION';
 
+export const FETCH_UNIVERSE_METADATA = 'FETCH_UNIVERSE_METADATA';
+
 export function createUniverse(formValues) {
   var customerUUID = localStorage.getItem("customer_id");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -76,17 +78,10 @@ export function createUniverse(formValues) {
   };
 }
 
-export function createUniverseSuccess(result) {
+export function createUniverseResponse(response) {
   return {
-    type: CREATE_UNIVERSE_SUCCESS,
-    payload: result
-  };
-}
-
-export function createUniverseFailure(error) {
-  return {
-    type: CREATE_UNIVERSE_FAILURE,
-    payload: error
+    type: CREATE_UNIVERSE_RESPONSE,
+    payload: response
   }
 }
 
@@ -119,6 +114,13 @@ export function resetUniverseInfo() {
   };
 }
 
+export function fetchUniverseInfoResponse(response) {
+  return {
+    type: FETCH_UNIVERSE_INFO_RESPONSE,
+    payload: response
+  }
+}
+
 export function fetchUniverseList() {
   var cUUID = localStorage.getItem("customer_id");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
@@ -126,6 +128,13 @@ export function fetchUniverseList() {
   return {
     type: FETCH_UNIVERSE_LIST,
     payload: request
+  }
+}
+
+export function fetchUniverseListResponse(response) {
+  return {
+    type: FETCH_UNIVERSE_LIST_RESPONSE,
+    payload: response
   }
 }
 
@@ -158,19 +167,13 @@ export function deleteUniverse(universeUUID) {
   };
 }
 
-export function deleteUniverseSuccess(result) {
+export function deleteUniverseResponse(response) {
   return {
-    type: DELETE_UNIVERSE_SUCCESS,
-    payload: result
+    type: DELETE_UNIVERSE_RESPONSE,
+    payload: response
   }
 }
 
-export function deleteUniverseFailure(error) {
-  return {
-    type: DELETE_UNIVERSE_FAILURE,
-    payload: error
-  }
-}
 
 export function editUniverse(formValues, universeUUID) {
   var cUUID = localStorage.getItem("customer_id");
@@ -181,17 +184,10 @@ export function editUniverse(formValues, universeUUID) {
   }
 }
 
-export function editUniverseSuccess(result) {
+export function editUniverseResponse(response) {
   return {
-    type: EDIT_UNIVERSE_SUCCESS,
-    payload: result
-  }
-}
-
-export function editUniverseFailure(error) {
-  return {
-    type: EDIT_UNIVERSE_FAILURE,
-    payload: error
+    type: EDIT_UNIVERSE_RESPONSE,
+    payload: response
   }
 }
 
@@ -269,18 +265,18 @@ export function configureUniverseTemplate(values) {
   };
 }
 
+export function configureUniverseTemplateResponse(response) {
+  return {
+    type: CONFIGURE_UNIVERSE_TEMPLATE_RESPONSE,
+    payload: response
+  }
+}
+
 export function configureUniverseTemplateSuccess(result) {
   return {
     type: CONFIGURE_UNIVERSE_TEMPLATE_SUCCESS,
     payload: result
   };
-}
-
-export function configureUniverseTemplateFailure(error) {
-  return {
-    type: CONFIGURE_UNIVERSE_TEMPLATE_FAILURE,
-    payload: error
-  }
 }
 
 export function configureUniverseResources(values) {
@@ -292,17 +288,10 @@ export function configureUniverseResources(values) {
   }
 }
 
-export function configureUniverseResourcesSuccess(result) {
+export function configureUniverseResourcesResponse(response) {
   return {
-    type: CONFIGURE_UNIVERSE_RESOURCES_SUCCESS,
-    payload: result
-  };
-}
-
-export function configureUniverseResourcesFailure(error) {
-  return {
-    type: CONFIGURE_UNIVERSE_RESOURCES_FAILURE,
-    payload: error
+    type: CONFIGURE_UNIVERSE_RESOURCES_RESPONSE,
+    payload: response
   }
 }
 
@@ -339,5 +328,11 @@ export function setPlacementStatus(currentStatus) {
 export function resetUniverseConfiguration() {
   return {
     type: RESET_UNIVERSE_CONFIGURATION
+  }
+}
+
+export function fetchUniverseMetadata() {
+  return {
+    type: FETCH_UNIVERSE_METADATA
   }
 }
