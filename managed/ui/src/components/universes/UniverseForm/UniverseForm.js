@@ -229,7 +229,7 @@ export default class UniverseForm extends Component {
 
   componentDidUpdate(prevProps, prevState) {
     if (!_.isEqual(this.state, prevState)
-        && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
+      && prevProps.universe.showModal && this.props.universe.showModal && this.props.universe.visibleModal === "universeModal") {
       if (this.state.numNodes >= this.state.replicationFactor) {
         this.configureUniverseNodeList();
       }
@@ -275,9 +275,9 @@ export default class UniverseForm extends Component {
     var self = this;
     const {universe: {showModal, visibleModal, currentUniverse}} = nextProps;
     if (nextProps.cloud.instanceTypes.data !== this.props.cloud.instanceTypes.data
-        && isValidArray(nextProps.cloud.instanceTypes.data)
-        && isEmptyObject(this.state.deviceInfo)
-        && isDefinedNotNull(this.state.instanceTypeSelected)) {
+      && isValidArray(nextProps.cloud.instanceTypes.data)
+      && isEmptyObject(this.state.deviceInfo)
+      && isDefinedNotNull(this.state.instanceTypeSelected)) {
       let instanceTypeSelected = nextProps.cloud.instanceTypes.data.find(function(item){
         return item.instanceTypeCode ===  self.state.instanceTypeSelected;
       });
@@ -308,15 +308,15 @@ export default class UniverseForm extends Component {
 
     // Set Default Software Package in case of Create
     if (nextProps.softwareVersions !== this.props.softwareVersions
-        && isEmptyObject(this.props.universe.currentUniverse.data)
-        && isValidArray(nextProps.softwareVersions)
-        && !isValidArray(this.props.softwareVersions)) {
+      && isEmptyObject(this.props.universe.currentUniverse.data)
+      && isValidArray(nextProps.softwareVersions)
+      && !isValidArray(this.props.softwareVersions)) {
       this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
     }
 
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
     if (isNonEmptyObject(currentUniverse.data) && showModal
-        && !this.props.universe.showModal && visibleModal === "universeModal") {
+      && !this.props.universe.showModal && visibleModal === "universeModal") {
       var userIntent  = currentUniverse.data.universeDetails.userIntent;
       this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
       var providerUUID = currentUniverse.data.provider.uuid;
@@ -376,12 +376,12 @@ export default class UniverseForm extends Component {
     universeProviderList.unshift(<option key="" value=""></option>);
 
     var ebsTypesList = cloud.ebsTypes && cloud.ebsTypes.map(function (ebsType, idx) {
-      return <option key={ebsType} value={ebsType}>{ebsType}</option>
-    });
+        return <option key={ebsType} value={ebsType}>{ebsType}</option>
+      });
 
     var universeRegionList = cloud.regions.data && cloud.regions.data.map(function (regionItem, idx) {
-      return {value: regionItem.uuid, label: regionItem.name};
-    });
+        return {value: regionItem.uuid, label: regionItem.name};
+      });
 
     var universeInstanceTypeList = <option/>;
     if (currentProviderCode === "aws") {
@@ -506,30 +506,30 @@ export default class UniverseForm extends Component {
 
     return (
       <YBModal visible={visible} onHide={this.hideModal} title={title} error={universe.error}
-        submitLabel={submitLabel} showCancelButton={true}
-          onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large">
+               submitLabel={submitLabel} showCancelButton={true}
+               onFormSubmit={submitAction} formName={"UniverseForm"} footerAccessory={configDetailItem} size="large">
         <Row className={"no-margin-row"}>
-        <Col md={6}>
-          <h4>Cloud Configuration</h4>
-          <div className="form-right-aligned-labels">
-            <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
-                   isReadOnly={isFieldReadOnly} />
-            <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
-                   options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly}
-            />
-            <Field name="regionList" component={YBMultiSelectWithLabel}
-                    label="Regions" options={universeRegionList}
-                    selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
-                    providerSelected={this.state.providerSelected}/>
-            <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
-                   label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                    minVal={Number(this.state.replicationFactor)}/>
-          </div>
-        </Col>
-        <Col md={6} className={"universe-az-selector-container"}>
-          <AZSelectorTable {...this.props} numNodesChanged={this.numNodesChangedViaAzList} setPlacementInfo={this.setPlacementInfo}/>
-          {placementStatus}
-        </Col>
+          <Col md={6}>
+            <h4>Cloud Configuration</h4>
+            <div className="form-right-aligned-labels">
+              <Field name="universeName" type="text" component={YBTextInputWithLabel} label="Name"
+                     isReadOnly={isFieldReadOnly} />
+              <Field name="provider" type="select" component={YBSelectWithLabel} label="Provider"
+                     options={universeProviderList} onInputChanged={this.providerChanged} readOnlySelect={isFieldReadOnly}
+              />
+              <Field name="regionList" component={YBMultiSelectWithLabel}
+                     label="Regions" options={universeRegionList}
+                     selectValChanged={this.regionListChanged} multi={this.state.azCheckState}
+                     providerSelected={this.state.providerSelected}/>
+              <Field name="numNodes" type="text" component={YBControlledNumericInputWithLabel}
+                     label="Nodes" onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                     minVal={Number(this.state.replicationFactor)}/>
+            </div>
+          </Col>
+          <Col md={6} className={"universe-az-selector-container"}>
+            <AZSelectorTable {...this.props} numNodesChanged={this.numNodesChangedViaAzList} setPlacementInfo={this.setPlacementInfo}/>
+            {placementStatus}
+          </Col>
         </Row>
         <Row className={"no-margin-row top-border-row"}>
           <Col md={12}>
@@ -545,17 +545,17 @@ export default class UniverseForm extends Component {
             </div>
           </Col>
           {deviceDetail &&
-            <Col md={8}>
-              <div className="form-right-aligned-labels">
-                <div className="form-group universe-form-instance-info">
-                  <label className="form-item-label">Volume Info</label>
-                  {deviceDetail}
-                </div>
+          <Col md={8}>
+            <div className="form-right-aligned-labels">
+              <div className="form-group universe-form-instance-info">
+                <label className="form-item-label">Volume Info</label>
+                {deviceDetail}
               </div>
-              <div className="form-right-aligned-labels">
-                {ebsTypeSelector}
-              </div>
-            </Col>
+            </div>
+            <div className="form-right-aligned-labels">
+              {ebsTypeSelector}
+            </div>
+          </Col>
           }
         </Row>
         <Row className={"no-margin-row top-border-row"}>
@@ -581,7 +581,7 @@ export default class UniverseForm extends Component {
                      defaultValue={this.state.accessKeyCode} options={accessKeyOptions} readOnlySelect={isFieldReadOnly}/>
             </div>
           </Col>
-       </Row>
+        </Row>
       </YBModal>
     );
   }
