@@ -2,11 +2,11 @@
 
 import React, { Component } from 'react';
 import { Alert } from 'react-bootstrap';
-import { OnPremConfigWizardContainer, OnPremConfigJSONContainer, AddHostDataFormContainer } from '../../config';
+import { OnPremConfigWizardContainer, OnPremConfigJSONContainer } from '../../config';
 import { YBButton } from '../../common/forms/fields';
 import emptyDataCenterConfig from '../templates/EmptyDataCenterConfig.json';
 import { isValidObject } from '../../../utils/ObjectUtils';
-
+import _ from 'lodash';
 const PROVIDER_TYPE = "onprem";
 
 export default class OnPremConfiguration extends Component {
@@ -38,6 +38,7 @@ export default class OnPremConfiguration extends Component {
     this.toggleAdditionalOptionsModal = this.toggleAdditionalOptionsModal.bind(this);
     this.submitJson = this.submitJson.bind(this);
     this.updateConfigJsonVal = this.updateConfigJsonVal.bind(this);
+    this.submitWizardJson = this.submitWizardJson.bind(this);
   }
 
   componentWillReceiveProps(nextProps) {
@@ -54,7 +55,7 @@ export default class OnPremConfiguration extends Component {
     }
 
     if (isValidObject(response)) {
-      const config = JSON.parse(this.state.configJsonVal);
+      const config = _.isString(this.state.configJsonVal) ? JSON.parse(this.state.configJsonVal) : this.state.configJsonVal;
       const numZones = config.regions.reduce((total, region) => {
         return total + region.zones.length
       }, 0);
@@ -146,17 +147,20 @@ export default class OnPremConfiguration extends Component {
     }
   }
 
+  submitWizardJson(payloadData) {
+    this.setState({configJsonVal: payloadData})
+    this.props.createOnPremProvider(PROVIDER_TYPE, payloadData);
+  }
+
   render() {
     const { cloudBootstrap } = this.props;
-    let ConfigurationDataForm = <OnPremConfigWizardContainer />;
-    let btnText = this.state.isJsonEntry ? "Switch To Wizard View" : "Switch To JSON View";
+    var switchToJsonEntry = <YBButton btnText={"Switch to JSON View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
+    var switchToWizardEntry = <YBButton btnText={"Switch to Wizard View"} btnClass={"btn btn-default pull-left"} onClick={this.toggleJsonEntry}/>;
+    let ConfigurationDataForm = <OnPremConfigWizardContainer switchToJsonEntry={switchToJsonEntry} submitWizardJson={this.submitWizardJson}/>;
     if (this.state.isJsonEntry) {
       ConfigurationDataForm = <OnPremConfigJSONContainer updateConfigJsonVal={this.updateConfigJsonVal}
-                                                         configJsonVal={this.state.configJsonVal} />
+                                                         configJsonVal={this.state.configJsonVal} switchToWizardEntry={switchToWizardEntry} submitJson={this.submitJson}/>
     }
-    let hostDataForm = <AddHostDataFormContainer visible={this.state.isAdditionalHostOptionsOpen}
-                                                 onHide={this.toggleAdditionalOptionsModal}/>;
-
     let message = "";
     if (this.state.succeeded) {
       message = <Alert bsStyle="success">Create On Premise Provider Succeeded</Alert>
@@ -167,13 +171,7 @@ export default class OnPremConfiguration extends Component {
     return (
       <div className="on-prem-provider-container">
         {message}
-        {hostDataForm}
         {ConfigurationDataForm}
-        <div className="form-action-button-container">
-          <YBButton btnText={btnText} btnClass={"btn btn-default"} onClick={this.toggleJsonEntry}/>
-          <YBButton btnText={"Additional Host Options"} onClick={this.toggleAdditionalOptionsModal}/>
-          <YBButton btnClass="pull-right btn btn-default bg-orange" btnText={"Save"} onClick={this.submitJson}/>
-        </div>
       </div>
     )
   }

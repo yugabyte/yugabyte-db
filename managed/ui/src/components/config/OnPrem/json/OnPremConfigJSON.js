@@ -6,9 +6,9 @@ import Highlight from 'react-highlight';
 import "highlight.js/styles/github.css";
 import AceEditor from 'react-ace';
 import 'brace/theme/github';
-import {YBPanelItem} from '../../panels'
-import { YBButton } from '../../common/forms/fields';
-import sampleDataCenterConfig from '../templates/SampleDataCenterConfig.json';
+import {YBPanelItem} from '../../../panels'
+import { YBButton } from '../../../common/forms/fields';
+import sampleDataCenterConfig from '../../templates/SampleDataCenterConfig.json';
 
 class ConfigFormTitle extends Component {
   render() {
@@ -49,8 +49,10 @@ export default class OnPremConfigJSON extends Component {
 
   render() {
     const configTitle = "Enter Datacenter Configuration JSON:";
+    const {switchToWizardEntry, submitJson} = this.props;
     return (
-      <Row className="form-data-container">
+      <div>
+        <Row className="form-data-container">
         <Col lg={5} className="sample-config-item">
           <Row className="color-light-grey">
             <ConfigFormTitle text={this.sampleJsonPretty}
@@ -72,6 +74,11 @@ export default class OnPremConfigJSON extends Component {
           </YBPanelItem>
         </Col>
       </Row>
+        <Row>
+          {switchToWizardEntry}
+          <YBButton btnText={"Submit"} btnType={"submit"} btnClass={"btn btn-default save-btn pull-right"} onClick={submitJson}/>
+        </Row>
+      </div>
     )
   }
 }

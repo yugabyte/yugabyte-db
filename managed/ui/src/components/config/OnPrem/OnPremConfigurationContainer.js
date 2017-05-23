@@ -12,7 +12,8 @@ import { isNonEmptyArray } from 'utils/ObjectUtils';
 const mapStateToProps = (state) => {
   return {
     cloud: state.cloud, // the state populated by "reducer_cloud.js"
-    cloudBootstrap: state.cloud.bootstrap
+    cloudBootstrap: state.cloud.bootstrap,
+    onPremJsonFormData: state.cloud.onPremJsonFormData
   };
 };
 

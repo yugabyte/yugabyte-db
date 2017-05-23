@@ -133,9 +133,11 @@
 }
 
 .host-current-file-container {
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 500;
+  color: $YB_DARK_GREY;
   margin-top: 6px;
+  padding: 2px 14px;
 }
 
 .data-row-input-container {

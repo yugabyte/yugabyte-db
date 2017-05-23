@@ -3,9 +3,8 @@
 import React, { Component } from 'react';
 import { withRouter } from 'react-router';
 import { GCPProviderConfigurationContainer, AzureProviderConfigurationContainer,
-         DockerProviderConfigurationContainer, AWSProviderConfigurationContainer}
+         DockerProviderConfigurationContainer, AWSProviderConfigurationContainer, OnPremConfigurationContainer}
          from '../../config';
-import {OnPremConfigurationContainer} from '../../config';
 import {Tab} from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import './providerConfig.scss';
