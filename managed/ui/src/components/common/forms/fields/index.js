@@ -9,3 +9,4 @@ export { default as YBRadioButton } from './YBRadioButton';
 export { default as YBRadioButtonBar, YBRadioButtonBarWithLabel } from './YBRadioButtonBar';
 export { default as YBSelectWithLabel, YBUnControlledSelect, YBControlledSelect, YBControlledSelectWithLabel, YBSelect } from './YBSelect';
 export { default as YBTextInputWithLabel, YBTextInput, YBInputField, YBControlledTextInput } from './YBTextInput';
+export { default as YBTextArea} from './YBTextArea';
