@@ -588,7 +588,7 @@ build_yb_java_code_filter_save_output() {
   fi
   local mvn_opts=( --batch-mode )
   if ! is_jenkins; then
-    mvn_opts+=( -DskipAssembly -Dmaven.javadoc.skip )
+    mvn_opts+=( -Dmaven.javadoc.skip )
   fi
   set +e -x  # +e: do not fail on grep failure, -x: print the command to stderr.
   if mvn "${mvn_opts[@]}" "$@" 2>&1 | \

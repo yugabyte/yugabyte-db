@@ -43,7 +43,7 @@ def main():
     yb_distribution_dir = os.path.join(tmp_dir, 'yb_distribution')
 
     os.chdir(repository_root)
-    build_cmd_line = "./yb_build.sh {} --write-build-descriptor {} {}".format(
+    build_cmd_line = "./yb_build.sh {} --with-assembly --write-build-descriptor {} {}".format(
             args.build_type, build_desc_path, args.build_args).strip()
     log_message(logging.INFO, "Build command line: {}".format(build_cmd_line))
     if call(build_cmd_line, shell=True) != 0:

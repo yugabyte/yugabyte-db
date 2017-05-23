@@ -78,6 +78,8 @@ Options:
     about the build root, compiler used, etc.
   --force, -f, -y
     Run a clean build without asking for confirmation even if a clean build was recently done.
+  --with-assembly
+    Build the java code with assembly (basically builds the yb-sample-apps.jar as well)
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -136,6 +138,7 @@ export YB_GTEST_FILTER=""
 repeat_unit_test_inherited_args=()
 forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
+java_with_assembly=false
 
 export YB_EXTRA_GTEST_FLAGS=""
 
@@ -192,6 +195,9 @@ while [ $# -gt 0 ]; do
     ;;
     --run-java-tests)
       run_java_tests=true
+    ;;
+    --with-assembly)
+      java_with_assembly=true
     ;;
     --static)
       YB_LINK=static
@@ -507,11 +513,14 @@ fi
 # Check if the Java build is needed. And skip Java unit test runs if requested.
 if "$build_java"; then
   cd "$YB_SRC_ROOT"/java
-  if "$run_java_tests"; then
-    time ( build_yb_java_code install )
-  else
-    time ( build_yb_java_code install -DskipTests )
+  build_opts=( install )
+  if ! "$java_with_assembly"; then
+    build_opts+=( -DskipAssembly )
   fi
+  if ! "$run_java_tests"; then
+    build_opts+=( -DskipTests )
+  fi
+  time ( build_yb_java_code ${build_opts[@]} )
   log "Java build finished, total time information above."
 fi
 
