@@ -5,6 +5,7 @@
 
 set -euo pipefail
 
+ELF_FILE_PATTERN='(^|[[:space:]])ELF([[:space:]]|$)'
 bin_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
 distribution_dir=$( cd "$bin_dir/.." && pwd )
 patchelf_path=$bin_dir/patchelf
@@ -23,10 +24,7 @@ fi
 
 cd "$bin_dir"
 for f in *; do
-  if [[ -x $f && \
-        $f != *.sh && \
-        $f != patchelf && \
-        $f != pprof ]]; then
+  if [[ -x $f && $(file -b $f) =~ $ELF_FILE_PATTERN && $f != patchelf ]]; then
     ( set -x; "$patchelf_path" --set-interpreter "$ld_path" "$f" )
   fi
 done

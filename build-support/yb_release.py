@@ -74,8 +74,8 @@ def main():
         if release_subdir in release_manifest:
             del release_manifest[release_subdir]
     for root, dirs, files in os.walk(yb_distribution_dir):
-        release_manifest[os.path.relpath(root, yb_distribution_dir)] = [
-                os.path.join(root, f) for f in files]
+        release_manifest.setdefault(os.path.relpath(root, yb_distribution_dir), []).extend([
+                os.path.join(root, f) for f in files])
 
     log_message(logging.INFO, "Generating release")
 

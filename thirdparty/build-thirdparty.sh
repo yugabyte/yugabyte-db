@@ -327,6 +327,7 @@ F_SQUEASEL=""
 F_TRACE=""
 F_TRACE_VIEWER=""
 F_LIBBACKTRACE=""
+F_CQLSH=""
 
 if is_linux; then
   F_TSAN=1
@@ -410,6 +411,8 @@ while [[ $# -gt 0 ]]; do
                     F_ZLIB=1 ;;
     "libbacktrace") building_what+=( libbacktrace )
                     F_LIBBACKTRACE=1 ;;
+    "cqlsh")        building_what+=( cqlsh )
+                    F_CQLSH=1 ;;
     *)
       echo "Invalid option: $1" >&2
       exit 1
@@ -605,6 +608,10 @@ if [[ -z ${YB_THIRDPARTY_TSAN_ONLY_BUILD:-} ]]; then
 
   if is_linux && [ -n "$F_ALL" -o -n "$F_LIBBACKTRACE" ]; then
     do_build_if_necessary libbacktrace
+  fi
+
+  if [ -n "$F_ALL" -o -n "$F_CQLSH" ]; then
+    do_build_if_necessary cqlsh
   fi
 
   ### Build C++ dependencies
