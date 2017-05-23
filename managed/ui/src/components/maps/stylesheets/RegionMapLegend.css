@@ -63,3 +63,8 @@
   background-color: transparent;
   border: none;
 }
+
+.map-menu-selector {
+  cursor: pointer;
+  padding: 2px;
+}
