@@ -4,7 +4,8 @@ import React, {Component} from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import {withRouter} from 'react-router';
-import  { isNonEmptyArray, isEmptyObject, isValidObject } from 'utils/ObjectUtils';
+import {isEmptyObject, isValidObject} from 'utils/ObjectUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
 import { YBConfirmModal } from '../../modals';
 import { RegionMap } from '../../maps';
 
@@ -45,11 +46,10 @@ class DockerProviderConfiguration extends Component {
     let dockerRegions = configuredRegions.data.filter(
       (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
     );
-
     if (isValidObject(dockerProvider)) {
       let universeExistsForProvider = false;
-      if (isNonEmptyArray(configuredProviders.data) && isNonEmptyArray(universeList)) {
-        universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === dockerProvider.uuid));
+      if (getPromiseState(configuredProviders).isSuccess() && getPromiseState(universeList).isSuccess()){
+        universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === dockerProvider.uuid));
       }
       let deleteButtonDisabled = submitting || universeExistsForProvider;
       let deleteButtonClassName = "btn btn-default delete-aws-btn";

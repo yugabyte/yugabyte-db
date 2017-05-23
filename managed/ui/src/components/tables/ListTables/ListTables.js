@@ -94,7 +94,7 @@ export default class ListTables extends Component {
 
 class ListTableGrid extends Component {
   componentWillMount() {
-    var universeUUID = this.props.universe.currentUniverse.universeUUID;
+    var universeUUID = this.props.universe.currentUniverse.data.universeUUID;
     const {universe: {universeTasks}} = this.props;
     // Do not send tables query if task type is create, status is pending and target is universe
     if (!universeTasks || !isNonEmptyArray(universeTasks[universeUUID]) || !(universeTasks[universeUUID][0].type === "Create"
@@ -105,7 +105,7 @@ class ListTableGrid extends Component {
 
   render(){
     var self = this;
-    const {universe: {currentUniverse: {universeUUID}, universeTasks}} = this.props;
+    const {universe: {currentUniverse: {data: {universeUUID}, universeTasks}}} = this.props;
     var getTableIcon = function(tableType) {
       return <Image src={tableType === "YQL_TABLE_TYPE" ? cassandraLogo : redisLogo} className="table-type-logo" />;
     }

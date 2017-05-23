@@ -173,7 +173,7 @@ class CreateTable extends Component {
 
   createTable(values) {
     const {universe: {currentUniverse}} = this.props;
-    this.props.submitCreateTable(currentUniverse, values);
+    this.props.submitCreateTable(currentUniverse.data, values);
   }
 
   componentWillReceiveProps(nextProps) {

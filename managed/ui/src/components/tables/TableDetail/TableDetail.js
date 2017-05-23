@@ -7,6 +7,7 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
 import { isValidObject } from '../../../utils/ObjectUtils';
+import {getPromiseState} from 'utils/PromiseUtils';
 import './TableDetail.scss';
 import {ItemStatus} from '../../common/indicators';
 import {TableSchema} from '../../tables';
@@ -30,7 +31,7 @@ export default class TableDetail extends Component {
   render() {
     var tableInfoContent = <span/>;
     const {universe: {currentUniverse}, tables: {currentTableDetail}} = this.props;
-    if (isValidObject(currentUniverse)) {
+    if (getPromiseState(currentUniverse).isSuccess()) {
       tableInfoContent =
         <div>
           <Row className={"table-detail-row"}>
@@ -42,8 +43,8 @@ export default class TableDetail extends Component {
           </Row>
           <Row>
             <Col lg={12}>
-              <RegionMap regions={currentUniverse.regions} type={"Root"} />
-              <YBMapLegend title="Placement Policy" regions={currentUniverse.regions}/>
+              <RegionMap regions={currentUniverse.data.regions} type={"Root"} />
+              <YBMapLegend title="Placement Policy" regions={currentUniverse.data.regions}/>
             </Col>
           </Row>
         </div>

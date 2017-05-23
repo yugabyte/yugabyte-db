@@ -9,7 +9,7 @@ import { GraphPanelContainer, GraphPanelHeaderContainer } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetails,
-  DeleteUniverseContainer, UniverseAppsModal } from '../../universes';
+         DeleteUniverseContainer, UniverseAppsModal } from '../../universes';
 import { UniverseResources } from '../UniverseResources';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
@@ -17,7 +17,8 @@ import { YBTabsPanel } from '../../panels';
 import { RegionMap } from '../../maps';
 import { ListTablesContainer } from '../../tables';
 import { YBMapLegend } from '../../maps';
-import { isValidObject, isNonEmptyArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isEmptyObject, isNonEmptyObject, isValidObject, isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
+import {getPromiseState} from 'utils/PromiseUtils';
 import {YBLoadingIcon} from '../../common/indicators';
 import './UniverseDetail.scss';
 
@@ -48,15 +49,15 @@ export default class UniverseDetail extends Component {
   }
 
   render() {
-    const { universe: { currentUniverse, loading, showModal, visibleModal }, universe } = this.props;
-    if (loading.currentUniverse) {
+    const { universe: { currentUniverse, showModal, visibleModal }, universe } = this.props;
+    if (getPromiseState(currentUniverse).isLoading()) {
       return <YBLoadingIcon/>
-    } else if (!currentUniverse) {
+    } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
     }
 
     const width = this.state.dimensions.width;
-    const nodePrefixes = [currentUniverse.universeDetails.nodePrefix];
+    const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
     const graphPanelTypes = ['proxies', 'server', 'cql', 'redis', 'tserver', 'lsmdb'];
     const graphPanelContainers = graphPanelTypes.map(function (type, idx) {
       return <GraphPanelContainer key={idx} type={type} width={width} nodePrefixes={nodePrefixes} />
@@ -64,24 +65,24 @@ export default class UniverseDetail extends Component {
 
     var tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab">
-        <UniverseAppsModal nodeDetails={currentUniverse.universeDetails.nodeDetailsSet}/>
-        {isDefinedNotNull(currentUniverse.resources) &&
-          <UniverseResources resources={currentUniverse.resources} />
+        <UniverseAppsModal nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet}/>
+        {isDefinedNotNull(currentUniverse.data.resources) &&
+          <UniverseResources resources={currentUniverse.data.resources} />
         }
         <Row>
           <Col lg={5}>
-            <UniverseInfoPanel universeInfo={currentUniverse}
+            <UniverseInfoPanel universeInfo={currentUniverse.data}
                                customerId={localStorage.getItem("customer_id")} />
           </Col>
           <Col lg={7}>
             <ResourceStringPanel customerId={localStorage.getItem("customer_id")}
-                                universeInfo={currentUniverse} />
+                                universeInfo={currentUniverse.data} />
           </Col>
         </Row>
         <Row>
           <Col lg={12}>
-            <RegionMap regions={currentUniverse.regions ? currentUniverse.regions: []} type={"Root"} />
-            <YBMapLegend title="Placement Policy" regions={ currentUniverse.regions ? currentUniverse.regions : []}/>
+            <RegionMap regions={currentUniverse.data.regions ? currentUniverse.data.regions: []} type={"Root"} />
+            <YBMapLegend title="Placement Policy" regions={ currentUniverse.data.regions ? currentUniverse.data.regions : []}/>
           </Col>
         </Row>
       </Tab>,
@@ -89,7 +90,7 @@ export default class UniverseDetail extends Component {
         <ListTablesContainer/>
       </Tab>,
       <Tab eventKey={"nodes"} title="Nodes" key="nodes-tab">
-        <NodeDetails nodeDetails={currentUniverse.universeDetails.nodeDetailsSet} />
+        <NodeDetails nodeDetails={currentUniverse.data.universeDetails.nodeDetailsSet} />
       </Tab>,
       <Tab eventKey={"metrics"} title="Metrics" key="metrics-tab">
         <GraphPanelHeaderContainer origin={"universe"}>
@@ -114,9 +115,9 @@ export default class UniverseDetail extends Component {
             </div>
             <div className="universe-detail-status-container">
               <h2>
-                { currentUniverse.name }
+                { currentUniverse.data.name }
               </h2>
-              <UniverseStatusContainer currentUniverse={currentUniverse} showLabelText={true} />
+              <UniverseStatusContainer currentUniverse={currentUniverse.data} showLabelText={true} />
             </div>
           </Col>
           <Col lg={2} className="page-action-buttons">
@@ -165,14 +166,13 @@ export default class UniverseDetail extends Component {
 }
 
 class UniverseTaskList extends Component {
-
   render() {
     const {universe: {universeTasks, currentUniverse}} = this.props;
     var universeTaskUUIDs = [];
     var universeTaskHistoryArray = [];
     var universeTaskHistory = <span/>;
-    if (isValidObject(universeTasks) && isValidObject(currentUniverse) && universeTasks[currentUniverse.universeUUID] !== undefined) {
-      universeTaskUUIDs = universeTasks[currentUniverse.universeUUID].map(function(task) {
+    if (isValidObject(universeTasks) && isNonEmptyObject(currentUniverse.data) && universeTasks[currentUniverse.data.universeUUID] !== undefined) {
+      universeTaskUUIDs = universeTasks[currentUniverse.data.universeUUID].map(function(task) {
         if (task.status !== "Running") {
           universeTaskHistoryArray.push(task);
         }

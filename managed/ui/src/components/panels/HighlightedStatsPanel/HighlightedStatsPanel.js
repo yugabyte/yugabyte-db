@@ -4,7 +4,8 @@ import React, { Component } from 'react';
 import { Col } from 'react-bootstrap';
 import moment from 'moment';
 import { DescriptionItem, YBFormattedNumber } from '../../common/descriptors';
-import { isNonEmptyArray } from 'utils/ObjectUtils';
+import { getPromiseState } from 'utils/PromiseUtils';
+
 import './HighlightedStatsPanel.css'
 
 class StatsPanelComponent extends Component {
@@ -30,10 +31,10 @@ export default class HighlightedStatsPanel extends Component {
     const { universe: { universeList } } = this.props;
     var numNodes = 0;
     var totalCost = 0;
-    if (!isNonEmptyArray(universeList)) {
+    if (getPromiseState(universeList).isEmpty() || getPromiseState(universeList).isInit()) {
       return <span/>
     }
-    universeList.forEach(function (universeItem) {
+    universeList.data.forEach(function (universeItem) {
       numNodes += universeItem.universeDetails.userIntent.numNodes;
       totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
     });
@@ -42,7 +43,7 @@ export default class HighlightedStatsPanel extends Component {
     return (
       <div className="row tile_count highlighted-stats-panel">
         <Col sm={6} smOffset={3}>
-          <StatsPanelComponent value={universeList.length} label={"Universes"}/>
+          <StatsPanelComponent value={universeList.data.length} label={"Universes"}/>
           <StatsPanelComponent value={numNodes} label={"Nodes"}/>
           <StatsPanelComponent value={formattedCost} label={"Per Month"}/>
         </Col>

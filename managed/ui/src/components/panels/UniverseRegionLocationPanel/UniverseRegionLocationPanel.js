@@ -12,7 +12,8 @@ export default class UniverseRegionLocationPanel extends Component {
 
     var completeRegionList = cloud.supportedRegionList.data;
     var universeListByRegions = {};
-    universeList.forEach(function(universeItem){
+
+    universeList.data.forEach(function(universeItem){
       if (isNonEmptyArray(universeItem.regions)) {
         universeItem.regions.forEach(function (regionItem) {
           if (isValidObject(regionItem.uuid)) {

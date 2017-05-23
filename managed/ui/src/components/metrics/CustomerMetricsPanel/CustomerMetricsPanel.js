@@ -9,10 +9,6 @@ export default class CustomerMetricsPanel extends Component {
     dimensions: {},
   }
 
-  componentWillMount() {
-    this.props.fetchUniverseList();
-  }
-
   onResize(dimensions) {
     dimensions.width -= 2;
     this.setState({dimensions});

@@ -3,12 +3,14 @@
 import React, {Component} from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton, YBTextInputWithLabel } from '../../common/forms/fields';
+import {getPromiseState} from 'utils/PromiseUtils';
 import { ProgressList } from '../../common/indicators';
 import { DescriptionList } from '../../common/descriptors';
 import { YBConfirmModal } from '../../modals';
 import { Field } from 'redux-form';
 import { withRouter } from 'react-router';
-import  { isNonEmptyArray, isValidObject, trimString, convertSpaceToDash } from 'utils/ObjectUtils';
+
+import  {isValidObject, trimString, convertSpaceToDash, isNonEmptyArray} from '../../../utils/ObjectUtils';
 import { RegionMap } from '../../maps';
 
 const PROVIDER_TYPE = "aws";
@@ -103,10 +105,9 @@ class AWSProviderConfiguration extends Component {
     let universeExistsForProvider = false;
     let providerConfig;
     if (isValidObject(awsProvider)) {
-      if (isNonEmptyArray(configuredProviders.data) && isNonEmptyArray(universeList)) {
-        universeExistsForProvider = universeList.some(universe => universe.provider && (universe.provider.uuid === awsProvider.uuid));
+      if (getPromiseState(configuredProviders).isSuccess() && getPromiseState(universeList).isSuccess()){
+        universeExistsForProvider = universeList.data.some(universe => universe.provider && (universe.provider.uuid === awsProvider.uuid));
       }
-
       const awsRegions = configuredRegions.data.filter(
         (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
       );
