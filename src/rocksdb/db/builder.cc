@@ -145,10 +145,10 @@ Status BuildTable(const std::string& dbname,
       const Slice& value = c_iter.value();
       builder->Add(key, value);
       auto boundaries = MakeFileBoundaryValues(boundary_values_extractor, key, value);
-      if (const Status* status = yb::status(boundaries)) {
-        return *status;
+      if (!boundaries) {
+        return std::move(boundaries.status());
       }
-      auto& boundary_values = *yb::value(&boundaries);
+      auto& boundary_values = *boundaries;
       meta->UpdateBoundaries(std::move(boundary_values.key), boundary_values);
 
       // TODO(noetzli): Update stats after flush, too.

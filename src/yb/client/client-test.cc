@@ -496,7 +496,7 @@ TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
   Status s = client_->OpenTable(YBTableName(kKeyspaceName, "xxx-does-not-exist"), &t);
   ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "Not found: The table does not exist");
+  ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The table does not exist");
 }
 
 // Test that, if the master is down, we experience a network error talking
@@ -2724,7 +2724,9 @@ TEST_F(ClientTest, TestLastErrorEmbeddedInScanTimeoutStatus) {
     Status s = scan.Open();
     SCOPED_TRACE(s.ToString());
     ASSERT_TRUE(s.IsTimedOut());
-    ASSERT_STR_CONTAINS(s.ToString(), "Illegal state: Tablet not RUNNING");
+    auto message = s.ToString(false);
+    ASSERT_STR_CONTAINS(message, "Illegal state (");
+    ASSERT_STR_CONTAINS(message, "): Tablet not RUNNING");
   }
 }
 

@@ -35,9 +35,9 @@
 
 // Return the given status if it is not OK.
 #define YB_RETURN_NOT_OK(s) do { \
-    ::yb::Status _s = (s); \
-    if (PREDICT_FALSE(!_s.ok())) return _s;     \
-  } while (0);
+    auto _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) return MoveStatus(&_s); \
+  } while (false)
 
 // Return the given status if it is not OK, but first clone it and
 // prepend the given message.
@@ -249,6 +249,10 @@ class YB_EXPORT Status {
     uint32_t message_len;
     uint8_t code;
     int64_t error_code;
+    // This must always be a pointer to a constant string.
+    // The status object does not own this string.
+    const char* file_name;
+    int line_number;
     char message[1];
   } __attribute__ ((packed));
 
@@ -257,10 +261,6 @@ class YB_EXPORT Status {
   StatePtr state_;
   static constexpr size_t kHeaderSize = offsetof(State, message);
 
-  // This must always be a pointer to a constant string. The status object does not own this string.
-  const char* file_name_ = nullptr;
-  int line_number_ = 0;
-
   static_assert(sizeof(Code) == 4, "Code enum size is part of abi");
 
   int64_t GetErrorCode() const { return state_ ? state_->error_code : 0; }
@@ -268,9 +268,7 @@ class YB_EXPORT Status {
 };
 
 inline Status::Status(const Status& s)
-    : state_(s.CopyState()),
-      file_name_(s.file_name_),
-      line_number_(s.line_number_) {
+    : state_(s.CopyState()) {
 }
 
 inline void Status::operator=(const Status& s) {
@@ -282,15 +280,15 @@ inline void Status::operator=(const Status& s) {
 }
 
 inline Status::Status(Status&& s)
-    : state_(std::move(s.state_)),
-      file_name_(s.file_name_),
-      line_number_(s.line_number_)  {
+    : state_(std::move(s.state_)) {
 }
 
 inline void Status::operator=(Status&& s) {
   state_ = std::move(s.state_);
-  file_name_ = s.file_name_;
-  line_number_ = s.line_number_;
+}
+
+inline Status&& MoveStatus(Status* status) {
+  return std::move(*status);
 }
 
 }  // namespace yb

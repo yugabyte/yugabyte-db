@@ -17,11 +17,12 @@
 //
 // Tool to query tablet server operational data
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
 #include <iostream>
 #include <memory>
 #include <strstream>
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 
 #include "yb/client/row_result.h"
 #include "yb/client/scanner-internal.h"
@@ -176,7 +177,7 @@ Status TsAdminClient::Init() {
   MessengerBuilder builder("ts-cli");
   RETURN_NOT_OK(builder.Build(&messenger_));
 
-  RETURN_NOT_OK(host_port.ResolveAddresses(&addrs_))
+  RETURN_NOT_OK(host_port.ResolveAddresses(&addrs_));
 
   generic_proxy_.reset(new server::GenericServiceProxy(messenger_, addrs_[0]));
   ts_proxy_.reset(new TabletServerServiceProxy(messenger_, addrs_[0]));

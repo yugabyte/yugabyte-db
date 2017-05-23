@@ -74,7 +74,7 @@ Status LogReader::Open(FsManager *fs_manager,
   gscoped_ptr<LogReader> log_reader(new LogReader(fs_manager, index, tablet_id,
                                                   metric_entity));
 
-  RETURN_NOT_OK(log_reader->Init(tablet_wal_path))
+  RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
   reader->reset(log_reader.release());
   return Status::OK();
 }

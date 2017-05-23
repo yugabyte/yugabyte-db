@@ -199,7 +199,7 @@ Status MiniCluster::AddTabletServer() {
   }
   tablet_server->options()->SetMasterAddresses(master_addr);
   tablet_server->options()->webserver_opts.port = tserver_web_ports_[new_idx];
-  RETURN_NOT_OK(tablet_server->Start())
+  RETURN_NOT_OK(tablet_server->Start());
   mini_tablet_servers_.push_back(shared_ptr<MiniTabletServer>(tablet_server.release()));
   return Status::OK();
 }

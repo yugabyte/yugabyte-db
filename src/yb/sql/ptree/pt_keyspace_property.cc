@@ -102,7 +102,7 @@ CHECKED_STATUS PTKeyspacePropertyMap::Analyze(SemContext *sem_context) {
 
     if (subproperty_name == "class") {
       class_name.reset(new string());
-      RETURN_NOT_OK(GetStringValueFromExpr(map_element->rhs(), false, "class", class_name.get()))
+      RETURN_NOT_OK(GetStringValueFromExpr(map_element->rhs(), false, "class", class_name.get()));
     } else if (subproperty_name == "replication_factor") {
       replication_factor.reset(new int64_t);
       RETURN_NOT_OK(GetIntValueFromExpr(map_element->rhs(), "replication_factor",

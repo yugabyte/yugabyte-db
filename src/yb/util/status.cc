@@ -41,9 +41,7 @@ Status::Status(Code code,
                int line_number,
                const Slice& msg,
                const Slice& msg2,
-               int64_t error_code)
-    : file_name_(file_name),
-      line_number_(line_number) {
+               int64_t error_code) {
   assert(code != kOk);
   const size_t len1 = msg.size();
   const size_t len2 = msg2.size();
@@ -52,6 +50,8 @@ Status::Status(Code code,
   state_->message_len = static_cast<uint32_t>(size);
   state_->code = static_cast<uint8_t>(code);
   state_->error_code = error_code;
+  state_->file_name = file_name;
+  state_->line_number = line_number;
   memcpy(state_->message, msg.data(), len1);
   if (len2) {
     state_->message[len1] = ':';
@@ -110,7 +110,7 @@ std::string Status::ToString(bool include_file_and_line) const {
     return result;
   }
 
-  if (include_file_and_line && file_name_ != nullptr && line_number_ != 0) {
+  if (include_file_and_line && state_->file_name != nullptr && state_->line_number) {
     result.append(" (");
 
     // Try to only include file path starting from source root directory. We are assuming that all
@@ -118,11 +118,11 @@ std::string Status::ToString(bool include_file_and_line) const {
     // this will break if the repository itself is located in a parent directory named "src".
     // However, neither Jenkins, nor our standard code location on a developer workstation
     // (~/code/yugabyte) should have that problem.
-    const char* src_subpath = strstr(file_name_, "/src/");
-    result.append(src_subpath != nullptr ? src_subpath + 5 : file_name_);
+    const char* src_subpath = strstr(state_->file_name, "/src/");
+    result.append(src_subpath != nullptr ? src_subpath + 5 : state_->file_name);
 
     result.append(":");
-    result.append(std::to_string(line_number_));
+    result.append(std::to_string(state_->line_number));
     result.append(")");
   }
   result.append(": ");
@@ -157,11 +157,11 @@ int64_t Status::sql_error_code() const {
 }
 
 Status Status::CloneAndPrepend(const Slice& msg) const {
-  return Status(code(), file_name_, line_number_, msg, message(), posix_code());
+  return Status(code(), state_->file_name, state_->line_number, msg, message(), posix_code());
 }
 
 Status Status::CloneAndAppend(const Slice& msg) const {
-  return Status(code(), file_name_, line_number_, message(), msg, posix_code());
+  return Status(code(), state_->file_name, state_->line_number, message(), msg, posix_code());
 }
 
 size_t Status::memory_footprint_excluding_this() const {

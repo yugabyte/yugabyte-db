@@ -702,11 +702,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     auto boundaries = MakeFileBoundaryValues(db_options_.boundary_extractor.get(),
                                              key,
                                              value);
-    if (const Status* s = yb::status(boundaries)) {
-      status = *s;
+    if (!boundaries) {
+      status = std::move(boundaries.status());
       break;
     }
-    auto& boundary_values = *yb::value(&boundaries);
+    auto& boundary_values = *boundaries;
     sub_compact->current_output()->meta.UpdateBoundaries(std::move(boundary_values.key),
                                                          boundary_values);
     sub_compact->num_output_records++;

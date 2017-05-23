@@ -220,7 +220,7 @@ TEST_F(RpcStubTest, TestCallWithMissingPBFieldClientSide) {
   }
   SleepFor(MonoDelta::FromMicroseconds(100));
   ASSERT_EQ(1, NoBarrier_Load(&callback_count));
-  ASSERT_STR_CONTAINS(controller.status().ToString(),
+  ASSERT_STR_CONTAINS(controller.status().ToString(false),
                       "Invalid argument: RPC argument missing required fields: y");
 }
 
@@ -243,7 +243,7 @@ TEST_F(RpcStubTest, TestApplicationError) {
   req.set_return_app_error(true);
   Status s = p.Sleep(req, &resp, &controller);
   ASSERT_TRUE(s.IsRemoteError());
-  EXPECT_EQ("Remote error: Got some error", s.ToString());
+  EXPECT_EQ("Remote error: Got some error", s.ToString(false));
   EXPECT_EQ("message: \"Got some error\"\n"
             "[yb.rpc_test.CalculatorError.app_error_ext] {\n"
             "  extra_error_data: \"some application-specific error data\"\n"

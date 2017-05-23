@@ -157,10 +157,12 @@ TEST_F(TestRpc, TestWrongService) {
 
   // Call the method which fails.
   Status s = DoTestSyncCall(p, "ThisMethodDoesNotExist");
-  ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
+  auto message = s.ToString();
+  ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << message;
   // Remote errors always contain file name and line number.
-  ASSERT_STR_CONTAINS(s.ToString(), "Remote error: Service unavailable (");
-  ASSERT_STR_CONTAINS(s.ToString(), "): service WrongServiceName not registered on TestServer");
+  ASSERT_STR_CONTAINS(message, "Remote error (");
+  ASSERT_STR_CONTAINS(message, "): Service unavailable (");
+  ASSERT_STR_CONTAINS(message, "): service WrongServiceName not registered on TestServer");
 }
 
 namespace {
