@@ -95,8 +95,9 @@ download_prebuilt_thirdparty_deps() {
   fi
 
   if [ -n "${YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY:-}" ]; then
-    fatal "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, not attempting to download prebuilt" \
-          "third-party dependencies."
+    log "YB_NO_DOWNLOAD_PREBUILT_THIRDPARTY is defined, not attempting to download prebuilt" \
+         "third-party dependencies."
+    return 1
   fi
 
   local skipped_msg_suffix="not attempting to download prebuilt third-party dependencies"
