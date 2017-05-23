@@ -74,7 +74,7 @@ export default class UniverseDisplayPanel extends Component {
     var self = this;
     const { universe: {universeList, showModal, visibleModal}, cloud :{providers}} = this.props;
     if (getPromiseState(providers).isSuccess()) {
-      var universeDisplayList = universeList.map(function(universeItem, idx){
+      var universeDisplayList = universeList.data.map(function(universeItem, idx){
         return <UniverseDisplayItem key={universeItem.name + idx} universe={universeItem}/>
       });
       var createUniverseButton = <CreateUniverseButtonComponent onClick={() => self.props.showUniverseModal()}/>;

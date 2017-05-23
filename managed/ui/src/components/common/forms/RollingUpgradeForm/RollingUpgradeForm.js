@@ -65,7 +65,7 @@ export default class RollingUpgradeForm extends Component {
   }
 
   setRollingUpgradeProperties(values) {
-    const { universe: {visibleModal, currentUniverse: {universeDetails: {nodeDetailsSet}, universeUUID}}} = this.props;
+    const { universe: {visibleModal, currentUniverse: {data: {universeDetails: {nodeDetailsSet}, universeUUID}}}} = this.props;
     var nodeNames = [];
     var payload = {};
     nodeDetailsSet.forEach(function(item, idx){
@@ -92,7 +92,7 @@ export default class RollingUpgradeForm extends Component {
   render() {
     var self = this;
     const {onHide, modalVisible, handleSubmit, universe: {visibleModal,
-           error, currentUniverse: {universeDetails: {nodeDetailsSet}}}, resetRollingUpgrade, softwareVersions} = this.props;
+           error, currentUniverse: {data: {universeDetails: {nodeDetailsSet}}}}, resetRollingUpgrade, softwareVersions} = this.props;
     const submitAction = handleSubmit(self.setRollingUpgradeProperties);
     var title = "";
     var formBody = <span/>;

@@ -2,12 +2,12 @@
 
 import React, { Component } from 'react';
 
-import { CustomerMetricsPanelContainer } from '../components/metrics';
+import { CustomerMetricsPanel } from '../components/metrics';
 
 class Metrics extends Component {
   render() {
     return (
-      <CustomerMetricsPanelContainer origin={"customer"}/>
+      <CustomerMetricsPanel origin={"customer"}/>
     );
   }
 }

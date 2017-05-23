@@ -5,93 +5,64 @@ import { connect } from 'react-redux';
 import {  fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse, listAccessKeys, listAccessKeysResponse  } from 'actions/cloud';
-import {createUniverse, createUniverseSuccess, createUniverseFailure,
-        editUniverse, editUniverseSuccess, editUniverseFailure,
-        fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure, closeDialog,
-        configureUniverseTemplate, configureUniverseTemplateSuccess, configureUniverseTemplateFailure,
-        configureUniverseResources, configureUniverseResourcesFailure, configureUniverseResourcesSuccess,
-        checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration, fetchUniverseInfo, fetchUniverseInfoSuccess,
-        fetchUniverseInfoFailure } from 'actions/universe';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
+import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse, closeDialog,
+         configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
+         configureUniverseResources, configureUniverseResourcesResponse,
+         checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
+         fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata } from 'actions/universe';
+import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
 
-//For any field errors upon submission (i.e. not instant check)
+
 
 const mapDispatchToProps = (dispatch) => {
   return {
     submitConfigureUniverse: (values) => {
       dispatch(configureUniverseTemplate(values)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(configureUniverseTemplateFailure(response.payload));
+        dispatch(configureUniverseTemplateResponse(response.payload));
+      });
+    },
+
+    fetchUniverseResources: (payload) => {
+      dispatch(configureUniverseResources(payload)).then((resourceData) => {
+        dispatch(configureUniverseResourcesResponse(resourceData.payload));
+      });
+    },
+
+
+    submitCreateUniverse: (values) => {
+      dispatch(createUniverse(values)).then((response) => {
+        dispatch(createUniverseResponse(response.payload));
+      });
+    },
+
+    fetchCustomerTasks: () => {
+      dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
-          dispatch(configureUniverseTemplateSuccess(response.payload));
-          dispatch(configureUniverseResources(response.payload.data)).then((resourceData) => {
-            if (response.payload.status !== 200) {
-              dispatch(configureUniverseResourcesFailure(resourceData.payload));
-            } else {
-              dispatch(configureUniverseResourcesSuccess(resourceData.payload));
-            }
-          });
+          dispatch(fetchCustomerTasksFailure(response.payload));
         }
       });
     },
 
-    submitCreateUniverse: (values) => {
-      dispatch(createUniverse(values)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(createUniverseFailure(response.payload));
-        } else {
-          dispatch(closeDialog());
-          dispatch(createUniverseSuccess(response.payload));
-          dispatch(fetchCustomerTasks()).then((response) => {
-            if (!response.error) {
-              dispatch(fetchCustomerTasksSuccess(response.payload));
-            } else {
-              dispatch(fetchCustomerTasksFailure(response.payload));
-            }
-          });
-          dispatch(fetchUniverseList()).then((response) => {
-            if (response.payload.status !== 200) {
-              dispatch(fetchUniverseListFailure(response.payload));
-              //Add Error message state to modal
-            } else {
-              dispatch(fetchUniverseListSuccess(response.payload));
-            }
-          });
-        }
+    fetchUniverseMetadata: () => {
+      dispatch(fetchUniverseMetadata());
+    },
+
+    fetchCurrentUniverse: (universeUUID) => {
+      dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
       });
+    },
+
+    closeUniverseDialog: () => {
+      dispatch(closeDialog());
     },
 
     submitEditUniverse: (values, universeUUID) => {
       dispatch(editUniverse(values, universeUUID)).then((response) => {
-        if (response.payload.status !== 200) {
-          dispatch(editUniverseFailure(response.payload));
-        } else {
-          dispatch(closeDialog());
-          dispatch(editUniverseSuccess(response.payload));
-          dispatch(fetchCustomerTasks()).then((response) => {
-            if (!response.error) {
-              dispatch(fetchCustomerTasksSuccess(response.payload));
-            } else {
-              dispatch(fetchCustomerTasksFailure(response.payload));
-            }
-          });
-          dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
-            if (!response.error) {
-              dispatch(fetchUniverseInfoSuccess(response.payload));
-              dispatch(fetchUniverseList())
-                .then((response) => {
-                  if (response.payload.status !== 200) {
-                    dispatch(fetchUniverseListFailure(response.payload));
-                  } else {
-                    dispatch(fetchUniverseListSuccess(response.payload));
-                  }
-                });
-            } else {
-              dispatch(fetchUniverseInfoFailure(response.payload));
-            }
-          });
-        }
-      })
+        dispatch(editUniverseResponse(response.payload));
+      });
     },
 
     getInstanceTypeListItems: (provider) => {
@@ -123,11 +94,7 @@ const mapDispatchToProps = (dispatch) => {
     getExistingUniverseConfiguration: (universeDetail) => {
       dispatch(configureUniverseTemplateSuccess({data: universeDetail}));
       dispatch(configureUniverseResources(universeDetail)).then((resourceData) => {
-        if (resourceData.payload.status !== 200) {
-          dispatch(configureUniverseResourcesFailure(resourceData.payload));
-        } else {
-          dispatch(configureUniverseResourcesSuccess(resourceData.payload));
-        }
+        dispatch(configureUniverseResourcesResponse(resourceData.payload));
       });
     },
   }
@@ -147,25 +114,25 @@ function mapStateToProps(state, ownProps) {
     "formType": "create",
     "accessKeyCode": "yugabyte-default"
   };
-  if (isDefinedNotNull(currentUniverse)) {
-    let userIntent = currentUniverse.universeDetails && currentUniverse.universeDetails.userIntent;
-    data.universeName = currentUniverse.name;
+  if (isNonEmptyObject(currentUniverse.data)) {
+    let userIntent = currentUniverse.data.universeDetails && currentUniverse.data.universeDetails.userIntent;
+    data.universeName = currentUniverse.data.name;
     data.formType = "edit";
-    data.provider = currentUniverse.provider && currentUniverse.provider.uuid;
+    data.provider = currentUniverse.data.provider && currentUniverse.data.provider.uuid;
     data.numNodes = userIntent && userIntent.numNodes;
     data.isMultiAZ = userIntent && userIntent.isMultiAZ;
     data.instanceType = userIntent && userIntent.instanceType;
     data.ybSoftwareVersion = userIntent && userIntent.ybSoftwareVersion;
     data.accessKeyCode = userIntent && userIntent.accessKeyCode;
-    if (isDefinedNotNull(currentUniverse.universeDetails)  && userIntent.isMultiAZ) {
-      data.regionList = currentUniverse.regions && currentUniverse.regions.map(function (item, idx) {
+    if (isDefinedNotNull(currentUniverse.data.universeDetails)  && userIntent.isMultiAZ) {
+      data.regionList = currentUniverse.data.regions && currentUniverse.data.regions.map(function (item, idx) {
         return {value: item.uuid, name: item.name, label: item.name};
       })
     } else {
       data.regionList = [{
-        value: currentUniverse.regions[0].uuid,
-        name: currentUniverse.regions[0].name,
-        label: currentUniverse.regions[0].name
+        value: currentUniverse.data.regions[0].uuid,
+        name: currentUniverse.data.regions[0].name,
+        label: currentUniverse.data.regions[0].name
       }];
     }
   }

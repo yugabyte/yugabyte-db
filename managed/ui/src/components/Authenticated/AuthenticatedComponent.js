@@ -23,6 +23,9 @@ export default class AuthenticatedComponent extends Component {
       this.props.fetchUniverseList();
       this.props.getSupportedRegionList();
     }
+    if (this.props.fetchUniverseMetadata !== nextProps.fetchUniverseMetadata && nextProps.fetchUniverseMetadata) {
+      this.props.fetchUniverseList();
+    }
   }
 
   render() {

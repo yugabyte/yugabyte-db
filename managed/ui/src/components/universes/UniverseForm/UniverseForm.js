@@ -6,7 +6,7 @@ import { isDefinedNotNull, isValidArray, isNonEmptyObject, areIntentsEqual, isEm
 import { YBModal, YBTextInputWithLabel, YBControlledNumericInput, YBControlledNumericInputWithLabel,
   YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel
 } from 'components/common/forms/fields';
-
+import {getPromiseState} from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
 import { UniverseResources } from '../UniverseResources';
 import './UniverseForm.scss';
@@ -63,10 +63,10 @@ export default class UniverseForm extends Component {
 
   configureUniverseNodeList() {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues} = this.props;
-    var universeTaskParams = _.clone(universeConfigTemplate, true);
-    if (isDefinedNotNull(currentUniverse)) {
-      universeTaskParams.universeUUID = currentUniverse.universeUUID;
-      universeTaskParams.expectedUniverseVersion = currentUniverse.version;
+    var universeTaskParams = _.clone(universeConfigTemplate.data, true);
+    if (isNonEmptyObject(currentUniverse.data)) {
+      universeTaskParams.universeUUID = currentUniverse.data.universeUUID;
+      universeTaskParams.expectedUniverseVersion = currentUniverse.data.version;
     }
     var currentState = this.state;
     universeTaskParams.userIntent = {
@@ -97,11 +97,11 @@ export default class UniverseForm extends Component {
       if (isDefinedNotNull(universeTaskParams.placementInfo)) {
         universeTaskParams.placementInfo.isCustom = this.state.isCustom;
       }
-      if (currentUniverse) {
-        if (!areIntentsEqual(currentUniverse.universeDetails.userIntent, universeTaskParams.userIntent)) {
+      if (isNonEmptyObject(currentUniverse.data)) {
+        if (!areIntentsEqual(currentUniverse.data.universeDetails.userIntent, universeTaskParams.userIntent)) {
           this.props.submitConfigureUniverse(universeTaskParams);
         } else {
-          this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
+          this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
         }
       } else {
         this.props.submitConfigureUniverse(universeTaskParams);
@@ -110,12 +110,12 @@ export default class UniverseForm extends Component {
   }
 
   createUniverse() {
-    this.props.submitCreateUniverse(this.props.universe.universeConfigTemplate);
+    this.props.submitCreateUniverse(this.props.universe.universeConfigTemplate.data);
   }
 
   editUniverse() {
-    const {universe: {universeConfigTemplate, currentUniverse: {universeUUID}}} = this.props;
-    this.props.submitEditUniverse(universeConfigTemplate, universeUUID);
+    const {universe: {universeConfigTemplate, currentUniverse: {data: {universeUUID}}}} = this.props;
+    this.props.submitEditUniverse(universeConfigTemplate.data, universeUUID);
   }
 
   componentWillMount() {
@@ -124,8 +124,8 @@ export default class UniverseForm extends Component {
       this.setState({ybSoftwareVersion: this.props.softwareVersions[0]});
     }
     if (this.props.type === "Edit") {
-      const {universe: {currentUniverse}, universe: {currentUniverse: {universeDetails: {userIntent}}}} = this.props;
-      let providerUUID = currentUniverse.provider && currentUniverse.provider.uuid;
+      const {universe: {currentUniverse}, universe: {currentUniverse: {data: {universeDetails: {userIntent}}}}} = this.props;
+      let providerUUID = currentUniverse.data.provider && currentUniverse.data.provider.uuid;
       let isMultiAZ = userIntent.isMultiAZ;
       if (userIntent && providerUUID) {
         let ebsType = (userIntent.deviceInfo === null) ? null : userIntent.deviceInfo.ebsType;
@@ -145,13 +145,13 @@ export default class UniverseForm extends Component {
       this.props.getRegionListItems(providerUUID, isMultiAZ);
       this.props.getInstanceTypeListItems(providerUUID);
       // If Edit Case Set Initial Configuration
-      this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
+      this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
     }
   }
 
   providerChanged(value) {
     let providerUUID = value;
-    if (!this.props.universe.currentUniverse) {
+    if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.props.resetConfig();
       this.props.dispatch(change("UniverseForm", "regionList", []));
       this.setState({regionList: [], providerSelected: providerUUID, deviceInfo: {}});
@@ -212,7 +212,7 @@ export default class UniverseForm extends Component {
 
   replicationFactorChanged(value) {
     var self = this;
-    if (!this.props.universe.currentUniverse) {
+    if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       this.setState({replicationFactor: value}, function () {
         if (self.state.numNodes <= value) {
           self.setState({numNodes: value, isCustom: false});
@@ -308,18 +308,18 @@ export default class UniverseForm extends Component {
 
     // Set Default Software Package in case of Create
     if (nextProps.softwareVersions !== this.props.softwareVersions
-        && !_.isObject(this.props.universe.currentUniverse)
+        && isEmptyObject(this.props.universe.currentUniverse.data)
         && isValidArray(nextProps.softwareVersions)
         && !isValidArray(this.props.softwareVersions)) {
       this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
     }
 
     // If dialog has been closed and opened again in-case of edit, then repopulate current config
-    if (currentUniverse && isNonEmptyObject(currentUniverse) && showModal
+    if (isNonEmptyObject(currentUniverse.data) && showModal
         && !this.props.universe.showModal && visibleModal === "universeModal") {
-      var userIntent  = currentUniverse.universeDetails.userIntent;
-      this.props.getExistingUniverseConfiguration(currentUniverse.universeDetails);
-      var providerUUID = currentUniverse.provider.uuid;
+      var userIntent  = currentUniverse.data.universeDetails.userIntent;
+      this.props.getExistingUniverseConfiguration(currentUniverse.data.universeDetails);
+      var providerUUID = currentUniverse.data.provider.uuid;
       var isMultiAZ = true;
       if (userIntent && providerUUID) {
         this.setState({
@@ -337,6 +337,24 @@ export default class UniverseForm extends Component {
     }
     if (isValidArray(nextProps.accessKeys.data) && !isValidArray(this.props.accessKeys.data)) {
       this.setState({accessKeyCode: nextProps.accessKeys.data[0].idKey.keyCode})
+    }
+
+    // Form Actions on Create Universe Success
+    if (getPromiseState(this.props.universe.createUniverse).isLoading() && getPromiseState(nextProps.universe.createUniverse).isSuccess()) {
+      this.props.closeUniverseDialog();
+      this.props.fetchUniverseMetadata();
+      this.props.fetchCustomerTasks();
+    }
+    // Form Actions on Edit Universe Success
+    if (getPromiseState(this.props.universe.editUniverse).isLoading() && getPromiseState(nextProps.universe.editUniverse).isSuccess()) {
+      this.props.closeUniverseDialog();
+      this.props.fetchCurrentUniverse(currentUniverse.data.universeUUID);
+      this.props.fetchUniverseMetadata();
+      this.props.fetchCustomerTasks();
+    }
+    // Form Actions on Configure Universe Success
+    if (getPromiseState(this.props.universe.universeConfigTemplate).isLoading() && getPromiseState(nextProps.universe.universeConfigTemplate).isSuccess()) {
+      this.props.fetchUniverseResources(nextProps.universe.universeConfigTemplate.data);
     }
   }
 
@@ -411,7 +429,7 @@ export default class UniverseForm extends Component {
 
     var configDetailItem = "";
     if (isDefinedNotNull(universe.universeResourceTemplate) && isDefinedNotNull(universe.universeConfigTemplate)) {
-      configDetailItem = <UniverseResources resources={universe.universeResourceTemplate} />
+      configDetailItem = <UniverseResources resources={universe.universeResourceTemplate.data} />
     }
 
     var softwareVersionOptions = softwareVersions.map(function(item, idx){
@@ -435,7 +453,7 @@ export default class UniverseForm extends Component {
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
-    var isFieldReadOnly = universe.currentUniverse ? true : false;
+    var isFieldReadOnly = isNonEmptyObject(universe.currentUniverse.data) ? true : false;
     if (_.isObject(self.state.deviceInfo) && isNonEmptyObject(self.state.deviceInfo)) {
       if (self.state.volumeType === 'EBS') {
         let iopsField = <span/>;

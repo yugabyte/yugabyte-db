@@ -2,8 +2,9 @@
 
 import React, { Component } from 'react';
 import {Modal} from 'react-bootstrap';
+import {getPromiseState} from 'utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
-
+import { browserHistory } from 'react-router';
 import { YBButton } from '../../common/forms/fields';
 export default class DeleteUniverse extends Component {
 
@@ -19,13 +20,18 @@ export default class DeleteUniverse extends Component {
 
   confirmDelete() {
     this.props.onHide();
-    this.props.deleteUniverse(this.props.universe.currentUniverse.universeUUID);
+    this.props.deleteUniverse(this.props.universe.currentUniverse.data.universeUUID);
+  }
+
+  componentWillReceiveProps(nextProps) {
+    if (getPromiseState(this.props.universe.deleteUniverse).isLoading() && getPromiseState(nextProps.universe.deleteUniverse).isSuccess()) {
+      this.props.fetchUniverseMetadata();
+      browserHistory.push('/universes');
+    }
   }
 
   render() {
-
-    const { visible, onHide, universe: {currentUniverse: {name}} } = this.props;
-
+    const { visible, onHide, universe: {currentUniverse: {data: {name}}}} = this.props;
     return (
       <Modal show={visible} onHide={onHide}>
         <Modal.Header>

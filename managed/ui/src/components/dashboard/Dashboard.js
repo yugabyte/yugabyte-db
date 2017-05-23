@@ -8,12 +8,7 @@ import { UniverseRegionLocationPanelContainer,
 import './stylesheets/Dashboard.css'
 
 export default class Dashboard extends Component {
-  componentDidMount() {
-    this.props.fetchUniverseList();
-  }
-  componentWillUnmount() {
-    this.props.fetchUniverseList();
-  }
+
   render() {
     return (
       <div id="page-wrapper" className="dashboard-container">

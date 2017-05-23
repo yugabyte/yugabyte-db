@@ -3,23 +3,14 @@
 import { connect } from 'react-redux';
 
 import UniverseTable from './UniverseTable';
-import { fetchUniverseList, fetchUniverseListSuccess, fetchUniverseListFailure,
-  resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
-import { fetchCustomerTasks, fetchCustomerTasksSuccess,
-  fetchCustomerTasksFailure } from '../../../actions/tasks';
+import { fetchUniverseMetadata, resetUniverseTasks, setUniverseMetrics} from '../../../actions/universe';
+import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure } from '../../../actions/tasks';
 import { queryMetrics } from '../../../actions/graph';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    fetchUniverseList: () => {
-      dispatch(fetchUniverseList())
-        .then((response) => {
-          if (response.payload.status !== 200) {
-            dispatch(fetchUniverseListFailure(response.payload));
-          } else {
-            dispatch(fetchUniverseListSuccess(response.payload));
-          }
-        });
+    fetchUniverseMetadata: () => {
+      dispatch(fetchUniverseMetadata());
     },
 
     fetchUniverseTasks: () => {
