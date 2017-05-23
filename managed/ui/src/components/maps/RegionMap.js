@@ -37,9 +37,10 @@ export default class RegionMap extends Component {
     });
 
     if (type === "all") {
-      regionMarkers =  <MarkerClusterLayer newMarkerData={regions}/>
+      regionMarkers =  <MarkerClusterLayer newMarkerData={regions}/>;
     }
-    if (isNonEmptyArray(regionLatLngs)) {
+
+    if (isNonEmptyArray(regionLatLngs) && type !== "all") {
       bounds = regionLatLngs;
     }
     const attribution =

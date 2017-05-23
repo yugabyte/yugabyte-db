@@ -87,7 +87,7 @@ export default class MarkerClusterLayer extends MapLayer {
   componentWillReceiveProps(nextProps) {
     var self = this;
     this.leafletElement.clearLayers();
-    const {newMarkerData} = this.props;
+    const {newMarkerData} = nextProps;
     if (newMarkerData.length > 0) {
       let newMarkers = [];
       sortByLengthOfArrayProperty(newMarkerData, 'universes').forEach((obj) => {
