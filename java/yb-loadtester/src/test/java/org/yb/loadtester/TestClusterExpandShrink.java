@@ -122,9 +122,9 @@ public class TestClusterExpandShrink extends BaseCQLTest {
       return testRunner.getNumExceptions();
     }
 
-    public int waitNumOpsAtLeast(int expectedNumOps) throws Exception {
+    public long waitNumOpsAtLeast(long expectedNumOps) throws Exception {
       TestUtils.waitFor(() -> testRunner.numOps() >= expectedNumOps, WAIT_FOR_OPS_TIMEOUT_MS);
-      Integer numOps = testRunner.numOps();
+      Long numOps = testRunner.numOps();
       LOG.info("Num Ops: " + numOps + ", Expected: " + expectedNumOps);
       assertTrue(numOps >= expectedNumOps);
       return numOps;
@@ -220,7 +220,7 @@ public class TestClusterExpandShrink extends BaseCQLTest {
     LOG.info("Loadtester start.");
 
     // Wait for load tester to generate traffic.
-    int totalOps = loadTesterRunnable.waitNumOpsAtLeast(NUM_OPS_INCREMENT);
+    long totalOps = loadTesterRunnable.waitNumOpsAtLeast(NUM_OPS_INCREMENT);
 
     // Create a copy to store original list.
     Map<HostAndPort, MiniYBDaemon> originalTServers = new HashMap<>(miniCluster.getTabletServers());
