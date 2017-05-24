@@ -6,6 +6,7 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.log4j.Logger;
 
@@ -34,11 +35,11 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   // The configuration of the load tester.
   private CmdLineOpts configuration;
   // The number of keys written so far.
-  protected int numKeysWritten = 0;
+  protected static AtomicLong numKeysWritten = new AtomicLong(0);
   // The number of keys that have been read so far.
-  protected int numKeysRead = 0;
+  protected static AtomicLong numKeysRead = new AtomicLong(0);
   // Object to track read and write metrics.
-  private static MetricsTracker metricsTracker = new MetricsTracker();
+  private static MetricsTracker metricsTracker;
   // State variable to track if this workload has finished.
   protected AtomicBoolean hasFinished = new AtomicBoolean(false);
   // The Cassandra client variables.
@@ -53,7 +54,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   //////////// Helper methods to return the client objects (Redis, Cassandra, etc). ////////////////
 
   /**
-   * We create one Cassandra client and share it among all the threads. This is a non-synchronized
+   * We create one Cassandra client per app instance. This is a non-synchronized
    * method, so multiple threads can call it without any performance penalty. If there is no client,
    * a synchronized thread is created so that exactly only one thread will create a client. If there
    * is a pre-existing client, we just return it.
@@ -118,7 +119,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
   public void dropTable() {}
 
   /**
-   * The apps extending this base should drop create all the necessary tables in this method.
+   * The apps extending this base should create all the necessary tables in this method.
    */
   public void createTableIfNeeded() {}
 
@@ -180,11 +181,18 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     workloadStartTime = System.currentTimeMillis();
     this.configuration = configuration;
     initialize(configuration);
-    if (appConfig.appType == AppConfig.Type.OLTP) {
-      metricsTracker.createMetric(MetricName.Read);
-      metricsTracker.createMetric(MetricName.Write);
-      metricsTracker.registerStatusMessageAppender(this);
-      metricsTracker.start();
+    initMetricsTracker();
+  }
+
+   private synchronized void initMetricsTracker() {
+    if (metricsTracker == null) {
+      metricsTracker = new MetricsTracker();
+      if (appConfig.appType == AppConfig.Type.OLTP) {
+        metricsTracker.createMetric(MetricName.Read);
+        metricsTracker.createMetric(MetricName.Write);
+        metricsTracker.registerStatusMessageAppender(this);
+        metricsTracker.start();
+      }
     }
   }
 
@@ -231,7 +239,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public void performWrite() {
     // If we have written enough keys we are done.
-    if (appConfig.numKeysToWrite > 0 && numKeysWritten >= appConfig.numKeysToWrite - 1) {
+    if (appConfig.numKeysToWrite > 0 && numKeysWritten.get() >= appConfig.numKeysToWrite) {
       hasFinished.set(true);
       return;
     }
@@ -240,7 +248,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     long count = doWrite();
     long endTs = System.nanoTime();
     if (count > 0) {
-      numKeysWritten += count;
+      numKeysWritten.addAndGet(count);
       metricsTracker.getMetric(MetricName.Write).accumulate(count, endTs - startTs);
     }
   }
@@ -252,7 +260,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
    */
   public void performRead() {
     // If we have read enough keys we are done.
-    if (appConfig.numKeysToRead > 0 && numKeysRead >= appConfig.numKeysToRead - 1) {
+    if (appConfig.numKeysToRead > 0 && numKeysRead.get() >= appConfig.numKeysToRead) {
       hasFinished.set(true);
       return;
     }
@@ -261,7 +269,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     long count = doRead();
     long endTs = System.nanoTime();
     if (count > 0) {
-      numKeysRead += count;
+      numKeysRead.addAndGet(count);
       metricsTracker.getMetric(MetricName.Read).accumulate(count, endTs - startTs);
     }
   }
@@ -303,7 +311,7 @@ public abstract class AppBase implements MetricsTracker.StatusMessageAppender {
     return loadGenerator;
   }
 
-  public int numOps() {
-    return numKeysRead + numKeysWritten;
+  public long numOps() {
+    return numKeysRead.get() + numKeysWritten.get();
   }
 }

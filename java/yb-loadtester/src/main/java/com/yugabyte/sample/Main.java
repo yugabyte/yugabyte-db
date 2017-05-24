@@ -4,7 +4,6 @@ package com.yugabyte.sample;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -61,7 +60,7 @@ public class Main {
 
   public Main(CmdLineOpts cmdLineOpts) {
     this.cmdLineOpts = cmdLineOpts;
-    this.app = cmdLineOpts.getAppInstance();
+    this.app = cmdLineOpts.createAppInstance();
   }
 
   /**
@@ -99,7 +98,7 @@ public class Main {
     return false;
   }
 
-  public int numOps() {
+  public long numOps() {
     int count = 0;
     for (IOPSThread iopsThread : iopsThreads) {
       count += iopsThread.numOps();
@@ -127,11 +126,11 @@ public class Main {
       // Create the reader and writer threads.
       int idx = 0;
       for (; idx < cmdLineOpts.getNumWriterThreads(); idx++) {
-        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.getAppInstance(), IOType.Write));
+        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Write));
       }
       for (; idx < cmdLineOpts.getNumWriterThreads() + cmdLineOpts.getNumReaderThreads();
            idx++) {
-        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.getAppInstance(), IOType.Read));
+        iopsThreads.add(new IOPSThread(idx, cmdLineOpts.createAppInstance(), IOType.Read));
       }
 
       // Start the reader and writer threads.

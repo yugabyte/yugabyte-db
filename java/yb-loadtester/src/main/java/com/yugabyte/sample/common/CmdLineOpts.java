@@ -88,7 +88,10 @@ public class CmdLineOpts {
     }
   }
 
-  public AppBase getAppInstance() {
+  /**
+   * Creates new instance of the app.
+   */
+  public AppBase createAppInstance() {
     AppBase workload = null;
     try {
       // Create a new workload object.

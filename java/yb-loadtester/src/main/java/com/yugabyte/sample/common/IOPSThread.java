@@ -48,7 +48,7 @@ public class IOPSThread extends Thread {
     return ioThreadFailed;
   }
 
-  public int numOps() {
+  public long numOps() {
     return app.numOps();
   }
 
