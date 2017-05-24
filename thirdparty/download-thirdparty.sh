@@ -25,7 +25,6 @@ set -euo pipefail
 . "${BASH_SOURCE%/*}/thirdparty-common.sh"
 
 EXPECTED_CHECKSUM_FILE=$YB_THIRDPARTY_DIR/thirdparty_src_checksums.txt
-THIRDPARTY_S3_CONFIG_PATH=$HOME/.s3cfg-jenkins-slave
 
 # Maps file name to its expected SHA 256 checksum. These are loaded by load_expected_checksums.
 declare -A expected_checksums_by_name
@@ -93,7 +92,7 @@ fetch_and_expand() {
     fi
     log "Fetching $FILENAME"
     if [[ $download_url == s3:* ]]; then
-      s3cmd -c "$THIRDPARTY_S3_CONFIG_PATH" get "$download_url" "$FILENAME"
+      s3cmd get "$download_url" "$FILENAME"
       # Alternatively we can use AWS CLI:
       # aws s3 cp "$download_url" "$FILENAME"
     else
