@@ -36,6 +36,9 @@
 %skeleton "lalr1.cc" /* -*- C++ -*- */
 %require "3.0.2"
 
+// Expect 0 shift/reduce conflicts.
+%expect 0
+
 // Debugging options. These should be deleted after coding is completed.
 %debug
 %define parse.error verbose
@@ -765,33 +768,33 @@ schema_stmt:
 //--------------------------------------------------------------------------------------------------
 
 CreateSchemaStmt:
-  CREATE KEYSPACE ColId OptSchemaEltList opt_keyspace_options {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false, $5);
+  CREATE KEYSPACE ColId opt_keyspace_options OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false, $4);
   }
-  | CREATE SCHEMA ColId OptSchemaEltList opt_keyspace_options {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false, $5);
+  | CREATE SCHEMA ColId opt_keyspace_options OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $3, false, $4);
   }
-  | CREATE KEYSPACE IF_P NOT_LA EXISTS ColId OptSchemaEltList opt_keyspace_options {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true, $8);
+  | CREATE KEYSPACE IF_P NOT_LA EXISTS ColId opt_keyspace_options OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true, $7);
   }
-  | CREATE SCHEMA IF_P NOT_LA EXISTS ColId OptSchemaEltList opt_keyspace_options {
-    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true, $8);
+  | CREATE SCHEMA IF_P NOT_LA EXISTS ColId opt_keyspace_options OptSchemaEltList {
+    $$ = MAKE_NODE(@1, PTCreateKeyspace, $6, true, $7);
   }
-  | CREATE KEYSPACE OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList opt_keyspace_options {
+  | CREATE KEYSPACE OptSchemaName AUTHORIZATION RoleSpec opt_keyspace_options OptSchemaEltList {
     PARSER_UNSUPPORTED(@4);
     $$ = nullptr;
   }
-  | CREATE SCHEMA OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList opt_keyspace_options {
+  | CREATE SCHEMA OptSchemaName AUTHORIZATION RoleSpec opt_keyspace_options OptSchemaEltList {
     PARSER_UNSUPPORTED(@4);
     $$ = nullptr;
   }
-  | CREATE KEYSPACE IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList
-  opt_keyspace_options {
+  | CREATE KEYSPACE IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec
+  opt_keyspace_options OptSchemaEltList {
     PARSER_UNSUPPORTED(@7);
     $$ = nullptr;
   }
-  | CREATE SCHEMA IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec OptSchemaEltList
-  opt_keyspace_options {
+  | CREATE SCHEMA IF_P NOT_LA EXISTS OptSchemaName AUTHORIZATION RoleSpec
+  opt_keyspace_options OptSchemaEltList {
     PARSER_UNSUPPORTED(@7);
     $$ = nullptr;
   }
@@ -4658,7 +4661,6 @@ unreserved_keyword:
   | STANDALONE_P { $$ = $1; }
   | START { $$ = $1; }
   | STATEMENT { $$ = $1; }
-  | STATIC { $$ = $1; }
   | STATISTICS { $$ = $1; }
   | STDIN { $$ = $1; }
   | STDOUT { $$ = $1; }
@@ -4883,6 +4885,7 @@ reserved_keyword:
   | SELECT { $$ = $1; }
   | SESSION_USER { $$ = $1; }
   | SOME { $$ = $1; }
+  | STATIC { $$ = $1; }
   | SYMMETRIC { $$ = $1; }
   | TABLE { $$ = $1; }
   | THEN { $$ = $1; }
