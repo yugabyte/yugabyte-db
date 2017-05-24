@@ -313,6 +313,11 @@ void DocDBRocksDBFixture::OpenRocksDB() {
   rocksdb_.reset(rocksdb);
 }
 
+void DocDBRocksDBFixture::ReopenRocksDB() {
+  rocksdb_.reset();
+  OpenRocksDB();
+}
+
 void DocDBRocksDBFixture::DestroyRocksDB() {
   rocksdb_.reset(nullptr);
   LOG(INFO) << "Destroying RocksDB database at " << rocksdb_dir_;

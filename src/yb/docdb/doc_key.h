@@ -6,6 +6,8 @@
 #include <ostream>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include "rocksdb/env.h"
 #include "rocksdb/filter_policy.h"
 #include "rocksdb/slice.h"
@@ -92,6 +94,10 @@ class DocKey {
   CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
       DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY);
 
+  // Splits given RocksDB key into vector of slices that forms range_group of document key.
+  static CHECKED_STATUS PartiallyDecode(rocksdb::Slice* slice,
+                                        boost::container::small_vector_base<Slice>* out);
+
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
   CHECKED_STATUS FullyDecodeFrom(const rocksdb::Slice& slice);
@@ -131,6 +137,13 @@ class DocKey {
   static DocKey FromRedisKey(uint16_t hash, const string& key);
 
  private:
+  class DecodeFromCallback;
+  friend class DecodeFromCallback;
+
+  template<class Callback>
+  static CHECKED_STATUS DoDecode(rocksdb::Slice* slice,
+                                 DocKeyPart part_to_decode,
+                                 const Callback& callback);
 
   bool hash_present_;
   DocKeyHash hash_;
@@ -269,6 +282,11 @@ class SubDocKey {
       const rocksdb::Slice& slice,
       bool require_hybrid_time = true);
 
+  // Splits given RocksDB key into vector of slices that forms range_group of document key and
+  // hybrid_time.
+  static CHECKED_STATUS PartiallyDecode(Slice* slice,
+                                        boost::container::small_vector_base<Slice>* out);
+
   CHECKED_STATUS FullyDecodeFromKeyWithoutHybridTime(const rocksdb::Slice& slice) {
     return FullyDecodeFrom(slice, /* require_hybrid_time = */ false);
   }
@@ -391,6 +409,14 @@ class SubDocKey {
   KeyBytes AdvanceOutOfDocKeyPrefix() const;
 
  private:
+  class DecodeCallback;
+  friend class DecodeCallback;
+
+  template<class Callback>
+  static Status DoDecode(rocksdb::Slice* slice,
+                         const bool require_hybrid_time,
+                         const Callback& callback);
+
   DocKey doc_key_;
   DocHybridTime doc_ht_;
   std::vector<PrimitiveValue> subkeys_;

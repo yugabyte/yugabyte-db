@@ -31,7 +31,7 @@ class KeyBytes {
     return yb::util::FormatBytesAsStr(data_);
   }
 
-  const std::string data() const {
+  const std::string& data() const {
     return data_;
   }
 

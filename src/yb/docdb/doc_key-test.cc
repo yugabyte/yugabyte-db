@@ -237,6 +237,26 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   SubDocKey decoded_subdoc_key;
   ASSERT_OK(decoded_subdoc_key.FullyDecodeFrom(encoded_subdoc_key.AsSlice()));
   ASSERT_EQ(subdoc_key, decoded_subdoc_key);
+  Slice source = encoded_subdoc_key.data();
+  boost::container::small_vector<Slice, 20> slices;
+  ASSERT_OK(SubDocKey::PartiallyDecode(&source, &slices));
+  const DocKey& dockey = subdoc_key.doc_key();
+  const auto& range_group = dockey.range_group();
+  size_t size = slices.size();
+  ASSERT_EQ(range_group.size() + 1, size);
+  --size; // the last one is time
+  for (size_t i = 0; i != size; ++i) {
+    PrimitiveValue value;
+    Slice temp = slices[i];
+    ASSERT_OK(value.DecodeFromKey(&temp));
+    ASSERT_TRUE(temp.empty());
+    ASSERT_EQ(range_group[i], value);
+  }
+  DocHybridTime time;
+  Slice temp = slices[size];
+  ASSERT_OK(time.DecodeFrom(&temp));
+  ASSERT_TRUE(temp.empty());
+  ASSERT_EQ(subdoc_key.doc_hybrid_time(), time);
 }
 
 TEST(DocKeyTest, TestRandomizedDocKeyRoundTripEncodingDecoding) {

@@ -200,6 +200,7 @@ class PrimitiveValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB key in our key encoding
   // format and consumes a prefix of the slice.
+  static CHECKED_STATUS DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out);
   CHECKED_STATUS DecodeFromKey(rocksdb::Slice* slice);
 
   // Decodes a primitive value from the given slice representing a RocksDB value in our value

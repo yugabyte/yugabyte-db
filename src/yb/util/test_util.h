@@ -137,4 +137,9 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
 }
 
 } // namespace yb
+
+#define TEST_F_EX(test_case_name, test_name, parent_class) \
+  GTEST_TEST_(test_case_name, test_name, parent_class, \
+              ::testing::internal::GetTypeId<test_case_name>())
+
 #endif  // YB_UTIL_TEST_UTIL_H

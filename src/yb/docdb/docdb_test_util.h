@@ -110,6 +110,7 @@ class DocDBRocksDBFixture {
   const rocksdb::Options& options() const { return rocksdb_options_; }
 
   void OpenRocksDB();
+  void ReopenRocksDB();
   void DestroyRocksDB();
 
   // Populates the given RocksDB write batch from the given DocWriteBatch. If a valid hybrid_time is

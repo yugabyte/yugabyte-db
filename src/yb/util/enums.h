@@ -4,8 +4,11 @@
 #define YB_UTIL_ENUMS_H_
 
 #include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/expr_if.hpp>
+#include <boost/preprocessor/if.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 namespace yb {
@@ -18,7 +21,12 @@ constexpr typename std::underlying_type<E>::type to_underlying(E e) {
   return static_cast<typename std::underlying_type<E>::type>(e);
 }
 
-#define YB_ENUM_ITEM(s, data, elem) BOOST_PP_CAT(BOOST_PP_APPLY(data), elem),
+#define YB_ENUM_ITEM_NAME(elem) \
+    BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem), BOOST_PP_TUPLE_ELEM(2, 0, elem), elem)
+#define YB_ENUM_ITEM_VALUE(elem) \
+    BOOST_PP_EXPR_IF(BOOST_PP_IS_BEGIN_PARENS(elem), = BOOST_PP_TUPLE_ELEM(2, 1, elem))
+#define YB_ENUM_ITEM(s, data, elem) \
+  BOOST_PP_CAT(BOOST_PP_APPLY(data), YB_ENUM_ITEM_NAME(elem)) YB_ENUM_ITEM_VALUE(elem),
 #define YB_ENUM_CASE_NAME(s, data, elem) \
   case BOOST_PP_TUPLE_ELEM(2, 0, data):: \
       BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), elem): \

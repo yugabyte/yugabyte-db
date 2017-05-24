@@ -124,7 +124,9 @@ Status DecodeEncodedStr(rocksdb::Slice* slice, string* result) {
       }
       if (*p == END_OF_STRING_ESCAPE) {
         // Character END_OF_STRING is encoded as AB.
-        result->push_back(END_OF_STRING ^ END_OF_STRING);
+        if (result != nullptr) {
+          result->push_back(END_OF_STRING ^ END_OF_STRING);
+        }
         ++p;
       } else {
         return STATUS(Corruption, StringPrintf(
@@ -133,11 +135,15 @@ Status DecodeEncodedStr(rocksdb::Slice* slice, string* result) {
             END_OF_STRING, *p, END_OF_STRING, END_OF_STRING, END_OF_STRING, END_OF_STRING_ESCAPE));
       }
     } else {
-      result->push_back((*p) ^ END_OF_STRING);
+      if (result != nullptr) {
+        result->push_back((*p) ^ END_OF_STRING);
+      }
       ++p;
     }
   }
-  result->shrink_to_fit();
+  if (result != nullptr) {
+    result->shrink_to_fit();
+  }
   slice->remove_prefix(p - slice->cdata());
   return Status::OK();
 }

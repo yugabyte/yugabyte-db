@@ -1151,8 +1151,6 @@ struct DBOptions {
 
   // Create DBOptions with default values for all fields
   DBOptions();
-  // Create DBOptions from Options
-  explicit DBOptions(const Options& options);
 
   void Dump(Logger* log) const;
 

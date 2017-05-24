@@ -19,6 +19,8 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/util/minmax.h"
 #include "yb/util/path_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
@@ -43,6 +45,11 @@ DECLARE_int32(max_nexts_to_avoid_seek);
 
 namespace yb {
 namespace docdb {
+
+CHECKED_STATUS GetPrimitiveValue(const rocksdb::UserBoundaryValues& values,
+                                 size_t index,
+                                 PrimitiveValue* out);
+CHECKED_STATUS GetDocHybridTime(const rocksdb::UserBoundaryValues& values, DocHybridTime* out);
 
 class DocDBTest : public DocDBTestBase {
  protected:
@@ -1184,6 +1191,94 @@ TEST_F(DocDBTest, DocRowwiseIteratorTest) {
 
     ASSERT_FALSE(iter.HasNext());
   }
+}
+
+class DocDBTestBoundaryValues : public DocDBTest {
+ protected:
+  void TestBoundaryValues(size_t flush_rate) {
+    struct Trackers {
+      MinMaxTracker<int64_t> key_ints;
+      MinMaxTracker<std::string> key_strs;
+      MinMaxTracker<HybridTime> times;
+    };
+
+    DocWriteBatch dwb(rocksdb());
+    constexpr int kTotalRows = 1000;
+    constexpr std::mt19937_64::result_type kSeed = 2886476510;
+
+    std::mt19937_64 rng(kSeed);
+    std::uniform_int_distribution<int64_t> distribution(0, std::numeric_limits<int64_t>::max());
+
+    std::vector<Trackers> trackers;
+    for (int i = 0; i != kTotalRows; ++i) {
+      if (i % flush_rate == 0) {
+        trackers.emplace_back();
+        FlushRocksDB();
+      }
+      auto key_str = "key_" + std::to_string(distribution(rng));
+      auto key_int = distribution(rng);
+      auto value_str = "value_" + std::to_string(distribution(rng));
+      auto time = HybridTime::FromMicros(distribution(rng));
+      auto key = DocKey(PrimitiveValues(key_str, key_int)).Encode();
+      DocPath path(key);
+      ASSERT_OK(SetPrimitive(path, PrimitiveValue(value_str), time, InitMarkerBehavior::kOptional));
+      trackers.back().key_ints(key_int);
+      trackers.back().key_strs(key_str);
+      trackers.back().times(time);
+    }
+
+    SCOPED_TRACE("\nWrite batch:\n" + FormatDocWriteBatch(dwb));
+    ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
+    FlushRocksDB();
+
+    for (auto i = 0; i != 2; ++i) {
+      if (i) {
+        ReopenRocksDB();
+      }
+      std::vector<rocksdb::LiveFileMetaData> files;
+      rocksdb()->GetLiveFilesMetaData(&files);
+      ASSERT_EQ(trackers.size(), files.size());
+      sort(files.begin(), files.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.name < rhs.name;
+      });
+
+      for (size_t j = 0; j != trackers.size(); ++j) {
+        const auto& file = files[j];
+        const auto& smallest = file.smallest.user_values;
+        const auto& largest = file.largest.user_values;
+        {
+          auto& times = trackers[j].times;
+          DocHybridTime temp;
+          ASSERT_OK(GetDocHybridTime(smallest, &temp));
+          ASSERT_EQ(times.min, temp.hybrid_time());
+          ASSERT_OK(GetDocHybridTime(largest, &temp));
+          ASSERT_EQ(times.max, temp.hybrid_time());
+        }
+        {
+          auto& key_ints = trackers[j].key_ints;
+          auto& key_strs = trackers[j].key_strs;
+          PrimitiveValue temp;
+          ASSERT_OK(GetPrimitiveValue(smallest, 0, &temp));
+          ASSERT_EQ(PrimitiveValue(key_strs.min), temp);
+          ASSERT_OK(GetPrimitiveValue(largest, 0, &temp));
+          ASSERT_EQ(PrimitiveValue(key_strs.max), temp);
+          ASSERT_OK(GetPrimitiveValue(smallest, 1, &temp));
+          ASSERT_EQ(PrimitiveValue(key_ints.min), temp);
+          ASSERT_OK(GetPrimitiveValue(largest, 1, &temp));
+          ASSERT_EQ(PrimitiveValue(key_ints.max), temp);
+        }
+      }
+    }
+  }
+};
+
+
+TEST_F_EX(DocDBTest, BoundaryValues, DocDBTestBoundaryValues) {
+  TestBoundaryValues(std::numeric_limits<size_t>::max());
+}
+
+TEST_F_EX(DocDBTest, BoundaryValuesMultiFiles, DocDBTestBoundaryValues) {
+  TestBoundaryValues(350);
 }
 
 TEST_F(DocDBTest, DocRowwiseIteratorDeletedDocumentTest) {

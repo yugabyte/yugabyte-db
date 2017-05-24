@@ -283,6 +283,10 @@ string PrimitiveValue::ToValue() const {
 }
 
 Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
+  return DecodeKey(slice, this);
+}
+
+Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
   // A copy for error reporting.
   const rocksdb::Slice input_slice(*slice);
 
@@ -292,33 +296,46 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
         ToShortDebugStr(input_slice));
   }
   ValueType value_type = ConsumeValueType(slice);
+  ValueType dummy_type;
+  ValueType& type_ref = out ? out->type_ : dummy_type;
 
-  this->~PrimitiveValue();
-  // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
-  // due to inability to allocate memory.
-  type_ = ValueType::kNull;
+  if (out) {
+    out->~PrimitiveValue();
+    // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
+    // due to inability to allocate memory.
+  }
+  type_ref = ValueType::kNull;
 
   switch (value_type) {
     case ValueType::kNull: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kTrue:
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
 
     case ValueType::kStringDescending: {
-      new (&str_val_) string();
-      RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &str_val_));
+      if (out) {
+        string result;
+        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &result));
+        new (&out->str_val_) string(std::move(result));
+      } else {
+        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+      }
       // Only set type to string after string field initialization succeeds.
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
     }
 
     case ValueType::kString: {
-      string result;
-      RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result));
-      new(&str_val_) string(result);
+      if (out) {
+        string result;
+        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result));
+        new (&out->str_val_) string(std::move(result));
+      } else {
+        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
+      }
       // Only set type to string after string field initialization succeeds.
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
     }
 
@@ -334,9 +351,11 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
         // the original sign of the number.
         decimal.Negate();
       }
-      new (&decimal_val_) string(decimal.EncodeToComparable());
+      if (out) { // TODO avoid using temp variable, when out is nullptr
+        new(&out->decimal_val_) string(decimal.EncodeToComparable());
+      }
       slice->remove_prefix(num_decoded_bytes);
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
     }
 
@@ -348,12 +367,14 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
             "Not enough bytes to decode a 64-bit integer: $0",
             slice->size());
       }
-      int64_val_ = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
-      if (value_type == ValueType::kInt64Descending) {
-        int64_val_ = ~int64_val_;
+      if (out) {
+        out->int64_val_ = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
+        if (value_type == ValueType::kInt64Descending) {
+          out->int64_val_ = ~out->int64_val_;
+        }
       }
       slice->remove_prefix(sizeof(int64_t));
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
 
     case ValueType::kUInt16Hash:
@@ -361,9 +382,11 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
         return STATUS(Corruption, Substitute("Not enough bytes to decode a 16-bit hash: $0",
                                              slice->size()));
       }
-      uint16_val_ = BigEndian::Load16(slice->data());
+      if (out) {
+        out->uint16_val_ = BigEndian::Load16(slice->data());
+      }
       slice->remove_prefix(sizeof(uint16_t));
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
 
     case ValueType::kTimestampDescending: FALLTHROUGH_INTENDED;
@@ -373,52 +396,69 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
             Substitute("Not enough bytes to decode a Timestamp: $0, need $1",
                 slice->size(), sizeof(Timestamp)));
       }
-      const auto uint64_timestamp = BigEndian::Load64(slice->data()) ^ kInt64SignBitFlipMask;
-      if (value_type == ValueType::kTimestampDescending) {
-        // Flip all the bits after loading the integer.
-        timestamp_val_ = Timestamp(~uint64_timestamp);
-      } else {
-        timestamp_val_ = Timestamp(uint64_timestamp);
+      if (out) {
+        const auto uint64_timestamp = BigEndian::Load64(slice->data()) ^kInt64SignBitFlipMask;
+        if (value_type == ValueType::kTimestampDescending) {
+          // Flip all the bits after loading the integer.
+          out->timestamp_val_ = Timestamp(~uint64_timestamp);
+        } else {
+          out->timestamp_val_ = Timestamp(uint64_timestamp);
+        }
       }
-
       slice->remove_prefix(sizeof(Timestamp));
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
     }
 
     case ValueType::kInetaddress: {
-      string bytes;
-      RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-      inetaddress_val_ = new InetAddress();
-      RETURN_NOT_OK(inetaddress_val_->FromBytes(bytes));
-      type_ = value_type;
+      if (out) {
+        string bytes;
+        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
+        out->inetaddress_val_ = new InetAddress();
+        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+      } else {
+        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
+      }
+      type_ref = value_type;
       return Status::OK();
     }
 
     case ValueType::kInetaddressDescending: {
-      string bytes;
-      RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-      inetaddress_val_ = new InetAddress();
-      RETURN_NOT_OK(inetaddress_val_->FromBytes(bytes));
-      type_ = value_type;
+      if (out) {
+        string bytes;
+        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
+        out->inetaddress_val_ = new InetAddress();
+        RETURN_NOT_OK(out->inetaddress_val_->FromBytes(bytes));
+      } else {
+        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+      }
+      type_ref = value_type;
       return Status::OK();
     }
 
     case ValueType::kUuid: {
-      string bytes;
-      RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-      new(&uuid_val_) Uuid();
-      RETURN_NOT_OK(uuid_val_.DecodeFromComparable(bytes));
-      type_ = value_type;
+      if (out) {
+        string bytes;
+        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
+        new(&out->uuid_val_) Uuid();
+        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+      } else {
+        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
+      }
+      type_ref = value_type;
       return Status::OK();
     }
 
     case ValueType::kUuidDescending: {
-      string bytes;
-      RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-      new(&uuid_val_) Uuid();
-      RETURN_NOT_OK(uuid_val_.DecodeFromComparable(bytes));
-      type_ = value_type;
+      if (out) {
+        string bytes;
+        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
+        new(&out->uuid_val_) Uuid();
+        RETURN_NOT_OK(out->uuid_val_.DecodeFromComparable(bytes));
+      } else {
+        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+      }
+      type_ref = value_type;
       return Status::OK();
     }
 
@@ -428,20 +468,28 @@ Status PrimitiveValue::DecodeFromKey(rocksdb::Slice* slice) {
       int num_bytes_in_encoded_varint = 0;  // TODO: switch to size_t;
       {
         int64_t column_id_as_int64 = 0;
+        ColumnId dummy_column_id;
+        ColumnId& column_id_ref = out ? out->column_id_val_ : dummy_column_id;
         RETURN_NOT_OK(FastDecodeVarInt(slice->data(), slice->size(), &column_id_as_int64 ,
                                        &num_bytes_in_encoded_varint));
-        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64 , &column_id_val_));
+        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
       }
 
       slice->remove_prefix(num_bytes_in_encoded_varint);
-      type_ = value_type;
+      type_ref = value_type;
       return Status::OK();
     }
 
     case ValueType::kHybridTime: {
-      new (&hybrid_time_val_) DocHybridTime();
-      RETURN_NOT_OK(hybrid_time_val_.DecodeFrom(slice));
-      type_ = ValueType::kHybridTime;
+      if (out) {
+        new(&out->hybrid_time_val_) DocHybridTime();
+        RETURN_NOT_OK(out->hybrid_time_val_.DecodeFrom(slice));
+      } else {
+        DocHybridTime dummy_hybrid_time;
+        RETURN_NOT_OK(dummy_hybrid_time.DecodeFrom(slice));
+      }
+
+      type_ref = ValueType::kHybridTime;
       return Status::OK();
     }
 

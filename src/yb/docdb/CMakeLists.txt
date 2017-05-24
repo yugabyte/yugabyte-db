@@ -15,6 +15,7 @@ ADD_EXPORTABLE_LIBRARY(docdb_proto
 
 set(DOCDB_SRCS
     docdb_util.cc
+    doc_boundary_values_extractor.cc
     doc_key.cc
     doc_kv_util.cc
     doc_operation.cc

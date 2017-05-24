@@ -25,7 +25,10 @@ using yb::util::CompareUsingLessThan;
 namespace yb {
 namespace docdb {
 
-Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValue>* result) {
+namespace {
+
+template<class Callback>
+Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, Callback callback) {
   const auto initial_slice(*slice);  // For error reporting.
   while (true) {
     if (PREDICT_FALSE(slice->empty())) {
@@ -41,14 +44,23 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, vector<PrimitiveValu
           "Expected a primitive value type, got $0",
           ValueTypeToStr(current_value_type));
     }
-    result->emplace_back();
-    RETURN_NOT_OK_PREPEND(result->back().DecodeFromKey(slice),
-                          Substitute("while consuming primitive values from $0",
-                                     ToShortDebugStr(initial_slice)));
+    RETURN_NOT_OK_PREPEND(callback(),
+        Substitute("while consuming primitive values from $0",
+            ToShortDebugStr(initial_slice)));
   }
 }
 
-namespace {
+Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
+                                     boost::container::small_vector_base<Slice>* result) {
+  return ConsumePrimitiveValuesFromKey(slice, [slice, result] {
+    auto begin = slice->data();
+    RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, nullptr));
+    if (result) {
+      result->emplace_back(begin, slice->data());
+    }
+    return Status::OK();
+  });
+}
 
 void AppendDocKeyItems(const vector<PrimitiveValue>& doc_key_items, KeyBytes* result) {
   for (const PrimitiveValue& item : doc_key_items) {
@@ -57,7 +69,15 @@ void AppendDocKeyItems(const vector<PrimitiveValue>& doc_key_items, KeyBytes* re
   result->AppendValueType(ValueType::kGroupEnd);
 }
 
-}  // unnamed namespace
+} // namespace
+
+Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
+                                     std::vector<PrimitiveValue>* result) {
+  return ConsumePrimitiveValuesFromKey(slice, [slice, result] {
+    result->emplace_back();
+    return result->back().DecodeFromKey(slice);
+  });
+}
 
 // ------------------------------------------------------------------------------------------------
 // DocKey
@@ -104,9 +124,66 @@ void DocKey::ClearRangeComponents() {
   range_group_.clear();
 }
 
+namespace {
+
+class DecodeDocKeyCallback {
+ public:
+  explicit DecodeDocKeyCallback(boost::container::small_vector_base<Slice>* out) : out_(out) {}
+
+  boost::container::small_vector_base<Slice>* hashed_group() const {
+    return nullptr;
+  }
+
+  boost::container::small_vector_base<Slice>* range_group() const {
+    return out_;
+  }
+
+  void SetHash(...) const {}
+ private:
+  boost::container::small_vector_base<Slice>* out_;
+};
+
+} // namespace
+
+yb::Status DocKey::PartiallyDecode(rocksdb::Slice *slice,
+                                   boost::container::small_vector_base<Slice>* out) {
+  CHECK_NOTNULL(out);
+  return DoDecode(slice, DocKeyPart::WHOLE_DOC_KEY, DecodeDocKeyCallback(out));
+}
+
+class DocKey::DecodeFromCallback {
+ public:
+  explicit DecodeFromCallback(DocKey* key) : key_(key) {
+  }
+
+  std::vector<PrimitiveValue>* hashed_group() const {
+    return &key_->hashed_group_;
+  }
+
+  std::vector<PrimitiveValue>* range_group() const {
+    return &key_->range_group_;
+  }
+
+  void SetHash(bool present, DocKeyHash hash = 0) const {
+    key_->hash_present_ = present;
+    if (present) {
+      key_->hash_ = hash;
+    }
+  }
+ private:
+  DocKey* key_;
+};
+
 yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice, DocKeyPart part_to_decode) {
   Clear();
 
+  return DoDecode(slice, part_to_decode, DecodeFromCallback(this));
+}
+
+template<class Callback>
+yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
+                                DocKeyPart part_to_decode,
+                                const Callback& callback) {
   if (slice->empty()) {
     return STATUS(Corruption, "Document key is empty");
   }
@@ -123,23 +200,22 @@ yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice, DocKeyPart part_to_decode) 
       // We'll need to update this code if we ever change the size of the hash field.
       static_assert(sizeof(DocKeyHash) == sizeof(uint16_t),
           "It looks like the DocKeyHash's size has changed -- need to update encoder/decoder.");
-      hash_ = BigEndian::Load16(slice->data() + 1);
-      hash_present_ = true;
+      callback.SetHash(/* present */ true, BigEndian::Load16(slice->data() + 1));
       slice->remove_prefix(sizeof(DocKeyHash) + 1);
     } else {
       return STATUS_SUBSTITUTE(Corruption,
           "Could not decode a 16-bit hash component of a document key: only $0 bytes left",
           slice->size());
     }
-    RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, &hashed_group_),
+    RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, callback.hashed_group()),
         "Error when decoding hashed components of a document key");
   } else {
-    hash_present_ = false;
+    callback.SetHash(/* present */ false);
   }
 
   switch (part_to_decode) {
     case DocKeyPart::WHOLE_DOC_KEY:
-      RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, &range_group_),
+      RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, callback.range_group()),
           "Error when decoding range components of a document key");
       return Status::OK();
     case DocKeyPart::HASHED_PART_ONLY:
@@ -259,20 +335,83 @@ KeyBytes SubDocKey::Encode(bool include_hybrid_time) const {
   return key_bytes;
 }
 
+namespace {
+
+class DecodeSubDocKeyCallback {
+ public:
+  explicit DecodeSubDocKeyCallback(boost::container::small_vector_base<Slice>* out) : out_(out) {}
+
+  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+    return DocKey::PartiallyDecode(slice, out_);
+  }
+
+  // We don't need subkeys in partial decoding.
+  PrimitiveValue* AddSubkey() const {
+    return nullptr;
+  }
+
+  DocHybridTime& doc_hybrid_time() const {
+    return doc_hybrid_time_;
+  }
+
+  void DocHybridTimeSlice(Slice slice) const {
+    out_->push_back(slice);
+  }
+ private:
+  boost::container::small_vector_base<Slice>* out_;
+  mutable DocHybridTime doc_hybrid_time_;
+};
+
+} // namespace
+
+Status SubDocKey::PartiallyDecode(Slice* slice, boost::container::small_vector_base<Slice>* out) {
+  CHECK_NOTNULL(out);
+  return DoDecode(slice, true, DecodeSubDocKeyCallback(out));
+}
+
+class SubDocKey::DecodeCallback {
+ public:
+  explicit DecodeCallback(SubDocKey* key) : key_(key) {}
+
+  CHECKED_STATUS DecodeDocKey(Slice* slice) const {
+    return key_->doc_key_.DecodeFrom(slice);
+  }
+
+  PrimitiveValue* AddSubkey() const {
+    key_->subkeys_.emplace_back();
+    return &key_->subkeys_.back();
+  }
+
+  DocHybridTime& doc_hybrid_time() const {
+    return key_->doc_ht_;
+  }
+
+  void DocHybridTimeSlice(Slice slice) const {
+  }
+ private:
+  SubDocKey* key_;
+};
+
 Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_time) {
+  Clear();
+  return DoDecode(slice, require_hybrid_time, DecodeCallback(this));
+}
+
+template<class Callback>
+Status SubDocKey::DoDecode(rocksdb::Slice* slice,
+                           const bool require_hybrid_time,
+                           const Callback& callback) {
   const rocksdb::Slice original_bytes(*slice);
 
-  Clear();
-  RETURN_NOT_OK(doc_key_.DecodeFrom(slice));
+  RETURN_NOT_OK(callback.DecodeDocKey(slice));
   while (!slice->empty() && *slice->data() != static_cast<char>(ValueType::kHybridTime)) {
-    subkeys_.emplace_back();
     RETURN_NOT_OK_PREPEND(
-        subkeys_.back().DecodeFromKey(slice),
+        PrimitiveValue::DecodeKey(slice, callback.AddSubkey()),
         Substitute("While decoding SubDocKey $0", ToShortDebugStr(original_bytes)));
   }
   if (slice->empty()) {
     if (!require_hybrid_time) {
-      doc_ht_ = DocHybridTime::kInvalid;
+      callback.doc_hybrid_time() = DocHybridTime::kInvalid;
       return Status::OK();
     }
     return STATUS_SUBSTITUTE(
@@ -286,7 +425,9 @@ Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, const bool require_hybrid_ti
   DCHECK_EQ(ValueType::kHybridTime, DecodeValueType(*slice));
   slice->consume_byte();
 
-  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &doc_ht_));
+  auto begin = slice->data();
+  RETURN_NOT_OK(ConsumeHybridTimeFromKey(slice, &callback.doc_hybrid_time()));
+  callback.DocHybridTimeSlice(Slice(begin, slice->data()));
 
   return Status::OK();
 }
