@@ -4,7 +4,8 @@ import React, { Component } from 'react';
 import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
 import { Link } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { isValidObject, isValidArray, isEmptyArray } from '../../../utils/ObjectUtils';
+import { isObject } from 'lodash';
+import { isValidObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import './UniverseTable.scss';
 import {UniverseReadWriteMetrics} from '../../metrics';
 import {YBCost} from '../../common/descriptors';
@@ -26,14 +27,14 @@ export default class UniverseTable extends Component {
     var self = this;
     const { universe: { universeList }, universeReadWriteData, tasks } = this.props;
 
-    if (isEmptyArray(universeList.data)) {
+    if (!isObject(universeList) || !isNonEmptyArray(universeList.data)) {
       return <h5>No universes defined.</h5>;
     }
 
     var universeRowItem =
       universeList.data.map(function (item, idx) {
         var universeTaskUUIDs = [];
-        if (isValidArray(tasks.customerTaskList)) {
+        if (isNonEmptyArray(tasks.customerTaskList)) {
           universeTaskUUIDs = tasks.customerTaskList.map(function(taskItem){
             if (taskItem.universeUUID === item.universeUUID) {
               return {"id": taskItem.id, "data": taskItem, "universe": item.universeUUID};

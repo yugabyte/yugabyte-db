@@ -1,7 +1,7 @@
 import React, { Component, PropTypes } from 'react';
 import { Field } from 'redux-form';
 import { YBControlledSelect, YBControlledNumericInput } from 'components/common/forms/fields';
-import { isValidArray, isValidObject, areUniverseConfigsEqual, isEmptyObject } from 'utils/ObjectUtils';
+import { isNonEmptyArray, isValidObject, areUniverseConfigsEqual, isNonEmptyObject } from 'utils/ObjectUtils';
 import {Row, Col} from 'react-bootstrap';
 import _ from 'lodash';
 
@@ -89,8 +89,8 @@ export default class AZSelectorTable extends Component {
 
   getGroupWithCounts(universeConfigTemplate) {
     var uniConfigArray = [];
-    if (isValidArray(universeConfigTemplate.nodeDetailsSet)) {
-      universeConfigTemplate.nodeDetailsSet.forEach(function(nodeItem) {
+    if (isNonEmptyArray(universeConfigTemplateData.nodeDetailsSet)) {
+      universeConfigTemplate.nodeDetailsSet.forEach(function (nodeItem) {
         if (nodeStates.activeStates.indexOf(nodeItem.state) !== -1) {
           var nodeFound = false;
           for (var idx = 0; idx < uniConfigArray.length; idx++) {
@@ -163,36 +163,36 @@ export default class AZSelectorTable extends Component {
     const {universe: {universeConfigTemplate}, cloud: {regions}} = this.props;
     var self = this;
     var azListForSelectedRegions = [];
-    if (isValidObject(universeConfigTemplate.data.userIntent) && isValidArray(universeConfigTemplate.data.userIntent.regionList)) {
-      azListForSelectedRegions = regions.data.filter(
+    if (isValidObject(universeConfigTemplate.data.userIntent) && 
+      isNonEmptyArray(universeConfigTemplate.data.userIntent.regionList)
+    ) {
+       azListForSelectedRegions = regions.data.filter(
         region => universeConfigTemplate.data.userIntent.regionList.includes(region.uuid)
       ).reduce((az, region) => az.concat(region.zones), []);
     }
     var azListOptions = <option/>;
-    if (isValidArray(azListForSelectedRegions)) {
-      azListOptions = azListForSelectedRegions.map(function(azItem, azIdx) {
-        return <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
-      });
+    if (isNonEmptyArray(azListForSelectedRegions)) {
+      azListOptions = azListForSelectedRegions.map((azItem, azIdx) => (
+        <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
+      ));
     }
     var azGroups = self.state.azItemState;
     var azList = [];
-    if (isValidArray(azGroups) && azGroups.length && isValidArray(azListForSelectedRegions)) {
-      azList = azGroups.map(function(azGroupItem, idx) {
-        return (
-          <Row key={idx} >
-          <Col sm={6}>
-            <Field name={`select${idx}`} component={YBControlledSelect}
-                   options={azListOptions} selectVal={azGroupItem.value}
-                   onInputChanged={self.handleAZChange.bind(self, idx)}/>
-          </Col>
-          <Col sm={6}>
-            <Field name={`nodes${idx}`} component={YBControlledNumericInput}
-              val={azGroupItem.count}
-              onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
-          </Col>
-        </Row>
-      )
-    });
+    if (isNonEmptyArray(azGroups) && isNonEmptyArray(azListForSelectedRegions)) {
+      azList = azGroups.map((azGroupItem, idx) => (
+        <Row key={idx} >
+        <Col sm={6}>
+          <Field name={`select${idx}`} component={YBControlledSelect}
+                 options={azListOptions} selectVal={azGroupItem.value}
+                 onInputChanged={self.handleAZChange.bind(self, idx)}/>
+        </Col>
+        <Col sm={6}>
+          <Field name={`nodes${idx}`} component={YBControlledNumericInput}
+            val={azGroupItem.count}
+            onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
+        </Col>
+      </Row>
+    ));
     return (
       <div className={"az-table-container form-field-grid"}>
         <h4>Availability Zones</h4>
