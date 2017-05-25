@@ -7,6 +7,8 @@ import shutil
 import sys
 import argparse
 import tarfile
+import random
+import string
 
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file, publish_release, \
@@ -27,7 +29,7 @@ from ybops.common.exceptions import YBOpsRuntimeError
 """
 
 parser = argparse.ArgumentParser()
-release_types = ["docker", "file"]
+release_types = ["docker", "file", "replicated"]
 parser.add_argument('--type', action='store', choices=release_types,
                    default="file", help='Provide a release type')
 parser.add_argument('--publish', action='store_true',
@@ -37,6 +39,8 @@ parser.add_argument('--tag', help='Release tag name')
 args = parser.parse_args()
 
 output = None
+SECRET_CHOICE = string.ascii_lowercase + string.digits + string.punctuation
+
 try:
     init_env(logging.INFO)
     script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -95,7 +99,6 @@ try:
                 log_message(logging.INFO, "Tag Yugaware and Yugaware UI with replicated urls")
                 docker_push_to_registry("yugaware", "1.0-SNAPSHOT", args.tag)
                 docker_push_to_registry("yugaware-ui", "latest", args.tag)
-
         except YBOpsRuntimeError as ye:
             log_message(logging.ERROR, ye)
             log_message(logging.ERROR, "Invalid release tag provided.")
@@ -103,6 +106,17 @@ try:
             output = check_output(["git", "checkout", "master"])
             shutil.rmtree(packages_folder)
 
+    elif args.type == "replicated":
+        log_message(logging.INFO, "Creating replicated release")
+        # TODO move this to devops?
+        secret_str = ''.join([random.SystemRandom().choice(SECRET_CHOICE) for i in range(64)])
+        with open("replicated.yml", "r") as yaml_file:
+            yaml_str = yaml_file.read()\
+                .replace('YUGABYTE_RELEASE_VERSION', args.tag)\
+                .replace('YUGAWARE_APP_SECRET', secret_str)
+            # TODO: replace this with replicated rest api's to create the release
+            with open("/tmp/replicated-{}.yml".format(args.tag), "w") as outfile:
+                outfile.write(yaml_str)
     else:
         log_message(logging.INFO, "Building/Packaging UI code")
         shutil.rmtree(os.path.join(script_dir, "ui", "node_modules"), ignore_errors=True)
