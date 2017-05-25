@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.Objects;
-
+import java.util.Iterator;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -150,6 +150,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       Set<UUID> leftSet = new HashSet<UUID>(left);
       Set<UUID> rightSet = new HashSet<UUID>(right);
       return leftSet.equals(rightSet);
+    }
+  }
+  // Helper API to remove node from nodeDetailSet
+  public void removeNode(String nodeName) {
+    for (Iterator<NodeDetails> i = this.nodeDetailsSet.iterator(); i.hasNext();) {
+      NodeDetails element = i.next();
+      if (element.nodeName.equals(nodeName)) {
+        i.remove();
+        break;
+      }
     }
   }
 }

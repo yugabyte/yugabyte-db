@@ -15,7 +15,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
-
 public class AnsibleDestroyServer extends NodeTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(AnsibleDestroyServer.class);
 
@@ -33,7 +32,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        universeDetails.nodeDetailsSet.remove(nodeName);
+        universeDetails.removeNode(nodeName);
         LOG.debug("Removing node " + nodeName +
                   " from universe " + taskParams().universeUUID);
       }
