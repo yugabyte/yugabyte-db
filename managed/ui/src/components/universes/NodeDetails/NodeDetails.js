@@ -24,9 +24,7 @@ export default class NodeDetails extends Component {
     if (!isNonEmptyArray(nodeDetails)) {
       return <span />;
     }
-    const nodeDetailRows = nodeDetails.filter(function(nodeDetail){
-        return nodeDetail.state !== "Destroyed"
-      }).map(function(nodeDetail){
+    const nodeDetailRows = nodeDetails.map(function(nodeDetail){
        return {
           name: nodeDetail.nodeName,
           regionAz: `${nodeDetail.cloudInfo.region}/${nodeDetail.cloudInfo.az}`,
